@@ -26,6 +26,7 @@ fn bind_cli_args<F: FieldElement>(
     inputs: Vec<F>,
     output_dir: PathBuf,
     force_overwrite: bool,
+    pilo: bool,
     witness_values: Option<String>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
@@ -43,11 +44,17 @@ fn bind_cli_args<F: FieldElement>(
         CsvRenderModeCLI::Hex => CsvRenderMode::Hex,
     };
 
-    pipeline
+    let pipeline = pipeline
         .with_output(output_dir.clone(), force_overwrite)
         .add_external_witness_values(witness_values.clone())
         .with_witness_csv_settings(export_csv, csv_mode)
-        .with_prover_inputs(inputs.clone())
+        .with_prover_inputs(inputs.clone());
+
+    if pilo {
+        pipeline.with_pil_object()
+    } else {
+        pipeline
+    }
 }
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
@@ -113,6 +120,11 @@ enum Commands {
         #[arg(default_value_t = false)]
         force: bool,
 
+        /// Whether to output the pilo PIL object.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        pilo: bool,
+
         /// Generate a proof with a given backend.
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(BackendType))]
@@ -166,6 +178,11 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
+
+        /// Whether to output the pilo PIL object.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        pilo: bool,
 
         /// Generate a proof with a given backend
         #[arg(short, long)]
@@ -225,6 +242,11 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
+
+        /// Whether to output the pilo PIL object.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        pilo: bool,
 
         /// Generate a proof with a given backend.
         #[arg(short, long)]
@@ -447,6 +469,7 @@ fn run_command(command: Commands) {
             inputs,
             output_directory,
             force,
+            pilo,
             prove_with,
             export_csv,
             csv_mode,
@@ -466,6 +489,7 @@ fn run_command(command: Commands) {
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
+                pilo,
                 prove_with,
                 export_csv,
                 csv_mode,
@@ -480,6 +504,7 @@ fn run_command(command: Commands) {
             inputs,
             output_directory,
             force,
+            pilo,
             prove_with,
             export_csv,
             csv_mode,
@@ -507,6 +532,7 @@ fn run_command(command: Commands) {
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
+                pilo,
                 prove_with,
                 export_csv,
                 csv_mode,
@@ -534,6 +560,7 @@ fn run_command(command: Commands) {
             witness_values,
             inputs,
             force,
+            pilo,
             prove_with,
             export_csv,
             csv_mode,
@@ -546,6 +573,7 @@ fn run_command(command: Commands) {
                 witness_values,
                 inputs,
                 force,
+                pilo,
                 prove_with,
                 export_csv,
                 csv_mode,
@@ -650,6 +678,7 @@ fn run_rust<F: FieldElement>(
     inputs: Vec<F>,
     output_dir: &Path,
     force_overwrite: bool,
+    pilo: bool,
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
@@ -676,6 +705,7 @@ fn run_rust<F: FieldElement>(
         inputs.clone(),
         output_dir.to_path_buf(),
         force_overwrite,
+        pilo,
         None,
         export_csv,
         csv_mode,
@@ -691,6 +721,7 @@ fn run_riscv_asm<F: FieldElement>(
     inputs: Vec<F>,
     output_dir: &Path,
     force_overwrite: bool,
+    pilo: bool,
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
@@ -718,6 +749,7 @@ fn run_riscv_asm<F: FieldElement>(
         inputs.clone(),
         output_dir.to_path_buf(),
         force_overwrite,
+        pilo,
         None,
         export_csv,
         csv_mode,
@@ -733,6 +765,7 @@ fn run_pil<F: FieldElement>(
     witness_values: Option<String>,
     inputs: String,
     force: bool,
+    pilo: bool,
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
@@ -746,6 +779,7 @@ fn run_pil<F: FieldElement>(
         inputs.clone(),
         PathBuf::from(output_directory),
         force,
+        pilo,
         witness_values,
         export_csv,
         csv_mode,
@@ -882,6 +916,7 @@ mod test {
             witness_values: None,
             inputs: "3,2,1,2".into(),
             force: false,
+            pilo: false,
             prove_with: Some(BackendType::PilStarkCli),
             export_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,

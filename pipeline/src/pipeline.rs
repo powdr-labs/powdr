@@ -211,6 +211,8 @@ pub struct Pipeline<T: FieldElement> {
     /// Whether to overwrite existing files. If false, an error is returned if a file
     /// already exists.
     force_overwrite: bool,
+    /// Whether to output the serialized pil object (.pilo)
+    pilo: bool,
     /// The log level to use for this pipeline.
     log_level: Level,
     /// Optional arguments for various stages of the pipeline.
@@ -229,6 +231,7 @@ where
             log_level: Level::Debug,
             name: None,
             force_overwrite: false,
+            pilo: false,
             arguments: Arguments::default(),
         }
     }
@@ -364,6 +367,11 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn with_name(mut self, name: String) -> Self {
         self.name = Some(name);
+        self
+    }
+
+    pub fn with_pil_object(mut self) -> Self {
+        self.pilo = true;
         self
     }
 
@@ -750,11 +758,13 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     fn maybe_write_pil_object(&self, pil: &Analyzed<T>, suffix: &str) -> Result<(), Vec<String>> {
-        if let Some(path) = self.path_if_should_write(|name| format!("{name}{suffix}.pilo"))? {
-            SerializedAnalyzed::try_from(pil)
-                .map_err(|e| vec![e])?
-                .serialize_to(path)
-                .map_err(|e| vec![e])?;
+        if self.pilo {
+            if let Some(path) = self.path_if_should_write(|name| format!("{name}{suffix}.pilo"))? {
+                SerializedAnalyzed::try_from(pil)
+                    .map_err(|e| vec![e])?
+                    .serialize_to(path)
+                    .map_err(|e| vec![e])?;
+            }
         }
         Ok(())
     }
