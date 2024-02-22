@@ -257,7 +257,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     constant_polys.retain(|id, _| columns.contains(id));
 
     substitute_polynomial_references(pil_file, &constant_polys);
-    pil_file.remove_polynomials(&constant_polys.keys().cloned().collect());
+    pil_file.remove_polynomials(&constant_polys.into_keys().collect());
 }
 
 /// Substitutes all references to certain polynomials by the given field elements.

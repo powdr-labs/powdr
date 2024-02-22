@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::iter::Peekable;
 use std::mem;
 use std::num::NonZeroUsize;
 
@@ -207,11 +208,13 @@ impl<T: FieldElement> FixedLookup<T> {
         }
 
         // get the values of the fixed columns
-        let right = right
+        let mut right = right
             .expressions
             .iter()
-            .map(try_to_simple_poly_ref)
-            .collect::<Option<Vec<_>>>()?;
+            .filter_map(try_to_simple_poly_ref)
+            .peekable();
+        // early return if right is empty
+        right.peek()?;
 
         Some(self.process_plookup_internal(fixed_data, rows, left, right))
     }
@@ -221,14 +224,14 @@ impl<T: FieldElement> FixedLookup<T> {
         fixed_data: &FixedData<T>,
         rows: &RowPair<'_, '_, T>,
         left: &[AffineExpression<&'b AlgebraicReference, T>],
-        right: Vec<&'b AlgebraicReference>,
+        mut right: Peekable<impl Iterator<Item = &'b AlgebraicReference>>,
     ) -> EvalResult<'b, T> {
         if left.len() == 1
             && !left.first().unwrap().is_constant()
-            && right.first().unwrap().poly_id.ptype == PolynomialType::Constant
+            && right.peek().unwrap().poly_id.ptype == PolynomialType::Constant
         {
             // Lookup of the form "c { X } in { B }". Might be a conditional range check.
-            return self.process_range_check(rows, left.first().unwrap(), right.first().unwrap());
+            return self.process_range_check(rows, left.first().unwrap(), right.peek().unwrap());
         }
 
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
@@ -321,7 +324,8 @@ impl<T: FieldElement> FixedLookup<T> {
             updates
                 .constraints
                 .into_iter()
-                .filter(|(poly, _)| poly.poly_id.ptype == PolynomialType::Committed),
+                .filter(|(poly, _)| poly.poly_id.ptype == PolynomialType::Committed)
+                .collect(),
             IncompleteCause::NotConcrete,
         ))
     }

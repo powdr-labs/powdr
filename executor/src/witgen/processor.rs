@@ -66,7 +66,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     is_relevant_witness: WitnessColumnMap<bool>,
     /// The outer query, if any. If there is none, processing an outer query will fail.
     outer_query: Option<OuterQuery<'a, T>>,
-    inputs: BTreeMap<PolyID, T>,
+    inputs: Vec<(PolyID, T)>,
     previously_set_inputs: BTreeMap<PolyID, usize>,
 }
 
@@ -92,19 +92,19 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             witness_cols,
             is_relevant_witness,
             outer_query: None,
-            inputs: BTreeMap::new(),
+            inputs: Vec::new(),
             previously_set_inputs: BTreeMap::new(),
         }
     }
 
     pub fn with_outer_query(self, outer_query: OuterQuery<'a, T>) -> Processor<'a, 'b, 'c, T, Q> {
         log::trace!("  Extracting inputs:");
-        let mut inputs = BTreeMap::new();
+        let mut inputs = vec![];
         for (l, r) in outer_query.left.iter().zip(&outer_query.right.expressions) {
             if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id) {
                 if let Some(l) = l.constant_value() {
                     log::trace!("    {} = {}", r, l);
-                    inputs.insert(right_poly, l);
+                    inputs.push((right_poly, l));
                 }
             }
         }
@@ -251,7 +251,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             .constraints
             .into_iter()
             .filter(|(poly, update)| match update {
-                Constraint::Assignment(_) => !self.witness_cols.contains(&poly.poly_id),
+                Constraint::Assignment(_) => !self.is_relevant_witness[&poly.poly_id],
                 // Range constraints are currently not communicated between callee and caller.
                 Constraint::RangeConstraint(_) => false,
             })
@@ -271,7 +271,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             match &self.data[row_index][poly_id].value {
                 CellValue::Known(_) => {}
                 CellValue::RangeConstraint(_) | CellValue::Unknown => {
-                    input_updates.combine(EvalValue::complete([(
+                    input_updates.combine(EvalValue::complete(vec![(
                         &self.fixed_data.witness_cols[poly_id].poly,
                         Constraint::Assignment(*value),
                     )]));

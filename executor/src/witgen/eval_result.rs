@@ -53,12 +53,18 @@ pub enum IncompleteCause<K = usize> {
 impl<K> IncompleteCause<K> {
     pub fn combine(self, right: IncompleteCause<K>) -> IncompleteCause<K> {
         match (self, right) {
-            (IncompleteCause::Multiple(l), IncompleteCause::Multiple(r)) => {
-                IncompleteCause::Multiple(l.into_iter().chain(r).collect())
+            (IncompleteCause::Multiple(mut l), IncompleteCause::Multiple(r)) => {
+                if l.is_empty() {
+                    IncompleteCause::Multiple(r)
+                } else {
+                    l.extend(r);
+                    IncompleteCause::Multiple(l)
+                }
             }
-            (m @ IncompleteCause::Multiple(_), other)
-            | (other, m @ IncompleteCause::Multiple(_)) => {
-                m.combine(IncompleteCause::Multiple(vec![other]))
+            (IncompleteCause::Multiple(mut causes), other)
+            | (other, IncompleteCause::Multiple(mut causes)) => {
+                causes.push(other);
+                IncompleteCause::Multiple(causes)
             }
             (l, r) => IncompleteCause::Multiple(vec![l, r]),
         }
@@ -114,23 +120,20 @@ impl<K, T: FieldElement> EvalValue<K, T> {
     }
 
     pub fn incomplete_with_constraints(
-        constraints: impl IntoIterator<Item = (K, Constraint<T>)>,
+        constraints: Vec<(K, Constraint<T>)>,
         cause: IncompleteCause<K>,
     ) -> Self {
         Self::new(constraints, EvalStatus::Incomplete(cause))
     }
 
-    pub fn complete(constraints: impl IntoIterator<Item = (K, Constraint<T>)>) -> Self {
+    pub fn complete(constraints: Vec<(K, Constraint<T>)>) -> Self {
         Self::new(constraints, EvalStatus::Complete)
     }
 
-    fn new(
-        constraints: impl IntoIterator<Item = (K, Constraint<T>)>,
-        complete: EvalStatus<K>,
-    ) -> Self {
+    fn new(constraints: Vec<(K, Constraint<T>)>, status: EvalStatus<K>) -> Self {
         Self {
-            constraints: constraints.into_iter().collect(),
-            status: complete,
+            constraints,
+            status,
         }
     }
 }
@@ -141,8 +144,10 @@ where
     T: FieldElement,
 {
     pub fn combine(&mut self, other: Self) {
+        // reserve more space?
         self.constraints.extend(other.constraints);
-        self.status = self.status.clone().combine(other.status);
+        self.status =
+            std::mem::replace(&mut self.status, EvalStatus::Complete).combine(other.status);
     }
 }
 

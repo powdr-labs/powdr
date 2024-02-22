@@ -2,9 +2,9 @@ mod display;
 pub mod types;
 pub mod visitor;
 
-use core::hash::Hash;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
+use std::hash::{Hash, Hasher};
 use std::ops::{self, ControlFlow};
 
 use powdr_number::{DegreeType, FieldElement};
@@ -829,7 +829,7 @@ pub struct PolynomialReference {
 }
 
 #[derive(
-    Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema,
+    Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize, JsonSchema,
 )]
 pub struct PolyID {
     pub id: u64,
@@ -848,11 +848,18 @@ impl From<&Symbol> for PolyID {
     }
 }
 
+impl Hash for PolyID {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // single call to hash is faster
+        ((self.id << 2) + self.ptype as u64).hash(state);
+    }
+}
+
 #[derive(
     Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
 pub enum PolynomialType {
-    Committed,
+    Committed = 0,
     Constant,
     Intermediate,
 }

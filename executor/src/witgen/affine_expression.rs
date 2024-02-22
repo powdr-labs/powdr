@@ -163,7 +163,7 @@ where
         match (first, second) {
             (Some((i, c)), None) => {
                 // c * a + o = 0 <=> a = -o/c
-                Ok(EvalValue::complete([(
+                Ok(EvalValue::complete(vec![(
                     *i,
                     Constraint::Assignment(if c.is_one() {
                         -self.offset
@@ -179,7 +179,7 @@ where
             )),
             (None, None) => {
                 if self.offset.is_zero() {
-                    Ok(EvalValue::complete([]))
+                    Ok(EvalValue::complete(vec![]))
                 } else {
                     Err(ConstraintUnsatisfiable(self.to_string()))
                 }
@@ -315,7 +315,7 @@ where
             {
                 Err(ConflictingRangeConstraints)
             } else {
-                Ok(EvalValue::complete([
+                Ok(EvalValue::complete(vec![
                     (quotient, Constraint::Assignment(quotient_value)),
                     (remainder, Constraint::Assignment(remainder_value)),
                 ]))
@@ -394,7 +394,7 @@ where
 
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: <T as FieldElement>::Integer = Zero::zero();
-        let mut assignments = EvalValue::complete([]);
+        let mut assignments = EvalValue::complete(vec![]);
         let mut offset = (-self.offset).to_integer();
         for (i, coeff, constraint) in constraints {
             let mask = *constraint.multiple(coeff).mask();
@@ -405,7 +405,7 @@ where
             } else {
                 covered_bits |= mask;
             }
-            assignments.combine(EvalValue::complete([(
+            assignments.combine(EvalValue::complete(vec![(
                 *i,
                 Constraint::Assignment(
                     ((offset & mask).to_arbitrary_integer() / coeff.to_arbitrary_integer())
@@ -750,7 +750,7 @@ mod test {
             expr.solve_with_range_constraints(&known_constraints)
                 .unwrap(),
             EvalValue::incomplete_with_constraints(
-                [(
+                vec![(
                     1,
                     Constraint::RangeConstraint(RangeConstraint::from_max_bit(11))
                 )],
@@ -762,7 +762,7 @@ mod test {
                 .solve_with_range_constraints(&known_constraints)
                 .unwrap(),
             EvalValue::incomplete_with_constraints(
-                [(
+                vec![(
                     1,
                     Constraint::RangeConstraint(RangeConstraint::from_max_bit(11))
                 )],
@@ -778,7 +778,7 @@ mod test {
             expr.solve_with_range_constraints(&known_constraints)
                 .unwrap(),
             EvalValue::incomplete_with_constraints(
-                [(
+                vec![(
                     1,
                     Constraint::RangeConstraint(RangeConstraint::from_mask(0x1fef_u32))
                 )],
@@ -793,7 +793,7 @@ mod test {
         assert_eq!(
             expr.solve_with_range_constraints(&known_constraints),
             Ok(EvalValue::incomplete_with_constraints(
-                [(
+                vec![(
                     1,
                     Constraint::RangeConstraint(RangeConstraint::from_range(
                         0.into(),
@@ -823,7 +823,7 @@ mod test {
         assert_eq!(
             expr.solve_with_range_constraints(&known_constraints)
                 .unwrap(),
-            EvalValue::complete([
+            EvalValue::complete(vec![
                 (2, Constraint::Assignment(0x15.into())),
                 (3, Constraint::Assignment(0x4.into()))
             ],)
@@ -875,7 +875,7 @@ mod test {
         assert_eq!(
             result,
             EvalValue::incomplete_with_constraints(
-                [(
+                vec![(
                     1,
                     Constraint::RangeConstraint(
                         RangeConstraint::from_range(-GoldilocksField::from(200), 65095.into())
@@ -906,7 +906,7 @@ mod test {
             .unwrap();
         assert_eq!(
             result,
-            EvalValue::complete([
+            EvalValue::complete(vec![
                 (1, Constraint::Assignment(4.into())),
                 (2, Constraint::Assignment(2.into()))
             ])
@@ -937,7 +937,7 @@ mod test {
         assert_eq!(
             result,
             EvalValue::incomplete_with_constraints(
-                [(
+                vec![(
                     2,
                     Constraint::RangeConstraint(RangeConstraint::from_range(2.into(), 5.into()))
                 )],
