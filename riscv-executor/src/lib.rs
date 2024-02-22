@@ -9,7 +9,11 @@
 //! TODO: perform determinism verification for each instruction independently
 //! from execution.
 
-use std::{collections::HashMap, io};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display, Formatter},
+    io,
+};
 
 use builder::TraceBuilder;
 use powdr_ast::{
@@ -18,7 +22,7 @@ use powdr_ast::{
     },
     parsed::{asm::DebugDirective, Expression, FunctionCall},
 };
-use powdr_number::{BigInt, FieldElement, GoldilocksField};
+use powdr_number::{BigInt, FieldElement};
 
 pub mod poseidon_gl;
 
@@ -30,62 +34,98 @@ pub mod poseidon_gl;
 /// TODO: get this value from some authoritative place
 const PC_INITIAL_VAL: usize = 2;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Elem(pub i64);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Elem<F: FieldElement> {
+    /// Only the ranges of i32 and u32 are actually valid for a Binary value.
+    /// I.e., [-2**31, 2**32).
+    Binary(i64),
+    Field(F),
+}
 
-impl Elem {
+impl<F: FieldElement> Elem<F> {
+    /// Interprets the value of a field as a binary, if it can be represented either as a
+    /// u32 or a i32.
+    ///
+    /// Panics otherwise.
+    pub fn new_from_fe_as_bin(value: &F) -> Self {
+        if let Some(v) = value.to_integer().try_into_u32() {
+            Self::Binary(v as i64)
+        } else if let Some(v) = value.try_into_i32() {
+            Self::Binary(v as i64)
+        } else {
+            panic!("Value does not fit in 32 bits.")
+        }
+    }
+
+    /// Interprets the value of self as a field element.
+    pub fn into_fe(&self) -> F {
+        match *self {
+            Self::Field(f) => f,
+            Self::Binary(b) => b.into(),
+        }
+    }
+
+    pub fn fe(&self) -> F {
+        match self {
+            Self::Field(f) => *f,
+            Self::Binary(_) => panic!(),
+        }
+    }
+
+    pub fn bin(&self) -> i64 {
+        match self {
+            Self::Binary(b) => *b,
+            Self::Field(_) => panic!(),
+        }
+    }
+
+    fn bin_mut(&mut self) -> &mut i64 {
+        match self {
+            Self::Binary(b) => b,
+            Self::Field(_) => panic!(),
+        }
+    }
+
     fn u(&self) -> u32 {
-        self.0.try_into().unwrap()
+        self.bin().try_into().unwrap()
     }
 
     fn s(&self) -> i32 {
-        self.0.try_into().unwrap()
+        self.bin().try_into().unwrap()
     }
 
-    fn fe<F: FieldElement>(&self) -> F {
-        F::from(self.0)
-    }
-
-    // Rust doesn't allow us to implement From<F> for Elem...
-    // Panics if the value can't be represented as i64, i.e., the value interpreted
-    // as a signed integer (-(p - v) if v > p/2) is not in the range of i64.
-    // This can happen for some fields with a modulus larger than 64 bit.
-    fn from_fe<F: FieldElement>(value: F) -> Self {
-        if value.is_in_lower_half() {
-            (i64::try_from(value.to_arbitrary_integer()).unwrap()).into()
-        } else {
-            (-(i64::try_from((-value).to_arbitrary_integer()).unwrap())).into()
+    fn is_zero(&self) -> bool {
+        match self {
+            Self::Binary(b) => *b == 0,
+            Self::Field(f) => f.is_zero(),
         }
     }
 }
 
-impl From<u32> for Elem {
+impl<F: FieldElement> From<u32> for Elem<F> {
     fn from(value: u32) -> Self {
-        Self(value as i64)
+        Self::Binary(value as i64)
     }
 }
 
-impl From<u64> for Elem {
-    fn from(value: u64) -> Self {
-        Self(value as i64)
-    }
-}
-
-impl From<i32> for Elem {
+impl<F: FieldElement> From<i32> for Elem<F> {
     fn from(value: i32) -> Self {
-        Self(value as i64)
+        Self::Binary(value as i64)
     }
 }
 
-impl From<i64> for Elem {
-    fn from(value: i64) -> Self {
-        Self(value)
-    }
-}
-
-impl From<usize> for Elem {
+impl<F: FieldElement> From<usize> for Elem<F> {
     fn from(value: usize) -> Self {
-        Self(value as i64)
+        Self::Binary(value as i64)
+    }
+}
+
+impl<F: FieldElement> Display for Elem<F> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Binary(b) => write!(f, "{}", b),
+            Self::Field(fe) => write!(f, "{}", fe),
+        }
     }
 }
 
@@ -105,24 +145,24 @@ pub struct MemOperation {
     pub address: u32,
 }
 
-pub struct RegWrite {
+pub struct RegWrite<F: FieldElement> {
     /// The row of the execution trace this write will result into. Multiple
     /// writes at the same row are valid: the last write to a given reg_idx will
     /// define the final value of the register in that row.
     row: usize,
     /// Index of the register in the register bank.
     reg_idx: u16,
-    val: Elem,
+    val: Elem<F>,
 }
 
-pub struct ExecutionTrace {
+pub struct ExecutionTrace<F: FieldElement> {
     pub reg_map: HashMap<String, u16>,
 
     /// Values of the registers in the execution trace.
     ///
     /// Each N elements is a row with all registers, where N is the number of
     /// registers.
-    pub reg_writes: Vec<RegWrite>,
+    pub reg_writes: Vec<RegWrite<F>>,
 
     /// Writes and reads to memory.
     pub mem_ops: Vec<MemOperation>,
@@ -131,9 +171,9 @@ pub struct ExecutionTrace {
     pub len: usize,
 }
 
-impl ExecutionTrace {
+impl<F: FieldElement> ExecutionTrace<F> {
     /// Replay the execution and get the register values per trace row.
-    pub fn replay(&self) -> TraceReplay {
+    pub fn replay(&self) -> TraceReplay<F> {
         TraceReplay {
             trace: self,
             regs: vec![0.into(); self.reg_map.len()],
@@ -144,26 +184,26 @@ impl ExecutionTrace {
     }
 }
 
-pub struct TraceReplay<'a> {
-    trace: &'a ExecutionTrace,
-    regs: Vec<Elem>,
+pub struct TraceReplay<'a, F: FieldElement> {
+    trace: &'a ExecutionTrace<F>,
+    regs: Vec<Elem<F>>,
     pc_idx: usize,
     next_write: usize,
     next_r: usize,
 }
 
-impl<'a> TraceReplay<'a> {
+impl<'a, F: FieldElement> TraceReplay<'a, F> {
     /// Returns the next row's registers value.
     ///
     /// Just like an iterator's next(), but returns the value borrowed from self.
-    pub fn next_row(&mut self) -> Option<&[Elem]> {
+    pub fn next_row(&mut self) -> Option<&[Elem<F>]> {
         if self.next_r == self.trace.len {
             return None;
         }
 
         // we optimistically increment the PC, if it is a jump or special case,
         // one of the writes will overwrite it
-        self.regs[self.pc_idx].0 += 1;
+        *self.regs[self.pc_idx].bin_mut() += 1;
 
         while let Some(next_write) = self.trace.reg_writes.get(self.next_write) {
             if next_write.row > self.next_r {
@@ -203,8 +243,8 @@ mod builder {
             .collect()
     }
 
-    pub struct TraceBuilder<'b> {
-        trace: ExecutionTrace,
+    pub struct TraceBuilder<'b, F: FieldElement> {
+        trace: ExecutionTrace<F>,
 
         /// Maximum rows we can run before we stop the execution.
         max_rows: usize,
@@ -214,7 +254,7 @@ mod builder {
         pc_idx: u16,
 
         /// The value of PC at the start of the execution of the current row.
-        curr_pc: Elem,
+        curr_pc: Elem<F>,
 
         /// The PC in the register bank refers to the batches, we have to track our
         /// actual program counter independently.
@@ -225,7 +265,7 @@ mod builder {
         batch_to_line_map: &'b [u32],
 
         /// Current register bank
-        regs: Vec<Elem>,
+        regs: Vec<Elem<F>>,
 
         /// Current memory.
         mem: HashMap<u32, u32>,
@@ -236,7 +276,7 @@ mod builder {
         mode: ExecMode,
     }
 
-    impl<'a, 'b> TraceBuilder<'b> {
+    impl<'a, 'b, F: FieldElement> TraceBuilder<'b, F> {
         /// Creates a new builder.
         ///
         /// May fail if max_rows_len is too small or if the main machine is
@@ -247,7 +287,7 @@ mod builder {
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
             mode: ExecMode,
-        ) -> Result<Self, Box<(ExecutionTrace, MemoryState)>> {
+        ) -> Result<Self, Box<(ExecutionTrace<F>, MemoryState)>> {
             let reg_map = register_names(main)
                 .into_iter()
                 .enumerate()
@@ -298,22 +338,22 @@ mod builder {
         }
 
         /// get current value of PC
-        pub(crate) fn get_pc(&self) -> Elem {
+        pub(crate) fn get_pc(&self) -> Elem<F> {
             self.curr_pc
         }
 
         /// get current value of register
-        pub(crate) fn get_reg(&self, idx: &str) -> Elem {
+        pub(crate) fn get_reg(&self, idx: &str) -> Elem<F> {
             self.get_reg_idx(self.trace.reg_map[idx])
         }
 
         /// get current value of register by register index instead of name
-        fn get_reg_idx(&self, idx: u16) -> Elem {
+        fn get_reg_idx(&self, idx: u16) -> Elem<F> {
             self.regs[idx as usize]
         }
 
         /// sets the PC
-        pub(crate) fn set_pc(&mut self, value: Elem) {
+        pub(crate) fn set_pc(&mut self, value: Elem<F>) {
             // updates the internal statement-based program counter accordingly:
             self.next_statement_line = self.batch_to_line_map[value.u() as usize];
             self.set_reg_idx(self.pc_idx, value);
@@ -322,11 +362,11 @@ mod builder {
         /// set next value of register, accounting to x0 writes
         ///
         /// to set the PC, use set_pc() instead of this
-        pub(crate) fn set_reg(&mut self, idx: &str, value: impl Into<Elem>) {
+        pub(crate) fn set_reg(&mut self, idx: &str, value: impl Into<Elem<F>>) {
             self.set_reg_impl(idx, value.into())
         }
 
-        fn set_reg_impl(&mut self, idx: &str, value: Elem) {
+        fn set_reg_impl(&mut self, idx: &str, value: Elem<F>) {
             let idx = self.trace.reg_map[idx];
             assert!(idx != self.pc_idx);
             if idx == self.x0_idx {
@@ -336,7 +376,7 @@ mod builder {
         }
 
         /// raw set next value of register by register index instead of name
-        fn set_reg_idx(&mut self, idx: u16, value: Elem) {
+        fn set_reg_idx(&mut self, idx: u16, value: Elem<F>) {
             // Record register write in trace.
             if let ExecMode::Trace = self.mode {
                 self.trace.reg_writes.push(RegWrite {
@@ -395,7 +435,7 @@ mod builder {
             *self.mem.get(&addr).unwrap_or(&0)
         }
 
-        pub fn finish(self) -> (ExecutionTrace, MemoryState) {
+        pub fn finish(self) -> (ExecutionTrace<F>, MemoryState) {
             (self.trace, self.mem)
         }
 
@@ -446,7 +486,7 @@ fn get_main_machine<T: FieldElement>(program: &AnalysisASMFile<T>) -> &Machine<T
 
 struct PreprocessedMain<'a, T: FieldElement> {
     statements: Vec<&'a FunctionStatement<T>>,
-    label_map: HashMap<&'a str, Elem>,
+    label_map: HashMap<&'a str, Elem<T>>,
     batch_to_line_map: Vec<u32>,
     debug_files: Vec<(&'a str, &'a str)>,
 }
@@ -493,7 +533,7 @@ fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> Preprocess
                 FunctionStatement::Label(LabelStatement { source: _, name }) => {
                     // assert there are no statements in the middle of a block
                     assert!(!statement_seen);
-                    label_map.insert(name.as_str(), ((batch_idx + PC_INITIAL_VAL) as i64).into());
+                    label_map.insert(name.as_str(), (batch_idx + PC_INITIAL_VAL).into());
                 }
             }
         }
@@ -514,15 +554,15 @@ fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> Preprocess
 type Callback<'a, F> = dyn powdr_executor::witgen::QueryCallback<F> + 'a;
 
 struct Executor<'a, 'b, F: FieldElement> {
-    proc: TraceBuilder<'b>,
-    label_map: HashMap<&'a str, Elem>,
+    proc: TraceBuilder<'b, F>,
+    label_map: HashMap<&'a str, Elem<F>>,
     inputs: &'b Callback<'b, F>,
-    bootloader_inputs: &'b [F],
+    bootloader_inputs: &'b [Elem<F>],
     _stdout: io::Stdout,
 }
 
 impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
-    fn exec_instruction(&mut self, name: &str, args: &[Expression<F>]) -> Vec<Elem> {
+    fn exec_instruction(&mut self, name: &str, args: &[Expression<F>]) -> Vec<Elem<F>> {
         let args = args
             .iter()
             .map(|expr| self.eval_expression(expr)[0])
@@ -530,31 +570,30 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         match name {
             "mstore" | "mstore_bootloader" => {
-                let addr = args[0].0 as u32;
+                let addr = args[0].bin() as u32;
                 assert_eq!(addr % 4, 0);
-                self.proc.set_mem(args[0].0 as u32, args[1].u());
+                self.proc.set_mem(addr, args[1].u());
 
                 Vec::new()
             }
             "mload" => {
-                let addr = args[0].0 as u32;
+                let addr = args[0].bin() as u32;
                 let val = self.proc.get_mem(addr & 0xfffffffc);
                 let rem = addr % 4;
 
                 vec![val.into(), rem.into()]
             }
             "load_bootloader_input" => {
-                let addr = args[0].0 as usize;
-                let val = self.bootloader_inputs[addr].to_degree();
+                let addr = args[0].bin() as usize;
+                let val = self.bootloader_inputs[addr];
 
-                vec![Elem::from_fe(GoldilocksField::from(val))]
+                vec![val]
             }
             "assert_bootloader_input" => {
-                let addr = args[0].0 as usize;
-                let expected_val = args[1].fe::<F>();
+                let addr = args[0].bin() as usize;
                 let actual_val = self.bootloader_inputs[addr];
 
-                assert_eq!(expected_val, actual_val);
+                assert_eq!(args[1], actual_val);
 
                 vec![]
             }
@@ -566,28 +605,28 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 vec![next_pc.into()]
             }
             "jump_to_bootloader_input" => {
-                let bootloader_input_idx = args[0].0 as usize;
-                let addr = self.bootloader_inputs[bootloader_input_idx].to_degree();
-                self.proc.set_pc(addr.into());
+                let bootloader_input_idx = args[0].bin() as usize;
+                let addr = self.bootloader_inputs[bootloader_input_idx];
+                self.proc.set_pc(addr);
 
                 Vec::new()
             }
             "branch_if_nonzero" => {
-                if args[0].0 != 0 {
+                if !args[0].is_zero() {
                     self.proc.set_pc(args[1]);
                 }
 
                 Vec::new()
             }
             "branch_if_zero" => {
-                if args[0].0 == 0 {
+                if args[0].is_zero() {
                     self.proc.set_pc(args[1]);
                 }
 
                 Vec::new()
             }
             "skip_if_zero" => {
-                if args[0].0 == 0 {
+                if args[0].is_zero() {
                     let pc = self.proc.get_pc().s();
                     self.proc.set_pc((pc + args[1].s() + 1).into());
                 }
@@ -595,34 +634,36 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
             "branch_if_positive" => {
-                if args[0].0 > 0 {
+                if args[0].bin() as i32 > 0 {
                     self.proc.set_pc(args[1]);
                 }
 
                 Vec::new()
             }
             "is_positive" => {
-                let r = if args[0].0 > 0 { 1 } else { 0 };
+                let r = if args[0].bin() as i32 > 0 { 1 } else { 0 };
 
                 vec![r.into()]
             }
             "is_equal_zero" => {
-                let r = if args[0].0 == 0 { 1 } else { 0 };
+                let r = if args[0].is_zero() { 1 } else { 0 };
 
                 vec![r.into()]
             }
             "is_not_equal_zero" => {
-                let r = if args[0].0 != 0 { 1 } else { 0 };
+                let r = if !args[0].is_zero() { 1 } else { 0 };
 
                 vec![r.into()]
             }
             "wrap" | "wrap16" => {
-                let r = args[0].0 as u32;
+                // don't use .u() here: we are deliberately discarding the
+                // higher bits
+                let r = args[0].bin() as u32;
 
                 vec![r.into()]
             }
             "wrap_signed" => {
-                let r = (args[0].0 + 0x100000000) as u32;
+                let r = (args[0].bin() + 0x100000000) as u32;
 
                 vec![r.into()]
             }
@@ -673,9 +714,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "shl" => vec![(args[0].u() << args[1].u()).into()],
             "shr" => vec![(args[0].u() >> args[1].u()).into()],
             "split_gl" => {
-                let arg: u64 = args[0].fe::<F>().to_degree();
-                let lo = (arg & 0xffffffff) as u32;
-                let hi = (arg >> 32) as u32;
+                let value = args[0].fe().to_integer();
+                // This instruction is only for Goldilocks, so the value must
+                // fit into a u64.
+                let value = value.try_into_u64().unwrap();
+                let lo = (value & 0xffffffff) as u32;
+                let hi = (value >> 32) as u32;
 
                 vec![lo.into(), hi.into()]
             }
@@ -683,10 +727,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let inputs = args
                     .iter()
                     .take(12)
-                    .map(|arg| arg.fe::<F>())
+                    .map(|arg| arg.into_fe())
                     .collect::<Vec<_>>();
                 let result = poseidon_gl::poseidon_gl(&inputs);
-                result.into_iter().map(Elem::from_fe).collect()
+                result.into_iter().map(Elem::Field).collect()
             }
             instr => {
                 panic!("unknown instruction: {instr}");
@@ -694,7 +738,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         }
     }
 
-    fn eval_expression(&mut self, expression: &Expression<F>) -> Vec<Elem> {
+    fn eval_expression(&mut self, expression: &Expression<F>) -> Vec<Elem<F>> {
         match expression {
             Expression::Reference(r) => {
                 // an identifier looks like this:
@@ -722,49 +766,46 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Expression::LambdaExpression(_) => todo!(),
             Expression::ArrayLiteral(_) => todo!(),
             Expression::BinaryOperation(l, op, r) => {
-                let l = self.eval_expression(l)[0];
-                let r = self.eval_expression(r)[0];
+                let l = &self.eval_expression(l)[0];
+                let r = &self.eval_expression(r)[0];
 
-                let result = match op {
-                    powdr_ast::parsed::BinaryOperator::Add => l.0 + r.0,
-                    powdr_ast::parsed::BinaryOperator::Sub => l.0 - r.0,
-                    powdr_ast::parsed::BinaryOperator::Mul => {
-                        // Do multiplication in the field, in case we overflow.
-                        let l: F = l.fe();
-                        let r: F = r.fe();
-                        let res = l * r;
-                        Elem::from_fe(res).0
+                let result = match (l, r) {
+                    (Elem::Binary(l), Elem::Binary(r)) => {
+                        let result = match op {
+                            powdr_ast::parsed::BinaryOperator::Add => l + r,
+                            powdr_ast::parsed::BinaryOperator::Sub => l - r,
+                            powdr_ast::parsed::BinaryOperator::Mul => l * r,
+                            powdr_ast::parsed::BinaryOperator::Div => l / r,
+                            powdr_ast::parsed::BinaryOperator::Mod => l % r,
+                            powdr_ast::parsed::BinaryOperator::Pow => {
+                                l.pow(u32::try_from(*r).unwrap())
+                            }
+                            _ => todo!(),
+                        };
+                        Elem::Binary(result)
                     }
-                    powdr_ast::parsed::BinaryOperator::Div => l.0 / r.0,
-                    powdr_ast::parsed::BinaryOperator::Mod => l.0 % r.0,
-                    powdr_ast::parsed::BinaryOperator::Pow => l.0.pow(r.u()),
-                    powdr_ast::parsed::BinaryOperator::BinaryAnd => todo!(),
-                    powdr_ast::parsed::BinaryOperator::BinaryXor => todo!(),
-                    powdr_ast::parsed::BinaryOperator::BinaryOr => todo!(),
-                    powdr_ast::parsed::BinaryOperator::ShiftLeft => todo!(),
-                    powdr_ast::parsed::BinaryOperator::ShiftRight => todo!(),
-                    powdr_ast::parsed::BinaryOperator::LogicalOr => todo!(),
-                    powdr_ast::parsed::BinaryOperator::LogicalAnd => todo!(),
-                    powdr_ast::parsed::BinaryOperator::Less => todo!(),
-                    powdr_ast::parsed::BinaryOperator::LessEqual => todo!(),
-                    powdr_ast::parsed::BinaryOperator::Equal => todo!(),
-                    powdr_ast::parsed::BinaryOperator::Identity => todo!(),
-                    powdr_ast::parsed::BinaryOperator::NotEqual => todo!(),
-                    powdr_ast::parsed::BinaryOperator::GreaterEqual => todo!(),
-                    powdr_ast::parsed::BinaryOperator::Greater => todo!(),
+                    (Elem::Field(l), Elem::Field(r)) => {
+                        let result = match op {
+                            // We need to subtract field elements in the bootloader:
+                            powdr_ast::parsed::BinaryOperator::Sub => *l - *r,
+                            _ => todo!(),
+                        };
+                        Elem::Field(result)
+                    }
+                    _ => panic!("tried to operate a binary value with a field value"),
                 };
 
-                vec![result.into()]
+                vec![result]
             }
             Expression::UnaryOperation(op, arg) => {
-                let arg = self.eval_expression(arg)[0];
+                let arg = self.eval_expression(arg)[0].bin();
                 let result = match op {
-                    powdr_ast::parsed::UnaryOperator::Minus => -arg.0,
+                    powdr_ast::parsed::UnaryOperator::Minus => -arg,
                     powdr_ast::parsed::UnaryOperator::LogicalNot => todo!(),
                     powdr_ast::parsed::UnaryOperator::Next => unreachable!(),
                 };
 
-                vec![result.into()]
+                vec![Elem::Binary(result)]
             }
             Expression::FunctionCall(FunctionCall {
                 function,
@@ -783,12 +824,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                             all_strings.push(expr.to_string());
                         } else {
                             let val = self.eval_expression(expr)[0];
-                            all_strings.push(val.0.to_string());
+                            all_strings.push(val.to_string());
                         }
                     }
                     let query = format!("({})", all_strings.join(","));
                     match (self.inputs)(&query).unwrap() {
-                        Some(val) => vec![Elem::from_fe(val)],
+                        Some(val) => vec![Elem::new_from_fe_as_bin(&val)],
                         None => {
                             panic!("unknown query command: {query}");
                         }
@@ -807,10 +848,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 pub fn execute_ast<T: FieldElement>(
     program: &AnalysisASMFile<T>,
     inputs: &Callback<T>,
-    bootloader_inputs: &[T],
+    bootloader_inputs: &[Elem<T>],
     max_steps_to_execute: usize,
     mode: ExecMode,
-) -> (ExecutionTrace, MemoryState) {
+) -> (ExecutionTrace<T>, MemoryState) {
     let main_machine = get_main_machine(program);
     let PreprocessedMain {
         statements,
@@ -889,9 +930,9 @@ pub enum ExecMode {
 pub fn execute<F: FieldElement>(
     asm_source: &str,
     inputs: &Callback<F>,
-    bootloader_inputs: &[F],
+    bootloader_inputs: &[Elem<F>],
     mode: ExecMode,
-) -> (ExecutionTrace, MemoryState) {
+) -> (ExecutionTrace<F>, MemoryState) {
     log::info!("Parsing...");
     let parsed = powdr_parser::parse_asm::<F>(None, asm_source).unwrap();
     log::info!("Resolving imports...");

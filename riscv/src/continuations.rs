@@ -6,7 +6,7 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 use powdr_pipeline::{Pipeline, Stage};
-use powdr_riscv_executor::ExecutionTrace;
+use powdr_riscv_executor::{Elem, ExecutionTrace};
 
 pub mod bootloader;
 mod memory_merkle_tree;
@@ -20,8 +20,8 @@ use crate::continuations::bootloader::{
     WORDS_PER_PAGE,
 };
 
-fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, Vec<F>> {
-    let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
+fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<String, Vec<Elem<F>>> {
+    let mut reg_values: HashMap<&str, Vec<Elem<F>>> = HashMap::with_capacity(trace.reg_map.len());
 
     let mut rows = trace.replay();
     while let Some(row) = rows.next_row() {
@@ -29,7 +29,7 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, 
             reg_values
                 .entry(reg_name)
                 .or_default()
-                .push(row[index as usize].0.into());
+                .push(row[index as usize]);
         }
     }
 
@@ -39,9 +39,9 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, 
         .collect()
 }
 
-fn render_hash<F: FieldElement>(hash: &[F]) -> String {
+fn render_hash<F: FieldElement>(hash: &[Elem<F>]) -> String {
     hash.iter()
-        .map(|&f| format!("{:016x}", f.to_arbitrary_integer()))
+        .map(|&f| format!("{:016x}", f.fe().to_arbitrary_integer()))
         .collect::<Vec<_>>()
         .join("")
 }
@@ -184,7 +184,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let (first_real_execution_row, _) = full_trace["main.pc"]
         .iter()
         .enumerate()
-        .find(|(_, &pc)| pc == F::from(DEFAULT_PC))
+        .find(|(_, &pc)| pc.bin() as u64 == DEFAULT_PC)
         .unwrap();
 
     // The number of rows of the full trace that we consider proven.
@@ -245,20 +245,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         // - The updated page hashes are equal to the current page hashes.
         // - The updated root hash is equal to the current root hash.
         // After simulating the chunk execution, we'll replace those values with the actual values.
-        let mut bootloader_inputs = register_values.clone();
-        bootloader_inputs.extend(register_values.clone());
-        bootloader_inputs.extend(merkle_tree.root_hash());
-        bootloader_inputs.extend(merkle_tree.root_hash());
-        bootloader_inputs.push((accessed_pages.len() as u64).into());
-        for &page_index in accessed_pages.iter() {
-            bootloader_inputs.push(page_index.into());
-            let (page, page_hash, proof) = merkle_tree.get(page_index as usize);
-            bootloader_inputs.extend(page);
-            bootloader_inputs.extend(page_hash);
-            for sibling in proof {
-                bootloader_inputs.extend(sibling);
-            }
-        }
+        let mut bootloader_inputs = bootloader::create_input(
+            register_values,
+            &merkle_tree,
+            accessed_pages.iter().cloned(),
+        );
 
         log::info!("Bootloader inputs length: {}", bootloader_inputs.len());
 
@@ -284,7 +275,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE + 4;
             for (j, sibling) in proof.into_iter().enumerate() {
                 bootloader_inputs[proof_start_index + j * 4..proof_start_index + j * 4 + 4]
-                    .copy_from_slice(sibling);
+                    .copy_from_slice(&sibling.map(Elem::Field));
             }
 
             // Update one child of the Merkle tree
@@ -302,7 +293,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             for (j, sibling) in proof.into_iter().enumerate() {
                 assert_eq!(
                     &bootloader_inputs[proof_start_index + j * 4..proof_start_index + j * 4 + 4],
-                    sibling
+                    sibling.map(Elem::Field)
                 );
             }
 
@@ -310,7 +301,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             let updated_page_hash_index =
                 PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE;
             bootloader_inputs[updated_page_hash_index..updated_page_hash_index + 4]
-                .copy_from_slice(page_hash);
+                .copy_from_slice(&page_hash.map(Elem::Field));
         }
 
         // Update initial register values for the next chunk.
@@ -326,7 +317,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         // Replace the updated root hash
         let updated_root_hash_index = MEMORY_HASH_START_INDEX + 4;
         bootloader_inputs[updated_root_hash_index..updated_root_hash_index + 4]
-            .copy_from_slice(merkle_tree.root_hash());
+            .copy_from_slice(&merkle_tree.root_hash().map(Elem::Field));
 
         log::info!(
             "Initial memory root hash: {}",
@@ -340,7 +331,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         );
 
         let actual_num_rows = chunk_trace["main.pc"].len();
-        bootloader_inputs_and_num_rows.push((bootloader_inputs.clone(), actual_num_rows as u64));
+        bootloader_inputs_and_num_rows.push((
+            bootloader_inputs.iter().map(|e| e.into_fe()).collect(),
+            actual_num_rows as u64,
+        ));
 
         log::info!("Chunk trace length: {}", chunk_trace["main.pc"].len());
         log::info!("Validating chunk...");

@@ -46,6 +46,16 @@ pub trait BigInt:
 
     /// Checks if the number is one.
     fn is_one(&self) -> bool;
+
+    /// Tries to convert to u64.
+    ///
+    /// Returns None if value is out of u64 range.
+    fn try_into_u64(&self) -> Option<u64>;
+
+    /// Tries to convert to u32.
+    ///
+    /// Returns None if value is out of u32 range.
+    fn try_into_u32(&self) -> Option<u32>;
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -125,6 +135,12 @@ pub trait FieldElement:
 
     /// If the field is a known field (as listed in the `KnownField` enum), returns the field variant.
     fn known_field() -> Option<KnownField>;
+
+    /// Tries to convert to i32.
+    ///
+    /// As conventional, negative values are in relation to 0 in the field.
+    /// Returns None if out of the range [0 - 2^31, 2^31).
+    fn try_into_i32(&self) -> Option<i32>;
 }
 
 #[cfg(test)]

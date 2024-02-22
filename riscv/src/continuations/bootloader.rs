@@ -1,4 +1,5 @@
 use powdr_number::FieldElement;
+use powdr_riscv_executor::Elem;
 
 use super::memory_merkle_tree::MerkleTree;
 
@@ -557,9 +558,73 @@ pub const DEFAULT_PC: u64 = 3;
 /// Analogous to the `DEFAULT_PC`, this well-known PC jumps to the shutdown routine.
 pub const SHUTDOWN_START: u64 = 4;
 
-pub fn default_register_values<T: FieldElement>() -> Vec<T> {
-    let mut register_values = vec![T::zero(); REGISTER_NAMES.len()];
-    register_values[PC_INDEX] = T::from(DEFAULT_PC);
+/// Helper struct to construct the bootloader inputs, placing each element in
+/// its correct position.
+struct InputCreator<'a, F, Pages>
+where
+    F: FieldElement,
+    Pages: ExactSizeIterator<Item = InputPage<'a, F>>,
+{
+    register_values: Vec<Elem<F>>,
+    merkle_tree_root_hash: &'a [F; 4],
+    pages: Pages,
+}
+
+/// Pages of memory, each with its hash and proof.
+struct InputPage<'a, F: FieldElement> {
+    page_idx: u32,
+    data: &'a [F; WORDS_PER_PAGE],
+    hash: &'a [F; 4],
+    proof: Vec<&'a [F; 4]>,
+}
+
+impl<'a, F, I> InputCreator<'a, F, I>
+where
+    F: powdr_number::FieldElement,
+    I: ExactSizeIterator<Item = InputPage<'a, F>>,
+{
+    fn into_input(self) -> Vec<Elem<F>> {
+        let mut inputs = self.register_values;
+        inputs.extend_from_within(..);
+        inputs.extend(self.merkle_tree_root_hash.map(Elem::Field));
+        inputs.extend(self.merkle_tree_root_hash.map(Elem::Field));
+        inputs.push(Elem::Binary(self.pages.len() as i64));
+        for page in self.pages {
+            inputs.push(page.page_idx.into());
+            inputs.extend(page.data.map(|v| Elem::new_from_fe_as_bin(&v)));
+            inputs.extend(page.hash.map(Elem::Field));
+            for sibling in page.proof {
+                inputs.extend(sibling.map(Elem::Field));
+            }
+        }
+        inputs
+    }
+}
+
+pub fn create_input<F: FieldElement, Pages: ExactSizeIterator<Item = u32>>(
+    register_values: Vec<Elem<F>>,
+    merkle_tree: &MerkleTree<F>,
+    accessed_pages: Pages,
+) -> Vec<Elem<F>> {
+    InputCreator {
+        register_values,
+        merkle_tree_root_hash: merkle_tree.root_hash(),
+        pages: accessed_pages.map(|page_index| {
+            let (page, page_hash, proof) = merkle_tree.get(page_index as usize);
+            InputPage {
+                page_idx: page_index,
+                data: page,
+                hash: page_hash,
+                proof,
+            }
+        }),
+    }
+    .into_input()
+}
+
+pub fn default_register_values<T: FieldElement>() -> Vec<Elem<T>> {
+    let mut register_values = vec![Elem::Binary(0); REGISTER_NAMES.len()];
+    register_values[PC_INDEX] = Elem::Binary(DEFAULT_PC as i64);
     register_values
 }
 
@@ -567,17 +632,18 @@ pub fn default_register_values<T: FieldElement>() -> Vec<T> {
 /// - No pages are initialized
 /// - All registers are set to 0 (including the PC, which causes the bootloader to do nothing)
 /// - The state at the end of the execution is the same as the beginning
-pub fn default_input<T: FieldElement>(accessed_pages: &[u64]) -> Vec<T> {
+pub fn default_input<T: FieldElement>(accessed_pages: &[u64]) -> Vec<Elem<T>> {
     // Set all registers and the number of pages to zero
-    let mut bootloader_inputs = default_register_values();
-
-    // Claim that the final register values are the same as the initial ones
-    bootloader_inputs.extend(default_register_values::<T>());
+    let register_values = default_register_values();
 
     if accessed_pages.is_empty() {
-        bootloader_inputs.extend(MerkleTree::<T>::empty_hash());
-        bootloader_inputs.extend(MerkleTree::<T>::empty_hash());
-        bootloader_inputs.push(T::zero());
+        let empty_hash = MerkleTree::<T>::empty_hash();
+        InputCreator {
+            register_values,
+            merkle_tree_root_hash: &empty_hash,
+            pages: [].iter().map(|_: &u32| unreachable!()),
+        }
+        .into_input()
     } else {
         // TODO: We don't have a way to know the memory state *after* the execution.
         // For now, we'll just claim that the memory doesn't change.
@@ -585,19 +651,10 @@ pub fn default_input<T: FieldElement>(accessed_pages: &[u64]) -> Vec<T> {
         // state is actually as claimed. In the future, the `accessed_pages` argument won't be
         // supported anymore (it's anyway only used by the benchmark).
         let merkle_tree = MerkleTree::<T>::new();
-        bootloader_inputs.extend(merkle_tree.root_hash());
-        bootloader_inputs.extend(merkle_tree.root_hash());
-        bootloader_inputs.push((accessed_pages.len() as u64).into());
-        for &page_index in accessed_pages.iter() {
-            bootloader_inputs.push(page_index.into());
-            let (page, page_hash, proof) = merkle_tree.get(page_index as usize);
-            bootloader_inputs.extend(page);
-            bootloader_inputs.extend(page_hash);
-            for sibling in proof {
-                bootloader_inputs.extend(sibling);
-            }
-        }
+        create_input(
+            register_values,
+            &merkle_tree,
+            accessed_pages.iter().map(|&x| x as u32),
+        )
     }
-
-    bootloader_inputs
 }

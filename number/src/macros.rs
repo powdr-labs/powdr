@@ -225,6 +225,20 @@ macro_rules! powdr_field {
             fn is_one(&self) -> bool {
                 self.value == <$ark_type as PrimeField>::BigInt::one()
             }
+
+            fn try_into_u64(&self) -> Option<u64> {
+                for v in self.value.0[1..].iter() {
+                    if *v != 0 {
+                        return None;
+                    }
+                }
+                Some(self.value.0[0])
+            }
+
+            fn try_into_u32(&self) -> Option<u32> {
+                let v = self.try_into_u64()?;
+                v.try_into().ok()
+            }
         }
 
         impl From<BigUint> for $name {
@@ -360,6 +374,20 @@ macro_rules! powdr_field {
 
             fn is_in_lower_half(&self) -> bool {
                 self.to_integer().value <= <$ark_type>::MODULUS_MINUS_ONE_DIV_TWO
+            }
+
+            fn try_into_i32(&self) -> Option<i32> {
+                // Shifts range [-2**31, 2**31) into [0, 2**32).
+                const SHIFT: u64 = (-(i32::MIN as i64)) as u64;
+                // We need to explicitly call to_integer() to decode the value
+                // from Montgomery form.
+                let shifted = (*self + SHIFT.into()).to_integer();
+
+                // If valid shifted will be in u32 range, and this will succeed:
+                let v = shifted.try_into_u32()?;
+
+                // Undo the shift
+                Some(v.wrapping_sub(SHIFT as u32) as i32)
             }
         }
 
