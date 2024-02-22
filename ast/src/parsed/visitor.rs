@@ -116,7 +116,7 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
         match self {
             Expression::Reference(_)
             | Expression::PublicReference(_)
-            | Expression::Number(_)
+            | Expression::Number(_, _)
             | Expression::String(_) => {}
             Expression::BinaryOperation(left, _, right) => {
                 left.visit_expressions_mut(f, o)?;
@@ -155,7 +155,7 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
         match self {
             Expression::Reference(_)
             | Expression::PublicReference(_)
-            | Expression::Number(_)
+            | Expression::Number(_, _)
             | Expression::String(_) => {}
             Expression::BinaryOperation(left, _, right) => {
                 left.visit_expressions(f, o)?;
@@ -206,9 +206,9 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
             | PilStatement::PublicDeclaration(_, _, _, None, e)
             | PilStatement::ConstantDefinition(_, _, e) => e.visit_expressions_mut(f, o),
 
-            PilStatement::LetStatement(_, _, type_name, value) => {
-                if let Some(t) = type_name {
-                    t.visit_expressions_mut(f, o)?;
+            PilStatement::LetStatement(_, _, type_scheme, value) => {
+                if let Some(t) = type_scheme {
+                    t.type_name.visit_expressions_mut(f, o)?;
                 };
                 if let Some(v) = value {
                     v.visit_expressions_mut(f, o)?;
@@ -250,9 +250,9 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
             | PilStatement::PublicDeclaration(_, _, _, None, e)
             | PilStatement::ConstantDefinition(_, _, e) => e.visit_expressions(f, o),
 
-            PilStatement::LetStatement(_, _, type_name, value) => {
-                if let Some(t) = type_name {
-                    t.visit_expressions(f, o)?;
+            PilStatement::LetStatement(_, _, type_scheme, value) => {
+                if let Some(t) = type_scheme {
+                    t.type_name.visit_expressions(f, o)?;
                 };
                 if let Some(v) = value {
                     v.visit_expressions(f, o)?;
@@ -499,16 +499,12 @@ impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for TypeName<E> {
         F: FnMut(&mut E) -> ControlFlow<B>,
     {
         match self {
-            TypeName::Bool
-            | TypeName::Int
-            | TypeName::Fe
-            | TypeName::String
-            | TypeName::Col
-            | TypeName::Expr
-            | TypeName::Constr => ControlFlow::Continue(()),
+            _ if self.is_elementary() => ControlFlow::Continue(()),
+            TypeName::TypeVar(_) => ControlFlow::Continue(()),
             TypeName::Array(a) => a.visit_expressions_mut(f, o),
             TypeName::Tuple(t) => t.visit_expressions_mut(f, o),
             TypeName::Function(fun) => fun.visit_expressions_mut(f, o),
+            _ => unreachable!(),
         }
     }
 
@@ -517,16 +513,12 @@ impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for TypeName<E> {
         F: FnMut(&E) -> ControlFlow<B>,
     {
         match self {
-            TypeName::Bool
-            | TypeName::Int
-            | TypeName::Fe
-            | TypeName::String
-            | TypeName::Col
-            | TypeName::Expr
-            | TypeName::Constr => ControlFlow::Continue(()),
+            _ if self.is_elementary() => ControlFlow::Continue(()),
+            TypeName::TypeVar(_) => ControlFlow::Continue(()),
             TypeName::Array(a) => a.visit_expressions(f, o),
             TypeName::Tuple(t) => t.visit_expressions(f, o),
             TypeName::Function(fun) => fun.visit_expressions(f, o),
+            _ => unreachable!(),
         }
     }
 }

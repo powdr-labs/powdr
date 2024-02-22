@@ -25,8 +25,8 @@ machine Arith(CLK32_31, operation_id){
     // TODO: Witgen doesn't work for that yet.
     operation ec_double<12> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
     
-    let BYTE = |i| i & 0xff;
-    let BYTE2 = |i| i & 0xffff;
+    let BYTE: col = |i| i & 0xff;
+    let BYTE2: col = |i| i & 0xffff;
 
     pol commit x1[16], y1[16], x2[16], y2[16], x3[16], y3[16], s[16], q0[16], q1[16], q2[16];
 

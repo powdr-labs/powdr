@@ -12,6 +12,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
+use powdr_ast::parsed::TypeName;
 use powdr_number::FieldElement;
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
@@ -69,7 +70,7 @@ fn constant_value<T: FieldElement>(function: &FunctionValueDefinition<T>) -> Opt
                 .filter(|e| !e.is_empty())
                 .flat_map(|e| e.pattern().iter())
                 .map(|e| match e {
-                    Expression::Number(n) => Some(n),
+                    Expression::Number(n, _) => Some(n),
                     _ => None,
                 });
             let first = values.next()??;
@@ -271,7 +272,7 @@ fn substitute_polynomial_references<T: FieldElement>(
         })) = e
         {
             if let Some(value) = substitutions.get(poly_id) {
-                *e = Expression::Number(*value);
+                *e = Expression::Number(*value, Some(TypeName::Fe));
             }
         }
     });

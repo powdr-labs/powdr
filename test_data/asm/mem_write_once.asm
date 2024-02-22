@@ -11,8 +11,8 @@ machine MemReadWrite {
     reg B;
 
     // Write-once memory with key (ADDR1, ADDR2) and value (v1, v2)
-    let ADDR1 = |i| i;
-    let ADDR2 = |i| i + 1;
+    let ADDR1: col = |i| i;
+    let ADDR2: col = |i| i + 1;
     let v1;
     let v2;
     // Stores a value, fails if the cell already has a value that's different

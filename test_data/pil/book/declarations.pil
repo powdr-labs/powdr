@@ -3,15 +3,13 @@ namespace Main(16);
     // This defines a constant
     let rows = 2**16;
     // This defines a fixed column that contains the row number in each row.
-    let step = |i| i;
-    // This defines a copy of the column, also a fixed column because the type
-    // is explicitly specified.
-    let also_step: col = step;
+    // Only symbols whose type is "col" are considered fixed columns.
+    let step: col = |i| i;
     // Here, we have a witness column.
     let x;
     // This functions defines a fixed column where each cell contains the
     // square of its row number.
-    let square = |x| x*x;
+    let square: col = |x| x*x;
     // The same function as `square` above, but now its type is given as
     // `int -> int` and thus it is *not* classified as a column. Instead,
     // it is stored as a utility function. If utility functions are

@@ -18,7 +18,7 @@ use crate::parsed::{
         AbsoluteSymbolPath, AssignmentRegister, CallableRef, InstructionBody, OperationId, Params,
     },
     visitor::{ExpressionVisitable, VisitOrder},
-    ExpressionWithTypeName, NamespacedPolynomialReference, PilStatement,
+    ExpressionWithTypeScheme, NamespacedPolynomialReference, PilStatement,
 };
 use crate::SourceRef;
 
@@ -672,7 +672,7 @@ pub struct SubmachineDeclaration {
 #[derive(Clone, Debug)]
 pub enum Item<T> {
     Machine(Machine<T>),
-    Expression(ExpressionWithTypeName<T>),
+    Expression(ExpressionWithTypeScheme<T>),
 }
 
 impl<T> Item<T> {

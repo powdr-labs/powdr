@@ -7,7 +7,7 @@ use powdr_ast::{
         asm::AbsoluteSymbolPath,
         asm::SymbolPath,
         build::{direct_reference, index_access, namespaced_reference, next_reference},
-        Expression, ExpressionWithTypeName, PILFile, PilStatement, SelectedExpressions,
+        Expression, ExpressionWithTypeScheme, PILFile, PilStatement, SelectedExpressions,
     },
     SourceRef,
 };
@@ -42,30 +42,32 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
             // Group by namespace and then sort by name.
             (namespace, name)
         })
-        .flat_map(|(mut namespace, ExpressionWithTypeName { e, type_name })| {
-            let name = namespace.pop().unwrap();
-            let def = PilStatement::LetStatement(
-                SourceRef::unknown(),
-                name.to_string(),
-                type_name,
-                Some(e),
-            );
+        .flat_map(
+            |(mut namespace, ExpressionWithTypeScheme { e, type_scheme })| {
+                let name = namespace.pop().unwrap();
+                let def = PilStatement::LetStatement(
+                    SourceRef::unknown(),
+                    name.to_string(),
+                    type_scheme,
+                    Some(e),
+                );
 
-            // If there is a namespace change, insert a namespace statement.
-            if current_namespace != namespace {
-                current_namespace = namespace.clone();
-                vec![
-                    PilStatement::Namespace(
-                        SourceRef::unknown(),
-                        namespace.relative_to(&AbsoluteSymbolPath::default()),
-                        Expression::Number(T::from(main_degree)),
-                    ),
-                    def,
-                ]
-            } else {
-                vec![def]
-            }
-        })
+                // If there is a namespace change, insert a namespace statement.
+                if current_namespace != namespace {
+                    current_namespace = namespace.clone();
+                    vec![
+                        PilStatement::Namespace(
+                            SourceRef::unknown(),
+                            namespace.relative_to(&AbsoluteSymbolPath::default()),
+                            Expression::Number(T::from(main_degree), None),
+                        ),
+                        def,
+                    ]
+                } else {
+                    vec![def]
+                }
+            },
+        )
         .collect::<Vec<_>>();
     pil.extend(graph.objects.into_iter().flat_map(|(location, object)| {
         let mut pil = vec![];
@@ -83,7 +85,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
-            Expression::Number(T::from(main_degree)),
+            Expression::Number(T::from(main_degree), None),
         ));
         pil.extend(object.pil);
         for link in object.links {
@@ -93,7 +95,12 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
             let to = link.to;
 
             // the lhs is `instr_flag { operation_id, inputs, outputs }`
-            let op_id = to.operation.id.iter().cloned().map(Expression::Number);
+            let op_id = to
+                .operation
+                .id
+                .iter()
+                .cloned()
+                .map(|n| Expression::Number(n, None));
             let inputs = from
                 .params
                 .inputs
@@ -223,7 +230,7 @@ mod test {
         let all_namespaces_have_degree = |f: PILFile<Bn254Field>, n| {
             f.0.iter().all(|s| match s {
                 powdr_ast::parsed::PilStatement::Namespace(_, _, e) => {
-                    *e == Expression::Number(Bn254Field::from(n))
+                    *e == Expression::Number(Bn254Field::from(n), None)
                 }
                 _ => true,
             })

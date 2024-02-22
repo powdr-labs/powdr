@@ -50,7 +50,7 @@ pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
     // ============== bootloader-specific instructions =======================
     // Write-once memory
-    let BOOTLOADER_INPUT_ADDRESS = |i| i;
+    let BOOTLOADER_INPUT_ADDRESS: col = |i| i;
     let bootloader_input_value;
     // Loads a value. If the cell is empty, the prover can choose a value.
     instr load_bootloader_input X -> Y { {X, Y} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value} }

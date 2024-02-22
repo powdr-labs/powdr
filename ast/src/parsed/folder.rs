@@ -70,7 +70,7 @@ pub trait ExpressionFolder<T, Ref> {
         Ok(match e {
             Expression::Reference(r) => Expression::Reference(self.fold_reference(r)?),
             Expression::PublicReference(r) => Expression::PublicReference(r),
-            Expression::Number(n) => Expression::Number(n),
+            Expression::Number(n, t) => Expression::Number(n, t),
             Expression::String(s) => Expression::String(s),
             Expression::Tuple(t) => Expression::Tuple(self.fold_expressions(t)?),
             Expression::LambdaExpression(l) => Expression::LambdaExpression(self.fold_lambda(l)?),

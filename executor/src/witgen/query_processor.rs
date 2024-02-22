@@ -111,9 +111,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Reference<'a>> for Symbols<'a, T> 
                         .as_ref()
                         .expect("Witness columns should have been found by try_column_by_name()");
                     match value {
-                        FunctionValueDefinition::Expression(TypedExpression { e, ty: _ }) => {
-                            evaluator::evaluate(e, self)
-                        }
+                        FunctionValueDefinition::Expression(TypedExpression {
+                            e,
+                            type_scheme: _,
+                        }) => evaluator::evaluate(e, self),
                         _ => panic!(
                             "Arrays and queries should have been found by try_column_by_name()"
                         ),

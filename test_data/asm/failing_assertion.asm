@@ -1,7 +1,7 @@
 use std::check;
 
 machine Empty {
-    let line = |i| i - 7;
+    let line: col = |i| i - 7;
     col witness w;
     w = line;
 
