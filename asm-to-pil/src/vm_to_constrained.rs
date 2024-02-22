@@ -299,18 +299,15 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 default_update = Some(direct_reference(&name));
             }
         };
-        // Assignment registers are intermediate columns
-        if ty != RegisterTy::Assignment {
-            self.pil.push(witness_column(source, name.clone(), None));
-        }
         self.registers.insert(
-            name,
+            name.to_string(),
             Register {
                 conditioned_updates,
                 default_update,
                 ty,
             },
         );
+        self.pil.push(witness_column(source, name, None));
     }
 
     fn handle_instruction_def(
@@ -840,10 +837,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 direct_reference(read_free) * direct_reference(free_value),
             ])
             .sum();
-        self.pil.push(PilStatement::PolynomialDefinition(
+        self.pil.push(PilStatement::Expression(
             SourceRef::unknown(),
-            register.clone(),
-            assign_constraint,
+            build::identity(direct_reference(register), assign_constraint),
         ));
     }
 
