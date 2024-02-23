@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::iter;
 
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::affine_expression::AffineExpression;
@@ -7,16 +8,20 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::global_constraints::GlobalConstraints;
 use crate::witgen::identity_processor::IdentityProcessor;
-use crate::witgen::processor::OuterQuery;
+use crate::witgen::processor::{OuterQuery, Processor};
 use crate::witgen::rows::{CellValue, Row, RowFactory, RowIndex, RowPair, UnknownStrategy};
-use crate::witgen::sequence_iterator::{ProcessingSequenceCache, ProcessingSequenceIterator};
+use crate::witgen::sequence_iterator::{
+    DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
+};
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
     PolynomialType,
 };
+use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::{DegreeType, FieldElement};
 
@@ -41,6 +46,46 @@ impl<'a, T: FieldElement> ProcessResult<'a, T> {
     }
 }
 
+fn collect_fixed_cols<T: FieldElement>(
+    expression: &Expression<T>,
+    result: &mut BTreeSet<Option<Expression<T>>>,
+) {
+    expression.pre_visit_expressions(&mut |e| {
+        if let Expression::Reference(r) = e {
+            if r.is_fixed() {
+                result.insert(Some(e.clone()));
+            }
+        }
+    });
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum ConnectionType {
+    Permutation,
+    Lookup,
+}
+
+impl From<ConnectionType> for IdentityKind {
+    fn from(value: ConnectionType) -> Self {
+        match value {
+            ConnectionType::Permutation => IdentityKind::Permutation,
+            ConnectionType::Lookup => IdentityKind::Plookup,
+        }
+    }
+}
+
+impl TryFrom<IdentityKind> for ConnectionType {
+    type Error = ();
+
+    fn try_from(value: IdentityKind) -> Result<Self, Self::Error> {
+        match value {
+            IdentityKind::Permutation => Ok(ConnectionType::Permutation),
+            IdentityKind::Plookup => Ok(ConnectionType::Lookup),
+            _ => Err(()),
+        }
+    }
+}
+
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if
 /// the lookup has a binary selector that is 1 every k rows for some k
@@ -49,7 +94,9 @@ pub struct BlockMachine<'a, T: FieldElement> {
     block_size: usize,
     /// The right-hand side of the connecting identity, needed to identify
     /// when this machine is responsible.
-    connecting_rhs: BTreeSet<SelectedExpressions<Expression<T>>>,
+    connecting_rhs: BTreeSet<&'a SelectedExpressions<Expression<T>>>,
+    /// The type of constraint used to connect this machine to its caller.
+    connection_type: ConnectionType,
     /// The internal identities
     identities: Vec<&'a Identity<Expression<T>>>,
     /// The row factory
@@ -74,74 +121,113 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         witness_cols: &HashSet<PolyID>,
         global_range_constraints: &GlobalConstraints<T>,
     ) -> Option<Self> {
-        // TODO we should check that the other constraints/fixed columns are also periodic.
-        let periods = connecting_identities
+        let (is_permutation, block_size, latch_row) =
+            detect_connection_type_and_block_size(fixed_data, connecting_identities, identities)?;
+
+        // Collect all right-hand sides of the connecting identities.
+        // This is used later to decide to which lookup the machine should respond.
+        let connecting_rhs = connecting_identities
             .iter()
-            .map(|id| try_to_period(&id.right.selector, fixed_data))
-            .collect::<Vec<_>>();
+            .map(|id| &id.right)
+            .collect::<BTreeSet<_>>();
 
-        let period =
-            periods[0].and_then(|first| periods.iter().all(|p| *p == Some(first)).then_some(first));
-
-        period
-            .and_then(|(latch_row, block_size)| {
-                // Collect all right-hand sides of the connecting identities.
-                // This is used later to decide to which lookup the machine should respond.
-                let connecting_rhs = connecting_identities
-                    .iter()
-                    .map(|id| id.right.clone())
-                    .collect::<BTreeSet<_>>();
-
-                for rhs in connecting_rhs.iter() {
-                    for r in rhs.expressions.iter() {
-                        if let Some(poly) = try_to_simple_poly(r) {
-                            if poly.poly_id.ptype == PolynomialType::Constant {
-                                // It does not really make sense to have constant polynomials on the RHS
-                                // of a block machine lookup, as all constant polynomials are periodic, so
-                                // it would always return the same value.
-                                return None;
-                            }
-                        }
+        for rhs in connecting_rhs.iter() {
+            for r in rhs.expressions.iter() {
+                if let Some(poly) = try_to_simple_poly(r) {
+                    if poly.poly_id.ptype == PolynomialType::Constant {
+                        // It does not really make sense to have constant polynomials on the RHS
+                        // of a block machine lookup, as all constant polynomials are periodic, so
+                        // it would always return the same value.
+                        return None;
                     }
                 }
+            }
+        }
 
-                Some((latch_row, block_size, connecting_rhs))
-            })
-            .map(|(latch_row, block_size, connecting_rhs)| {
-                assert!(block_size <= fixed_data.degree as usize);
-                let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
-                // Because block shapes are not always rectangular, we add the last block to the data at the
-                // beginning. It starts out with unknown values. Should the first block decide to write to
-                // rows < 0, they will be writen to this block.
-                // In `take_witness_col_values()`, this block will be removed and its values will be used to
-                // construct the "default" block used to fill up unused rows.
-                let start_index = RowIndex::from_i64(-(block_size as i64), fixed_data.degree);
-                let data = FinalizableData::with_initial_rows_in_progress(
-                    witness_cols,
-                    (0..block_size).map(|i| row_factory.fresh_row(start_index + i)),
-                );
-                BlockMachine {
-                    name,
-                    block_size,
-                    connecting_rhs,
-                    identities: identities.to_vec(),
-                    data,
-                    row_factory,
-                    witness_cols: witness_cols.clone(),
-                    processing_sequence_cache: ProcessingSequenceCache::new(
-                        block_size,
-                        latch_row,
-                        identities.len(),
-                    ),
-                    fixed_data,
-                }
-            })
+        assert!(block_size <= fixed_data.degree as usize);
+        let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
+        // Because block shapes are not always rectangular, we add the last block to the data at the
+        // beginning. It starts out with unknown values. Should the first block decide to write to
+        // rows < 0, they will be writen to this block.
+        // In `take_witness_col_values()`, this block will be removed and its values will be used to
+        // construct the "default" block used to fill up unused rows.
+        let start_index = RowIndex::from_i64(-(block_size as i64), fixed_data.degree);
+        let data = FinalizableData::with_initial_rows_in_progress(
+            witness_cols,
+            (0..block_size).map(|i| row_factory.fresh_row(start_index + i)),
+        );
+        Some(BlockMachine {
+            name,
+            block_size,
+            connecting_rhs,
+            connection_type: is_permutation,
+            identities: identities.to_vec(),
+            data,
+            row_factory,
+            witness_cols: witness_cols.clone(),
+            processing_sequence_cache: ProcessingSequenceCache::new(
+                block_size,
+                latch_row,
+                identities.len(),
+            ),
+            fixed_data,
+        })
     }
+}
+
+fn detect_connection_type_and_block_size<'a, T: FieldElement>(
+    fixed_data: &'a FixedData<'a, T>,
+    connecting_identities: &[&'a Identity<Expression<T>>],
+    identities: &[&'a Identity<Expression<T>>],
+) -> Option<(ConnectionType, usize, usize)> {
+    // TODO we should check that the other constraints/fixed columns are also periodic.
+
+    // Connecting identities should either all be permutations or all lookups.
+    let connection_type = connecting_identities
+        .iter()
+        .map(|id| id.kind.try_into())
+        .unique()
+        .exactly_one()
+        .ok()?
+        .ok()?;
+
+    // Detect the block size.
+    let (latch_row, block_size) = match connection_type {
+        ConnectionType::Lookup => {
+            // We'd expect all RHS selectors to be fixed columns of the same period.
+            connecting_identities
+                .iter()
+                .map(|id| try_to_period(&id.right.selector, fixed_data))
+                .unique()
+                .exactly_one()
+                .ok()??
+        }
+        ConnectionType::Permutation => {
+            // The latch fixed column could be any fixed column that appears in any identity or the RHS selector.
+            let mut latch_candidates = BTreeSet::new();
+            for id in identities {
+                if id.kind == IdentityKind::Polynomial {
+                    collect_fixed_cols(id.left.selector.as_ref().unwrap(), &mut latch_candidates);
+                };
+            }
+            for id in connecting_identities {
+                if let Some(selector) = &id.right.selector {
+                    collect_fixed_cols(selector, &mut latch_candidates);
+                }
+            }
+            latch_candidates
+                .iter()
+                .filter_map(|e| try_to_period(e, fixed_data))
+                // If there is more than one period, the block size is the maximum period.
+                .max()?
+        }
+    };
+    Some((connection_type, block_size, latch_row))
 }
 
 /// Check if `expr` is a reference to a function of the form
 /// f(i) { if (i + o) % k == 0 { 1 } else { 0 } }
-/// for some k, o.
+/// for some k < degree / 2, o.
 /// If so, returns (o, k).
 fn try_to_period<T: FieldElement>(
     expr: &Option<Expression<T>>,
@@ -164,6 +250,11 @@ fn try_to_period<T: FieldElement>(
 
             let offset = values.iter().position(|v| v.is_one())?;
             let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;
+            if period > fixed_data.degree as usize / 2 {
+                // This filters out columns like [0]* + [1], which might appear in a block machine
+                // but shouldn't be detected as the latch.
+                return None;
+            }
             values
                 .iter()
                 .enumerate()
@@ -189,7 +280,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
     ) -> Option<EvalResult<'a, T>> {
-        if !self.connecting_rhs.contains(right) || kind != IdentityKind::Plookup {
+        let has_correct_type = Into::<IdentityKind>::into(self.connection_type) == kind;
+        if !self.connecting_rhs.contains(right) || !has_correct_type {
             return None;
         }
         let previous_len = self.data.len();
@@ -211,8 +303,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _fixed_lookup: &'b mut FixedLookup<T>,
-        _query_callback: &'b mut Q,
+        fixed_lookup: &'b mut FixedLookup<T>,
+        query_callback: &'b mut Q,
     ) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
             log::warn!(
@@ -220,6 +312,62 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                  This might violate some internal constraints."
             );
         }
+
+        if matches!(self.connection_type, ConnectionType::Permutation) {
+            // We have to make sure that *all* selectors are 0 in the dummy block,
+            // because otherwise this block won't have a matching block on the LHS.
+
+            // Collect dummy block with rows before and after
+            let dummy_block = FinalizableData::with_initial_rows_in_progress(
+                &self.witness_cols,
+                iter::once(self.block_size - 1)
+                    .chain(0..self.block_size)
+                    .chain(iter::once(0))
+                    .map(|i| self.data[i].clone()),
+            );
+
+            // Instantiate a processor
+            let row_offset = RowIndex::from_i64(-1, self.fixed_data.degree);
+            let mut mutable_state = MutableState {
+                fixed_lookup,
+                machines: vec![].into_iter().into(),
+                query_callback,
+            };
+            let mut processor = Processor::new(
+                row_offset,
+                dummy_block,
+                &mut mutable_state,
+                self.fixed_data,
+                &self.witness_cols,
+            );
+
+            // Set all selectors to 0
+            for rhs in &self.connecting_rhs {
+                processor
+                    .set_value(
+                        self.block_size,
+                        rhs.selector.as_ref().unwrap(),
+                        T::zero(),
+                        || "Zero selectors".to_string(),
+                    )
+                    .unwrap();
+            }
+
+            // Run BlockProcessor (to potentially propagate selector values)
+            let mut processor = BlockProcessor::from_processor(processor, &self.identities);
+            let mut sequence_iterator = ProcessingSequenceIterator::Default(
+                DefaultSequenceIterator::new(self.block_size, self.identities.len(), None),
+            );
+            processor.solve(&mut sequence_iterator).unwrap();
+            let mut dummy_block = processor.finish();
+
+            // Replace the dummy block, discarding first and last row
+            dummy_block.pop().unwrap();
+            for i in (0..self.block_size).rev() {
+                self.data[i] = dummy_block.pop().unwrap();
+            }
+        }
+
         let mut data = self
             .data
             .take_transposed()
@@ -480,9 +628,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // 3. Remove the last row of the previous block from data
         self.data.pop();
 
-        // 4. Finalize most of the block
+        // 4. Finalize most of the block (unless it's the dummy block)
         // The last row might be needed later, so we do not finalize it yet.
-        new_block.finalize_range(0..self.block_size);
+        if self.data.len() > self.block_size {
+            new_block.finalize_range(0..self.block_size);
+        }
 
         // 5. Append the new block (including the merged last row of the previous block)
         self.data.extend(new_block);

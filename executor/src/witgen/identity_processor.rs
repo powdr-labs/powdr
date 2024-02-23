@@ -8,7 +8,7 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::machines::Machine;
+use crate::witgen::{machines::Machine, EvalError};
 
 use super::{
     affine_expression::AffineExpression, machines::KnownMachine, rows::RowPair, EvalResult,
@@ -205,8 +205,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         let selector_value = right
             .selector
             .as_ref()
-            .map(|s| current_rows.evaluate(s).unwrap().constant_value().unwrap())
-            .unwrap_or(T::one());
+            .map(|s| {
+                current_rows
+                    .evaluate(s)
+                    .ok()
+                    .and_then(|affine_expression| affine_expression.constant_value())
+                    .ok_or(EvalError::Generic("Selector is not 1!".to_string()))
+            })
+            .unwrap_or(Ok(T::one()))?;
         assert_eq!(selector_value, T::one());
 
         let mut updates = EvalValue::complete(vec![]);

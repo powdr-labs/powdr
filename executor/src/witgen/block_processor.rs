@@ -41,6 +41,16 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         }
     }
 
+    pub fn from_processor(
+        processor: Processor<'a, 'b, 'c, T, Q>,
+        identities: &'c [&'a Identity<Expression<T>>],
+    ) -> Self {
+        Self {
+            processor,
+            identities,
+        }
+    }
+
     pub fn with_outer_query(
         self,
         outer_query: OuterQuery<'a, T>,

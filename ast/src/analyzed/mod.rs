@@ -602,7 +602,9 @@ impl<T> Identity<AlgebraicExpression<T>> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub enum IdentityKind {
     Polynomial,
     Plookup,
