@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Debug};
 
 use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::FieldElement;
@@ -150,7 +150,7 @@ where
 /// New assignments or constraints for witness columns identified by an ID.
 pub type EvalResult<'a, T, K = &'a AlgebraicReference> = Result<EvalValue<K, T>, EvalError<T>>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum EvalError<T: FieldElement> {
     /// We ran out of rows
     RowsExhausted,
@@ -166,6 +166,12 @@ pub enum EvalError<T: FieldElement> {
     ProverQueryError(String),
     Generic(String),
     Multiple(Vec<EvalError<T>>),
+}
+
+impl<T: FieldElement> Debug for EvalError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <Self as fmt::Display>::fmt(self, f)
+    }
 }
 
 impl<T: FieldElement> From<String> for EvalError<T> {

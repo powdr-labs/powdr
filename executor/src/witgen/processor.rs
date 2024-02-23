@@ -5,7 +5,6 @@ use powdr_ast::{
     parsed::SelectedExpressions,
 };
 use powdr_number::{DegreeType, FieldElement};
-use powdr_parser_util::lines::indent;
 
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 
@@ -184,20 +183,23 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         let updates = identity_processor
             .process_identity(identity, &row_pair)
             .map_err(|e| -> EvalError<T> {
-                log::warn!("Error in identity: {identity}");
-                log::warn!(
-                    "Known values in current row (local: {row_index}, global {global_row_index}):\n{}",
-                    self.data[row_index].render_values(false, Some(self.witness_cols)),
+                let mut error = format!(
+                    r"Error in identity: {identity}
+Known values in current row (local: {row_index}, global {global_row_index}):
+{}
+",
+                    self.data[row_index].render_values(false, Some(self.witness_cols))
                 );
                 if identity.contains_next_ref() {
-                    log::warn!(
-                        "Known values in next row (local: {}, global {}):\n{}",
+                    error += &format!(
+                        "Known values in next row (local: {}, global {}):\n{}\n",
                         row_index + 1,
                         global_row_index + 1,
-                        self.data[row_index + 1].render_values(false, Some(self.witness_cols)),
+                        self.data[row_index + 1].render_values(false, Some(self.witness_cols))
                     );
                 }
-                format!("{identity}:\n{}", indent(&format!("{e}"), "    ")).into()
+                error += &format!("   => Error: {e}");
+                error.into()
             })?;
 
         if unknown_strategy == UnknownStrategy::Zero {
