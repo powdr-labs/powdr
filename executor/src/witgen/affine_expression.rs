@@ -23,6 +23,7 @@ pub struct AffineExpression<K, T> {
 pub type AffineResult<K, T> = Result<AffineExpression<K, T>, IncompleteCause<K>>;
 
 impl<K, T> From<T> for AffineExpression<K, T> {
+    #[inline]
     fn from(value: T) -> Self {
         Self {
             coefficients: Default::default(),
@@ -39,8 +40,8 @@ where
 {
     pub fn from_variable_id(var_id: K) -> AffineExpression<K, T> {
         Self {
-            coefficients: vec![(var_id, T::one())],
-            offset: T::zero(),
+            coefficients: vec![(var_id, T::ONE)],
+            offset: T::ZERO,
             clean: true,
         }
     }

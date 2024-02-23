@@ -1,6 +1,6 @@
 use std::{fmt, hash::Hash, ops::*, str::FromStr};
 
-use num_traits::{One, Zero};
+use num_traits::{ConstOne, ConstZero, One, Zero};
 use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -30,6 +30,7 @@ pub trait BigInt:
     + Shr<u64, Output = Self>
     + BitXor<Output = Self>
     + Zero
+    + ConstZero
     + fmt::LowerHex
     + TryFrom<num_bigint::BigUint, Error = ()>
 {
@@ -86,6 +87,8 @@ pub trait FieldElement:
     + Div<Output = Self>
     + Neg<Output = Self>
     + Zero
+    + ConstZero
+    + ConstOne
     + One
     + fmt::Display
     + fmt::Debug

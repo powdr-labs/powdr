@@ -98,6 +98,7 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
 impl<V, T: PolynomialTypeTrait> Index<&PolyID> for ColumnMap<V, T> {
     type Output = V;
 
+    #[inline]
     fn index(&self, poly_id: &PolyID) -> &Self::Output {
         assert!(poly_id.ptype == T::P_TYPE);
         &self.values[poly_id.id as usize]
@@ -105,6 +106,7 @@ impl<V, T: PolynomialTypeTrait> Index<&PolyID> for ColumnMap<V, T> {
 }
 
 impl<V, T: PolynomialTypeTrait> IndexMut<&PolyID> for ColumnMap<V, T> {
+    #[inline]
     fn index_mut(&mut self, poly_id: &PolyID) -> &mut Self::Output {
         assert!(poly_id.ptype == T::P_TYPE);
         &mut self.values[poly_id.id as usize]
