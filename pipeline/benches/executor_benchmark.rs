@@ -34,35 +34,27 @@ fn executor_benchmark(c: &mut Criterion) {
     let riscv_asm_files =
         compile_rust_crate_to_riscv_asm("../riscv/tests/riscv_data/keccak/Cargo.toml", &tmp_dir);
     let contents = compiler::compile(riscv_asm_files, &CoProcessors::base(), false);
-    let pil_with_constants = Pipeline::<T>::default()
-        .from_asm_string(contents, None)
-        .pil_with_evaluated_fixed_cols()
-        .unwrap();
+    let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
+    let pil = pipeline.compute_optimized_pil().unwrap();
+    let fixed_cols = pipeline.compute_fixed_cols().unwrap();
 
     group.bench_function("keccak", |b| {
-        b.iter(|| {
-            run_witgen(
-                &pil_with_constants.pil,
-                &pil_with_constants.fixed_cols,
-                vec![],
-            )
-        })
+        b.iter(|| run_witgen(&pil, &fixed_cols, vec![]))
     });
 
     // The first chunk of `many_chunks`, with Poseidon co-processor & bootloader
     let riscv_asm_files =
         compile_rust_to_riscv_asm("../riscv/tests/riscv_data/many_chunks.rs", &tmp_dir);
     let contents = compiler::compile(riscv_asm_files, &CoProcessors::base().with_poseidon(), true);
-    let pil_with_constants = Pipeline::<T>::default()
-        .from_asm_string(contents, None)
-        .pil_with_evaluated_fixed_cols()
-        .unwrap();
+    let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
+    let pil = pipeline.compute_optimized_pil().unwrap();
+    let fixed_cols = pipeline.compute_fixed_cols().unwrap();
 
     group.bench_function("many_chunks_chunk_0", |b| {
         b.iter(|| {
             run_witgen(
-                &pil_with_constants.pil,
-                &pil_with_constants.fixed_cols,
+                &pil,
+                &fixed_cols,
                 vec![(
                     "main.bootloader_input_value".to_string(),
                     default_input(&[63, 64, 65])

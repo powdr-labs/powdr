@@ -5,7 +5,7 @@ use powdr_ast::{
     parsed::asm::parse_absolute_path,
 };
 use powdr_number::FieldElement;
-use powdr_pipeline::{Pipeline, Stage};
+use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{Elem, ExecutionTrace};
 
 pub mod bootloader;
@@ -64,19 +64,11 @@ where
 {
     let num_chunks = bootloader_inputs.len();
 
-    // Advance the pipeline to the PilWithEvaluatedFixedCols stage and then clone it
-    // for each chunk. This is more efficient, because we'll run all steps until then
-    // only once.
-    log::info!("Advancing pipeline to PilWithEvaluatedFixedCols stage...");
-    pipeline
-        .advance_to(Stage::PilWithEvaluatedFixedCols)
-        .unwrap();
+    log::info!("Computing fixed columns...");
+    pipeline.compute_fixed_cols().unwrap();
 
-    let length = pipeline
-        .pil_with_evaluated_fixed_cols_ref()
-        .unwrap()
-        .pil
-        .degree();
+    // we can assume optimized_pil has been computed
+    let length = pipeline.compute_optimized_pil().unwrap().degree();
 
     bootloader_inputs
         .into_iter()
@@ -157,14 +149,13 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // Initial register values for the current chunk.
     let mut register_values = default_register_values();
 
-    pipeline.advance_to(Stage::AnalyzedAsm).unwrap();
-    let program = pipeline.artifact().unwrap().to_analyzed_asm().unwrap();
-    sanity_check(program);
+    let program = pipeline.compute_analyzed_asm().unwrap().clone();
+    sanity_check(&program);
 
     log::info!("Executing powdr-asm...");
     let (full_trace, memory_accesses) = {
         let trace = powdr_riscv_executor::execute_ast::<F>(
-            program,
+            &program,
             pipeline.data_callback().unwrap(),
             // Run full trace without any accessed pages. This would actually violate the
             // constraints, but the executor does the right thing (read zero if the memory
@@ -256,7 +247,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         log::info!("Simulating chunk execution...");
         let (chunk_trace, memory_snapshot_update) = {
             let (trace, memory_snapshot_update) = powdr_riscv_executor::execute_ast::<F>(
-                program,
+                &program,
                 pipeline.data_callback().unwrap(),
                 &bootloader_inputs,
                 num_rows,

@@ -37,7 +37,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
 }
 
 impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
-    fn verify(&self, proof: &Proof, instances: &[Vec<T>]) -> Result<(), Error> {
+    fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         Ok(self.verify(proof, instances)?)
     }
 

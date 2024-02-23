@@ -14,7 +14,7 @@ fn main() {
         .from_file("test_data/asm/book/hello_world.asm".into())
         .with_prover_inputs(vec![0.into()])
         .with_backend(BackendType::Halo2)
-        .proof()
+        .compute_proof()
         .unwrap();
 
     // Step-by-step case
@@ -39,20 +39,17 @@ fn main() {
     let vkey_file = BufWriter::new(fs::File::create("vkey.bin").unwrap());
     write_or_panic(vkey_file, |w| pipeline.export_verification_key(w)).unwrap();
 
-    // Add the verification key and create a proof
-    let proof = pipeline
-        .clone()
-        .with_vkey_file(Some("vkey.bin".into()))
-        .proof()
-        .unwrap()
-        .proof
-        .unwrap();
+    // Add the verification key to a fresh pipeline and create a proof
+    let mut pipeline_fresh = pipeline.clone().with_vkey_file(Some("vkey.bin".into()));
 
-    // Create a fresh pipeline for proof verification
+    let proof = pipeline_fresh.compute_proof().unwrap();
+
+    // Create yet another fresh pipeline only for proof verification
     let mut pipeline = pipeline
         .with_backend(BackendType::Halo2)
         .with_setup_file(Some("params.bin".into()))
         .with_vkey_file(Some("vkey.bin".into()));
 
+    // Verify a proof created by a different Pipeline
     pipeline.verify(proof, &[vec![]]).unwrap();
 }

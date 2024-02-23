@@ -31,83 +31,43 @@ use crate::{
     util::{read_poly_set, write_or_panic, FixedPolySet, WitnessPolySet},
 };
 
-#[derive(Clone)]
-pub struct GeneratedWitness<T: FieldElement> {
-    pub pil: Rc<Analyzed<T>>,
-    pub fixed_cols: Rc<Vec<(String, Vec<T>)>>,
-    pub witness: Option<Vec<(String, Vec<T>)>>,
-}
+type Columns<T> = Vec<(String, Vec<T>)>;
 
-#[derive(Clone)]
-pub struct PilWithEvaluatedFixedCols<T: FieldElement> {
-    pub pil: Rc<Analyzed<T>>,
-    pub fixed_cols: Rc<Vec<(String, Vec<T>)>>,
-}
-
-#[derive(Clone)]
-pub struct ProofResult<T: FieldElement> {
-    /// Fixed columns, potentially incomplete (if success is false)
-    pub fixed_cols: Rc<Vec<(String, Vec<T>)>>,
-    /// Witness columns, potentially None (if success is false)
-    pub witness: Option<Vec<(String, Vec<T>)>>,
-    /// Proof, potentially None (if success is false)
-    pub proof: Option<Proof>,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum Stage {
-    AsmFilePath,
-    AsmString,
-    ParsedAsmFile,
-    ResolvedModuleTree,
-    AnalyzedAsm,
-    ConstrainedMachineCollection,
-    LinkedMachineGraph,
-    ParsedPilFile,
-    PilFilePath,
-    PilString,
-    AnalyzedPil,
-    OptimizedPil,
-    PilWithEvaluatedFixedCols,
-    GeneratedWitness,
-    Proof,
-}
-
-#[derive(Clone)]
-pub enum Artifact<T: FieldElement> {
+#[derive(Default, Clone)]
+pub struct Artifacts<T: FieldElement> {
     /// The path to a single .asm file.
-    AsmFilePath(PathBuf),
+    asm_file_path: Option<PathBuf>,
     /// The contents of a single .asm file, with an optional Path (for imports).
-    AsmString(Option<PathBuf>, String),
+    asm_string: Option<(Option<PathBuf>, String)>,
     /// A parsed .asm file, with an optional Path (for imports).
-    ParsedAsmFile(Option<PathBuf>, ASMProgram<T>),
+    parsed_asm_file: Option<(Option<PathBuf>, ASMProgram<T>)>,
     /// A tree of .asm modules (with all dependencies potentially imported
     /// from other files) with all references resolved to absolute symbol paths.
-    ResolvedModuleTree(ASMProgram<T>),
+    resolved_module_tree: Option<ASMProgram<T>>,
     /// The analyzed .asm file: Assignment registers are inferred, instructions
     /// are batched and some properties are checked.
-    AnalyzedAsm(AnalysisASMFile<T>),
+    analyzed_asm: Option<AnalysisASMFile<T>>,
     /// A machine collection that only contains constrained machines.
-    ConstrainedMachineCollection(AnalysisASMFile<T>),
+    constrained_machine_collection: Option<AnalysisASMFile<T>>,
     /// The airgen graph, i.e. a collection of constrained machines with resolved
     /// links between them.
-    LinkedMachineGraph(PILGraph<T>),
+    linked_machine_graph: Option<PILGraph<T>>,
     /// A single parsed pil file.
-    ParsedPilFile(PILFile<T>),
+    parsed_pil_file: Option<PILFile<T>>,
     /// The path to a single .pil file.
-    PilFilePath(PathBuf),
+    pil_file_path: Option<PathBuf>,
     /// The contents of a single .pil file.
-    PilString(String),
+    pil_string: Option<String>,
     /// An analyzed .pil file, with all dependencies imported, potentially from other files.
-    AnalyzedPil(Analyzed<T>),
+    analyzed_pil: Option<Analyzed<T>>,
     /// An optimized .pil file.
-    OptimzedPil(Analyzed<T>),
-    /// An optimized .pil file with fixed columns fully evaluated.
-    PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols<T>),
-    /// Generated witnesses including fixed columns and the corresponding PIL file.
-    GeneratedWitness(GeneratedWitness<T>),
-    /// The proof (if successful)
-    Proof(ProofResult<T>),
+    optimized_pil: Option<Rc<Analyzed<T>>>,
+    /// Fully evaluated fixed columns.
+    fixed_cols: Option<Rc<Columns<T>>>,
+    /// Generated witnesses.
+    witness: Option<Rc<Columns<T>>>,
+    /// The proof (if successful).
+    proof: Option<Proof>,
 }
 
 /// Helper trait to make it prettier to get an `Option<&mut dyn io::Read>`` from
@@ -119,60 +79,6 @@ trait AsIoRead {
 impl<R: io::Read> AsIoRead for Option<R> {
     fn as_io_read(&mut self) -> Option<&mut dyn io::Read> {
         self.as_mut().map(|r| r as &mut dyn io::Read)
-    }
-}
-
-// These are implementations of specific artifacts we want to retrieve
-// from Pipeline, in a way that allows us to get immutable references
-// to the artifacts.
-impl<T: FieldElement> Artifact<T> {
-    pub fn to_asm_string(&self) -> Option<&String> {
-        match self {
-            Artifact::AsmString(_, asm_string) => Some(asm_string),
-            _ => None,
-        }
-    }
-
-    pub fn to_analyzed_asm(&self) -> Option<&AnalysisASMFile<T>> {
-        match self {
-            Artifact::AnalyzedAsm(analyzed_asm) => Some(analyzed_asm),
-            _ => None,
-        }
-    }
-
-    pub fn to_analyzed_pil(&self) -> Option<&Analyzed<T>> {
-        match self {
-            Artifact::AnalyzedPil(analyzed) => Some(analyzed),
-            _ => None,
-        }
-    }
-
-    pub fn to_optimized_pil(&self) -> Option<&Analyzed<T>> {
-        match self {
-            Artifact::OptimzedPil(optimized_pil) => Some(optimized_pil),
-            _ => None,
-        }
-    }
-
-    pub fn to_pil_with_evaluated_fixed_cols(&self) -> Option<&PilWithEvaluatedFixedCols<T>> {
-        match self {
-            Artifact::PilWithEvaluatedFixedCols(pil_with_constants) => Some(pil_with_constants),
-            _ => None,
-        }
-    }
-
-    pub fn to_generated_witness(&self) -> Option<&GeneratedWitness<T>> {
-        match self {
-            Artifact::GeneratedWitness(generated_witness) => Some(generated_witness),
-            _ => None,
-        }
-    }
-
-    pub fn to_proof(&self) -> Option<&ProofResult<T>> {
-        match self {
-            Artifact::Proof(proof) => Some(proof),
-            _ => None,
-        }
     }
 }
 
@@ -199,9 +105,8 @@ struct Arguments<T: FieldElement> {
 
 #[derive(Clone)]
 pub struct Pipeline<T: FieldElement> {
-    /// The current artifact. It is never None in practice, making it an Option is
-    /// only necessary so that we can take ownership of it in advance().
-    artifact: Option<Artifact<T>>,
+    /// Stores all artifacts at the same time.
+    artifact: Artifacts<T>,
     /// The diff monitor is used to track changes between pipeline stages.
     diff_monitor: DiffMonitor,
     /// Output directory for intermediate files. If None, no files are written.
@@ -225,7 +130,7 @@ where
 {
     fn default() -> Self {
         Pipeline {
-            artifact: None,
+            artifact: Default::default(),
             diff_monitor: DiffMonitor::default(),
             output_dir: None,
             log_level: Level::Debug,
@@ -243,7 +148,7 @@ where
 /// ```mermaid
 ///  graph TD
 ///      AsmFilePath --> AsmString
-///      AsmString --> Parsed
+///      AsmString --> ParsedAsmFile
 ///      ParsedAsmFile --> ResolvedModuleTree
 ///      ResolvedModuleTree --> AnalyzedAsm
 ///      AnalyzedAsm --> ConstrainedMachineCollection
@@ -252,15 +157,15 @@ where
 ///      ParsedPilFile --> AnalyzedPil
 ///      PilFilePath --> AnalyzedPil
 ///      PilString --> AnalyzedPil
-///      AnalyzedPil --> OptimzedPil
-///      OptimzedPil --> PilWithEvaluatedFixedCols
-///      PilWithEvaluatedFixedCols --> GeneratedWitness
-///      GeneratedWitness --> Proof
+///      AnalyzedPil --> OptimizedPil
+///      OptimizedPil --> FixedCols
+///      OptimizedPil && FixedCols --> Witness
+///      OptimizedPil && FixedCols && Witness --> Proof
 /// ```
 ///
 /// # Example
 /// ```rust
-/// use powdr_pipeline::{Pipeline, Stage, verify, BackendType, test_util::resolve_test_file};
+/// use powdr_pipeline::{Pipeline, verify, BackendType, test_util::resolve_test_file};
 /// use std::path::PathBuf;
 /// use powdr_number::GoldilocksField;
 ///
@@ -268,11 +173,8 @@ where
 ///   .from_file(resolve_test_file("pil/fibonacci.pil"))
 ///   .with_backend(BackendType::PilStarkCli);
 ///
-/// // Advance to some stage (which might have side effects)
-/// pipeline.advance_to(Stage::OptimizedPil).unwrap();
-///
 /// // Get the result
-/// let proof = pipeline.proof().unwrap();
+/// let proof = pipeline.compute_proof().unwrap();
 /// ```
 impl<T: FieldElement> Pipeline<T> {
     /// Initializes the output directory to a temporary directory.
@@ -386,7 +288,10 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn from_asm_file(self, asm_file: PathBuf) -> Self {
         let name = self.name.or(Some(Self::name_from_path(&asm_file)));
         Pipeline {
-            artifact: Some(Artifact::AsmFilePath(asm_file)),
+            artifact: Artifacts {
+                asm_file_path: Some(asm_file),
+                ..Default::default()
+            },
             name,
             ..self
         }
@@ -395,7 +300,10 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn from_asm_string(self, asm_string: String, path: Option<PathBuf>) -> Self {
         let name = self.name.or(path.as_ref().map(|p| Self::name_from_path(p)));
         Pipeline {
-            artifact: Some(Artifact::AsmString(path, asm_string)),
+            artifact: Artifacts {
+                asm_string: Some((path, asm_string)),
+                ..Default::default()
+            },
             name,
             ..self
         }
@@ -404,7 +312,10 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn from_pil_file(self, pil_file: PathBuf) -> Self {
         let name = self.name.or(Some(Self::name_from_path(&pil_file)));
         Pipeline {
-            artifact: Some(Artifact::PilFilePath(pil_file)),
+            artifact: Artifacts {
+                pil_file_path: Some(pil_file),
+                ..Default::default()
+            },
             name,
             ..self
         }
@@ -412,7 +323,10 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn from_pil_string(self, pil_string: String) -> Self {
         Pipeline {
-            artifact: Some(Artifact::PilString(pil_string)),
+            artifact: Artifacts {
+                pil_string: Some(pil_string),
+                ..Default::default()
+            },
             ..self
         }
     }
@@ -430,89 +344,62 @@ impl<T: FieldElement> Pipeline<T> {
             .name
             .or(Some(Self::name_from_path_with_suffix(&pil_file)));
 
-        let analyzed = SerializedAnalyzed::deserialize_from(pil_file)
+        let analyzed: Analyzed<T> = SerializedAnalyzed::deserialize_from(pil_file)
             .map_err(|e| vec![format!("Error deserializing .pilo file: {}", e)])?
             .try_into()
             .map_err(|e| vec![e])?;
 
         Ok(Pipeline {
-            artifact: Some(Artifact::OptimzedPil(analyzed)),
+            artifact: Artifacts {
+                optimized_pil: Some(Rc::new(analyzed)),
+                ..Default::default()
+            },
             name,
             ..self
         })
     }
 
-    /// Reads previously generated constants from the provided directory and
-    /// advances the pipeline to the `PilWithEvaluatedFixedCols` stage.
+    /// Reads previously generated fixed columns from the provided directory.
     pub fn read_constants(mut self, directory: &Path) -> Self {
-        self.advance_to(Stage::OptimizedPil).unwrap();
-
-        let pil = match self.artifact.unwrap() {
-            Artifact::OptimzedPil(pil) => pil,
-            _ => panic!(),
-        };
-
-        // Can't use self.name() because self is partially moved...
-        let name = self.name.as_ref().expect("name must be set!");
-        let (fixed, degree_fixed) = read_poly_set::<FixedPolySet, T>(&pil, directory, name);
+        let name = self.name().to_string();
+        let pil = self.compute_optimized_pil().unwrap();
+        let (fixed, degree_fixed) = read_poly_set::<FixedPolySet, T>(&pil, directory, &name);
 
         assert_eq!(pil.degree.unwrap(), degree_fixed);
 
         Pipeline {
-            artifact: Some(Artifact::PilWithEvaluatedFixedCols(
-                PilWithEvaluatedFixedCols {
-                    pil: Rc::new(pil),
-                    fixed_cols: Rc::new(fixed),
-                },
-            )),
+            artifact: Artifacts {
+                fixed_cols: Some(Rc::new(fixed)),
+                ..self.artifact
+            },
             ..self
         }
     }
 
-    /// Reads a previously generated witness from the provided directory and
-    /// advances the pipeline to the `GeneratedWitness` stage.
-    pub fn read_generated_witness(mut self, directory: &Path) -> Self {
-        self.advance_to(Stage::OptimizedPil).unwrap();
+    /// Reads a previously generated witness from the provided directory.
+    pub fn read_witness(mut self, directory: &Path) -> Self {
+        let name = self.name().to_string();
+        let pil = self.compute_optimized_pil().unwrap();
+        let (witness, degree_witness) = read_poly_set::<WitnessPolySet, T>(&pil, directory, &name);
 
-        let pil = match self.artifact.unwrap() {
-            Artifact::OptimzedPil(pil) => pil,
-            _ => panic!(),
-        };
-
-        // Can't use self.name() because self is partially moved...
-        let name = self.name.as_ref().expect("name must be set!");
-        let (fixed, degree_fixed) = read_poly_set::<FixedPolySet, T>(&pil, directory, name);
-        let (witness, degree_witness) = read_poly_set::<WitnessPolySet, T>(&pil, directory, name);
-        assert_eq!(degree_fixed, degree_witness);
+        assert_eq!(pil.degree.unwrap(), degree_witness);
 
         Pipeline {
-            artifact: Some(Artifact::GeneratedWitness(GeneratedWitness {
-                pil: Rc::new(pil),
-                fixed_cols: Rc::new(fixed),
-                witness: Some(witness),
-            })),
+            artifact: Artifacts {
+                witness: Some(Rc::new(witness)),
+                ..self.artifact
+            },
             ..self
         }
     }
 
-    /// Advances to PilWithEvaluatedFixedCols and then sets the witness to the provided value,
-    /// skipping witness generation.
-    pub fn skip_witness_generation(mut self, witness: Vec<(String, Vec<T>)>) -> Self {
-        self.advance_to(Stage::PilWithEvaluatedFixedCols).unwrap();
-
-        let (pil, fixed_cols) = match self.artifact.unwrap() {
-            Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols }) => {
-                (pil, fixed_cols)
-            }
-            _ => panic!(),
-        };
-
+    /// Sets the witness to the provided value.
+    pub fn set_witness(self, witness: Vec<(String, Vec<T>)>) -> Self {
         Pipeline {
-            artifact: Some(Artifact::GeneratedWitness(GeneratedWitness {
-                pil,
-                fixed_cols,
-                witness: Some(witness),
-            })),
+            artifact: Artifacts {
+                witness: Some(Rc::new(witness)),
+                ..self.artifact
+            },
             ..self
         }
     }
@@ -531,196 +418,6 @@ impl<T: FieldElement> Pipeline<T> {
 
     fn log(&self, msg: &str) {
         log::log!(self.log_level, "{}", msg);
-    }
-
-    #[allow(clippy::print_stderr)]
-    fn advance(&mut self) -> Result<(), Vec<String>> {
-        let artifact = std::mem::take(&mut self.artifact).unwrap();
-        self.artifact = Some(match artifact {
-            Artifact::AsmFilePath(path) => Artifact::AsmString(
-                Some(path.clone()),
-                fs::read_to_string(&path).map_err(|e| {
-                    vec![format!("Error reading .asm file: {}\n{e}", path.display())]
-                })?,
-            ),
-            Artifact::AsmString(path, asm_string) => {
-                let parsed_asm = powdr_parser::parse_asm(None, &asm_string).unwrap_or_else(|err| {
-                    match path.as_ref() {
-                        Some(path) => eprintln!("Error parsing .asm file: {}", path.display()),
-                        None => eprintln!("Error parsing .asm file:"),
-                    }
-                    err.output_to_stderr();
-                    panic!();
-                });
-                self.diff_monitor.push(&parsed_asm);
-                Artifact::ParsedAsmFile(path, parsed_asm)
-            }
-            Artifact::ParsedAsmFile(path, parsed) => {
-                self.log("Loading dependencies and resolving references");
-                let resolved = powdr_importer::load_dependencies_and_resolve(path, parsed)
-                    .map_err(|e| vec![e])?;
-                self.diff_monitor.push(&resolved);
-                Artifact::ResolvedModuleTree(resolved)
-            }
-            Artifact::ResolvedModuleTree(resolved) => {
-                self.log("Run analysis");
-                let analyzed_asm = powdr_analysis::analyze(resolved, &mut self.diff_monitor)?;
-                self.log("Analysis done");
-                log::trace!("{analyzed_asm}");
-                Artifact::AnalyzedAsm(analyzed_asm)
-            }
-            Artifact::AnalyzedAsm(analyzed_asm) => Artifact::ConstrainedMachineCollection(
-                powdr_analysis::convert_vms_to_constrained(analyzed_asm, &mut self.diff_monitor),
-            ),
-            Artifact::ConstrainedMachineCollection(analyzed_asm) => {
-                self.log("Run airgen");
-                let graph = powdr_airgen::compile(analyzed_asm);
-                self.diff_monitor.push(&graph);
-                self.log("Airgen done");
-                log::trace!("{graph}");
-                Artifact::LinkedMachineGraph(graph)
-            }
-            Artifact::LinkedMachineGraph(graph) => {
-                self.log("Run linker");
-                let linked = powdr_linker::link(graph)?;
-                self.diff_monitor.push(&linked);
-                log::trace!("{linked}");
-                self.maybe_write_pil(&linked, "")?;
-                Artifact::ParsedPilFile(linked)
-            }
-            Artifact::ParsedPilFile(linked) => {
-                self.log("Analyzing pil...");
-                let analyzed = powdr_pil_analyzer::analyze_ast(linked);
-                self.maybe_write_pil(&analyzed, "_analyzed")?;
-                Artifact::AnalyzedPil(analyzed)
-            }
-            Artifact::PilFilePath(pil_file) => {
-                self.log("Analyzing pil...");
-                let analyzed = powdr_pil_analyzer::analyze_file(&pil_file);
-                self.maybe_write_pil(&analyzed, "_analyzed")?;
-                Artifact::AnalyzedPil(analyzed)
-            }
-            Artifact::PilString(pil_string) => {
-                self.log("Analyzing pil...");
-                let analyzed = powdr_pil_analyzer::analyze_string(&pil_string);
-                self.maybe_write_pil(&analyzed, "_analyzed")?;
-                Artifact::AnalyzedPil(analyzed)
-            }
-            Artifact::AnalyzedPil(analyzed_pil) => {
-                self.log("Optimizing pil...");
-                let optimized = powdr_pilopt::optimize(analyzed_pil);
-                self.maybe_write_pil(&optimized, "_opt")?;
-                self.maybe_write_pil_object(&optimized, "_opt")?;
-                Artifact::OptimzedPil(optimized)
-            }
-            Artifact::OptimzedPil(pil) => {
-                self.log("Evaluating fixed columns...");
-                let start = Instant::now();
-                let fixed_cols = constant_evaluator::generate(&pil);
-                self.maybe_write_constants(&fixed_cols)?;
-                self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
-                Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols {
-                    pil: Rc::new(pil),
-                    fixed_cols: Rc::new(fixed_cols),
-                })
-            }
-            Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols }) => {
-                let witness = (pil.constant_count() == fixed_cols.len()).then(|| {
-                    self.log("Deducing witness columns...");
-                    let start = Instant::now();
-                    let external_witness_values =
-                        std::mem::take(&mut self.arguments.external_witness_values);
-                    let query_callback =
-                        self.arguments.query_callback.take().unwrap_or_else(|| {
-                            Arc::new(powdr_executor::witgen::unused_query_callback())
-                        });
-                    let witness = powdr_executor::witgen::WitnessGenerator::new(
-                        &pil,
-                        &fixed_cols,
-                        query_callback.borrow(),
-                    )
-                    .with_external_witness_values(external_witness_values)
-                    .generate();
-
-                    self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
-                    witness
-                });
-
-                self.maybe_write_witness(&fixed_cols, &witness)?;
-                Artifact::GeneratedWitness(GeneratedWitness {
-                    pil,
-                    fixed_cols,
-                    witness,
-                })
-            }
-            Artifact::GeneratedWitness(GeneratedWitness {
-                pil,
-                fixed_cols,
-                witness,
-            }) => {
-                let backend = self
-                    .arguments
-                    .backend
-                    .expect("backend must be set before calling proving!");
-                let factory = backend.factory::<T>();
-
-                // Opens the setup file, if set.
-                let mut setup = self
-                    .arguments
-                    .setup_file
-                    .as_ref()
-                    .map(|path| BufReader::new(fs::File::open(path).unwrap()));
-
-                // Opens the verification key file, if set.
-                let mut vkey = self
-                    .arguments
-                    .vkey_file
-                    .as_ref()
-                    .map(|path| BufReader::new(fs::File::open(path).unwrap()));
-
-                /* Create the backend */
-                let backend = factory
-                    .create(
-                        pil.borrow(),
-                        &fixed_cols[..],
-                        self.output_dir(),
-                        setup.as_io_read(),
-                        vkey.as_io_read(),
-                    )
-                    .unwrap();
-
-                // Reads the existing proof file, if set.
-                let existing_proof = self
-                    .arguments
-                    .existing_proof_file
-                    .as_ref()
-                    .map(|path| fs::read(path).unwrap());
-
-                // Even if we don't have all constants and witnesses, some backends will
-                // still output the constraint serialization.
-                let proof =
-                    match backend.prove(witness.as_deref().unwrap_or_default(), existing_proof) {
-                        Ok(proof) => proof,
-                        Err(powdr_backend::Error::BackendError(e)) => {
-                            return Err(vec![e.to_string()]);
-                        }
-                        _ => panic!(),
-                    };
-                drop(backend);
-
-                let proof_result = ProofResult {
-                    fixed_cols,
-                    witness,
-                    proof: Some(proof),
-                };
-
-                self.maybe_write_proof(&proof_result)?;
-
-                Artifact::Proof(proof_result)
-            }
-            Artifact::Proof(_) => panic!("Last pipeline step!"),
-        });
-        Ok(())
     }
 
     /// Returns the path to the output file if the output directory is set.
@@ -780,24 +477,16 @@ impl<T: FieldElement> Pipeline<T> {
     fn maybe_write_witness(
         &self,
         fixed: &[(String, Vec<T>)],
-        witness: &Option<Vec<(String, Vec<T>)>>,
+        witness: &[(String, Vec<T>)],
     ) -> Result<(), Vec<String>> {
-        if let Some(witness) = witness.as_ref() {
-            if let Some(path) = self.path_if_should_write(|name| format!("{name}_commits.bin"))? {
-                let file = BufWriter::new(fs::File::create(path).unwrap());
-                write_or_panic(file, |file| write_polys_file(file, witness));
-            }
+        if let Some(path) = self.path_if_should_write(|name| format!("{name}_commits.bin"))? {
+            let file = BufWriter::new(fs::File::create(path).unwrap());
+            write_or_panic(file, |file| write_polys_file(file, witness));
         }
 
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
-                let columns = fixed
-                    .iter()
-                    .chain(match witness.as_ref() {
-                        Some(witness) => witness.iter(),
-                        None => [].iter(),
-                    })
-                    .collect::<Vec<_>>();
+                let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
                 write_polys_csv_file(csv_file, self.arguments.csv_render_mode, &columns);
@@ -807,130 +496,404 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
-    fn maybe_write_proof(&self, proof_result: &ProofResult<T>) -> Result<(), Vec<String>> {
-        if let Some(proof) = &proof_result.proof {
-            let fname = if self.arguments.existing_proof_file.is_some() {
-                "proof_aggr.bin"
-            } else {
-                "proof.bin"
-            };
-            if let Some(path) = self.path_if_should_write(|name| format!("{name}_{fname}"))? {
-                fs::write(path, proof).unwrap();
-            }
+    fn maybe_write_proof(&self, proof: &Proof) -> Result<(), Vec<String>> {
+        let fname = if self.arguments.existing_proof_file.is_some() {
+            "proof_aggr.bin"
+        } else {
+            "proof.bin"
+        };
+        if let Some(path) = self.path_if_should_write(|name| format!("{name}_{fname}"))? {
+            fs::write(path, proof).unwrap();
         }
 
         Ok(())
     }
 
-    pub fn stage(&self) -> Stage {
-        match self.artifact.as_ref().unwrap() {
-            Artifact::AsmFilePath(_) => Stage::AsmFilePath,
-            Artifact::AsmString(_, _) => Stage::AsmString,
-            Artifact::ParsedAsmFile(_, _) => Stage::ParsedAsmFile,
-            Artifact::ResolvedModuleTree(_) => Stage::ResolvedModuleTree,
-            Artifact::AnalyzedAsm(_) => Stage::AnalyzedAsm,
-            Artifact::ConstrainedMachineCollection(_) => Stage::ConstrainedMachineCollection,
-            Artifact::LinkedMachineGraph(_) => Stage::LinkedMachineGraph,
-            Artifact::ParsedPilFile(_) => Stage::ParsedPilFile,
-            Artifact::PilFilePath(_) => Stage::PilFilePath,
-            Artifact::PilString(_) => Stage::PilString,
-            Artifact::AnalyzedPil(_) => Stage::AnalyzedPil,
-            Artifact::OptimzedPil(_) => Stage::OptimizedPil,
-            Artifact::PilWithEvaluatedFixedCols(_) => Stage::PilWithEvaluatedFixedCols,
-            Artifact::GeneratedWitness(_) => Stage::GeneratedWitness,
-            Artifact::Proof(_) => Stage::Proof,
+    // ===== Compute and retrieve artifacts =====
+
+    pub fn asm_file_path(&self) -> Result<&PathBuf, Vec<String>> {
+        match self.artifact.asm_file_path {
+            Some(ref path) => Ok(path),
+            None => Err(vec!["No asm file path available".to_string()]),
         }
     }
 
-    pub fn advance_to(&mut self, target_stage: Stage) -> Result<(), Vec<String>> {
-        while self.stage() != target_stage {
-            self.advance()?;
+    pub fn compute_asm_string(&mut self) -> Result<&(Option<PathBuf>, String), Vec<String>> {
+        if self.artifact.asm_string.is_none() {
+            self.artifact.asm_string = Some({
+                let path = self.asm_file_path();
+                let path = path?;
+                (
+                    Some(path.clone()),
+                    fs::read_to_string(path).map_err(|e| {
+                        vec![format!("Error reading .asm file: {}\n{e}", path.display())]
+                    })?,
+                )
+            });
         }
-        Ok(())
+
+        Ok(self.artifact.asm_string.as_ref().unwrap())
     }
 
-    pub fn asm_string(mut self) -> Result<String, Vec<String>> {
-        self.advance_to(Stage::AsmString)?;
-        match self.artifact.unwrap() {
-            Artifact::AsmString(_, asm_string) => Ok(asm_string),
-            _ => panic!(),
+    pub fn asm_string(&self) -> Result<&(Option<PathBuf>, String), Vec<String>> {
+        Ok(self.artifact.asm_string.as_ref().unwrap())
+    }
+
+    pub fn compute_parsed_asm_file(
+        &mut self,
+    ) -> Result<&(Option<PathBuf>, ASMProgram<T>), Vec<String>> {
+        if self.artifact.parsed_asm_file.is_none() {
+            self.artifact.parsed_asm_file = Some({
+                let res = self.compute_asm_string();
+                let (path, asm_string) = res?;
+                let path = path.clone();
+
+                let parsed_asm = powdr_parser::parse_asm(None, asm_string).unwrap_or_else(|err| {
+                    match path.as_ref() {
+                        Some(path) => eprintln!("Error parsing .asm file: {}", path.display()),
+                        None => eprintln!("Error parsing .asm file:"),
+                    }
+                    err.output_to_stderr();
+                    panic!();
+                });
+                self.diff_monitor.push(&parsed_asm);
+
+                (path.clone(), parsed_asm)
+            });
         }
+
+        Ok(self.artifact.parsed_asm_file.as_ref().unwrap())
     }
 
-    pub fn analyzed_asm(mut self) -> Result<AnalysisASMFile<T>, Vec<String>> {
-        self.advance_to(Stage::AnalyzedAsm)?;
-        let Artifact::AnalyzedAsm(analyzed_asm) = self.artifact.unwrap() else {
-            panic!()
-        };
-        Ok(analyzed_asm)
+    pub fn parsed_asm_file(&self) -> Result<&(Option<PathBuf>, ASMProgram<T>), Vec<String>> {
+        Ok(self.artifact.parsed_asm_file.as_ref().unwrap())
     }
 
-    pub fn analyzed_asm_ref(&mut self) -> Result<&AnalysisASMFile<T>, Vec<String>> {
-        self.advance_to(Stage::AnalyzedAsm)?;
-        match self.artifact.as_ref().unwrap() {
-            Artifact::AnalyzedAsm(analyzed_asm) => Ok(analyzed_asm),
-            _ => panic!(),
+    pub fn compute_resolved_module_tree(&mut self) -> Result<&ASMProgram<T>, Vec<String>> {
+        if self.artifact.resolved_module_tree.is_none() {
+            self.artifact.resolved_module_tree = Some({
+                let res = self.compute_parsed_asm_file();
+                let (path, parsed) = res?.clone();
+
+                self.log("Loading dependencies and resolving references");
+                let resolved = powdr_importer::load_dependencies_and_resolve(path, parsed)
+                    .map_err(|e| vec![e])?;
+                self.diff_monitor.push(&resolved);
+
+                resolved
+            });
         }
+
+        Ok(self.artifact.resolved_module_tree.as_ref().unwrap())
     }
 
-    pub fn analyzed_pil(mut self) -> Result<Analyzed<T>, Vec<String>> {
-        self.advance_to(Stage::AnalyzedPil)?;
-        let Artifact::AnalyzedPil(analyzed) = self.artifact.unwrap() else {
-            panic!()
-        };
+    pub fn resolved_module_tree(&self) -> Result<&ASMProgram<T>, Vec<String>> {
+        Ok(self.artifact.resolved_module_tree.as_ref().unwrap())
+    }
+
+    pub fn compute_analyzed_asm(&mut self) -> Result<&AnalysisASMFile<T>, Vec<String>> {
+        if self.artifact.analyzed_asm.is_none() {
+            self.artifact.analyzed_asm = Some({
+                let res = self.compute_resolved_module_tree();
+                let resolved = res?.clone();
+
+                self.log("Run analysis");
+                let analyzed_asm = powdr_analysis::analyze(resolved, &mut self.diff_monitor)?;
+                self.log("Analysis done");
+                log::trace!("{analyzed_asm}");
+
+                analyzed_asm
+            });
+        }
+
+        Ok(self.artifact.analyzed_asm.as_ref().unwrap())
+    }
+
+    pub fn analyzed_asm(&self) -> Result<&AnalysisASMFile<T>, Vec<String>> {
+        Ok(self.artifact.analyzed_asm.as_ref().unwrap())
+    }
+
+    pub fn compute_constrained_machine_collection(
+        &mut self,
+    ) -> Result<&AnalysisASMFile<T>, Vec<String>> {
+        if self.artifact.constrained_machine_collection.is_none() {
+            self.artifact.constrained_machine_collection = Some({
+                let analyzed_asm = self.compute_analyzed_asm();
+                let analyzed_asm = analyzed_asm?.clone();
+
+                powdr_analysis::convert_vms_to_constrained(analyzed_asm, &mut self.diff_monitor)
+            });
+        }
+
+        Ok(self
+            .artifact
+            .constrained_machine_collection
+            .as_ref()
+            .unwrap())
+    }
+
+    pub fn constrained_machine_collection(&self) -> Result<&AnalysisASMFile<T>, Vec<String>> {
+        Ok(self
+            .artifact
+            .constrained_machine_collection
+            .as_ref()
+            .unwrap())
+    }
+
+    pub fn compute_linked_machine_graph(&mut self) -> Result<&PILGraph<T>, Vec<String>> {
+        if self.artifact.linked_machine_graph.is_none() {
+            self.artifact.linked_machine_graph = Some({
+                let analyzed_asm = self.compute_constrained_machine_collection();
+                let analyzed_asm = analyzed_asm?.clone();
+
+                self.log("Run airgen");
+                let graph = powdr_airgen::compile(analyzed_asm);
+                self.diff_monitor.push(&graph);
+                self.log("Airgen done");
+                log::trace!("{graph}");
+
+                graph
+            });
+        }
+
+        Ok(self.artifact.linked_machine_graph.as_ref().unwrap())
+    }
+
+    pub fn linked_machine_graph(&self) -> Result<&PILGraph<T>, Vec<String>> {
+        Ok(self.artifact.linked_machine_graph.as_ref().unwrap())
+    }
+
+    pub fn compute_parsed_pil_file(&mut self) -> Result<&PILFile<T>, Vec<String>> {
+        if self.artifact.parsed_pil_file.is_none() {
+            self.artifact.parsed_pil_file = Some({
+                self.log("Run linker");
+
+                let graph = self.compute_linked_machine_graph()?;
+
+                let linked = powdr_linker::link(graph.clone())?;
+                self.diff_monitor.push(&linked);
+                log::trace!("{linked}");
+                self.maybe_write_pil(&linked, "")?;
+
+                linked
+            });
+        }
+
+        Ok(self.artifact.parsed_pil_file.as_ref().unwrap())
+    }
+
+    pub fn parsed_pil_file(&self) -> Result<&PILFile<T>, Vec<String>> {
+        Ok(self.artifact.parsed_pil_file.as_ref().unwrap())
+    }
+
+    fn compute_analyzed_pil_from_parsed_pil_file(&mut self) -> Result<Analyzed<T>, Vec<String>> {
+        self.log("Analyzing pil...");
+
+        let linked = self.compute_parsed_pil_file()?;
+
+        let analyzed = powdr_pil_analyzer::analyze_ast(linked.clone());
+        self.maybe_write_pil(&analyzed, "_analyzed")?;
+
         Ok(analyzed)
     }
 
-    pub fn optimized_pil(mut self) -> Result<Analyzed<T>, Vec<String>> {
-        self.advance_to(Stage::OptimizedPil)?;
-        let Artifact::OptimzedPil(optimized_pil) = self.artifact.unwrap() else {
-            panic!()
+    fn compute_analyzed_pil_from_pil_file_path(&self) -> Result<Analyzed<T>, Vec<String>> {
+        let pil_file = match self.artifact.pil_file_path {
+            Some(ref path) => path,
+            None => return Err(vec!["No pil file path available".to_string()]),
         };
-        Ok(optimized_pil)
+
+        self.log("Analyzing pil...");
+        let analyzed = powdr_pil_analyzer::analyze_file(pil_file);
+        self.maybe_write_pil(&analyzed, "_analyzed")?;
+
+        Ok(analyzed)
     }
 
-    pub fn optimized_pil_ref(&mut self) -> Result<&Analyzed<T>, Vec<String>> {
-        self.advance_to(Stage::OptimizedPil)?;
-        match self.artifact.as_ref().unwrap() {
-            Artifact::OptimzedPil(optimized_pil) => Ok(optimized_pil),
-            _ => panic!(),
+    fn compute_analyzed_pil_from_pil_string(&self) -> Result<Analyzed<T>, Vec<String>> {
+        let pil_string = match self.artifact.pil_string {
+            Some(ref s) => s,
+            None => return Err(vec!["No pil string available".to_string()]),
+        };
+
+        self.log("Analyzing pil...");
+        let analyzed = powdr_pil_analyzer::analyze_string(pil_string);
+        self.maybe_write_pil(&analyzed, "_analyzed")?;
+
+        Ok(analyzed)
+    }
+
+    pub fn compute_analyzed_pil(&mut self) -> Result<&Analyzed<T>, Vec<String>> {
+        if self.artifact.analyzed_pil.is_none() {
+            let analyzed_pil =
+                if self.artifact.asm_string.is_some() || self.artifact.asm_file_path.is_some() {
+                    self.compute_analyzed_pil_from_parsed_pil_file()
+                } else if self.artifact.pil_string.is_some() {
+                    self.compute_analyzed_pil_from_pil_string()
+                } else if self.artifact.pil_file_path.is_some() {
+                    self.compute_analyzed_pil_from_pil_file_path()
+                } else {
+                    panic!()
+                };
+            self.artifact.analyzed_pil = Some(analyzed_pil?)
         }
+
+        Ok(self.artifact.analyzed_pil.as_ref().unwrap())
     }
 
-    pub fn pil_with_evaluated_fixed_cols(
-        mut self,
-    ) -> Result<PilWithEvaluatedFixedCols<T>, Vec<String>> {
-        self.advance_to(Stage::PilWithEvaluatedFixedCols)?;
-        let Artifact::PilWithEvaluatedFixedCols(pil_with_constants) = self.artifact.unwrap() else {
-            panic!()
-        };
-        Ok(pil_with_constants)
+    pub fn analyzed_pil(&self) -> Result<&Analyzed<T>, Vec<String>> {
+        Ok(self.artifact.analyzed_pil.as_ref().unwrap())
     }
 
-    pub fn pil_with_evaluated_fixed_cols_ref(
-        &mut self,
-    ) -> Result<&PilWithEvaluatedFixedCols<T>, Vec<String>> {
-        self.advance_to(Stage::PilWithEvaluatedFixedCols)?;
-        match self.artifact.as_ref().unwrap() {
-            Artifact::PilWithEvaluatedFixedCols(pil_with_constants) => Ok(pil_with_constants),
-            _ => panic!(),
+    pub fn compute_optimized_pil(&mut self) -> Result<Rc<Analyzed<T>>, Vec<String>> {
+        if let Some(ref optimized_pil) = self.artifact.optimized_pil {
+            return Ok(optimized_pil.clone());
         }
+
+        let analyzed_pil = self.compute_analyzed_pil()?.clone();
+
+        self.log("Optimizing pil...");
+        let optimized = powdr_pilopt::optimize(analyzed_pil);
+        self.maybe_write_pil(&optimized, "_opt")?;
+        self.maybe_write_pil_object(&optimized, "_opt")?;
+
+        self.artifact.optimized_pil = Some(Rc::new(optimized));
+
+        Ok(self.artifact.optimized_pil.as_ref().unwrap().clone())
     }
 
-    pub fn generated_witness(mut self) -> Result<GeneratedWitness<T>, Vec<String>> {
-        self.advance_to(Stage::GeneratedWitness)?;
-        let Artifact::GeneratedWitness(generated_witness) = self.artifact.unwrap() else {
-            panic!()
-        };
-        Ok(generated_witness)
+    pub fn optimized_pil(&self) -> Result<Rc<Analyzed<T>>, Vec<String>> {
+        Ok(self.artifact.optimized_pil.as_ref().unwrap().clone())
     }
 
-    pub fn proof(mut self) -> Result<ProofResult<T>, Vec<String>> {
-        self.advance_to(Stage::Proof)?;
-        let Artifact::Proof(proof) = self.artifact.unwrap() else {
-            panic!()
+    pub fn compute_fixed_cols(&mut self) -> Result<Rc<Columns<T>>, Vec<String>> {
+        if let Some(ref fixed_cols) = self.artifact.fixed_cols {
+            return Ok(fixed_cols.clone());
+        }
+
+        self.log("Evaluating fixed columns...");
+
+        let pil = self.compute_optimized_pil()?;
+
+        let start = Instant::now();
+        let fixed_cols = constant_evaluator::generate(&pil);
+        self.maybe_write_constants(&fixed_cols)?;
+        self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
+
+        self.artifact.fixed_cols = Some(Rc::new(fixed_cols));
+
+        Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
+    }
+
+    pub fn fixed_cols(&self) -> Result<Rc<Columns<T>>, Vec<String>> {
+        Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
+    }
+
+    pub fn compute_witness(&mut self) -> Result<Rc<Columns<T>>, Vec<String>> {
+        if let Some(ref witness) = self.artifact.witness {
+            return Ok(witness.clone());
+        }
+
+        self.log("Deducing witness columns...");
+
+        let pil = self.compute_optimized_pil()?;
+        let fixed_cols = self.compute_fixed_cols()?;
+
+        assert_eq!(pil.constant_count(), fixed_cols.len());
+
+        let start = Instant::now();
+        let external_witness_values = std::mem::take(&mut self.arguments.external_witness_values);
+        let query_callback = self
+            .arguments
+            .query_callback
+            .take()
+            .unwrap_or_else(|| Arc::new(powdr_executor::witgen::unused_query_callback()));
+        let witness = powdr_executor::witgen::WitnessGenerator::new(
+            &pil,
+            &fixed_cols,
+            query_callback.borrow(),
+        )
+        .with_external_witness_values(external_witness_values)
+        .generate();
+
+        self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
+
+        self.maybe_write_witness(&fixed_cols, &witness)?;
+
+        self.artifact.witness = Some(Rc::new(witness));
+
+        Ok(self.artifact.witness.as_ref().unwrap().clone())
+    }
+
+    pub fn witness(&self) -> Result<Rc<Columns<T>>, Vec<String>> {
+        Ok(self.artifact.witness.as_ref().unwrap().clone())
+    }
+
+    pub fn compute_proof(&mut self) -> Result<&Proof, Vec<String>> {
+        if self.artifact.proof.is_some() {
+            return Ok(self.artifact.proof.as_ref().unwrap());
+        }
+
+        let pil = self.compute_optimized_pil()?;
+        let fixed_cols = self.compute_fixed_cols()?;
+        let witness = self.compute_witness()?;
+
+        let backend = self
+            .arguments
+            .backend
+            .expect("backend must be set before calling proving!");
+        let factory = backend.factory::<T>();
+
+        // Opens the setup file, if set.
+        let mut setup = self
+            .arguments
+            .setup_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
+        // Opens the verification key file, if set.
+        let mut vkey = self
+            .arguments
+            .vkey_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
+        /* Create the backend */
+        let backend = factory
+            .create(
+                pil.borrow(),
+                &fixed_cols[..],
+                self.output_dir(),
+                setup.as_io_read(),
+                vkey.as_io_read(),
+            )
+            .unwrap();
+
+        // Reads the existing proof file, if set.
+        let existing_proof = self
+            .arguments
+            .existing_proof_file
+            .as_ref()
+            .map(|path| fs::read(path).unwrap());
+
+        let proof = match backend.prove(&witness, existing_proof) {
+            Ok(proof) => proof,
+            Err(powdr_backend::Error::BackendError(e)) => {
+                return Err(vec![e.to_string()]);
+            }
+            _ => panic!(),
         };
-        Ok(proof)
+        drop(backend);
+
+        self.maybe_write_proof(&proof)?;
+
+        self.artifact.proof = Some(proof);
+
+        Ok(self.artifact.proof.as_ref().unwrap())
+    }
+
+    pub fn proof(&self) -> Result<&Proof, Vec<String>> {
+        Ok(self.artifact.proof.as_ref().unwrap())
     }
 
     pub fn output_dir(&self) -> Option<&Path> {
@@ -941,10 +904,6 @@ impl<T: FieldElement> Pipeline<T> {
         self.name.as_ref().unwrap()
     }
 
-    pub fn artifact(&self) -> Option<&Artifact<T>> {
-        self.artifact.as_ref()
-    }
-
     pub fn data_callback(&self) -> Option<&dyn QueryCallback<T>> {
         self.arguments.query_callback.as_deref()
     }
@@ -953,81 +912,75 @@ impl<T: FieldElement> Pipeline<T> {
         &mut self,
         mut writer: W,
     ) -> Result<(), Vec<String>> {
-        self.advance_to(Stage::PilWithEvaluatedFixedCols)?;
-        match self.artifact.as_ref().unwrap() {
-            Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols }) => {
-                let backend = self
-                    .arguments
-                    .backend
-                    .expect("backend must be set before generating verification key!");
-                let factory = backend.factory::<T>();
+        let backend = self
+            .arguments
+            .backend
+            .expect("backend must be set before generating verification key!");
+        let factory = backend.factory::<T>();
 
-                let mut setup_file = self
-                    .arguments
-                    .setup_file
-                    .as_ref()
-                    .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+        let mut setup_file = self
+            .arguments
+            .setup_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
 
-                let backend = factory
-                    .create(
-                        pil.borrow(),
-                        &fixed_cols[..],
-                        self.output_dir(),
-                        setup_file
-                            .as_mut()
-                            .map(|file| file as &mut dyn std::io::Read),
-                        None,
-                    )
-                    .unwrap();
+        let pil = self.compute_optimized_pil()?;
+        let fixed_cols = self.compute_fixed_cols()?;
 
-                match backend.export_verification_key(&mut writer) {
-                    Ok(()) => Ok(()),
-                    Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
-                    _ => panic!(),
-                }
-            }
+        let backend = factory
+            .create(
+                pil.borrow(),
+                &fixed_cols[..],
+                self.output_dir(),
+                setup_file
+                    .as_mut()
+                    .map(|file| file as &mut dyn std::io::Read),
+                None,
+            )
+            .unwrap();
+
+        match backend.export_verification_key(&mut writer) {
+            Ok(()) => Ok(()),
+            Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
             _ => panic!(),
         }
     }
 
-    pub fn verify(&mut self, proof: Vec<u8>, instances: &[Vec<T>]) -> Result<(), Vec<String>> {
-        self.advance_to(Stage::PilWithEvaluatedFixedCols)?;
-        match self.artifact.as_ref().unwrap() {
-            Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols }) => {
-                let backend = self
-                    .arguments
-                    .backend
-                    .expect("backend must be set before generating verification key!");
-                let factory = backend.factory::<T>();
+    pub fn verify(&mut self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Vec<String>> {
+        let backend = self
+            .arguments
+            .backend
+            .expect("backend must be set before generating verification key!");
+        let factory = backend.factory::<T>();
 
-                let mut setup_file = if let Some(path) = &self.arguments.setup_file {
-                    BufReader::new(fs::File::open(path).unwrap())
-                } else {
-                    panic!("Setup should have been provided for verification")
-                };
+        let mut setup_file = if let Some(path) = &self.arguments.setup_file {
+            BufReader::new(fs::File::open(path).unwrap())
+        } else {
+            panic!("Setup should have been provided for verification")
+        };
 
-                let mut vkey_file = if let Some(ref path) = self.arguments.vkey_file {
-                    BufReader::new(fs::File::open(path).unwrap())
-                } else {
-                    panic!("Verification key should have been provided for verification")
-                };
+        let mut vkey_file = if let Some(ref path) = self.arguments.vkey_file {
+            BufReader::new(fs::File::open(path).unwrap())
+        } else {
+            panic!("Verification key should have been provided for verification")
+        };
 
-                let backend = factory
-                    .create(
-                        pil.borrow(),
-                        &fixed_cols[..],
-                        self.output_dir(),
-                        Some(&mut setup_file),
-                        Some(&mut vkey_file),
-                    )
-                    .unwrap();
+        let pil = self.compute_optimized_pil()?;
+        let fixed_cols = self.compute_fixed_cols()?;
 
-                match backend.verify(&proof, instances) {
-                    Ok(_) => Ok(()),
-                    Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
-                    _ => panic!(),
-                }
-            }
+        let backend = factory
+            .create(
+                pil.borrow(),
+                &fixed_cols[..],
+                self.output_dir(),
+                Some(&mut setup_file),
+                Some(&mut vkey_file),
+            )
+            .unwrap();
+
+        match backend.verify(proof, instances) {
+            Ok(_) => Ok(()),
+            Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
             _ => panic!(),
         }
     }

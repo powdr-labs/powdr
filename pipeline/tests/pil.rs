@@ -19,7 +19,7 @@ fn test_invalid_witness_pilcom() {
     let f = "pil/trivial.pil";
     let pipeline = Pipeline::default()
         .from_file(resolve_test_file(f))
-        .skip_witness_generation(vec![(
+        .set_witness(vec![(
             "main.w".to_string(),
             vec![GoldilocksField::from(0); 4],
         )]);
@@ -32,12 +32,12 @@ fn test_invalid_witness_estark() {
     let f = "pil/trivial.pil";
     Pipeline::default()
         .from_file(resolve_test_file(f))
-        .skip_witness_generation(vec![(
+        .set_witness(vec![(
             "main.w".to_string(),
             vec![GoldilocksField::from(0); 4],
         )])
         .with_backend(powdr_backend::BackendType::EStark)
-        .proof()
+        .compute_proof()
         .unwrap();
 }
 
@@ -48,9 +48,9 @@ fn test_invalid_witness_halo2mock() {
     let f = "pil/trivial.pil";
     Pipeline::default()
         .from_file(resolve_test_file(f))
-        .skip_witness_generation(vec![("main.w".to_string(), vec![Bn254Field::from(0); 4])])
+        .set_witness(vec![("main.w".to_string(), vec![Bn254Field::from(0); 4])])
         .with_backend(powdr_backend::BackendType::Halo2Mock)
-        .proof()
+        .compute_proof()
         .unwrap();
 }
 
@@ -61,9 +61,9 @@ fn test_invalid_witness_halo2() {
     let f = "pil/trivial.pil";
     Pipeline::default()
         .from_file(resolve_test_file(f))
-        .skip_witness_generation(vec![("main.w".to_string(), vec![Bn254Field::from(0); 4])])
+        .set_witness(vec![("main.w".to_string(), vec![Bn254Field::from(0); 4])])
         .with_backend(powdr_backend::BackendType::Halo2)
-        .proof()
+        .compute_proof()
         .unwrap();
 }
 
@@ -250,7 +250,7 @@ fn serialize_deserialize_optimized_pil() {
 
     let optimized = powdr_pipeline::Pipeline::<powdr_number::Bn254Field>::default()
         .from_file(path)
-        .optimized_pil()
+        .compute_optimized_pil()
         .unwrap();
 
     let optimized_serialized = serde_cbor::to_vec(&optimized).unwrap();
