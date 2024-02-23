@@ -376,31 +376,31 @@ mod internal {
                     .collect::<Result<_, _>>()?,
             ),
             Expression::BinaryOperation(left, op, right) => {
-                let mut left = evaluate(left, locals, symbols)?;
-                let mut right = evaluate(right, locals, symbols)?;
-                match (&mut left, op, &mut right) {
-                    (Value::Custom(_), _, _) | (_, _, Value::Custom(_)) => {
-                        symbols.eval_binary_operation(left, *op, right)?
+                let left = evaluate(left, locals, symbols)?;
+                let right = evaluate(right, locals, symbols)?;
+                match (left, op, right) {
+                    (l @ Value::Custom(_), _, r) | (l, _, r @ Value::Custom(_)) => {
+                        symbols.eval_binary_operation(l, *op, r)?
                     }
-                    (Value::Array(l), BinaryOperator::Add, Value::Array(r)) => {
-                        l.extend(std::mem::take(r));
-                        Value::Array(std::mem::take(l))
+                    (Value::Array(mut l), BinaryOperator::Add, Value::Array(r)) => {
+                        l.extend(r);
+                        Value::Array(l)
                     }
-                    (Value::String(l), BinaryOperator::Add, Value::String(r)) => {
-                        l.push_str(r);
-                        Value::String(std::mem::take(l))
+                    (Value::String(mut l), BinaryOperator::Add, Value::String(r)) => {
+                        l.push_str(&r);
+                        Value::String(l)
                     }
                     (Value::Bool(l), BinaryOperator::LogicalOr, Value::Bool(r)) => {
-                        Value::Bool(*l || *r)
+                        Value::Bool(l || r)
                     }
                     (Value::Bool(l), BinaryOperator::LogicalAnd, Value::Bool(r)) => {
-                        Value::Bool(*l && *r)
+                        Value::Bool(l && r)
                     }
                     (Value::Integer(l), _, Value::Integer(r)) => {
-                        evaluate_binary_operation_integer(l, *op, r)?
+                        evaluate_binary_operation_integer(&l, *op, &r)?
                     }
                     (Value::FieldElement(l), _, Value::FieldElement(r)) => {
-                        evaluate_binary_operation_field(*l, *op, *r)?
+                        evaluate_binary_operation_field(l, *op, r)?
                     }
                     (Value::FieldElement(l), BinaryOperator::Pow, Value::Integer(r)) => {
                         let exp = r.to_u64().ok_or_else(|| {
@@ -408,10 +408,10 @@ mod internal {
                         })?;
                         Value::FieldElement(l.pow(exp.into()))
                     }
-                    _ => Err(EvalError::TypeError(format!(
-                        "Operator {op} not supported on types: {left}: {}, {right}: {}",
-                        left.type_name(),
-                        right.type_name()
+                    (l, op, r) => Err(EvalError::TypeError(format!(
+                        "Operator {op} not supported on types: {l}: {}, {r}: {}",
+                        l.type_name(),
+                        r.type_name()
                     )))?,
                 }
             }
