@@ -16,7 +16,6 @@ use powdr_ast::{
     asm_analysis::AnalysisASMFile,
     object::PILGraph,
     parsed::{asm::ASMProgram, PILFile},
-    DiffMonitor,
 };
 use powdr_backend::{BackendType, Proof};
 use powdr_executor::{
@@ -107,8 +106,6 @@ struct Arguments<T: FieldElement> {
 pub struct Pipeline<T: FieldElement> {
     /// Stores all artifacts at the same time.
     artifact: Artifacts<T>,
-    /// The diff monitor is used to track changes between pipeline stages.
-    diff_monitor: DiffMonitor,
     /// Output directory for intermediate files. If None, no files are written.
     output_dir: Option<PathBuf>,
     /// The name of the pipeline. Used to name output files.
@@ -131,7 +128,6 @@ where
     fn default() -> Self {
         Pipeline {
             artifact: Default::default(),
-            diff_monitor: DiffMonitor::default(),
             output_dir: None,
             log_level: Level::Debug,
             name: None,
@@ -555,7 +551,6 @@ impl<T: FieldElement> Pipeline<T> {
                     err.output_to_stderr();
                     panic!();
                 });
-                self.diff_monitor.push(&parsed_asm);
 
                 (path.clone(), parsed_asm)
             });
@@ -574,11 +569,7 @@ impl<T: FieldElement> Pipeline<T> {
                 let (path, parsed) = self.compute_parsed_asm_file()?.clone();
 
                 self.log("Loading dependencies and resolving references");
-                let resolved = powdr_importer::load_dependencies_and_resolve(path, parsed)
-                    .map_err(|e| vec![e])?;
-                self.diff_monitor.push(&resolved);
-
-                resolved
+                powdr_importer::load_dependencies_and_resolve(path, parsed).map_err(|e| vec![e])?
             });
         }
 
@@ -595,7 +586,7 @@ impl<T: FieldElement> Pipeline<T> {
                 let resolved = self.compute_resolved_module_tree()?.clone();
 
                 self.log("Run analysis");
-                let analyzed_asm = powdr_analysis::analyze(resolved, &mut self.diff_monitor)?;
+                let analyzed_asm = powdr_analysis::analyze(resolved)?;
                 self.log("Analysis done");
                 log::trace!("{analyzed_asm}");
 
@@ -616,7 +607,7 @@ impl<T: FieldElement> Pipeline<T> {
         if self.artifact.constrained_machine_collection.is_none() {
             self.artifact.constrained_machine_collection = Some({
                 let analyzed_asm = self.compute_analyzed_asm()?.clone();
-                powdr_analysis::convert_vms_to_constrained(analyzed_asm, &mut self.diff_monitor)
+                powdr_analysis::convert_vms_to_constrained(analyzed_asm)
             });
         }
 
@@ -642,7 +633,6 @@ impl<T: FieldElement> Pipeline<T> {
 
                 self.log("Run airgen");
                 let graph = powdr_airgen::compile(analyzed_asm);
-                self.diff_monitor.push(&graph);
                 self.log("Airgen done");
                 log::trace!("{graph}");
 
@@ -665,7 +655,6 @@ impl<T: FieldElement> Pipeline<T> {
                 let graph = self.compute_linked_machine_graph()?;
 
                 let linked = powdr_linker::link(graph.clone())?;
-                self.diff_monitor.push(&linked);
                 log::trace!("{linked}");
                 self.maybe_write_pil(&linked, "")?;
 

@@ -1,7 +1,6 @@
 #![deny(clippy::print_stdout)]
 
 use itertools::Itertools;
-use log::log_enabled;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Result, Write};
@@ -16,13 +15,6 @@ pub mod object;
 /// A parsed ASM + PIL AST
 pub mod parsed;
 
-#[derive(Default, Clone)]
-/// A monitor of the changes applied to the program as we run through the analysis pipeline
-pub struct DiffMonitor {
-    previous: Option<String>,
-    current: Option<String>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub struct SourceRef {
     pub file: Option<Arc<str>>,
@@ -36,26 +28,6 @@ impl SourceRef {
             file: None,
             line: 0,
             col: 0,
-        }
-    }
-}
-
-impl DiffMonitor {
-    /// push a new program and log::trace! how it differs from the previous one, if any
-    pub fn push<S: ToString>(&mut self, s: S) {
-        if log_enabled!(log::Level::Trace) {
-            std::mem::swap(&mut self.previous, &mut self.current);
-            self.current = Some(s.to_string());
-            if let (Some(current), Some(previous)) = (&self.current, &self.previous) {
-                for diff in diff::lines(previous, current) {
-                    match diff {
-                        diff::Result::Left(l) => log::trace!("-{}", l),
-                        diff::Result::Both(..) => {}
-                        diff::Result::Right(r) => log::trace!("+{}", r),
-                    }
-                }
-                log::trace!("");
-            }
         }
     }
 }
