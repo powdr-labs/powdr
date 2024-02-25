@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::Display;
 
 use itertools::{Either, Itertools};
@@ -54,29 +55,22 @@ where
         self.is_constant().then_some(self.offset)
     }
 
-    pub fn nonzero_variables(&self) -> Vec<K> {
-        self.nonzero_coefficients()
-            .into_iter()
-            .map(|(i, _)| i)
-            .collect()
-    }
-
     /// @returns the nonzero coefficients and their variable IDs (but not the offset).
     /// The order of coefficients is arbitrary.
-    pub fn nonzero_coefficients(&self) -> Vec<(K, T)> {
+    pub fn nonzero_coefficients(&self) -> Cow<[(K, T)]> {
         // We need to make sure that there are no duplicates in the variable
         // IDs and that the coefficients are nonzero. In other words, we need to
         // "clean" the coefficient array.
 
         // First try the easy cases.
         if self.clean {
-            return self.coefficients.clone();
+            return Cow::from(&self.coefficients);
         }
 
         match &self.coefficients[..] {
-            [] => return vec![],
-            [(k, v)] => return Self::clean_one(k, v),
-            [(k1, v1), (k2, v2)] => return Self::clean_two((k1, v1), (k2, v2)),
+            [] => return vec![].into(),
+            [(k, v)] => return Self::clean_one(k, v).into(),
+            [(k1, v1), (k2, v2)] => return Self::clean_two((k1, v1), (k2, v2)).into(),
             _ => {}
         };
 
@@ -126,7 +120,7 @@ where
     fn clean(&self) -> Self {
         AffineExpression {
             offset: self.offset,
-            coefficients: self.nonzero_coefficients(),
+            coefficients: self.nonzero_coefficients().to_vec(),
             clean: true,
         }
     }
@@ -435,9 +429,9 @@ where
         if self.offset != other.offset {
             return false;
         };
-        let mut self_coeff = self.nonzero_coefficients();
+        let mut self_coeff = self.nonzero_coefficients().to_vec();
         self_coeff.sort_unstable();
-        let mut other_coeff = other.nonzero_coefficients();
+        let mut other_coeff = other.nonzero_coefficients().to_vec();
         other_coeff.sort_unstable();
         self_coeff == other_coeff
     }
