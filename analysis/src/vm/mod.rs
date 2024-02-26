@@ -1,7 +1,7 @@
 //! Analysis for VM machines, reducing them to constrained machines
 //! Machines which do not have a pc should be left unchanged by this
 
-use powdr_ast::{asm_analysis::AnalysisASMFile, DiffMonitor};
+use powdr_ast::asm_analysis::AnalysisASMFile;
 use powdr_number::FieldElement;
 
 pub mod batcher;
@@ -9,16 +9,13 @@ pub mod inference;
 
 pub(crate) fn analyze<T: FieldElement>(
     file: AnalysisASMFile<T>,
-    monitor: &mut DiffMonitor,
 ) -> Result<AnalysisASMFile<T>, Vec<String>> {
     // infer assignment registers
     log::debug!("Run inference analysis step");
     let file = inference::infer(file)?;
-    monitor.push(&file);
     // batch statements in each function
     log::debug!("Run batch analysis step");
     let file = batcher::batch(file);
-    monitor.push(&file);
 
     Ok(file)
 }

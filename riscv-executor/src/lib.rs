@@ -938,8 +938,7 @@ pub fn execute<F: FieldElement>(
     log::info!("Resolving imports...");
     let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
     log::info!("Analyzing...");
-    let analyzed =
-        powdr_analysis::analyze(resolved, &mut powdr_ast::DiffMonitor::default()).unwrap();
+    let analyzed = powdr_analysis::analyze(resolved).unwrap();
 
     log::info!("Executing...");
     execute_ast(&analyzed, inputs, bootloader_inputs, usize::MAX, mode)
