@@ -634,7 +634,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
             "branch_if_positive" => {
-                if args[0].bin() as i32 > 0 {
+                if args[0].bin() > 0 {
                     self.proc.set_pc(args[1]);
                 }
 
