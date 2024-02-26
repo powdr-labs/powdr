@@ -18,8 +18,6 @@ machine Main {
         X0 = X1
     }
 
-    instr loop { pc' = pc }
-
     function main {
 
         // Test vector for poseidonperm_x5_254_3 from:

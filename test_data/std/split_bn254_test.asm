@@ -31,8 +31,6 @@ machine Main {
         X0 = X1
     }
 
-    instr loop { pc' = pc }
-
     function main {
 
         // Min value
