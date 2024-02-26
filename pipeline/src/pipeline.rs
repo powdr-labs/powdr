@@ -13,7 +13,7 @@ use std::{
 use log::Level;
 use powdr_ast::{
     analyzed::Analyzed,
-    asm_analysis::AnalysisASMFile,
+    asm_analysis::{rust_witgen, AnalysisASMFile},
     object::PILGraph,
     parsed::{asm::ASMProgram, PILFile},
 };
@@ -602,6 +602,20 @@ impl<T: FieldElement> Pipeline<T> {
                 analyzed_asm
             });
         }
+
+        let main = self
+            .artifact
+            .analyzed_asm
+            .as_ref()
+            .unwrap()
+            .machines()
+            .next()
+            .unwrap()
+            .1
+            .clone();
+        let mut witgen = rust_witgen::RustWitgen::new(main);
+        witgen.generate();
+        println!("Generated witgen Rust:\n{}", witgen.code);
 
         Ok(self.artifact.analyzed_asm.as_ref().unwrap())
     }

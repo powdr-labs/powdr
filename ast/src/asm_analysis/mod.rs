@@ -1,4 +1,5 @@
 mod display;
+pub mod rust_witgen;
 
 use std::{
     collections::{
