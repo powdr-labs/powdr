@@ -607,7 +607,7 @@ impl<T: FieldElement> Pipeline<T> {
         if self.artifact.constrained_machine_collection.is_none() {
             self.artifact.constrained_machine_collection = Some({
                 let analyzed_asm = self.compute_analyzed_asm()?.clone();
-                powdr_analysis::convert_vms_to_constrained(analyzed_asm)
+                powdr_asm_to_pil::compile(analyzed_asm)
             });
         }
 

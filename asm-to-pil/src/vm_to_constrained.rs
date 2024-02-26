@@ -1239,11 +1239,13 @@ mod test {
     use powdr_ast::asm_analysis::AnalysisASMFile;
     use powdr_number::{FieldElement, GoldilocksField};
 
+    use crate::compile;
+
     fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> AnalysisASMFile<T> {
         let parsed = powdr_parser::parse_asm(None, input).unwrap();
         // let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
         let analyzed = powdr_analysis::analyze(parsed).unwrap();
-        powdr_analysis::convert_vms_to_constrained(analyzed)
+        compile(analyzed)
     }
 
     #[test]

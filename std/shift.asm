@@ -10,6 +10,7 @@ machine Shift(latch, operation_id) {
     operation shr<1> A, B -> C;
 
     col witness operation_id;
+    unchanged_until(operation_id, latch);
 
     col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
     col fixed FACTOR_ROW(i) { (i + 1) % 4 };

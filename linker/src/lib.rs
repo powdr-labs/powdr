@@ -263,6 +263,9 @@ mod test {
     fn compile_empty_vm() {
         let expectation = r#"namespace main(8);
     pol commit _operation_id(i) query ("hint", 2);
+    pol constant _block_enforcer_last_step = [0]* + [1];
+    let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
+    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
     pol commit pc;
     pol commit instr__jump_to_operation;
     pol commit instr__reset;
@@ -277,10 +280,6 @@ mod test {
     pol constant p_instr__reset = [1, 0, 0] + [0]*;
     pol constant p_instr_return = [0]*;
     { pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return };
-    pol constant _block_enforcer_last_step = [0]* + [1];
-    pol commit _operation_id_no_change;
-    (_operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return)));
-    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
 "#;
 
         let file_name = format!(
@@ -297,6 +296,9 @@ mod test {
     fn compile_different_signatures() {
         let expectation = r#"namespace main(16);
     pol commit _operation_id(i) query ("hint", 4);
+    pol constant _block_enforcer_last_step = [0]* + [1];
+    let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
+    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
     pol commit pc;
     pol commit X;
     pol commit Y;
@@ -345,10 +347,6 @@ mod test {
     pol constant p_reg_write_X_A = [0]*;
     pol constant p_reg_write_Y_A = [0, 0, 1, 0, 0] + [0]*;
     { pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc };
-    pol constant _block_enforcer_last_step = [0]* + [1];
-    pol commit _operation_id_no_change;
-    (_operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return)));
-    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
     instr_identity { 2, X, Y } in main_sub.instr_return { main_sub._operation_id, main_sub._input_0, main_sub._output_0 };
     instr_one { 4, Y } in main_sub.instr_return { main_sub._operation_id, main_sub._output_0 };
     instr_nothing { 3 } in main_sub.instr_return { main_sub._operation_id };
@@ -356,6 +354,9 @@ mod test {
     ((_linker_first_step * (_operation_id - 2)) = 0);
 namespace main_sub(16);
     pol commit _operation_id(i) query ("hint", 5);
+    pol constant _block_enforcer_last_step = [0]* + [1];
+    let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
+    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
     pol commit pc;
     pol commit _input_0;
     pol commit _output_0;
@@ -383,10 +384,6 @@ namespace main_sub(16);
     pol constant p_read__output_0__input_0 = [0, 0, 1, 0, 0, 0] + [0]*;
     pol constant p_read__output_0_pc = [0]*;
     { pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 };
-    pol constant _block_enforcer_last_step = [0]* + [1];
-    pol commit _operation_id_no_change;
-    (_operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return)));
-    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
 "#;
         let file_name = format!(
             "{}/../test_data/asm/different_signatures.asm",
@@ -407,6 +404,9 @@ namespace main_sub(16);
     ((XIsZero * X) = 0);
     ((XIsZero * (1 - XIsZero)) = 0);
     pol commit _operation_id(i) query ("hint", 10);
+    pol constant _block_enforcer_last_step = [0]* + [1];
+    let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
+    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
     pol commit pc;
     pol commit X;
     pol commit reg_write_X_A;
@@ -457,10 +457,6 @@ namespace main_sub(16);
     pol constant p_reg_write_X_A = [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0] + [0]*;
     pol constant p_reg_write_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     { pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { p_line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
-    pol constant _block_enforcer_last_step = [0]* + [1];
-    pol commit _operation_id_no_change;
-    (_operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return)));
-    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
     pol constant _linker_first_step = [1] + [0]*;
     ((_linker_first_step * (_operation_id - 2)) = 0);
 "#;
@@ -493,6 +489,9 @@ machine Machine {
 "#;
         let expectation = r#"namespace main(1024);
     pol commit _operation_id(i) query ("hint", 4);
+    pol constant _block_enforcer_last_step = [0]* + [1];
+    let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
+    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
     pol commit pc;
     pol commit fp;
     pol commit instr_inc_fp;
@@ -519,10 +518,6 @@ machine Machine {
     pol constant p_instr_inc_fp_param_amount = [0, 0, 7, 0, 0] + [0]*;
     pol constant p_instr_return = [0]*;
     { pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t, instr__jump_to_operation, instr__reset, instr__loop, instr_return } in { p_line, p_instr_inc_fp, p_instr_inc_fp_param_amount, p_instr_adjust_fp, p_instr_adjust_fp_param_amount, p_instr_adjust_fp_param_t, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return };
-    pol constant _block_enforcer_last_step = [0]* + [1];
-    pol commit _operation_id_no_change;
-    (_operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return)));
-    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
     pol constant _linker_first_step = [1] + [0]*;
     ((_linker_first_step * (_operation_id - 2)) = 0);
 "#;
@@ -581,6 +576,9 @@ machine Main {
 ";
         let expected = r#"namespace main(1024);
     pol commit _operation_id(i) query ("hint", 3);
+    pol constant _block_enforcer_last_step = [0]* + [1];
+    let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
+    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
     pol commit pc;
     pol commit X;
     pol commit reg_write_X_A;
@@ -612,10 +610,6 @@ machine Main {
     pol constant p_read_X_pc = [0]*;
     pol constant p_reg_write_X_A = [0]*;
     { pc, reg_write_X_A, instr_add5_into_A, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc } in { p_line, p_reg_write_X_A, p_instr_add5_into_A, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc };
-    pol constant _block_enforcer_last_step = [0]* + [1];
-    pol commit _operation_id_no_change;
-    (_operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return)));
-    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
     instr_add5_into_A { 0, X, A' } in main_vm.latch { main_vm.operation_id, main_vm.x, main_vm.y };
     pol constant _linker_first_step = [1] + [0]*;
     ((_linker_first_step * (_operation_id - 2)) = 0);
@@ -625,10 +619,6 @@ namespace main_vm(1024);
     pol commit x;
     pol commit y;
     (y = (x + 5));
-    pol constant _block_enforcer_last_step = [0]* + [1];
-    pol commit _operation_id_no_change;
-    (_operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - latch)));
-    ((_operation_id_no_change * (operation_id' - operation_id)) = 0);
 "#;
         let graph = parse_analyse_and_compile::<GoldilocksField>(asm);
         let pil = link(graph).unwrap();

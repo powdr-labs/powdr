@@ -191,8 +191,8 @@ machine Arith(CLK32_31, operation_id){
     // Note that there are only 4 selectors because equation 4 is activated iff. equation 3 is activated, so we can
     // re-use the same selector.
     pol commit selEq[4];
-    // Note that this is not necessary, because the operation ID is already constant within the block
-    // array::map(selEq, fixed_inside_32_block);
+    // Note that this implies that the selEq[] columns are also constant within the block.
+    fixed_inside_32_block(operation_id);
     array::map(selEq, |c| force_bool(c));
     sum(4, |i| 2 ** i * selEq[i]) = operation_id;
 
