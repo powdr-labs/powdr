@@ -1,5 +1,5 @@
-use std::utils::fold;
 use std::array;
+use std::utils::unchanged_until;
 
 // Implements the Poseidon permutation for the Goldilocks field.
 machine PoseidonGL(LASTBLOCK, operation_id) {
@@ -9,7 +9,7 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     // When the hash function is used only once, the capacity elements should be
     // set to constants, where different constants can be used to define different
     // hash functions.
-    operation poseidon_permutation<0> input_inp[0], input_inp[1], input_inp[2], input_inp[3], input_inp[4], input_inp[5], input_inp[6], input_inp[7], input_cap[0], input_cap[1], input_cap[2], input_cap[3] -> inp[0], inp[1], inp[2], inp[3];
+    operation poseidon_permutation<0> input_state[0], input_state[1], input_state[2], input_state[3], input_state[4], input_state[5], input_state[6], input_state[7], input_state[8], input_state[9], input_state[10], input_state[11] -> state[0], state[1], state[2], state[3];
 
     col witness operation_id;
 
@@ -23,19 +23,21 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     //   they reserve extra columns to repeat the output. This saves some columns, because the
     //   function has more inputs than outputs. Should be fixed once #627 is fixed.
 
+    // Number of field elements in the state
+    let STATE_SIZE = 12;
     // Number of full rounds
-    constant %nRoundsF = 8;
+    let FULL_ROUNDS = 8;
     // Number of partial rounds (half of them before and half of them after the full rounds)
-    constant %nRoundsP = 22;
-    constant %rowsPerHash = %nRoundsF + %nRoundsP + 1;
+    let PARTIAL_ROUNDS = 22;
+    let ROWS_PER_HASH = FULL_ROUNDS + PARTIAL_ROUNDS + 1;
 
     pol constant L0 = [1] + [0]*;
-    pol constant FIRSTBLOCK(i) { match i % %rowsPerHash {
+    pol constant FIRSTBLOCK(i) { match i % ROWS_PER_HASH {
         0 => 1,
         _ => 0
     }};
-    pol constant LASTBLOCK(i) { match i % %rowsPerHash {
-        %rowsPerHash - 1 => 1,
+    pol constant LASTBLOCK(i) { match i % ROWS_PER_HASH {
+        ROWS_PER_HASH - 1 => 1,
         _ => 0
     }};
     // Like LASTBLOCK, but also 1 in the last row of the table
@@ -58,129 +60,58 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     pol constant C_9 = [0x277fa208bf337bff, 0xc35eae071903ff0b, 0xda2abef589d644e, 0xf5c0bc1de6da8699, 0x27f8ec88bb21b1a3, 0x90dee49fc9bfc23a, 0x7cc5583b10415f21, 0xf2417089e4fb3cbd, 0xacb8417879fd449f, 0x9f9a036ed4f2d49f, 0x98b7672f9ef3b419, 0x20216dd77be493de, 0x18e21b4beabb4137, 0x10383f20a4ff9a87, 0x516306f4927c93af, 0xdd8f909a938e0172, 0x304265a6384f0f2d, 0xf73b2922f38bd64, 0xc0d28a5c10960bd3, 0xf19e400a5104d20d, 0x541d496344d2c75b, 0x2265fc92feb0dc09, 0x410fefafa319ac9d, 0x387cb5d25af4afcc, 0x5eeea940fcde8b6f, 0x3dea5bd5d0578bd7, 0x594e29c42473d06b, 0xdae8645996edd6a5, 0xbb9879c6e61fd62a, 0xf172d73e004fc90d, 0x0]*;
     pol constant C_10 = [0xe17653a29da578a1, 0x849c2656969c4be7, 0xf061274fdb150d61, 0x40b12cbf09ef74bf, 0xfceb4fda1ded0893, 0xd1b1edf76bc09c92, 0x85df9ed2e166d64f, 0x60e75c2890d15730, 0x9c22190be7f74732, 0xb93e260cae5c170e, 0xbb93ae776bb30e3a, 0xadffe8cf28449ec6, 0x1e3b9fc625b554f4, 0x38e8ee9d71a45af8, 0xddb4ac49c9efa1da, 0xc6401fe115063f5b, 0x593664c39773012c, 0x16bf1f73fb7a9c3f, 0x45d7ac9b68f71a34, 0xc368a348e46d950f, 0xe909678474e687fe, 0x17dfc8e4f7ba8a57, 0xbdf8f242e316c4ab, 0xbba2515f22909e87, 0x4cd1f1b175100206, 0x16e50d897d4634ac, 0xf6f31db1899b12d5, 0xdebe0853b1a1d378, 0x6e7c8f1a84265034, 0xdfd1c4febcc81238, 0x0]*;
     pol constant C_11 = [0xc54302f225db2c76, 0xc0572c8c08cbbbad, 0x28b8ec3ae9c29633, 0xa637093ecb2ad631, 0xfac6ff1346a41675, 0xb65481ba645c602, 0x6604df4fee32bcb1, 0xa6217d8bf660f29c, 0x5d693c1ba3ba3621, 0xb0a7eae879ddb76d, 0x28fd3b046380f850, 0x1c4dbb1c4c27d243, 0x25d64362697828fd, 0xdd5118375bf1a9b9, 0x64bb6dec369d4418, 0x8ad97b33f1ac1455, 0x4f0a2e5fb028f2ce, 0x6d1f5a59005bec17, 0xeeb76e397069e804, 0x9ef1cd60e679f284, 0xdfe89923f6c9c2ff, 0x9001a64209f21db8, 0x9e8cd55b57637ed0, 0x7248fe7705f38e47, 0x4a20358574454ec0, 0x29bff3ecb9b7a6e3, 0xc02ac5e47312d3ca, 0xa49229d24d014343, 0x164bb2de1bbeddc8, 0xbc8dfb627fe558fc, 0x0]*;
-    
-    // State of the Poseidon permutation
-    pol commit inp[8];
-    pol commit cap[4];
+    let C = [C_0, C_1, C_2, C_3, C_4, C_5, C_6, C_7, C_8, C_9, C_10, C_11];
+
+    // State of the Poseidon permutation (8 rate elements and 4 capacity elements)
+    pol commit state[STATE_SIZE];
 
     // The initial state of the Poseidon permutation
-    // (constrained to be equal to (inp[0], inp[1], ..., inp[7], cap[0], cap[1], cap[2], cap[3])
-    // in the first row and then repeated until the end of the block)
-    pol commit input_inp[8];
-    pol commit input_cap[4];
+    // (constrained to be equal to state in the first row and then repeated until
+    // the end of the block)
+    pol commit input_state[STATE_SIZE];
 
     // Add round constants
-    pol a0 = inp[0] + C_0;
-    pol a1 = inp[1] + C_1;
-    pol a2 = inp[2] + C_2;
-    pol a3 = inp[3] + C_3;
-    pol a4 = inp[4] + C_4;
-    pol a5 = inp[5] + C_5;
-    pol a6 = inp[6] + C_6;
-    pol a7 = inp[7] + C_7;
-    pol a8 = cap[0] + C_8;
-    pol a9 = cap[1] + C_9;
-    pol a10 = cap[2] + C_10;
-    pol a11 = cap[3] + C_11;
+    let a: expr[STATE_SIZE] = array::zip(state, C, |state, C| state + C);
 
     // Compute S-Boxes (x^7)
-    pol x2_0 = a0 * a0;
-    pol x4_0 = x2_0 * x2_0;
-    pol x6_0 = x2_0 * x4_0;
-    pol x7_0 = x6_0 * a0;
-
-    pol x2_1 = a1 * a1;
-    pol x4_1 = x2_1 * x2_1;
-    pol x6_1 = x2_1 * x4_1;
-    pol x7_1 = x6_1 * a1;
-
-    pol x2_2 = a2 * a2;
-    pol x4_2 = x2_2 * x2_2;
-    pol x6_2 = x2_2 * x4_2;
-    pol x7_2 = x6_2 * a2;
-
-    pol x2_3 = a3 * a3;
-    pol x4_3 = x2_3 * x2_3;
-    pol x6_3 = x2_3 * x4_3;
-    pol x7_3 = x6_3 * a3;
-
-    pol x2_4 = a4 * a4;
-    pol x4_4 = x2_4 * x2_4;
-    pol x6_4 = x2_4 * x4_4;
-    pol x7_4 = x6_4 * a4;
-
-    pol x2_5 = a5 * a5;
-    pol x4_5 = x2_5 * x2_5;
-    pol x6_5 = x2_5 * x4_5;
-    pol x7_5 = x6_5 * a5;
-
-    pol x2_6 = a6 * a6;
-    pol x4_6 = x2_6 * x2_6;
-    pol x6_6 = x2_6 * x4_6;
-    pol x7_6 = x6_6 * a6;
-
-    pol x2_7 = a7 * a7;
-    pol x4_7 = x2_7 * x2_7;
-    pol x6_7 = x2_7 * x4_7;
-    pol x7_7 = x6_7 * a7;
-
-    pol x2_8 = a8 * a8;
-    pol x4_8 = x2_8 * x2_8;
-    pol x6_8 = x2_8 * x4_8;
-    pol x7_8 = x6_8 * a8;
-
-    pol x2_9 = a9 * a9;
-    pol x4_9 = x2_9 * x2_9;
-    pol x6_9 = x2_9 * x4_9;
-    pol x7_9 = x6_9 * a9;
-
-    pol x2_10 = a10 * a10;
-    pol x4_10 = x2_10 * x2_10;
-    pol x6_10 = x2_10 * x4_10;
-    pol x7_10 = x6_10 * a10;
-
-    pol x2_11 = a11 * a11;
-    pol x4_11 = x2_11 * x2_11;
-    pol x6_11 = x2_11 * x4_11;
-    pol x7_11 = x6_11 * a11;
+    let x2: expr[STATE_SIZE] = array::map(a, |a| a * a);
+    let x4: expr[STATE_SIZE] = array::map(x2, |x2| x2 * x2);
+    let x6: expr[STATE_SIZE] = array::zip(x4, x2, |x4, x2| x4 * x2);
+    let x7: expr[STATE_SIZE] = array::zip(x6, a, |x6, a| x6 * a);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.
-    pol b0 = x7_0;
-    pol b1 = PARTIAL * (a1 - x7_1) + x7_1;
-    pol b2 = PARTIAL * (a2 - x7_2) + x7_2;
-    pol b3 = PARTIAL * (a3 - x7_3) + x7_3;
-    pol b4 = PARTIAL * (a4 - x7_4) + x7_4;
-    pol b5 = PARTIAL * (a5 - x7_5) + x7_5;
-    pol b6 = PARTIAL * (a6 - x7_6) + x7_6;
-    pol b7 = PARTIAL * (a7 - x7_7) + x7_7;
-    pol b8 = PARTIAL * (a8 - x7_8) + x7_8;
-    pol b9 = PARTIAL * (a9 - x7_9) + x7_9;
-    pol b10 = PARTIAL * (a10 - x7_10) + x7_10;
-    pol b11 = PARTIAL * (a11 - x7_11) + x7_11;
+    let b: expr[STATE_SIZE] = array::new(STATE_SIZE, |i| if i == 0 {
+        x7[i]
+    } else {
+        PARTIAL * (a[i] - x7[i]) + x7[i]
+    });
 
-    // Multiply with MDS Matrix
-    let c = [
-        25*b0 + 15*b1 + 41*b2 + 16*b3 +  2*b4 + 28*b5 + 13*b6 + 13*b7 + 39*b8 + 18*b9 + 34*b10 + 20*b11,
-        20*b0 + 17*b1 + 15*b2 + 41*b3 + 16*b4 +  2*b5 + 28*b6 + 13*b7 + 13*b8 + 39*b9 + 18*b10 + 34*b11,
-        34*b0 + 20*b1 + 17*b2 + 15*b3 + 41*b4 + 16*b5 +  2*b6 + 28*b7 + 13*b8 + 13*b9 + 39*b10 + 18*b11,
-        18*b0 + 34*b1 + 20*b2 + 17*b3 + 15*b4 + 41*b5 + 16*b6 +  2*b7 + 28*b8 + 13*b9 + 13*b10 + 39*b11,
-        39*b0 + 18*b1 + 34*b2 + 20*b3 + 17*b4 + 15*b5 + 41*b6 + 16*b7 +  2*b8 + 28*b9 + 13*b10 + 13*b11,
-        13*b0 + 39*b1 + 18*b2 + 34*b3 + 20*b4 + 17*b5 + 15*b6 + 41*b7 + 16*b8 +  2*b9 + 28*b10 + 13*b11,
-        13*b0 + 13*b1 + 39*b2 + 18*b3 + 34*b4 + 20*b5 + 17*b6 + 15*b7 + 41*b8 + 16*b9 +  2*b10 + 28*b11,
-        28*b0 + 13*b1 + 13*b2 + 39*b3 + 18*b4 + 34*b5 + 20*b6 + 17*b7 + 15*b8 + 41*b9 + 16*b10 +  2*b11,
-         2*b0 + 28*b1 + 13*b2 + 13*b3 + 39*b4 + 18*b5 + 34*b6 + 20*b7 + 17*b8 + 15*b9 + 41*b10 + 16*b11,
-        16*b0 +  2*b1 + 28*b2 + 13*b3 + 13*b4 + 39*b5 + 18*b6 + 34*b7 + 20*b8 + 17*b9 + 15*b10 + 41*b11,
-        41*b0 + 16*b1 +  2*b2 + 28*b3 + 13*b4 + 13*b5 + 39*b6 + 18*b7 + 34*b8 + 20*b9 + 17*b10 + 15*b11,
-        15*b0 + 41*b1 + 16*b2 +  2*b3 + 28*b4 + 13*b5 + 13*b6 + 39*b7 + 18*b8 + 34*b9 + 20*b10 + 17*b11
+    // The MDS matrix
+    let M = [
+        [25, 15, 41, 16,  2, 28, 13, 13, 39, 18, 34, 20],
+        [20, 17, 15, 41, 16,  2, 28, 13, 13, 39, 18, 34],
+        [34, 20, 17, 15, 41, 16,  2, 28, 13, 13, 39, 18],
+        [18, 34, 20, 17, 15, 41, 16,  2, 28, 13, 13, 39],
+        [39, 18, 34, 20, 17, 15, 41, 16,  2, 28, 13, 13],
+        [13, 39, 18, 34, 20, 17, 15, 41, 16,  2, 28, 13],
+        [13, 13, 39, 18, 34, 20, 17, 15, 41, 16,  2, 28],
+        [28, 13, 13, 39, 18, 34, 20, 17, 15, 41, 16,  2],
+        [ 2, 28, 13, 13, 39, 18, 34, 20, 17, 15, 41, 16],
+        [16,  2, 28, 13, 13, 39, 18, 34, 20, 17, 15, 41],
+        [41, 16,  2, 28, 13, 13, 39, 18, 34, 20, 17, 15],
+        [15, 41, 16,  2, 28, 13, 13, 39, 18, 34, 20, 17]
     ];
 
-    let equal_unless_last = |a, b| (1 - LAST) * (a - b) = 0;
-    array::new(array::len(inp), |i| equal_unless_last(inp[i]', c[i]));
-    array::new(array::len(cap), |i| equal_unless_last(cap[i]', c[8 + i]));
-    array::map(input_inp, |x| equal_unless_last(x, x'));
-    array::map(input_cap, |x| equal_unless_last(x, x'));
+    // Multiply with MDS Matrix
+    let dot_product = |v1, v2| array::sum(array::zip(v1, v2, |v1_i, v2_i| v1_i * v2_i));
+    let c: expr[STATE_SIZE] = array::map(M, |M_row_i| dot_product(M_row_i, b));
 
-    let equal_on_first_block = |a, b| FIRSTBLOCK * (a - b) = 0;
-    array::new(array::len(input_inp), |i| equal_on_first_block(input_inp[i], inp[i]));
-    array::new(array::len(input_cap), |i| equal_on_first_block(input_cap[i], cap[i]));
+    // Copy c to state in the next row
+    array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);
+
+    // In first row, the state should equal the input state
+    array::zip(input_state, state, |input_state, state| FIRSTBLOCK * (input_state - state) = 0);
+
+    // The input state should stay constant in the block
+    array::map(input_state, |c| unchanged_until(c, LAST));
 }

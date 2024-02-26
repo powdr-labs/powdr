@@ -1,7 +1,7 @@
 use std::array;
 use std::utils::unchanged_until;
 
-// Implements the poseidon permutation for the BN254 curve.
+// Implements the Poseidon permutation for the BN254 curve.
 // Note that this relies on the trace table being non-wrapping, so it will
 // only work with the Halo2 backend (which is the only backend that supports
 // the BN254 curve).
@@ -87,7 +87,8 @@ machine PoseidonBN254(LASTBLOCK, operation_id) {
     ];
 
     // Multiply with MDS Matrix
-    let c: expr[STATE_SIZE] = array::map(M, |M| M[0] * b[0] + M[1] * b[1] + M[2] * b[2]);
+    let dot_product = |v1, v2| array::sum(array::zip(v1, v2, |v1_i, v2_i| v1_i * v2_i));
+    let c: expr[STATE_SIZE] = array::map(M, |M_row_i| dot_product(M_row_i, b));
 
     // Copy c to state in the next row
     array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);
