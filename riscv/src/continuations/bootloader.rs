@@ -228,11 +228,7 @@ mstore_bootloader x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD}, P{reg_index};
 
         // Hash if buffer is full
         if i % 4 == 3 {
-            bootloader.push_str(
-                r#"
-P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
-"#,
-            );
+            bootloader.push_str("poseidon_gl;");
         }
     }
 
@@ -294,7 +290,7 @@ P1 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OF
 P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
 P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
 bootloader_level_{i}_end:
-P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
+    poseidon_gl;
 "#
         ));
     }
@@ -455,9 +451,7 @@ P11 <=X= 0;
 
         // Hash if buffer is full
         if i % 4 == 3 {
-            bootloader.push_str(
-                "P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);\n",
-            );
+            bootloader.push_str("poseidon_gl;\n");
         }
     }
 

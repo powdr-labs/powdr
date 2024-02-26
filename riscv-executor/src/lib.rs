@@ -714,7 +714,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "shl" => vec![(args[0].u() << args[1].u()).into()],
             "shr" => vec![(args[0].u() >> args[1].u()).into()],
             "split_gl" => {
-                let value = args[0].fe().to_integer();
+                let value = args[0].into_fe().to_integer();
                 // This instruction is only for Goldilocks, so the value must
                 // fit into a u64.
                 let value = value.try_into_u64().unwrap();
@@ -724,13 +724,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 vec![lo.into(), hi.into()]
             }
             "poseidon_gl" => {
-                let inputs = args
-                    .iter()
-                    .take(12)
-                    .map(|arg| arg.into_fe())
+                assert!(args.is_empty());
+                let inputs = (0..12)
+                    .map(|i| self.proc.get_reg(format!("P{}", i).as_str()).into_fe())
                     .collect::<Vec<_>>();
                 let result = poseidon_gl::poseidon_gl(&inputs);
-                result.into_iter().map(Elem::Field).collect()
+                (0..4).for_each(|i| {
+                    self.proc
+                        .set_reg(format!("P{}", i).as_str(), Elem::Field(result[i]))
+                });
+                vec![]
             }
             instr => {
                 panic!("unknown instruction: {instr}");
