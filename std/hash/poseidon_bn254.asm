@@ -5,14 +5,14 @@ use std::utils::unchanged_until;
 // Note that this relies on the trace table being non-wrapping, so it will
 // only work with the Halo2 backend (which is the only backend that supports
 // the BN254 curve).
-machine PoseidonBN254(LASTBLOCK, operation_id) {
+machine PoseidonBN254(FIRSTBLOCK, operation_id) {
 
     // Hashes two "rate" elements and one "capacity" element to one field element
     // by applying the Poseidon permutation and returning the first rate element.
     // When the hash function is used only once, the capacity element should be
     // set to a constant, where different constants can be used to define different
     // hash functions.
-    operation poseidon_permutation<0> input_state[0], input_state[1], input_state[2] -> state[0];
+    operation poseidon_permutation<0> state[0], state[1], state[2] -> output[0];
 
     col witness operation_id;
 
@@ -24,6 +24,8 @@ machine PoseidonBN254(LASTBLOCK, operation_id) {
 
     // Number of field elements in the state
     let STATE_SIZE = 3;
+    // Number of output elements
+    let OUTPUT_SIZE = 1;
     // Number of full rounds
     let FULL_ROUNDS = 8;
     // Number of partial rounds (half of them before and half of them after the full rounds)
@@ -59,10 +61,9 @@ machine PoseidonBN254(LASTBLOCK, operation_id) {
     // State of the Poseidon permutation (2 rate elements and 1 capacity element)
     pol commit state[STATE_SIZE];
 
-    // The initial state of the Poseidon permutation
-    // (constrained to be equal to state in the first row and then repeated until
-    // the end of the block)
-    pol commit input_state[STATE_SIZE];
+    // The first OUTPUT_SIZE elements of the *final* state
+    // (constrained to be constant within the block and equal to parts of the state in the last row)
+    pol commit output[OUTPUT_SIZE];
 
     // Add round constants
     let a: expr[STATE_SIZE] = array::zip(state, C, |state, C| state + C);
@@ -93,9 +94,9 @@ machine PoseidonBN254(LASTBLOCK, operation_id) {
     // Copy c to state in the next row
     array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);
 
-    // In first row, the state should equal the input state
-    array::zip(input_state, state, |input_state, state| FIRSTBLOCK * (input_state - state) = 0);
+    // In the last row, the first OUTPUT_SIZE elements of the state should equal output
+    array::zip(output, state, |output, state| LASTBLOCK * (output - state) = 0);
 
-    // The input state should stay constant in the block
-    array::map(input_state, |c| unchanged_until(c, LAST));
+    // The output should stay constant in the block
+    array::map(output, |c| unchanged_until(c, LAST));
 }

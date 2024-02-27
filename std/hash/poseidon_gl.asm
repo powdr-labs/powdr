@@ -2,14 +2,14 @@ use std::array;
 use std::utils::unchanged_until;
 
 // Implements the Poseidon permutation for the Goldilocks field.
-machine PoseidonGL(LASTBLOCK, operation_id) {
+machine PoseidonGL(FIRSTBLOCK, operation_id) {
 
     // Hashes 8 "rate" elements and 4 "capacity" elements to 4 field elements
     // by applying the Poseidon permutation and returning the first 4 rate elements.
     // When the hash function is used only once, the capacity elements should be
     // set to constants, where different constants can be used to define different
     // hash functions.
-    operation poseidon_permutation<0> input_state[0], input_state[1], input_state[2], input_state[3], input_state[4], input_state[5], input_state[6], input_state[7], input_state[8], input_state[9], input_state[10], input_state[11] -> state[0], state[1], state[2], state[3];
+    operation poseidon_permutation<0> state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7], state[8], state[9], state[10], state[11] -> output[0], output[1], output[2], output[3];
 
     col witness operation_id;
 
@@ -17,14 +17,10 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     // - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil
     // - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/src/sm/sm_poseidong.js
 
-    // Difference between our and Polygon's implementation:
-    // - Polygon puts the latch on the first row, rather than the last.
-    //   Instead of reserving extra columns to repeat the inputs throughout the entire block,
-    //   they reserve extra columns to repeat the output. This saves some columns, because the
-    //   function has more inputs than outputs. Should be fixed once #627 is fixed.
-
     // Number of field elements in the state
     let STATE_SIZE = 12;
+    // Number of output elements
+    let OUTPUT_SIZE = 4;
     // Number of full rounds
     let FULL_ROUNDS = 8;
     // Number of partial rounds (half of them before and half of them after the full rounds)
@@ -65,10 +61,9 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     // State of the Poseidon permutation (8 rate elements and 4 capacity elements)
     pol commit state[STATE_SIZE];
 
-    // The initial state of the Poseidon permutation
-    // (constrained to be equal to state in the first row and then repeated until
-    // the end of the block)
-    pol commit input_state[STATE_SIZE];
+    // The first OUTPUT_SIZE elements of the *final* state
+    // (constrained to be constant within the block and equal to parts of the state in the last row)
+    pol commit output[OUTPUT_SIZE];
 
     // Add round constants
     let a: expr[STATE_SIZE] = array::zip(state, C, |state, C| state + C);
@@ -109,9 +104,9 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     // Copy c to state in the next row
     array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);
 
-    // In first row, the state should equal the input state
-    array::zip(input_state, state, |input_state, state| FIRSTBLOCK * (input_state - state) = 0);
+    // In the last row, the first OUTPUT_SIZE elements of the state should equal output
+    array::zip(output, state, |output, state| LASTBLOCK * (output - state) = 0);
 
-    // The input state should stay constant in the block
-    array::map(input_state, |c| unchanged_until(c, LAST));
+    // The output should stay constant in the block
+    array::map(output, |c| unchanged_until(c, LAST));
 }
