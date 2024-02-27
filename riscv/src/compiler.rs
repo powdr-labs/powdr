@@ -462,16 +462,16 @@ let initial_memory = [
         machines.join("\n"),
         submachines
             .iter()
-            .map(|(instance, ty)| format!("\t\t{} {};", ty, instance))
-            .collect::<Vec<_>>()
-            .join("\n"),
+            .format_with("\n", |(instance, ty), f| f(&format_args!(
+                "\t\t{ty} {instance};"
+            ))),
         preamble,
-        initial_memory.join(",\n"),
+        initial_memory
+            .into_iter()
+            .format_with(",\n", |line, f| f(&format_args!("\t\t{line}"))),
         program
             .into_iter()
-            .map(|line| format!("\t\t{line}"))
-            .collect::<Vec<_>>()
-            .join("\n")
+            .format_with("\n", |line, f| f(&format_args!("\t\t{line}"))),
     )
 }
 
