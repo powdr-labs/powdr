@@ -1,6 +1,5 @@
 #![deny(clippy::print_stdout)]
 
-mod block_enforcer;
 pub mod machine_check;
 mod vm;
 
@@ -11,7 +10,7 @@ pub fn convert_asm_to_pil<T: FieldElement>(
     file: ASMProgram<T>,
 ) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let file = analyze(file)?;
-    Ok(convert_vms_to_constrained(file))
+    Ok(powdr_asm_to_pil::compile(file))
 }
 
 pub fn analyze<T: FieldElement>(file: ASMProgram<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
@@ -24,18 +23,6 @@ pub fn analyze<T: FieldElement>(file: ASMProgram<T>) -> Result<AnalysisASMFile<T
     log::debug!("End asm analysis");
 
     Ok(file)
-}
-
-/// Converts all VMs to constrained machines, replacing
-/// assembly instructions by lookups to programs.
-pub fn convert_vms_to_constrained<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
-    // remove all asm (except external instructions)
-    log::debug!("Run asm_to_pil");
-    let file = powdr_asm_to_pil::compile(file);
-
-    // enforce blocks using `operation_id` and `latch`
-    log::debug!("Run enforce_block analysis step");
-    block_enforcer::enforce(file)
 }
 
 pub mod utils {

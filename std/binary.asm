@@ -1,5 +1,6 @@
 use std::convert::int;
 use std::utils::cross_product;
+use std::utils::unchanged_until;
 
 machine Binary(latch, operation_id) {
 
@@ -12,6 +13,7 @@ machine Binary(latch, operation_id) {
     operation xor<2> A, B -> C;
 
     col witness operation_id;
+    unchanged_until(operation_id, latch);
 
     col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };

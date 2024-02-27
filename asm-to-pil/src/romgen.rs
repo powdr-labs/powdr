@@ -15,6 +15,7 @@ use powdr_ast::parsed::{
 use powdr_ast::SourceRef;
 use powdr_number::FieldElement;
 
+use crate::common::{instruction_flag, RETURN_NAME};
 use crate::{
     common::{input_at, output_at, RESET_NAME},
     utils::{
@@ -214,10 +215,23 @@ pub fn generate_machine_rom<T: FieldElement>(
             parse_function_statement("_loop;"),
         ])]);
 
+        let latch = instruction_flag(RETURN_NAME);
+        let last_step = "_block_enforcer_last_step";
+        let operation_id_no_change = "_operation_id_no_change";
+
         machine.pil.extend([
             // inject the operation_id
             parse_pil_statement(&format!(
                 "col witness {operation_id}(i) query (\"hint\", {sink_id})"
+            )),
+            // inject last step
+            parse_pil_statement(&format!("col constant {last_step} = [0]* + [1]")),
+            // the operation id must be constant within a block.
+            parse_pil_statement(&format!(
+                "let {operation_id_no_change} = (1 - {last_step}) * (1 - {latch})"
+            )),
+            parse_pil_statement(&format!(
+                "{operation_id_no_change} * ({operation_id}' - {operation_id}) = 0"
             )),
         ]);
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
