@@ -2,11 +2,11 @@ use std::collections::{BTreeSet, HashMap};
 
 use powdr_ast::{
     asm_analysis::{AnalysisASMFile, RegisterTy},
-    parsed::asm::parse_absolute_path,
+    parsed::{asm::parse_absolute_path, Expression, PilStatement},
 };
-use powdr_number::FieldElement;
+use powdr_number::{BigInt, FieldElement};
 use powdr_pipeline::Pipeline;
-use powdr_riscv_executor::{Elem, ExecutionTrace};
+use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState};
 
 pub mod bootloader;
 mod memory_merkle_tree;
@@ -134,15 +134,49 @@ fn sanity_check<T>(program: &AnalysisASMFile<T>) {
     assert_eq!(machine_registers, expected_registers);
 }
 
+fn load_initial_memory<F: FieldElement>(program: &AnalysisASMFile<F>) -> MemoryState {
+    let machine = get_main_machine(program);
+    let Some(expr) = machine.pil.iter().find_map(|v| match v {
+        PilStatement::LetStatement(_, n, None, expr) if n == "initial_memory" => expr.as_ref(),
+        _ => None,
+    }) else {
+        log::warn!("No initial_memory variable found in the machine. Assuming zeroed memory.");
+        return MemoryState::default();
+    };
+
+    let Expression::ArrayLiteral(array) = expr else {
+        panic!("initial_memory is not an array literal");
+    };
+
+    array
+        .items
+        .iter()
+        .map(|entry| {
+            let Expression::Tuple(tuple) = entry else {
+                panic!("initial_memory entry is not a tuple");
+            };
+            assert_eq!(tuple.len(), 2);
+            let Expression::Number(key, None) = &tuple[0] else {
+                panic!("initial_memory entry key is not a number");
+            };
+            let Expression::Number(value, None) = &tuple[1] else {
+                panic!("initial_memory entry value is not a number");
+            };
+
+            (
+                key.to_integer().try_into_u32().unwrap(),
+                value.to_integer().try_into_u32().unwrap(),
+            )
+        })
+        .collect()
+}
+
 /// Runs the entire execution using the RISC-V executor. For each chunk, it collects:
 /// - The inputs to the bootloader, needed to restore the correct state.
 /// - The number of rows after which the prover should jump to the shutdown routine.
 pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
 ) -> Vec<(Vec<F>, u64)> {
-    log::info!("Initializing memory merkle tree...");
-    let mut merkle_tree = MerkleTree::<F>::new();
-
     // All inputs for all chunks.
     let mut bootloader_inputs_and_num_rows = vec![];
 
@@ -152,10 +186,24 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let program = pipeline.compute_analyzed_asm().unwrap().clone();
     sanity_check(&program);
 
+    log::info!("Initializing memory merkle tree...");
+
+    // Get initial memory contents from the special variable "initial_memory".
+    // In the first full run, we use it as the memory contents of the executor;
+    // on the independent chunk runs, the executor uses zeroed initial memory,
+    // and the pages are loaded via the bootloader.
+    let initial_memory = load_initial_memory(&program);
+
+    let mut merkle_tree = MerkleTree::<F>::new();
+    merkle_tree.update(initial_memory.iter().map(|(k, v)| (*k, *v)));
+
+    // TODO: commit to the merkle_tree root in the verifier.
+
     log::info!("Executing powdr-asm...");
     let (full_trace, memory_accesses) = {
         let trace = powdr_riscv_executor::execute_ast::<F>(
             &program,
+            initial_memory,
             pipeline.data_callback().unwrap(),
             // Run full trace without any accessed pages. This would actually violate the
             // constraints, but the executor does the right thing (read zero if the memory
@@ -248,6 +296,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let (chunk_trace, memory_snapshot_update) = {
             let (trace, memory_snapshot_update) = powdr_riscv_executor::execute_ast::<F>(
                 &program,
+                MemoryState::new(),
                 pipeline.data_callback().unwrap(),
                 &bootloader_inputs,
                 num_rows,

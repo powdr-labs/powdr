@@ -284,6 +284,7 @@ mod builder {
         /// in Err.
         pub fn new<T: FieldElement>(
             main: &'a Machine<T>,
+            mem: MemoryState,
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
             mode: ExecMode,
@@ -326,7 +327,7 @@ mod builder {
                 batch_to_line_map,
                 max_rows: max_rows_len,
                 regs,
-                mem: HashMap::new(),
+                mem,
                 mode,
             };
 
@@ -472,7 +473,7 @@ mod builder {
     }
 }
 
-fn get_main_machine<T: FieldElement>(program: &AnalysisASMFile<T>) -> &Machine<T> {
+pub fn get_main_machine<T: FieldElement>(program: &AnalysisASMFile<T>) -> &Machine<T> {
     for (name, m) in program.items.iter() {
         if name.len() == 1 && name.parts().next() == Some("Main") {
             let Item::Machine(m) = m else {
@@ -847,6 +848,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
 pub fn execute_ast<T: FieldElement>(
     program: &AnalysisASMFile<T>,
+    initial_memory: MemoryState,
     inputs: &Callback<T>,
     bootloader_inputs: &[Elem<T>],
     max_steps_to_execute: usize,
@@ -860,8 +862,13 @@ pub fn execute_ast<T: FieldElement>(
         debug_files,
     } = preprocess_main_function(main_machine);
 
-    let proc = match TraceBuilder::new(main_machine, &batch_to_line_map, max_steps_to_execute, mode)
-    {
+    let proc = match TraceBuilder::new(
+        main_machine,
+        initial_memory,
+        &batch_to_line_map,
+        max_steps_to_execute,
+        mode,
+    ) {
         Ok(proc) => proc,
         Err(ret) => return *ret,
     };
@@ -941,7 +948,14 @@ pub fn execute<F: FieldElement>(
     let analyzed = powdr_analysis::analyze(resolved).unwrap();
 
     log::info!("Executing...");
-    execute_ast(&analyzed, inputs, bootloader_inputs, usize::MAX, mode)
+    execute_ast(
+        &analyzed,
+        MemoryState::new(),
+        inputs,
+        bootloader_inputs,
+        usize::MAX,
+        mode,
+    )
 }
 
 fn to_u32<F: FieldElement>(val: &F) -> Option<u32> {

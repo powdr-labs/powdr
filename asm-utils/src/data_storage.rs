@@ -14,18 +14,16 @@ pub enum SingleDataValue<'a> {
 }
 
 struct WordWriter<'a, 'b> {
-    data_writer: &'a mut dyn FnMut(u32, SingleDataValue) -> Vec<String>,
+    data_writer: &'a mut dyn FnMut(Option<&str>, u32, SingleDataValue),
     partial: u32,
     current_pos: u32,
-    generated_code: Vec<String>,
-
     latest_label: Option<&'b str>,
 }
 
 impl<'a, 'b> WordWriter<'a, 'b> {
     fn new(
         starting_pos: u32,
-        data_writer: &'a mut dyn FnMut(u32, SingleDataValue) -> Vec<String>,
+        data_writer: &'a mut dyn FnMut(Option<&str>, u32, SingleDataValue),
     ) -> Self {
         // sanitary alignment to 8 bytes
         let current_pos = next_aligned(starting_pos as usize, 8) as u32;
@@ -33,7 +31,6 @@ impl<'a, 'b> WordWriter<'a, 'b> {
             partial: 0,
             current_pos,
             data_writer,
-            generated_code: Vec::new(),
             latest_label: None,
         }
     }
@@ -52,14 +49,11 @@ impl<'a, 'b> WordWriter<'a, 'b> {
         // if changed words, flush
         let curr_word = self.current_pos & (!0b11);
         if (next_pos & (!0b11) != curr_word) && (self.partial != 0) {
-            if let Some(label) = std::mem::take(&mut self.latest_label) {
-                self.generated_code.push(format!("// data {label}"));
-            }
-
-            self.generated_code.extend((*self.data_writer)(
+            (*self.data_writer)(
+                std::mem::take(&mut self.latest_label),
                 curr_word,
                 SingleDataValue::Value(self.partial),
-            ));
+            );
             self.partial = 0;
         }
         self.current_pos = next_pos;
@@ -90,28 +84,27 @@ impl<'a, 'b> WordWriter<'a, 'b> {
             "reference to code labels in misaligned data section is not supported"
         );
 
-        self.generated_code.extend((*self.data_writer)(
+        (*self.data_writer)(
+            std::mem::take(&mut self.latest_label),
             self.current_pos,
             SingleDataValue::LabelReference(label),
-        ));
+        );
 
         assert_eq!(self.partial, 0);
         self.current_pos += 4;
     }
 
-    fn finish(mut self) -> Vec<String> {
+    fn finish(mut self) {
         // ensure the latest partial word is written
         self.advance(4);
-
-        self.generated_code
     }
 }
 
 pub fn store_data_objects(
     sections: Vec<Vec<(Option<String>, Vec<DataValue>)>>,
     memory_start: u32,
-    code_gen: &mut dyn FnMut(u32, SingleDataValue) -> Vec<String>,
-) -> (Vec<String>, BTreeMap<String, u32>) {
+    code_gen: &mut dyn FnMut(Option<&str>, u32, SingleDataValue),
+) -> BTreeMap<String, u32> {
     let mut writer = WordWriter::new(memory_start, code_gen);
 
     let positions = {
@@ -157,6 +150,7 @@ pub fn store_data_objects(
             }
         }
     }
+    writer.finish();
 
-    (writer.finish(), positions)
+    positions
 }

@@ -93,7 +93,6 @@ impl<T: FieldElement, const N_LEAVES_LOG: usize, const WORDS_PER_PAGE: usize>
 
     /// Applies updates, given an iterator of (memory address, value) pairs.
     /// Memory addresses are assumed to be word-aligned.
-    #[allow(dead_code)]
     pub fn update(&mut self, updates: impl Iterator<Item = (u32, u32)>) {
         for (page_index, updates) in self.organize_updates_by_page(updates) {
             self.update_page(page_index, updates.into_iter());

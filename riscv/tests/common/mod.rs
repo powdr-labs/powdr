@@ -13,6 +13,7 @@ pub fn verify_riscv_asm_string(file_name: &str, contents: &str, inputs: Vec<Gold
     let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
     powdr_riscv_executor::execute_ast(
         &analyzed,
+        Default::default(),
         pipeline.data_callback().unwrap(),
         // Assume the RISC-V program was compiled without a bootloader, otherwise this will fail.
         &[],
