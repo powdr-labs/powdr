@@ -135,6 +135,10 @@ where
             pilo: false,
             arguments: Arguments::default(),
         }
+        // We add empty prover inputs by default to always have basic support
+        // to hints, print, etc.
+        // Newer prover inputs can be added on top and will overwrite this one.
+        .with_prover_inputs(vec![])
     }
 }
 
