@@ -1,9 +1,9 @@
-use polyexen::plaf::PlafDisplayBaseTOML;
 use powdr_ast::analyzed::Analyzed;
 
-use super::circuit_builder::{analyzed_to_circuit_with_witness, analyzed_to_plaf};
+use crate::circuit_builder::PowdrCircuit;
+
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
-use powdr_number::{BigInt, FieldElement};
+use powdr_number::{FieldElement, KnownField};
 
 // Can't depend on compiler::pipeline::GeneratedWitness because of circular dependencies...
 pub fn mock_prove<T: FieldElement>(
@@ -11,23 +11,23 @@ pub fn mock_prove<T: FieldElement>(
     constants: &[(String, Vec<T>)],
     witness: &[(String, Vec<T>)],
 ) {
-    if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
+    if !matches!(T::known_field(), Some(KnownField::Bn254Field)) {
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
     }
-
-    let plaf_circuit = analyzed_to_plaf(pil, constants);
-    let (circuit, publics) = analyzed_to_circuit_with_witness(pil, plaf_circuit, witness);
 
     // double the row count in order to make space for the cells introduced by the backend
     // TODO: use a precise count of the extra rows needed to avoid using so many rows
 
-    let circuit_row_count_log = usize::BITS - circuit.plaf.info.num_rows.leading_zeros();
-
+    let circuit_row_count_log = usize::BITS - pil.degree().leading_zeros();
     let expanded_row_count_log = circuit_row_count_log + 1;
 
-    log::debug!("{}", PlafDisplayBaseTOML(&circuit.plaf));
-
-    let mock_prover = MockProver::<Fr>::run(expanded_row_count_log, &circuit, publics).unwrap();
+    let circuit = PowdrCircuit::new(pil, constants).with_witness(witness);
+    let mock_prover = MockProver::<Fr>::run(
+        expanded_row_count_log,
+        &circuit,
+        vec![circuit.instance_column()],
+    )
+    .unwrap();
     mock_prover.assert_satisfied();
 }
 
