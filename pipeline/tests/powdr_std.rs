@@ -22,7 +22,7 @@ fn poseidon_bn254_test() {
 #[test]
 fn poseidon_gl_test() {
     let f = "std/poseidon_gl_test.asm";
-    verify_test_file::<GoldilocksField>(f, Default::default(), vec![]);
+    verify_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
 }
 
@@ -35,7 +35,7 @@ fn split_bn254_test() {
 #[test]
 fn split_gl_test() {
     let f = "std/split_gl_test.asm";
-    verify_test_file::<GoldilocksField>(f, Default::default(), vec![]);
+    verify_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
 }
 
@@ -43,7 +43,7 @@ fn split_gl_test() {
 #[ignore = "Too slow"]
 fn arith_test() {
     let f = "std/arith_test.asm";
-    verify_test_file::<GoldilocksField>(f, Default::default(), vec![]);
+    verify_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
     test_halo2(f, Default::default());
 }
@@ -51,14 +51,14 @@ fn arith_test() {
 #[test]
 fn binary_test() {
     let f = "std/binary_test.asm";
-    verify_test_file::<GoldilocksField>(f, Default::default(), vec![]);
+    verify_test_file(f, Default::default(), vec![]).unwrap();
     test_halo2(f, Default::default());
 }
 
 #[test]
 fn shift_test() {
     let f = "std/shift_test.asm";
-    verify_test_file::<GoldilocksField>(f, Default::default(), vec![]);
+    verify_test_file(f, Default::default(), vec![]).unwrap();
     test_halo2(f, Default::default());
 }
 

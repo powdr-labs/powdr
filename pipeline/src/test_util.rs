@@ -18,11 +18,11 @@ pub fn resolve_test_file(file_name: &str) -> PathBuf {
     ))
 }
 
-pub fn verify_test_file<T: FieldElement>(
+pub fn verify_test_file(
     file_name: &str,
-    inputs: Vec<T>,
-    external_witness_values: Vec<(String, Vec<T>)>,
-) {
+    inputs: Vec<GoldilocksField>,
+    external_witness_values: Vec<(String, Vec<GoldilocksField>)>,
+) -> Result<(), String> {
     let pipeline = Pipeline::default()
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
@@ -30,20 +30,20 @@ pub fn verify_test_file<T: FieldElement>(
     verify_pipeline(pipeline)
 }
 
-pub fn verify_asm_string<T: FieldElement>(
+pub fn verify_asm_string(
     file_name: &str,
     contents: &str,
-    inputs: Vec<T>,
-    external_witness_values: Vec<(String, Vec<T>)>,
+    inputs: Vec<GoldilocksField>,
+    external_witness_values: Vec<(String, Vec<GoldilocksField>)>,
 ) {
     let pipeline = Pipeline::default()
         .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)))
         .with_prover_inputs(inputs)
         .add_external_witness_values(external_witness_values);
-    verify_pipeline(pipeline)
+    verify_pipeline(pipeline).unwrap();
 }
 
-pub fn verify_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
+pub fn verify_pipeline(pipeline: Pipeline<GoldilocksField>) -> Result<(), String> {
     let mut pipeline = pipeline.with_backend(BackendType::PilStarkCli);
 
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
@@ -53,7 +53,7 @@ pub fn verify_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
 
     pipeline.compute_proof().unwrap();
 
-    verify(pipeline.output_dir().unwrap(), pipeline.name(), None);
+    verify(pipeline.output_dir().unwrap(), pipeline.name(), None)
 }
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
@@ -182,4 +182,68 @@ pub fn evaluate_integer_function<T: FieldElement>(
     } else {
         panic!("Expected integer.");
     }
+}
+
+fn convert_witness<T: FieldElement>(witness: &[(String, Vec<u64>)]) -> Vec<(String, Vec<T>)> {
+    witness
+        .iter()
+        .map(|(k, v)| (k.clone(), v.iter().cloned().map(T::from).collect()))
+        .collect()
+}
+
+fn assert_proofs_fail_for_invalid_witnesses_gl(file_name: &str, witness: &[(String, Vec<u64>)]) {
+    let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
+
+    let tmp_dir = mktemp::Temp::new_dir().unwrap();
+    let pipeline = Pipeline::<GoldilocksField>::default()
+        .with_tmp_output(&tmp_dir)
+        .from_file(PathBuf::from(file_name))
+        .set_witness(convert_witness(witness));
+
+    assert!(pipeline
+        .clone()
+        .with_backend(powdr_backend::BackendType::EStark)
+        .compute_proof()
+        .is_err());
+    assert!(verify_pipeline(pipeline.clone()).is_err());
+}
+
+#[cfg(feature = "halo2")]
+fn assert_proofs_fail_for_invalid_witnesses_bn254(file_name: &str, witness: &[(String, Vec<u64>)]) {
+    let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
+
+    let tmp_dir = mktemp::Temp::new_dir().unwrap();
+    let pipeline = Pipeline::<Bn254Field>::default()
+        .with_tmp_output(&tmp_dir)
+        .from_file(PathBuf::from(file_name))
+        .set_witness(convert_witness(witness));
+
+    // This will panic, because Halo2's MockProver::assert_satisfied() panics if it is not.
+    // We could use MockProver::verify() instead in our backend implementation to get a Result,
+    // but assert_satisfied() is the only way to print a helpful error message using the public API...
+    // It can still be helpful to uncomment this line to make sure the constraint that's failing
+    // is the one you'd expect.
+    // assert!(pipeline
+    //     .clone()
+    //     .with_backend(powdr_backend::BackendType::Halo2Mock)
+    //     .compute_proof()
+    //     .is_err());
+
+    assert!(pipeline
+        .clone()
+        .with_backend(powdr_backend::BackendType::Halo2)
+        .compute_proof()
+        .is_err());
+}
+
+#[cfg(not(feature = "halo2"))]
+fn assert_proofs_fail_for_invalid_witnesses_bn254(
+    _file_name: &str,
+    _witness: &[(String, Vec<u64>)],
+) {
+}
+
+pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(String, Vec<u64>)]) {
+    assert_proofs_fail_for_invalid_witnesses_gl(file_name, witness);
+    assert_proofs_fail_for_invalid_witnesses_bn254(file_name, witness);
 }

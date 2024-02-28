@@ -1,6 +1,6 @@
 use std::{path::Path, process::Command};
 
-pub fn verify(temp_dir: &Path, name: &str, constants_name: Option<&str>) {
+pub fn verify(temp_dir: &Path, name: &str, constants_name: Option<&str>) -> Result<(), String> {
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
 
@@ -31,12 +31,13 @@ pub fn verify(temp_dir: &Path, name: &str, constants_name: Option<&str>) {
             String::from_utf8_lossy(&verifier_output.stdout),
             String::from_utf8_lossy(&verifier_output.stderr)
         );
-        panic!("Pil verifier run was unsuccessful.");
+        return Err("Pil verifier run was unsuccessful.".to_string());
     } else {
         let output = String::from_utf8(verifier_output.stdout).unwrap();
         log::error!("PIL verifier output: {}", output);
         if !output.trim().ends_with("PIL OK!!") {
-            panic!("Verified did not say 'PIL OK' for {name}.");
+            return Err("Verified did not say 'PIL OK' for {name}.".to_string());
         }
     }
+    Ok(())
 }

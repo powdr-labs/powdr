@@ -147,16 +147,20 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<'a, F> {
 
         log::info!("Proof done in: {:?}", duration);
 
-        assert!(stark_verify::<MerkleTreeGL, TranscriptGL>(
+        let valid = stark_verify::<MerkleTreeGL, TranscriptGL>(
             &starkproof,
             &setup.const_root,
             &setup.starkinfo,
             &self.params,
             &mut setup.program,
         )
-        .unwrap());
+        .map_err(|e| Error::BackendError(e.to_string()))?;
 
-        Ok(serde_json::to_vec(&starkproof).unwrap())
+        if valid {
+            Ok(serde_json::to_vec(&starkproof).unwrap())
+        } else {
+            Err(Error::BackendError("Proof verification failed".to_string()))
+        }
     }
 }
 
