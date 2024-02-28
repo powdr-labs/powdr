@@ -144,34 +144,59 @@ pub fn compile(
     // for compilation, and will not be called.
     statements = replace_coprocessor_stubs(statements, coprocessors).collect::<Vec<_>>();
 
-    let (data_code, data_positions) =
-        store_data_objects(data_sections, data_start, &mut |addr, value| match value {
-            SingleDataValue::Value(v) => {
-                vec![format!("mstore 0x{addr:x}, 0x{v:x};")]
+    let mut initial_mem = Vec::new();
+    let mut data_code = Vec::new();
+    let data_positions =
+        store_data_objects(data_sections, data_start, &mut |label, addr, value| {
+            if let Some(label) = label {
+                let comment = format!(" // data {label}");
+                if with_bootloader && !matches!(value, SingleDataValue::LabelReference(_)) {
+                    &mut initial_mem
+                } else {
+                    &mut data_code
+                }
+                .push(comment);
             }
-            SingleDataValue::LabelReference(sym) => {
-                // TODO should be possible without temporary
-                vec![
-                    format!("tmp1 <== load_label({});", escape_label(sym)),
-                    format!("mstore 0x{addr:x}, tmp1;"),
-                ]
-            }
-            SingleDataValue::Offset(_, _) => {
-                unimplemented!();
-                /*
-                object_code.push(format!("addr <=X= 0x{pos:x};"));
+            match value {
+                SingleDataValue::Value(v) => {
+                    if with_bootloader {
+                        // Instead of generating the data loading code, we store it
+                        // in the variable that will be used as the initial memory
+                        // snapshot, committed by the bootloader.
+                        initial_mem.push(format!("(0x{addr:x}, 0x{v:x})"));
+                    } else {
+                        // There is no bootloader to commit to memory, so we have to
+                        // load it explicitly.
+                        data_code.push(format!("mstore 0x{addr:x}, 0x{v:x};"));
+                    }
+                }
+                SingleDataValue::LabelReference(sym) => {
+                    // The label value is not known at this point, so we have to
+                    // load it via code, irrespectively of bootloader availability.
+                    //
+                    // TODO should be possible without temporary
+                    data_code.extend([
+                        format!("tmp1 <== load_label({});", escape_label(sym)),
+                        format!("mstore 0x{addr:x}, tmp1;"),
+                    ]);
+                }
+                SingleDataValue::Offset(_, _) => {
+                    unimplemented!();
+                    /*
+                    object_code.push(format!("addr <=X= 0x{pos:x};"));
 
-                I think this solution should be fine but hard to say without
-                an actual code snippet that uses it.
+                    I think this solution should be fine but hard to say without
+                    an actual code snippet that uses it.
 
-                // TODO should be possible without temporary
-                object_code.extend([
-                    format!("tmp1 <== load_label({});", escape_label(a)),
-                    format!("tmp2 <== load_label({});", escape_label(b)),
-                    // TODO check if registers match
-                    "mstore wrap(tmp1 - tmp2);".to_string(),
-                ]);
-                */
+                    // TODO should be possible without temporary
+                    object_code.extend([
+                        format!("tmp1 <== load_label({});", escape_label(a)),
+                        format!("tmp2 <== load_label({});", escape_label(b)),
+                        // TODO check if registers match
+                        "mstore wrap(tmp1 - tmp2);".to_string(),
+                    ]);
+                    */
+                }
             }
         });
 
@@ -187,28 +212,33 @@ pub fn compile(
         submachine_init
     };
 
-    let program: Vec<String> = file_ids
+    let mut program: Vec<String> = file_ids
         .into_iter()
         .map(|(id, dir, file)| format!(".debug file {id} {} {};", quote(&dir), quote(&file)))
         .chain(bootloader_and_shutdown_routine_lines)
-        .chain(["x1 <== jump(__data_init);".to_string()])
-        .chain([
-            format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-            "x1 <== jump(__runtime_start);".to_string(),
-            "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
-        ])
-        .chain(
-            substitute_symbols_with_values(statements, &data_positions)
-                .into_iter()
-                .flat_map(|v| process_statement(v, coprocessors)),
-        )
-        .chain(["// This is the data initialization routine.\n__data_init:".to_string()])
+        .collect();
+    if !data_code.is_empty() {
+        program.push("x1 <== jump(__data_init);".to_string());
+    }
+    program.extend([
+        format!("// Set stack pointer\nx2 <=X= {stack_start};"),
+        "x1 <== jump(__runtime_start);".to_string(),
+        "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
+    ]);
+    program.extend(
+        substitute_symbols_with_values(statements, &data_positions)
+            .into_iter()
+            .flat_map(|v| process_statement(v, coprocessors)),
+    );
+    if !data_code.is_empty() {
+        program.extend(
+        ["// This is the data initialization routine.\n__data_init:".to_string()].into_iter()
         .chain(data_code)
         .chain([
             "// This is the end of the data initialization routine.\ntmp1 <== jump_dyn(x1);"
                 .to_string(),
-        ])
-        .collect();
+        ]));
+    }
 
     // The program ROM needs to fit the degree, so we use the next power of 2.
     let degree = program.len().ilog2() + 1;
@@ -229,6 +259,7 @@ pub fn compile(
     riscv_machine(
         &coprocessors.machine_imports(),
         &preamble(degree, coprocessors, with_bootloader),
+        initial_mem,
         &coprocessors.declarations(),
         program,
     )
@@ -407,6 +438,7 @@ fn substitute_symbols_with_values(
 fn riscv_machine(
     machines: &[&str],
     preamble: &str,
+    initial_memory: Vec<String>,
     submachines: &[(&str, &str)],
     program: Vec<String>,
 ) -> String {
@@ -418,6 +450,10 @@ machine Main {{
 
 {}
 
+let initial_memory = [
+{}
+];
+
     function main {{
 {}
     }}
@@ -426,15 +462,16 @@ machine Main {{
         machines.join("\n"),
         submachines
             .iter()
-            .map(|(instance, ty)| format!("\t\t{} {};", ty, instance))
-            .collect::<Vec<_>>()
-            .join("\n"),
+            .format_with("\n", |(instance, ty), f| f(&format_args!(
+                "\t\t{ty} {instance};"
+            ))),
         preamble,
+        initial_memory
+            .into_iter()
+            .format_with(",\n", |line, f| f(&format_args!("\t\t{line}"))),
         program
             .into_iter()
-            .map(|line| format!("\t\t{line}"))
-            .collect::<Vec<_>>()
-            .join("\n")
+            .format_with("\n", |line, f| f(&format_args!("\t\t{line}"))),
     )
 }
 
