@@ -12,19 +12,16 @@ use halo2_proofs::{
     },
     transcript::{EncodedChallenge, TranscriptReadBuffer, TranscriptWriterBuffer},
 };
-use polyexen::plaf::backends::halo2::PlafH2Circuit;
-use polyexen::plaf::{Plaf, PlafDisplayBaseTOML};
 use powdr_ast::analyzed::Analyzed;
-use powdr_number::{BigInt, DegreeType, FieldElement, KnownField};
+use powdr_number::{DegreeType, FieldElement, KnownField};
 use snark_verifier::{
     loader::native::NativeLoader,
     system::halo2::{compile, transcript::evm::EvmTranscript, Config},
 };
 
-use crate::aggregation;
-use crate::circuit_builder::{
-    analyzed_to_circuit_with_witness, analyzed_to_circuit_with_zeroed_witness, analyzed_to_plaf,
-    powdr_ff_to_fr,
+use crate::{
+    aggregation,
+    circuit_builder::{convert_field, PowdrCircuit},
 };
 
 use itertools::Itertools;
@@ -47,8 +44,8 @@ pub use halo2_proofs::SerdeFormat;
 /// element, but without RFC #1210, the only alternative I found is a very ugly
 /// "unsafe" code, and unsafe code is harder to explain and maintain.
 pub struct Halo2Prover<'a, F: FieldElement> {
-    pil: &'a Analyzed<F>,
-    plaf: Plaf,
+    analyzed: &'a Analyzed<F>,
+    circuit: PowdrCircuit<'a, F>,
     params: ParamsKZG<Bn256>,
     vkey: Option<VerifyingKey<G1Affine>>,
 }
@@ -63,8 +60,8 @@ pub fn generate_setup(size: DegreeType) -> ParamsKZG<Bn256> {
 
 impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     pub fn new(
-        pil: &'a Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
+        analyzed: &'a Analyzed<F>,
+        fixed: &'a [(String, Vec<F>)],
         setup: Option<&mut dyn io::Read>,
     ) -> Result<Self, io::Error> {
         Self::assert_field_is_bn254();
@@ -73,16 +70,16 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             .map(|mut setup| ParamsKZG::<Bn256>::read(&mut setup))
             .transpose()?
             .map(|mut params| {
-                params.downsize(degree_bits(pil.degree()));
+                params.downsize(degree_bits(analyzed.degree()));
                 params
             })
-            .unwrap_or_else(|| generate_setup(pil.degree()));
+            .unwrap_or_else(|| generate_setup(analyzed.degree()));
 
-        let plaf = analyzed_to_plaf(pil, fixed);
+        let circuit = PowdrCircuit::new(analyzed, fixed);
 
         Ok(Self {
-            pil,
-            plaf,
+            analyzed,
+            circuit,
             params,
             vkey: None,
         })
@@ -95,10 +92,8 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     pub fn prove_ast(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
         log::info!("Starting proof generation...");
 
-        let (circuit, publics) =
-            analyzed_to_circuit_with_witness(self.pil, self.plaf.clone(), witness);
-
-        log::debug!("{}", PlafDisplayBaseTOML(&circuit.plaf));
+        let circuit = self.circuit.clone().with_witness(witness);
+        let publics = vec![circuit.instance_column()];
 
         log::info!("Generating PK for snark...");
         let vk = match self.vkey {
@@ -145,15 +140,13 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         log::info!("Starting proof aggregation...");
 
         log::info!("Generating circuit for app snark...");
-        let (circuit_app, publics) =
-            analyzed_to_circuit_with_witness(self.pil, self.plaf.clone(), witness);
+        let circuit_app = self.circuit.clone().with_witness(witness);
+        let publics = vec![circuit_app.instance_column()];
 
         assert_eq!(publics.len(), 1);
         if !publics[0].is_empty() {
             unimplemented!("Public inputs are not supported yet");
         }
-
-        log::debug!("{}", PlafDisplayBaseTOML(&circuit_app.plaf));
 
         log::info!("Generating VK for app snark...");
         let vk_app = keygen_vk(&self.params, &circuit_app).unwrap();
@@ -214,18 +207,17 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     }
 
     pub fn add_verification_key(&mut self, mut vkey: &mut dyn io::Read) {
-        let vkey = VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PlafH2Circuit>(
+        let vkey = VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PowdrCircuit<F>>(
             &mut vkey,
             SerdeFormat::Processed,
-            self.plaf.clone(),
+            self.analyzed.clone().into(),
         )
         .unwrap();
         self.vkey = Some(vkey);
     }
 
     pub fn verification_key(&self) -> Result<VerifyingKey<G1Affine>, String> {
-        let circuit = analyzed_to_circuit_with_zeroed_witness(self.plaf.clone(), self.pil);
-        keygen_vk(&self.params, &circuit).map_err(|e| e.to_string())
+        keygen_vk(&self.params, &self.circuit).map_err(|e| e.to_string())
     }
 
     fn verify_inner<
@@ -273,7 +265,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             .map(|instance| {
                 instance
                     .iter()
-                    .map(|x| powdr_ff_to_fr(*x))
+                    .map(|x| convert_field(*x))
                     .collect::<Vec<_>>()
             })
             .collect_vec();
@@ -287,9 +279,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     }
 
     fn assert_field_is_bn254() {
-        if !matches!(F::known_field(), Some(KnownField::Bn254Field))
-            || polyexen::expr::get_field_p::<Fr>() != F::modulus().to_arbitrary_integer()
-        {
+        if !matches!(F::known_field(), Some(KnownField::Bn254Field)) {
             panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
         }
     }
