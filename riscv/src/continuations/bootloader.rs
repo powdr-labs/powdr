@@ -133,10 +133,31 @@ pub fn bootloader_preamble() -> String {
 ///   - The hash of the page *after* this chunk's execution
 ///   - For each level of the Merkle tree, except the root (1..=22):
 ///     - The hash (4 elements) of the sibling page
-pub fn bootloader_and_shutdown_routine(submachine_initialization: &[String]) -> String {
-    let mut bootloader = String::new();
+pub fn bootloader_and_shutdown_routine(
+    submachine_initialization: impl Iterator<Item = (u8, String)>,
+) -> Vec<(u8, String)> {
+    let mut lines = Vec::new();
 
-    bootloader.push_str(&format!(
+    trait PushSplit {
+        fn push_split(&mut self, text: &str);
+    }
+
+    impl PushSplit for Vec<(u8, String)> {
+        fn push_split(&mut self, text: &str) {
+            for line in text.split('\n') {
+                let indent = if line.is_empty() {
+                    0
+                } else if line.ends_with(':') && !line.starts_with("//") {
+                    1
+                } else {
+                    2
+                };
+                self.push((indent, line.to_string()));
+            }
+        }
+    }
+
+    lines.push_split(&format!(
         r#"
 // Skip the next instruction
 tmp1 <== jump(submachine_init);
@@ -158,9 +179,9 @@ tmp1 <== jump(shutdown_sink);
 submachine_init:
 "#
     ));
-    bootloader.push_str(&submachine_initialization.join("\n"));
+    lines.extend(submachine_initialization);
 
-    bootloader.push_str(&format!(
+    lines.push_split(&format!(
         r#"
 // START OF BOOTLOADER
 
@@ -220,19 +241,18 @@ P7 <=X= 0;
 
     for i in 0..WORDS_PER_PAGE {
         let reg_index = (i % 4) + 4;
-        bootloader.push_str(&format!(
-            r#"
-P{reg_index} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {i});
+        lines.push_split(&format!(
+            r#"P{reg_index} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {i});
 mstore_bootloader x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
         ));
 
         // Hash if buffer is full
         if i % 4 == 3 {
-            bootloader.push_str("poseidon_gl;");
+            lines.push((2, "poseidon_gl;".to_string()));
         }
     }
 
-    bootloader.push_str(&format!(
+    lines.push_split(&format!(
         r#"
 // == Merkle proof validation ==
 // We commit to the memory content by hashing it in pages of {WORDS_PER_PAGE} words each.
@@ -271,9 +291,8 @@ bootloader_merkle_proof_validation_loop:
 
     for i in 0..N_LEAVES_LOG {
         let mask = 1 << i;
-        bootloader.push_str(&format!(
-            r#"
-x4 <== and(x3, {mask});
+        lines.push_split(&format!(
+            r#"x4 <== and(x3, {mask});
 branch_if_nonzero x4, bootloader_level_{i}_is_right;
 P4 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0);
 P5 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
@@ -295,9 +314,8 @@ bootloader_level_{i}_end:
         ));
     }
 
-    bootloader.push_str(&format!(
-        r#"
-branch_if_nonzero x9, bootloader_update_memory_hash;
+    lines.push_split(&format!(
+        r#"branch_if_nonzero x9, bootloader_update_memory_hash;
 
 // Assert Correct Merkle Root
 branch_if_nonzero P0 - x5, bootloader_memory_hash_mismatch;
@@ -350,12 +368,10 @@ assert_bootloader_input {MEMORY_HASH_START_INDEX} + 7, x8;
 
     for (i, reg) in register_iter.enumerate() {
         let reg = reg.strip_prefix("main.").unwrap();
-        bootloader.push_str(&format!(r#"{reg} <== load_bootloader_input({i});"#));
-        bootloader.push('\n');
+        lines.push_split(&format!("{reg} <== load_bootloader_input({i});"));
     }
-    bootloader.push_str(&format!(
-        r#"
-// Default PC is 0, but we already started from 0, so in that case we do nothing.
+    lines.push_split(&format!(
+        r#"// Default PC is 0, but we already started from 0, so in that case we do nothing.
 // Otherwise, we jump to the PC.
 jump_to_bootloader_input {PC_INDEX};
 
@@ -364,9 +380,8 @@ jump_to_bootloader_input {PC_INDEX};
 "#
     ));
 
-    bootloader.push_str(
-        r#"
-// START OF SHUTDOWN ROUTINE
+    lines.push_split(
+        r#"// START OF SHUTDOWN ROUTINE
 //
 // This code is currently never executed in practice!
 //
@@ -396,15 +411,14 @@ shutdown_start:
 
     for (i, reg) in register_iter.enumerate() {
         let reg = reg.strip_prefix("main.").unwrap();
-        bootloader.push_str(&format!(
-            "assert_bootloader_input {}, {reg};\n",
+        lines.push_split(&format!(
+            "assert_bootloader_input {}, {reg};",
             i + REGISTER_NAMES.len()
         ));
     }
 
-    bootloader.push_str(&format!(
-        r#"
-// Number of pages
+    lines.push_split(&format!(
+        r#"// Number of pages
 x1 <== load_bootloader_input({NUM_PAGES_INDEX});
 x1 <== wrap(x1);
 
@@ -445,19 +459,18 @@ P11 <=X= 0;
 
     for i in 0..WORDS_PER_PAGE {
         let reg_index = (i % 4) + 4;
-        bootloader.push_str(&format!(
-            "P{reg_index}, x0 <== mload(x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD});\n"
+        lines.push_split(&format!(
+            "P{reg_index}, x0 <== mload(x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD});"
         ));
 
         // Hash if buffer is full
         if i % 4 == 3 {
-            bootloader.push_str("poseidon_gl;\n");
+            lines.push_split("poseidon_gl;\n");
         }
     }
 
-    bootloader.push_str(&format!(
+    lines.push_split(&format!(
         r#"
-
 // Assert page hash is as claimed
 // At this point, P0-P3 contain the actual page hash at the end of the execution.
 assert_bootloader_input x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + {WORDS_PER_PAGE} + 1 + 0, P0;
@@ -481,7 +494,7 @@ computation_start:
 "#,
     ));
 
-    bootloader
+    lines
 }
 
 /// The names of the registers in the order in which they are expected by the bootloader.

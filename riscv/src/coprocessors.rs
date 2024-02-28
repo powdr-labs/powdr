@@ -24,7 +24,7 @@ static BINARY_COPROCESSOR: CoProcessor = CoProcessor {
     instr or Y, Z -> X = binary.or;
     instr xor Y, Z -> X = binary.xor;
 
-            "#,
+"#,
     runtime_function_impl: None,
 };
 
@@ -37,7 +37,7 @@ static SHIFT_COPROCESSOR: CoProcessor = CoProcessor {
     instr shl Y, Z -> X = shift.shl;
     instr shr Y, Z -> X = shift.shr;
 
-            "#,
+"#,
     runtime_function_impl: None,
 };
 
@@ -46,10 +46,10 @@ static SPLIT_GL_COPROCESSOR: CoProcessor = CoProcessor {
     ty: "SplitGL",
     import: "use std::split::split_gl::SplitGL;",
     instructions: r#"
-// ================== wrapping instructions ==============
-instr split_gl Z -> X, Y = split_gl.split;
+    // ================== wrapping instructions ==============
+    instr split_gl Z -> X, Y = split_gl.split;
 
-    "#,
+"#,
     runtime_function_impl: None,
 };
 
@@ -58,8 +58,8 @@ static POSEIDON_GL_COPROCESSOR: CoProcessor = CoProcessor {
     ty: "PoseidonGL",
     import: "use std::hash::poseidon_gl::PoseidonGL;",
     instructions: r#"
-// ================== hashing instructions ==============
-instr poseidon_gl = poseidon_gl.poseidon_permutation P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11 -> P0, P1, P2, P3;
+    // ================== hashing instructions ==============
+    instr poseidon_gl = poseidon_gl.poseidon_permutation P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11 -> P0, P1, P2, P3;
 
 "#,
     runtime_function_impl: Some(("poseidon_gl_coprocessor", poseidon_gl_call)),
@@ -206,7 +206,7 @@ impl CoProcessors {
             return String::new();
         }
 
-        let p_regs: Vec<String> = (0..12).map(|i| format!("reg P{};", i)).collect();
+        let p_regs: Vec<String> = (0..12).map(|i| format!("    reg P{};", i)).collect();
 
         p_regs.join("\n")
     }

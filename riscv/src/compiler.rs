@@ -149,7 +149,7 @@ pub fn compile(
     let data_positions =
         store_data_objects(data_sections, data_start, &mut |label, addr, value| {
             if let Some(label) = label {
-                let comment = format!(" // data {label}");
+                let comment = format!("// data {label}");
                 if with_bootloader && !matches!(value, SingleDataValue::LabelReference(_)) {
                     &mut initial_mem
                 } else {
@@ -200,30 +200,35 @@ pub fn compile(
             }
         });
 
-    let submachine_init = call_every_submachine(coprocessors);
+    let submachine_init = call_every_submachine(coprocessors)
+        .into_iter()
+        .map(|l| (2, l));
     let bootloader_and_shutdown_routine_lines = if with_bootloader {
-        let bootloader_and_shutdown_routine = bootloader_and_shutdown_routine(&submachine_init);
-        log::debug!("Adding Bootloader:\n{}", bootloader_and_shutdown_routine);
+        let bootloader_and_shutdown_routine = bootloader_and_shutdown_routine(submachine_init);
+        log::debug!("Adding Bootloader:\n{:?}", bootloader_and_shutdown_routine);
         bootloader_and_shutdown_routine
-            .split('\n')
-            .map(|l| l.to_string())
-            .collect::<Vec<_>>()
     } else {
-        submachine_init
+        submachine_init.collect()
     };
 
-    let mut program: Vec<String> = file_ids
+    let mut program: Vec<(u8, String)> = file_ids
         .into_iter()
-        .map(|(id, dir, file)| format!(".debug file {id} {} {};", quote(&dir), quote(&file)))
+        .map(|(id, dir, file)| {
+            (
+                2,
+                format!(".debug file {id} {} {};", quote(&dir), quote(&file)),
+            )
+        })
         .chain(bootloader_and_shutdown_routine_lines)
         .collect();
     if !data_code.is_empty() {
-        program.push("x1 <== jump(__data_init);".to_string());
+        program.push((2, "x1 <== jump(__data_init);".to_string()));
     }
     program.extend([
-        format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-        "x1 <== jump(__runtime_start);".to_string(),
-        "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
+        (2, "// Set stack pointer".to_string()),
+        (2, format!("x2 <=X= {stack_start};")),
+        (2, "x1 <== jump(__runtime_start);".to_string()),
+        (2, "return;".to_string()), // This is not "riscv ret", but "return from powdr asm function".
     ]);
     program.extend(
         substitute_symbols_with_values(statements, &data_positions)
@@ -231,13 +236,14 @@ pub fn compile(
             .flat_map(|v| process_statement(v, coprocessors)),
     );
     if !data_code.is_empty() {
-        program.extend(
-        ["// This is the data initialization routine.\n__data_init:".to_string()].into_iter()
-        .chain(data_code)
-        .chain([
-            "// This is the end of the data initialization routine.\ntmp1 <== jump_dyn(x1);"
-                .to_string(),
-        ]));
+        program.push((2, "// This is the data initialization routine.".to_string()));
+        program.push((1, "__data_init:".to_string()));
+        program.extend(data_code.into_iter().map(|l| (2, l)));
+        program.push((
+            2,
+            "// This is the end of the data initialization routine.".to_string(),
+        ));
+        program.push((2, "tmp1 <== jump_dyn(x1);".to_string()));
     }
 
     // The program ROM needs to fit the degree, so we use the next power of 2.
@@ -261,8 +267,23 @@ pub fn compile(
         &preamble(degree, coprocessors, with_bootloader),
         initial_mem,
         &coprocessors.declarations(),
-        program,
+        indent_program(&program),
     )
+}
+
+fn indent_program(program: &[(u8, String)]) -> Vec<String> {
+    const INDENT_SIZE: usize = 4;
+
+    program
+        .iter()
+        .map(|(indent, line)| {
+            format!(
+                "{:indent$}{line}",
+                "",
+                indent = *indent as usize * INDENT_SIZE
+            )
+        })
+        .collect()
 }
 
 /// Replace certain patterns of references to code labels by
@@ -450,28 +471,26 @@ machine Main {{
 
 {}
 
-let initial_memory = [
+    let initial_memory = [
 {}
-];
+    ];
 
     function main {{
 {}
     }}
-}}    
+}}
 "#,
         machines.join("\n"),
         submachines
             .iter()
             .format_with("\n", |(instance, ty), f| f(&format_args!(
-                "\t\t{ty} {instance};"
+                "    {ty} {instance};"
             ))),
         preamble,
         initial_memory
             .into_iter()
-            .format_with(",\n", |line, f| f(&format_args!("\t\t{line}"))),
-        program
-            .into_iter()
-            .format_with("\n", |line, f| f(&format_args!("\t\t{line}"))),
+            .format_with(",\n", |line, f| f(&format_args!("        {line}"))),
+        program.into_iter().format("\n"),
     )
 }
 
@@ -482,25 +501,29 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
         "".to_string()
     };
 
-    format!("degree {degree};")
+    format!("    degree {degree};")
         + r#"
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
     reg Z[<=];
     reg W[<=];
+
 "# + &coprocessors.registers()
         + &r#"
+
     reg tmp1;
     reg tmp2;
     reg tmp3;
     reg tmp4;
+
     reg lr_sc_reservation;
+
 "#
         .to_owned()
         .to_string()
         + &(0..32)
-            .map(|i| format!("\t\treg x{i};\n"))
+            .map(|i| format!("    reg x{i};\n"))
             .collect::<Vec<_>>()
             .concat()
         + &bootloader_preamble_if_included
@@ -842,15 +865,15 @@ fn runtime(coprocessors: &CoProcessors) -> String {
         + &coprocessors.runtime()
 }
 
-fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
+fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<(u8, String)> {
     match &s {
-        Statement::Label(l) => vec![format!("{}:", escape_label(l))],
+        Statement::Label(l) => vec![(1, format!("{}:", escape_label(l)))],
         Statement::Directive(directive, args) => match (directive.as_str(), &args[..]) {
             (
                 ".loc",
                 [Argument::Expression(Expression::Number(file)), Argument::Expression(Expression::Number(line)), Argument::Expression(Expression::Number(column)), ..],
             ) => {
-                vec![format!("  .debug loc {file} {line} {column};")]
+                vec![(2, format!(".debug loc {file} {line} {column};"))]
             }
             (".file", _) => {
                 // We ignore ".file" directives because they have been extracted to the top.
@@ -870,11 +893,11 @@ fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
             let stmt_str = format!("{s}");
             // remove indentation and trailing newline
             let stmt_str = &stmt_str[2..(stmt_str.len() - 1)];
-            let mut ret = vec![format!("  .debug insn \"{stmt_str}\";")];
+            let mut ret = vec![(2, format!(".debug insn \"{stmt_str}\";"))];
             ret.extend(
                 process_instruction(instr, args, coprocessors)
                     .into_iter()
-                    .map(|s| "  ".to_string() + &s),
+                    .map(|s| (2, s)),
             );
             ret
         }
