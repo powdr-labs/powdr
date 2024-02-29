@@ -181,6 +181,14 @@ fn test_block_lookup_or() {
 }
 
 #[test]
+fn test_block_lookup_or_permutation() {
+    let f = "pil/block_lookup_or_permutation.pil";
+    verify_pil(f, Default::default());
+    test_halo2(f, Default::default());
+    // starky would take too long for this in debug mode
+}
+
+#[test]
 fn test_halo_without_lookup() {
     let f = "pil/halo_without_lookup.pil";
     verify_pil(f, Default::default());

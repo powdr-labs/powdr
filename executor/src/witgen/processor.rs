@@ -13,7 +13,7 @@ use super::{
     data_structures::{column_map::WitnessColumnMap, finalizable_data::FinalizableData},
     identity_processor::IdentityProcessor,
     rows::{CellValue, Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
-    Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback,
+    Constraints, EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
 type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
@@ -220,9 +220,18 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         &mut self,
         row_index: usize,
     ) -> Result<(bool, Constraints<&'a AlgebraicReference, T>), EvalError<T>> {
+        let mut progress = false;
+        if let Some(selector) = self.outer_query.as_ref().unwrap().right.selector.as_ref() {
+            progress |= self
+                .set_value(row_index, selector, T::one(), || {
+                    "Set selector to 1".to_string()
+                })
+                .unwrap_or(false);
+        }
+
         let OuterQuery { left, right } = self
             .outer_query
-            .as_mut()
+            .as_ref()
             .expect("Asked to process outer query, but it was not set!");
 
         let row_pair = RowPair::new(
@@ -247,7 +256,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 e
             })?;
 
-        let progress = self.apply_updates(row_index, &updates, || "outer query".to_string());
+        progress |= self.apply_updates(row_index, &updates, || "outer query".to_string());
 
         let outer_assignments = updates
             .constraints
@@ -297,6 +306,28 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             self.previously_set_inputs.insert(poly.poly_id, row_index);
         }
         self.apply_updates(row_index, &input_updates, || "inputs".to_string())
+    }
+
+    /// Sets the value of a given expression, in a given row.
+    pub fn set_value(
+        &mut self,
+        row_index: usize,
+        expression: &'a Expression<T>,
+        value: T,
+        name: impl Fn() -> String,
+    ) -> Result<bool, IncompleteCause<&'a AlgebraicReference>> {
+        let row_pair = RowPair::new(
+            &self.data[row_index],
+            &self.data[row_index + 1],
+            self.row_offset + row_index as u64,
+            self.fixed_data,
+            UnknownStrategy::Unknown,
+        );
+        let affine_expression = row_pair.evaluate(expression)?;
+        let updates = (affine_expression - value.into())
+            .solve_with_range_constraints(&row_pair)
+            .unwrap();
+        Ok(self.apply_updates(row_index, &updates, name))
     }
 
     fn apply_updates(
