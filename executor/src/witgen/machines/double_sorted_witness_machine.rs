@@ -30,6 +30,8 @@ const EXPECTED_WITNESSES: [&str; 7] = [
 const DIFF_COLUMNS: [&str; 2] = ["m_diff_upper", "m_diff_lower"];
 
 const BOOTLOADER_WRITE_COLUMN: &str = "m_is_bootloader_write";
+const POSEIDON_WRITE_COLUMN: &str = "m_is_write_poseidon";
+const POSEIDON_READ_COLUMN: &str = "m_is_read_poseidon";
 
 /// TODO make this generic
 
@@ -54,13 +56,10 @@ pub struct DoubleSortedWitnesses<T> {
 struct Operation<T> {
     pub is_normal_write: bool,
     pub is_bootloader_write: bool,
+    pub is_poseidon_write: bool,
+    pub is_poseidon_read: bool,
+    pub is_normal_read: bool,
     pub value: T,
-}
-
-impl<T: FieldElement> Operation<T> {
-    pub fn is_write(&self) -> bool {
-        self.is_normal_write || self.is_bootloader_write
-    }
 }
 
 impl<T: FieldElement> DoubleSortedWitnesses<T> {
@@ -97,7 +96,11 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
         let allowed_witnesses: HashSet<_> = EXPECTED_WITNESSES
             .into_iter()
             .chain(DIFF_COLUMNS)
-            .chain([BOOTLOADER_WRITE_COLUMN])
+            .chain([
+                BOOTLOADER_WRITE_COLUMN,
+                POSEIDON_READ_COLUMN,
+                POSEIDON_WRITE_COLUMN,
+            ])
             .collect();
         if !columns.iter().all(|c| allowed_witnesses.contains(c)) {
             return None;
@@ -168,7 +171,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
                 || is_simple_poly_of_name(
                     right_selector,
                     &self.namespaced(BOOTLOADER_WRITE_COLUMN),
-                ))
+                )
+                || is_simple_poly_of_name(right_selector, &self.namespaced(POSEIDON_READ_COLUMN))
+                || is_simple_poly_of_name(right_selector, &self.namespaced(POSEIDON_WRITE_COLUMN)))
         {
             return None;
         }
@@ -186,7 +191,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         let mut value = vec![];
         let mut is_normal_write = vec![];
         let mut is_bootloader_write = vec![];
-        let mut is_read = vec![];
+        let mut is_normal_read = vec![];
+        let mut is_poseidon_write = vec![];
+        let mut is_poseidon_read = vec![];
         let mut diff = vec![];
 
         for ((a, s), o) in std::mem::take(&mut self.trace) {
@@ -213,7 +220,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
 
             is_normal_write.push(o.is_normal_write.into());
             is_bootloader_write.push(o.is_bootloader_write.into());
-            is_read.push((!o.is_write()).into());
+            is_poseidon_write.push(o.is_poseidon_write.into());
+            is_poseidon_read.push(o.is_poseidon_read.into());
+            is_normal_read.push(o.is_normal_read.into());
         }
         if addr.is_empty() {
             // No memory access at all - fill a first row with something.
@@ -222,7 +231,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             value.push(0.into());
             is_normal_write.push(0.into());
             is_bootloader_write.push(0.into());
-            is_read.push(0.into());
+            is_poseidon_write.push(0.into());
+            is_poseidon_read.push(0.into());
+            is_normal_read.push(0.into());
         }
         while addr.len() < self.degree as usize {
             addr.push(*addr.last().unwrap());
@@ -231,7 +242,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             value.push(*value.last().unwrap());
             is_normal_write.push(0.into());
             is_bootloader_write.push(0.into());
-            is_read.push(0.into());
+            is_poseidon_write.push(0.into());
+            is_poseidon_read.push(0.into());
+            is_normal_read.push(0.into());
         }
 
         // We have all diffs, except from the last to the first element, which is unconstrained.
@@ -279,17 +292,29 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             vec![]
         };
 
+        let poseidon_columns = vec![
+            (
+                self.namespaced(POSEIDON_WRITE_COLUMN),
+                is_poseidon_write.clone(),
+            ),
+            (
+                self.namespaced(POSEIDON_READ_COLUMN),
+                is_poseidon_read.clone(),
+            ),
+        ];
+
         [
             (self.namespaced("m_value"), value),
             (self.namespaced("m_addr"), addr),
             (self.namespaced("m_step"), step),
             (self.namespaced("m_change"), change),
             (self.namespaced("m_is_write"), is_normal_write),
-            (self.namespaced("m_is_read"), is_read),
+            (self.namespaced("m_is_read"), is_normal_read),
         ]
         .into_iter()
         .chain(diff_columns)
         .chain(is_bootloader_write)
+        .chain(poseidon_columns)
         .collect()
     }
 }
@@ -309,11 +334,23 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             Some(Expression::Reference(p)) => p.name == self.namespaced(BOOTLOADER_WRITE_COLUMN),
             _ => panic!(),
         };
+        let is_poseidon_write = match &right.selector {
+            Some(Expression::Reference(p)) => p.name == self.namespaced(POSEIDON_WRITE_COLUMN),
+            _ => panic!(),
+        };
         let is_normal_write = match &right.selector {
             Some(Expression::Reference(p)) => p.name == self.namespaced("m_is_write"),
             _ => panic!(),
         };
-        let is_write = is_bootloader_write || is_normal_write;
+        let is_normal_read = match &right.selector {
+            Some(Expression::Reference(p)) => p.name == self.namespaced("m_is_read"),
+            _ => panic!(),
+        };
+        let is_poseidon_read = match &right.selector {
+            Some(Expression::Reference(p)) => p.name == self.namespaced(POSEIDON_READ_COLUMN),
+            _ => panic!(),
+        };
+        let is_write = is_bootloader_write || is_normal_write || is_poseidon_write;
         let addr = match left[0].constant_value() {
             Some(v) => v,
             None => {
@@ -363,6 +400,9 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                 Operation {
                     is_normal_write,
                     is_bootloader_write,
+                    is_poseidon_write,
+                    is_poseidon_read,
+                    is_normal_read,
                     value,
                 },
             );
@@ -373,6 +413,9 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                 Operation {
                     is_normal_write,
                     is_bootloader_write,
+                    is_poseidon_write,
+                    is_poseidon_read,
+                    is_normal_read,
                     value: *value,
                 },
             );
