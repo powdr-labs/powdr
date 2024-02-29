@@ -3,48 +3,29 @@ use powdr_number::Bn254Field;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{
     test_util::{
-        gen_estark_proof, resolve_test_file, test_halo2, verify_pipeline, verify_test_file,
+        assert_proofs_fail_for_invalid_witnesses, gen_estark_proof, resolve_test_file, test_halo2,
+        verify_test_file,
     },
     Pipeline,
 };
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
-    verify_test_file(file_name, inputs, vec![]);
+    verify_test_file(file_name, inputs, vec![]).unwrap();
 }
 
 #[test]
-#[should_panic = "Pil verifier run was unsuccessful."]
-fn test_invalid_witness_pilcom() {
+fn test_invalid_witness() {
     let f = "pil/trivial.pil";
-    let pipeline = Pipeline::default()
-        .from_file(resolve_test_file(f))
-        .set_witness(vec![(
-            "main.w".to_string(),
-            vec![GoldilocksField::from(0); 4],
-        )]);
-    verify_pipeline(pipeline);
-}
-
-#[test]
-#[should_panic = "assertion failed: stark_verify::<MerkleTreeGL,\\n            TranscriptGL>(&starkproof, &setup.const_root, &setup.starkinfo,\\n        &self.params, &mut setup.program).unwrap()"]
-fn test_invalid_witness_estark() {
-    let f = "pil/trivial.pil";
-    Pipeline::default()
-        .from_file(resolve_test_file(f))
-        .set_witness(vec![(
-            "main.w".to_string(),
-            vec![GoldilocksField::from(0); 4],
-        )])
-        .with_backend(powdr_backend::BackendType::EStark)
-        .compute_proof()
-        .unwrap();
+    let witness = vec![("main.w".to_string(), vec![0; 4])];
+    assert_proofs_fail_for_invalid_witnesses(f, &witness);
 }
 
 #[test]
 #[should_panic = "circuit was not satisfied"]
 #[cfg(feature = "halo2")]
 fn test_invalid_witness_halo2mock() {
+    // assert_proofs_fail_for_invalid_witnesses() doesn't assert that Halo2Mock fails, so this is a separate test using should_panic.
     let f = "pil/trivial.pil";
     Pipeline::default()
         .from_file(resolve_test_file(f))
@@ -55,24 +36,34 @@ fn test_invalid_witness_halo2mock() {
 }
 
 #[test]
-#[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Proof is invalid\"]"]
-#[cfg(feature = "halo2")]
-fn test_invalid_witness_halo2() {
-    let f = "pil/trivial.pil";
-    Pipeline::default()
-        .from_file(resolve_test_file(f))
-        .set_witness(vec![("main.w".to_string(), vec![Bn254Field::from(0); 4])])
-        .with_backend(powdr_backend::BackendType::Halo2)
-        .compute_proof()
-        .unwrap();
-}
-
-#[test]
 fn test_fibonacci() {
     let f = "pil/fibonacci.pil";
     verify_pil(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn test_fibonacci_invalid_witness() {
+    let f = "pil/fibonacci.pil";
+
+    // Changed one value and then continued.
+    // The following constraint should fail in row 1:
+    //     (1-ISLAST) * (x' - y) = 0;
+    let witness = vec![
+        ("Fibonacci.x".to_string(), vec![1, 1, 10, 3]),
+        ("Fibonacci.y".to_string(), vec![1, 2, 3, 13]),
+    ];
+    assert_proofs_fail_for_invalid_witnesses(f, &witness);
+
+    // All constraints are valid, except the initial row.
+    // The following constraint should fail in row 3:
+    //     ISLAST * (y' - 1) = 0;
+    let witness = vec![
+        ("Fibonacci.x".to_string(), vec![1, 2, 3, 5]),
+        ("Fibonacci.y".to_string(), vec![2, 3, 5, 8]),
+    ];
+    assert_proofs_fail_for_invalid_witnesses(f, &witness);
 }
 
 #[test]
@@ -102,14 +93,14 @@ fn test_external_witgen_fails_if_none_provided() {
 fn test_external_witgen_a_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.a".to_string(), vec![GoldilocksField::from(3); 16])];
-    verify_test_file(f, Default::default(), external_witness);
+    verify_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
 fn test_external_witgen_b_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.b".to_string(), vec![GoldilocksField::from(4); 16])];
-    verify_test_file(f, Default::default(), external_witness);
+    verify_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
@@ -119,7 +110,7 @@ fn test_external_witgen_both_provided() {
         ("main.a".to_string(), vec![GoldilocksField::from(3); 16]),
         ("main.b".to_string(), vec![GoldilocksField::from(4); 16]),
     ];
-    verify_test_file(f, Default::default(), external_witness);
+    verify_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
@@ -131,7 +122,7 @@ fn test_external_witgen_fails_on_conflicting_external_witness() {
         // Does not satisfy b = a + 1
         ("main.b".to_string(), vec![GoldilocksField::from(3); 16]),
     ];
-    verify_test_file(f, Default::default(), external_witness);
+    verify_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]

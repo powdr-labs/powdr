@@ -394,7 +394,12 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     /// Sets the witness to the provided value.
-    pub fn set_witness(self, witness: Vec<(String, Vec<T>)>) -> Self {
+    pub fn set_witness(mut self, witness: Vec<(String, Vec<T>)>) -> Self {
+        if self.output_dir.is_some() {
+            // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
+            let fixed_cols = self.compute_fixed_cols().unwrap();
+            self.maybe_write_witness(&fixed_cols, &witness).unwrap();
+        }
         Pipeline {
             artifact: Artifacts {
                 witness: Some(Rc::new(witness)),

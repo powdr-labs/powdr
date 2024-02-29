@@ -35,7 +35,7 @@ pub fn test_continuations(case: &str) {
         // computing the constants file.
         let mut pipeline = pipeline.with_backend(BackendType::PilStarkCli);
         pipeline.compute_proof().unwrap();
-        verify(pipeline.output_dir().unwrap(), pipeline.name(), Some(case));
+        verify(pipeline.output_dir().unwrap(), pipeline.name(), Some(case)).unwrap();
         Ok(())
     };
     let bootloader_inputs = rust_continuations_dry_run(&mut pipeline);
@@ -182,7 +182,7 @@ fn test_evm() {
         .from_asm_string(powdr_asm, None)
         .add_data(666, &bytes);
 
-    powdr_pipeline::test_util::verify_pipeline(pipeline);
+    powdr_pipeline::test_util::verify_pipeline(pipeline).unwrap();
 }
 
 #[test]

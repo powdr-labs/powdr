@@ -1,4 +1,4 @@
-constant %N = 16;
+constant %N = 4;
 
 // This uses the alternative nomenclature as well.
 
