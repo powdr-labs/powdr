@@ -1,9 +1,6 @@
 //! Compilation from powdr assembly to PIL
 
-use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
-    convert::Infallible,
-};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use powdr_ast::{
     asm_analysis::{
@@ -13,12 +10,11 @@ use powdr_ast::{
     },
     parsed::{
         asm::{CallableRef, InstructionBody, Params},
-        build::{self, direct_reference, next_reference},
-        folder::ExpressionFolder,
+        build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
-        LambdaExpression, MatchArm, MatchPattern, NamespacedPolynomialReference, PilStatement,
-        PolynomialName, SelectedExpressions, UnaryOperator,
+        LambdaExpression, MatchArm, MatchPattern, PilStatement, PolynomialName,
+        SelectedExpressions, UnaryOperator,
     },
     SourceRef,
 };
@@ -909,7 +905,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 .unwrap()
                                 .push(MatchArm {
                                     pattern: MatchPattern::Pattern(T::from(i as u64).into()),
-                                    value: NextTransform {}.fold_expression(expr.clone()).unwrap(),
+                                    value: expr.clone(),
                                 });
                         }
                     }
@@ -954,11 +950,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
                     FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression {
-                        params: vec!["i".to_string()],
+                        params: vec!["__i".to_string()],
                         body: Box::new(Expression::MatchExpression(
                             Box::new(Expression::FunctionCall(FunctionCall {
-                                function: Box::new(direct_reference(pc_name.as_ref().unwrap())),
-                                arguments: vec![direct_reference("i")],
+                                function: Box::new(absolute_reference("::std::prover::eval")),
+                                arguments: vec![direct_reference(pc_name.as_ref().unwrap())],
                             })),
                             prover_query_arms,
                         )),
@@ -1083,46 +1079,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
             },
             expr => (counter, expr),
         }
-    }
-}
-
-struct NextTransform;
-
-/// Transforms `x` -> `x(i)` and `x' -> `x(i + 1)`
-impl<T: FieldElement> ExpressionFolder<T, NamespacedPolynomialReference> for NextTransform {
-    type Error = Infallible;
-    fn fold_expression(&mut self, e: Expression<T>) -> Result<Expression<T>, Self::Error> {
-        Ok(match e {
-            Expression::Reference(reference) if &reference.to_string() != "i" => {
-                Expression::FunctionCall(FunctionCall {
-                    function: Box::new(Expression::Reference(reference)),
-                    arguments: vec![direct_reference("i")],
-                })
-            }
-            Expression::UnaryOperation(UnaryOperator::Next, inner) => {
-                if !matches!(inner.as_ref(), Expression::Reference(_)) {
-                    panic!("Can only use ' on symbols directly in free inputs.");
-                };
-                Expression::FunctionCall(FunctionCall {
-                    function: inner,
-                    arguments: vec![direct_reference("i") + Expression::from(T::from(1))],
-                })
-            }
-            _ => self.fold_expression_default(e)?,
-        })
-    }
-    fn fold_function_call(
-        &mut self,
-        FunctionCall {
-            function,
-            arguments,
-        }: FunctionCall<T>,
-    ) -> Result<FunctionCall<T>, Self::Error> {
-        Ok(FunctionCall {
-            // Call fold_expression_default to avoid replacement.
-            function: Box::new(self.fold_expression_default(*function)?),
-            arguments: self.fold_expressions(arguments)?,
-        })
     }
 }
 

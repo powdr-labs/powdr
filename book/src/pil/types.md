@@ -50,8 +50,9 @@ the field modulus.
 
 If you reference such a symbol, the type of the reference is `expr`.
 A byte constraint is as easy as `{ X } in { byte }`, since the expected types in plookup columns is `expr`.
-The downside is that you cannot evaluate columns as functions. If you want to do that, you have to assign
+The downside is that you cannot evaluate columns as functions. If you want to do that, you either have to assign
 a copy to an `int -> int` symbol: `let byte_f: int -> int = |i| i & 0xff; let byte: col = byte_f;`.
+Or you can use the built-in function `std::prover::eval` if you want to do that inside a prover query or hint.
 
 All other symbols use their declared type both for their value and for references to these symbols.
 

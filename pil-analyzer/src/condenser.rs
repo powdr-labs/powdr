@@ -1,24 +1,20 @@
 //! Component that turns data from the PILAnalyzer into Analyzed,
 //! i.e. it turns more complex expressions in identities to simpler expressions.
 
-use std::{collections::HashMap, fmt::Display, rc::Rc};
+use std::collections::HashMap;
 
-use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
-        types::{format_type_scheme_around_name, ArrayType, Type, TypedExpression},
-        AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-        Identity, IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
-        StatementIdentifier, Symbol, SymbolKind,
+        types::{format_type_scheme_around_name, ArrayType, Type},
+        AlgebraicExpression, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
+        PolynomialReference, PolynomialType, PublicDeclaration, Reference, StatementIdentifier,
+        Symbol, SymbolKind,
     },
-    parsed::{visitor::ExpressionVisitable, BinaryOperator, SelectedExpressions, UnaryOperator},
+    parsed::{visitor::ExpressionVisitable, SelectedExpressions},
 };
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::evaluator::{
-    self, evaluate, evaluate_function_call, generic_arg_mapping, Custom, EvalError, SymbolLookup,
-    Value,
-};
+use crate::evaluator::{self, Definitions, Value};
 
 pub fn condense<T: FieldElement>(
     degree: Option<DegreeType>,
@@ -175,14 +171,13 @@ impl<T: FieldElement> Condenser<T> {
 
     /// Evaluates the expression and expects it to result in an algebraic expression.
     fn condense_to_algebraic_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
-        evaluator::evaluate(e, &self)
-            .and_then(|result| match result {
-                Value::Custom(Condensate::Expression(expr)) => Ok(expr),
-                x => Ok(x.try_to_field_element()?.into()),
-            })
-            .unwrap_or_else(|err| {
-                panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
-            })
+        let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
+            panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
+        });
+        match result {
+            Value::Expression(expr) => expr,
+            _ => panic!("Expected expression but got {result}"),
+        }
     }
 
     /// Evaluates the expression and expects it to result in an array of algebraic expressions.
@@ -190,277 +185,43 @@ impl<T: FieldElement> Condenser<T> {
         &self,
         e: &Expression<T>,
     ) -> Vec<AlgebraicExpression<T>> {
-        evaluator::evaluate(e, &self)
-            .and_then(|result| match result {
-                Value::Array(items) => items
-                    .into_iter()
-                    .map(|item| match item {
-                        Value::Custom(Condensate::Expression(expr)) => Ok(expr),
-                        x => Ok(x.try_to_field_element()?.into()),
-                    })
-                    .collect::<Result<_, _>>(),
-                _ => Err(EvalError::TypeError(format!(
-                    "Expected array of algebraic expressions, but got {result}"
-                ))),
-            })
-            .unwrap_or_else(|err| {
-                panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
-            })
+        let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
+            panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
+        });
+        match result {
+            Value::Array(items) => items
+                .into_iter()
+                .map(|item| match item {
+                    Value::Expression(expr) => expr,
+                    _ => panic!("Expected expression but got {item}"),
+                })
+                .collect(),
+            _ => panic!("Expected array of algebraic expressions, but got {result}"),
+        }
     }
 
     /// Evaluates an expression and expects a single constraint or an array of constraints.
     fn condense_to_constraint_or_array(&self, e: &Expression<T>) -> Vec<AlgebraicExpression<T>> {
-        evaluator::evaluate(e, &self)
-            .and_then(|result| match result {
-                Value::Custom(Condensate::Identity(left, right)) => Ok(vec![left - right]),
-                Value::Array(items) => items
-                    .into_iter()
-                    .map(|item| {
-                        if let Value::Custom(c) = item {
-                            c.try_to_constraint()
-                        } else {
-                            Err(EvalError::TypeError(format!(
-                                "Expected constraint, but got {item}"
-                            )))
-                        }
-                    })
-                    .collect::<Result<_, _>>(),
-                _ => Err(EvalError::TypeError(format!(
-                    "Expected constraint or array of constraints, but got {result}"
-                ))),
-            })
-            .unwrap_or_else(|err| {
-                panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
-            })
-    }
-}
-
-impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T> {
-    fn lookup<'b>(
-        &self,
-        name: &str,
-        generic_args: Option<Vec<Type>>,
-    ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
-        let name = name.to_string();
-        let (symbol, value) = &self
-            .symbols
-            .get(&name)
-            .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))?;
-
-        Ok(if matches!(symbol.kind, SymbolKind::Poly(_)) {
-            if symbol.is_array() {
-                Value::Array(
-                    symbol
-                        .array_elements()
-                        .map(|(name, poly_id)| {
-                            AlgebraicExpression::Reference(AlgebraicReference {
-                                name,
-                                poly_id,
-                                next: false,
-                            })
-                            .into()
-                        })
-                        .collect(),
-                )
-            } else {
-                AlgebraicExpression::Reference(AlgebraicReference {
-                    name,
-                    poly_id: symbol.into(),
-                    next: false,
-                })
-                .into()
-            }
-        } else {
-            match value {
-                Some(FunctionValueDefinition::Expression(TypedExpression {
-                    e: value,
-                    type_scheme,
-                })) => {
-                    let generic_args = generic_arg_mapping(type_scheme, generic_args);
-                    evaluator::evaluate_generic(value, &generic_args, self)?
-                }
-                _ => Err(EvalError::Unsupported(
-                    "Cannot evaluate arrays and queries.".to_string(),
-                ))?,
-            }
-        })
-    }
-
-    fn lookup_public_reference(
-        &self,
-        name: &str,
-    ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
-        Ok(AlgebraicExpression::PublicReference(name.to_string()).into())
-    }
-
-    fn eval_function_application(
-        &self,
-        function: Condensate<T>,
-        arguments: &[Rc<Value<'a, T, Condensate<T>>>],
-    ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
-        let Condensate::Expression(expr) = function else {
-            Err(EvalError::TypeError(format!(
-                "Expected function, but got: {function}"
-            )))?
-        };
-        match expr {
-            AlgebraicExpression::Reference(AlgebraicReference {
-                name,
-                poly_id,
-                next,
-            }) if poly_id.ptype == PolynomialType::Constant => {
-                let arguments = if next {
-                    assert_eq!(arguments.len(), 1);
-                    let Value::Integer(ref arg) = *arguments[0] else {
-                        return Err(EvalError::TypeError(
-                            "Expected integer argument when evaluating function with next ref."
-                                .to_string(),
-                        ));
-                    };
-                    vec![Rc::new(Value::Integer(arg + num_bigint::BigInt::from(1)))]
-                } else {
-                    arguments.to_vec()
-                };
-
-                match self.symbols[&name].1.as_ref() {
-                    Some(FunctionValueDefinition::Expression(TypedExpression {
-                        e,
-                        type_scheme: _,
-                    })) => {
-                        let function = evaluate(e, self)?;
-                        evaluate_function_call(function, arguments, self)
+        let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
+            panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
+        });
+        match result {
+            Value::Identity(left, right) => vec![left - right],
+            Value::Array(items) => items
+                .into_iter()
+                .map(|item| {
+                    if let Value::Identity(left, right) = item {
+                        left - right
+                    } else {
+                        panic!("Expected constraint, but got {item}")
                     }
-                    None => Err(EvalError::SymbolNotFound(format!(
-                        "Symbol not found in function call: {name}"
-                    ))),
-                    _ => Err(EvalError::Unsupported(format!(
-                        "Cannot evaluate arrays or queries: {name}"
-                    ))),
-                }
-            }
-            _ => Err(EvalError::TypeError(format!(
-                "Function application not supported: {expr}({})",
-                arguments.iter().format(", ")
-            ))),
+                })
+                .collect::<Vec<_>>(),
+            _ => panic!("Expected constraint or array of constraints, but got {result}"),
         }
     }
 
-    fn eval_binary_operation(
-        &self,
-        left: Value<'a, T, Condensate<T>>,
-        op: powdr_ast::parsed::BinaryOperator,
-        right: Value<'a, T, Condensate<T>>,
-    ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
-        let left: Condensate<T> = left.try_into()?;
-        let right: Condensate<T> = right.try_into()?;
-        let left_expr = left.try_to_expression()?;
-        let right_expr = right.try_to_expression()?;
-        Ok(if op == BinaryOperator::Identity {
-            Value::Custom(Condensate::Identity(left_expr, right_expr))
-        } else {
-            AlgebraicExpression::BinaryOperation(
-                Box::new(left_expr),
-                op.try_into().map_err(EvalError::TypeError)?,
-                Box::new(right_expr),
-            )
-            .into()
-        })
-    }
-
-    fn eval_unary_operation(
-        &self,
-        op: UnaryOperator,
-        inner: Condensate<T>,
-    ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
-        let inner = inner.try_to_expression()?;
-        if op == UnaryOperator::Next {
-            let AlgebraicExpression::Reference(reference) = inner else {
-                return Err(EvalError::TypeError(format!(
-                    "Expected column for \"'\" operator, but got: {inner}"
-                )));
-            };
-
-            if reference.next {
-                return Err(EvalError::TypeError(format!(
-                    "Double application of \"'\" on: {reference}"
-                )));
-            }
-            Ok(AlgebraicExpression::Reference(AlgebraicReference {
-                next: true,
-                ..reference
-            })
-            .into())
-        } else {
-            Ok(AlgebraicExpression::UnaryOperation(
-                op.try_into().map_err(EvalError::TypeError)?,
-                Box::new(inner),
-            )
-            .into())
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Debug)]
-enum Condensate<T> {
-    Expression(AlgebraicExpression<T>),
-    Identity(AlgebraicExpression<T>, AlgebraicExpression<T>),
-}
-
-impl<T: FieldElement> Condensate<T> {
-    pub fn try_to_expression(self) -> Result<AlgebraicExpression<T>, EvalError> {
-        match self {
-            Condensate::Expression(e) => Ok(e),
-            Condensate::Identity(left, right) => Err(EvalError::TypeError(format!(
-                "Expected expression, got identity: {left} = {right}."
-            ))),
-        }
-    }
-    pub fn try_to_constraint(self) -> Result<AlgebraicExpression<T>, EvalError> {
-        match self {
-            Condensate::Expression(e) => Err(EvalError::TypeError(format!(
-                "Expected constraint but got expression: {e}"
-            ))),
-            Condensate::Identity(left, right) => Ok(left - right),
-        }
-    }
-}
-
-impl<T: Display> Display for Condensate<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Condensate::Expression(expr) => write!(f, "{expr}"),
-            Condensate::Identity(left, right) => write!(f, "{left} = {right}"),
-        }
-    }
-}
-
-impl<T: FieldElement> Custom for Condensate<T> {
-    fn type_name(&self) -> String {
-        match self {
-            Condensate::Expression(_) => "expr".to_string(),
-            Condensate::Identity(_, _) => "constr".to_string(),
-        }
-    }
-}
-
-impl<'a, T: FieldElement> TryFrom<Value<'a, T, Self>> for Condensate<T> {
-    type Error = EvalError;
-
-    fn try_from(value: Value<'a, T, Self>) -> Result<Self, Self::Error> {
-        match value {
-            Value::FieldElement(_) | Value::Integer(_) => {
-                Ok(Condensate::Expression(value.try_to_field_element()?.into()))
-            }
-            Value::Custom(v) => Ok(v),
-            value => Err(EvalError::TypeError(format!(
-                "Expected algebraic expression, got {value}"
-            ))),
-        }
-    }
-}
-
-impl<'a, T: FieldElement> From<AlgebraicExpression<T>> for Value<'a, T, Condensate<T>> {
-    fn from(expr: AlgebraicExpression<T>) -> Self {
-        Value::Custom(Condensate::Expression(expr))
+    fn symbols(&self) -> Definitions<'_, T> {
+        Definitions(&self.symbols)
     }
 }

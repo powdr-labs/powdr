@@ -3,9 +3,14 @@ use powdr_number::FieldElement;
 use crate::parsed::Expression;
 
 use super::{
-    asm::{Part, SymbolPath},
+    asm::{parse_absolute_path, Part, SymbolPath},
     BinaryOperator, IndexAccess, NamespacedPolynomialReference, UnaryOperator,
 };
+
+pub fn absolute_reference<T>(name: &str) -> Expression<T> {
+    NamespacedPolynomialReference::from(parse_absolute_path(name).relative_to(&Default::default()))
+        .into()
+}
 
 pub fn direct_reference<S: Into<String>, T>(name: S) -> Expression<T> {
     NamespacedPolynomialReference::from(SymbolPath::from_identifier(name.into())).into()

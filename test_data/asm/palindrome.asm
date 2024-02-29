@@ -45,7 +45,7 @@ machine Palindrome {
         store_values:
         jmpz CNT, check_start;
         ADDR <=X= CNT;
-        mstore ${ ("input", CNT) };
+        mstore ${ ("input", std::prover::eval(CNT)) };
         CNT <=X= CNT - 1;
         jmp store_values;
 

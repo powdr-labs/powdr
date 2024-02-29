@@ -23,7 +23,7 @@ machine Sqrt(latch, operation_id) {
             sqrt_rec((y + x / y) / 2, x)
         };
 
-    col witness y(i) query ("hint", sqrt_hint(x(i)));
+    col witness y(i) query ("hint", sqrt_hint(std::prover::eval(x)));
     
     y * y = x;
     

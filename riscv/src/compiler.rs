@@ -1379,13 +1379,13 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         }
         "ecall" => {
             assert!(args.is_empty());
-            vec!["x10 <=X= ${ (\"input\", x10) };".to_string()]
+            vec!["x10 <=X= ${ (\"input\", std::prover::eval(x10)) };".to_string()]
         }
         "ebreak" => {
             assert!(args.is_empty());
             // This is using x0 on purpose, because we do not want to introduce
             // nondeterminism with this.
-            vec!["x0 <=X= ${ (\"print_char\", x10) };\n".to_string()]
+            vec!["x0 <=X= ${ (\"print_char\", std::prover::eval(x10)) };\n".to_string()]
         }
         "ret" => {
             assert!(args.is_empty());

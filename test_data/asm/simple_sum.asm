@@ -37,7 +37,7 @@ machine Main {
 
         start:
         jmpz CNT, check;
-        A <=X= A + ${ ("input", std::convert::int(CNT) + 1) };
+        A <=X= A + ${ ("input", std::prover::eval(CNT) + 1) };
         // Could use "CNT <=X= CNT - 1", but that would need X.
         dec_CNT;
         jmp start;

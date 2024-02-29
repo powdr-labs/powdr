@@ -424,16 +424,6 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         ))
         .evaluate(expr)
     }
-
-    /// Returns Ok(true) if the given row number references the "next" row,
-    /// Ok(false) if it references the "current" row and Err if it is out of range.
-    pub fn is_row_number_next(&self, row_number: RowIndex) -> Result<bool, ()> {
-        match row_number - self.current_row_index {
-            0 => Ok(false),
-            1 => Ok(true),
-            _ => Err(()),
-        }
-    }
 }
 
 impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'_, '_, T> {

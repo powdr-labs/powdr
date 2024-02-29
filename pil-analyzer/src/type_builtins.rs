@@ -42,6 +42,7 @@ lazy_static! {
         ("std::convert::int", ("T: FromLiteral", "T -> int")),
         ("std::debug::print", ("", "string -> constr[]")),
         ("std::field::modulus", ("", "-> int")),
+        ("std::prover::eval", ("", "expr -> fe")),
     ]
     .into_iter()
     .map(|(name, (vars, ty))| {

@@ -8,12 +8,13 @@ use powdr_ast::analyzed::types::{Type, TypedExpression};
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
 
 use powdr_ast::parsed::{PILFile, PilStatement};
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
     PublicDeclaration, StatementIdentifier, Symbol,
 };
+use powdr_parser::parse_type_name;
 
 use crate::type_inference::{infer_types, ExpectedType};
 use crate::AnalysisDriver;
@@ -131,6 +132,9 @@ impl<T: FieldElement> PILAnalyzer<T> {
     }
 
     pub fn type_check(&mut self) {
+        let query_type: Type = parse_type_name::<GoldilocksField>("int -> (string, fe)")
+            .unwrap()
+            .into();
         let mut expressions = vec![];
         // Collect all definitions with their types and expressions.
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
@@ -148,16 +152,30 @@ impl<T: FieldElement> PILAnalyzer<T> {
                     } else {
                         let type_scheme = type_from_definition(symbol, value);
 
-                        // TOOD in order to type-check queries, we need enums.
-                        if let Some(FunctionValueDefinition::Array(items)) = value {
-                            // Expect all items in the arrays to be field elements.
-                            expressions.extend(
-                                items
-                                    .iter_mut()
-                                    .flat_map(|item| item.pattern_mut())
-                                    .map(|e| (e, Type::Fe.into())),
-                            );
+                        match value {
+                            Some(FunctionValueDefinition::Array(items)) => {
+                                // Expect all items in the arrays to be field elements.
+                                expressions.extend(
+                                    items
+                                        .iter_mut()
+                                        .flat_map(|item| item.pattern_mut())
+                                        .map(|e| (e, Type::Fe.into())),
+                                );
+                            }
+                            Some(FunctionValueDefinition::Query(query)) => {
+                                // Query functions are int -> (string, fe).
+                                // TODO replace this by an enum.
+                                expressions.push((
+                                    query,
+                                    ExpectedType {
+                                        ty: query_type.clone(),
+                                        allow_array: false,
+                                    },
+                                ));
+                            }
+                            _ => {}
                         };
+
                         (type_scheme, None)
                     };
                 (name.clone(), (type_scheme, expr))
@@ -348,6 +366,8 @@ mod test {
 public P = T.pc(2);
 namespace Bin(65536);
     col witness bla;
+namespace std::prover(65536);
+    let eval: expr -> fe = [];
 namespace T(65536);
     col fixed first_step = [1] + [0]*;
     col fixed line(i) { i };
@@ -377,7 +397,7 @@ namespace T(65536);
     col witness reg_write_X_A;
     T.X = ((((T.read_X_A * T.A) + (T.read_X_CNT * T.CNT)) + T.X_const) + (T.X_read_free * T.X_free_value));
     T.A' = (((T.first_step' * 0) + (T.reg_write_X_A * T.X)) + ((1 - (T.first_step' + T.reg_write_X_A)) * T.A));
-    col witness X_free_value(i) query match T.pc { 0 => ("input", 1), 3 => ("input", (T.CNT(i) + 1)), 7 => ("input", 0), };
+    col witness X_free_value(__i) query match std::prover::eval(T.pc) { 0 => ("input", 1), 3 => ("input", (std::prover::eval(T.CNT) + 1)), 7 => ("input", 0), };
     col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
     col fixed p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1] + [0]*;

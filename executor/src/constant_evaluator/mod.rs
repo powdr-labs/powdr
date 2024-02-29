@@ -1,17 +1,15 @@
-use std::{collections::HashMap, fmt::Display, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         types::{ArrayType, Type, TypedExpression},
-        Analyzed, Expression, FunctionValueDefinition, PolyID,
+        Analyzed, Expression, FunctionValueDefinition,
     },
     parsed::IndexAccess,
 };
 use powdr_number::{DegreeType, FieldElement};
-use powdr_pil_analyzer::evaluator::{
-    self, generic_arg_mapping, Custom, EvalError, SymbolLookup, Value,
-};
+use powdr_pil_analyzer::evaluator::{self, Definitions, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 /// Generates the fixed column values for all fixed columns that are defined
@@ -20,27 +18,20 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 /// Arrays of columns are flattened, the name of the `i`th array element
 /// is `name[i]`.
 pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Vec<T>)> {
-    let mut other_constants = HashMap::new();
+    let mut fixed_cols = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
             // For arrays, generate values for each index,
             // for non-arrays, set index to None.
             for (index, (name, id)) in poly.array_elements().enumerate() {
                 let index = poly.is_array().then_some(index as u64);
-                let values = generate_values(
-                    analyzed,
-                    analyzed.degree(),
-                    &name,
-                    value,
-                    index,
-                    &other_constants,
-                );
-                assert!(other_constants.insert(name, (id, values)).is_none());
+                let values = generate_values(analyzed, analyzed.degree(), &name, value, index);
+                assert!(fixed_cols.insert(name, (id, values)).is_none());
             }
         }
     }
 
-    other_constants
+    fixed_cols
         .into_iter()
         .sorted_by_key(|(_, (id, _))| *id)
         .map(|(name, (_, values))| (name, values))
@@ -53,14 +44,8 @@ fn generate_values<T: FieldElement>(
     name: &str,
     body: &FunctionValueDefinition<T>,
     index: Option<u64>,
-    // TODO replace computed_columns by a cache
-    computed_columns: &HashMap<String, (PolyID, Vec<T>)>,
 ) -> Vec<T> {
-    let symbols = Symbols {
-        analyzed,
-        computed_columns,
-    };
-    // TODO we should maybe pre-compute some symbols here.
+    let symbols = Definitions(&analyzed.definitions);
     let result = match body {
         FunctionValueDefinition::Expression(TypedExpression { e, type_scheme }) => {
             if let Some(type_scheme) = type_scheme {
@@ -88,8 +73,6 @@ fn generate_values<T: FieldElement>(
             (0..degree)
                 .into_par_iter()
                 .map(|i| {
-                    // We could try to avoid the first evaluation to be run for each iteration,
-                    // but the data is not thread-safe.
                     let fun = evaluator::evaluate(e, &symbols).unwrap();
                     evaluator::evaluate_function_call(
                         fun,
@@ -134,87 +117,6 @@ fn generate_values<T: FieldElement>(
             panic!("{err}");
         }
         Ok(v) => v,
-    }
-}
-
-struct Symbols<'a, T> {
-    pub analyzed: &'a Analyzed<T>,
-    pub computed_columns: &'a HashMap<String, (PolyID, Vec<T>)>,
-}
-
-impl<'a, T: FieldElement> SymbolLookup<'a, T, FixedColumnRef<'a>> for Symbols<'a, T> {
-    fn lookup<'b>(
-        &self,
-        name: &str,
-        generic_args: Option<Vec<Type>>,
-    ) -> Result<Value<'a, T, FixedColumnRef<'a>>, EvalError> {
-        Ok(
-            if let Some((name, _)) = self.computed_columns.get_key_value(name) {
-                // TODO it is actually not possible anymore to reference another fixed column,
-                // so we could eliminate the whole member of Symbols.
-                Value::Custom(FixedColumnRef { name })
-            } else if let Some((_, value)) = self.analyzed.definitions.get(&name.to_string()) {
-                match value {
-                    Some(FunctionValueDefinition::Expression(TypedExpression {
-                        e,
-                        type_scheme,
-                    })) => {
-                        let generic_args = generic_arg_mapping(type_scheme, generic_args);
-                        evaluator::evaluate_generic(e, &generic_args, self)?
-                    }
-                    Some(_) => Err(EvalError::Unsupported(
-                        "Cannot evaluate arrays and queries.".to_string(),
-                    ))?,
-                    None => Err(EvalError::Unsupported(
-                        "Cannot evaluate witness columns.".to_string(),
-                    ))?,
-                }
-            } else {
-                Err(EvalError::SymbolNotFound(format!(
-                    "Symbol {name} not found."
-                )))?
-            },
-        )
-    }
-
-    fn eval_function_application(
-        &self,
-        function: FixedColumnRef<'a>,
-        arguments: &[Rc<Value<'a, T, FixedColumnRef<'a>>>],
-    ) -> Result<Value<'a, T, FixedColumnRef<'a>>, EvalError> {
-        if arguments.len() != 1 {
-            Err(EvalError::TypeError(format!(
-                "Expected one argument, but got {}",
-                arguments.len()
-            )))?
-        };
-        let Value::Integer(row) = arguments[0].as_ref() else {
-            return Err(EvalError::TypeError(format!(
-                "Expected integer but got {}",
-                arguments[0]
-            )));
-        };
-        let (_, data) = &self.computed_columns[function.name];
-        Ok(Value::FieldElement(
-            data[usize::try_from(row).unwrap() % data.len()],
-        ))
-    }
-}
-
-#[derive(Clone, PartialEq, Debug)]
-pub struct FixedColumnRef<'a> {
-    pub name: &'a str,
-}
-
-impl<'a> Custom for FixedColumnRef<'a> {
-    fn type_name(&self) -> String {
-        "col".to_string()
-    }
-}
-
-impl<'a> Display for FixedColumnRef<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
     }
 }
 
