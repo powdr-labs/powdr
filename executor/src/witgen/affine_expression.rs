@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::fmt::Display;
 
 use itertools::{Either, Itertools};
@@ -13,12 +12,11 @@ use super::{EvalError::*, EvalResult, EvalValue, IncompleteCause};
 
 /// An expression affine in the committed polynomials (or symbolic variables in general).
 #[derive(Debug, Clone)]
-pub struct AffineExpression<K, T> {
-    pub coefficients: Vec<(K, T)>,
-    pub offset: T,
-    /// If true, all coefficients have nonzero values and there are no duplicate keys
-    /// (a constant affine expression is always clean).
-    clean: bool,
+pub enum AffineExpression<K, T> {
+    Constant(T),
+    OneVar((K, T), T),
+    /// Many contains 1 or more variables, in variable order, without duplicates or zero coefficients
+    ManyVars(Vec<(K, T)>, T),
 }
 
 pub type AffineResult<K, T> = Result<AffineExpression<K, T>, IncompleteCause<K>>;
@@ -26,115 +24,98 @@ pub type AffineResult<K, T> = Result<AffineExpression<K, T>, IncompleteCause<K>>
 impl<K, T> From<T> for AffineExpression<K, T> {
     #[inline]
     fn from(value: T) -> Self {
-        Self {
-            coefficients: Default::default(),
-            offset: value,
-            clean: true,
-        }
+        Self::Constant(value)
     }
 }
 
-impl<'x, K, T> AffineExpression<K, T>
+impl<K, T> AffineExpression<K, T>
 where
-    K: Copy + Ord + 'x,
+    K: Copy + Ord,
     T: FieldElement,
 {
     pub fn from_variable_id(var_id: K) -> AffineExpression<K, T> {
-        Self {
-            coefficients: vec![(var_id, T::ONE)],
-            offset: T::ZERO,
-            clean: true,
-        }
+        Self::OneVar((var_id, T::ONE), T::ZERO)
     }
 
     pub fn is_constant(&self) -> bool {
-        self.nonzero_coefficients().is_empty()
+        matches!(self, Self::Constant(_))
     }
 
     pub fn constant_value(&self) -> Option<T> {
-        self.is_constant().then_some(self.offset)
+        if let Self::Constant(c) = self {
+            Some(*c)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn is_zero(&self) -> bool {
+        if let Self::Constant(n) = self {
+            n.is_zero()
+        } else {
+            false
+        }
+    }
+
+    #[inline]
+    pub fn is_one(&self) -> bool {
+        if let Self::Constant(n) = self {
+            n.is_one()
+        } else {
+            false
+        }
+    }
+
+    /// check that variables are sorted, unique and non-zero (used in sanity debug asserts)
+    fn is_proper_coefficients(coefficients: &[(K, T)]) -> bool {
+        coefficients.windows(2).all(|w| w[0].0 < w[1].0)
+            && coefficients.iter().all(|(_, c)| !c.is_zero())
     }
 
     /// @returns the nonzero coefficients and their variable IDs (but not the offset).
-    /// The order of coefficients is arbitrary.
-    pub fn nonzero_coefficients(&self) -> Cow<[(K, T)]> {
-        // We need to make sure that there are no duplicates in the variable
-        // IDs and that the coefficients are nonzero. In other words, we need to
-        // "clean" the coefficient array.
-
-        // First try the easy cases.
-        if self.clean {
-            return Cow::from(&self.coefficients);
-        }
-
-        match &self.coefficients[..] {
-            [] => return vec![].into(),
-            [(k, v)] => return Self::clean_one(k, v).into(),
-            [(k1, v1), (k2, v2)] => return Self::clean_two((k1, v1), (k2, v2)).into(),
-            _ => {}
-        };
-
-        // Ok, this is more complicated.
-        // Remove duplicates by first sorting and then going through
-        // all adjacent pairs with equal variable IDs, adding the coefficient
-        // of the first to the second, and setting the coefficient of the
-        // first to zero.
-        // Then we filter out the zeros as a last step.
-        let mut coefficients = self.coefficients.clone();
-        coefficients.sort_unstable_by(|(k1, _), (k2, _)| k1.cmp(k2));
-        for i in 1..coefficients.len() {
-            let (first, second) = coefficients.split_at_mut(i);
-            let (k1, v1) = first.last_mut().unwrap();
-            let (k2, v2) = second.first_mut().unwrap();
-            if k1 == k2 {
-                *v2 += *v1;
-                *v1 = 0.into();
+    /// The coefficients are ordered by variable
+    pub fn nonzero_coefficients(&self) -> impl Iterator<Item = &(K, T)> {
+        // We want to return impl `Iterator`, but there are 3 possible concrete implementations to return here.
+        // General solution is to use `Box<dyn>` but we want to avoid allocations and dynamic dispatch.
+        // Instead, we use `itertools::Either`, which implements `Iterator` when both sides implement it, and this works recursively.
+        match self {
+            AffineExpression::ManyVars(coefficients, _) => {
+                debug_assert!(Self::is_proper_coefficients(coefficients));
+                Either::Right(Either::Left(coefficients.iter()))
             }
-        }
-        coefficients
-            .into_iter()
-            .filter(|(_, c)| !c.is_zero())
-            .collect()
-    }
-
-    fn clean_two(a: (&K, &T), b: (&K, &T)) -> Vec<(K, T)> {
-        if a.1.is_zero() {
-            Self::clean_one(b.0, b.1)
-        } else if b.1.is_zero() {
-            Self::clean_one(a.0, a.1)
-        } else if a.0 == b.0 {
-            Self::clean_one(a.0, &(*a.1 + *b.1))
-        } else {
-            vec![(*a.0, *a.1), (*b.0, *b.1)]
+            AffineExpression::OneVar(coeff, _) => Either::Left(std::iter::once(coeff)),
+            AffineExpression::Constant(_) => Either::Right(Either::Right(std::iter::empty())),
         }
     }
 
-    fn clean_one(k: &K, v: &T) -> Vec<(K, T)> {
-        if v.is_zero() {
-            vec![]
-        } else {
-            vec![(*k, *v)]
-        }
-    }
-
-    fn clean(&self) -> Self {
-        AffineExpression {
-            offset: self.offset,
-            coefficients: self.nonzero_coefficients().to_vec(),
-            clean: true,
+    pub fn offset(&self) -> T {
+        match self {
+            AffineExpression::Constant(offset)
+            | AffineExpression::OneVar(_, offset)
+            | AffineExpression::ManyVars(_, offset) => *offset,
         }
     }
 
     /// Incorporates the case where the symbolic variable `key` is assigned
     /// the value `value`.
     pub fn assign(&mut self, key: K, value: T) {
-        for (k, coeff) in &mut self.coefficients {
-            if *k == key {
-                self.offset += *coeff * value;
-                *coeff = 0.into();
+        match self {
+            AffineExpression::OneVar((v, c), offset) if &key == v => {
+                *self = AffineExpression::Constant(*offset + (value * *c));
             }
-        }
-        self.clean = false;
+            AffineExpression::Constant(_) | AffineExpression::OneVar(_, _) => {}
+            AffineExpression::ManyVars(coefficients, offset) => {
+                debug_assert!(Self::is_proper_coefficients(coefficients));
+                if let Ok(idx) = coefficients.binary_search_by_key(&&key, |(k, _)| k) {
+                    *offset += coefficients[idx].1 * value;
+                    coefficients.remove(idx);
+                }
+                if coefficients.is_empty() {
+                    *self = Self::Constant(*offset);
+                }
+            }
+        };
     }
 }
 
@@ -148,39 +129,34 @@ where
     /// affine expression to zero.
     /// Returns an error if the constraint is unsat
     pub fn solve(&self) -> EvalResult<T, K> {
-        if !self.clean {
-            return self.clean().solve();
-        }
-
-        let mut nonzero = self.coefficients.iter();
-        let first = nonzero.next();
-        let second = nonzero.next();
-        match (first, second) {
-            (Some((i, c)), None) => {
-                // c * a + o = 0 <=> a = -o/c
-                Ok(EvalValue::complete(vec![(
-                    *i,
-                    Constraint::Assignment(if c.is_one() {
-                        -self.offset
-                    } else if *c == -T::one() {
-                        self.offset
-                    } else {
-                        -self.offset / *c
-                    }),
-                )]))
+        let ((v, c), offset) = match self {
+            AffineExpression::Constant(c) if c.is_zero() => {
+                return Ok(EvalValue::complete(vec![]));
             }
-            (Some(_), Some(_)) => Ok(EvalValue::incomplete(
-                IncompleteCause::MultipleLinearSolutions,
-            )),
-            (None, None) => {
-                if self.offset.is_zero() {
-                    Ok(EvalValue::complete(vec![]))
-                } else {
-                    Err(ConstraintUnsatisfiable(self.to_string()))
-                }
+            AffineExpression::Constant(_) => {
+                return Err(ConstraintUnsatisfiable(self.to_string()));
             }
-            (None, Some(_)) => panic!(),
-        }
+            AffineExpression::OneVar((v, c), offset) => ((v, c), offset),
+            AffineExpression::ManyVars(coefficients, offset) if coefficients.len() == 1 => (
+                coefficients.iter().map(|(v, c)| (v, c)).next().unwrap(),
+                offset,
+            ),
+            _ => {
+                return Ok(EvalValue::incomplete(
+                    IncompleteCause::MultipleLinearSolutions,
+                ));
+            }
+        };
+        Ok(EvalValue::complete(vec![(
+            *v,
+            Constraint::Assignment(if c.is_one() {
+                -*offset
+            } else if *c == -T::one() {
+                *offset
+            } else {
+                -*offset / *c
+            }),
+        )]))
     }
 
     /// Tries to solve "self = 0", or at least propagate a bit / range constraint:
@@ -192,10 +168,6 @@ where
         &self,
         known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> EvalResult<T, K> {
-        if !self.clean {
-            return self.clean().solve_with_range_constraints(known_constraints);
-        }
-
         // Try to solve directly.
         let value = self.solve()?;
         if value.is_complete() {
@@ -266,20 +238,24 @@ where
         &self,
         known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> Option<EvalResult<T, K>> {
-        assert!(self.clean);
-        let mut coeffs = self.coefficients.iter();
-        let first = coeffs.next()?;
-        let second = coeffs.next()?;
-        if coeffs.next().is_some() {
-            return None;
-        }
+        let (first, second, offset) = match self {
+            AffineExpression::ManyVars(coefficients, offset) => {
+                let [first, second] = &coefficients[..] else {
+                    return None;
+                };
+                (first, second, offset)
+            }
+            _ => {
+                return None;
+            }
+        };
         if !first.1.is_one() && !second.1.is_one() {
             return None;
         }
         let (dividend, divisor, quotient, remainder) = if first.1.is_one() {
-            (-self.offset, second.1, second.0, first.0)
+            (-*offset, second.1, second.0, first.0)
         } else {
-            (-self.offset, first.1, first.0, second.0)
+            (-*offset, first.1, first.0, second.0)
         };
         // Now we have: dividend = remainder + divisor * quotient
         let (remainder_lower, remainder_upper) =
@@ -322,13 +298,11 @@ where
         &self,
         known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> Option<(K, RangeConstraint<T>)> {
-        assert!(self.clean);
         // We are looking for X = a * Y + b * Z + ... or -X = a * Y + b * Z + ...
         // where X is least constrained.
 
         let (solve_for, solve_for_coefficient) = self
-            .coefficients
-            .iter()
+            .nonzero_coefficients()
             .filter(|(_i, c)| *c == -T::one() || c.is_one())
             .max_by_key(|(i, _c)| {
                 // Sort so that we get the least constrained variable.
@@ -338,18 +312,17 @@ where
                     .unwrap_or_else(|| T::modulus())
             })?;
 
+        let offset = self.offset();
+
         let summands = self
-            .coefficients
-            .iter()
+            .nonzero_coefficients()
             .filter(|(i, _)| i != solve_for)
             .map(|(i, coeff)| {
                 known_constraints
                     .range_constraint(*i)
                     .map(|con| con.multiple(*coeff))
             })
-            .chain(
-                (!self.offset.is_zero()).then_some(Some(RangeConstraint::from_value(self.offset))),
-            )
+            .chain((!offset.is_zero()).then_some(Some(RangeConstraint::from_value(offset))))
             .collect::<Option<Vec<_>>>()?;
         let mut constraint = summands.into_iter().reduce(|c1, c2| c1.combine_sum(&c2))?;
         if solve_for_coefficient.is_one() {
@@ -371,11 +344,9 @@ where
         &self,
         known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> EvalResult<T, K> {
-        assert!(self.clean);
         // Get constraints from coefficients and also collect unconstrained indices.
         let (constraints, unconstrained): (Vec<_>, Vec<K>) = self
-            .coefficients
-            .iter()
+            .nonzero_coefficients()
             .partition_map(|(i, coeff)| match known_constraints.range_constraint(*i) {
                 None => Either::Right(i),
                 Some(constraint) => Either::Left((i, *coeff, constraint)),
@@ -390,7 +361,7 @@ where
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: <T as FieldElement>::Integer = Zero::zero();
         let mut assignments = EvalValue::complete(vec![]);
-        let mut offset = (-self.offset).to_integer();
+        let mut offset = (-self.offset()).to_integer();
         for (i, coeff, constraint) in constraints {
             let mask = *constraint.multiple(coeff).mask();
             if !(mask & covered_bits).is_zero() {
@@ -426,14 +397,10 @@ where
     T: FieldElement,
 {
     fn eq(&self, other: &Self) -> bool {
-        if self.offset != other.offset {
+        if self.offset() != other.offset() {
             return false;
         };
-        let mut self_coeff = self.nonzero_coefficients().to_vec();
-        self_coeff.sort_unstable();
-        let mut other_coeff = other.nonzero_coefficients().to_vec();
-        other_coeff.sort_unstable();
-        self_coeff == other_coeff
+        self.nonzero_coefficients().eq(other.nonzero_coefficients())
     }
 }
 
@@ -444,28 +411,98 @@ where
 {
     type Output = Self;
 
-    fn add(mut self, mut rhs: Self) -> Self::Output {
-        self.offset += rhs.offset;
-
-        // Combine coefficients and try to retain the clean flag.
-        if rhs.coefficients.is_empty() {
-            // All clean.
-        } else if self.coefficients.is_empty() {
-            self.coefficients = rhs.coefficients;
-            self.clean = rhs.clean;
-        } else if let [(lk, lv)] = self.coefficients[..] {
-            self.clean = !rhs.coefficients.iter().any(|(k, _)| k == &lk);
-            self.coefficients = rhs.coefficients;
-            self.coefficients.push((lk, lv));
-        } else if let [(rk, rv)] = rhs.coefficients[..] {
-            self.clean = !self.coefficients.iter().any(|(k, _)| k == &rk);
-            self.coefficients.push((rk, rv));
-        } else {
-            self.coefficients.append(&mut rhs.coefficients);
-            self.clean = false;
+    fn add(self, rhs: Self) -> Self::Output {
+        use std::cmp::Ordering;
+        use AffineExpression::*;
+        match (self, rhs) {
+            // constant + constant
+            (Constant(o1), Constant(o2)) => Constant(o1 + o2),
+            // constant + one
+            (OneVar(coeff, o1), Constant(o2)) | (Constant(o2), OneVar(coeff, o1)) => {
+                OneVar(coeff, o1 + o2)
+            }
+            // constant + many
+            (ManyVars(coefficients, offset), Constant(o))
+            | (Constant(o), ManyVars(coefficients, offset)) => ManyVars(coefficients, offset + o),
+            // one + one
+            (OneVar((v1, c1), o1), OneVar((v2, c2), o2)) => match v1.cmp(&v2) {
+                Ordering::Equal => {
+                    let c = c1 + c2;
+                    if c.is_zero() {
+                        Constant(o1 + o2)
+                    } else {
+                        OneVar((v1, c), o1 + o2)
+                    }
+                }
+                Ordering::Less => ManyVars(vec![(v1, c1), (v2, c2)], o1 + o2),
+                Ordering::Greater => ManyVars(vec![(v2, c2), (v1, c1)], o1 + o2),
+            },
+            // one + many
+            (OneVar((v, c), o), ManyVars(mut coefficients, offset))
+            | (ManyVars(mut coefficients, offset), OneVar((v, c), o)) => {
+                debug_assert!(Self::is_proper_coefficients(&coefficients));
+                match coefficients.binary_search_by_key(&&v, |(k, _)| k) {
+                    Ok(idx) => coefficients[idx].1 += c,
+                    Err(idx) => coefficients.insert(idx, (v, c)),
+                }
+                coefficients.retain(|(_, c)| !c.is_zero());
+                if coefficients.is_empty() {
+                    Constant(offset + o)
+                } else {
+                    ManyVars(coefficients, offset + o)
+                }
+            }
+            // many + many
+            (ManyVars(c1, o1), ManyVars(c2, o2)) => {
+                debug_assert!(Self::is_proper_coefficients(&c1));
+                let mut coefficients = Vec::with_capacity(c1.len() + c2.len());
+                let mut c1 = c1.into_iter();
+                let mut c2 = c2.into_iter();
+                // loop over the two expressions in parallel, merging their variables in order
+                let mut ov1 = c1.next();
+                let mut ov2 = c2.next();
+                loop {
+                    match (ov1, ov2) {
+                        (Some(v1), Some(v2)) => match v1.0.cmp(&v2.0) {
+                            Ordering::Less => {
+                                coefficients.push(v1);
+                                ov1 = c1.next();
+                            }
+                            Ordering::Equal => {
+                                let c = v1.1 + v2.1;
+                                if !c.is_zero() {
+                                    coefficients.push((v1.0, c));
+                                }
+                                ov1 = c1.next();
+                                ov2 = c2.next();
+                            }
+                            Ordering::Greater => {
+                                coefficients.push(v2);
+                                ov2 = c2.next();
+                            }
+                        },
+                        (Some(v1), None) => {
+                            coefficients.push(v1);
+                            coefficients.extend(c1);
+                            break;
+                        }
+                        (None, Some(v2)) => {
+                            coefficients.push(v2);
+                            coefficients.extend(c2);
+                            break;
+                        }
+                        (None, None) => {
+                            break;
+                        }
+                    }
+                }
+                if coefficients.is_empty() {
+                    Constant(o1 + o2)
+                } else {
+                    ManyVars(coefficients, o1 + o2)
+                }
+            }
         }
-
-        self
     }
 }
 
@@ -476,12 +513,17 @@ where
 {
     type Output = Self;
 
-    fn neg(mut self) -> Self::Output {
-        for (_, v) in &mut self.coefficients {
-            *v = -*v;
+    fn neg(self) -> Self::Output {
+        match self {
+            AffineExpression::Constant(offset) => AffineExpression::Constant(-offset),
+            AffineExpression::OneVar((v, c), offset) => AffineExpression::OneVar((v, -c), -offset),
+            AffineExpression::ManyVars(mut coefficients, offset) => {
+                for (_, v) in coefficients.iter_mut() {
+                    *v = -*v;
+                }
+                AffineExpression::ManyVars(coefficients, -offset)
+            }
         }
-        self.offset = -self.offset;
-        self
     }
 }
 
@@ -499,15 +541,22 @@ where
 
 impl<K, T: FieldElement> std::ops::Mul<T> for AffineExpression<K, T> {
     type Output = Self;
-    fn mul(mut self, factor: T) -> Self {
+    fn mul(self, factor: T) -> Self {
         if factor.is_zero() {
             factor.into()
         } else {
-            for (_, f) in &mut self.coefficients {
-                *f = *f * factor;
+            match self {
+                AffineExpression::Constant(offset) => AffineExpression::Constant(offset * factor),
+                AffineExpression::OneVar((v, c), offset) => {
+                    AffineExpression::OneVar((v, c * factor), offset * factor)
+                }
+                AffineExpression::ManyVars(mut coefficients, offset) => {
+                    for (_, v) in coefficients.iter_mut() {
+                        *v = *v * factor;
+                    }
+                    AffineExpression::ManyVars(coefficients, offset * factor)
+                }
             }
-            self.offset = self.offset * factor;
-            self
         }
     }
 }
@@ -518,13 +567,12 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.is_constant() {
-            write!(f, "{}", self.offset)
+            write!(f, "{}", self.offset())
         } else {
             write!(
                 f,
                 "{}",
                 self.nonzero_coefficients()
-                    .iter()
                     .map(|(i, c)| {
                         if c.is_one() {
                             i.to_string()
@@ -534,7 +582,7 @@ where
                             format!("{c} * {i}")
                         }
                     })
-                    .chain((!self.offset.is_zero()).then(|| self.offset.to_string()))
+                    .chain((!self.offset().is_zero()).then(|| self.offset().to_string()))
                     .format(" + ")
             )
         }
@@ -571,19 +619,11 @@ mod test {
 
     #[test]
     pub fn test_affine_assign() {
-        let mut a = AffineExpression::<_, GoldilocksField> {
-            coefficients: convert(vec![2, 3]),
-            offset: 3.into(),
-            clean: true,
-        };
+        let mut a = AffineExpression::<_, GoldilocksField>::ManyVars(convert(vec![2, 3]), 3.into());
         a.assign(0, 3.into());
         assert_eq!(
             a,
-            AffineExpression {
-                coefficients: convert(vec![0, 3]),
-                offset: 9.into(),
-                clean: false
-            },
+            AffineExpression::ManyVars(vec![(1, 3.into())], 9.into(),),
         );
 
         // Now, the expression is 3b + 9. It should be able to solve for b
@@ -599,44 +639,26 @@ mod test {
 
     #[test]
     pub fn test_affine_neg() {
-        let a = AffineExpression {
-            coefficients: convert(vec![1, 0, 2]),
-            offset: 9.into(),
-            clean: true,
-        };
+        let a = AffineExpression::ManyVars(convert(vec![1, 2]), 9.into());
         assert_eq!(
             -a,
-            AffineExpression {
-                coefficients: convert(vec![
+            AffineExpression::ManyVars(
+                convert(vec![
                     GoldilocksField::from(0) - GoldilocksField::from(1u64),
-                    0.into(),
                     GoldilocksField::from(0) - GoldilocksField::from(2u64),
                 ]),
-                offset: GoldilocksField::from(0) - GoldilocksField::from(9u64),
-                clean: true
-            },
+                GoldilocksField::from(0) - GoldilocksField::from(9u64),
+            ),
         );
     }
 
     #[test]
     pub fn test_affine_add() {
-        let a = AffineExpression::<_, GoldilocksField> {
-            coefficients: convert(vec![1, 2]),
-            offset: 3.into(),
-            clean: true,
-        };
-        let b = AffineExpression {
-            coefficients: convert(vec![11]),
-            offset: 13.into(),
-            clean: true,
-        };
+        let a = AffineExpression::<_, GoldilocksField>::ManyVars(convert(vec![1, 2]), 3.into());
+        let b = AffineExpression::ManyVars(convert(vec![11]), 13.into());
         assert_eq!(
             a.clone() + b.clone(),
-            AffineExpression {
-                coefficients: convert(vec![12, 2]),
-                offset: 16.into(),
-                clean: true,
-            },
+            AffineExpression::ManyVars(convert(vec![12, 2]), 16.into()),
         );
         assert_eq!(b.clone() + a.clone(), a + b,);
     }
@@ -656,23 +678,11 @@ mod test {
 
     #[test]
     pub fn test_affine_clean() {
-        let a = AffineExpression::<_, GoldilocksField> {
-            coefficients: convert(vec![1, 2]),
-            offset: 3.into(),
-            clean: true,
-        };
-        let b = AffineExpression {
-            coefficients: convert(vec![11, 80]),
-            offset: 13.into(),
-            clean: true,
-        };
+        let a = AffineExpression::<_, GoldilocksField>::ManyVars(convert(vec![1, 2]), 3.into());
+        let b = AffineExpression::ManyVars(convert(vec![11, 80]), 13.into());
         assert_eq!(
             (a.clone() * 3.into()) + b.clone(),
-            AffineExpression {
-                coefficients: convert(vec![14, 86]),
-                offset: 22.into(),
-                clean: true,
-            },
+            AffineExpression::ManyVars(convert(vec![14, 86]), 22.into(),),
         );
         assert_eq!(a * 0.into(), GoldilocksField::zero().into());
         assert_eq!(b * 0.into(), GoldilocksField::zero().into());
@@ -680,25 +690,17 @@ mod test {
 
     #[test]
     pub fn test_affine_clean_long() {
-        let a = AffineExpression::<_, GoldilocksField> {
-            coefficients: convert(vec![1, 2, 0, 4, 0, 9, 8]),
-            offset: 3.into(),
-            clean: false,
-        };
-        let b = AffineExpression {
-            coefficients: convert(vec![11, 12, 0, 14, 15, 19, -8]),
-            offset: 1.into(),
-            clean: false,
-        };
+        let a = AffineExpression::<_, GoldilocksField>::ManyVars(
+            convert(vec![1, 2, 4, 9, 8]),
+            3.into(),
+        );
+        let b = AffineExpression::ManyVars(convert(vec![11, 12, -4, 10, -8]), 1.into());
         assert_eq!(
-            (a.clone() + b.clone()).nonzero_coefficients(),
-            vec![
-                (0, 12.into()),
-                (1, 14.into()),
-                (3, 18.into()),
-                (4, 15.into()),
-                (5, 28.into())
-            ]
+            (a.clone() + b.clone())
+                .nonzero_coefficients()
+                .map(|(k, v)| (*k, *v))
+                .collect::<Vec<_>>(),
+            vec![(0, 12.into()), (1, 14.into()), (3, 19.into()),]
         );
         assert_eq!(a * 0.into(), GoldilocksField::zero().into());
         assert_eq!(b * 0.into(), GoldilocksField::zero().into());
@@ -706,18 +708,8 @@ mod test {
 
     #[test]
     pub fn equality() {
-        let a = AffineExpression::<_, GoldilocksField> {
-            coefficients: convert(vec![0, 1]),
-            offset: 3.into(),
-            clean: false,
-        }
-        .clean();
-        let b = AffineExpression {
-            coefficients: convert(vec![1, 0]),
-            offset: 13.into(),
-            clean: false,
-        }
-        .clean();
+        let a = AffineExpression::<_, GoldilocksField>::ManyVars(convert(vec![1, 2]), 3.into());
+        let b = AffineExpression::ManyVars(convert(vec![1, 2, 3]), 13.into());
         assert_eq!(a.clone() + b.clone(), b.clone() + a.clone());
     }
 

@@ -105,8 +105,14 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
         Ok(c) => c,
         Err(_) => return None,
     };
-    let key_column_id = match sort_constraint.nonzero_coefficients().as_ref() {
-        [(key, _), _] | [_, (key, _)] if !key.next => *key,
+    let mut coeff = sort_constraint.nonzero_coefficients();
+    let first = coeff.next()?;
+    let second = coeff.next()?;
+    if coeff.next().is_some() {
+        return None;
+    }
+    let key_column_id = match (first, second) {
+        ((key, _), _) | (_, (key, _)) if !key.next => *key,
         _ => return None,
     };
     if key_column_id.next || key_column_id.is_fixed() {
