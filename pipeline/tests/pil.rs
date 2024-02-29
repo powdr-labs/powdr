@@ -3,8 +3,10 @@ use powdr_number::Bn254Field;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{
     test_util::{
-        assert_proofs_fail_for_invalid_witnesses, gen_estark_proof, resolve_test_file, test_halo2,
-        verify_test_file,
+        assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
+        assert_proofs_fail_for_invalid_witnesses_halo2,
+        assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, resolve_test_file,
+        test_halo2, verify_test_file,
     },
     Pipeline,
 };
@@ -33,6 +35,60 @@ fn test_invalid_witness_halo2mock() {
         .with_backend(powdr_backend::BackendType::Halo2Mock)
         .compute_proof()
         .unwrap();
+}
+
+#[test]
+#[should_panic = "Number not included: F3G { cube: [Fr(0x0000000000000000), Fr(0x0000000000000000), Fr(0x0000000000000000)], dim: 3 }"]
+fn test_lookup_with_selector() {
+    // witness[0] and witness[2] have to be in {2, 4}
+
+    // Valid witness
+    let f = "pil/lookup_with_selector.pil";
+    let witness = [2, 42, 4, 17];
+    Pipeline::default()
+        .from_file(resolve_test_file(f))
+        .set_witness(vec![(
+            "main.w".to_string(),
+            witness.iter().cloned().map(Bn254Field::from).collect(),
+        )])
+        .with_backend(powdr_backend::BackendType::Halo2Mock)
+        .compute_proof()
+        .unwrap();
+
+    // Invalid witness: 0 is not in the set {2, 4}
+    let witness = vec![("main.w".to_string(), vec![0, 42, 4, 17])];
+    assert_proofs_fail_for_invalid_witnesses_halo2(f, &witness);
+    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
+    // Unfortunately, eStark panics in this case. That's why the test is marked
+    // as should_panic, with the error message that would be coming from eStark...
+    assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
+}
+
+#[test]
+#[should_panic = "assertion failed: check_val._eq(&F::one())"]
+fn test_permutation_with_selector() {
+    // witness[0] and witness[2] have to be in {2, 4}
+
+    // Valid witness
+    let f = "pil/permutation_with_selector.pil";
+    let witness = [2, 42, 4, 17];
+    Pipeline::default()
+        .from_file(resolve_test_file(f))
+        .set_witness(vec![(
+            "main.w".to_string(),
+            witness.iter().cloned().map(Bn254Field::from).collect(),
+        )])
+        .with_backend(powdr_backend::BackendType::Halo2Mock)
+        .compute_proof()
+        .unwrap();
+
+    // Invalid witness: 0 is not in the set {2, 4}
+    let witness = vec![("main.w".to_string(), vec![0, 42, 4, 17])];
+    assert_proofs_fail_for_invalid_witnesses_halo2(f, &witness);
+    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
+    // Unfortunately, eStark panics in this case. That's why the test is marked
+    // as should_panic, with the error message that would be coming from eStark...
+    assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
 }
 
 #[test]
