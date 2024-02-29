@@ -6,7 +6,7 @@ use std::{
 pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
+    analyzed::{Analyzed, FunctionValueDefinition, PolyID, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
         IndexAccess,
@@ -15,6 +15,9 @@ use powdr_ast::{
 use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+
+// TODO this is probabyl not the right place.
+mod compiler;
 
 mod data_structures;
 
@@ -27,12 +30,19 @@ pub const MAX_DEGREE_LOG: usize = 22;
 /// Arrays of columns are flattened, the name of the `i`th array element
 /// is `name[i]`.
 pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, VariablySizedColumn<T>)> {
-    let mut fixed_cols = HashMap::new();
+    // TODO to do this properly, we should try to compile as much as possible
+    // and only evaulato if it fails. Still, compilation should be done in one run.
+
+    let mut fixed_cols: HashMap<String, (PolyID, VariablySizedColumn<T>)> =
+        compiler::generate_fixed_cols(analyzed);
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
             // For arrays, generate values for each index,
             // for non-arrays, set index to None.
             for (index, (name, id)) in poly.array_elements().enumerate() {
+                if fixed_cols.contains_key(&name) {
+                    continue;
+                }
                 let index = poly.is_array().then_some(index as u64);
                 let values = if let Some(degree) = poly.degree {
                     generate_values(analyzed, degree, &name, value, index).into()
