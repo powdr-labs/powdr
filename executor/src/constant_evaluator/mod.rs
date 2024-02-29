@@ -12,12 +12,15 @@ use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
+mod compiler;
+
 /// Generates the fixed column values for all fixed columns that are defined
 /// (and not just declared).
 /// @returns the names (in source order) and the values for the columns.
 /// Arrays of columns are flattened, the name of the `i`th array element
 /// is `name[i]`.
 pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Vec<T>)> {
+    compiler::generate(analyzed);
     let mut fixed_cols = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
