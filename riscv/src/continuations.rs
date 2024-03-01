@@ -321,10 +321,9 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             // Update one child of the Merkle tree
             merkle_tree.update_page(
                 page_index,
-                memory_updates_by_page
+                &memory_updates_by_page
                     .remove(&page_index)
-                    .unwrap_or_default()
-                    .into_iter(),
+                    .unwrap_or_default(),
             );
 
             let (_, page_hash, proof) = merkle_tree.get(page_index);
