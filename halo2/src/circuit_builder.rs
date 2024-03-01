@@ -181,22 +181,28 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         meta.enable_equality(config.instance);
 
         // Add polynomial identities
-        meta.create_gate("main", |meta| -> Vec<(String, Expression<F>)> {
-            analyzed
-                .identities_with_inlined_intermediate_polynomials()
-                .iter()
-                .filter_map(|id| match id.kind {
-                    IdentityKind::Polynomial => {
+        let identities = analyzed
+            .identities_with_inlined_intermediate_polynomials()
+            .into_iter()
+            .filter(|id| id.kind == IdentityKind::Polynomial)
+            .collect::<Vec<_>>();
+        if !identities.is_empty() {
+            meta.create_gate("main", |meta| -> Vec<(String, Expression<F>)> {
+                identities
+                    .iter()
+                    .map(|id| {
                         let expr = id.expression_for_poly_id();
                         let name = id.to_string();
                         let expr = to_halo2_expression(expr, &config, meta);
                         let expr = expr * meta.query_fixed(config.enable, Rotation::cur());
-                        Some((name, expr))
-                    }
-                    _ => None,
-                })
-                .collect()
-        });
+                        (name, expr)
+                    })
+                    .collect()
+            });
+        }
+
+        // Challenge used to combine the lookup tuple with the selector
+        let beta = Expression::Challenge(meta.challenge_usable_after(FirstPhase));
 
         let to_lookup_tuple = |expr: &SelectedExpressions<AlgebraicExpression<T>>,
                                meta: &mut VirtualCells<'_, F>| {
@@ -210,7 +216,15 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
 
             expr.expressions
                 .iter()
-                .map(|expr| selector.clone() * to_halo2_expression(expr, &config, meta))
+                .map(|expr| {
+                    let expr = to_halo2_expression(expr, &config, meta);
+                    // Turns a selected lookup / permutation argument into an unselected lookup / permutation argument,
+                    // see Section 3.3, equation (24) of: https://eprint.iacr.org/2023/474.pdf
+                    // Note that they use a different transformation for lookups, because this transformation would fail
+                    // if the RHS selector was 1 on all rows (and not on the LHS). This is never the case for us though,
+                    // because we multiply with the __enable column!
+                    selector.clone() * (expr - beta.clone()) + beta.clone()
+                })
                 .collect::<Vec<_>>()
         };
 

@@ -57,11 +57,10 @@ pub fn verify_pipeline(pipeline: Pipeline<GoldilocksField>) -> Result<(), String
 }
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
-    let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
     Pipeline::default()
         .with_tmp_output(&tmp_dir)
-        .from_file(PathBuf::from(file_name))
+        .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
         .with_backend(powdr_backend::BackendType::EStark)
         .compute_proof()
@@ -73,9 +72,8 @@ pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
     use std::env;
 
     // Generate a mock proof (fast and has good error messages)
-    let full_file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
     Pipeline::default()
-        .from_file(PathBuf::from(full_file_name))
+        .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs.clone())
         .with_backend(powdr_backend::BackendType::Halo2Mock)
         .compute_proof()
@@ -100,11 +98,10 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 
     use crate::util::write_or_panic;
 
-    let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
     let mut pipeline = Pipeline::default()
         .with_tmp_output(&tmp_dir)
-        .from_file(PathBuf::from(file_name))
+        .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
         .with_backend(powdr_backend::BackendType::Halo2);
 
@@ -191,13 +188,25 @@ fn convert_witness<T: FieldElement>(witness: &[(String, Vec<u64>)]) -> Vec<(Stri
         .collect()
 }
 
-fn assert_proofs_fail_for_invalid_witnesses_gl(file_name: &str, witness: &[(String, Vec<u64>)]) {
-    let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
-
+pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
+    file_name: &str,
+    witness: &[(String, Vec<u64>)],
+) {
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
     let pipeline = Pipeline::<GoldilocksField>::default()
         .with_tmp_output(&tmp_dir)
-        .from_file(PathBuf::from(file_name))
+        .from_file(resolve_test_file(file_name))
+        .set_witness(convert_witness(witness));
+
+    assert!(verify_pipeline(pipeline.clone()).is_err());
+}
+
+pub fn assert_proofs_fail_for_invalid_witnesses_estark(
+    file_name: &str,
+    witness: &[(String, Vec<u64>)],
+) {
+    let pipeline = Pipeline::<GoldilocksField>::default()
+        .from_file(resolve_test_file(file_name))
         .set_witness(convert_witness(witness));
 
     assert!(pipeline
@@ -205,17 +214,15 @@ fn assert_proofs_fail_for_invalid_witnesses_gl(file_name: &str, witness: &[(Stri
         .with_backend(powdr_backend::BackendType::EStark)
         .compute_proof()
         .is_err());
-    assert!(verify_pipeline(pipeline.clone()).is_err());
 }
 
 #[cfg(feature = "halo2")]
-fn assert_proofs_fail_for_invalid_witnesses_bn254(file_name: &str, witness: &[(String, Vec<u64>)]) {
-    let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
-
-    let tmp_dir = mktemp::Temp::new_dir().unwrap();
+pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
+    file_name: &str,
+    witness: &[(String, Vec<u64>)],
+) {
     let pipeline = Pipeline::<Bn254Field>::default()
-        .with_tmp_output(&tmp_dir)
-        .from_file(PathBuf::from(file_name))
+        .from_file(resolve_test_file(file_name))
         .set_witness(convert_witness(witness));
 
     // This will panic, because Halo2's MockProver::assert_satisfied() panics if it is not.
@@ -237,13 +244,14 @@ fn assert_proofs_fail_for_invalid_witnesses_bn254(file_name: &str, witness: &[(S
 }
 
 #[cfg(not(feature = "halo2"))]
-fn assert_proofs_fail_for_invalid_witnesses_bn254(
+pub fn assert_proofs_fail_for_invalid_witnesses_bn254(
     _file_name: &str,
     _witness: &[(String, Vec<u64>)],
 ) {
 }
 
 pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(String, Vec<u64>)]) {
-    assert_proofs_fail_for_invalid_witnesses_gl(file_name, witness);
-    assert_proofs_fail_for_invalid_witnesses_bn254(file_name, witness);
+    assert_proofs_fail_for_invalid_witnesses_pilcom(file_name, witness);
+    assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
+    assert_proofs_fail_for_invalid_witnesses_halo2(file_name, witness);
 }

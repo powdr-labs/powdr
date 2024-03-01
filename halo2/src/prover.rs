@@ -110,7 +110,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             &pk,
             circuit,
             &publics,
-        );
+        )?;
 
         let duration = start.elapsed();
         log::info!("Time taken: {:?}", duration);
@@ -182,7 +182,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             &pk_aggr,
             agg_circuit_with_proof.clone(),
             &agg_circuit_with_proof.instances(),
-        );
+        )?;
         let duration = start.elapsed();
         log::info!("Time taken: {:?}", duration);
 
@@ -294,7 +294,7 @@ fn gen_proof<
     pk: &ProvingKey<G1Affine>,
     circuit: C,
     instances: &[Vec<Fr>],
-) -> Vec<u8> {
+) -> Result<Vec<u8>, String> {
     let instances = instances
         .iter()
         .map(|instances| instances.as_slice())
@@ -309,9 +309,9 @@ fn gen_proof<
             OsRng,
             &mut transcript,
         )
-        .unwrap();
+        .map_err(|e| e.to_string())?;
         transcript.finalize()
     };
 
-    proof
+    Ok(proof)
 }
