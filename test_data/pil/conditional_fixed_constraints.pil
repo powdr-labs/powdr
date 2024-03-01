@@ -1,6 +1,6 @@
-constant %N = 1024;
+let N: int = 1024;
 
-namespace Main(%N);
+namespace Main(N);
     let first: col = |i| match i { 0 => 1, _ => 0 };
     let Y;
     let Z;

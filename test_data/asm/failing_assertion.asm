@@ -1,9 +1,10 @@
 use std::check;
 
 machine Empty {
-    let line: col = |i| i - 7;
+    let line = |i| i - 7;
+    let line_col: col = line;
     col witness w;
-    w = line;
+    w = line_col;
 
 
     check::assert(line(7) == 0, || "This should succeed.");

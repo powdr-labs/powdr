@@ -1,9 +1,11 @@
 namespace Main(16);
     // Returns folder(...folder(folder(0, f(0)), f(1)) ..., f(length - 1))
-    let fold = |length, f, initial, folder| match length {
-        0 => initial,
-        _ => folder(fold(length - 1, f, initial, folder), f(length - 1))
-    };
+    // This is a generic function.
+    let<T1, T2> fold: int, (int -> T1), T2, (T2, T1 -> T2) -> T2 =
+        |length, f, initial, folder| match length {
+            0 => initial,
+            _ => folder(fold(length - 1, f, initial, folder), f(length - 1))
+        };
     // returns f(0) + f(1) + ... + f(length - 1)
     let sum = |length, f| fold(length, f, 0, |acc, e| acc + e);
     // This function takes an algebraic expression (a column or expression

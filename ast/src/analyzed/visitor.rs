@@ -92,7 +92,6 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
             }
             FunctionValueDefinition::Array(array) => array
                 .iter_mut()
-                .flat_map(|a| a.pattern.iter_mut())
                 .try_for_each(move |item| item.visit_expressions_mut(f, o)),
         }
     }
@@ -108,8 +107,27 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
             }
             FunctionValueDefinition::Array(array) => array
                 .iter()
-                .flat_map(|a| a.pattern().iter())
                 .try_for_each(move |item| item.visit_expressions(f, o)),
         }
+    }
+}
+
+impl<T> ExpressionVisitable<Expression<T>> for RepeatedArray<T> {
+    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
+    {
+        self.pattern
+            .iter_mut()
+            .try_for_each(move |item| item.visit_expressions_mut(f, o))
+    }
+
+    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
+    where
+        F: FnMut(&Expression<T>) -> ControlFlow<B>,
+    {
+        self.pattern
+            .iter()
+            .try_for_each(move |item| item.visit_expressions(f, o))
     }
 }

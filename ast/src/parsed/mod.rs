@@ -311,7 +311,7 @@ pub struct ArrayLiteral<T, Ref = NamespacedPolynomialReference> {
 }
 
 #[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema,
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Serialize, Deserialize, JsonSchema,
 )]
 pub enum UnaryOperator {
     Minus,
@@ -330,7 +330,7 @@ impl UnaryOperator {
 }
 
 #[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema,
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Serialize, Deserialize, JsonSchema,
 )]
 pub enum BinaryOperator {
     Add,

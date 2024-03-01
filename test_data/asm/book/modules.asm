@@ -9,7 +9,7 @@ mod submodule_in_folder;
 use submodule::Other as SubmoduleOther;
 use submodule_in_folder::Other as FolderSubmoduleOther;
 
-let zero = 0;
+let zero: int = 0;
 
 // we can also define modules inline
 mod utils {

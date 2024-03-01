@@ -450,7 +450,7 @@ machine Main {{
 
 {}
 
-let initial_memory = [
+let initial_memory: (fe, fe)[] = [
 {}
 ];
 
@@ -746,7 +746,7 @@ fn memory(with_bootloader: bool) -> String {
     col witness m_diff_upper;
 
     col fixed FIRST = [1] + [0]*;
-    col fixed LAST(i) { FIRST(i + 1) };
+    let LAST = FIRST';
     col fixed STEP(i) { i };
     col fixed BIT16(i) { i & 0xffff };
 

@@ -1,10 +1,14 @@
 #![deny(clippy::print_stdout)]
 
+mod call_graph;
 mod condenser;
 pub mod evaluator;
 pub mod expression_processor;
 mod pil_analyzer;
-pub mod statement_processor;
+mod statement_processor;
+mod type_builtins;
+mod type_inference;
+mod type_unifier;
 
 use std::collections::HashMap;
 

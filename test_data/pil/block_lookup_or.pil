@@ -10,9 +10,11 @@ namespace Or(%N);
 	col fixed RESET(i) { if (i % 4) == 3 { 1 } else { 0 } };
 	col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
-	col fixed P_A(i) { i % 256 };
-	col fixed P_B(i) { (i >> 8) % 256 };
-	col fixed P_C(i) { (std::convert::int(P_A(i)) | std::convert::int(P_B(i))) & 0xff };
+	let a = |i| i % 256;
+	col fixed P_A(i) { a(i) };
+	let b = |i| (i >> 8) % 256;
+	col fixed P_B(i) { b(i) };
+	col fixed P_C(i) { (a(i) | b(i)) & 0xff };
 
 	// ROW RESET  FACTOR
 	//   0   0    1 << 8
