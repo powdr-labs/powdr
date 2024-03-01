@@ -102,7 +102,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<'a, T> {
             return Err(Error::NoAggregationAvailable);
         }
 
-        powdr_halo2::mock_prove(self.pil, self.fixed, witness);
+        powdr_halo2::mock_prove(self.pil, self.fixed, witness).map_err(Error::BackendError)?;
 
         Ok(vec![])
     }

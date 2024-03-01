@@ -225,16 +225,11 @@ pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
         .from_file(resolve_test_file(file_name))
         .set_witness(convert_witness(witness));
 
-    // This will panic, because Halo2's MockProver::assert_satisfied() panics if it is not.
-    // We could use MockProver::verify() instead in our backend implementation to get a Result,
-    // but assert_satisfied() is the only way to print a helpful error message using the public API...
-    // It can still be helpful to uncomment this line to make sure the constraint that's failing
-    // is the one you'd expect.
-    // assert!(pipeline
-    //     .clone()
-    //     .with_backend(powdr_backend::BackendType::Halo2Mock)
-    //     .compute_proof()
-    //     .is_err());
+    assert!(pipeline
+        .clone()
+        .with_backend(powdr_backend::BackendType::Halo2Mock)
+        .compute_proof()
+        .is_err());
 
     assert!(pipeline
         .clone()

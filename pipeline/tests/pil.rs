@@ -24,20 +24,6 @@ fn test_invalid_witness() {
 }
 
 #[test]
-#[should_panic = "circuit was not satisfied"]
-#[cfg(feature = "halo2")]
-fn test_invalid_witness_halo2mock() {
-    // assert_proofs_fail_for_invalid_witnesses() doesn't assert that Halo2Mock fails, so this is a separate test using should_panic.
-    let f = "pil/trivial.pil";
-    Pipeline::default()
-        .from_file(resolve_test_file(f))
-        .set_witness(vec![("main.w".to_string(), vec![Bn254Field::from(0); 4])])
-        .with_backend(powdr_backend::BackendType::Halo2Mock)
-        .compute_proof()
-        .unwrap();
-}
-
-#[test]
 #[should_panic = "Number not included: F3G { cube: [Fr(0x0000000000000000), Fr(0x0000000000000000), Fr(0x0000000000000000)], dim: 3 }"]
 fn test_lookup_with_selector() {
     // witness[0] and witness[2] have to be in {2, 4}

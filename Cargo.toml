@@ -44,3 +44,8 @@ overflow-checks = true
 panic = 'unwind'
 incremental = true         # This is true because target is cached
 codegen-units = 256
+
+# This can be removed when upgrading to the next release of Halo2, because this has been merged:
+# https://github.com/privacy-scaling-explorations/halo2/pull/292
+[patch."https://github.com/privacy-scaling-explorations/halo2"]
+halo2_proofs = { git = "https://github.com/georgwiese/halo2", branch = "make-emit-public-v0.3.0", features = ["circuit-params"] }
