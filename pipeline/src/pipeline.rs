@@ -881,6 +881,7 @@ impl<T: FieldElement> Pipeline<T> {
             }
             _ => panic!(),
         };
+
         drop(backend);
 
         self.maybe_write_proof(&proof)?;
@@ -951,11 +952,11 @@ impl<T: FieldElement> Pipeline<T> {
             .expect("backend must be set before generating verification key!");
         let factory = backend.factory::<T>();
 
-        let mut setup_file = if let Some(path) = &self.arguments.setup_file {
-            BufReader::new(fs::File::open(path).unwrap())
-        } else {
-            panic!("Setup should have been provided for verification")
-        };
+        let mut setup_file = self
+            .arguments
+            .setup_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
 
         let mut vkey_file = if let Some(ref path) = self.arguments.vkey_file {
             BufReader::new(fs::File::open(path).unwrap())
@@ -971,7 +972,9 @@ impl<T: FieldElement> Pipeline<T> {
                 pil.borrow(),
                 &fixed_cols[..],
                 self.output_dir(),
-                Some(&mut setup_file),
+                setup_file
+                    .as_mut()
+                    .map(|file| file as &mut dyn std::io::Read),
                 Some(&mut vkey_file),
             )
             .unwrap();
