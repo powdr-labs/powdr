@@ -13,6 +13,7 @@ default = [] # halo2 is disabled by default
 halo2 = ["dep:powdr-halo2", "powdr-backend/halo2", "powdr-pipeline/halo2"]
 
 [dependencies]
+powdr-ast = { path = "../ast" }
 powdr-backend = { path = "../backend" }
 powdr-halo2 = { path = "../halo2", optional = true }
 powdr-number = { path = "../number" }

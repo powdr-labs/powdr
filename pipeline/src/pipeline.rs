@@ -13,7 +13,7 @@ use std::{
 use log::Level;
 use powdr_ast::{
     analyzed::Analyzed,
-    asm_analysis::{rust_witgen, AnalysisASMFile},
+    asm_analysis::AnalysisASMFile,
     object::PILGraph,
     parsed::{asm::ASMProgram, PILFile},
 };
@@ -491,7 +491,8 @@ impl<T: FieldElement> Pipeline<T> {
 
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
-                let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
+                //let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
+                let columns = witness.iter().collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
                 write_polys_csv_file(csv_file, self.arguments.csv_render_mode, &columns);
@@ -602,20 +603,6 @@ impl<T: FieldElement> Pipeline<T> {
                 analyzed_asm
             });
         }
-
-        let main = self
-            .artifact
-            .analyzed_asm
-            .as_ref()
-            .unwrap()
-            .machines()
-            .next()
-            .unwrap()
-            .1
-            .clone();
-        let mut witgen = rust_witgen::RustWitgen::new(main);
-        witgen.generate();
-        println!("Generated witgen Rust:\n{}", witgen.code);
 
         Ok(self.artifact.analyzed_asm.as_ref().unwrap())
     }

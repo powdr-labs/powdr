@@ -17,6 +17,9 @@ use std::io::{self, BufWriter};
 use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
+use std::collections::HashMap;
+
+use powdr_ast::asm_analysis::rust_witgen;
 
 /// Transforms a pipeline into a pipeline that binds CLI arguments like
 /// the output directory and the CSV export settings to the pipeline.
@@ -803,7 +806,32 @@ fn run<F: FieldElement>(
     };
 
     let generate_witness_and_prove_maybe = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
-        pipeline.compute_witness().unwrap();
+        pipeline.compute_analyzed_asm().unwrap();
+
+        let main = pipeline
+            .analyzed_asm()
+            .unwrap()
+            .machines()
+            .next()
+            .unwrap()
+            .1
+            .clone();
+
+        pipeline.compute_optimized_pil().unwrap();
+
+        let pil = pipeline.optimized_pil().unwrap();
+        let mut witgen = rust_witgen::RustWitgen::new(&pil, main);
+        witgen.generate();
+        //println!("Generated witgen Rust:\n{}", witgen.code);
+
+        //fs::write(&Path::new("riscv-executor/src/pil.rs"), format!("{}", witgen.code)).unwrap();
+
+        pipeline.compute_fixed_cols().unwrap();
+        let fixed: HashMap<String, Vec<F>> = (*pipeline.fixed_cols().unwrap()).clone().into_iter().collect();
+        let witness = powdr_riscv_executor::pil::execute(8, pipeline.data_callback().unwrap(), fixed);
+        //println!("{witness:?}");
+        let pipeline = pipeline.set_witness(witness);
+        //pipeline.compute_witness().unwrap();
         if let Some(backend) = prove_with {
             pipeline.with_backend(backend).compute_proof().unwrap();
         }

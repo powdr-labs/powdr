@@ -25,6 +25,7 @@ use powdr_ast::{
 use powdr_number::{FieldElement, LargeInt};
 
 pub mod poseidon_gl;
+pub mod pil;
 
 /// Initial value of the PC.
 ///
