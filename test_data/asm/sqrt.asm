@@ -10,11 +10,18 @@ machine Sqrt(latch, operation_id) {
 
     // Witness generation is not smart enough to figure out that
     // there is a unique witness, so we provide it as a hint.
-    // This is a dummy example that hard-codes the answer for inputs 1 and 4.
-    let sqrt_hint: int -> int = |x| match x {
-        1 => 1,
-        4 => 2
-    };
+    let sqrt_hint: fe -> fe = |x| std::convert::fe(sqrt_rec(std::convert::int(x), std::convert::int(x)));
+
+    // This function computes the square root of an integer or at least
+    // the largest integer smaller than the square root if the input
+    // is not a square.
+    // The parameter `y` is a guess, which can be equal to `x`.
+    let sqrt_rec: int, int -> int = |y, x|
+        if y * y <= x && (y + 1) * (y + 1) > x {
+            y
+        } else {
+            sqrt_rec((y + x / y) / 2, x)
+        };
 
     col witness y(i) query ("hint", sqrt_hint(x(i)));
     
