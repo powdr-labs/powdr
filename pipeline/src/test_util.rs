@@ -157,8 +157,8 @@ pub fn std_analyzed<T: FieldElement>() -> Analyzed<T> {
 pub fn evaluate_function<'a, T: FieldElement>(
     analyzed: &'a Analyzed<T>,
     function: &'a str,
-    arguments: Vec<Rc<evaluator::Value<'a, T, evaluator::NoCustom>>>,
-) -> evaluator::Value<'a, T, evaluator::NoCustom> {
+    arguments: Vec<Rc<evaluator::Value<'a, T>>>,
+) -> evaluator::Value<'a, T> {
     let symbols = evaluator::Definitions(&analyzed.definitions);
     let function = symbols.lookup(function, None).unwrap();
     evaluator::evaluate_function_call(function, arguments, &symbols).unwrap()
