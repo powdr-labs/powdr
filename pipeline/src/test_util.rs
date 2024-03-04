@@ -132,7 +132,7 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 
     // Create the proof before adding the setup and vkey to the backend,
     // so that they're generated during the proof
-    let proof = pipeline.compute_proof().unwrap().clone();
+    let proof: Vec<u8> = pipeline.compute_proof().unwrap().clone();
 
     let publics: Vec<Bn254Field> = extract_publics(&pipeline.witness().unwrap(), &pil)
         .iter()
@@ -253,5 +253,6 @@ pub fn assert_proofs_fail_for_invalid_witnesses_bn254(
 pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(String, Vec<u64>)]) {
     assert_proofs_fail_for_invalid_witnesses_pilcom(file_name, witness);
     assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
+    #[cfg(feature = "halo2")]
     assert_proofs_fail_for_invalid_witnesses_halo2(file_name, witness);
 }
