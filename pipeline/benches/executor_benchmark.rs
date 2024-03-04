@@ -125,6 +125,32 @@ fn evaluator_benchmark(c: &mut Criterion) {
         })
     });
 
+    let sqrt_analyzed: Analyzed<GoldilocksField> = {
+        // airgen needs a main machine.
+        let code = "
+            let sqrt: int -> int = |x| sqrt_rec(x, x);
+            let sqrt_rec: int, int -> int = |y, x|
+                if y * y <= x && (y + 1) * (y + 1) > x {
+                    y
+                } else {
+                    sqrt_rec((y + x / y) / 2, x)
+                };
+            machine Main { }
+        "
+        .to_string();
+        let mut pipeline = Pipeline::default().from_asm_string(code, None);
+        pipeline.compute_analyzed_pil().unwrap().clone()
+    };
+
+    for x in [879882356, 1882356, 1187956, 56] {
+        group.bench_with_input(format!("sqrt_{x}"), &x, |b, &x| {
+            b.iter(|| {
+                let y = num_bigint::BigInt::from(x) * num_bigint::BigInt::from(112655675);
+                evaluate_integer_function(&sqrt_analyzed, "sqrt", vec![y.clone()]);
+            });
+        });
+    }
+
     group.finish();
 }
 
