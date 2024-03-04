@@ -144,19 +144,13 @@ where
                     Some(definition),
                 )
             }
-            PilStatement::ConstantDefinition(source, name, value) => {
-                // Check it is a constant.
-                if let Err(err) = self.evaluate_expression_to_fe(value.clone()) {
-                    panic!("Could not evaluate constant: {name} = {value}: {err:?}");
-                }
-                self.handle_symbol_definition(
-                    source,
-                    name,
-                    SymbolKind::Constant(),
-                    Some(Type::Fe.into()),
-                    Some(FunctionDefinition::Expression(value)),
-                )
-            }
+            PilStatement::ConstantDefinition(source, name, value) => self.handle_symbol_definition(
+                source,
+                name,
+                SymbolKind::Constant(),
+                Some(Type::Fe.into()),
+                Some(FunctionDefinition::Expression(value)),
+            ),
             PilStatement::LetStatement(source, name, type_scheme, value) => {
                 self.handle_generic_definition(source, name, type_scheme, value)
             }
@@ -467,14 +461,6 @@ where
             *e = parsed::Expression::Number(v_u64.into(), None);
         }
         Ok(n.into())
-    }
-
-    fn evaluate_expression_to_fe(&self, expr: parsed::Expression<T>) -> Result<T, EvalError> {
-        evaluator::evaluate_expression(
-            &ExpressionProcessor::new(self.driver).process_expression(expr),
-            self.driver.definitions(),
-        )?
-        .try_to_field_element()
     }
 
     fn evaluate_expression_to_int(
