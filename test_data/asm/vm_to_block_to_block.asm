@@ -20,7 +20,7 @@ machine Assert1(latch, operation_id) {
     operation assert1<0> x ->;
 
     // Increment x by calling into inc machine
-    link 1 x -> y => inc.inc;
+    link 1 => inc.inc x -> y;
 
     col witness operation_id;
     col fixed latch = [1]*;

@@ -1,13 +1,38 @@
-// ANCHOR: links
-machine Main(latch, operation_id) {
-    Arith adder;
+machine Main {
+    degree 256;
+    Add4 adder;
 
-    operation main<0> x, y -> z;
+    reg pc[@pc];
+    reg X[<=];
+    reg Y[<=];
+    reg Z[<=];
+    reg W[<=];
+    reg R[<=];
+    reg A;
+
+    instr assert_eq X, Y { X = Y }
+
+    instr add4 X,Y,Z,W -> R = adder.add4;
+
+    function main {
+       A <== add4(1, 2, 3, 4);
+       assert_eq A, 10;
+       A <== add4(2, 2, 2, 2);
+       assert_eq A, 8;
+    }
+}
+
+// ANCHOR: links
+machine Add4(latch, operation_id) {
+    Add adder;
+
+    operation add4<0> x, y, z, w -> r;
 
     // - on every row (the boolean flag is `1`)
-    // - constrain the values of `x`, `y`, and `z` so that `z = adder.add(x, y)`
-    // TODO: uncomment the link once witness generation supports it
-    // link 1 x, y -> z => adder.add;
+    // - constrain the values of `x`, `y`, and `n` so that `n = adder.add(x, y)`
+    link 1 => adder.add x, y -> n;
+    // - constrain the values of `z`, `w`, and `m` so that `m = adder.add(z, w)`
+    link 1 => adder.add z, w -> m;
 
     col fixed operation_id = [0]*;
     col fixed latch = [1]*;
@@ -15,21 +40,47 @@ machine Main(latch, operation_id) {
     col witness x;
     col witness y;
     col witness z;
+    col witness w;
+    col witness r;
+    col witness m;
+    col witness n;
+
+    r = m + n;
 }
-// ANCHOR_END: links
 
-// ANCHOR: operations
-machine Arith(latch, operation_id) {
-    operation add<0> a, b -> c;
-    operation sub<1> a, b -> c;
+// ANCHOR: one_operation
+machine Add(latch, _) {
+    // operation name, with column names as inputs and outputs
+    operation add a, b -> c;
 
-    col witness operation_id;
     col fixed latch = [1]*;
 
     col witness a;
     col witness b;
     col witness c;
 
-    c = (1 - operation_id) * (a + b) + operation_id * (a - b);
+    // constraint "implementing" the operation
+    c = a + b;
 }
-// ANCHOR_END: operations
+// ANCHOR_END: one_operation
+// ANCHOR_END: links
+
+// ANCHOR: many_operations
+// machine declaration must include an operation id column name
+machine AddSub(latch, op_id) {
+    // each operation has its own unique operation id
+    operation add<0> a, b -> c;
+    operation sub<1> a, b -> c;
+
+    col fixed latch = [1]*;
+        // it also needs to be declared as a column
+    col witness op_id;
+
+    col witness a;
+    col witness b;
+    col witness c;
+
+    // constraint "implementing" both operations, depending on `op_id`
+    c = (1 - op_id) * (a + b) + op_id * (a - b);
+}
+// ANCHOR_END: many_operations

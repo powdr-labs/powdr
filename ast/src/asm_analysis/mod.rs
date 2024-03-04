@@ -75,8 +75,6 @@ pub struct LinkDefinitionStatement<T> {
     pub source: SourceRef,
     /// the flag which activates this link. Should be boolean.
     pub flag: Expression<T>,
-    /// the parameters to pass to the callable
-    pub params: Params<T>,
     /// the callable to invoke when the flag is on. TODO: check this during type checking
     pub to: CallableRef<T>,
 }
