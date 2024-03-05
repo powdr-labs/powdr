@@ -4,7 +4,7 @@ use powdr_ast::analyzed::{
     types::Type, AlgebraicExpression, AlgebraicReference, Expression, PolyID, PolynomialType,
 };
 use powdr_number::{BigInt, FieldElement};
-use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, NoCustom, SymbolLookup, Value};
+use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
 
 use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
 
@@ -96,16 +96,16 @@ struct Symbols<'a, T: FieldElement> {
     rows: &'a RowPair<'a, 'a, T>,
 }
 
-impl<'a, T: FieldElement> SymbolLookup<'a, T, NoCustom> for Symbols<'a, T> {
+impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     fn lookup<'b>(
         &self,
         name: &'a str,
         generic_args: Option<Vec<Type>>,
-    ) -> Result<Value<'a, T, NoCustom>, EvalError> {
+    ) -> Result<Value<'a, T>, EvalError> {
         Definitions(&self.fixed_data.analyzed.definitions).lookup(name, generic_args)
     }
 
-    fn eval_expr(&self, expr: AlgebraicExpression<T>) -> Result<Value<'a, T, NoCustom>, EvalError> {
+    fn eval_expr(&self, expr: AlgebraicExpression<T>) -> Result<Value<'a, T>, EvalError> {
         let AlgebraicExpression::Reference(poly_ref) = expr else {
             return Err(EvalError::TypeError(format!(
                 "Can use std::prover::eval only directly on columns - tried to evaluate {expr}"
