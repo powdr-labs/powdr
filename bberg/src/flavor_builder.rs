@@ -338,10 +338,10 @@ fn create_proving_and_verification_key(to_be_shifted: &[String]) -> String {
 
     format!("
         public:
-        class ProvingKey : public ProvingKey_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>> {{
+        class ProvingKey : public ProvingKey_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>, CommitmentKey> {{
             public:
             // Expose constructors on the base class
-            using Base = ProvingKey_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>>;
+            using Base = ProvingKey_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>, CommitmentKey>;
             using Base::Base;
 
             {get_to_be_shifted}
@@ -350,7 +350,7 @@ fn create_proving_and_verification_key(to_be_shifted: &[String]) -> String {
             std::array<PolynomialHandle, 0> get_table_column_wires() {{ return {{}}; }};
         }};
 
-        using VerificationKey = VerificationKey_<PrecomputedEntities<Commitment>>;
+        using VerificationKey = VerificationKey_<PrecomputedEntities<Commitment>, VerifierCommitmentKey>;
     ")
 }
 

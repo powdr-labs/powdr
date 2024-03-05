@@ -52,7 +52,7 @@ void {name}Composer::compute_witness(CircuitConstructor& circuit)
 
     {name}Verifier output_state(verification_key);
 
-    auto pcs_verification_key = std::make_unique<VerifierCommitmentKey>(verification_key->circuit_size, crs_factory_);
+    auto pcs_verification_key = std::make_unique<VerifierCommitmentKey>();
 
     output_state.pcs_verification_key = std::move(pcs_verification_key);
 
@@ -141,7 +141,7 @@ class {name}Composer {{
 
         {name}Composer() 
         {{
-            crs_factory_ = bb::srs::get_crs_factory();
+            crs_factory_ = bb::srs::get_bn254_crs_factory();
         }}
 
         {name}Composer(std::shared_ptr<ProvingKey> p_key, std::shared_ptr<VerificationKey> v_key)
@@ -167,7 +167,7 @@ class {name}Composer {{
 
         void compute_commitment_key(size_t circuit_size)
         {{
-            commitment_key = std::make_shared<CommitmentKey>(circuit_size, crs_factory_);
+            commitment_key = std::make_shared<CommitmentKey>(circuit_size);
         }};
 }};
 
