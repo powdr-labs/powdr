@@ -629,26 +629,16 @@ pub fn default_register_values<T: FieldElement>() -> Vec<Elem<T>> {
 pub fn default_input<T: FieldElement>(accessed_pages: &[u64]) -> Vec<Elem<T>> {
     // Set all registers and the number of pages to zero
     let register_values = default_register_values();
+    let merkle_tree = MerkleTree::<T>::new();
 
-    if accessed_pages.is_empty() {
-        let empty_hash = MerkleTree::<T>::empty_hash();
-        InputCreator {
-            register_values,
-            merkle_tree_root_hash: &empty_hash,
-            pages: [].iter().map(|_: &u32| unreachable!()),
-        }
-        .into_input()
-    } else {
-        // TODO: We don't have a way to know the memory state *after* the execution.
-        // For now, we'll just claim that the memory doesn't change.
-        // This is fine for now, because the bootloader does not yet enforce that the memory
-        // state is actually as claimed. In the future, the `accessed_pages` argument won't be
-        // supported anymore (it's anyway only used by the benchmark).
-        let merkle_tree = MerkleTree::<T>::new();
-        create_input(
-            register_values,
-            &merkle_tree,
-            accessed_pages.iter().map(|&x| x as u32),
-        )
-    }
+    // TODO: We don't have a way to know the memory state *after* the execution.
+    // For now, we'll just claim that the memory doesn't change.
+    // This is fine for now, because the bootloader does not yet enforce that the memory
+    // state is actually as claimed. In the future, the `accessed_pages` argument won't be
+    // supported anymore (it's anyway only used by the benchmark).
+    create_input(
+        register_values,
+        &merkle_tree,
+        accessed_pages.iter().map(|&x| x as u32),
+    )
 }
