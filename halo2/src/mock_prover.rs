@@ -10,7 +10,7 @@ pub fn mock_prove<T: FieldElement>(
     pil: &Analyzed<T>,
     constants: &[(String, Vec<T>)],
     witness: &[(String, Vec<T>)],
-) {
+) -> Result<(), String> {
     if !matches!(T::known_field(), Some(KnownField::Bn254Field)) {
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
     }
@@ -28,7 +28,15 @@ pub fn mock_prove<T: FieldElement>(
         vec![circuit.instance_column()],
     )
     .unwrap();
-    mock_prover.assert_satisfied();
+    mock_prover.verify().map_err(|errs| {
+        // Using err.emit() is the only way to get a pretty error message,
+        // so we print it here even though the error might be caught by the caller.
+        for err in errs {
+            err.emit(&mock_prover);
+            eprintln!();
+        }
+        "Circuit was not satisfied".to_string()
+    })
 }
 
 #[cfg(test)]
@@ -48,7 +56,7 @@ mod test {
         let pil = pipeline.compute_optimized_pil().unwrap();
         let fixed_cols = pipeline.compute_fixed_cols().unwrap();
         let witness = pipeline.compute_witness().unwrap();
-        mock_prove(&pil, &fixed_cols, &witness);
+        mock_prove(&pil, &fixed_cols, &witness).unwrap();
     }
 
     #[test]
@@ -60,7 +68,7 @@ mod test {
         let pil = pipeline.compute_optimized_pil().unwrap();
         let fixed_cols = pipeline.compute_fixed_cols().unwrap();
         let witness = pipeline.compute_witness().unwrap();
-        mock_prove(&pil, &fixed_cols, &witness);
+        mock_prove(&pil, &fixed_cols, &witness).unwrap();
     }
 
     #[test]
