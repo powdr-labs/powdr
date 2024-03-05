@@ -33,3 +33,6 @@ powdr-pipeline = { path = "../pipeline" }
 
 test-log = "0.2.12"
 env_logger = "0.10.0"
+
+[package.metadata.cargo-udeps.ignore]
+development = ["env_logger"]

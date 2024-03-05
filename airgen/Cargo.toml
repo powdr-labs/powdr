@@ -10,5 +10,3 @@ repository = { workspace = true }
 [dependencies]
 powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
-
-log = "0.4.17"

@@ -27,3 +27,6 @@ mktemp = "0.5.0"
 test-log = "0.2.12"
 env_logger = "0.10.0"
 pretty_assertions = "1.4.0"
+
+[package.metadata.cargo-udeps.ignore]
+development = ["env_logger"]
