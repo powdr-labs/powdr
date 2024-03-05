@@ -16,7 +16,7 @@ use powdr_ast::{
         UnaryOperator,
     },
 };
-use powdr_number::{BigInt, FieldElement, LargeInt};
+use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
 
 /// Evaluates an expression given a hash map of definitions.
 pub fn evaluate_expression<'a, T: FieldElement>(
@@ -180,7 +180,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
         match self {
             Value::FieldElement(x) => Ok(*x),
             Value::Integer(x) => {
-                if let Some(x) = x.to_biguint() {
+                if let Ok(x) = BigUint::try_from(x.clone()) {
                     if x < T::modulus().to_arbitrary_integer() {
                         Ok(T::from(x))
                     } else {
@@ -407,7 +407,7 @@ pub trait SymbolLookup<'a, T> {
 }
 
 mod internal {
-    use num_traits::{Signed, ToPrimitive};
+    use num_traits::Signed;
     use powdr_ast::{
         analyzed::AlgebraicBinaryOperator,
         parsed::{NoArrayLengths, TypeName},
@@ -656,13 +656,13 @@ mod internal {
                 evaluate_binary_operation_field(*l, op, *r)?
             }
             (Value::FieldElement(l), BinaryOperator::Pow, Value::Integer(r)) => {
-                let exp = r.to_u64().ok_or_else(|| {
+                let exp: u64 = r.clone().try_into().map_err(|_| {
                     EvalError::TypeError(format!("Exponent in {l}**{r} is too large."))
                 })?;
                 Value::FieldElement(l.pow(exp.into())).into()
             }
             (Value::Expression(l), BinaryOperator::Pow, Value::Integer(r)) => {
-                let exp = r.to_u64().ok_or_else(|| {
+                let exp: u64 = r.clone().try_into().map_err(|_| {
                     EvalError::TypeError(format!("Exponent in {l}**{r} is too large."))
                 })?;
                 match l {
@@ -818,13 +818,13 @@ pub fn evaluate_binary_operation_integer<'a, T>(
         BinaryOperator::Sub => Value::Integer(left - right),
         BinaryOperator::Mul => Value::Integer(left * right),
         BinaryOperator::Div => Value::Integer(left / right),
-        BinaryOperator::Pow => Value::Integer(left.pow(u32::try_from(right).unwrap())),
+        BinaryOperator::Pow => Value::Integer(left.pow(usize::try_from(right).unwrap())),
         BinaryOperator::Mod => Value::Integer(left % right),
         BinaryOperator::BinaryAnd => Value::Integer(left & right),
         BinaryOperator::BinaryXor => Value::Integer(left ^ right),
         BinaryOperator::BinaryOr => Value::Integer(left | right),
-        BinaryOperator::ShiftLeft => Value::Integer(left << u32::try_from(right).unwrap()),
-        BinaryOperator::ShiftRight => Value::Integer(left >> u32::try_from(right).unwrap()),
+        BinaryOperator::ShiftLeft => Value::Integer(left << usize::try_from(right).unwrap()),
+        BinaryOperator::ShiftRight => Value::Integer(left >> usize::try_from(right).unwrap()),
         BinaryOperator::Less => Value::Bool(left < right),
         BinaryOperator::LessEqual => Value::Bool(left <= right),
         BinaryOperator::Equal => Value::Bool(left == right),

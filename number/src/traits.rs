@@ -26,8 +26,8 @@ pub trait LargeInt:
     + fmt::Debug
     + Copy
     + Not<Output = Self>
-    + Shl<u64, Output = Self>
-    + Shr<u64, Output = Self>
+    + Shl<usize, Output = Self>
+    + Shr<usize, Output = Self>
     + BitXor<Output = Self>
     + Zero
     + ConstZero
@@ -39,7 +39,7 @@ pub trait LargeInt:
     const NUM_BITS: usize;
     fn to_arbitrary_integer(self) -> BigUint;
     /// Number of bits required to encode this particular number.
-    fn num_bits(&self) -> u32;
+    fn num_bits(&self) -> usize;
 
     /// Returns the constant one.
     /// We are not implementing num_traits::One because it also requires multiplication.
@@ -148,6 +148,5 @@ pub trait FieldElement:
 
 #[cfg(test)]
 pub fn int_from_hex_str<T: FieldElement>(s: &str) -> T::Integer {
-    use num_traits::Num;
     T::Integer::try_from(BigUint::from_str_radix(s, 16).unwrap()).unwrap()
 }

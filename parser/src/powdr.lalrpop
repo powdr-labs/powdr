@@ -2,7 +2,6 @@ use std::str::FromStr;
 use std::collections::BTreeSet;
 use powdr_ast::parsed::{*, asm::*};
 use powdr_number::{BigUint, FieldElement};
-use num_traits::Num;
 use crate::{ParserContext, unescape_string};
 
 grammar<T>(ctx: &ParserContext) where T: FieldElement;

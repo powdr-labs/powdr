@@ -24,7 +24,7 @@ pub struct RangeConstraint<T: FieldElement> {
 impl<T: FieldElement> RangeConstraint<T> {
     /// Constraint that allows no higher bits set than the one given
     /// (counting from zero).
-    pub fn from_max_bit(max_bit: u64) -> Self {
+    pub fn from_max_bit(max_bit: usize) -> Self {
         Self::from_mask(mask_from_bits::<T>(max_bit + 1))
     }
 
@@ -55,7 +55,7 @@ impl<T: FieldElement> RangeConstraint<T> {
     #[inline]
     pub fn from_range(min: T, max: T) -> Self {
         let mask = if min <= max {
-            mask_from_bits::<T>(max.to_integer().num_bits() as u64)
+            mask_from_bits::<T>(max.to_integer().num_bits())
         } else {
             !T::Integer::from(0)
         };
@@ -170,12 +170,12 @@ fn range_width<T: FieldElement>(min: T, max: T) -> T::Integer {
 }
 
 #[inline]
-fn mask_from_bits<T: FieldElement>(bits: u64) -> T::Integer {
+fn mask_from_bits<T: FieldElement>(bits: usize) -> T::Integer {
     if bits == 0 {
         T::Integer::zero()
     } else {
         let max = !T::Integer::zero();
-        let max_bits = T::Integer::NUM_BITS as u64;
+        let max_bits = T::Integer::NUM_BITS;
         assert!(bits <= max_bits);
         max >> (max_bits - bits)
     }

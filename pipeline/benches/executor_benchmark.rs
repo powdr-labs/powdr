@@ -10,7 +10,6 @@ use powdr_riscv::{
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use mktemp::Temp;
-use num_traits::Num;
 
 type T = GoldilocksField;
 

@@ -9,7 +9,7 @@ use halo2_proofs::{
     },
     poly::Rotation,
 };
-use num_traits::ToPrimitive;
+
 use powdr_ast::analyzed::{Analyzed, IdentityKind};
 use powdr_ast::{
     analyzed::{AlgebraicBinaryOperator, AlgebraicExpression},
@@ -376,7 +376,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
 pub(crate) fn convert_field<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(x: T) -> F {
     let x = x.to_arbitrary_integer();
     let mut repr: [u8; 32] = [0; 32];
-    let f_le = x.to_bytes_le();
+    let f_le = x.to_le_bytes();
     repr[..f_le.len()].clone_from_slice(&f_le);
     F::from_repr_vartime(repr).expect("value in field")
 }
@@ -413,10 +413,10 @@ fn to_halo2_expression<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(
                     let AlgebraicExpression::Number(e) = powdr_rhe.as_ref() else {
                         panic!("Expected number in exponent.")
                     };
-                    let e = e
+                    let e: u32 = e
                         .to_arbitrary_integer()
-                        .to_u32()
-                        .unwrap_or_else(|| panic!("Exponent has to fit 32 bits."));
+                        .try_into()
+                        .unwrap_or_else(|_| panic!("Exponent has to fit 32 bits."));
                     if e == 0 {
                         Expression::Constant(F::from(1))
                     } else {

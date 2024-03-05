@@ -6,8 +6,6 @@ use powdr_pipeline::test_util::{
 };
 use test_log::test;
 
-use num_traits::Num;
-
 #[test]
 fn poseidon_bn254_test() {
     let f = "std/poseidon_bn254_test.asm";

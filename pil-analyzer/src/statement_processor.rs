@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::marker::PhantomData;
 
 use itertools::Itertools;
-use num_traits::ToPrimitive;
+
 use powdr_ast::analyzed::types::{ArrayType, Type, TypeScheme, TypedExpression};
 use powdr_ast::parsed::{
     self, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions, TypeName,
@@ -169,8 +169,8 @@ where
                     .evaluate_expression_to_int(len)
                     .map(|length| {
                         length
-                            .to_u64()
-                            .unwrap_or_else(|| panic!("Array length too large."))
+                            .try_into()
+                            .unwrap_or_else(|_| panic!("Array length too large."))
                     })
                     .map_err(|e| {
                         panic!("Error evaluating length of array of witness columns {name}:\n{e}")
@@ -425,10 +425,10 @@ where
             .expression_processor()
             .process_namespaced_polynomial_reference(&poly.path);
         let array_index = array_index.map(|i| {
-            let index = self
+            let index: u64 = self
                 .evaluate_expression_to_int(i)
                 .unwrap()
-                .to_u64()
+                .try_into()
                 .unwrap();
             assert!(index <= usize::MAX as u64);
             index as usize
@@ -442,7 +442,7 @@ where
             index: self
                 .evaluate_expression_to_int(index)
                 .unwrap()
-                .to_u64()
+                .try_into()
                 .unwrap(),
         })]
     }
@@ -455,9 +455,9 @@ where
         // so we expect an integer that fits u64.
         for e in n.expressions_mut() {
             let v = self.evaluate_expression_to_int(e.clone())?;
-            let v_u64 = v.to_u64().ok_or(EvalError::TypeError(format!(
-                "Number too large, expected u64, but got {v}"
-            )))?;
+            let v_u64: u64 = v.clone().try_into().map_err(|_| {
+                EvalError::TypeError(format!("Number too large, expected u64, but got {v}"))
+            })?;
             *e = parsed::Expression::Number(v_u64.into(), None);
         }
         Ok(n.into())
