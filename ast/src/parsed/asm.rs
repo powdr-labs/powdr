@@ -5,7 +5,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_number::AbstractNumberType;
+use powdr_number::BigUint;
 
 use derive_more::From;
 
@@ -444,7 +444,7 @@ pub struct Instruction<T> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement<T> {
-    Degree(SourceRef, AbstractNumberType),
+    Degree(SourceRef, BigUint),
     Pil(SourceRef, PilStatement<T>),
     Submachine(SourceRef, SymbolPath, String),
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),
