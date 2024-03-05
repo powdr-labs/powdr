@@ -21,7 +21,7 @@ use crate::SourceRef;
 
 use self::types::{Type, TypeScheme, TypedExpression};
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
@@ -30,7 +30,7 @@ pub enum StatementIdentifier {
     Identity(usize),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     /// The degree of all namespaces, which must match. If there are no namespaces, then `None`.
     pub degree: Option<DegreeType>,
@@ -259,7 +259,7 @@ impl<T> Analyzed<T> {
         self.identities
             .push(Identity::from_polynomial_identity(id, source, identity));
         self.source_order
-            .push(StatementIdentifier::Identity(id as usize));
+            .push(StatementIdentifier::Identity(self.identities.len() - 1));
         id
     }
 
@@ -925,5 +925,50 @@ impl Display for PolynomialType {
                 PolynomialType::Intermediate => "intermediate",
             }
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::SourceRef;
+
+    use super::{AlgebraicExpression, Analyzed};
+
+    #[test]
+    fn insert_remove_identities() {
+        let mut pil = Analyzed::default();
+        pil.append_polynomial_identity(AlgebraicExpression::Number(0), SourceRef::unknown());
+        pil.append_polynomial_identity(AlgebraicExpression::Number(1), SourceRef::unknown());
+        pil.append_polynomial_identity(AlgebraicExpression::Number(2), SourceRef::unknown());
+        pil.append_polynomial_identity(AlgebraicExpression::Number(3), SourceRef::unknown());
+        assert_eq!(pil.identities.len(), 4);
+        assert_eq!(pil.source_order.len(), 4);
+
+        let to_remove = [4].into_iter().collect();
+        pil.remove_identities(&to_remove);
+        assert_eq!(pil.identities.len(), 4);
+        assert_eq!(pil.source_order.len(), 4);
+
+        let to_remove = [1, 2].into_iter().collect();
+        pil.remove_identities(&to_remove);
+        assert_eq!(pil.identities.len(), 2);
+        assert_eq!(pil.source_order.len(), 2);
+
+        pil.append_polynomial_identity(AlgebraicExpression::Number(4), SourceRef::unknown());
+        pil.append_polynomial_identity(AlgebraicExpression::Number(5), SourceRef::unknown());
+        assert_eq!(pil.identities.len(), 4);
+        assert_eq!(pil.source_order.len(), 4);
+
+        let to_remove = [1, 2].into_iter().collect();
+        pil.remove_identities(&to_remove);
+        assert_eq!(pil.identities.len(), 2);
+        assert_eq!(pil.source_order.len(), 2);
+
+        let mut pil_result = Analyzed::default();
+        pil_result.append_polynomial_identity(AlgebraicExpression::Number(0), SourceRef::unknown());
+        pil_result.append_polynomial_identity(AlgebraicExpression::Number(5), SourceRef::unknown());
+        pil_result.identities[1].id = 6;
+        assert_eq!(pil.identities, pil_result.identities);
+        assert_eq!(pil.source_order, pil_result.source_order);
     }
 }
