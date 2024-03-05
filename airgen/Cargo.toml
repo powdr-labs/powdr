@@ -11,5 +11,4 @@ repository = { workspace = true }
 powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
 
-num-bigint = "0.4.3"
 log = "0.4.17"

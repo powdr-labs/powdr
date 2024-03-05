@@ -3,7 +3,7 @@ use std::rc::Rc;
 use powdr_ast::analyzed::{
     types::Type, AlgebraicExpression, AlgebraicReference, Expression, PolyID, PolynomialType,
 };
-use powdr_number::FieldElement;
+use powdr_number::{BigInt, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, NoCustom, SymbolLookup, Value};
 
 use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
@@ -78,9 +78,9 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         query: &'a Expression<T>,
         rows: &RowPair<T>,
     ) -> Result<String, EvalError> {
-        let arguments = vec![Rc::new(Value::Integer(num_bigint::BigInt::from(
-            u64::from(rows.current_row_index),
-        )))];
+        let arguments = vec![Rc::new(Value::Integer(BigInt::from(u64::from(
+            rows.current_row_index,
+        ))))];
         let symbols = Symbols {
             fixed_data: self.fixed_data,
             rows,

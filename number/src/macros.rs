@@ -1,11 +1,10 @@
 macro_rules! powdr_field {
     ($name:ident, $ark_type:ty) => {
         use crate::{
-            traits::{BigInt, FieldElement, KnownField},
-            DegreeType,
+            traits::{FieldElement, KnownField, LargeInt},
+            BigUint, DegreeType,
         };
         use ark_ff::{BigInteger, Field, PrimeField};
-        use num_bigint::BigUint;
         use num_traits::{ConstOne, ConstZero, Num, One, Zero};
         use std::fmt;
         use std::ops::*;
@@ -35,17 +34,17 @@ macro_rules! powdr_field {
         }
 
         #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, PartialOrd, Ord, Hash)]
-        pub struct BigIntImpl {
+        pub struct LargeIntImpl {
             value: <$ark_type as PrimeField>::BigInt,
         }
 
-        impl fmt::Display for BigIntImpl {
+        impl fmt::Display for LargeIntImpl {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 write!(f, "{}", self.value)
             }
         }
 
-        impl fmt::LowerHex for BigIntImpl {
+        impl fmt::LowerHex for LargeIntImpl {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 let val = self.to_arbitrary_integer();
 
@@ -53,25 +52,25 @@ macro_rules! powdr_field {
             }
         }
 
-        impl BigIntImpl {
+        impl LargeIntImpl {
             const fn new(value: <$ark_type as PrimeField>::BigInt) -> Self {
                 Self { value }
             }
         }
 
-        impl From<u32> for BigIntImpl {
+        impl From<u32> for LargeIntImpl {
             fn from(v: u32) -> Self {
                 Self::new(v.into())
             }
         }
 
-        impl From<u64> for BigIntImpl {
+        impl From<u64> for LargeIntImpl {
             fn from(v: u64) -> Self {
                 Self::new(v.into())
             }
         }
 
-        impl Shl<u64> for BigIntImpl {
+        impl Shl<u64> for LargeIntImpl {
             type Output = Self;
 
             fn shl(self, other: u64) -> Self {
@@ -82,7 +81,7 @@ macro_rules! powdr_field {
             }
         }
 
-        impl Shr<u64> for BigIntImpl {
+        impl Shr<u64> for LargeIntImpl {
             type Output = Self;
 
             fn shr(self, other: u64) -> Self {
@@ -93,7 +92,7 @@ macro_rules! powdr_field {
             }
         }
 
-        impl BitAnd for BigIntImpl {
+        impl BitAnd for LargeIntImpl {
             type Output = Self;
 
             fn bitand(mut self, other: Self) -> Self {
@@ -109,7 +108,7 @@ macro_rules! powdr_field {
             }
         }
 
-        impl BitOr for BigIntImpl {
+        impl BitOr for LargeIntImpl {
             type Output = Self;
 
             fn bitor(mut self, other: Self) -> Self {
@@ -125,7 +124,7 @@ macro_rules! powdr_field {
             }
         }
 
-        impl BitXor for BigIntImpl {
+        impl BitXor for LargeIntImpl {
             type Output = Self;
 
             fn bitxor(mut self, other: Self) -> Self {
@@ -141,7 +140,7 @@ macro_rules! powdr_field {
             }
         }
 
-        impl BitOrAssign for BigIntImpl {
+        impl BitOrAssign for LargeIntImpl {
             fn bitor_assign(&mut self, other: Self) {
                 for (x, y) in self
                     .value
@@ -154,7 +153,7 @@ macro_rules! powdr_field {
             }
         }
 
-        impl BitAndAssign for BigIntImpl {
+        impl BitAndAssign for LargeIntImpl {
             fn bitand_assign(&mut self, other: Self) {
                 for (x, y) in self
                     .value
@@ -167,7 +166,7 @@ macro_rules! powdr_field {
             }
         }
 
-        impl Not for BigIntImpl {
+        impl Not for LargeIntImpl {
             type Output = Self;
 
             fn not(mut self) -> Self::Output {
@@ -178,13 +177,13 @@ macro_rules! powdr_field {
             }
         }
 
-        impl AddAssign for BigIntImpl {
+        impl AddAssign for LargeIntImpl {
             fn add_assign(&mut self, other: Self) {
                 self.value.add_with_carry(&other.value);
             }
         }
 
-        impl Add for BigIntImpl {
+        impl Add for LargeIntImpl {
             type Output = Self;
             fn add(mut self, other: Self) -> Self {
                 self.add_assign(other);
@@ -192,10 +191,10 @@ macro_rules! powdr_field {
             }
         }
 
-        impl Zero for BigIntImpl {
+        impl Zero for LargeIntImpl {
             #[inline]
             fn zero() -> Self {
-                BigIntImpl::new(<$ark_type as PrimeField>::BigInt::zero())
+                LargeIntImpl::new(<$ark_type as PrimeField>::BigInt::zero())
             }
             #[inline]
             fn is_zero(&self) -> bool {
@@ -203,7 +202,7 @@ macro_rules! powdr_field {
             }
         }
 
-        impl TryFrom<BigUint> for BigIntImpl {
+        impl TryFrom<BigUint> for LargeIntImpl {
             type Error = ();
 
             fn try_from(n: BigUint) -> Result<Self, ()> {
@@ -213,7 +212,7 @@ macro_rules! powdr_field {
             }
         }
 
-        impl BigInt for BigIntImpl {
+        impl LargeInt for LargeIntImpl {
             const NUM_BITS: usize = <$ark_type as PrimeField>::BigInt::NUM_LIMBS * 64;
             #[inline]
             fn to_arbitrary_integer(self) -> BigUint {
@@ -224,7 +223,7 @@ macro_rules! powdr_field {
             }
             #[inline]
             fn one() -> Self {
-                BigIntImpl::new(<$ark_type as PrimeField>::BigInt::one())
+                LargeIntImpl::new(<$ark_type as PrimeField>::BigInt::one())
             }
             #[inline]
             fn is_one(&self) -> bool {
@@ -246,8 +245,8 @@ macro_rules! powdr_field {
             }
         }
 
-        impl ConstZero for BigIntImpl {
-            const ZERO: Self = BigIntImpl::new(<$ark_type as PrimeField>::BigInt::zero());
+        impl ConstZero for LargeIntImpl {
+            const ZERO: Self = LargeIntImpl::new(<$ark_type as PrimeField>::BigInt::zero());
         }
 
         impl From<BigUint> for $name {
@@ -256,8 +255,8 @@ macro_rules! powdr_field {
             }
         }
 
-        impl From<BigIntImpl> for $name {
-            fn from(n: BigIntImpl) -> Self {
+        impl From<LargeIntImpl> for $name {
+            fn from(n: LargeIntImpl) -> Self {
                 Self {
                     value: n.value.into(),
                 }
@@ -313,7 +312,7 @@ macro_rules! powdr_field {
         }
 
         impl FieldElement for $name {
-            type Integer = BigIntImpl;
+            type Integer = LargeIntImpl;
             const BITS: u32 = <$ark_type>::MODULUS_BIT_SIZE;
 
             fn known_field() -> Option<KnownField> {

@@ -8,7 +8,7 @@ use powdr_ast::parsed::{
     self, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions, TypeName,
 };
 use powdr_ast::SourceRef;
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{BigInt, DegreeType, FieldElement};
 
 use powdr_ast::analyzed::{
     Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
@@ -463,10 +463,7 @@ where
         Ok(n.into())
     }
 
-    fn evaluate_expression_to_int(
-        &self,
-        expr: parsed::Expression<T>,
-    ) -> Result<num_bigint::BigInt, EvalError> {
+    fn evaluate_expression_to_int(&self, expr: parsed::Expression<T>) -> Result<BigInt, EvalError> {
         evaluator::evaluate_expression(
             &ExpressionProcessor::new(self.driver).process_expression(expr),
             self.driver.definitions(),

@@ -1,6 +1,6 @@
 use ::powdr_pipeline::{inputs_to_query_callback, Pipeline};
 use powdr_ast::analyzed::Analyzed;
-use powdr_number::{FieldElement, GoldilocksField};
+use powdr_number::{BigInt, FieldElement, GoldilocksField};
 
 use powdr_pipeline::test_util::{evaluate_integer_function, std_analyzed};
 use powdr_riscv::{
@@ -75,12 +75,12 @@ fn evaluator_benchmark(c: &mut Criterion) {
 
     group.bench_function("std::math::ff::inverse", |b| {
         b.iter(|| {
-            let modulus = num_bigint::BigInt::from_str_radix(
+            let modulus = BigInt::from_str_radix(
                 "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
                 16,
             )
             .unwrap();
-            let x = modulus.clone() - num_bigint::BigInt::from(17);
+            let x = modulus.clone() - BigInt::from(17);
 
             evaluate_integer_function(
                 &analyzed,
@@ -92,12 +92,12 @@ fn evaluator_benchmark(c: &mut Criterion) {
 
     group.bench_function("std::math::ff::reduce", |b| {
         b.iter(|| {
-            let modulus = num_bigint::BigInt::from_str_radix(
+            let modulus = BigInt::from_str_radix(
                 "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
                 16,
             )
             .unwrap();
-            let x = modulus.clone() + num_bigint::BigInt::from(17);
+            let x = modulus.clone() + BigInt::from(17);
 
             evaluate_integer_function(
                 &analyzed,
@@ -109,13 +109,13 @@ fn evaluator_benchmark(c: &mut Criterion) {
 
     group.bench_function("std::math::ff::mul", |b| {
         b.iter(|| {
-            let modulus = num_bigint::BigInt::from_str_radix(
+            let modulus = BigInt::from_str_radix(
                 "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
                 16,
             )
             .unwrap();
-            let x = modulus.clone() - num_bigint::BigInt::from(17);
-            let y = modulus.clone() - num_bigint::BigInt::from(11);
+            let x = modulus.clone() - BigInt::from(17);
+            let y = modulus.clone() - BigInt::from(11);
 
             evaluate_integer_function(
                 &analyzed,
@@ -145,7 +145,7 @@ fn evaluator_benchmark(c: &mut Criterion) {
     for x in [879882356, 1882356, 1187956, 56] {
         group.bench_with_input(format!("sqrt_{x}"), &x, |b, &x| {
             b.iter(|| {
-                let y = num_bigint::BigInt::from(x) * num_bigint::BigInt::from(112655675);
+                let y = BigInt::from(x) * BigInt::from(112655675);
                 evaluate_integer_function(&sqrt_analyzed, "sqrt", vec![y.clone()]);
             });
         });

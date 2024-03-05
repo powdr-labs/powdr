@@ -4,10 +4,10 @@ use num_traits::{ConstOne, ConstZero, One, Zero};
 use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::{AbstractNumberType, DegreeType};
+use crate::{BigUint, DegreeType};
 
 /// A fixed-width integer type
-pub trait BigInt:
+pub trait LargeInt:
     Copy
     + Send
     + Sync
@@ -32,12 +32,12 @@ pub trait BigInt:
     + Zero
     + ConstZero
     + fmt::LowerHex
-    + TryFrom<num_bigint::BigUint, Error = ()>
+    + TryFrom<crate::BigUint, Error = ()>
 {
     /// Number of bits of this base type. Not to be confused with the number of bits
     /// of the field elements!
     const NUM_BITS: usize;
-    fn to_arbitrary_integer(self) -> AbstractNumberType;
+    fn to_arbitrary_integer(self) -> BigUint;
     /// Number of bits required to encode this particular number.
     fn num_bits(&self) -> u32;
 
@@ -93,7 +93,7 @@ pub trait FieldElement:
     + fmt::Display
     + fmt::Debug
     + From<Self::Integer>
-    + From<num_bigint::BigUint>
+    + From<crate::BigUint>
     + FromStr<Err = String>
     + From<u32>
     + From<u64>
@@ -106,7 +106,7 @@ pub trait FieldElement:
     + JsonSchema
 {
     /// The underlying fixed-width integer type
-    type Integer: BigInt;
+    type Integer: LargeInt;
     /// Number of bits required to represent elements of this field.
     const BITS: u32;
 
@@ -114,7 +114,7 @@ pub trait FieldElement:
 
     fn to_integer(&self) -> Self::Integer;
 
-    fn to_arbitrary_integer(&self) -> AbstractNumberType {
+    fn to_arbitrary_integer(&self) -> BigUint {
         self.to_integer().to_arbitrary_integer()
     }
 
@@ -149,5 +149,5 @@ pub trait FieldElement:
 #[cfg(test)]
 pub fn int_from_hex_str<T: FieldElement>(s: &str) -> T::Integer {
     use num_traits::Num;
-    T::Integer::try_from(AbstractNumberType::from_str_radix(s, 16).unwrap()).unwrap()
+    T::Integer::try_from(BigUint::from_str_radix(s, 16).unwrap()).unwrap()
 }

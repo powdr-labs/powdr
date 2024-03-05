@@ -22,7 +22,7 @@ use powdr_ast::{
     },
     parsed::{asm::DebugDirective, Expression, FunctionCall},
 };
-use powdr_number::{BigInt, FieldElement};
+use powdr_number::{FieldElement, LargeInt};
 
 pub mod poseidon_gl;
 

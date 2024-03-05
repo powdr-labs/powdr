@@ -4,7 +4,7 @@ use powdr_ast::{
     asm_analysis::{AnalysisASMFile, RegisterTy},
     parsed::{asm::parse_absolute_path, Expression, PilStatement},
 };
-use powdr_number::{BigInt, FieldElement};
+use powdr_number::{FieldElement, LargeInt};
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState};
 

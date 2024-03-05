@@ -10,7 +10,6 @@ mod tests {
 
     use super::Bn254Field;
     use crate::{traits::int_from_hex_str, FieldElement};
-    use num_bigint::BigUint;
     use num_traits::Num;
     use test_log::test;
 
@@ -55,7 +54,7 @@ mod tests {
         let minus_one = Bn254Field::from(0) - Bn254Field::from(1);
         assert_eq!(
             minus_one.to_arbitrary_integer(),
-            BigUint::from_str_radix(
+            crate::BigUint::from_str_radix(
                 "21888242871839275222246405745257275088548364400416034343698204186575808495616",
                 10
             )

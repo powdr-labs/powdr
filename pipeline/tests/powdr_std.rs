@@ -1,4 +1,4 @@
-use powdr_number::GoldilocksField;
+use powdr_number::{BigInt, GoldilocksField};
 
 use powdr_pipeline::test_util::{
     evaluate_integer_function, gen_estark_proof, gen_halo2_proof, std_analyzed, test_halo2,
@@ -69,14 +69,14 @@ fn ff_reduce_mod_7() {
     ];
     let analyzed = std_analyzed::<GoldilocksField>();
     for x in test_inputs {
-        let x = num_bigint::BigInt::from(x);
-        let modulus = num_bigint::BigInt::from(7);
+        let x = BigInt::from(x);
+        let modulus = BigInt::from(7);
         let result = evaluate_integer_function(
             &analyzed,
             "std::math::ff::reduce",
             vec![x.clone(), modulus.clone()],
         );
-        assert!(num_bigint::BigInt::from(0) <= result && result < modulus);
+        assert!(BigInt::from(0) <= result && result < modulus);
         if x < result {
             assert_eq!((result - x) % modulus, 0.into());
         } else {
@@ -103,8 +103,8 @@ fn ff_inverse() {
     ];
     let analyzed = std_analyzed::<GoldilocksField>();
     for (x, modulus) in test_inputs {
-        let x = num_bigint::BigInt::from(x);
-        let modulus = num_bigint::BigInt::from(modulus);
+        let x = BigInt::from(x);
+        let modulus = BigInt::from(modulus);
         let result = evaluate_integer_function(
             &analyzed,
             "std::math::ff::inverse",
@@ -130,9 +130,9 @@ fn ff_add_sub_mul_div() {
     ];
     let analyzed = std_analyzed::<GoldilocksField>();
     for (x, y, modulus) in inputs {
-        let x = num_bigint::BigInt::from(x);
-        let y = num_bigint::BigInt::from(y);
-        let modulus = num_bigint::BigInt::from(modulus);
+        let x = BigInt::from(x);
+        let y = BigInt::from(y);
+        let modulus = BigInt::from(modulus);
         let result = evaluate_integer_function(
             &analyzed,
             "std::math::ff::add",
@@ -172,12 +172,12 @@ fn ff_add_sub_mul_div() {
 fn ff_inv_big() {
     let analyzed = std_analyzed::<GoldilocksField>();
     // modulus of the secp256k1 base field
-    let modulus = num_bigint::BigInt::from_str_radix(
+    let modulus = BigInt::from_str_radix(
         "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
         16,
     )
     .unwrap();
-    let x = modulus.clone() - num_bigint::BigInt::from(17);
+    let x = modulus.clone() - BigInt::from(17);
     let result = evaluate_integer_function(
         &analyzed,
         "std::math::ff::inverse",

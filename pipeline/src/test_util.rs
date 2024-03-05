@@ -1,6 +1,6 @@
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
-use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
+use powdr_number::{BigInt, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -168,8 +168,8 @@ pub fn evaluate_function<'a, T: FieldElement>(
 pub fn evaluate_integer_function<T: FieldElement>(
     analyzed: &Analyzed<T>,
     function: &str,
-    arguments: Vec<num_bigint::BigInt>,
-) -> num_bigint::BigInt {
+    arguments: Vec<BigInt>,
+) -> BigInt {
     let arguments = arguments
         .into_iter()
         .map(|x| Rc::new(evaluator::Value::Integer(x)))

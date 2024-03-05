@@ -8,7 +8,7 @@ use powdr_ast::{
     },
     parsed::IndexAccess,
 };
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
@@ -76,7 +76,7 @@ fn generate_values<T: FieldElement>(
                     let fun = evaluator::evaluate(e, &symbols).unwrap();
                     evaluator::evaluate_function_call(
                         fun,
-                        vec![Rc::new(Value::Integer(num_bigint::BigInt::from(i)))],
+                        vec![Rc::new(Value::Integer(BigInt::from(i)))],
                         &symbols,
                     )
                     .and_then(|v| v.try_to_field_element())
