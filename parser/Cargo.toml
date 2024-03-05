@@ -29,3 +29,6 @@ similar = "2.4"
 
 [build-dependencies]
 lalrpop = "^0.19"
+
+[package.metadata.cargo-udeps.ignore]
+development = ["env_logger"]
