@@ -269,9 +269,10 @@ impl ProcessingSequenceCache {
         K: Copy + Ord,
         T: FieldElement,
     {
-        self.cache
-            .entry(left.into())
-            .or_insert(CacheEntry::Incomplete);
+        assert!(self
+            .cache
+            .insert(left.into(), CacheEntry::Incomplete)
+            .is_none());
     }
 
     pub fn report_processing_sequence<K, T>(
@@ -284,9 +285,10 @@ impl ProcessingSequenceCache {
     {
         match sequence_iterator {
             ProcessingSequenceIterator::Default(it) => {
-                self.cache
-                    .entry(left.into())
-                    .or_insert(CacheEntry::Cached(it.progress_steps));
+                assert!(self
+                    .cache
+                    .insert(left.into(), CacheEntry::Cached(it.progress_steps))
+                    .is_none());
             }
             ProcessingSequenceIterator::Incomplete => unreachable!(),
             ProcessingSequenceIterator::Cached(_) => {} // Already cached, do nothing
