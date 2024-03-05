@@ -2,10 +2,9 @@ macro_rules! powdr_field {
     ($name:ident, $ark_type:ty) => {
         use crate::{
             traits::{FieldElement, KnownField, LargeInt},
-            DegreeType,
+            BigUint, DegreeType,
         };
         use ark_ff::{BigInteger, Field, PrimeField};
-        use num_bigint::BigUint;
         use num_traits::{ConstOne, ConstZero, Num, One, Zero};
         use std::fmt;
         use std::ops::*;

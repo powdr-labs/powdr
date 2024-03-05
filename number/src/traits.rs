@@ -32,7 +32,7 @@ pub trait LargeInt:
     + Zero
     + ConstZero
     + fmt::LowerHex
-    + TryFrom<num_bigint::BigUint, Error = ()>
+    + TryFrom<crate::BigUint, Error = ()>
 {
     /// Number of bits of this base type. Not to be confused with the number of bits
     /// of the field elements!
@@ -93,7 +93,7 @@ pub trait FieldElement:
     + fmt::Display
     + fmt::Debug
     + From<Self::Integer>
-    + From<num_bigint::BigUint>
+    + From<crate::BigUint>
     + FromStr<Err = String>
     + From<u32>
     + From<u64>

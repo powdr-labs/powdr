@@ -19,7 +19,6 @@ snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-
 num-traits = "0.2.15"
 num-integer = "0.1.45"
 itertools = "^0.10"
-num-bigint = "^0.4"
 log = "0.4.17"
 rand = "0.8.5"
 

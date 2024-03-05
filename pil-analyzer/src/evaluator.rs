@@ -16,7 +16,7 @@ use powdr_ast::{
         UnaryOperator,
     },
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::{BigInt, FieldElement, LargeInt};
 
 /// Evaluates an expression given a hash map of definitions.
 pub fn evaluate_expression<'a, T: FieldElement>(
@@ -148,7 +148,7 @@ impl Display for EvalError {
 #[derive(Clone, PartialEq, Debug)]
 pub enum Value<'a, T, C> {
     Bool(bool),
-    Integer(num_bigint::BigInt),
+    Integer(BigInt),
     FieldElement(T),
     String(String),
     Tuple(Vec<Self>),
@@ -201,7 +201,7 @@ impl<'a, T: FieldElement, C: Custom> Value<'a, T, C> {
 
     /// Tries to convert the result into a integer.
     /// Everything else than Value::Integer results in an error.
-    pub fn try_to_integer(self) -> Result<num_bigint::BigInt, EvalError> {
+    pub fn try_to_integer(self) -> Result<BigInt, EvalError> {
         match self {
             Value::Integer(x) => Ok(x),
             Value::FieldElement(x) => Ok(x.to_arbitrary_integer().into()),
@@ -444,6 +444,7 @@ mod internal {
         analyzed::AlgebraicBinaryOperator,
         parsed::{NoArrayLengths, TypeName},
     };
+    use powdr_number::BigUint;
 
     use super::*;
 
@@ -697,7 +698,7 @@ mod internal {
                     }
                     l => {
                         assert!(
-                            num_bigint::BigUint::from(exp) < T::modulus().to_arbitrary_integer(),
+                            BigUint::from(exp) < T::modulus().to_arbitrary_integer(),
                             "Exponent too large: {exp}"
                         );
                         AlgebraicExpression::BinaryOperation(
@@ -833,9 +834,9 @@ pub fn evaluate_binary_operation_field<'a, T: FieldElement, C>(
 }
 
 pub fn evaluate_binary_operation_integer<'a, T, C>(
-    left: &num_bigint::BigInt,
+    left: &BigInt,
     op: BinaryOperator,
-    right: &num_bigint::BigInt,
+    right: &BigInt,
 ) -> Result<Value<'a, T, C>, EvalError> {
     Ok(match op {
         BinaryOperator::Add => Value::Integer(left + right),

@@ -17,7 +17,7 @@ pub use bn254::Bn254Field;
 pub use goldilocks::GoldilocksField;
 pub use traits::KnownField;
 
-pub use num_bigint::BigUint;
+pub use num_bigint::{BigInt, BigUint};
 pub use traits::{FieldElement, LargeInt};
 /// An arbitrary precision big integer, to be used as a last recourse
 

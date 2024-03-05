@@ -10,8 +10,7 @@ use std::{
 };
 
 use itertools::Either;
-use num_bigint::BigUint;
-use powdr_number::FieldElement;
+use powdr_number::{BigUint, FieldElement};
 
 use crate::parsed::{
     asm::{
