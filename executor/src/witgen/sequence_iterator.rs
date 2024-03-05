@@ -213,7 +213,7 @@ impl Iterator for ProcessingSequenceIterator {
 
 enum CacheEntry {
     /// The machine has been run successfully before and the sequence is cached.
-    Cached(Vec<SequenceStep>),
+    Complete(Vec<SequenceStep>),
     /// The machine has been run before, but did not succeed. There is no point in trying again.
     Incomplete,
 }
@@ -244,7 +244,7 @@ impl ProcessingSequenceCache {
         T: FieldElement,
     {
         match self.cache.get(&left.into()) {
-            Some(CacheEntry::Cached(cached_sequence)) => {
+            Some(CacheEntry::Complete(cached_sequence)) => {
                 log::trace!("Using cached sequence");
                 ProcessingSequenceIterator::Cached(cached_sequence.clone().into_iter())
             }
@@ -287,7 +287,7 @@ impl ProcessingSequenceCache {
             ProcessingSequenceIterator::Default(it) => {
                 assert!(self
                     .cache
-                    .insert(left.into(), CacheEntry::Cached(it.progress_steps))
+                    .insert(left.into(), CacheEntry::Complete(it.progress_steps))
                     .is_none());
             }
             ProcessingSequenceIterator::Incomplete => unreachable!(),
