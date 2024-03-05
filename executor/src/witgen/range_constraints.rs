@@ -3,7 +3,7 @@ use std::{cmp, ops};
 
 use num_traits::Zero;
 
-use powdr_number::{log2_exact, BigInt, FieldElement};
+use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 /// Constraint on the values of a variable X.
 /// It does not have to be an interval.

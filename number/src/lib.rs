@@ -18,7 +18,7 @@ pub use goldilocks::GoldilocksField;
 pub use traits::KnownField;
 
 use num_bigint::BigUint;
-pub use traits::{BigInt, FieldElement};
+pub use traits::{FieldElement, LargeInt};
 /// An arbitrary precision big integer, to be used as a last recourse
 pub type AbstractNumberType = BigUint;
 

@@ -7,7 +7,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use crate::{AbstractNumberType, DegreeType};
 
 /// A fixed-width integer type
-pub trait BigInt:
+pub trait LargeInt:
     Copy
     + Send
     + Sync
@@ -106,7 +106,7 @@ pub trait FieldElement:
     + JsonSchema
 {
     /// The underlying fixed-width integer type
-    type Integer: BigInt;
+    type Integer: LargeInt;
     /// Number of bits required to represent elements of this field.
     const BITS: u32;
 

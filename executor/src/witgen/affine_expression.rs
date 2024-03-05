@@ -3,7 +3,7 @@ use std::fmt::Display;
 use itertools::{Either, Itertools};
 
 use num_traits::Zero;
-use powdr_number::{BigInt, FieldElement};
+use powdr_number::{FieldElement, LargeInt};
 
 use super::global_constraints::RangeConstraintSet;
 use super::range_constraints::RangeConstraint;

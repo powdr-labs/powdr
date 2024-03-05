@@ -16,7 +16,7 @@ use powdr_ast::{
         UnaryOperator,
     },
 };
-use powdr_number::{BigInt, FieldElement};
+use powdr_number::{FieldElement, LargeInt};
 
 /// Evaluates an expression given a hash map of definitions.
 pub fn evaluate_expression<'a, T: FieldElement>(
