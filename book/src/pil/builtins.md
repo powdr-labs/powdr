@@ -99,6 +99,32 @@ if std::field::modulus() != 2**64 - 2**32 + 1 {
 };
 ```
 
+### Evaluate
+
+```rust
+let std::prover::eval: expr -> fe
+```
+
+Evaluates a column (potentially with `'` applied) on the current row.
+This function can only be used for prover queries or hints.
+
+In the following example, the column `x` is evaluated in a prover
+hint that returns the square root of a number.
+Example:
+```rust
+machine Sqrt {
+    let sqrt_hint: fe -> fe = |x| match x {
+        // Code to compute the square root of x goes here.
+    };
+
+    col witness x;
+    col witness y(i) query ("hint", sqrt_hint(std::prover::eval(x)));
+
+    y * y = x;
+
+}}
+```
+
 ## Operators
 
 The following operators are supported by powdr-pil with their respective signatures.

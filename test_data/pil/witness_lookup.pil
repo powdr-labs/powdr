@@ -1,10 +1,13 @@
 constant %N = 16;
 
+namespace std::convert(16);
+    let fe = [];
+
 namespace Quad(%N);
     col fixed id(i) { i };
     col fixed double(i) { i * 2 };
 
-    col witness input(i) query ("input", i);
+    col witness input(i) query ("input", std::convert::fe(i));
     col witness wdouble;
     col witness quadruple;
 

@@ -8,7 +8,8 @@ use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         types::{Type, TypeScheme, TypedExpression},
-        Expression, FunctionValueDefinition, Reference, Symbol,
+        AlgebraicExpression, AlgebraicReference, Expression, FunctionValueDefinition, Reference,
+        Symbol, SymbolKind,
     },
     parsed::{
         display::quote, BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern,
@@ -52,7 +53,7 @@ pub fn evaluate_function_call<'a, T: FieldElement, C: Custom>(
     // Otherwise we might have to clone big nested objects.
 ) -> Result<Value<'a, T, C>, EvalError> {
     match function {
-        Value::BuiltinFunction(b) => internal::evaluate_builtin_function(b, arguments),
+        Value::BuiltinFunction(b) => internal::evaluate_builtin_function(b, arguments, symbols),
         Value::Closure(Closure {
             lambda,
             environment,
@@ -72,7 +73,6 @@ pub fn evaluate_function_call<'a, T: FieldElement, C: Custom>(
 
             internal::evaluate(&lambda.body, &local_vars, &generic_args, symbols)
         }
-        Value::Custom(value) => symbols.eval_function_application(value, &arguments),
         e => Err(EvalError::TypeError(format!(
             "Expected function but got {e}"
         ))),
@@ -155,12 +155,20 @@ pub enum Value<'a, T, C> {
     Array(Vec<Self>),
     Closure(Closure<'a, T, C>),
     BuiltinFunction(BuiltinFunction),
+    Expression(AlgebraicExpression<T>),
+    Identity(AlgebraicExpression<T>, AlgebraicExpression<T>),
     Custom(C),
 }
 
 impl<'a, T: FieldElement, C> From<T> for Value<'a, T, C> {
     fn from(value: T) -> Self {
         Value::FieldElement(value)
+    }
+}
+
+impl<'a, T: FieldElement, C> From<AlgebraicExpression<T>> for Value<'a, T, C> {
+    fn from(value: AlgebraicExpression<T>) -> Self {
+        Value::Expression(value)
     }
 }
 
@@ -218,12 +226,14 @@ impl<'a, T: FieldElement, C: Custom> Value<'a, T, C> {
             }
             Value::Closure(c) => c.type_name(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
+            Value::Expression(_) => "expr".to_string(),
+            Value::Identity(_, _) => "constr".to_string(),
             Value::Custom(c) => c.type_name(),
         }
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 7] = [
+const BUILTINS: [(&str, BuiltinFunction); 8] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -231,6 +241,7 @@ const BUILTINS: [(&str, BuiltinFunction); 7] = [
     ("std::convert::int", BuiltinFunction::ToInt),
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
+    ("std::prover::eval", BuiltinFunction::Eval),
 ];
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -243,15 +254,16 @@ pub enum BuiltinFunction {
     /// Does not return.
     Panic,
     /// std::debug::print: string -> [], prints its argument on stdout.
-    /// std::debug::print: string -> [], prints its argument on stdout.
     /// Returns an empty array.
     Print,
-    /// std::convert::expr: fe -> expr, converts fe to expr
+    /// std::convert::expr: fe/int -> expr, converts fe to expr
     ToExpr,
     /// std::convert::int: fe/int -> int, converts fe to int
     ToInt,
     /// std::convert::fe: int/fe -> fe, converts int to fe
     ToFe,
+    /// std::prover::eval: expr -> fe, evaluates an expression on the current row
+    Eval,
 }
 
 pub trait Custom: Display + fmt::Debug + Clone + PartialEq {
@@ -269,6 +281,8 @@ impl<'a, T: Display, C: Custom> Display for Value<'a, T, C> {
             Value::Array(elements) => write!(f, "[{}]", elements.iter().format(", ")),
             Value::Closure(closure) => write!(f, "{closure}"),
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
+            Value::Expression(e) => write!(f, "{e}"),
+            Value::Identity(left, right) => write!(f, "{left} = {right}"),
             Value::Custom(c) => write!(f, "{c}"),
         }
     }
@@ -330,30 +344,55 @@ pub struct Definitions<'a, T>(
 impl<'a, T: FieldElement> SymbolLookup<'a, T, NoCustom> for Definitions<'a, T> {
     fn lookup<'b>(
         &self,
-        name: &'a str,
+        name: &str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Value<'a, T, NoCustom>, EvalError> {
-        Ok(match self.0.get(&name.to_string()) {
-            Some((_, value)) => match value {
-                Some(FunctionValueDefinition::Expression(TypedExpression { e, type_scheme })) => {
+        let name = name.to_string();
+        let (symbol, value) = &self
+            .0
+            .get(&name)
+            .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))?;
+
+        Ok(if matches!(symbol.kind, SymbolKind::Poly(_)) {
+            if symbol.is_array() {
+                let items = symbol
+                    .array_elements()
+                    .map(|(name, poly_id)| {
+                        AlgebraicExpression::Reference(AlgebraicReference {
+                            name,
+                            poly_id,
+                            next: false,
+                        })
+                        .into()
+                    })
+                    .collect();
+                Value::Array(items)
+            } else {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    name,
+                    poly_id: symbol.into(),
+                    next: false,
+                })
+                .into()
+            }
+        } else {
+            match value {
+                Some(FunctionValueDefinition::Expression(TypedExpression {
+                    e: value,
+                    type_scheme,
+                })) => {
                     let generic_args = generic_arg_mapping(type_scheme, generic_args);
-                    evaluate_generic(e, &generic_args, self)?
+                    evaluate_generic(value, &generic_args, self)?
                 }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
                 ))?,
-            },
-            _ => Err(EvalError::SymbolNotFound(format!(
-                "Symbol {name} not found."
-            )))?,
+            }
         })
     }
-    fn eval_function_application(
-        &self,
-        _function: NoCustom,
-        _arguments: &[Rc<Value<'a, T, NoCustom>>],
-    ) -> Result<Value<'a, T, NoCustom>, EvalError> {
-        unreachable!()
+
+    fn lookup_public_reference(&self, name: &str) -> Result<Value<'a, T, NoCustom>, EvalError> {
+        Ok(AlgebraicExpression::PublicReference(name.to_string()).into())
     }
 }
 
@@ -376,11 +415,6 @@ pub trait SymbolLookup<'a, T, C> {
             "Cannot evaluate public reference: {name}"
         )))
     }
-    fn eval_function_application(
-        &self,
-        function: C,
-        arguments: &[Rc<Value<'a, T, C>>],
-    ) -> Result<Value<'a, T, C>, EvalError>;
 
     fn eval_binary_operation(
         &self,
@@ -398,11 +432,18 @@ pub trait SymbolLookup<'a, T, C> {
     ) -> Result<Value<'a, T, C>, EvalError> {
         unreachable!()
     }
+
+    fn eval_expr(&self, _expr: AlgebraicExpression<T>) -> Result<Value<'a, T, C>, EvalError> {
+        Err(EvalError::DataNotAvailable)
+    }
 }
 
 mod internal {
     use num_traits::{Signed, ToPrimitive};
-    use powdr_ast::parsed::{NoArrayLengths, TypeName};
+    use powdr_ast::{
+        analyzed::AlgebraicBinaryOperator,
+        parsed::{NoArrayLengths, TypeName},
+    };
 
     use super::*;
 
@@ -435,42 +476,7 @@ mod internal {
             Expression::BinaryOperation(left, op, right) => {
                 let left = evaluate(left, locals, generic_args, symbols)?;
                 let right = evaluate(right, locals, generic_args, symbols)?;
-                match (left, op, right) {
-                    (l @ Value::Custom(_), _, r) | (l, _, r @ Value::Custom(_)) => {
-                        symbols.eval_binary_operation(l, *op, r)?
-                    }
-                    (Value::Array(mut l), BinaryOperator::Add, Value::Array(r)) => {
-                        l.extend(r);
-                        Value::Array(l)
-                    }
-                    (Value::String(mut l), BinaryOperator::Add, Value::String(r)) => {
-                        l.push_str(&r);
-                        Value::String(l)
-                    }
-                    (Value::Bool(l), BinaryOperator::LogicalOr, Value::Bool(r)) => {
-                        Value::Bool(l || r)
-                    }
-                    (Value::Bool(l), BinaryOperator::LogicalAnd, Value::Bool(r)) => {
-                        Value::Bool(l && r)
-                    }
-                    (Value::Integer(l), _, Value::Integer(r)) => {
-                        evaluate_binary_operation_integer(&l, *op, &r)?
-                    }
-                    (Value::FieldElement(l), _, Value::FieldElement(r)) => {
-                        evaluate_binary_operation_field(l, *op, r)?
-                    }
-                    (Value::FieldElement(l), BinaryOperator::Pow, Value::Integer(r)) => {
-                        let exp = r.to_u64().ok_or_else(|| {
-                            EvalError::TypeError(format!("Exponent in {l}**{r} is too large."))
-                        })?;
-                        Value::FieldElement(l.pow(exp.into()))
-                    }
-                    (l, op, r) => Err(EvalError::TypeError(format!(
-                        "Operator {op} not supported on types: {l}: {}, {r}: {}",
-                        l.type_name(),
-                        r.type_name()
-                    )))?,
-                }
+                evaluate_binary_operation(left, *op, right, symbols)?
             }
             Expression::UnaryOperation(op, expr) => {
                 match (op, evaluate(expr, locals, generic_args, symbols)?) {
@@ -478,6 +484,28 @@ mod internal {
                     (UnaryOperator::Minus, Value::FieldElement(e)) => Value::FieldElement(-e),
                     (UnaryOperator::LogicalNot, Value::Bool(b)) => Value::Bool(!b),
                     (UnaryOperator::Minus, Value::Integer(n)) => Value::Integer(-n),
+                    (UnaryOperator::Next, Value::Expression(e)) => {
+                        let AlgebraicExpression::Reference(reference) = e else {
+                            return Err(EvalError::TypeError(format!(
+                                "Expected column for \"'\" operator, but got: {e}"
+                            )));
+                        };
+
+                        if reference.next {
+                            return Err(EvalError::TypeError(format!(
+                                "Double application of \"'\" on: {reference}"
+                            )));
+                        }
+                        AlgebraicExpression::Reference(AlgebraicReference {
+                            next: true,
+                            ..reference
+                        })
+                        .into()
+                    }
+                    (op, Value::Expression(e)) => {
+                        AlgebraicExpression::UnaryOperation((*op).try_into().unwrap(), e.into())
+                            .into()
+                    }
                     (_, inner) => Err(EvalError::TypeError(format!(
                         "Operator {op} not supported on types: {inner}: {}",
                         inner.type_name()
@@ -595,11 +623,7 @@ mod internal {
         Ok(match ty {
             TypeName::Fe => Value::FieldElement(*n),
             TypeName::Int => Value::Integer(n.to_arbitrary_integer().into()),
-            TypeName::Expr => {
-                // TODO Once we lower `expr` to a type supported by evaluator natively,
-                // then use expr here.
-                Value::Integer(n.to_arbitrary_integer().into())
-            }
+            TypeName::Expr => Value::Expression((*n).into()),
             t => Err(EvalError::TypeError(format!(
                 "Invalid type name for number literal: {t}"
             )))?,
@@ -631,11 +655,93 @@ mod internal {
         })
     }
 
+    fn evaluate_binary_operation<'a, T: FieldElement, C: Custom>(
+        left: Value<'a, T, C>,
+        op: BinaryOperator,
+        right: Value<'a, T, C>,
+        symbols: &impl SymbolLookup<'a, T, C>,
+    ) -> Result<Value<'a, T, C>, EvalError> {
+        Ok(match (left, op, right) {
+            (l @ Value::Custom(_), _, r) | (l, _, r @ Value::Custom(_)) => {
+                symbols.eval_binary_operation(l, op, r)?
+            }
+            (Value::Array(mut l), BinaryOperator::Add, Value::Array(r)) => {
+                l.extend(r);
+                Value::Array(l)
+            }
+            (Value::String(mut l), BinaryOperator::Add, Value::String(r)) => {
+                l.push_str(&r);
+                Value::String(l)
+            }
+            (Value::Bool(l), BinaryOperator::LogicalOr, Value::Bool(r)) => Value::Bool(l || r),
+            (Value::Bool(l), BinaryOperator::LogicalAnd, Value::Bool(r)) => Value::Bool(l && r),
+            (Value::Integer(l), _, Value::Integer(r)) => {
+                evaluate_binary_operation_integer(&l, op, &r)?
+            }
+            (Value::FieldElement(l), _, Value::FieldElement(r)) => {
+                evaluate_binary_operation_field(l, op, r)?
+            }
+            (Value::FieldElement(l), BinaryOperator::Pow, Value::Integer(r)) => {
+                let exp = r.to_u64().ok_or_else(|| {
+                    EvalError::TypeError(format!("Exponent in {l}**{r} is too large."))
+                })?;
+                Value::FieldElement(l.pow(exp.into()))
+            }
+            (Value::Expression(l), BinaryOperator::Pow, Value::Integer(r)) => {
+                let exp = r.to_u64().ok_or_else(|| {
+                    EvalError::TypeError(format!("Exponent in {l}**{r} is too large."))
+                })?;
+                match l {
+                    AlgebraicExpression::Number(l) => {
+                        Value::Expression(AlgebraicExpression::Number(l.pow(exp.into())))
+                    }
+                    l => {
+                        assert!(
+                            num_bigint::BigUint::from(exp) < T::modulus().to_arbitrary_integer(),
+                            "Exponent too large: {exp}"
+                        );
+                        AlgebraicExpression::BinaryOperation(
+                            Box::new(l),
+                            AlgebraicBinaryOperator::Pow,
+                            Box::new(T::from(exp).into()),
+                        )
+                        .into()
+                    }
+                }
+            }
+            (Value::Expression(l), BinaryOperator::Identity, Value::Expression(r)) => {
+                Value::Identity(l, r)
+            }
+            (Value::Expression(l), op, Value::Expression(r)) => match (l, r) {
+                (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) => {
+                    let Value::FieldElement(result) =
+                        evaluate_binary_operation_field::<'a, T, C>(l, op, r)?
+                    else {
+                        panic!()
+                    };
+                    AlgebraicExpression::Number(result).into()
+                }
+                (l, r) => AlgebraicExpression::BinaryOperation(
+                    Box::new(l),
+                    op.try_into().unwrap(),
+                    Box::new(r),
+                )
+                .into(),
+            },
+            (l, op, r) => Err(EvalError::TypeError(format!(
+                "Operator {op} not supported on types: {l}: {}, {r}: {}",
+                l.type_name(),
+                r.type_name()
+            )))?,
+        })
+    }
+
     #[allow(clippy::print_stdout)]
-    pub fn evaluate_builtin_function<T: FieldElement, C: Custom>(
+    pub fn evaluate_builtin_function<'a, T: FieldElement, C: Custom>(
         b: BuiltinFunction,
-        mut arguments: Vec<Rc<Value<'_, T, C>>>,
-    ) -> Result<Value<'_, T, C>, EvalError> {
+        mut arguments: Vec<Rc<Value<'a, T, C>>>,
+        symbols: &impl SymbolLookup<'a, T, C>,
+    ) -> Result<Value<'a, T, C>, EvalError> {
         let params = match b {
             BuiltinFunction::ArrayLen => 1,
             BuiltinFunction::Modulus => 0,
@@ -644,6 +750,7 @@ mod internal {
             BuiltinFunction::ToExpr => 1,
             BuiltinFunction::ToFe => 1,
             BuiltinFunction::ToInt => 1,
+            BuiltinFunction::Eval => 1,
         };
 
         if arguments.len() != params {
@@ -655,31 +762,35 @@ mod internal {
         Ok(match b {
             BuiltinFunction::ArrayLen => match arguments.pop().unwrap().as_ref() {
                 Value::Array(arr) => Value::Integer((arr.len() as u64).into()),
-                v => Err(EvalError::TypeError(format!(
+                v => panic!(
                     "Expected array for std::array::len, but got {v}: {}",
                     v.type_name()
-                )))?,
+                ),
             },
             BuiltinFunction::Panic => {
                 let msg = match arguments.pop().unwrap().as_ref() {
                     Value::String(msg) => msg.clone(),
-                    // As long as we do not yet have types, we just format any argument.
-                    x => x.to_string(),
+                    v => panic!(
+                        "Expected string for std::check::panic, but got {v}: {}",
+                        v.type_name()
+                    ),
                 };
                 Err(EvalError::FailedAssertion(msg))?
             }
             BuiltinFunction::Print => {
                 let msg = match arguments.pop().unwrap().as_ref() {
                     Value::String(msg) => msg.clone(),
-                    // As long as we do not yet have types, we just format any argument.
-                    x => x.to_string(),
+                    v => panic!(
+                        "Expected string for std::debug::print, but got {v}: {}",
+                        v.type_name()
+                    ),
                 };
                 print!("{msg}");
                 Value::Array(Default::default())
             }
             BuiltinFunction::ToExpr => {
-                // TODO to implement this properly, we need 'expr' as a type of the evaluator.
-                arguments.pop().unwrap().as_ref().clone()
+                let arg = arguments.pop().unwrap().as_ref().clone();
+                AlgebraicExpression::Number(arg.try_to_field_element()?).into()
             }
             BuiltinFunction::ToInt => {
                 let arg = arguments.pop().unwrap().as_ref().clone();
@@ -690,6 +801,16 @@ mod internal {
                 Value::FieldElement(arg.try_to_field_element()?)
             }
             BuiltinFunction::Modulus => Value::Integer(T::modulus().to_arbitrary_integer().into()),
+            BuiltinFunction::Eval => {
+                let arg = arguments.pop().unwrap().as_ref().clone();
+                match arg {
+                    Value::Expression(e) => symbols.eval_expr(e)?,
+                    v => panic!(
+                        "Expected expression for std::prover::eval, but got {v}: {}",
+                        v.type_name()
+                    ),
+                }
+            }
         })
     }
 }

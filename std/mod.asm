@@ -1,3 +1,4 @@
+mod arith;
 mod array;
 mod binary;
 mod check;
@@ -6,7 +7,7 @@ mod debug;
 mod field;
 mod hash;
 mod math;
+mod prover;
 mod shift;
 mod split;
 mod utils;
-mod arith;

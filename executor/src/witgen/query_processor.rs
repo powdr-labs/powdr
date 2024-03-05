@@ -1,19 +1,12 @@
-use std::{fmt::Display, rc::Rc};
+use std::rc::Rc;
 
-use num_traits::ToPrimitive;
 use powdr_ast::analyzed::{
-    types::{Type, TypedExpression},
-    AlgebraicReference, Expression, FunctionValueDefinition, PolyID, PolynomialType,
+    types::Type, AlgebraicExpression, AlgebraicReference, Expression, PolyID, PolynomialType,
 };
-use powdr_number::{DegreeType, FieldElement};
-use powdr_pil_analyzer::evaluator::{
-    self, generic_arg_mapping, Custom, EvalError, SymbolLookup, Value,
-};
+use powdr_number::FieldElement;
+use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, NoCustom, SymbolLookup, Value};
 
-use super::{
-    rows::{RowIndex, RowPair},
-    Constraint, EvalResult, EvalValue, FixedData, IncompleteCause,
-};
+use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
 
 /// Computes value updates that result from a query.
 pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
@@ -103,102 +96,32 @@ struct Symbols<'a, T: FieldElement> {
     rows: &'a RowPair<'a, 'a, T>,
 }
 
-impl<'a, T: FieldElement> SymbolLookup<'a, T, Reference<'a>> for Symbols<'a, T> {
+impl<'a, T: FieldElement> SymbolLookup<'a, T, NoCustom> for Symbols<'a, T> {
     fn lookup<'b>(
         &self,
         name: &'a str,
         generic_args: Option<Vec<Type>>,
-    ) -> Result<Value<'a, T, Reference<'a>>, EvalError> {
-        match self.fixed_data.try_column_by_name(name) {
-            Some(poly_id) => Ok(Value::Custom(Reference { name, poly_id })),
-            None => match self.fixed_data.analyzed.definitions.get(&name.to_string()) {
-                Some((_, value)) => {
-                    let value = value
-                        .as_ref()
-                        .expect("Witness columns should have been found by try_column_by_name()");
-                    match value {
-                        FunctionValueDefinition::Expression(TypedExpression { e, type_scheme }) => {
-                            let generic_args = generic_arg_mapping(type_scheme, generic_args);
-                            evaluator::evaluate_generic(e, &generic_args, self)
-                        }
-                        _ => panic!(
-                            "Arrays and queries should have been found by try_column_by_name()"
-                        ),
-                    }
-                }
-                None => Err(EvalError::SymbolNotFound(format!(
-                    "Symbol {name} not found."
-                ))),
-            },
-        }
+    ) -> Result<Value<'a, T, NoCustom>, EvalError> {
+        Definitions(&self.fixed_data.analyzed.definitions).lookup(name, generic_args)
     }
-    fn eval_function_application(
-        &self,
-        function: Reference<'a>,
-        arguments: &[Rc<Value<'a, T, Reference<'a>>>],
-    ) -> Result<Value<'a, T, Reference<'a>>, EvalError> {
-        if arguments.len() != 1 {
-            Err(EvalError::TypeError(format!(
-                "Expected one argument, but got {}",
-                arguments.len()
-            )))?
-        };
-        let Value::Integer(row) = arguments[0].as_ref() else {
+
+    fn eval_expr(&self, expr: AlgebraicExpression<T>) -> Result<Value<'a, T, NoCustom>, EvalError> {
+        let AlgebraicExpression::Reference(poly_ref) = expr else {
             return Err(EvalError::TypeError(format!(
-                "Expected integer but got {}",
-                arguments[0]
+                "Can use std::prover::eval only directly on columns - tried to evaluate {expr}"
             )));
         };
-        // TODO change this mechanism to use a built-in "eval" function instead.
-        Ok(Value::FieldElement(match function.poly_id.ptype {
-            PolynomialType::Committed | PolynomialType::Intermediate => {
-                let row_index = RowIndex::from_degree(
-                    DegreeType::try_from(row).unwrap(),
-                    self.fixed_data.degree,
-                );
-                let next = self.rows.is_row_number_next(row_index).map_err(|_| {
-                    EvalError::OutOfBounds(format!("Referenced row outside of window: {row}"))
-                })?;
-                let poly_ref = AlgebraicReference {
-                    name: function.name.to_string(),
-                    poly_id: function.poly_id,
-                    next,
-                };
 
-                self.rows
-                    .get_value(&poly_ref)
-                    .ok_or(EvalError::DataNotAvailable)?
-            }
+        Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
+            PolynomialType::Committed | PolynomialType::Intermediate => self
+                .rows
+                .get_value(&poly_ref)
+                .ok_or(EvalError::DataNotAvailable)?,
             PolynomialType::Constant => {
-                let values = self.fixed_data.fixed_cols[&function.poly_id].values;
-                values[(usize::try_from(row).unwrap() % values.len())
-                    .to_u64()
-                    .unwrap() as usize]
+                let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values;
+                let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
+                values[usize::try_from(row).unwrap()]
             }
         }))
-    }
-}
-
-#[derive(Clone, Debug)]
-struct Reference<'a> {
-    name: &'a str,
-    poly_id: PolyID,
-}
-
-impl<'a> PartialEq for Reference<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        self.poly_id == other.poly_id
-    }
-}
-
-impl<'a> Display for Reference<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
-    }
-}
-
-impl<'a> Custom for Reference<'a> {
-    fn type_name(&self) -> String {
-        "col".to_string()
     }
 }

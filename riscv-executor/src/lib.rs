@@ -815,6 +815,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 function,
                 arguments,
             }) => match function.as_ref() {
+                Expression::Reference(f) if f.to_string() == "std::prover::eval" => {
+                    self.eval_expression(&arguments[0])
+                }
                 Expression::Reference(f) => {
                     self.exec_instruction(f.try_to_identifier().unwrap(), arguments)
                 }

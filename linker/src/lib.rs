@@ -438,7 +438,7 @@ namespace main_sub(16);
     pol pc_update = ((((((instr_jmpz * (instr_jmpz_pc_update + instr_jmpz_pc_update_1)) + (instr_jmp * instr_jmp_param_l)) + (instr__jump_to_operation * _operation_id)) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((((instr_jmpz + instr_jmp) + instr__jump_to_operation) + instr__loop) + instr_return)) * (pc + 1)));
     (pc' = ((1 - first_step') * pc_update));
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] + [10]*;
-    pol commit X_free_value(i) query match pc(i) { 2 => ("input", 1), 4 => ("input", (std::convert::int(CNT(i)) + 1)), 7 => ("input", 0), };
+    pol commit X_free_value(__i) query match std::prover::eval(pc) { 2 => ("input", 1), 4 => ("input", (std::prover::eval(CNT) + 1)), 7 => ("input", 0), };
     pol constant p_X_const = [0]*;
     pol constant p_X_read_free = [0, 0, 1, 0, 1, 0, 0, 18446744069414584320, 0, 0, 0] + [0]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
