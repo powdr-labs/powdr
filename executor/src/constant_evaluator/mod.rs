@@ -86,7 +86,7 @@ fn generate_values<T: FieldElement>(
                         vec![Arc::new(Value::Integer(BigInt::from(i)))],
                         &mut symbols,
                     )
-                    .and_then(|v| v.try_to_field_element())
+                    .and_then(|v| v.as_ref().clone().try_to_field_element())
                 })
                 .collect::<Result<Vec<_>, _>>()
         }
@@ -101,7 +101,7 @@ fn generate_values<T: FieldElement>(
                         .map(|v| {
                             let mut symbols = symbols.clone();
                             evaluator::evaluate(v, &mut symbols)
-                                .and_then(|v| v.try_to_field_element())
+                                .and_then(|v| v.as_ref().clone().try_to_field_element())
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 
@@ -140,15 +140,15 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         &mut self,
         name: &'a str,
         generic_args: Option<Vec<Type>>,
-    ) -> Result<Value<'a, T>, evaluator::EvalError> {
+    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         if let Some(v) = self.cache.read().unwrap().get(name) {
-            return Ok((**v).clone());
+            return Ok(v.clone());
         }
         let result = Definitions(self.symbols).lookup(name, generic_args)?;
         self.cache
             .write()
             .unwrap()
-            .insert(name.to_string(), Arc::new(result.clone()));
+            .insert(name.to_string(), result.clone());
         Ok(result)
     }
 }

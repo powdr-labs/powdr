@@ -468,6 +468,8 @@ where
             &ExpressionProcessor::new(self.driver).process_expression(expr),
             self.driver.definitions(),
         )?
+        .as_ref()
+        .clone()
         .try_to_integer()
     }
 

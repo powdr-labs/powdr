@@ -296,6 +296,8 @@ impl<T: FieldElement> PILAnalyzer<T> {
         let namespace_degree: u64 = u64::try_from(
             evaluator::evaluate_expression(&degree, &self.definitions)
                 .unwrap()
+                .as_ref()
+                .clone()
                 .try_to_integer()
                 .unwrap(),
         )
