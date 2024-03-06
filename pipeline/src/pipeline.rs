@@ -129,7 +129,7 @@ where
         Pipeline {
             artifact: Default::default(),
             output_dir: None,
-            log_level: Level::Debug,
+            log_level: Level::Info,
             name: None,
             force_overwrite: false,
             pilo: false,
