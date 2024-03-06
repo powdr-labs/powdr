@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::{self, Display},
-    rc::Rc,
+    sync::Arc,
 };
 
 use itertools::Itertools;
@@ -23,13 +23,13 @@ pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression<T>,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
 ) -> Result<Value<'a, T>, EvalError> {
-    evaluate(expr, &Definitions(definitions))
+    evaluate(expr, &mut Definitions(definitions))
 }
 
 /// Evaluates an expression given a symbol lookup implementation
 pub fn evaluate<'a, T: FieldElement>(
     expr: &'a Expression<T>,
-    symbols: &impl SymbolLookup<'a, T>,
+    symbols: &mut impl SymbolLookup<'a, T>,
 ) -> Result<Value<'a, T>, EvalError> {
     evaluate_generic(expr, &Default::default(), symbols)
 }
@@ -39,7 +39,7 @@ pub fn evaluate<'a, T: FieldElement>(
 pub fn evaluate_generic<'a, 'b, T: FieldElement>(
     expr: &'a Expression<T>,
     generic_args: &'b HashMap<String, Type>,
-    symbols: &impl SymbolLookup<'a, T>,
+    symbols: &mut impl SymbolLookup<'a, T>,
 ) -> Result<Value<'a, T>, EvalError> {
     internal::evaluate(expr, &[], generic_args, symbols)
 }
@@ -47,8 +47,8 @@ pub fn evaluate_generic<'a, 'b, T: FieldElement>(
 /// Evaluates a function call.
 pub fn evaluate_function_call<'a, T: FieldElement>(
     function: Value<'a, T>,
-    arguments: Vec<Rc<Value<'a, T>>>,
-    symbols: &impl SymbolLookup<'a, T>,
+    arguments: Vec<Arc<Value<'a, T>>>,
+    symbols: &mut impl SymbolLookup<'a, T>,
     // TODO maybe we should also make this return an Rc<Value>.
     // Otherwise we might have to clone big nested objects.
 ) -> Result<Value<'a, T>, EvalError> {
@@ -288,7 +288,7 @@ impl<'a, T: Display> Display for Value<'a, T> {
 #[derive(Clone, Debug)]
 pub struct Closure<'a, T> {
     pub lambda: &'a LambdaExpression<T, Reference>,
-    pub environment: Vec<Rc<Value<'a, T>>>,
+    pub environment: Vec<Arc<Value<'a, T>>>,
     pub generic_args: HashMap<String, Type>,
 }
 
@@ -325,7 +325,7 @@ pub struct Definitions<'a, T>(
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a, T> {
     fn lookup<'b>(
-        &self,
+        &mut self,
         name: &str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Value<'a, T>, EvalError> {
@@ -388,7 +388,7 @@ impl<'a, T: FieldElement> From<&'a HashMap<String, (Symbol, Option<FunctionValue
 
 pub trait SymbolLookup<'a, T> {
     fn lookup(
-        &self,
+        &mut self,
         name: &'a str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Value<'a, T>, EvalError>;
@@ -416,9 +416,9 @@ mod internal {
 
     pub fn evaluate<'a, 'b, T: FieldElement>(
         expr: &'a Expression<T>,
-        locals: &[Rc<Value<'a, T>>],
+        locals: &[Arc<Value<'a, T>>],
         generic_args: &'b HashMap<String, Type>,
-        symbols: &impl SymbolLookup<'a, T>,
+        symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Value<'a, T>, EvalError> {
         Ok(match expr {
             Expression::Reference(reference) => {
@@ -519,7 +519,7 @@ mod internal {
                 let function = evaluate(function, locals, generic_args, symbols)?;
                 let arguments = arguments
                     .iter()
-                    .map(|a| evaluate(a, locals, generic_args, symbols).map(Rc::new))
+                    .map(|a| evaluate(a, locals, generic_args, symbols).map(Arc::new))
                     .collect::<Result<Vec<_>, _>>()?;
                 evaluate_function_call(function, arguments, symbols)?
             }
@@ -598,9 +598,9 @@ mod internal {
 
     fn evaluate_reference<'a, T: FieldElement>(
         reference: &'a Reference,
-        locals: &[Rc<Value<'a, T>>],
+        locals: &[Arc<Value<'a, T>>],
         generic_args: &HashMap<String, Type>,
-        symbols: &impl SymbolLookup<'a, T>,
+        symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Value<'a, T>, EvalError> {
         Ok(match reference {
             Reference::LocalVar(i, _name) => (*locals[*i as usize]).clone(),
@@ -701,8 +701,8 @@ mod internal {
     #[allow(clippy::print_stdout)]
     pub fn evaluate_builtin_function<'a, T: FieldElement>(
         b: BuiltinFunction,
-        mut arguments: Vec<Rc<Value<'a, T>>>,
-        symbols: &impl SymbolLookup<'a, T>,
+        mut arguments: Vec<Arc<Value<'a, T>>>,
+        symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Value<'a, T>, EvalError> {
         let params = match b {
             BuiltinFunction::ArrayLen => 1,
@@ -841,7 +841,7 @@ mod test {
         else {
             panic!()
         };
-        evaluate(symbol, &Definitions(&analyzed.definitions))
+        evaluate::<_>(symbol, &mut Definitions(&analyzed.definitions))
             .unwrap()
             .to_string()
     }

@@ -171,7 +171,7 @@ impl<T: FieldElement> Condenser<T> {
 
     /// Evaluates the expression and expects it to result in an algebraic expression.
     fn condense_to_algebraic_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
-        let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
+        let result = evaluator::evaluate(e, &mut self.symbols()).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
         match result {
@@ -185,7 +185,7 @@ impl<T: FieldElement> Condenser<T> {
         &self,
         e: &Expression<T>,
     ) -> Vec<AlgebraicExpression<T>> {
-        let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
+        let result = evaluator::evaluate(e, &mut self.symbols()).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
         match result {
@@ -202,7 +202,7 @@ impl<T: FieldElement> Condenser<T> {
 
     /// Evaluates an expression and expects a single constraint or an array of constraints.
     fn condense_to_constraint_or_array(&self, e: &Expression<T>) -> Vec<AlgebraicExpression<T>> {
-        let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
+        let result = evaluator::evaluate(e, &mut self.symbols()).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
         match result {

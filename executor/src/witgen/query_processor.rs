@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use powdr_ast::analyzed::{
     types::Type, AlgebraicExpression, AlgebraicReference, Expression, PolyID, PolynomialType,
@@ -78,15 +78,15 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         query: &'a Expression<T>,
         rows: &RowPair<T>,
     ) -> Result<String, EvalError> {
-        let arguments = vec![Rc::new(Value::Integer(BigInt::from(u64::from(
+        let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
             rows.current_row_index,
         ))))];
-        let symbols = Symbols {
+        let mut symbols = Symbols {
             fixed_data: self.fixed_data,
             rows,
         };
-        let fun = evaluator::evaluate(query, &symbols)?;
-        evaluator::evaluate_function_call(fun, arguments, &symbols).map(|v| v.to_string())
+        let fun = evaluator::evaluate(query, &mut symbols)?;
+        evaluator::evaluate_function_call(fun, arguments, &mut symbols).map(|v| v.to_string())
     }
 }
 
@@ -98,7 +98,7 @@ struct Symbols<'a, T: FieldElement> {
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     fn lookup<'b>(
-        &self,
+        &mut self,
         name: &'a str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Value<'a, T>, EvalError> {
