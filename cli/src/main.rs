@@ -13,11 +13,12 @@ use powdr_pipeline::util::write_or_panic;
 use powdr_pipeline::Pipeline;
 use powdr_riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use powdr_riscv::{compile_riscv_asm, compile_rust};
+use std::collections::HashMap;
 use std::io::{self, BufWriter};
 use std::path::PathBuf;
+use std::time::Instant;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
-use std::collections::HashMap;
 
 use powdr_ast::asm_analysis::rust_witgen;
 
@@ -824,17 +825,30 @@ fn run<F: FieldElement>(
         witgen.generate();
         //println!("Generated witgen Rust:\n{}", witgen.code);
 
-        //fs::write(&Path::new("riscv-executor/src/pil.rs"), format!("{}", witgen.code)).unwrap();
+        fs::write(
+            &Path::new("riscv-executor/src/pil.rs"),
+            format!("{}", witgen.code),
+        )
+        .unwrap();
 
+        /*
         pipeline.compute_fixed_cols().unwrap();
         let fixed: HashMap<String, Vec<F>> = (*pipeline.fixed_cols().unwrap()).clone().into_iter().collect();
-        let witness = powdr_riscv_executor::pil::execute(8, pipeline.data_callback().unwrap(), fixed);
-        //println!("{witness:?}");
+
+        let start = Instant::now();
+        let witness = powdr_riscv_executor::pil::execute(2u32.pow(18) as usize, pipeline.data_callback().unwrap(), fixed);
+        let duration = start.elapsed();
+        log::info!("Witgen done in: {:?}", duration);
+        //println!("{witness:?}\n\n\n");
+        witness
+            .iter()
+            .for_each(|(name, values)| println!("col: {name}, values_len: {}", values.len()));
         let pipeline = pipeline.set_witness(witness);
         //pipeline.compute_witness().unwrap();
         if let Some(backend) = prove_with {
             pipeline.with_backend(backend).compute_proof().unwrap();
         }
+        */
         Ok(())
     };
 

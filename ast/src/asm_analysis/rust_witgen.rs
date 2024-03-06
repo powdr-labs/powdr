@@ -1,4 +1,7 @@
-use crate::{analyzed::{Analyzed, Expression, FunctionValueDefinition}, parsed::{MatchPattern, LambdaExpression, FunctionCall}};
+use crate::{
+    analyzed::{Analyzed, Expression, FunctionValueDefinition},
+    parsed::{FunctionCall, LambdaExpression, MatchPattern},
+};
 
 use super::{InstructionDefinitionStatement, Machine, RegisterTy};
 
@@ -12,24 +15,76 @@ pub struct RustWitgen<T> {
     pub code: String,
     pub wit_cols: HashSet<String>,
     pub wit_cols_vec: Vec<String>,
-    pub queries: HashMap<String, Expression<T>>
+    pub fixed_cols: HashSet<String>,
+    pub queries: HashMap<String, Expression<T>>,
 }
 
 // TODO
 // - use the inputs
 
+const NOT_SUPPORTED: [&str; 25] = [
+    // memory machine
+    "m_addr",
+    "m_step",
+    "m_change",
+    "m_value",
+    "m_is_write",
+    "m_is_read",
+    "m_diff_lower",
+    "m_diff_upper",
+    // inverse helpers
+    "XInv",
+    "XIsZero",
+    // byte decomposition helpers
+    "X_b1",
+    "X_b2",
+    "X_b3",
+    "X_b4",
+    "Y_b5",
+    "Y_b6",
+    "Y_b7",
+    "Y_b8",
+    "wrap_bit",
+    "Y_7bit",
+    "Y_15bit",
+    "REM_b1",
+    "REM_b2",
+    "REM_b3",
+    "REM_b4",
+];
+
 // this impl handles translation from Machine to Rust-witgen
 impl<T: FieldElement> RustWitgen<T> {
     pub fn new(pil: &Analyzed<T>, machine: Machine<T>) -> Self {
-        let wit_cols_vec: Vec<_> = pil.committed_polys_in_source_order()
+        let fixed_cols: HashSet<_> = pil
+            .constant_polys_in_source_order()
             .iter()
-            .map(|c| c.0.absolute_name.split('.').last().unwrap().to_string())
+            .map(|c| c.0.absolute_name.clone())
+            .collect();
+
+        let wit_cols_vec: Vec<_> = pil
+            .committed_polys_in_source_order()
+            .iter()
+            .filter_map(|c| {
+                let name = c.0.absolute_name.clone();
+                if name.starts_with("main.") {
+                    let sname = name.split('.').last().unwrap();
+                    if NOT_SUPPORTED.contains(&sname) {
+                        None
+                    } else {
+                        Some(sname.to_string())
+                    }
+                } else {
+                    None
+                }
+            })
             //.chain(builtin_columns().into_iter())
             .collect();
         let wit_cols = wit_cols_vec.clone().into_iter().collect();
         println!("wit_cols = {wit_cols:?}");
 
-        let queries: HashMap<String, Expression<T>> = pil.committed_polys_in_source_order()
+        let queries: HashMap<String, Expression<T>> = pil
+            .committed_polys_in_source_order()
             .iter()
             .filter_map(|c| {
                 if c.1.is_none() {
@@ -39,8 +94,10 @@ impl<T: FieldElement> RustWitgen<T> {
                 if name.ends_with("free_value") {
                     println!("name = {name}");
                     let e: Expression<T> = match c.1.as_ref().unwrap() {
-                        FunctionValueDefinition::Query(Expression::LambdaExpression(LambdaExpression { params, body })) => (**body).clone(),
-                        e => panic!("{e:?}")
+                        FunctionValueDefinition::Query(Expression::LambdaExpression(
+                            LambdaExpression { params, body },
+                        )) => (**body).clone(),
+                        e => panic!("{e:?}"),
                     };
                     Some((name, e))
                 } else {
@@ -49,20 +106,30 @@ impl<T: FieldElement> RustWitgen<T> {
             })
             .collect();
 
+        println!("NEWWWW");
+
         Self {
             machine,
             code: String::new(),
             wit_cols,
             wit_cols_vec,
-            queries
+            fixed_cols,
+            queries,
         }
     }
 
     pub fn generate(&mut self) {
+        println!("generate");
         self.create_imports();
+        println!("created imports");
         self.create_execute();
+        println!("created execute");
         self.create_context_struct();
+        println!("created struct");
+        self.create_proc_impl();
+        println!("created proc impl");
         self.create_impl();
+        println!("created impl");
     }
 
     fn create_impl(&mut self) {
@@ -112,26 +179,20 @@ fn update_flags(&mut self) {{
             .{}
             .last()
             .unwrap()
-            .to_arbitrary_integer()
-            .to_le_bytes();
-        let pc = u32::from_le_bytes([
-            *pc.get(0).unwrap_or_else(|| &0),
-            *pc.get(1).unwrap_or_else(|| &0),
-            *pc.get(2).unwrap_or_else(|| &0),
-            *pc.get(3).unwrap_or_else(|| &0),
-        ]);
+            .bin();
         "#,
             self.pc()
         );
 
         let update = |x| {
             format!(
-                "self.{}.push(self.fixed.get(\"main.p_{}\").unwrap()[pc as usize].clone());",
+                "self.{}.push(Elem::new_from_fe_as_bin(&self.fixed.get(\"main.p_{}\").unwrap()[pc as usize]));",
                 x, x
             )
         };
 
         let updates = self
+            /*
             .instruction_flags()
             .into_iter()
             .chain(self.write_state_to_assignment_reg_columns().into_iter())
@@ -139,6 +200,10 @@ fn update_flags(&mut self) {{
             .chain(self.asgn_reg_const_columns().into_iter())
             .chain(self.asgn_reg_free_value_read_columns().into_iter())
             .filter(|i| self.wit_cols.contains(i))
+            */
+            .wit_cols_vec
+            .iter()
+            .filter(|i| self.fixed_cols.contains(&format!("main.p_{}", i)))
             .map(update)
             .collect::<Vec<_>>()
             .join("\n");
@@ -146,27 +211,83 @@ fn update_flags(&mut self) {{
         format!("{}\n{}\n}}", preamble, updates)
     }
 
+    fn create_set_regs(&self) -> String {
+        self.state_regs()
+            .into_iter()
+            .map(|r| format!("\"{}\" => self.{}.push(value.into()),", r, r))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn create_get_regs(&self) -> String {
+        self.state_regs()
+            .into_iter()
+            .map(|r| {
+                format!(
+                    "\"{}\" => self.{}.last().unwrap().clone(),",
+                    r, r
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn create_proc_impl(&mut self) {
+        let proc = r#"
+impl<'a, F: FieldElement> Proc<F> for Context<'a, F> {
+    fn get_pc(&self) -> Elem<F> {
+        // TODO use {} -> self.pc
+        self.pc.last().unwrap().clone()
+    }
+    fn set_pc(&mut self, pc: Elem<F>) {
+        self.pc.push(pc);
+    }
+    fn get_mem(&self, addr: u32) -> u32 {
+        *self.mem.get(&addr).unwrap()
+    }
+    fn set_mem(&mut self, addr: u32, val: u32) {
+        self.mem.insert(addr, val);
+    }
+"#;
+
+        let reg_gets = format!(
+            r#"
+    fn get_reg(&self, name: &str) -> Elem<F> {{
+        match name {{
+            {}
+            _ => panic!("unknown register: {{}}", name),
+        }}
+    }}"#,
+            self.create_get_regs()
+        );
+
+        let reg_sets = format!(
+            r#"
+    fn set_reg(&mut self, idx: &str, value: impl Into<Elem<F>>) {{
+        match idx {{
+            {}
+            _ => panic!("unknown register: {{}}", idx),
+        }}
+    }}"#,
+            self.create_set_regs()
+        );
+
+        let proc_impl = format!("{}\n{}\n{}}}", proc, reg_gets, reg_sets);
+
+        self.code = format!("{}\n{proc_impl}", self.code);
+    }
+
     fn create_update_control_flow_flags(&self) -> String {
         let update = r#"
 fn update_control_flow_flags(&mut self) {
-        self._operation_id.push(F::from(2));
-
+        // TODO: automate
         if self.current_row == 0 {
-            self.instr__reset.push(F::one());
+            self._operation_id.push(2.into());
+        } else if self.instr_return.last().unwrap() == &F::one() {
+            // TODO: read the number from _operation_id hint
+            self._operation_id.push(F::from(11));
         } else {
-            self.instr__reset.push(F::zero());
-        }
-
-        if self.current_row == 1 {
-            self.instr__jump_to_operation.push(F::one());
-        } else {
-            self.instr__jump_to_operation.push(F::zero());
-        }
-
-        if self.running {
-            self.instr__loop.push(F::zero());
-        } else {
-            self.instr__loop.push(F::one());
+            self._operation_id.push(self._operation_id.last().unwrap().clone());
         }
     }
 "#;
@@ -179,15 +300,20 @@ fn update_control_flow_flags(&mut self) {
 #[allow(non_snake_case)]
 fn update_pc(&mut self) {{
         let pc = self.{}.last().unwrap();
-        let pc_prime = if self.instr__jump_to_operation.last().unwrap().is_one() {{
-            self._operation_id.last().unwrap().clone()
+        if self.instr__jump_to_operation.last().unwrap().is_one() {{
+            self.{}.push(self._operation_id.last().unwrap().clone());
         }} else if self.instr__loop.last().unwrap().is_one() {{
-            pc.clone()
-        }} else {{
-            pc.clone() + F::one()
+            self.{}.push(pc.clone());
+        }} else if self.instr_return.last().unwrap().is_one() {{
+            self.{}.push(F::zero());
+        }} else if self.current_row + 1 == self.{}.len() {{
+            self.{}.push(pc.clone() + F::one());
         }};
-        self.{}.push(pc_prime);
     }}"#,
+            self.pc(),
+            self.pc(),
+            self.pc(),
+            self.pc(),
             self.pc(),
             self.pc()
         )
@@ -209,6 +335,12 @@ fn update_writes_to_state_registers(&mut self) {
     }
 
     fn create_updated_write_to_state_register(&self, reg: String) -> String {
+        let last = format!("if self.{}.len() <= self.{}.len() {{\nself.{}.push(self.{}.last().cloned().unwrap_or_else(|| F::zero().clone()));\n}}", reg.clone(), self.pc(), reg.clone(), reg.clone());
+        let reset = format!(
+            "if self.instr__reset.last().unwrap() == &F::one() {{\nself.{}.push(F::zero());\n}}",
+            reg.clone()
+        );
+
         let conds = self
             .asgn_regs()
             .into_iter()
@@ -225,12 +357,11 @@ fn update_writes_to_state_registers(&mut self) {
                     None
                 }
             })
+            .chain([reset, last].into_iter())
             .collect::<Vec<_>>()
             .join(" else ");
 
-        let last = format!(" else if self.{}.len() < self.{}.len() {{\nself.{}.push(self.{}.last().cloned().unwrap_or_else(|| F::zero().clone()));\n}}", reg.clone(), self.pc(), reg.clone(), reg.clone());
-
-        format!("{}\n{}", conds, last)
+        format!("{}", conds)
     }
 
     fn create_update_writes_to_assignment_registers(&self) -> String {
@@ -249,13 +380,7 @@ fn update_writes_to_assignment_registers(&mut self) {
         let decls = self
             .asgn_regs()
             .into_iter()
-            .map(|r| {
-                format!(
-                    "let mut {}_prime = {};",
-                    r.clone(),
-                    rhs(asgn_reg_const(r))
-                )
-            })
+            .map(|r| format!("let mut {}_prime = {};", r.clone(), rhs(asgn_reg_const(r))))
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -300,7 +425,10 @@ fn update_writes_to_assignment_registers(&mut self) {
             .collect::<Vec<_>>()
             .join("\n");
 
-        format!("{}\n{}\n{}\n{}\n{}\n}}", update, decls, conds, read_conds, pushes)
+        format!(
+            "{}\n{}\n{}\n{}\n{}\n}}",
+            update, decls, conds, read_conds, pushes
+        )
     }
 
     fn create_query(&self) -> String {
@@ -311,7 +439,8 @@ fn update_writes_to_assignment_registers(&mut self) {
                     panic!("unknown query command: {query}");
                 }
             }
-        }"#.to_string()
+        }"#
+        .to_string()
     }
 
     fn create_update_inputs(&self) -> String {
@@ -319,7 +448,6 @@ fn update_writes_to_assignment_registers(&mut self) {
         // for each assignment register
         fn update_inputs(&mut self) {"#;
 
-        // TODO properly using QueryCallback
         let regs: Vec<_> = self
             .asgn_regs()
             .into_iter()
@@ -343,7 +471,7 @@ fn update_writes_to_assignment_registers(&mut self) {
                 let inner = inputs
                     .into_iter()
                     .map(|(row, q)| {
-                        format!("if pc == &F::from({row}) {{\nself.query(&\"{q}\".to_string())\n}}")
+                        format!("if pc == &F::from({row}) {{\nself.query({q})}}")
                     })
                     .collect::<Vec<_>>()
                     .join(" else ");
@@ -411,15 +539,16 @@ pub fn new(length: usize, callback: &'a Callback<F>) -> Self {
         Self {
             length,
             current_row: 0,
-            running: false,
             callback,
+            mem: HashMap::new(),
             fixed: HashMap::new(),
             "#;
 
-        let decl = |x: String| format!("{x}: Vec::new(),");
+        let decl = |x: &String| format!("{x}: Vec::new(),");
         let decls = self
-            .all_columns()
-            .into_iter()
+            //.all_columns()
+            .wit_cols_vec
+            .iter()
             .map(decl)
             .collect::<Vec<_>>()
             .join("\n");
@@ -450,12 +579,10 @@ pub fn new(length: usize, callback: &'a Callback<F>) -> Self {
         self.update_inputs();
         self.update_writes_to_assignment_registers();
 
-        if self.current_row < self.length {
+        if self.current_row < self.length - 1 {
             self.run_instructions();
             self.update_writes_to_state_registers();
-            if self.current_row < self.length - 1 {
-                self.update_pc();
-            }
+            self.update_pc();
         }
     }
 "#;
@@ -463,20 +590,13 @@ pub fn new(length: usize, callback: &'a Callback<F>) -> Self {
     }
 
     fn create_run(&mut self) -> String {
-    let preamble = r#"
+        let preamble = r#"
     pub fn run(&mut self) {
-        self.running = true;
-
         self.init();
 
         while self.current_row < self.length {
             self.update();
             self.current_row += 1;
-
-            // Leo: can remove this for now
-            if self.current_row >= 7 {
-                self.running = false;
-            }
         }
 
         // Leo: can remove this for now, maybe Georg's PR already solves it
@@ -485,7 +605,13 @@ pub fn new(length: usize, callback: &'a Callback<F>) -> Self {
         let last_updates = self
             .state_regs()
             .into_iter()
-            .map(|s| format!("*self.{}.first_mut().unwrap() = self.{}.last().unwrap().clone();", s.clone(), s))
+            .map(|s| {
+                format!(
+                    "*self.{}.first_mut().unwrap() = self.{}.last().unwrap().clone();",
+                    s.clone(),
+                    s
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -500,6 +626,9 @@ use powdr_number::{FieldElement, GoldilocksField};
 use num_traits::{One, Zero, ToBytes};
 
 use std::collections::{BTreeMap, HashMap};
+
+use crate::Elem;
+use crate::instr::{Proc, exec_instruction};
 "#;
         self.code = format!("{}\n{}", imports, self.code);
     }
@@ -521,7 +650,7 @@ pub fn execute<F: FieldElement>(
     vec![
     "#;
 
-        let tuple = |x: &String| format!("(\"main.{}\".to_string(), ctx.{}),", x, x);
+        let tuple = |x: &String| format!("(\"main.{}\".to_string(), ctx.{}.iter().map(|x| x.fe()).collect()),", x, x);
 
         println!("{:?}", self.wit_cols_vec);
         let all_tuples = self
@@ -541,21 +670,23 @@ pub fn execute<F: FieldElement>(
 type Callback<'a, F> = dyn powdr_executor::witgen::QueryCallback<F> + 'a;
 
 #[allow(non_snake_case)]
-struct Context<'a, F> {
+struct Context<'a, F: FieldElement> {
     pub length: usize,
     pub current_row: usize,
-    pub running: bool,
 
     pub callback: &'a Callback<'a, F>,
+
+    pub mem: HashMap<u32, u32>,
 
     pub fixed: HashMap<String, Vec<F>>,
         "#;
 
-        let decl = |x: String| format!("pub {x}: Vec<F>,");
+        let decl = |x: &String| format!("pub {x}: Vec<Elem<F>>,");
 
         let all_decls = self
-            .all_columns()
-            .into_iter()
+            //.all_columns()
+            .wit_cols_vec
+            .iter()
             .map(decl)
             .collect::<Vec<_>>()
             .join("\n");
@@ -582,8 +713,7 @@ struct Context<'a, F> {
     }
 
     fn asgn_reg_const_columns(&self) -> Vec<String> {
-        self
-            .asgn_regs()
+        self.asgn_regs()
             .into_iter()
             .map(asgn_reg_const)
             .filter(|i| self.wit_cols.contains(i))
@@ -689,88 +819,118 @@ fn builtin_columns() -> Vec<String> {
 }
 
 fn create_free_value_query<F: FieldElement>(expression: &Expression<F>) -> Vec<(F, String)> {
-        match expression {
-            /*
-            Expression::Reference(r) => {
-                // an identifier looks like this:
-                let name = r.try_to_identifier().unwrap();
+    match expression {
+        /*
+        Expression::Reference(r) => {
+            // an identifier looks like this:
+            let name = r.try_to_identifier().unwrap();
 
-                // labels share the identifier space with registers:
-                // try one, then the other
-                let val = self
-                    .label_map
-                    .get(name.as_str())
-                    .cloned()
-                    .unwrap_or_else(|| self.proc.get_reg(name.as_str()));
-                vec![val]
-            }
-            */
-            /*
-            Expression::FreeInput(expr) => {
-                if let Expression::Tuple(t) = &**expr {
-                    let mut all_strings: Vec<String> = Vec::new();
-                    for expr in t {
-                        if let Expression::String(_) = expr {
-                            all_strings.push(expr.to_string());
-                        } else {
-                            let val = self.eval_expression(expr)[0];
-                            all_strings.push(val.to_string());
-                        }
-                    }
-                    let query = format!("({})", all_strings.join(","));
-                    match (self.inputs)(&query).unwrap() {
-                        Some(val) => vec![Elem::new_from_fe_as_bin(&val)],
-                        None => {
-                            panic!("unknown query command: {query}");
-                        }
-                    }
-                } else {
-                    panic!("does not match IO pattern")
-                }
-            }
-            */
-            Expression::MatchExpression(expr, arms) => {
-                // we assume the expr is `main.pc(i)`
-                // TODO: assert the above
-                // we also assume each arm to have the form `literal => ("key", reg(i))`
-                // here we are interested in the row and building the query string, that is
-                // (literal, ("key", reg))
-                arms
-                    .iter()
-                    .map(|a| {
-                        println!("Pattern = {:?}", a.pattern);
-                        println!("Value = {:?}", a.value);
-                        let row = match a.pattern {
-                            MatchPattern::Pattern(Expression::Number(n, None)) => n,
-                            _ => panic!()
-                        };
-                        let value = match &a.value {
-                            Expression::Number(n, None) => format!("{n}"),
-                            Expression::FunctionCall(FunctionCall { function, arguments }) => todo!(),
-                            Expression::Tuple(t) => {
-                                println!("Tuple = {:?}", t);
-                                let mut all_strings: Vec<String> = Vec::new();
-                                for expr in t {
-                                    if let Expression::String(_) = expr {
-                                        all_strings.push(expr.to_string());
-                                    } else {
-                                        let val = expr.to_string();
-                                        all_strings.push(val);
-                                    }
-                                }
-                                let res = format!("({})", all_strings.join(","));
-                                let res = res .replace("\"", "\\\"");
-                                println!("res = {res}");
-                                res
-                            }
-                            e => panic!("{e:?}")
-                        };
-                        (row, value)
-
-                    })
-                    .collect()
-            }
-            e => panic!("{e:?}")
+            // labels share the identifier space with registers:
+            // try one, then the other
+            let val = self
+                .label_map
+                .get(name.as_str())
+                .cloned()
+                .unwrap_or_else(|| self.proc.get_reg(name.as_str()));
+            vec![val]
         }
+        */
+        /*
+        Expression::FreeInput(expr) => {
+            if let Expression::Tuple(t) = &**expr {
+                let mut all_strings: Vec<String> = Vec::new();
+                for expr in t {
+                    if let Expression::String(_) = expr {
+                        all_strings.push(expr.to_string());
+                    } else {
+                        let val = self.eval_expression(expr)[0];
+                        all_strings.push(val.to_string());
+                    }
+                }
+                let query = format!("({})", all_strings.join(","));
+                match (self.inputs)(&query).unwrap() {
+                    Some(val) => vec![Elem::new_from_fe_as_bin(&val)],
+                    None => {
+                        panic!("unknown query command: {query}");
+                    }
+                }
+            } else {
+                panic!("does not match IO pattern")
+            }
+        }
+        */
+        Expression::MatchExpression(expr, arms) => {
+            // we assume the expr is `main.pc(i)`
+            // TODO: assert the above
+            // we also assume each arm to have the form `literal => ("key", reg(i))`
+            // here we are interested in the row and building the query string, that is
+            // (literal, ("key", reg))
+            arms.iter()
+                .map(|a| {
+                    println!("Pattern = {:?}", a.pattern);
+                    println!("Value = {:?}", a.value);
+                    let row = match a.pattern {
+                        MatchPattern::Pattern(Expression::Number(n, None)) => n,
+                        _ => panic!(),
+                    };
+                    let value = match &a.value {
+                        Expression::Number(n, None) => format!("{n}"),
+                        Expression::FunctionCall(FunctionCall {
+                            function,
+                            arguments,
+                        }) => todo!(),
+                        Expression::Tuple(t) => {
+                            println!("Tuple = {:?}", t);
+                            let mut all_strings: Vec<String> = Vec::new();
+                            for expr in t {
+                                if let Expression::String(_) = expr {
+                                    all_strings.push(expr.to_string());
+                                } else {
+                                    // TODO pattern match all of this properly
+                                    //let val = expr.to_string();
+                                    let val = match expr {
+                                        Expression::FunctionCall(FunctionCall {
+                                            function,
+                                            arguments,
+                                        }) => {
+                                            let name = function.to_string();
+                                            assert!(name.starts_with("main."));
+                                            let name = name.split('.').last().unwrap();
+                                            // name should be a register name now
+                                            assert_eq!(arguments.len(), 1);
+                                            assert_eq!(arguments[0].to_string(), "i");
+                                            let val = format!(
+                                                "self.{}.last().unwrap().to_string()",
+                                                name
+                                            );
+                                            val
+                                        }
+                                        _ => panic!(),
+                                    };
+                                    all_strings.push(val);
+                                }
+                            }
+                            //let res = format!("({})", all_strings.join(","));
+                            let cmd = all_strings[0].replace("\"", "\\\"");
+                            let brackets = (1..all_strings.len())
+                                .map(|_| "{}")
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let res = format!(
+                                "&format!(\"({}, {})\", {})",
+                                cmd,
+                                brackets,
+                                all_strings[1..].join(", ")
+                            );
+                            println!("res = {res}");
+                            res
+                        }
+                        e => panic!("{e:?}"),
+                    };
+                    (row, value)
+                })
+                .collect()
+        }
+        e => panic!("{e:?}"),
     }
-
+}

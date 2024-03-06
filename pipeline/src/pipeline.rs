@@ -796,6 +796,7 @@ impl<T: FieldElement> Pipeline<T> {
 
         let start = Instant::now();
         let external_witness_values = std::mem::take(&mut self.arguments.external_witness_values);
+        println!("External witness len: {}", external_witness_values.len());
         let query_callback = self
             .arguments
             .query_callback

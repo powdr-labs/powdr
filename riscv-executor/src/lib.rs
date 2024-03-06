@@ -24,8 +24,9 @@ use powdr_ast::{
 };
 use powdr_number::{FieldElement, LargeInt};
 
-pub mod poseidon_gl;
+pub mod instr;
 pub mod pil;
+pub mod poseidon_gl;
 
 /// Initial value of the PC.
 ///
@@ -54,7 +55,12 @@ impl<F: FieldElement> Elem<F> {
         } else if let Some(v) = value.try_into_i32() {
             Self::Binary(v as i64)
         } else {
-            panic!("Value does not fit in 32 bits.")
+            let i = value.to_integer();
+            if i.num_bits() <= 33 {
+                Self::Binary(i.try_into_u64().unwrap() as i64)
+            } else {
+                panic!("Value does not fit in 32 bits.")
+            }
         }
     }
 
@@ -644,6 +650,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             "is_positive" => {
                 let r = if args[0].bin() as i32 > 0 { 1 } else { 0 };
+                println!("is_positive({}) = {}", args[0].bin(), r);
+                println!("inside is_positive X = {}", args[0].fe());
 
                 vec![r.into()]
             }
