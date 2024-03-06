@@ -137,7 +137,7 @@ fn sanity_check<T>(program: &AnalysisASMFile<T>) {
 fn load_initial_memory<F: FieldElement>(program: &AnalysisASMFile<F>) -> MemoryState {
     let machine = get_main_machine(program);
     let Some(expr) = machine.pil.iter().find_map(|v| match v {
-        PilStatement::LetStatement(_, n, None, expr) if n == "initial_memory" => expr.as_ref(),
+        PilStatement::LetStatement(_, n, _, expr) if n == "initial_memory" => expr.as_ref(),
         _ => None,
     }) else {
         log::warn!("No initial_memory variable found in the machine. Assuming zeroed memory.");
