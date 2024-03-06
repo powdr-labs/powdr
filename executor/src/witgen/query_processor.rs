@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use powdr_ast::analyzed::{
     types::Type, AlgebraicExpression, AlgebraicReference, Expression, PolyID, PolynomialType,
@@ -78,7 +78,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         query: &'a Expression<T>,
         rows: &RowPair<T>,
     ) -> Result<String, EvalError> {
-        let arguments = vec![Rc::new(Value::Integer(BigInt::from(u64::from(
+        let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
             rows.current_row_index,
         ))))];
         let symbols = Symbols {
@@ -101,11 +101,11 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         &self,
         name: &'a str,
         generic_args: Option<Vec<Type>>,
-    ) -> Result<Value<'a, T>, EvalError> {
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Definitions(&self.fixed_data.analyzed.definitions).lookup(name, generic_args)
     }
 
-    fn eval_expr(&self, expr: AlgebraicExpression<T>) -> Result<Value<'a, T>, EvalError> {
+    fn eval_expr(&self, expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
         let AlgebraicExpression::Reference(poly_ref) = expr else {
             return Err(EvalError::TypeError(format!(
                 "Can use std::prover::eval only directly on columns - tried to evaluate {expr}"
@@ -115,13 +115,14 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Intermediate => self
                 .rows
-                .get_value(&poly_ref)
+                .get_value(poly_ref)
                 .ok_or(EvalError::DataNotAvailable)?,
             PolynomialType::Constant => {
                 let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values;
                 let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
                 values[usize::try_from(row).unwrap()]
             }
-        }))
+        })
+        .into())
     }
 }

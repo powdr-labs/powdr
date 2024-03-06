@@ -174,8 +174,8 @@ impl<T: FieldElement> Condenser<T> {
         let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
-        match result {
-            Value::Expression(expr) => expr,
+        match result.as_ref() {
+            Value::Expression(expr) => expr.clone(),
             _ => panic!("Expected expression but got {result}"),
         }
     }
@@ -188,11 +188,11 @@ impl<T: FieldElement> Condenser<T> {
         let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
-        match result {
+        match result.as_ref() {
             Value::Array(items) => items
-                .into_iter()
-                .map(|item| match item {
-                    Value::Expression(expr) => expr,
+                .iter()
+                .map(|item| match item.as_ref() {
+                    Value::Expression(expr) => expr.clone(),
                     _ => panic!("Expected expression but got {item}"),
                 })
                 .collect(),
@@ -205,13 +205,13 @@ impl<T: FieldElement> Condenser<T> {
         let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
-        match result {
-            Value::Identity(left, right) => vec![left - right],
+        match result.as_ref() {
+            Value::Identity(left, right) => vec![left.clone() - right.clone()],
             Value::Array(items) => items
-                .into_iter()
+                .iter()
                 .map(|item| {
-                    if let Value::Identity(left, right) = item {
-                        left - right
+                    if let Value::Identity(left, right) = item.as_ref() {
+                        left.clone() - right.clone()
                     } else {
                         panic!("Expected constraint, but got {item}")
                     }

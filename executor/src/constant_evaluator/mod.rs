@@ -1,15 +1,18 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         types::{ArrayType, Type, TypedExpression},
-        Analyzed, Expression, FunctionValueDefinition,
+        Analyzed, Expression, FunctionValueDefinition, Symbol,
     },
     parsed::IndexAccess,
 };
 use powdr_number::{BigInt, DegreeType, FieldElement};
-use powdr_pil_analyzer::evaluator::{self, Definitions, Value};
+use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 /// Generates the fixed column values for all fixed columns that are defined
@@ -45,7 +48,10 @@ fn generate_values<T: FieldElement>(
     body: &FunctionValueDefinition<T>,
     index: Option<u64>,
 ) -> Vec<T> {
-    let symbols = Definitions(&analyzed.definitions);
+    let symbols = CachedSymbols {
+        symbols: &analyzed.definitions,
+        cache: Arc::new(RwLock::new(HashMap::new())),
+    };
     let result = match body {
         FunctionValueDefinition::Expression(TypedExpression { e, type_scheme }) => {
             if let Some(type_scheme) = type_scheme {
@@ -73,10 +79,11 @@ fn generate_values<T: FieldElement>(
             (0..degree)
                 .into_par_iter()
                 .map(|i| {
+                    let symbols = symbols.clone();
                     let fun = evaluator::evaluate(e, &symbols).unwrap();
                     evaluator::evaluate_function_call(
                         fun,
-                        vec![Rc::new(Value::Integer(BigInt::from(i)))],
+                        vec![Arc::new(Value::Integer(BigInt::from(i)))],
                         &symbols,
                     )
                     .and_then(|v| v.try_to_field_element())
@@ -92,6 +99,7 @@ fn generate_values<T: FieldElement>(
                         .pattern()
                         .iter()
                         .map(|v| {
+                            let symbols = symbols.clone();
                             evaluator::evaluate(v, &symbols).and_then(|v| v.try_to_field_element())
                         })
                         .collect::<Result<Vec<_>, _>>()?;
@@ -117,6 +125,30 @@ fn generate_values<T: FieldElement>(
             panic!("{err}");
         }
         Ok(v) => v,
+    }
+}
+
+#[derive(Clone)]
+pub struct CachedSymbols<'a, T> {
+    symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+    cache: Arc<RwLock<HashMap<String, Arc<Value<'a, T>>>>>,
+}
+
+impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
+    fn lookup(
+        &self,
+        name: &'a str,
+        generic_args: Option<Vec<Type>>,
+    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+        if let Some(v) = self.cache.read().unwrap().get(name) {
+            return Ok(v.clone());
+        }
+        let result = Definitions(self.symbols).lookup(name, generic_args)?;
+        self.cache
+            .write()
+            .unwrap()
+            .insert(name.to_string(), result.clone());
+        Ok(result)
     }
 }
 

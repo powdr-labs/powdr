@@ -3,8 +3,8 @@ use powdr_backend::BackendType;
 use powdr_number::{BigInt, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::path::PathBuf;
-use std::rc::Rc;
 
+use std::sync::Arc;
 #[cfg(feature = "halo2")]
 use std::{fs::File, io::BufWriter};
 
@@ -157,11 +157,14 @@ pub fn std_analyzed<T: FieldElement>() -> Analyzed<T> {
 pub fn evaluate_function<'a, T: FieldElement>(
     analyzed: &'a Analyzed<T>,
     function: &'a str,
-    arguments: Vec<Rc<evaluator::Value<'a, T>>>,
+    arguments: Vec<Arc<evaluator::Value<'a, T>>>,
 ) -> evaluator::Value<'a, T> {
     let symbols = evaluator::Definitions(&analyzed.definitions);
     let function = symbols.lookup(function, None).unwrap();
-    evaluator::evaluate_function_call(function, arguments, &symbols).unwrap()
+    evaluator::evaluate_function_call(function, arguments, &symbols)
+        .unwrap()
+        .as_ref()
+        .clone()
 }
 
 /// Evaluates a function call assuming inputs and outputs are integers.
@@ -172,7 +175,7 @@ pub fn evaluate_integer_function<T: FieldElement>(
 ) -> BigInt {
     let arguments = arguments
         .into_iter()
-        .map(|x| Rc::new(evaluator::Value::Integer(x)))
+        .map(|x| Arc::new(evaluator::Value::Integer(x)))
         .collect();
     if let evaluator::Value::Integer(x) = evaluate_function(analyzed, function, arguments) {
         x
