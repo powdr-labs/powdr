@@ -79,12 +79,12 @@ fn generate_values<T: FieldElement>(
             (0..degree)
                 .into_par_iter()
                 .map(|i| {
-                    let mut symbols = symbols.clone();
-                    let fun = evaluator::evaluate(e, &mut symbols).unwrap();
+                    let symbols = symbols.clone();
+                    let fun = evaluator::evaluate(e, &symbols).unwrap();
                     evaluator::evaluate_function_call(
                         fun,
                         vec![Arc::new(Value::Integer(BigInt::from(i)))],
-                        &mut symbols,
+                        &symbols,
                     )
                     .and_then(|v| v.as_ref().clone().try_to_field_element())
                 })
@@ -99,8 +99,8 @@ fn generate_values<T: FieldElement>(
                         .pattern()
                         .iter()
                         .map(|v| {
-                            let mut symbols = symbols.clone();
-                            evaluator::evaluate(v, &mut symbols)
+                            let symbols = symbols.clone();
+                            evaluator::evaluate(v, &symbols)
                                 .and_then(|v| v.as_ref().clone().try_to_field_element())
                         })
                         .collect::<Result<Vec<_>, _>>()?;
@@ -137,7 +137,7 @@ pub struct CachedSymbols<'a, T> {
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
     fn lookup(
-        &mut self,
+        &self,
         name: &'a str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
