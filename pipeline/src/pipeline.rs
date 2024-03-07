@@ -481,7 +481,7 @@ impl<T: FieldElement> Pipeline<T> {
 
     fn maybe_write_witness(
         &self,
-        fixed: &[(String, Vec<T>)],
+        _fixed: &[(String, Vec<T>)],
         witness: &[(String, Vec<T>)],
     ) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|name| format!("{name}_commits.bin"))? {

@@ -1,11 +1,6 @@
-use powdr_number::{BigInt, FieldElement, GoldilocksField};
-
-use num_traits::{One, ToBytes, Zero};
-
-use std::collections::{BTreeMap, HashMap};
+use powdr_number::{FieldElement, LargeInt};
 
 use crate::poseidon_gl;
-
 use crate::Elem;
 
 pub trait Proc<F: FieldElement> {

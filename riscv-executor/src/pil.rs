@@ -1,9 +1,6 @@
-use powdr_ast::analyzed::Analyzed;
-use powdr_number::{FieldElement, GoldilocksField};
+use powdr_number::FieldElement;
 
-use num_traits::{One, ToBytes, Zero};
-
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use crate::instr::{exec_instruction, Proc};
 use crate::Elem;
@@ -13,7 +10,7 @@ pub fn execute<F: FieldElement>(
     inputs: &Callback<F>,
     fixed: HashMap<String, Vec<F>>,
 ) -> Vec<(String, Vec<F>)> {
-    //println!("keys: {:?}", fixed.keys());
+    println!("keys: {:?}", fixed.keys());
 
     let mut ctx = Context::new(length, inputs).with_fixed(fixed);
 
@@ -1285,7 +1282,7 @@ struct Context<'a, F: FieldElement> {
 impl<'a, F: FieldElement> Proc<F> for Context<'a, F> {
     fn get_pc(&self) -> Elem<F> {
         // TODO use {} -> self.pc
-        self.pc.last().unwrap().clone()
+        *self.pc.last().unwrap()
     }
     fn set_pc(&mut self, pc: Elem<F>) {
         self.pc.push(pc);
@@ -1299,42 +1296,42 @@ impl<'a, F: FieldElement> Proc<F> for Context<'a, F> {
 
     fn get_reg(&self, name: &str) -> Elem<F> {
         match name {
-            "tmp1" => self.tmp1.last().unwrap().clone(),
-            "tmp2" => self.tmp2.last().unwrap().clone(),
-            "tmp3" => self.tmp3.last().unwrap().clone(),
-            "tmp4" => self.tmp4.last().unwrap().clone(),
-            "lr_sc_reservation" => self.lr_sc_reservation.last().unwrap().clone(),
-            "x1" => self.x1.last().unwrap().clone(),
-            "x2" => self.x2.last().unwrap().clone(),
-            "x3" => self.x3.last().unwrap().clone(),
-            "x4" => self.x4.last().unwrap().clone(),
-            "x5" => self.x5.last().unwrap().clone(),
-            "x6" => self.x6.last().unwrap().clone(),
-            "x7" => self.x7.last().unwrap().clone(),
-            "x8" => self.x8.last().unwrap().clone(),
-            "x9" => self.x9.last().unwrap().clone(),
-            "x10" => self.x10.last().unwrap().clone(),
-            "x11" => self.x11.last().unwrap().clone(),
-            "x12" => self.x12.last().unwrap().clone(),
-            "x13" => self.x13.last().unwrap().clone(),
-            "x14" => self.x14.last().unwrap().clone(),
-            "x15" => self.x15.last().unwrap().clone(),
-            "x16" => self.x16.last().unwrap().clone(),
-            "x17" => self.x17.last().unwrap().clone(),
-            "x18" => self.x18.last().unwrap().clone(),
-            "x19" => self.x19.last().unwrap().clone(),
-            "x20" => self.x20.last().unwrap().clone(),
-            "x21" => self.x21.last().unwrap().clone(),
-            "x22" => self.x22.last().unwrap().clone(),
-            "x23" => self.x23.last().unwrap().clone(),
-            "x24" => self.x24.last().unwrap().clone(),
-            "x25" => self.x25.last().unwrap().clone(),
-            "x26" => self.x26.last().unwrap().clone(),
-            "x27" => self.x27.last().unwrap().clone(),
-            "x28" => self.x28.last().unwrap().clone(),
-            "x29" => self.x29.last().unwrap().clone(),
-            "x30" => self.x30.last().unwrap().clone(),
-            "x31" => self.x31.last().unwrap().clone(),
+            "tmp1" => *self.tmp1.last().unwrap(),
+            "tmp2" => *self.tmp2.last().unwrap(),
+            "tmp3" => *self.tmp3.last().unwrap(),
+            "tmp4" => *self.tmp4.last().unwrap(),
+            "lr_sc_reservation" => *self.lr_sc_reservation.last().unwrap(),
+            "x1" => *self.x1.last().unwrap(),
+            "x2" => *self.x2.last().unwrap(),
+            "x3" => *self.x3.last().unwrap(),
+            "x4" => *self.x4.last().unwrap(),
+            "x5" => *self.x5.last().unwrap(),
+            "x6" => *self.x6.last().unwrap(),
+            "x7" => *self.x7.last().unwrap(),
+            "x8" => *self.x8.last().unwrap(),
+            "x9" => *self.x9.last().unwrap(),
+            "x10" => *self.x10.last().unwrap(),
+            "x11" => *self.x11.last().unwrap(),
+            "x12" => *self.x12.last().unwrap(),
+            "x13" => *self.x13.last().unwrap(),
+            "x14" => *self.x14.last().unwrap(),
+            "x15" => *self.x15.last().unwrap(),
+            "x16" => *self.x16.last().unwrap(),
+            "x17" => *self.x17.last().unwrap(),
+            "x18" => *self.x18.last().unwrap(),
+            "x19" => *self.x19.last().unwrap(),
+            "x20" => *self.x20.last().unwrap(),
+            "x21" => *self.x21.last().unwrap(),
+            "x22" => *self.x22.last().unwrap(),
+            "x23" => *self.x23.last().unwrap(),
+            "x24" => *self.x24.last().unwrap(),
+            "x25" => *self.x25.last().unwrap(),
+            "x26" => *self.x26.last().unwrap(),
+            "x27" => *self.x27.last().unwrap(),
+            "x28" => *self.x28.last().unwrap(),
+            "x29" => *self.x29.last().unwrap(),
+            "x30" => *self.x30.last().unwrap(),
+            "x31" => *self.x31.last().unwrap(),
             _ => panic!("unknown register: {}", name),
         }
     }
@@ -1629,18 +1626,9 @@ impl<'a, F: FieldElement> Context<'a, F> {
         self.update_inputs();
         self.update_writes_to_assignment_registers();
 
-        //println!("\n\ncurrent = {}", self.current_row);
-        //println!("pc = {}", self.pc.last().unwrap());
-
         if self.current_row < self.length - 1 {
             self.run_instructions();
             self.update_writes_to_state_registers();
-
-            //println!("X_const = {}", self.X_const.last().unwrap());
-            //println!("X = {}", self.X.last().unwrap());
-            //println!("x8 = {}", self.x8.last().unwrap());
-            //println!("x10 = {}", self.x10.last().unwrap());
-
             self.update_pc();
         }
     }
@@ -1656,43 +1644,42 @@ impl<'a, F: FieldElement> Context<'a, F> {
         // Leo: can remove this for now, maybe Georg's PR already solves it
         // TODO fix
 
-        *self.tmp1.first_mut().unwrap() = self.tmp1.last().unwrap().clone();
-        *self.tmp2.first_mut().unwrap() = self.tmp2.last().unwrap().clone();
-        *self.tmp3.first_mut().unwrap() = self.tmp3.last().unwrap().clone();
-        *self.tmp4.first_mut().unwrap() = self.tmp4.last().unwrap().clone();
-        *self.lr_sc_reservation.first_mut().unwrap() =
-            self.lr_sc_reservation.last().unwrap().clone();
-        *self.x1.first_mut().unwrap() = self.x1.last().unwrap().clone();
-        *self.x2.first_mut().unwrap() = self.x2.last().unwrap().clone();
-        *self.x3.first_mut().unwrap() = self.x3.last().unwrap().clone();
-        *self.x4.first_mut().unwrap() = self.x4.last().unwrap().clone();
-        *self.x5.first_mut().unwrap() = self.x5.last().unwrap().clone();
-        *self.x6.first_mut().unwrap() = self.x6.last().unwrap().clone();
-        *self.x7.first_mut().unwrap() = self.x7.last().unwrap().clone();
-        *self.x8.first_mut().unwrap() = self.x8.last().unwrap().clone();
-        *self.x9.first_mut().unwrap() = self.x9.last().unwrap().clone();
-        *self.x10.first_mut().unwrap() = self.x10.last().unwrap().clone();
-        *self.x11.first_mut().unwrap() = self.x11.last().unwrap().clone();
-        *self.x12.first_mut().unwrap() = self.x12.last().unwrap().clone();
-        *self.x13.first_mut().unwrap() = self.x13.last().unwrap().clone();
-        *self.x14.first_mut().unwrap() = self.x14.last().unwrap().clone();
-        *self.x15.first_mut().unwrap() = self.x15.last().unwrap().clone();
-        *self.x16.first_mut().unwrap() = self.x16.last().unwrap().clone();
-        *self.x17.first_mut().unwrap() = self.x17.last().unwrap().clone();
-        *self.x18.first_mut().unwrap() = self.x18.last().unwrap().clone();
-        *self.x19.first_mut().unwrap() = self.x19.last().unwrap().clone();
-        *self.x20.first_mut().unwrap() = self.x20.last().unwrap().clone();
-        *self.x21.first_mut().unwrap() = self.x21.last().unwrap().clone();
-        *self.x22.first_mut().unwrap() = self.x22.last().unwrap().clone();
-        *self.x23.first_mut().unwrap() = self.x23.last().unwrap().clone();
-        *self.x24.first_mut().unwrap() = self.x24.last().unwrap().clone();
-        *self.x25.first_mut().unwrap() = self.x25.last().unwrap().clone();
-        *self.x26.first_mut().unwrap() = self.x26.last().unwrap().clone();
-        *self.x27.first_mut().unwrap() = self.x27.last().unwrap().clone();
-        *self.x28.first_mut().unwrap() = self.x28.last().unwrap().clone();
-        *self.x29.first_mut().unwrap() = self.x29.last().unwrap().clone();
-        *self.x30.first_mut().unwrap() = self.x30.last().unwrap().clone();
-        *self.x31.first_mut().unwrap() = self.x31.last().unwrap().clone();
+        *self.tmp1.first_mut().unwrap() = *self.tmp1.last().unwrap();
+        *self.tmp2.first_mut().unwrap() = *self.tmp2.last().unwrap();
+        *self.tmp3.first_mut().unwrap() = *self.tmp3.last().unwrap();
+        *self.tmp4.first_mut().unwrap() = *self.tmp4.last().unwrap();
+        *self.lr_sc_reservation.first_mut().unwrap() = *self.lr_sc_reservation.last().unwrap();
+        *self.x1.first_mut().unwrap() = *self.x1.last().unwrap();
+        *self.x2.first_mut().unwrap() = *self.x2.last().unwrap();
+        *self.x3.first_mut().unwrap() = *self.x3.last().unwrap();
+        *self.x4.first_mut().unwrap() = *self.x4.last().unwrap();
+        *self.x5.first_mut().unwrap() = *self.x5.last().unwrap();
+        *self.x6.first_mut().unwrap() = *self.x6.last().unwrap();
+        *self.x7.first_mut().unwrap() = *self.x7.last().unwrap();
+        *self.x8.first_mut().unwrap() = *self.x8.last().unwrap();
+        *self.x9.first_mut().unwrap() = *self.x9.last().unwrap();
+        *self.x10.first_mut().unwrap() = *self.x10.last().unwrap();
+        *self.x11.first_mut().unwrap() = *self.x11.last().unwrap();
+        *self.x12.first_mut().unwrap() = *self.x12.last().unwrap();
+        *self.x13.first_mut().unwrap() = *self.x13.last().unwrap();
+        *self.x14.first_mut().unwrap() = *self.x14.last().unwrap();
+        *self.x15.first_mut().unwrap() = *self.x15.last().unwrap();
+        *self.x16.first_mut().unwrap() = *self.x16.last().unwrap();
+        *self.x17.first_mut().unwrap() = *self.x17.last().unwrap();
+        *self.x18.first_mut().unwrap() = *self.x18.last().unwrap();
+        *self.x19.first_mut().unwrap() = *self.x19.last().unwrap();
+        *self.x20.first_mut().unwrap() = *self.x20.last().unwrap();
+        *self.x21.first_mut().unwrap() = *self.x21.last().unwrap();
+        *self.x22.first_mut().unwrap() = *self.x22.last().unwrap();
+        *self.x23.first_mut().unwrap() = *self.x23.last().unwrap();
+        *self.x24.first_mut().unwrap() = *self.x24.last().unwrap();
+        *self.x25.first_mut().unwrap() = *self.x25.last().unwrap();
+        *self.x26.first_mut().unwrap() = *self.x26.last().unwrap();
+        *self.x27.first_mut().unwrap() = *self.x27.last().unwrap();
+        *self.x28.first_mut().unwrap() = *self.x28.last().unwrap();
+        *self.x29.first_mut().unwrap() = *self.x29.last().unwrap();
+        *self.x30.first_mut().unwrap() = *self.x30.last().unwrap();
+        *self.x31.first_mut().unwrap() = *self.x31.last().unwrap();
     }
 
     // for pc + each state register
@@ -1985,325 +1972,133 @@ impl<'a, F: FieldElement> Context<'a, F> {
         let pc = self.pc.last().unwrap().bin();
         let prime = if self.X_read_free.last().unwrap().is_one() {
             if pc == 1527 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1551 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1566 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1568 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1570 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1572 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1574 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1576 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1578 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1580 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1582 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1584 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1586 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1588 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1590 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1592 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1594 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1596 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1598 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1600 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1602 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1604 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1606 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1608 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1610 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1612 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1614 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1616 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1618 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1620 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1622 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1624 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1626 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1628 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1630 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1632 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1634 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1636 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1638 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1640 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1642 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1644 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1646 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1648 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1650 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1652 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1654 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1656 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1658 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1660 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1662 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1664 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1666 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1668 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1670 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1672 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1674 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1676 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1678 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1680 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1682 {
-                self.query(&format!(
-                    "(\"print_char\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"print_char\", {})", self.x10.last().unwrap()))
             } else if pc == 1799 {
-                self.query(&format!(
-                    "(\"input\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"input\", {})", self.x10.last().unwrap()))
             } else if pc == 1803 {
-                self.query(&format!(
-                    "(\"input\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"input\", {})", self.x10.last().unwrap()))
             } else if pc == 1832 {
-                self.query(&format!(
-                    "(\"input\", {})",
-                    self.x10.last().unwrap().to_string()
-                ))
+                self.query(&format!("(\"input\", {})", self.x10.last().unwrap()))
             } else {
                 0.into()
             }
@@ -2514,11 +2309,11 @@ impl<'a, F: FieldElement> Context<'a, F> {
 
     fn update_writes_to_state_registers(&mut self) {
         if self.reg_write_X_tmp1.last().unwrap().is_one() {
-            self.tmp1.push(self.X.last().unwrap().clone());
+            self.tmp1.push(*self.X.last().unwrap());
         } else if self.reg_write_Y_tmp1.last().unwrap().is_one() {
-            self.tmp1.push(self.Y.last().unwrap().clone());
+            self.tmp1.push(*self.Y.last().unwrap());
         } else if self.reg_write_Z_tmp1.last().unwrap().is_one() {
-            self.tmp1.push(self.Z.last().unwrap().clone());
+            self.tmp1.push(*self.Z.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.tmp1.push(0.into());
         } else if self.tmp1.len() <= self.pc.len() {
@@ -2526,9 +2321,9 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.tmp1.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_tmp2.last().unwrap().is_one() {
-            self.tmp2.push(self.X.last().unwrap().clone());
+            self.tmp2.push(*self.X.last().unwrap());
         } else if self.reg_write_Z_tmp2.last().unwrap().is_one() {
-            self.tmp2.push(self.Z.last().unwrap().clone());
+            self.tmp2.push(*self.Z.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.tmp2.push(0.into());
         } else if self.tmp2.len() <= self.pc.len() {
@@ -2536,7 +2331,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.tmp2.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_tmp3.last().unwrap().is_one() {
-            self.tmp3.push(self.X.last().unwrap().clone());
+            self.tmp3.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.tmp3.push(0.into());
         } else if self.tmp3.len() <= self.pc.len() {
@@ -2560,9 +2355,9 @@ impl<'a, F: FieldElement> Context<'a, F> {
             );
         }
         if self.reg_write_X_x1.last().unwrap().is_one() {
-            self.x1.push(self.X.last().unwrap().clone());
+            self.x1.push(*self.X.last().unwrap());
         } else if self.reg_write_Y_x1.last().unwrap().is_one() {
-            self.x1.push(self.Y.last().unwrap().clone());
+            self.x1.push(*self.Y.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x1.push(0.into());
         } else if self.x1.len() <= self.pc.len() {
@@ -2570,7 +2365,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x1.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x2.last().unwrap().is_one() {
-            self.x2.push(self.X.last().unwrap().clone());
+            self.x2.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x2.push(0.into());
         } else if self.x2.len() <= self.pc.len() {
@@ -2590,7 +2385,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x4.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x5.last().unwrap().is_one() {
-            self.x5.push(self.X.last().unwrap().clone());
+            self.x5.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x5.push(0.into());
         } else if self.x5.len() <= self.pc.len() {
@@ -2598,7 +2393,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x5.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x6.last().unwrap().is_one() {
-            self.x6.push(self.X.last().unwrap().clone());
+            self.x6.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x6.push(0.into());
         } else if self.x6.len() <= self.pc.len() {
@@ -2606,7 +2401,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x6.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x7.last().unwrap().is_one() {
-            self.x7.push(self.X.last().unwrap().clone());
+            self.x7.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x7.push(0.into());
         } else if self.x7.len() <= self.pc.len() {
@@ -2614,7 +2409,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x7.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x8.last().unwrap().is_one() {
-            self.x8.push(self.X.last().unwrap().clone());
+            self.x8.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x8.push(0.into());
         } else if self.x8.len() <= self.pc.len() {
@@ -2622,7 +2417,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x8.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x9.last().unwrap().is_one() {
-            self.x9.push(self.X.last().unwrap().clone());
+            self.x9.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x9.push(0.into());
         } else if self.x9.len() <= self.pc.len() {
@@ -2630,9 +2425,9 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x9.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x10.last().unwrap().is_one() {
-            self.x10.push(self.X.last().unwrap().clone());
+            self.x10.push(*self.X.last().unwrap());
         } else if self.reg_write_Y_x10.last().unwrap().is_one() {
-            self.x10.push(self.Y.last().unwrap().clone());
+            self.x10.push(*self.Y.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x10.push(0.into());
         } else if self.x10.len() <= self.pc.len() {
@@ -2640,7 +2435,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x10.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x11.last().unwrap().is_one() {
-            self.x11.push(self.X.last().unwrap().clone());
+            self.x11.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x11.push(0.into());
         } else if self.x11.len() <= self.pc.len() {
@@ -2648,9 +2443,9 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x11.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x12.last().unwrap().is_one() {
-            self.x12.push(self.X.last().unwrap().clone());
+            self.x12.push(*self.X.last().unwrap());
         } else if self.reg_write_Y_x12.last().unwrap().is_one() {
-            self.x12.push(self.Y.last().unwrap().clone());
+            self.x12.push(*self.Y.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x12.push(0.into());
         } else if self.x12.len() <= self.pc.len() {
@@ -2658,9 +2453,9 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x12.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x13.last().unwrap().is_one() {
-            self.x13.push(self.X.last().unwrap().clone());
+            self.x13.push(*self.X.last().unwrap());
         } else if self.reg_write_Y_x13.last().unwrap().is_one() {
-            self.x13.push(self.Y.last().unwrap().clone());
+            self.x13.push(*self.Y.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x13.push(0.into());
         } else if self.x13.len() <= self.pc.len() {
@@ -2668,9 +2463,9 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x13.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x14.last().unwrap().is_one() {
-            self.x14.push(self.X.last().unwrap().clone());
+            self.x14.push(*self.X.last().unwrap());
         } else if self.reg_write_Y_x14.last().unwrap().is_one() {
-            self.x14.push(self.Y.last().unwrap().clone());
+            self.x14.push(*self.Y.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x14.push(0.into());
         } else if self.x14.len() <= self.pc.len() {
@@ -2678,7 +2473,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x14.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x15.last().unwrap().is_one() {
-            self.x15.push(self.X.last().unwrap().clone());
+            self.x15.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x15.push(0.into());
         } else if self.x15.len() <= self.pc.len() {
@@ -2686,7 +2481,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x15.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x16.last().unwrap().is_one() {
-            self.x16.push(self.X.last().unwrap().clone());
+            self.x16.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x16.push(0.into());
         } else if self.x16.len() <= self.pc.len() {
@@ -2694,7 +2489,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x16.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x17.last().unwrap().is_one() {
-            self.x17.push(self.X.last().unwrap().clone());
+            self.x17.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x17.push(0.into());
         } else if self.x17.len() <= self.pc.len() {
@@ -2702,7 +2497,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x17.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x18.last().unwrap().is_one() {
-            self.x18.push(self.X.last().unwrap().clone());
+            self.x18.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x18.push(0.into());
         } else if self.x18.len() <= self.pc.len() {
@@ -2710,7 +2505,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x18.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x19.last().unwrap().is_one() {
-            self.x19.push(self.X.last().unwrap().clone());
+            self.x19.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x19.push(0.into());
         } else if self.x19.len() <= self.pc.len() {
@@ -2718,7 +2513,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x19.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x20.last().unwrap().is_one() {
-            self.x20.push(self.X.last().unwrap().clone());
+            self.x20.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x20.push(0.into());
         } else if self.x20.len() <= self.pc.len() {
@@ -2726,7 +2521,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x20.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x21.last().unwrap().is_one() {
-            self.x21.push(self.X.last().unwrap().clone());
+            self.x21.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x21.push(0.into());
         } else if self.x21.len() <= self.pc.len() {
@@ -2734,7 +2529,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x21.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x22.last().unwrap().is_one() {
-            self.x22.push(self.X.last().unwrap().clone());
+            self.x22.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x22.push(0.into());
         } else if self.x22.len() <= self.pc.len() {
@@ -2742,9 +2537,9 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x22.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x23.last().unwrap().is_one() {
-            self.x23.push(self.X.last().unwrap().clone());
+            self.x23.push(*self.X.last().unwrap());
         } else if self.reg_write_Y_x23.last().unwrap().is_one() {
-            self.x23.push(self.Y.last().unwrap().clone());
+            self.x23.push(*self.Y.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x23.push(0.into());
         } else if self.x23.len() <= self.pc.len() {
@@ -2752,7 +2547,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x23.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x24.last().unwrap().is_one() {
-            self.x24.push(self.X.last().unwrap().clone());
+            self.x24.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x24.push(0.into());
         } else if self.x24.len() <= self.pc.len() {
@@ -2760,7 +2555,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x24.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x25.last().unwrap().is_one() {
-            self.x25.push(self.X.last().unwrap().clone());
+            self.x25.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x25.push(0.into());
         } else if self.x25.len() <= self.pc.len() {
@@ -2768,7 +2563,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x25.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x26.last().unwrap().is_one() {
-            self.x26.push(self.X.last().unwrap().clone());
+            self.x26.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x26.push(0.into());
         } else if self.x26.len() <= self.pc.len() {
@@ -2776,7 +2571,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x26.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x27.last().unwrap().is_one() {
-            self.x27.push(self.X.last().unwrap().clone());
+            self.x27.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x27.push(0.into());
         } else if self.x27.len() <= self.pc.len() {
@@ -2784,7 +2579,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x27.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x28.last().unwrap().is_one() {
-            self.x28.push(self.X.last().unwrap().clone());
+            self.x28.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x28.push(0.into());
         } else if self.x28.len() <= self.pc.len() {
@@ -2792,7 +2587,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x28.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x29.last().unwrap().is_one() {
-            self.x29.push(self.X.last().unwrap().clone());
+            self.x29.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x29.push(0.into());
         } else if self.x29.len() <= self.pc.len() {
@@ -2800,7 +2595,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x29.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x30.last().unwrap().is_one() {
-            self.x30.push(self.X.last().unwrap().clone());
+            self.x30.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x30.push(0.into());
         } else if self.x30.len() <= self.pc.len() {
@@ -2808,7 +2603,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
                 .push(self.x30.last().cloned().unwrap_or_else(|| 0.into()));
         }
         if self.reg_write_X_x31.last().unwrap().is_one() {
-            self.x31.push(self.X.last().unwrap().clone());
+            self.x31.push(*self.X.last().unwrap());
         } else if self.instr__reset.last().unwrap().is_one() {
             self.x31.push(0.into());
         } else if self.x31.len() <= self.pc.len() {
@@ -2821,9 +2616,9 @@ impl<'a, F: FieldElement> Context<'a, F> {
     fn update_pc(&mut self) {
         let pc = self.pc.last().unwrap();
         if self.instr__jump_to_operation.last().unwrap().is_one() {
-            self.pc.push(self._operation_id.last().unwrap().clone());
+            self.pc.push(*self._operation_id.last().unwrap());
         } else if self.instr__loop.last().unwrap().is_one() {
-            self.pc.push(pc.clone());
+            self.pc.push(*pc);
         } else if self.instr_return.last().unwrap().is_one() {
             self.pc.push(0.into());
         } else if self.current_row + 1 == self.pc.len() {
@@ -2839,8 +2634,7 @@ impl<'a, F: FieldElement> Context<'a, F> {
             // TODO: read the number from _operation_id hint
             self._operation_id.push(2191.into());
         } else {
-            self._operation_id
-                .push(self._operation_id.last().unwrap().clone());
+            self._operation_id.push(*self._operation_id.last().unwrap());
         }
     }
 

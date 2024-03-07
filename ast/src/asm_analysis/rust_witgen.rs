@@ -1,3 +1,5 @@
+#![allow(clippy::print_stdout)]
+
 use crate::{
     analyzed::{Analyzed, Expression, FunctionValueDefinition},
     parsed::{FunctionCall, LambdaExpression, MatchPattern},
@@ -78,7 +80,6 @@ impl<T: FieldElement> RustWitgen<T> {
                     None
                 }
             })
-            //.chain(builtin_columns().into_iter())
             .collect();
         let wit_cols = wit_cols_vec.clone().into_iter().collect();
         println!("wit_cols = {wit_cols:?}");
@@ -87,15 +88,16 @@ impl<T: FieldElement> RustWitgen<T> {
             .committed_polys_in_source_order()
             .iter()
             .filter_map(|c| {
-                if c.1.is_none() {
-                    return None;
-                }
+                c.1.as_ref()?;
                 let name = c.0.absolute_name.split('.').last().unwrap().to_string();
                 if name.ends_with("free_value") {
                     println!("name = {name}");
                     let e: Expression<T> = match c.1.as_ref().unwrap() {
                         FunctionValueDefinition::Query(Expression::LambdaExpression(
-                            LambdaExpression { params, body },
+                            LambdaExpression {
+                                params: _params,
+                                body,
+                            },
                         )) => (**body).clone(),
                         e => panic!("{e:?}"),
                     };
@@ -192,15 +194,6 @@ fn update_flags(&mut self) {{
         };
 
         let updates = self
-            /*
-            .instruction_flags()
-            .into_iter()
-            .chain(self.write_state_to_assignment_reg_columns().into_iter())
-            .chain(self.write_assignment_to_state_reg_columns().into_iter())
-            .chain(self.asgn_reg_const_columns().into_iter())
-            .chain(self.asgn_reg_free_value_read_columns().into_iter())
-            .filter(|i| self.wit_cols.contains(i))
-            */
             .wit_cols_vec
             .iter()
             .filter(|i| self.fixed_cols.contains(&format!("main.p_{}", i)))
@@ -222,7 +215,7 @@ fn update_flags(&mut self) {{
     fn create_get_regs(&self) -> String {
         self.state_regs()
             .into_iter()
-            .map(|r| format!("\"{}\" => self.{}.last().unwrap().clone(),", r, r))
+            .map(|r| format!("\"{}\" => *self.{}.last().unwrap(),", r, r))
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -232,7 +225,7 @@ fn update_flags(&mut self) {{
 impl<'a, F: FieldElement> Proc<F> for Context<'a, F> {
     fn get_pc(&self) -> Elem<F> {
         // TODO use {} -> self.pc
-        self.pc.last().unwrap().clone()
+        *self.pc.last().unwrap()
     }
     fn set_pc(&mut self, pc: Elem<F>) {
         self.pc.push(pc);
@@ -282,7 +275,7 @@ fn update_control_flow_flags(&mut self) {
             // TODO: read the number from _operation_id hint
             self._operation_id.push(2191.into());
         } else {
-            self._operation_id.push(self._operation_id.last().unwrap().clone());
+            self._operation_id.push(*self._operation_id.last().unwrap());
         }
     }
 "#;
@@ -296,9 +289,9 @@ fn update_control_flow_flags(&mut self) {
 fn update_pc(&mut self) {{
         let pc = self.{}.last().unwrap();
         if self.instr__jump_to_operation.last().unwrap().is_one() {{
-            self.{}.push(self._operation_id.last().unwrap().clone());
+            self.{}.push(*self._operation_id.last().unwrap());
         }} else if self.instr__loop.last().unwrap().is_one() {{
-            self.{}.push(pc.clone());
+            self.{}.push(*pc);
         }} else if self.instr_return.last().unwrap().is_one() {{
             self.{}.push(0.into());
         }} else if self.current_row + 1 == self.{}.len() {{
@@ -343,7 +336,7 @@ fn update_writes_to_state_registers(&mut self) {
                 let col = write_assignment_to_state_reg_flag(r.clone(), reg.clone());
                 if self.wit_cols.contains(&col) { Some(
                     format!(
-                        "if self.{}.last().unwrap().is_one() {{\nself.{}.push(self.{}.last().unwrap().clone());\n}}",
+                        "if self.{}.last().unwrap().is_one() {{\nself.{}.push(*self.{}.last().unwrap());\n}}",
                         col,
                         reg.clone(),
                         r.clone()
@@ -352,11 +345,11 @@ fn update_writes_to_state_registers(&mut self) {
                     None
                 }
             })
-            .chain([reset, last].into_iter())
+            .chain([reset, last])
             .collect::<Vec<_>>()
             .join(" else ");
 
-        format!("{}", conds)
+        conds.to_string()
     }
 
     fn create_update_writes_to_assignment_registers(&self) -> String {
@@ -528,7 +521,7 @@ fn run_instructions(&mut self) {
         let regs: Vec<_> = self
             .state_regs()
             .into_iter()
-            .chain(vec![self.pc()].into_iter())
+            .chain(vec![self.pc()])
             .map(|r| format!("self.{}.push(0.into());", r))
             .collect();
 
@@ -548,7 +541,6 @@ pub fn new(length: usize, callback: &'a Callback<F>) -> Self {
 
         let decl = |x: &String| format!("{x}: Vec::new(),");
         let decls = self
-            //.all_columns()
             .wit_cols_vec
             .iter()
             .map(decl)
@@ -588,7 +580,7 @@ pub fn new(length: usize, callback: &'a Callback<F>) -> Self {
         }
     }
 "#;
-        format!("{}", fixed)
+        fixed.to_string()
     }
 
     fn create_run(&mut self) -> String {
@@ -609,7 +601,7 @@ pub fn new(length: usize, callback: &'a Callback<F>) -> Self {
             .into_iter()
             .map(|s| {
                 format!(
-                    "*self.{}.first_mut().unwrap() = self.{}.last().unwrap().clone();",
+                    "*self.{}.first_mut().unwrap() = *self.{}.last().unwrap();",
                     s.clone(),
                     s
                 )
@@ -622,12 +614,9 @@ pub fn new(length: usize, callback: &'a Callback<F>) -> Self {
 
     fn create_imports(&mut self) {
         let imports = r#"
-use powdr_ast::analyzed::Analyzed;
-use powdr_number::{FieldElement, GoldilocksField};
+use powdr_number::FieldElement;
 
-use num_traits::{One, Zero, ToBytes};
-
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use crate::Elem;
 use crate::instr::{Proc, exec_instruction};
@@ -654,14 +643,13 @@ pub fn execute<F: FieldElement>(
 
         let tuple = |x: &String| {
             format!(
-                "(\"main.{}\".to_string(), ctx.{}.iter().map(|x| x.fe()).collect()),",
+                "(\"main.{}\".to_string(), ctx.{}.iter().map(|x| F::from(x.bin())).collect()),",
                 x, x
             )
         };
 
         println!("{:?}", self.wit_cols_vec);
         let all_tuples = self
-            //.all_columns()
             .wit_cols_vec
             .iter()
             .map(tuple)
@@ -691,7 +679,6 @@ struct Context<'a, F: FieldElement> {
         let decl = |x: &String| format!("pub {x}: Vec<Elem<F>>,");
 
         let all_decls = self
-            //.all_columns()
             .wit_cols_vec
             .iter()
             .map(decl)
@@ -701,60 +688,6 @@ struct Context<'a, F: FieldElement> {
         let context = format!("{preamble}\n{all_decls}\n}}");
 
         self.code = format!("{}\n{context}", self.code);
-    }
-
-    fn all_columns(&self) -> Vec<String> {
-        self.asgn_regs()
-            .into_iter()
-            .chain(self.state_regs().into_iter())
-            .chain(vec![self.pc()].into_iter())
-            .chain(self.asgn_reg_const_columns().into_iter())
-            .chain(self.asgn_reg_free_value_columns().into_iter())
-            .chain(self.asgn_reg_free_value_read_columns().into_iter())
-            .chain(self.write_state_to_assignment_reg_columns().into_iter())
-            .chain(self.write_assignment_to_state_reg_columns().into_iter())
-            .chain(self.instruction_flags().into_iter())
-            .chain(builtin_columns().into_iter())
-            .filter(|i| self.wit_cols.contains(i))
-            .collect()
-    }
-
-    fn asgn_reg_const_columns(&self) -> Vec<String> {
-        self.asgn_regs()
-            .into_iter()
-            .map(asgn_reg_const)
-            .filter(|i| self.wit_cols.contains(i))
-            .collect()
-    }
-
-    fn asgn_reg_free_value_columns(&self) -> Vec<String> {
-        self.asgn_regs()
-            .into_iter()
-            .map(asgn_reg_free_value)
-            .filter(|i| self.wit_cols.contains(i))
-            .collect()
-    }
-
-    fn asgn_reg_free_value_read_columns(&self) -> Vec<String> {
-        self.asgn_regs()
-            .into_iter()
-            .map(asgn_reg_free_value_read)
-            .filter(|i| self.wit_cols.contains(i))
-            .collect()
-    }
-
-    fn write_state_to_assignment_reg_columns(&self) -> Vec<String> {
-        iproduct!(self.state_regs().into_iter(), self.asgn_regs().into_iter())
-            .map(|(s, a)| write_state_to_assignment_reg_flag(s, a))
-            .filter(|i| self.wit_cols.contains(i))
-            .collect()
-    }
-
-    fn write_assignment_to_state_reg_columns(&self) -> Vec<String> {
-        iproduct!(self.asgn_regs().into_iter(), self.state_regs().into_iter())
-            .map(|(a, s)| write_assignment_to_state_reg_flag(a, s))
-            .filter(|i| self.wit_cols.contains(i))
-            .collect()
     }
 
     fn instruction_flags(&self) -> Vec<String> {
@@ -816,15 +749,6 @@ fn write_assignment_to_state_reg_flag(asgn_reg: String, state_reg: String) -> St
     format!("reg_write_{}_{}", asgn_reg, state_reg)
 }
 
-fn builtin_columns() -> Vec<String> {
-    vec![
-        "instr__jump_to_operation".to_string(),
-        "_operation_id".to_string(),
-        "instr__loop".to_string(),
-        "instr__reset".to_string(),
-    ]
-}
-
 fn create_free_value_query<F: FieldElement>(expression: &Expression<F>) -> Vec<(F, String)> {
     match expression {
         /*
@@ -866,7 +790,7 @@ fn create_free_value_query<F: FieldElement>(expression: &Expression<F>) -> Vec<(
             }
         }
         */
-        Expression::MatchExpression(expr, arms) => {
+        Expression::MatchExpression(_expr, arms) => {
             // we assume the expr is `main.pc(i)`
             // TODO: assert the above
             // we also assume each arm to have the form `literal => ("key", reg(i))`
@@ -877,14 +801,14 @@ fn create_free_value_query<F: FieldElement>(expression: &Expression<F>) -> Vec<(
                     println!("Pattern = {:?}", a.pattern);
                     println!("Value = {:?}", a.value);
                     let row = match a.pattern {
-                        MatchPattern::Pattern(Expression::Number(n, None)) => n,
+                        MatchPattern::Pattern(Expression::Number(n, _)) => n,
                         _ => panic!(),
                     };
                     let value = match &a.value {
                         Expression::Number(n, None) => format!("{n}"),
                         Expression::FunctionCall(FunctionCall {
-                            function,
-                            arguments,
+                            function: _function,
+                            arguments: _arguments,
                         }) => todo!(),
                         Expression::Tuple(t) => {
                             println!("Tuple = {:?}", t);
@@ -900,16 +824,13 @@ fn create_free_value_query<F: FieldElement>(expression: &Expression<F>) -> Vec<(
                                             function,
                                             arguments,
                                         }) => {
-                                            let name = function.to_string();
+                                            println!("Function = {:?}", function);
+                                            println!("Arguments = {:?}", arguments);
+                                            let name = arguments[0].to_string();
                                             assert!(name.starts_with("main."));
                                             let name = name.split('.').last().unwrap();
                                             // name should be a register name now
-                                            assert_eq!(arguments.len(), 1);
-                                            assert_eq!(arguments[0].to_string(), "i");
-                                            let val = format!(
-                                                "self.{}.last().unwrap().to_string()",
-                                                name
-                                            );
+                                            let val = format!("self.{}.last().unwrap()", name);
                                             val
                                         }
                                         _ => panic!(),
@@ -918,7 +839,7 @@ fn create_free_value_query<F: FieldElement>(expression: &Expression<F>) -> Vec<(
                                 }
                             }
                             //let res = format!("({})", all_strings.join(","));
-                            let cmd = all_strings[0].replace("\"", "\\\"");
+                            let cmd = all_strings[0].replace('\"', "\\\"");
                             let brackets = (1..all_strings.len())
                                 .map(|_| "{}")
                                 .collect::<Vec<_>>()

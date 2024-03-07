@@ -900,12 +900,16 @@ fn run<F: FieldElement>(
         (true, false) => {
             let mut pipeline = pipeline.with_prover_inputs(inputs);
             let program = pipeline.compute_asm_string().unwrap().clone();
+
+            let start = Instant::now();
             powdr_riscv_executor::execute::<F>(
                 &program.1,
                 pipeline.data_callback().unwrap(),
                 &[],
                 powdr_riscv_executor::ExecMode::Fast,
             );
+            let duration = start.elapsed();
+            log::info!("RISCV asm executor done in: {:?}", duration);
 
             // Run also Rust witgen
             let pil = pipeline.optimized_pil().unwrap();
