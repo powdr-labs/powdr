@@ -222,12 +222,7 @@ fn update_flags(&mut self) {{
     fn create_get_regs(&self) -> String {
         self.state_regs()
             .into_iter()
-            .map(|r| {
-                format!(
-                    "\"{}\" => self.{}.last().unwrap().clone(),",
-                    r, r
-                )
-            })
+            .map(|r| format!("\"{}\" => self.{}.last().unwrap().clone(),", r, r))
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -243,7 +238,7 @@ impl<'a, F: FieldElement> Proc<F> for Context<'a, F> {
         self.pc.push(pc);
     }
     fn get_mem(&self, addr: u32) -> u32 {
-        *self.mem.get(&addr).unwrap()
+        *self.mem.get(&addr).unwrap_or(&0)
     }
     fn set_mem(&mut self, addr: u32, val: u32) {
         self.mem.insert(addr, val);
@@ -283,9 +278,9 @@ fn update_control_flow_flags(&mut self) {
         // TODO: automate
         if self.current_row == 0 {
             self._operation_id.push(2.into());
-        } else if self.instr_return.last().unwrap() == &F::one() {
+        } else if self.instr_return.last().unwrap().is_one() {
             // TODO: read the number from _operation_id hint
-            self._operation_id.push(F::from(11));
+            self._operation_id.push(2191.into());
         } else {
             self._operation_id.push(self._operation_id.last().unwrap().clone());
         }
@@ -305,9 +300,9 @@ fn update_pc(&mut self) {{
         }} else if self.instr__loop.last().unwrap().is_one() {{
             self.{}.push(pc.clone());
         }} else if self.instr_return.last().unwrap().is_one() {{
-            self.{}.push(F::zero());
+            self.{}.push(0.into());
         }} else if self.current_row + 1 == self.{}.len() {{
-            self.{}.push(pc.clone() + F::one());
+            self.{}.push(Elem::Binary(pc.bin() + 1));
         }};
     }}"#,
             self.pc(),
@@ -335,9 +330,9 @@ fn update_writes_to_state_registers(&mut self) {
     }
 
     fn create_updated_write_to_state_register(&self, reg: String) -> String {
-        let last = format!("if self.{}.len() <= self.{}.len() {{\nself.{}.push(self.{}.last().cloned().unwrap_or_else(|| F::zero().clone()));\n}}", reg.clone(), self.pc(), reg.clone(), reg.clone());
+        let last = format!("if self.{}.len() <= self.{}.len() {{\nself.{}.push(self.{}.last().cloned().unwrap_or_else(|| 0.into()));\n}}", reg.clone(), self.pc(), reg.clone(), reg.clone());
         let reset = format!(
-            "if self.instr__reset.last().unwrap() == &F::one() {{\nself.{}.push(F::zero());\n}}",
+            "if self.instr__reset.last().unwrap().is_one() {{\nself.{}.push(0.into());\n}}",
             reg.clone()
         );
 
@@ -348,7 +343,7 @@ fn update_writes_to_state_registers(&mut self) {
                 let col = write_assignment_to_state_reg_flag(r.clone(), reg.clone());
                 if self.wit_cols.contains(&col) { Some(
                     format!(
-                        "if self.{}.last().unwrap() == &F::one() {{\nself.{}.push(self.{}.last().unwrap().clone());\n}}",
+                        "if self.{}.last().unwrap().is_one() {{\nself.{}.push(self.{}.last().unwrap().clone());\n}}",
                         col,
                         reg.clone(),
                         r.clone()
@@ -372,15 +367,21 @@ fn update_writes_to_assignment_registers(&mut self) {
 
         let rhs = |col: String| {
             if self.wit_cols.contains(&col) {
-                format!("self.{col}.last().unwrap().clone()")
+                format!("self.{col}.last().unwrap().bin()")
             } else {
-                "F::ZERO".to_string()
+                "0".to_string()
             }
         };
         let decls = self
             .asgn_regs()
             .into_iter()
-            .map(|r| format!("let mut {}_prime = {};", r.clone(), rhs(asgn_reg_const(r))))
+            .map(|r| {
+                format!(
+                    "let mut {}_prime: i64 = {};",
+                    r.clone(),
+                    rhs(asgn_reg_const(r))
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -389,9 +390,9 @@ fn update_writes_to_assignment_registers(&mut self) {
                 let col = write_state_to_assignment_reg_flag(s.clone(), a.clone());
                 if self.wit_cols.contains(&col) { Some(
                     format!(
-                        "if self.{}.last().unwrap() == &F::one() {{\n{}_prime += *self.{}.last().unwrap();\n}}\n",
-                        col,
+                        "\n{}_prime += self.{}.last().unwrap().bin() * self.{}.last().unwrap().bin();",
                         a.clone(),
+                        col,
                         s.clone()
                     )
                 )} else {
@@ -401,17 +402,18 @@ fn update_writes_to_assignment_registers(&mut self) {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let read_conds = self.asgn_regs().into_iter()
+        let read_conds = self
+            .asgn_regs()
+            .into_iter()
             .filter_map(|a| {
                 let col = asgn_reg_free_value_read(a.clone());
-                if self.wit_cols.contains(&col) { Some(
-                    format!(
-                        "if self.{}.last().unwrap() == &F::one() {{ \n{}_prime += *self.{}.last().unwrap();\n}}\n",
-                        col,
+                if self.wit_cols.contains(&col) {
+                    Some(format!(
+                        "{}_prime += self.{}.last().unwrap().bin();\n",
                         a.clone(),
                         asgn_reg_free_value(a),
-                    )
-                )} else {
+                    ))
+                } else {
                     None
                 }
             })
@@ -421,7 +423,7 @@ fn update_writes_to_assignment_registers(&mut self) {
         let pushes = self
             .asgn_regs()
             .into_iter()
-            .map(|r| format!("self.{}.push({}_prime);", r, r))
+            .map(|r| format!("self.{}.push(Elem::Binary({}_prime));", r, r))
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -432,9 +434,9 @@ fn update_writes_to_assignment_registers(&mut self) {
     }
 
     fn create_query(&self) -> String {
-        r#"fn query(&self, query: &String) -> F {
+        r#"fn query(&self, query: &String) -> Elem<F> {
             match (self.callback)(query).unwrap() {
-                Some(val) => val,
+                Some(val) => Elem::new_from_fe_as_bin(&val),
                 None => {
                     panic!("unknown query command: {query}");
                 }
@@ -459,24 +461,24 @@ fn update_writes_to_assignment_registers(&mut self) {
                 println!("free_value = {free_value}");
 
                 if !self.queries.contains_key(&free_value) {
-                    return Some(format!("self.{}.push(F::zero());", free_value));
+                    return Some(format!("self.{}.push(0.into());", free_value));
                 }
 
                 let read = asgn_reg_free_value_read(r.clone());
                 let query = self.queries.get(&free_value).unwrap();
                 let inputs = create_free_value_query(query);
 
-                let pc = "let pc = self.pc.last().unwrap();";
+                let pc = "let pc = self.pc.last().unwrap().bin();";
 
                 let inner = inputs
                     .into_iter()
                     .map(|(row, q)| {
-                        format!("if pc == &F::from({row}) {{\nself.query({q})}}")
+                        format!("if pc == {row} {{\nself.query({q})}}")
                     })
                     .collect::<Vec<_>>()
                     .join(" else ");
-                let inner = format!("{inner} else {{\nF::zero()\n}}");
-                let outer = format!("let prime = if self.{}.last().unwrap() == &F::one() {{\n{}\n}} else {{\nF::zero()\n}};", read, inner);
+                let inner = format!("{inner} else {{\n0.into()\n}}");
+                let outer = format!("let prime = if self.{}.last().unwrap().is_one() {{\n{}\n}} else {{\n0.into()\n}};", read, inner);
 
                 Some(format!("{pc}\n{outer}\nself.{}.push(prime);", free_value))
             })
@@ -499,7 +501,7 @@ fn run_instructions(&mut self) {
         let conds = self
             .instruction_flags()
             .into_iter()
-            .map(|i| format!("if {} == &F::one() {{\nself.instr_{}();\n}} else ", i, i))
+            .map(|i| format!("if {}.is_one() {{\nself.instr_{}();\n}} else ", i, i))
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -527,7 +529,7 @@ fn run_instructions(&mut self) {
             .state_regs()
             .into_iter()
             .chain(vec![self.pc()].into_iter())
-            .map(|r| format!("self.{}.push(F::zero());", r))
+            .map(|r| format!("self.{}.push(0.into());", r))
             .collect();
 
         format!("{}\n{}\n}}", init, regs.join("\n"))
@@ -650,7 +652,12 @@ pub fn execute<F: FieldElement>(
     vec![
     "#;
 
-        let tuple = |x: &String| format!("(\"main.{}\".to_string(), ctx.{}.iter().map(|x| x.fe()).collect()),", x, x);
+        let tuple = |x: &String| {
+            format!(
+                "(\"main.{}\".to_string(), ctx.{}.iter().map(|x| x.fe()).collect()),",
+                x, x
+            )
+        };
 
         println!("{:?}", self.wit_cols_vec);
         let all_tuples = self

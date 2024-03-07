@@ -150,6 +150,11 @@ enum Commands {
         #[arg(default_value_t = false)]
         just_execute: bool,
 
+        /// Just generate the Rust RISCV/Powdr PIL executor
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        generate: bool,
+
         /// Run a long execution in chunks (Experimental and not sound!)
         #[arg(short, long)]
         #[arg(default_value_t = false)]
@@ -212,6 +217,11 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         just_execute: bool,
+
+        /// Just generate the Rust RISCV/Powdr PIL executor
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        generate: bool,
 
         /// Run a long execution in chunks (Experimental and not sound!)
         #[arg(short, long)]
@@ -276,6 +286,11 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         just_execute: bool,
+
+        /// Just generate the Rust RISCV/Powdr PIL executor
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        generate: bool,
 
         /// Run a long execution in chunks (Experimental and not sound!)
         #[arg(short, long)]
@@ -479,6 +494,7 @@ fn run_command(command: Commands) {
             csv_mode,
             coprocessors,
             just_execute,
+            generate,
             continuations,
         } => {
             let coprocessors = match coprocessors {
@@ -499,6 +515,7 @@ fn run_command(command: Commands) {
                 csv_mode,
                 coprocessors,
                 just_execute,
+                generate,
                 continuations
             ))
         }
@@ -514,6 +531,7 @@ fn run_command(command: Commands) {
             csv_mode,
             coprocessors,
             just_execute,
+            generate,
             continuations,
         } => {
             assert!(!files.is_empty());
@@ -542,6 +560,7 @@ fn run_command(command: Commands) {
                 csv_mode,
                 coprocessors,
                 just_execute,
+                generate,
                 continuations
             ))
         }
@@ -569,6 +588,7 @@ fn run_command(command: Commands) {
             export_csv,
             csv_mode,
             just_execute,
+            generate,
             continuations,
         } => {
             call_with_field!(run_pil::<field>(
@@ -582,6 +602,7 @@ fn run_command(command: Commands) {
                 export_csv,
                 csv_mode,
                 just_execute,
+                generate,
                 continuations
             ))
         }
@@ -688,6 +709,7 @@ fn run_rust<F: FieldElement>(
     csv_mode: CsvRenderModeCLI,
     coprocessors: powdr_riscv::CoProcessors,
     just_execute: bool,
+    generate: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
     let (asm_file_path, asm_contents) = compile_rust(
@@ -714,7 +736,14 @@ fn run_rust<F: FieldElement>(
         export_csv,
         csv_mode,
     );
-    run(pipeline, inputs, prove_with, just_execute, continuations)?;
+    run(
+        pipeline,
+        inputs,
+        prove_with,
+        just_execute,
+        generate,
+        continuations,
+    )?;
     Ok(())
 }
 
@@ -731,6 +760,7 @@ fn run_riscv_asm<F: FieldElement>(
     csv_mode: CsvRenderModeCLI,
     coprocessors: powdr_riscv::CoProcessors,
     just_execute: bool,
+    generate: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
     let (asm_file_path, asm_contents) = compile_riscv_asm(
@@ -758,7 +788,14 @@ fn run_riscv_asm<F: FieldElement>(
         export_csv,
         csv_mode,
     );
-    run(pipeline, inputs, prove_with, just_execute, continuations)?;
+    run(
+        pipeline,
+        inputs,
+        prove_with,
+        just_execute,
+        generate,
+        continuations,
+    )?;
     Ok(())
 }
 
@@ -774,6 +811,7 @@ fn run_pil<F: FieldElement>(
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
     just_execute: bool,
+    generate: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
     let inputs = split_inputs::<F>(&inputs);
@@ -788,7 +826,14 @@ fn run_pil<F: FieldElement>(
         export_csv,
         csv_mode,
     );
-    run(pipeline, inputs, prove_with, just_execute, continuations)?;
+    run(
+        pipeline,
+        inputs,
+        prove_with,
+        just_execute,
+        generate,
+        continuations,
+    )?;
     Ok(())
 }
 
@@ -797,6 +842,7 @@ fn run<F: FieldElement>(
     inputs: Vec<F>,
     prove_with: Option<BackendType>,
     just_execute: bool,
+    generate: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
     let bootloader_inputs = if continuations {
@@ -806,7 +852,9 @@ fn run<F: FieldElement>(
         vec![]
     };
 
-    let generate_witness_and_prove_maybe = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
+    pipeline.compute_optimized_pil().unwrap();
+
+    if generate {
         pipeline.compute_analyzed_asm().unwrap();
 
         let main = pipeline
@@ -817,8 +865,6 @@ fn run<F: FieldElement>(
             .unwrap()
             .1
             .clone();
-
-        pipeline.compute_optimized_pil().unwrap();
 
         let pil = pipeline.optimized_pil().unwrap();
         let mut witgen = rust_witgen::RustWitgen::new(&pil, main);
@@ -831,24 +877,19 @@ fn run<F: FieldElement>(
         )
         .unwrap();
 
-        /*
-        pipeline.compute_fixed_cols().unwrap();
-        let fixed: HashMap<String, Vec<F>> = (*pipeline.fixed_cols().unwrap()).clone().into_iter().collect();
+        return Ok(());
+    }
 
+    let generate_witness_and_prove_maybe = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
         let start = Instant::now();
-        let witness = powdr_riscv_executor::pil::execute(2u32.pow(18) as usize, pipeline.data_callback().unwrap(), fixed);
+        pipeline.compute_witness().unwrap();
         let duration = start.elapsed();
-        log::info!("Witgen done in: {:?}", duration);
-        //println!("{witness:?}\n\n\n");
-        witness
-            .iter()
-            .for_each(|(name, values)| println!("col: {name}, values_len: {}", values.len()));
-        let pipeline = pipeline.set_witness(witness);
-        //pipeline.compute_witness().unwrap();
+        log::info!("Witgen (solver) done in: {:?}", duration);
+
         if let Some(backend) = prove_with {
             pipeline.with_backend(backend).compute_proof().unwrap();
         }
-        */
+
         Ok(())
     };
 
@@ -865,6 +906,34 @@ fn run<F: FieldElement>(
                 &[],
                 powdr_riscv_executor::ExecMode::Fast,
             );
+
+            // Run also Rust witgen
+            let pil = pipeline.optimized_pil().unwrap();
+            pipeline.compute_fixed_cols().unwrap();
+            let fixed: HashMap<String, Vec<F>> = (*pipeline.fixed_cols().unwrap())
+                .clone()
+                .into_iter()
+                .collect();
+
+            let start = Instant::now();
+            let witness = powdr_riscv_executor::pil::execute(
+                pil.degree() as usize,
+                pipeline.data_callback().unwrap(),
+                fixed,
+            );
+            let duration = start.elapsed();
+            log::info!("Witgen (auto Rust) done in: {:?}", duration);
+
+            //println!("{witness:?}\n\n\n");
+            /*
+            witness
+            .iter()
+            .for_each(|(name, values)| println!("col: {name}, values_len: {}", values.len()));
+            */
+            let pipeline = pipeline.set_witness(witness);
+            if let Some(backend) = prove_with {
+                pipeline.with_backend(backend).compute_proof().unwrap();
+            }
         }
         (false, true) => {
             rust_continuations(
