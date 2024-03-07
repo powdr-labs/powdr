@@ -419,4 +419,18 @@ mod test {
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
     }
+
+    #[test]
+    fn zero_sized_array() {
+        let input = r#"namespace N(65536);
+        col witness x[1];
+        col witness y[0];
+    "#;
+        let expectation = r#"namespace N(65536);
+    col witness x[1];
+    col witness y[0];
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        assert_eq!(optimized, expectation);
+    }
 }
