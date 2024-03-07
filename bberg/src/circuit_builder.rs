@@ -88,8 +88,9 @@ impl CircuitBuilder for BBFiles {
                 )
         };
         let check_lookup_transformation = |lookup_name: &String| {
+            let lookup_name_upper = lookup_name.to_uppercase();
             format!(
-                    "if (!evaluate_logderivative.template operator()<{lookup_name}_relation<FF>>(\"{lookup_name}\")) {{
+                    "if (!evaluate_logderivative.template operator()<{lookup_name}_relation<FF>>(\"{lookup_name_upper}\")) {{
                         return false;
                     }}"
                 )

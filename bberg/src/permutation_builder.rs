@@ -59,7 +59,7 @@ impl PermutationBuilder for BBFiles {
         let new_perms = perms
             .iter()
             .map(|perm| Permutation {
-                attribute: perm.attribute.clone(),
+                attribute: perm.attribute.clone().map(|att| att.to_lowercase()),
                 left: get_perm_side(&perm.left),
                 right: get_perm_side(&perm.right),
             })
@@ -129,9 +129,17 @@ fn create_permutation_settings_file(permutation: &Permutation) -> String {
         .expect("Inverse column name must be provided using attribute syntax");
 
     // This also will need to work for both sides of this !
-    let lhs_selector = permutation.left.selector.clone().expect("At least one selector must be provided");
+    let lhs_selector = permutation
+        .left
+        .selector
+        .clone()
+        .expect("At least one selector must be provided");
     // If a rhs selector is not present, then we use the rhs selector -- TODO(md): maybe we want the default to be always on?
-    let rhs_selector = permutation.right.selector.clone().unwrap_or(lhs_selector.clone());
+    let rhs_selector = permutation
+        .right
+        .selector
+        .clone()
+        .unwrap_or(lhs_selector.clone());
 
     let lhs_cols = permutation.left.cols.clone();
     let rhs_cols = permutation.right.cols.clone();
