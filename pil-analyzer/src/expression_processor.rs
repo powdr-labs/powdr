@@ -17,6 +17,7 @@ use crate::AnalysisDriver;
 pub struct ExpressionProcessor<T, D: AnalysisDriver<T>> {
     driver: D,
     local_variables: HashMap<String, u64>,
+    local_variable_counter: u64,
     _phantom: PhantomData<T>,
 }
 
@@ -25,6 +26,7 @@ impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
         Self {
             driver,
             local_variables: Default::default(),
+            local_variable_counter: 0,
             _phantom: PhantomData,
         }
     }
@@ -152,23 +154,20 @@ impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
         params: &[String],
         expression: ::powdr_ast::parsed::Expression<T>,
     ) -> Expression<T> {
-        let previous_local_vars = std::mem::take(&mut self.local_variables);
+        let previous_local_vars = self.local_variables.clone();
 
-        assert!(self.local_variables.is_empty());
-        self.local_variables = params
-            .iter()
-            .enumerate()
-            .map(|(i, p)| (p.clone(), i as u64))
-            .collect();
-        // Re-add the outer local variables if we do not overwrite them
-        // and increase their index by the number of parameters.
-        for (name, index) in &previous_local_vars {
-            self.local_variables
-                .entry(name.clone())
-                .or_insert(index + params.len() as u64);
-        }
+        // Add the new local variables, potentially overwriting existing variables.
+        self.local_variables.extend(
+            params
+                .iter()
+                .zip(self.local_variable_counter..)
+                .map(|(p, i)| (p.clone(), i)),
+        );
+        self.local_variable_counter += params.len() as u64;
         let processed_value = self.process_expression(expression);
+        // Reset the local variable mapping.
         self.local_variables = previous_local_vars;
+        self.local_variable_counter -= params.len() as u64;
         processed_value
     }
 
