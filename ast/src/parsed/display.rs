@@ -341,9 +341,20 @@ impl<Ref: Display> Display for IfExpression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "if {} {{ {} }} else {{ {} }}",
+            "if {} {} else {}",
             self.condition, self.body, self.else_body
         )
+    }
+}
+
+impl<Ref: Display> Display for LetStatementInsideBlock<Ref> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "let {}", self.name)?;
+        if let Some(v) = &self.value {
+            write!(f, " = {v};")
+        } else {
+            write!(f, ";")
+        }
     }
 }
 
@@ -544,6 +555,16 @@ impl<Ref: Display> Display for Expression<Ref> {
                 write!(f, "}}")
             }
             Expression::IfExpression(e) => write!(f, "{e}"),
+            Expression::BlockExpression(statements, expr) => {
+                if statements.is_empty() {
+                    write!(f, "{{ {expr} }}")
+                } else {
+                    writeln!(f, "{{")?;
+                    write_items_indented(f, statements)?;
+                    write_indented_by(f, expr, 1)?;
+                    write!(f, "\n}}")
+                }
+            }
         }
     }
 }

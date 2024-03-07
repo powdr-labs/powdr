@@ -141,7 +141,7 @@ PolynomialConstantDefinition: PilStatement = {
 }
 
 FunctionDefinition: FunctionDefinition = {
-    "(" <params:ParameterList> ")" "{" <body:BoxedExpression> "}" => FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{params, body})),
+    "(" <params:ParameterList> ")" <body:BracedExpression> => FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{params, body})),
     "=" <ArrayLiteralExpression> => FunctionDefinition::Array(<>),
 }
 
@@ -557,6 +557,7 @@ Term: Box<Expression> = {
     StringLiteral => Box::new(Expression::String(<>)),
     MatchExpression,
     IfExpression,
+    BlockExpression,
     "[" <items:ExpressionList> "]" => Box::new(Expression::ArrayLiteral(ArrayLiteral{items})),
     "(" <head:Expression> "," <tail:ExpressionList> ")" => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(list)) },
     "(" <BoxedExpression> ")",
@@ -596,9 +597,22 @@ MatchPattern: MatchPattern = {
 
 IfExpression: Box<Expression> = {
     "if" <condition:BoxedExpression>
-        "{" <body:BoxedExpression> "}"
+        <body:BracedExpression>
         "else"
-        "{" <else_body:BoxedExpression> "}" => Box::new(Expression::IfExpression(IfExpression{<>}))
+        <else_body:BracedExpression> => Box::new(Expression::IfExpression(IfExpression{<>}))
+}
+
+BlockExpression: Box<Expression> = {
+    "{" <LetStatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>))
+}
+
+BracedExpression: Box<Expression> = {
+    "{" <LetStatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>)),
+    "{" <BoxedExpression> "}" => Box::new(Expression::BlockExpression(vec![], <>))
+}
+
+LetStatementInsideBlock: LetStatementInsideBlock = {
+    "let" <name:Identifier> <value:("=" <Expression>)?> ";" => LetStatementInsideBlock{<>}
 }
 
 // ---------------------------- Type Declarations -----------------------------

@@ -4,7 +4,8 @@ use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
-        MatchArm, MatchPattern, NamespacedPolynomialReference, SelectedExpressions,
+        LetStatementInsideBlock, MatchArm, MatchPattern, NamespacedPolynomialReference,
+        SelectedExpressions,
     },
 };
 use powdr_number::DegreeType;
@@ -133,6 +134,9 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
                 body: Box::new(self.process_expression(*body)),
                 else_body: Box::new(self.process_expression(*else_body)),
             }),
+            PExpression::BlockExpression(statements, expr) => {
+                self.process_block_expression(statements, *expr)
+            }
             PExpression::FreeInput(_) => panic!(),
         }
     }
@@ -167,6 +171,30 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
         self.local_variables = previous_local_vars;
         self.local_variable_counter -= params.len() as u64;
         processed_value
+    }
+
+    fn process_block_expression(
+        &mut self,
+        statements: Vec<LetStatementInsideBlock>,
+        expr: ::powdr_ast::parsed::Expression,
+    ) -> Expression {
+        let previous_local_vars = self.local_variables.clone();
+
+        let processed_statements = statements
+            .into_iter()
+            .map(|LetStatementInsideBlock { name, value }| {
+                let value = value.map(|v| self.process_expression(v));
+                let id = self.local_variable_counter;
+                self.local_variables.insert(name.clone(), id);
+                self.local_variable_counter += 1;
+                LetStatementInsideBlock { name, value }
+            })
+            .collect::<Vec<_>>();
+
+        let processed_expr = self.process_expression(expr);
+        self.local_variables = previous_local_vars;
+        self.local_variable_counter -= processed_statements.len() as u64;
+        Expression::BlockExpression(processed_statements, Box::new(processed_expr))
     }
 
     pub fn process_namespaced_polynomial_reference(

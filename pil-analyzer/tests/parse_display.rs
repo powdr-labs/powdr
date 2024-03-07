@@ -478,3 +478,38 @@ namespace Main(8);
 "#;
     assert_eq!(formatted, expected);
 }
+
+#[test]
+fn let_inside_block() {
+    let input = "
+    namespace Main(8);
+        let w;
+        let t: int -> expr = |i| match i {
+            0 => { let x; x },
+            1 => w,
+            _ => if (i < 3) { let y; y } else { w },
+        };
+        {
+            let z;
+            z = 9
+        };
+    ";
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = "namespace Main(8);
+    col witness w;
+    let t: int -> expr = (|i| match i {
+        0 => {
+            let x;
+            x
+        },
+        1 => Main.w,
+        _ => if (i < 3) {
+            let y;
+            y
+        } else { Main.w },
+    });
+    col witness z;
+    Main.z = 9;
+";
+    assert_eq!(formatted, expected);
+}

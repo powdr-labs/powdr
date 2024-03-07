@@ -15,7 +15,7 @@ use powdr_ast::parsed::{
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall, IndexAccess,
-    LambdaExpression, MatchArm, PilStatement, TypedExpression,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, PilStatement, TypedExpression,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -173,6 +173,7 @@ fn free_inputs_in_expression<'a>(
         Expression::IndexAccess(_) => todo!(),
         Expression::MatchExpression(_, _) => todo!(),
         Expression::IfExpression(_) => todo!(),
+        Expression::BlockExpression(_, _) => todo!(),
     }
 }
 
@@ -207,6 +208,7 @@ fn free_inputs_in_expression_mut<'a>(
         Expression::IndexAccess(_) => todo!(),
         Expression::MatchExpression(_, _) => todo!(),
         Expression::IfExpression(_) => todo!(),
+        Expression::BlockExpression(_, _) => todo!(),
     }
 }
 
@@ -608,6 +610,16 @@ fn check_expression(
             check_expression(location, condition, state, local_variables)?;
             check_expression(location, body, state, local_variables)?;
             check_expression(location, else_body, state, local_variables)
+        }
+        Expression::BlockExpression(statments, expr) => {
+            let mut local_variables = local_variables.clone();
+            for LetStatementInsideBlock { name, value } in statments {
+                if let Some(value) = value {
+                    check_expression(location, value, state, &local_variables)?;
+                }
+                local_variables.insert(name.clone());
+            }
+            check_expression(location, expr, state, &local_variables)
         }
     }
 }

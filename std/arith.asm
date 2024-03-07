@@ -102,21 +102,28 @@ machine Arith(CLK32_31, operation_id){
     };
 
     let q1_hint = || if is_ec_operation() == 1 {
-        // TODO: Make this more readable once we have let statements
-        (|x1, x2, s|
+        // TODO remove braces
+        {
+            let x1 = x1_int();
+            let x2 = x2_int();
+            let s = s_int();
             compute_q1(x1, x2, compute_x3_int(x1, x2, s), s)
-        )(x1_int(), x2_int(), s_int())
+        }
     } else {
         0
     };
 
     let q2_hint = || if is_ec_operation() == 1 {
-        // TODO: Make this more readable once we have let statements
-        (|x1, y1, x2, s|
-            (|x3|
-                compute_q2(x1, y1, x3, compute_y3_int(x1, y1, x3, s), s)
-            )(compute_x3_int(x1, x2, s))
-        )(x1_int(), y1_int(), x2_int(), s_int())
+        // TODO remove braces
+        {
+            let x1 = x1_int();
+            let x2 = x2_int();
+            let y1 = y1_int();
+            let s = s_int();
+            let x3 = compute_x3_int(x1, x2, s);
+            let y3 = compute_y3_int(x1, y1, x3, s);
+            compute_q2(x1, y1, x3, y3, s)
+        }
     } else {
         0
     };
