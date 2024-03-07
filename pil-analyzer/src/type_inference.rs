@@ -472,9 +472,10 @@ impl TypeChecker {
                 let param_types = (0..params.len())
                     .map(|_| self.new_type_var())
                     .collect::<Vec<_>>();
-                self.push_new_local_vars(param_types);
+                let old_len = self.local_var_types.len();
+                self.local_var_types.extend(param_types.clone());
                 let body_type_result = self.infer_type_of_expression(body);
-                let param_types = self.pop_local_var_types(params.len());
+                self.local_var_types.truncate(old_len);
                 let body_type = body_type_result?;
                 Type::Function(FunctionType {
                     params: param_types,
@@ -712,13 +713,5 @@ impl TypeChecker {
 
     pub fn local_var_type(&self, id: u64) -> Type {
         self.local_var_types[id as usize].clone()
-    }
-
-    pub fn push_new_local_vars(&mut self, types: Vec<Type>) {
-        self.local_var_types = [types, self.local_var_types.clone()].concat();
-    }
-
-    pub fn pop_local_var_types(&mut self, count: usize) -> Vec<Type> {
-        self.local_var_types.drain(0..count).collect()
     }
 }

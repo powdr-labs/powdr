@@ -69,7 +69,7 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
                 )))?
             }
 
-            let local_vars = arguments.into_iter().chain(environment).collect::<Vec<_>>();
+            let local_vars = environment.into_iter().chain(arguments).collect::<Vec<_>>();
 
             internal::evaluate(&lambda.body, &local_vars, &generic_args, symbols)
         }
