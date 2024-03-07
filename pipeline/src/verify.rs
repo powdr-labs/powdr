@@ -25,19 +25,23 @@ pub fn verify(temp_dir: &Path, name: &str, constants_name: Option<&str>) -> Resu
         ])
         .output()
         .expect("failed to run pil verifier");
-    if !verifier_output.status.success() {
+
+    let output = String::from_utf8_lossy(&verifier_output.stdout);
+    let result = if !verifier_output.status.success() {
+        Err("Pil verifier run was unsuccessful.".to_string())
+    } else if !output.trim().ends_with("PIL OK!!") {
+        Err("Verified did not say 'PIL OK' for {name}.".to_string())
+    } else {
+        Ok(())
+    };
+
+    if result.is_err() {
         log::error!(
             "Pil verifier run was unsuccessful.\nStdout: {}\nStderr: {}\n",
-            String::from_utf8_lossy(&verifier_output.stdout),
+            output,
             String::from_utf8_lossy(&verifier_output.stderr)
         );
-        return Err("Pil verifier run was unsuccessful.".to_string());
-    } else {
-        let output = String::from_utf8(verifier_output.stdout).unwrap();
-        log::error!("PIL verifier output: {}", output);
-        if !output.trim().ends_with("PIL OK!!") {
-            return Err("Verified did not say 'PIL OK' for {name}.".to_string());
-        }
     }
-    Ok(())
+
+    result
 }
