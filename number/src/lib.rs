@@ -17,7 +17,7 @@ pub use bn254::Bn254Field;
 pub use goldilocks::GoldilocksField;
 pub use traits::KnownField;
 
-pub use num_bigint::{BigInt, BigUint};
+pub use ibig::{IBig as BigInt, UBig as BigUint};
 pub use traits::{FieldElement, LargeInt};
 /// An arbitrary precision big integer, to be used as a last recourse
 
@@ -25,9 +25,9 @@ pub use traits::{FieldElement, LargeInt};
 pub type DegreeType = u64;
 
 /// Returns Some(i) if n == 2**i and None otherwise.
-pub fn log2_exact(n: BigUint) -> Option<u64> {
+pub fn log2_exact(n: BigUint) -> Option<usize> {
     n.trailing_zeros()
-        .filter(|zeros| n == BigUint::from(1u32) << zeros)
+        .filter(|zeros| n == (BigUint::from(1u32) << zeros))
 }
 
 #[cfg(test)]

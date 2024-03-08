@@ -5,7 +5,7 @@ macro_rules! powdr_field {
             BigUint, DegreeType,
         };
         use ark_ff::{BigInteger, Field, PrimeField};
-        use num_traits::{ConstOne, ConstZero, Num, One, Zero};
+        use num_traits::{ConstOne, ConstZero, One, Zero};
         use std::fmt;
         use std::ops::*;
         use std::str::FromStr;
@@ -70,25 +70,23 @@ macro_rules! powdr_field {
             }
         }
 
-        impl Shl<u64> for LargeIntImpl {
+        impl Shl<usize> for LargeIntImpl {
             type Output = Self;
 
-            fn shl(self, other: u64) -> Self {
-                // TODO: avoid using BigUint
-                Self {
-                    value: (BigUint::from(self.value) << other).try_into().unwrap(),
-                }
+            fn shl(self, other: usize) -> Self {
+                (BigUint::from_le_bytes(&self.value.to_bytes_le()) << other)
+                    .try_into()
+                    .unwrap()
             }
         }
 
-        impl Shr<u64> for LargeIntImpl {
+        impl Shr<usize> for LargeIntImpl {
             type Output = Self;
 
-            fn shr(self, other: u64) -> Self {
-                // TODO: avoid using BigUint
-                Self {
-                    value: (BigUint::from(self.value) >> other).try_into().unwrap(),
-                }
+            fn shr(self, other: usize) -> Self {
+                (BigUint::from_le_bytes(&self.value.to_bytes_le()) >> other)
+                    .try_into()
+                    .unwrap()
             }
         }
 
@@ -206,6 +204,7 @@ macro_rules! powdr_field {
             type Error = ();
 
             fn try_from(n: BigUint) -> Result<Self, ()> {
+                let n = num_bigint::BigUint::from_bytes_le(&n.to_le_bytes());
                 Ok(Self {
                     value: <$ark_type as PrimeField>::BigInt::try_from(n)?,
                 })
@@ -216,10 +215,10 @@ macro_rules! powdr_field {
             const NUM_BITS: usize = <$ark_type as PrimeField>::BigInt::NUM_LIMBS * 64;
             #[inline]
             fn to_arbitrary_integer(self) -> BigUint {
-                self.value.into()
+                BigUint::from_le_bytes(&self.value.to_bytes_le())
             }
-            fn num_bits(&self) -> u32 {
-                self.value.num_bits()
+            fn num_bits(&self) -> usize {
+                self.value.num_bits() as usize
             }
             #[inline]
             fn one() -> Self {
@@ -251,6 +250,7 @@ macro_rules! powdr_field {
 
         impl From<BigUint> for $name {
             fn from(n: BigUint) -> Self {
+                let n = num_bigint::BigUint::from_bytes_le(&n.to_le_bytes());
                 Self { value: n.into() }
             }
         }
@@ -297,7 +297,8 @@ macro_rules! powdr_field {
             type Err = String;
             fn from_str(s: &str) -> Result<Self, Self::Err> {
                 let n = BigUint::from_str(s).map_err(|e| e.to_string())?;
-                if n >= <$ark_type>::MODULUS.into() {
+                let modulus = <$ark_type>::MODULUS.to_bytes_le();
+                if n >= BigUint::from_le_bytes(&modulus) {
                     Err(format!("Decimal number \"{s}\" too large for field."))
                 } else {
                     Ok(n.into())
@@ -321,7 +322,8 @@ macro_rules! powdr_field {
 
             fn from_str_radix(s: &str, radix: u32) -> Result<Self, String> {
                 let n = BigUint::from_str_radix(s, radix).map_err(|e| e.to_string())?;
-                if n >= <$ark_type>::MODULUS.into() {
+                let modulus = <$ark_type>::MODULUS.to_bytes_le();
+                if n >= BigUint::from_le_bytes(&modulus) {
                     Err(format!("Hexadecimal number \"0x{s}\" too large for field."))
                 } else {
                     Ok(n.into())

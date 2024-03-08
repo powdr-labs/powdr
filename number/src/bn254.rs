@@ -10,7 +10,6 @@ mod tests {
 
     use super::Bn254Field;
     use crate::{traits::int_from_hex_str, FieldElement};
-    use num_traits::Num;
     use test_log::test;
 
     #[test]
