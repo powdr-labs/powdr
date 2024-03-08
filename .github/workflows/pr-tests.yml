@@ -29,9 +29,7 @@ jobs:
           ~/.cargo/git/db/
           target/
           Cargo.lock
-        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-pr-tests-
+        key: ${{ runner.os }}-cargo-pr-tests
     - name: Install Rust toolchain 1.74 (with clippy and rustfmt)
       run: rustup toolchain install 1.74-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.74-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.74-x86_64-unknown-linux-gnu
     - name: Lint

@@ -36,4 +36,4 @@ jobs:
           ~/.cargo/git/db/
           target/
           Cargo.lock
-        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-pr-tests
