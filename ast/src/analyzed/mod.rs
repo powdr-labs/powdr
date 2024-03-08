@@ -181,6 +181,19 @@ impl<T> Analyzed<T> {
                                     },
                                 );
                             }
+                            // we still need a replacement for zero sized array,
+                            // but array_elements() won't return any items in this case
+                            // TODO: handle this differently? https://github.com/powdr-labs/powdr/issues/1142
+                            if let Some(0) = poly.length {
+                                let poly_id = poly.into();
+                                replacements.insert(
+                                    poly_id,
+                                    PolyID {
+                                        id: poly.id - shift,
+                                        ..poly_id
+                                    },
+                                );
+                            }
                             (shift, replacements)
                         }
                     },
