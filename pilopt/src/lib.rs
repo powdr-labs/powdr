@@ -4,16 +4,12 @@
 use std::collections::{BTreeMap, HashSet};
 
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperator, Reference,
+    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
+    Analyzed, Expression, FunctionValueDefinition, IdentityKind, PolyID, PolynomialReference,
+    Reference,
 };
-use powdr_ast::analyzed::{
-    AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, IdentityKind, PolyID,
-    PolynomialReference,
-};
-use powdr_ast::parsed::visitor::ExpressionVisitable;
-
-use powdr_ast::parsed::TypeName;
-use powdr_number::FieldElement;
+use powdr_ast::parsed::{visitor::ExpressionVisitable, TypeName};
+use powdr_number::{BigUint, FieldElement};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
@@ -60,7 +56,7 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 
 /// Checks if a fixed column defined through a function has a constant
 /// value and returns it in that case.
-fn constant_value<T: FieldElement>(function: &FunctionValueDefinition<T>) -> Option<T> {
+fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
     match function {
         FunctionValueDefinition::Array(expressions) => {
             // TODO use a proper evaluator at some point,
@@ -75,7 +71,7 @@ fn constant_value<T: FieldElement>(function: &FunctionValueDefinition<T>) -> Opt
                 });
             let first = values.next()??;
             if values.all(|x| x == Some(first)) {
-                Some(*first)
+                Some(first.clone())
             } else {
                 None
             }
@@ -263,9 +259,9 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
 /// Substitutes all references to certain polynomials by the given field elements.
 fn substitute_polynomial_references<T: FieldElement>(
     pil_file: &mut Analyzed<T>,
-    substitutions: &BTreeMap<PolyID, T>,
+    substitutions: &BTreeMap<PolyID, BigUint>,
 ) {
-    pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression<_>| {
+    pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression| {
         if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             poly_id: Some(poly_id),
@@ -273,20 +269,22 @@ fn substitute_polynomial_references<T: FieldElement>(
         })) = e
         {
             if let Some(value) = substitutions.get(poly_id) {
-                *e = Expression::Number(*value, Some(TypeName::Fe));
+                *e = Expression::Number(value.clone(), Some(TypeName::Fe));
             }
         }
     });
     pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
         if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
             if let Some(value) = substitutions.get(poly_id) {
-                *e = AlgebraicExpression::Number(*value);
+                *e = AlgebraicExpression::Number(T::checked_from(value.clone()).unwrap());
             }
         }
     });
 }
 
-fn constrained_to_constant<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Option<(PolyID, T)> {
+fn constrained_to_constant<T: FieldElement>(
+    expr: &AlgebraicExpression<T>,
+) -> Option<(PolyID, BigUint)> {
     match expr {
         AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) => {
             match (left.as_ref(), right.as_ref()) {
@@ -294,7 +292,7 @@ fn constrained_to_constant<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Op
                 | (AlgebraicExpression::Reference(poly), AlgebraicExpression::Number(n)) => {
                     if poly.is_witness() {
                         // This also works if "next" is true.
-                        return Some((poly.poly_id, *n));
+                        return Some((poly.poly_id, n.to_arbitrary_integer()));
                     }
                 }
                 _ => {}
@@ -302,7 +300,7 @@ fn constrained_to_constant<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Op
         }
         AlgebraicExpression::Reference(poly) => {
             if poly.is_witness() {
-                return Some((poly.poly_id, 0.into()));
+                return Some((poly.poly_id, 0u32.into()));
             }
         }
         _ => {}

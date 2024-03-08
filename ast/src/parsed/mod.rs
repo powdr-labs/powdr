@@ -11,7 +11,7 @@ use std::{
     ops,
 };
 
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{BigUint, DegreeType};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -19,21 +19,21 @@ use self::asm::{Part, SymbolPath};
 use crate::SourceRef;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct PILFile<T>(pub Vec<PilStatement<T>>);
+pub struct PILFile(pub Vec<PilStatement>);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum PilStatement<T> {
+pub enum PilStatement {
     /// File name
     Include(SourceRef, String),
     /// Name of namespace and polynomial degree (constant)
-    Namespace(SourceRef, SymbolPath, Expression<T>),
+    Namespace(SourceRef, SymbolPath, Expression),
     LetStatement(
         SourceRef,
         String,
-        Option<TypeScheme<Expression<T>>>,
-        Option<Expression<T>>,
+        Option<TypeScheme<Expression>>,
+        Option<Expression>,
     ),
-    PolynomialDefinition(SourceRef, String, Expression<T>),
+    PolynomialDefinition(SourceRef, String, Expression),
     PublicDeclaration(
         SourceRef,
         /// The name of the public value.
@@ -41,33 +41,29 @@ pub enum PilStatement<T> {
         /// The polynomial/column that contains the public value.
         NamespacedPolynomialReference,
         /// If the polynomial is an array, this is the array element index.
-        Option<Expression<T>>,
+        Option<Expression>,
         /// The row number of the public value.
-        Expression<T>,
+        Expression,
     ),
-    PolynomialConstantDeclaration(SourceRef, Vec<PolynomialName<T>>),
-    PolynomialConstantDefinition(SourceRef, String, FunctionDefinition<T>),
-    PolynomialCommitDeclaration(
-        SourceRef,
-        Vec<PolynomialName<T>>,
-        Option<FunctionDefinition<T>>,
-    ),
+    PolynomialConstantDeclaration(SourceRef, Vec<PolynomialName>),
+    PolynomialConstantDefinition(SourceRef, String, FunctionDefinition),
+    PolynomialCommitDeclaration(SourceRef, Vec<PolynomialName>, Option<FunctionDefinition>),
     PlookupIdentity(
         SourceRef,
-        SelectedExpressions<Expression<T>>,
-        SelectedExpressions<Expression<T>>,
+        SelectedExpressions<Expression>,
+        SelectedExpressions<Expression>,
     ),
     PermutationIdentity(
         SourceRef,
-        SelectedExpressions<Expression<T>>,
-        SelectedExpressions<Expression<T>>,
+        SelectedExpressions<Expression>,
+        SelectedExpressions<Expression>,
     ),
-    ConnectIdentity(SourceRef, Vec<Expression<T>>, Vec<Expression<T>>),
-    ConstantDefinition(SourceRef, String, Expression<T>),
-    Expression(SourceRef, Expression<T>),
+    ConnectIdentity(SourceRef, Vec<Expression>, Vec<Expression>),
+    ConstantDefinition(SourceRef, String, Expression),
+    Expression(SourceRef, Expression),
 }
 
-impl<T> PilStatement<T> {
+impl PilStatement {
     /// If the statement is a symbol definition, returns all (local) names of defined symbols.
     pub fn symbol_definition_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
         match self {
@@ -91,7 +87,7 @@ impl<T> PilStatement<T> {
     }
 
     /// Returns an iterator over all (top-level) expressions in this statement.
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression<T>> + '_> {
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
             PilStatement::PlookupIdentity(_, left, right)
             | PilStatement::PermutationIdentity(_, left, right) => {
@@ -123,7 +119,7 @@ impl<T> PilStatement<T> {
     }
 
     /// Returns an iterator over all (top-level) expressions in this statement.
-    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<T>> + '_> {
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
             PilStatement::PlookupIdentity(_, left, right)
             | PilStatement::PermutationIdentity(_, left, right) => {
@@ -185,29 +181,25 @@ impl<Expr> SelectedExpressions<Expr> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub enum Expression<T, Ref = NamespacedPolynomialReference> {
+pub enum Expression<Ref = NamespacedPolynomialReference> {
     Reference(Ref),
     PublicReference(String),
     // A number literal and its type. The type is always elementary, so we use NoArrayLengths for the generic param.
-    Number(T, Option<TypeName<NoArrayLengths>>),
+    Number(#[schemars(skip)] BigUint, Option<TypeName<NoArrayLengths>>),
     String(String),
-    Tuple(Vec<Expression<T, Ref>>),
-    LambdaExpression(LambdaExpression<T, Ref>),
-    ArrayLiteral(ArrayLiteral<T, Ref>),
-    BinaryOperation(
-        Box<Expression<T, Ref>>,
-        BinaryOperator,
-        Box<Expression<T, Ref>>,
-    ),
-    UnaryOperation(UnaryOperator, Box<Expression<T, Ref>>),
-    IndexAccess(IndexAccess<T, Ref>),
-    FunctionCall(FunctionCall<T, Ref>),
-    FreeInput(Box<Expression<T, Ref>>),
-    MatchExpression(Box<Expression<T, Ref>>, Vec<MatchArm<T, Ref>>),
-    IfExpression(IfExpression<T, Ref>),
+    Tuple(Vec<Expression<Ref>>),
+    LambdaExpression(LambdaExpression<Ref>),
+    ArrayLiteral(ArrayLiteral<Ref>),
+    BinaryOperation(Box<Expression<Ref>>, BinaryOperator, Box<Expression<Ref>>),
+    UnaryOperation(UnaryOperator, Box<Expression<Ref>>),
+    IndexAccess(IndexAccess<Ref>),
+    FunctionCall(FunctionCall<Ref>),
+    FreeInput(Box<Expression<Ref>>),
+    MatchExpression(Box<Expression<Ref>>, Vec<MatchArm<Ref>>),
+    IfExpression(IfExpression<Ref>),
 }
 
-impl<T, Ref> Expression<T, Ref> {
+impl<Ref> Expression<Ref> {
     pub fn new_binary(left: Self, op: BinaryOperator, right: Self) -> Self {
         Expression::BinaryOperation(Box::new(left), op, Box::new(right))
     }
@@ -228,52 +220,58 @@ impl<T, Ref> Expression<T, Ref> {
     }
 }
 
-impl<T, Ref> ops::Add for Expression<T, Ref> {
-    type Output = Expression<T, Ref>;
+impl From<u32> for Expression {
+    fn from(value: u32) -> Self {
+        Expression::Number(value.into(), None)
+    }
+}
+
+impl From<BigUint> for Expression {
+    fn from(value: BigUint) -> Self {
+        Expression::Number(value, None)
+    }
+}
+
+impl<Ref> ops::Add for Expression<Ref> {
+    type Output = Expression<Ref>;
 
     fn add(self, rhs: Self) -> Self::Output {
         Self::new_binary(self, BinaryOperator::Add, rhs)
     }
 }
 
-impl<T, Ref> ops::Sub for Expression<T, Ref> {
-    type Output = Expression<T, Ref>;
+impl<Ref> ops::Sub for Expression<Ref> {
+    type Output = Expression<Ref>;
 
     fn sub(self, rhs: Self) -> Self::Output {
         Self::new_binary(self, BinaryOperator::Sub, rhs)
     }
 }
-impl<T, Ref> ops::Mul for Expression<T, Ref> {
-    type Output = Expression<T, Ref>;
+impl<Ref> ops::Mul for Expression<Ref> {
+    type Output = Expression<Ref>;
 
     fn mul(self, rhs: Self) -> Self::Output {
         Self::new_binary(self, BinaryOperator::Mul, rhs)
     }
 }
 
-impl<T: FieldElement, Ref> std::iter::Sum for Expression<T, Ref> {
+impl<Ref> std::iter::Sum for Expression<Ref> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         iter.reduce(|a, b| a + b)
-            .unwrap_or_else(|| T::zero().into())
+            .unwrap_or_else(|| Expression::Number(0u32.into(), None))
     }
 }
 
-impl<T: FieldElement, Ref> From<T> for Expression<T, Ref> {
-    fn from(value: T) -> Self {
-        Expression::Number(value, None)
-    }
-}
-
-impl<T> From<NamespacedPolynomialReference> for Expression<T> {
+impl From<NamespacedPolynomialReference> for Expression {
     fn from(value: NamespacedPolynomialReference) -> Self {
         Self::Reference(value)
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
-pub struct PolynomialName<T> {
+pub struct PolynomialName {
     pub name: String,
-    pub array_size: Option<Expression<T>>,
+    pub array_size: Option<Expression>,
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
@@ -300,14 +298,14 @@ impl NamespacedPolynomialReference {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
-pub struct LambdaExpression<T, Ref = NamespacedPolynomialReference> {
+pub struct LambdaExpression<Ref = NamespacedPolynomialReference> {
     pub params: Vec<String>,
-    pub body: Box<Expression<T, Ref>>,
+    pub body: Box<Expression<Ref>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
-pub struct ArrayLiteral<T, Ref = NamespacedPolynomialReference> {
-    pub items: Vec<Expression<T, Ref>>,
+pub struct ArrayLiteral<Ref = NamespacedPolynomialReference> {
+    pub items: Vec<Expression<Ref>>,
 }
 
 #[derive(
@@ -356,51 +354,51 @@ pub enum BinaryOperator {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct IndexAccess<T, Ref = NamespacedPolynomialReference> {
-    pub array: Box<Expression<T, Ref>>,
-    pub index: Box<Expression<T, Ref>>,
+pub struct IndexAccess<Ref = NamespacedPolynomialReference> {
+    pub array: Box<Expression<Ref>>,
+    pub index: Box<Expression<Ref>>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct FunctionCall<T, Ref = NamespacedPolynomialReference> {
-    pub function: Box<Expression<T, Ref>>,
-    pub arguments: Vec<Expression<T, Ref>>,
+pub struct FunctionCall<Ref = NamespacedPolynomialReference> {
+    pub function: Box<Expression<Ref>>,
+    pub arguments: Vec<Expression<Ref>>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MatchArm<T, Ref = NamespacedPolynomialReference> {
-    pub pattern: MatchPattern<T, Ref>,
-    pub value: Expression<T, Ref>,
+pub struct MatchArm<Ref = NamespacedPolynomialReference> {
+    pub pattern: MatchPattern<Ref>,
+    pub value: Expression<Ref>,
 }
 
 /// A pattern for a match arm. We could extend this in the future.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub enum MatchPattern<T, Ref = NamespacedPolynomialReference> {
+pub enum MatchPattern<Ref = NamespacedPolynomialReference> {
     CatchAll,
-    Pattern(Expression<T, Ref>),
+    Pattern(Expression<Ref>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct IfExpression<T, Ref = NamespacedPolynomialReference> {
-    pub condition: Box<Expression<T, Ref>>,
-    pub body: Box<Expression<T, Ref>>,
-    pub else_body: Box<Expression<T, Ref>>,
+pub struct IfExpression<Ref = NamespacedPolynomialReference> {
+    pub condition: Box<Expression<Ref>>,
+    pub body: Box<Expression<Ref>>,
+    pub else_body: Box<Expression<Ref>>,
 }
 
 /// The definition of a function (excluding its name):
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum FunctionDefinition<T> {
+pub enum FunctionDefinition {
     /// Array expression.
-    Array(ArrayExpression<T>),
+    Array(ArrayExpression),
     /// Prover query. The Expression usually is a LambdaExpression.
-    Query(Expression<T>),
+    Query(Expression),
     /// Generic expression
-    Expression(Expression<T>),
+    Expression(Expression),
 }
 
-impl<T> FunctionDefinition<T> {
+impl FunctionDefinition {
     /// Returns an iterator over all (top-level) expressions.
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression<T>> + '_> {
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
             FunctionDefinition::Array(ae) => ae.expressions(),
             FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => Box::new(once(e)),
@@ -408,7 +406,7 @@ impl<T> FunctionDefinition<T> {
     }
 
     /// Returns an iterator over all (top-level) expressions.
-    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<T>> + '_> {
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
             FunctionDefinition::Array(ae) => ae.expressions_mut(),
             FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => Box::new(once(e)),
@@ -417,18 +415,18 @@ impl<T> FunctionDefinition<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum ArrayExpression<T> {
-    Value(Vec<Expression<T>>),
-    RepeatedValue(Vec<Expression<T>>),
-    Concat(Box<ArrayExpression<T>>, Box<ArrayExpression<T>>),
+pub enum ArrayExpression {
+    Value(Vec<Expression>),
+    RepeatedValue(Vec<Expression>),
+    Concat(Box<ArrayExpression>, Box<ArrayExpression>),
 }
 
-impl<T: FieldElement> ArrayExpression<T> {
-    pub fn value(v: Vec<Expression<T>>) -> Self {
+impl ArrayExpression {
+    pub fn value(v: Vec<Expression>) -> Self {
         Self::Value(v)
     }
 
-    pub fn repeated_value(v: Vec<Expression<T>>) -> Self {
+    pub fn repeated_value(v: Vec<Expression>) -> Self {
         Self::RepeatedValue(v)
     }
 
@@ -436,15 +434,15 @@ impl<T: FieldElement> ArrayExpression<T> {
         Self::Concat(Box::new(self), Box::new(other))
     }
 
-    fn pad_with(self, pad: Expression<T>) -> Self {
+    fn pad_with(self, pad: Expression) -> Self {
         Self::concat(self, Self::repeated_value(vec![pad]))
     }
 
     pub fn pad_with_zeroes(self) -> Self {
-        self.pad_with(Expression::Number(0.into(), None))
+        self.pad_with(Expression::Number(0u32.into(), None))
     }
 
-    fn last(&self) -> Option<&Expression<T>> {
+    fn last(&self) -> Option<&Expression> {
         match self {
             ArrayExpression::Value(v) => v.last(),
             ArrayExpression::RepeatedValue(v) => v.last(),
@@ -458,7 +456,7 @@ impl<T: FieldElement> ArrayExpression<T> {
     }
 }
 
-impl<T> ArrayExpression<T> {
+impl ArrayExpression {
     /// solve for `*`
     pub fn solve(&self, degree: DegreeType) -> DegreeType {
         assert!(
@@ -475,7 +473,7 @@ impl<T> ArrayExpression<T> {
     }
 
     /// Returns an iterator over all (top-level) expressions.
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression<T>> + '_> {
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
             ArrayExpression::Value(v) | ArrayExpression::RepeatedValue(v) => Box::new(v.iter()),
             ArrayExpression::Concat(left, right) => {
@@ -485,7 +483,7 @@ impl<T> ArrayExpression<T> {
     }
 
     /// Returns all (top-level) expressions.
-    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<T>> + '_> {
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
             ArrayExpression::Value(v) | ArrayExpression::RepeatedValue(v) => Box::new(v.iter_mut()),
             ArrayExpression::Concat(left, right) => {
@@ -707,7 +705,7 @@ impl TypeBounds {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ExpressionWithTypeScheme<T, Ref = NamespacedPolynomialReference> {
-    pub e: Expression<T, Ref>,
-    pub type_scheme: Option<TypeScheme<Expression<T, Ref>>>,
+pub struct ExpressionWithTypeScheme<Ref = NamespacedPolynomialReference> {
+    pub e: Expression<Ref>,
+    pub type_scheme: Option<TypeScheme<Expression<Ref>>>,
 }

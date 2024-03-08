@@ -1,4 +1,4 @@
-use std::{collections::HashMap, marker::PhantomData};
+use std::collections::HashMap;
 
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
@@ -14,27 +14,25 @@ use crate::AnalysisDriver;
 /// The ExpressionProcessor turns parsed expressions into analyzed expressions.
 /// Its main job is to resolve references:
 /// It turns simple references into fully namespaced references and resolves local function variables.
-pub struct ExpressionProcessor<T, D: AnalysisDriver<T>> {
+pub struct ExpressionProcessor<D: AnalysisDriver> {
     driver: D,
     local_variables: HashMap<String, u64>,
     local_variable_counter: u64,
-    _phantom: PhantomData<T>,
 }
 
-impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
+impl<D: AnalysisDriver> ExpressionProcessor<D> {
     pub fn new(driver: D) -> Self {
         Self {
             driver,
             local_variables: Default::default(),
             local_variable_counter: 0,
-            _phantom: PhantomData,
         }
     }
 
     pub fn process_selected_expressions(
         &mut self,
-        expr: SelectedExpressions<parsed::Expression<T>>,
-    ) -> SelectedExpressions<Expression<T>> {
+        expr: SelectedExpressions<parsed::Expression>,
+    ) -> SelectedExpressions<Expression> {
         SelectedExpressions {
             selector: expr.selector.map(|e| self.process_expression(e)),
             expressions: self.process_expressions(expr.expressions),
@@ -43,9 +41,9 @@ impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
 
     pub fn process_array_expression(
         &mut self,
-        array_expression: ::powdr_ast::parsed::ArrayExpression<T>,
+        array_expression: ::powdr_ast::parsed::ArrayExpression,
         size: DegreeType,
-    ) -> Vec<RepeatedArray<T>> {
+    ) -> Vec<RepeatedArray> {
         match array_expression {
             ArrayExpression::Value(expressions) => {
                 let values = self.process_expressions(expressions);
@@ -70,14 +68,14 @@ impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
         }
     }
 
-    pub fn process_expressions(&mut self, exprs: Vec<parsed::Expression<T>>) -> Vec<Expression<T>> {
+    pub fn process_expressions(&mut self, exprs: Vec<parsed::Expression>) -> Vec<Expression> {
         exprs
             .into_iter()
             .map(|e| self.process_expression(e))
             .collect()
     }
 
-    pub fn process_expression(&mut self, expr: parsed::Expression<T>) -> Expression<T> {
+    pub fn process_expression(&mut self, expr: parsed::Expression) -> Expression {
         use parsed::Expression as PExpression;
         match expr {
             PExpression::Reference(poly) => Expression::Reference(self.process_reference(poly)),
@@ -152,8 +150,8 @@ impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
     pub fn process_function(
         &mut self,
         params: &[String],
-        expression: ::powdr_ast::parsed::Expression<T>,
-    ) -> Expression<T> {
+        expression: ::powdr_ast::parsed::Expression,
+    ) -> Expression {
         let previous_local_vars = self.local_variables.clone();
 
         // Add the new local variables, potentially overwriting existing variables.

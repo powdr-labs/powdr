@@ -8,7 +8,7 @@ mod romgen;
 mod vm_to_constrained;
 
 /// Remove all ASM from the machine tree. Takes a tree of virtual or constrained machines and returns a tree of constrained machines
-pub fn compile<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
+pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
     AnalysisASMFile {
         items: file
             .items
@@ -18,8 +18,8 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> 
                     name,
                     match m {
                         Item::Machine(m) => {
-                            let (m, rom) = generate_machine_rom(m);
-                            Item::Machine(vm_to_constrained::convert_machine(m, rom))
+                            let (m, rom) = generate_machine_rom::<T>(m);
+                            Item::Machine(vm_to_constrained::convert_machine::<T>(m, rom))
                         }
                         Item::Expression(e) => Item::Expression(e),
                     },
@@ -59,9 +59,7 @@ pub mod utils {
 
     }
 
-    pub fn parse_instruction_definition<T: FieldElement>(
-        input: &str,
-    ) -> InstructionDefinitionStatement<T> {
+    pub fn parse_instruction_definition(input: &str) -> InstructionDefinitionStatement {
         let ctx = ParserContext::new(None, input);
         match INSTRUCTION_DECLARATION_PARSER.parse(&ctx, input).unwrap() {
             MachineStatement::InstructionDeclaration(source, name, instruction) => {
@@ -78,7 +76,7 @@ pub mod utils {
         }
     }
 
-    pub fn parse_instruction<T: FieldElement>(input: &str) -> Instruction<T> {
+    pub fn parse_instruction(input: &str) -> Instruction {
         let ctx = ParserContext::new(None, input);
         let instr = INSTRUCTION_PARSER.parse(&ctx, input).unwrap();
         Instruction {
@@ -87,12 +85,12 @@ pub mod utils {
         }
     }
 
-    pub fn parse_instruction_body<T: FieldElement>(input: &str) -> InstructionBody<T> {
+    pub fn parse_instruction_body(input: &str) -> InstructionBody {
         let ctx = ParserContext::new(None, input);
         INSTRUCTION_BODY_PARSER.parse(&ctx, input).unwrap()
     }
 
-    pub fn parse_function_statement<T: FieldElement>(input: &str) -> FunctionStatement<T> {
+    pub fn parse_function_statement(input: &str) -> FunctionStatement {
         let ctx = ParserContext::new(None, input);
         match FUNCTION_STATEMENT_PARSER.parse(&ctx, input).unwrap() {
             powdr_ast::parsed::asm::FunctionStatement::Assignment(source, lhs, reg, rhs) => {
@@ -123,7 +121,7 @@ pub mod utils {
         }
     }
 
-    pub fn parse_pil_statement<T: FieldElement>(input: &str) -> PilStatement<T> {
+    pub fn parse_pil_statement(input: &str) -> PilStatement {
         let ctx = ParserContext::new(None, input);
         PIL_STATEMENT_PARSER.parse(&ctx, input).unwrap()
     }
@@ -132,7 +130,7 @@ pub mod utils {
         input: &str,
     ) -> RegisterDeclarationStatement {
         let ctx = ParserContext::new(None, input);
-        match REGISTER_DECLARATION_PARSER.parse::<T>(&ctx, input).unwrap() {
+        match REGISTER_DECLARATION_PARSER.parse(&ctx, input).unwrap() {
             MachineStatement::RegisterDeclaration(source, name, flag) => {
                 let ty = match flag {
                     Some(RegisterFlag::IsAssignment) => RegisterTy::Assignment,

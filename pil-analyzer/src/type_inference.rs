@@ -13,7 +13,6 @@ use powdr_ast::{
         MatchArm, MatchPattern, TypeBounds, TypeName,
     },
 };
-use powdr_number::FieldElement;
 
 use crate::{
     call_graph::sort_called_first,
@@ -27,9 +26,9 @@ use crate::{
 /// expressions (from identities and arrays) where the expected type is given.
 /// Sets the generic arguments for references and the literal types in all expressions.
 /// Returns the types for symbols without explicit type.
-pub fn infer_types<T: FieldElement>(
-    definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression<T>>)>,
-    expressions: &mut [(&mut Expression<T>, ExpectedType)],
+pub fn infer_types(
+    definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
+    expressions: &mut [(&mut Expression, ExpectedType)],
 ) -> Result<Vec<(String, Type)>, String> {
     TypeChecker::default().infer_types(definitions, expressions)
 }
@@ -65,10 +64,10 @@ struct TypeChecker {
 impl TypeChecker {
     /// Infers and checks types for all provided definitions and expressions and
     /// returns the types for symbols without explicit type.
-    pub fn infer_types<T: FieldElement>(
+    pub fn infer_types(
         mut self,
-        mut definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression<T>>)>,
-        expressions: &mut [(&mut Expression<T>, ExpectedType)],
+        mut definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
+        expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<Vec<(String, Type)>, String> {
         let type_var_mapping = self.infer_types_inner(&mut definitions, expressions)?;
         self.update_generic_args(&mut definitions, expressions, &type_var_mapping)?;
@@ -87,10 +86,10 @@ impl TypeChecker {
 
     /// Returns, for each name declared with a type scheme, a mapping from
     /// the type variables used by the type checker to those used in the declaration.
-    fn infer_types_inner<T: FieldElement>(
+    fn infer_types_inner(
         &mut self,
-        definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression<T>>)>,
-        expressions: &mut [(&mut Expression<T>, ExpectedType)],
+        definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
+        expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<HashMap<String, HashMap<String, Type>>, String> {
         // TODO in order to fix type inference on recursive functions, we need to:
         // - collect all groups of functions that call each other recursively
@@ -201,7 +200,7 @@ impl TypeChecker {
         &mut self,
         name: &str,
         declared_type: Type,
-        value: &mut Expression<impl FieldElement>,
+        value: &mut Expression,
     ) -> Result<(), String> {
         match &declared_type {
             Type::Col => {
@@ -252,7 +251,7 @@ impl TypeChecker {
     fn expect_type_allow_fe_or_int(
         &mut self,
         expected_type: &Type,
-        expr: &mut Expression<impl FieldElement>,
+        expr: &mut Expression,
         flexible_var: &str,
     ) -> Result<(), String> {
         self.expect_type(expected_type, expr)?;
@@ -281,10 +280,10 @@ impl TypeChecker {
     /// Updates generic arguments and literal annotations with the proper resolved types.
     /// `type_var_mapping` is a mapping (for each generic symbol) from
     /// the type variable names used by the type checker to those from the declaration.
-    fn update_generic_args<T: FieldElement>(
+    fn update_generic_args(
         &mut self,
-        definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression<T>>)>,
-        expressions: &mut [(&mut Expression<T>, ExpectedType)],
+        definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
+        expressions: &mut [(&mut Expression, ExpectedType)],
         type_var_mapping: &HashMap<String, HashMap<String, Type>>,
     ) -> Result<(), String> {
         let mut errors = vec![];
@@ -325,9 +324,9 @@ impl TypeChecker {
     }
 
     /// Updates the type annotations in the literals and the generic arguments.
-    fn update_generic_args_for_expression<T: FieldElement>(
+    fn update_generic_args_for_expression(
         &self,
-        e: &mut Expression<T>,
+        e: &mut Expression,
         type_var_mapping: &HashMap<String, Type>,
     ) -> Result<(), String> {
         match e {
@@ -385,9 +384,9 @@ impl TypeChecker {
     }
 
     /// Type-checks the isolated expressions.
-    fn check_expressions<T: FieldElement>(
+    fn check_expressions(
         &mut self,
-        expressions: &mut [(&mut Expression<T>, ExpectedType)],
+        expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<(), String> {
         for (e, expected_type) in expressions {
             if expected_type.allow_array {
@@ -427,10 +426,7 @@ impl TypeChecker {
     }
 
     /// Process an expression and return the type of the expression.
-    fn infer_type_of_expression<T: FieldElement>(
-        &mut self,
-        e: &mut Expression<T>,
-    ) -> Result<Type, String> {
+    fn infer_type_of_expression(&mut self, e: &mut Expression) -> Result<Type, String> {
         Ok(match e {
             Expression::Reference(Reference::LocalVar(id, _name)) => self.local_var_type(*id),
             Expression::Reference(Reference::Poly(PolynomialReference {
@@ -557,10 +553,10 @@ impl TypeChecker {
     /// Process a function call and return the type of the expression.
     /// The error message is used to clarify which kind of function call it is
     /// (it might be an operator).
-    fn infer_type_of_function_call<'b, T: FieldElement>(
+    fn infer_type_of_function_call<'b>(
         &mut self,
         function_type: Type,
-        arguments: impl ExactSizeIterator<Item = &'b mut Expression<T>>,
+        arguments: impl ExactSizeIterator<Item = &'b mut Expression>,
         error_message: impl FnOnce() -> String,
     ) -> Result<Type, String> {
         let arguments = arguments.collect::<Vec<_>>();
@@ -595,11 +591,7 @@ impl TypeChecker {
     /// Process the expression and unify it with the given type.
     /// This function should be preferred over `infer_type_of_expression` if an expected type is known
     /// because we can create better error messages.
-    fn expect_type<T: FieldElement>(
-        &mut self,
-        expected_type: &Type,
-        expr: &mut Expression<T>,
-    ) -> Result<(), String> {
+    fn expect_type(&mut self, expected_type: &Type, expr: &mut Expression) -> Result<(), String> {
         // For literals, we try to store the type here already.
         // This avoids creating tons of type variables for large arrays.
         if let Expression::Number(_, annotated_type @ None) = expr {

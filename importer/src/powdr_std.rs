@@ -7,7 +7,6 @@ use powdr_ast::parsed::{
     },
     folder::Folder,
 };
-use powdr_number::FieldElement;
 use powdr_parser::parse_asm;
 
 use crate::load_module_files;
@@ -20,7 +19,7 @@ static MOD_FILE: &str = "mod.asm";
 ///
 /// # Panics
 /// If there is an error loading the standard library
-fn load_std<T: FieldElement>() -> ASMModule<T> {
+fn load_std() -> ASMModule {
     let default_std_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -39,20 +38,19 @@ fn load_std<T: FieldElement>() -> ASMModule<T> {
             )
         }
         Ok(std_source) => {
-            let std_content =
-                parse_asm::<T>(Some(std_path.as_path().to_str().unwrap()), &std_source)
-                    .unwrap_or_else(|err| {
-                        eprintln!("Error parsing powdr standard library file:");
-                        err.output_to_stderr();
-                        panic!();
-                    });
+            let std_content = parse_asm(Some(std_path.as_path().to_str().unwrap()), &std_source)
+                .unwrap_or_else(|err| {
+                    eprintln!("Error parsing powdr standard library file:");
+                    err.output_to_stderr();
+                    panic!();
+                });
             // This resolves all submodules and returns the standard library's main module
             load_module_files(Some(std_path), std_content).unwrap().main
         }
     }
 }
 
-pub fn add_std<T: FieldElement>(program: ASMProgram<T>) -> Result<ASMProgram<T>, String> {
+pub fn add_std(program: ASMProgram) -> Result<ASMProgram, String> {
     StdAdder().fold_program(program)
 }
 
@@ -60,10 +58,10 @@ struct StdAdder();
 
 type Error = String;
 
-impl<T: FieldElement> Folder<T> for StdAdder {
+impl Folder for StdAdder {
     type Error = Error;
 
-    fn fold_program(&mut self, p: ASMProgram<T>) -> Result<ASMProgram<T>, Self::Error> {
+    fn fold_program(&mut self, p: ASMProgram) -> Result<ASMProgram, Self::Error> {
         // Add `std` to the main module
         let mut main = p.main;
         main.statements
@@ -77,7 +75,7 @@ impl<T: FieldElement> Folder<T> for StdAdder {
         Ok(ASMProgram { main })
     }
 
-    fn fold_module_value(&mut self, module: ASMModule<T>) -> Result<ASMModule<T>, Self::Error> {
+    fn fold_module_value(&mut self, module: ASMModule) -> Result<ASMModule, Self::Error> {
         // This block is identical to Folder::fold_module_value.
         // Unfortunately, there is no way to call the super method from here.
         let mut statements = module
@@ -87,7 +85,7 @@ impl<T: FieldElement> Folder<T> for StdAdder {
                 ModuleStatement::SymbolDefinition(d) => match d.value {
                     SymbolValue::Machine(machine) => self.fold_machine(machine).map(From::from),
                     SymbolValue::Import(import) => {
-                        <StdAdder as Folder<T>>::fold_import(self, import).map(From::from)
+                        StdAdder::fold_import(self, import).map(From::from)
                     }
                     SymbolValue::Module(module) => self.fold_module(module).map(From::from),
                     SymbolValue::Expression(e) => Ok(SymbolValue::Expression(e)),

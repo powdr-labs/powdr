@@ -18,13 +18,14 @@ use crate::evaluator::{self, Definitions, Value};
 
 pub fn condense<T: FieldElement>(
     degree: Option<DegreeType>,
-    mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+    mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
-    identities: &[Identity<Expression<T>>],
+    identities: &[Identity<Expression>],
     source_order: Vec<StatementIdentifier>,
 ) -> Analyzed<T> {
     let condenser = Condenser {
         symbols: definitions.clone(),
+        _phantom: Default::default(),
     };
 
     let mut condensed_identities = vec![];
@@ -111,7 +112,8 @@ pub fn condense<T: FieldElement>(
 
 pub struct Condenser<T> {
     /// All the definitions from the PIL file.
-    pub symbols: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+    pub symbols: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    _phantom: std::marker::PhantomData<T>,
 }
 
 impl<T: FieldElement> Condenser<T> {
@@ -128,7 +130,7 @@ impl<T: FieldElement> Condenser<T> {
 
     pub fn condense_identity(
         &self,
-        identity: &Identity<Expression<T>>,
+        identity: &Identity<Expression>,
     ) -> Vec<Identity<AlgebraicExpression<T>>> {
         if identity.kind == IdentityKind::Polynomial {
             self.condense_to_constraint_or_array(identity.expression_for_poly_id())
@@ -154,7 +156,7 @@ impl<T: FieldElement> Condenser<T> {
 
     fn condense_selected_expressions(
         &self,
-        sel_expr: &SelectedExpressions<Expression<T>>,
+        sel_expr: &SelectedExpressions<Expression>,
     ) -> SelectedExpressions<AlgebraicExpression<T>> {
         SelectedExpressions {
             selector: sel_expr
@@ -170,7 +172,7 @@ impl<T: FieldElement> Condenser<T> {
     }
 
     /// Evaluates the expression and expects it to result in an algebraic expression.
-    fn condense_to_algebraic_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
+    fn condense_to_algebraic_expression(&self, e: &Expression) -> AlgebraicExpression<T> {
         let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
@@ -183,7 +185,7 @@ impl<T: FieldElement> Condenser<T> {
     /// Evaluates the expression and expects it to result in an array of algebraic expressions.
     fn condense_to_array_of_algebraic_expressions(
         &self,
-        e: &Expression<T>,
+        e: &Expression,
     ) -> Vec<AlgebraicExpression<T>> {
         let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
@@ -201,7 +203,7 @@ impl<T: FieldElement> Condenser<T> {
     }
 
     /// Evaluates an expression and expects a single constraint or an array of constraints.
-    fn condense_to_constraint_or_array(&self, e: &Expression<T>) -> Vec<AlgebraicExpression<T>> {
+    fn condense_to_constraint_or_array(&self, e: &Expression) -> Vec<AlgebraicExpression<T>> {
         let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
@@ -221,7 +223,7 @@ impl<T: FieldElement> Condenser<T> {
         }
     }
 
-    fn symbols(&self) -> Definitions<'_, T> {
+    fn symbols(&self) -> Definitions<'_> {
         Definitions(&self.symbols)
     }
 }

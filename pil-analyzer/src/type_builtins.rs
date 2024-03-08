@@ -4,7 +4,6 @@ use powdr_ast::{
     analyzed::types::{ArrayType, Type, TypeScheme},
     parsed::{BinaryOperator, UnaryOperator},
 };
-use powdr_number::GoldilocksField;
 use powdr_parser::{parse_type_name, parse_type_var_bounds};
 
 use lazy_static::lazy_static;
@@ -50,7 +49,7 @@ lazy_static! {
             name.to_string(),
             TypeScheme {
                 vars: parse_type_var_bounds(vars).unwrap(),
-                ty: parse_type_name::<GoldilocksField>(ty).unwrap().into(),
+                ty: parse_type_name(ty).unwrap().into(),
             },
         )
     })
@@ -83,7 +82,7 @@ lazy_static! {
             op,
             TypeScheme {
                 vars: parse_type_var_bounds(vars).unwrap(),
-                ty: parse_type_name::<GoldilocksField>(ty).unwrap().into(),
+                ty: parse_type_name(ty).unwrap().into(),
             },
         )
     })
@@ -98,7 +97,7 @@ lazy_static! {
         op,
         TypeScheme {
             vars: parse_type_var_bounds(vars).unwrap(),
-            ty: parse_type_name::<GoldilocksField>(ty).unwrap().into(),
+            ty: parse_type_name(ty).unwrap().into(),
         }
     ))
     .collect();

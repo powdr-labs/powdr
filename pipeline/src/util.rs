@@ -10,7 +10,7 @@ pub trait PolySet {
     const FILE_NAME: &'static str;
     fn get_polys<T: FieldElement>(
         pil: &Analyzed<T>,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)>;
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)>;
 }
 
 pub struct FixedPolySet;
@@ -19,7 +19,7 @@ impl PolySet for FixedPolySet {
 
     fn get_polys<T: FieldElement>(
         pil: &Analyzed<T>,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
         pil.constant_polys_in_source_order()
     }
 }
@@ -30,7 +30,7 @@ impl PolySet for WitnessPolySet {
 
     fn get_polys<T: FieldElement>(
         pil: &Analyzed<T>,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
         pil.committed_polys_in_source_order()
     }
 }

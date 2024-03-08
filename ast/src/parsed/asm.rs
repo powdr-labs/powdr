@@ -14,17 +14,17 @@ use crate::SourceRef;
 use super::{Expression, ExpressionWithTypeScheme, PilStatement};
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
-pub struct ASMProgram<T> {
-    pub main: ASMModule<T>,
+pub struct ASMProgram {
+    pub main: ASMModule,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
-pub struct ASMModule<T> {
-    pub statements: Vec<ModuleStatement<T>>,
+pub struct ASMModule {
+    pub statements: Vec<ModuleStatement>,
 }
 
-impl<T> ASMModule<T> {
-    pub fn symbol_definitions(&self) -> impl Iterator<Item = &SymbolDefinition<T>> {
+impl ASMModule {
+    pub fn symbol_definitions(&self) -> impl Iterator<Item = &SymbolDefinition> {
         self.statements.iter().map(|s| match s {
             ModuleStatement::SymbolDefinition(d) => d,
         })
@@ -32,30 +32,30 @@ impl<T> ASMModule<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]
-pub enum ModuleStatement<T> {
-    SymbolDefinition(SymbolDefinition<T>),
+pub enum ModuleStatement {
+    SymbolDefinition(SymbolDefinition),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SymbolDefinition<T> {
+pub struct SymbolDefinition {
     pub name: String,
-    pub value: SymbolValue<T>,
+    pub value: SymbolValue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]
-pub enum SymbolValue<T> {
+pub enum SymbolValue {
     /// A machine definition
-    Machine(Machine<T>),
+    Machine(Machine),
     /// An import of a symbol from another module
     Import(Import),
     /// A module definition
-    Module(Module<T>),
+    Module(Module),
     /// A generic symbol / function.
-    Expression(ExpressionWithTypeScheme<T>),
+    Expression(ExpressionWithTypeScheme),
 }
 
-impl<T> SymbolValue<T> {
-    pub fn as_ref(&self) -> SymbolValueRef<T> {
+impl SymbolValue {
+    pub fn as_ref(&self) -> SymbolValueRef {
         match self {
             SymbolValue::Machine(machine) => SymbolValueRef::Machine(machine),
             SymbolValue::Import(i) => SymbolValueRef::Import(i),
@@ -66,25 +66,25 @@ impl<T> SymbolValue<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, From)]
-pub enum SymbolValueRef<'a, T> {
+pub enum SymbolValueRef<'a> {
     /// A machine definition
-    Machine(&'a Machine<T>),
+    Machine(&'a Machine),
     /// An import of a symbol from another module
     Import(&'a Import),
     /// A module definition
-    Module(ModuleRef<'a, T>),
+    Module(ModuleRef<'a>),
     /// A generic symbol / function.
-    Expression(&'a ExpressionWithTypeScheme<T>),
+    Expression(&'a ExpressionWithTypeScheme),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]
-pub enum Module<T> {
+pub enum Module {
     External(String),
-    Local(ASMModule<T>),
+    Local(ASMModule),
 }
 
-impl<T> Module<T> {
-    fn as_ref(&self) -> ModuleRef<T> {
+impl Module {
+    fn as_ref(&self) -> ModuleRef {
         match self {
             Module::External(n) => ModuleRef::External(n),
             Module::Local(m) => ModuleRef::Local(m),
@@ -93,9 +93,9 @@ impl<T> Module<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, From)]
-pub enum ModuleRef<'a, T> {
+pub enum ModuleRef<'a> {
     External(&'a str),
-    Local(&'a ASMModule<T>),
+    Local(&'a ASMModule),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -369,12 +369,12 @@ impl Display for Part {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Machine<T> {
+pub struct Machine {
     pub arguments: MachineArguments,
-    pub statements: Vec<MachineStatement<T>>,
+    pub statements: Vec<MachineStatement>,
 }
 
-impl<T: Clone> Machine<T> {
+impl Machine {
     /// Returns a vector of all local variables / names defined in the machine.
     pub fn local_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
         Box::new(self.statements.iter().flat_map(|s| match s {
@@ -397,23 +397,23 @@ pub struct MachineArguments {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
-pub struct Params<T> {
-    pub inputs: Vec<Param<T>>,
-    pub outputs: Vec<Param<T>>,
+pub struct Params {
+    pub inputs: Vec<Param>,
+    pub outputs: Vec<Param>,
 }
 
-impl<T> Params<T> {
-    pub fn inputs_and_outputs(&self) -> impl Iterator<Item = &Param<T>> {
+impl Params {
+    pub fn inputs_and_outputs(&self) -> impl Iterator<Item = &Param> {
         self.inputs.iter().chain(self.outputs.iter())
     }
 
-    pub fn inputs_and_outputs_mut(&mut self) -> impl Iterator<Item = &mut Param<T>> {
+    pub fn inputs_and_outputs_mut(&mut self) -> impl Iterator<Item = &mut Param> {
         self.inputs.iter_mut().chain(self.outputs.iter_mut())
     }
 }
 
-impl<T: Display> Params<T> {
-    pub fn new(inputs: Vec<Param<T>>, outputs: Vec<Param<T>>) -> Self {
+impl Params {
+    pub fn new(inputs: Vec<Param>, outputs: Vec<Param>) -> Self {
         Self { inputs, outputs }
     }
 
@@ -432,45 +432,45 @@ impl<T: Display> Params<T> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 /// the operation id necessary to call this function from the outside
-pub struct OperationId<T> {
-    pub id: Option<T>,
+pub struct OperationId {
+    pub id: Option<BigUint>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
-pub struct Instruction<T> {
-    pub params: Params<T>,
-    pub body: InstructionBody<T>,
+pub struct Instruction {
+    pub params: Params,
+    pub body: InstructionBody,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum MachineStatement<T> {
+pub enum MachineStatement {
     Degree(SourceRef, BigUint),
-    Pil(SourceRef, PilStatement<T>),
+    Pil(SourceRef, PilStatement),
     Submachine(SourceRef, SymbolPath, String),
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),
-    InstructionDeclaration(SourceRef, String, Instruction<T>),
-    LinkDeclaration(SourceRef, LinkDeclaration<T>),
-    FunctionDeclaration(SourceRef, String, Params<T>, Vec<FunctionStatement<T>>),
-    OperationDeclaration(SourceRef, String, OperationId<T>, Params<T>),
+    InstructionDeclaration(SourceRef, String, Instruction),
+    LinkDeclaration(SourceRef, LinkDeclaration),
+    FunctionDeclaration(SourceRef, String, Params, Vec<FunctionStatement>),
+    OperationDeclaration(SourceRef, String, OperationId, Params),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct LinkDeclaration<T> {
-    pub flag: Expression<T>,
-    pub to: CallableRef<T>,
+pub struct LinkDeclaration {
+    pub flag: Expression,
+    pub to: CallableRef,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct CallableRef<T> {
+pub struct CallableRef {
     pub instance: String,
     pub callable: String,
-    pub params: Params<T>,
+    pub params: Params,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum InstructionBody<T> {
-    Local(Vec<PilStatement<T>>),
-    CallableRef(CallableRef<T>),
+pub enum InstructionBody {
+    Local(Vec<PilStatement>),
+    CallableRef(CallableRef),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -489,17 +489,17 @@ impl AssignmentRegister {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum FunctionStatement<T> {
+pub enum FunctionStatement {
     Assignment(
         SourceRef,
         Vec<String>,
         Option<Vec<AssignmentRegister>>,
-        Box<Expression<T>>,
+        Box<Expression>,
     ),
-    Instruction(SourceRef, String, Vec<Expression<T>>),
+    Instruction(SourceRef, String, Vec<Expression>),
     Label(SourceRef, String),
     DebugDirective(SourceRef, DebugDirective),
-    Return(SourceRef, Vec<Expression<T>>),
+    Return(SourceRef, Vec<Expression>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -517,9 +517,9 @@ pub enum RegisterFlag {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct Param<T> {
+pub struct Param {
     pub name: String,
-    pub index: Option<T>,
+    pub index: Option<BigUint>,
     pub ty: Option<String>,
 }
 

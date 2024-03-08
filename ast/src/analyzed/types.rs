@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display};
 
 use itertools::Itertools;
-use powdr_number::FieldElement;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -12,8 +12,8 @@ use crate::parsed::{
 use super::Reference;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TypedExpression<T, Ref = Reference> {
-    pub e: Expression<T, Ref>,
+pub struct TypedExpression<Ref = Reference> {
+    pub e: Expression<Ref>,
     pub type_scheme: Option<TypeScheme>,
 }
 
@@ -140,8 +140,8 @@ impl Type {
     }
 }
 
-impl<T: FieldElement, Ref: Display> From<TypeName<Expression<T, Ref>>> for Type {
-    fn from(value: TypeName<Expression<T, Ref>>) -> Self {
+impl<Ref: Display> From<TypeName<Expression<Ref>>> for Type {
+    fn from(value: TypeName<Expression<Ref>>) -> Self {
         match value {
             TypeName::Bottom => Type::Bottom,
             TypeName::Bool => Type::Bool,
@@ -165,12 +165,12 @@ pub struct ArrayType {
     pub length: Option<u64>,
 }
 
-impl<T: FieldElement, Ref: Display> From<ArrayTypeName<Expression<T, Ref>>> for ArrayType {
-    fn from(name: ArrayTypeName<Expression<T, Ref>>) -> Self {
+impl<Ref: Display> From<ArrayTypeName<Expression<Ref>>> for ArrayType {
+    fn from(name: ArrayTypeName<Expression<Ref>>) -> Self {
         let length = name.length.as_ref().map(|l| {
             if let Expression::Number(n, ty) = l {
                 assert!(ty.is_none(), "Literal inside type name has assigned type. This should be done during analysis on the types instead.");
-                n.to_degree()
+                n.try_into().expect("Array length expression too large.")
             } else {
                 panic!(
                     "Array length expression not resolved in type name prior to conversion: {name}"
@@ -189,8 +189,8 @@ pub struct TupleType {
     pub items: Vec<Type>,
 }
 
-impl<T: FieldElement, Ref: Display> From<TupleTypeName<Expression<T, Ref>>> for TupleType {
-    fn from(value: TupleTypeName<Expression<T, Ref>>) -> Self {
+impl<Ref: Display> From<TupleTypeName<Expression<Ref>>> for TupleType {
+    fn from(value: TupleTypeName<Expression<Ref>>) -> Self {
         TupleType {
             items: value.items.into_iter().map(Into::into).collect(),
         }
@@ -203,8 +203,8 @@ pub struct FunctionType {
     pub value: Box<Type>,
 }
 
-impl<T: FieldElement, Ref: Display> From<FunctionTypeName<Expression<T, Ref>>> for FunctionType {
-    fn from(name: FunctionTypeName<Expression<T, Ref>>) -> Self {
+impl<Ref: Display> From<FunctionTypeName<Expression<Ref>>> for FunctionType {
+    fn from(name: FunctionTypeName<Expression<Ref>>) -> Self {
         FunctionType {
             params: name.params.into_iter().map(Into::into).collect(),
             value: Box::new(Type::from(*name.value)),

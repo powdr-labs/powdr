@@ -7,7 +7,7 @@ use pretty_assertions::assert_eq;
 
 fn parse_type_scheme(vars: &str, ty: &str) -> TypeScheme {
     let vars = parse_type_var_bounds(vars).unwrap();
-    let ty = parse_type_name::<GoldilocksField>(ty).unwrap();
+    let ty = parse_type_name(ty).unwrap();
     TypeScheme {
         vars,
         ty: ty.into(),

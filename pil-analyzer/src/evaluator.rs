@@ -20,15 +20,15 @@ use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
 
 /// Evaluates an expression given a hash map of definitions.
 pub fn evaluate_expression<'a, T: FieldElement>(
-    expr: &'a Expression<T>,
-    definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+    expr: &'a Expression,
+    definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     evaluate(expr, &Definitions(definitions))
 }
 
 /// Evaluates an expression given a symbol lookup implementation
 pub fn evaluate<'a, T: FieldElement>(
-    expr: &'a Expression<T>,
+    expr: &'a Expression,
     symbols: &impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     evaluate_generic(expr, &Default::default(), symbols)
@@ -37,7 +37,7 @@ pub fn evaluate<'a, T: FieldElement>(
 /// Evaluates a generic expression given a symbol lookup implementation
 /// and values for the generic type parameters.
 pub fn evaluate_generic<'a, 'b, T: FieldElement>(
-    expr: &'a Expression<T>,
+    expr: &'a Expression,
     generic_args: &'b HashMap<String, Type>,
     symbols: &impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -289,7 +289,7 @@ impl<'a, T: Display> Display for Value<'a, T> {
 
 #[derive(Clone, Debug)]
 pub struct Closure<'a, T> {
-    pub lambda: &'a LambdaExpression<T, Reference>,
+    pub lambda: &'a LambdaExpression<Reference>,
     pub environment: Vec<Arc<Value<'a, T>>>,
     pub generic_args: HashMap<String, Type>,
 }
@@ -321,14 +321,12 @@ impl<'a, T> Closure<'a, T> {
     }
 }
 
-pub struct Definitions<'a, T>(
-    pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
-);
+pub struct Definitions<'a>(pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>);
 
-impl<'a, T: FieldElement> Definitions<'a, T> {
+impl<'a> Definitions<'a> {
     /// Implementation of `lookup` that allows to provide a different implementation
     /// of SymbolLookup for the recursive call.
-    pub fn lookup_with_symbols(
+    pub fn lookup_with_symbols<T: FieldElement>(
         &self,
         name: &str,
         generic_args: Option<Vec<Type>>,
@@ -379,13 +377,13 @@ impl<'a, T: FieldElement> Definitions<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a, T> {
+impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     fn lookup(
         &self,
         name: &str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        self.lookup_with_symbols(name, generic_args, self)
+        self.lookup_with_symbols::<T>(name, generic_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -393,10 +391,8 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>>
-    for Definitions<'a, T>
-{
-    fn from(value: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>) -> Self {
+impl<'a> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>> for Definitions<'a> {
+    fn from(value: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
         Definitions(value)
     }
 }
@@ -430,7 +426,7 @@ mod internal {
     use super::*;
 
     pub fn evaluate<'a, 'b, T: FieldElement>(
-        expr: &'a Expression<T>,
+        expr: &'a Expression,
         locals: &[Arc<Value<'a, T>>],
         generic_args: &'b HashMap<String, Type>,
         symbols: &impl SymbolLookup<'a, T>,
@@ -440,7 +436,7 @@ mod internal {
                 evaluate_reference(reference, locals, generic_args, symbols)?
             }
             Expression::PublicReference(name) => symbols.lookup_public_reference(name)?,
-            Expression::Number(n, ty) => evaluate_literal(n, ty, generic_args)?,
+            Expression::Number(n, ty) => evaluate_literal(n.clone(), ty, generic_args)?,
             Expression::String(s) => Value::String(s.clone()).into(),
             Expression::Tuple(items) => Value::Tuple(
                 items
@@ -589,7 +585,7 @@ mod internal {
     }
 
     fn evaluate_literal<'a, T: FieldElement>(
-        n: &T,
+        n: BigUint,
         ty: &Option<TypeName<NoArrayLengths>>,
         generic_args: &HashMap<String, Type>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -603,19 +599,23 @@ mod internal {
                 )))?,
             }
         } else {
-            // TODO Default is to convert literals to integers.
-            // We need to change the parser here to parse integers, not field elements,
-            // so that we can process larger numbers.
             ty.as_ref().cloned().unwrap_or_else(|| TypeName::Int)
         };
-        Ok(match ty {
-            TypeName::Fe => Value::FieldElement(*n),
-            TypeName::Int => Value::Integer(n.to_arbitrary_integer().into()),
-            TypeName::Expr => Value::Expression((*n).into()),
-            t => Err(EvalError::TypeError(format!(
-                "Invalid type name for number literal: {t}"
-            )))?,
+        if ty == TypeName::Int {
+            return Ok(Value::Integer(n.into()).into());
         }
+        let fe = T::checked_from(n.clone()).ok_or_else(|| {
+            EvalError::TypeError(format!(
+                "Number literal {n} is too large for field element."
+            ))
+        })?;
+        Ok((if ty == TypeName::Fe {
+            Value::FieldElement(fe)
+        } else if ty == TypeName::Expr {
+            AlgebraicExpression::Number(fe).into()
+        } else {
+            unreachable!();
+        })
         .into())
     }
 
@@ -869,7 +869,7 @@ mod test {
         else {
             panic!()
         };
-        evaluate(symbol, &Definitions(&analyzed.definitions))
+        evaluate::<GoldilocksField>(symbol, &Definitions(&analyzed.definitions))
             .unwrap()
             .to_string()
     }
@@ -966,25 +966,28 @@ mod test {
     }
 
     #[test]
-    #[should_panic = r#"Hexadecimal number \"0x9999999999999999999999999999999\" too large for field"#]
     pub fn hex_number_outside_field() {
         // This tests that the parser does not lose precision when parsing large integers.
-        // We are currently going through FieldElements in the parser, which have limited precision.
-        // As soon as we use Integers there, this test should succeed.
         let src = r#"
-            let N = 0x9999999999999999999999999999999;
+            let N: int = 0x9999999999999999999999999999999;
         "#;
         parse_and_evaluate_symbol(src, "N");
     }
 
     #[test]
-    #[should_panic = r#"Decimal number \"9999999999999999999999999999999\" too large for field"#]
     pub fn decimal_number_outside_field() {
         // This tests that the parser does not lose precision when parsing large integers.
-        // We are currently going through FieldElements in the parser, which have limited precision.
-        // As soon as we use Integers there, this test should succeed.
         let src = r#"
-            let N = 9999999999999999999999999999999;
+            let N: int = 9999999999999999999999999999999;
+        "#;
+        parse_and_evaluate_symbol(src, "N");
+    }
+
+    #[test]
+    #[should_panic = "Number literal 9999999999999999999999999999999 is too large for field element."]
+    pub fn decimal_number_outside_field_for_fe() {
+        let src = r#"
+            let N: fe = 9999999999999999999999999999999;
         "#;
         parse_and_evaluate_symbol(src, "N");
     }

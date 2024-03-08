@@ -311,7 +311,7 @@ pub struct WitnessColumn<'a, T> {
     /// update does not come from an identity (which also has an AlgebraicReference).
     poly: AlgebraicReference,
     /// The prover query expression, if any.
-    query: Option<&'a Expression<T>>,
+    query: Option<&'a Expression>,
     /// A list of externally computed witness values, if any.
     /// The length of this list must be equal to the degree.
     external_values: Option<Vec<T>>,
@@ -321,7 +321,7 @@ impl<'a, T> WitnessColumn<'a, T> {
     pub fn new(
         id: usize,
         name: &str,
-        value: &'a Option<FunctionValueDefinition<T>>,
+        value: &'a Option<FunctionValueDefinition>,
         external_values: Option<Vec<T>>,
     ) -> WitnessColumn<'a, T> {
         let query = if let Some(FunctionValueDefinition::Query(query)) = value {

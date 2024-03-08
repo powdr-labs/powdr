@@ -16,6 +16,7 @@ use std::{
 };
 
 use builder::TraceBuilder;
+
 use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
@@ -230,7 +231,7 @@ mod builder {
         PC_INITIAL_VAL,
     };
 
-    fn register_names<T: FieldElement>(main: &Machine<T>) -> Vec<&str> {
+    fn register_names(main: &Machine) -> Vec<&str> {
         main.registers
             .iter()
             .filter_map(|stmnt| {
@@ -282,8 +283,8 @@ mod builder {
         /// May fail if max_rows_len is too small or if the main machine is
         /// empty. In this case, the final (empty) execution trace is returned
         /// in Err.
-        pub fn new<T: FieldElement>(
-            main: &'a Machine<T>,
+        pub fn new(
+            main: &'a Machine,
             mem: MemoryState,
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
@@ -473,7 +474,7 @@ mod builder {
     }
 }
 
-pub fn get_main_machine<T: FieldElement>(program: &AnalysisASMFile<T>) -> &Machine<T> {
+pub fn get_main_machine(program: &AnalysisASMFile) -> &Machine {
     for (name, m) in program.items.iter() {
         if name.len() == 1 && name.parts().next() == Some("Main") {
             let Item::Machine(m) = m else {
@@ -486,7 +487,7 @@ pub fn get_main_machine<T: FieldElement>(program: &AnalysisASMFile<T>) -> &Machi
 }
 
 struct PreprocessedMain<'a, T: FieldElement> {
-    statements: Vec<&'a FunctionStatement<T>>,
+    statements: Vec<&'a FunctionStatement>,
     label_map: HashMap<&'a str, Elem<T>>,
     batch_to_line_map: Vec<u32>,
     debug_files: Vec<(&'a str, &'a str)>,
@@ -494,7 +495,7 @@ struct PreprocessedMain<'a, T: FieldElement> {
 
 /// Returns the list of instructions, directly indexable by PC, the map from
 /// labels to indices into that list, and the list with the start of each batch.
-fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> PreprocessedMain<T> {
+fn preprocess_main_function<T: FieldElement>(machine: &Machine) -> PreprocessedMain<T> {
     let CallableSymbol::Function(main_function) = &machine.callable.0["main"] else {
         panic!("main function missing")
     };
@@ -563,7 +564,7 @@ struct Executor<'a, 'b, F: FieldElement> {
 }
 
 impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
-    fn exec_instruction(&mut self, name: &str, args: &[Expression<F>]) -> Vec<Elem<F>> {
+    fn exec_instruction(&mut self, name: &str, args: &[Expression]) -> Vec<Elem<F>> {
         let args = args
             .iter()
             .map(|expr| self.eval_expression(expr)[0])
@@ -742,7 +743,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         }
     }
 
-    fn eval_expression(&mut self, expression: &Expression<F>) -> Vec<Elem<F>> {
+    fn eval_expression(&mut self, expression: &Expression) -> Vec<Elem<F>> {
         match expression {
             Expression::Reference(r) => {
                 // an identifier looks like this:
@@ -759,11 +760,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             Expression::PublicReference(_) => todo!(),
             Expression::Number(n, _) => {
-                vec![if let Some(unsigned) = to_u32(n) {
-                    unsigned.into()
-                } else {
-                    panic!("Value does not fit in 32 bits.")
-                }]
+                let unsigned: u32 = n
+                    .try_into()
+                    .unwrap_or_else(|_| panic!("Value does not fit in 32 bits."));
+
+                vec![unsigned.into()]
             }
             Expression::String(_) => todo!(),
             Expression::Tuple(_) => todo!(),
@@ -853,7 +854,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 }
 
 pub fn execute_ast<T: FieldElement>(
-    program: &AnalysisASMFile<T>,
+    program: &AnalysisASMFile,
     initial_memory: MemoryState,
     inputs: &Callback<T>,
     bootloader_inputs: &[Elem<T>],
@@ -868,7 +869,7 @@ pub fn execute_ast<T: FieldElement>(
         debug_files,
     } = preprocess_main_function(main_machine);
 
-    let proc = match TraceBuilder::new(
+    let proc = match TraceBuilder::<'_, T>::new(
         main_machine,
         initial_memory,
         &batch_to_line_map,
@@ -947,7 +948,7 @@ pub fn execute<F: FieldElement>(
     mode: ExecMode,
 ) -> (ExecutionTrace<F>, MemoryState) {
     log::info!("Parsing...");
-    let parsed = powdr_parser::parse_asm::<F>(None, asm_source).unwrap();
+    let parsed = powdr_parser::parse_asm(None, asm_source).unwrap();
     log::info!("Resolving imports...");
     let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
     log::info!("Analyzing...");
@@ -962,18 +963,4 @@ pub fn execute<F: FieldElement>(
         usize::MAX,
         mode,
     )
-}
-
-fn to_u32<F: FieldElement>(val: &F) -> Option<u32> {
-    val.to_arbitrary_integer().try_into().ok().or_else(|| {
-        // Number is negative, gets it binary representation as u32.
-        let modulus = F::modulus().to_arbitrary_integer();
-        let diff = modulus - val.to_arbitrary_integer();
-        if diff <= 0x80000000u32.into() {
-            let negated: i64 = diff.try_into().unwrap();
-            Some((-negated) as u32)
-        } else {
-            None
-        }
-    })
 }

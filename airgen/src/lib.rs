@@ -16,9 +16,7 @@ use powdr_ast::{
 const MAIN_MACHINE: &str = "::Main";
 const MAIN_FUNCTION: &str = "main";
 
-use powdr_number::FieldElement;
-
-pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
+pub fn compile(input: AnalysisASMFile) -> PILGraph {
     let main_location = Location::main();
 
     let non_std_machines = input
@@ -80,7 +78,7 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
         .operations()
         .map(|o| Operation {
             name: MAIN_FUNCTION.to_string(),
-            id: o.id.id,
+            id: o.id.id.clone(),
             params: o.params.clone(),
         })
         .collect();
@@ -106,17 +104,17 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
     }
 }
 
-struct ASMPILConverter<'a, T> {
+struct ASMPILConverter<'a> {
     /// Location in the machine tree
     location: &'a Location,
     /// Input definitions and machines.
-    items: &'a BTreeMap<AbsoluteSymbolPath, Item<T>>,
-    pil: Vec<PilStatement<T>>,
+    items: &'a BTreeMap<AbsoluteSymbolPath, Item>,
+    pil: Vec<PilStatement>,
     submachines: Vec<SubmachineDeclaration>,
 }
 
-impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
-    fn new(location: &'a Location, input: &'a AnalysisASMFile<T>) -> Self {
+impl<'a> ASMPILConverter<'a> {
+    fn new(location: &'a Location, input: &'a AnalysisASMFile) -> Self {
         Self {
             location,
             items: &input.items,
@@ -125,25 +123,25 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         }
     }
 
-    fn handle_pil_statement(&mut self, statement: PilStatement<T>) {
+    fn handle_pil_statement(&mut self, statement: PilStatement) {
         self.pil.push(statement);
     }
 
     fn convert_machine(
         location: &'a Location,
         ty: &'a AbsoluteSymbolPath,
-        input: &'a AnalysisASMFile<T>,
-    ) -> Object<T> {
+        input: &'a AnalysisASMFile,
+    ) -> Object {
         Self::new(location, input).convert_machine_inner(ty)
     }
 
-    fn convert_machine_inner(mut self, ty: &AbsoluteSymbolPath) -> Object<T> {
+    fn convert_machine_inner(mut self, ty: &AbsoluteSymbolPath) -> Object {
         // TODO: This clone doubles the current memory usage
         let Item::Machine(input) = self.items.get(ty).unwrap().clone() else {
             panic!();
         };
 
-        let degree = input.degree.map(|s| T::from(s.degree).to_degree());
+        let degree = input.degree.map(|s| s.degree.try_into().unwrap());
 
         self.submachines = input.submachines;
 
@@ -180,8 +178,8 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                     callable,
                     params,
                 },
-        }: LinkDefinitionStatement<T>,
-    ) -> Link<T> {
+        }: LinkDefinitionStatement,
+    ) -> Link {
         let from = LinkFrom {
             params,
             flag: flag.clone(),
@@ -215,7 +213,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                     },
                     operation: Operation {
                         name: d.name.to_string(),
-                        id: d.operation.id.id,
+                        id: d.operation.id.id.clone(),
                         params: d.operation.params.clone(),
                     },
                 })

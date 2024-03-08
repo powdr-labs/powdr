@@ -18,18 +18,17 @@ use powdr_ast::{
     },
     SourceRef,
 };
-
-use powdr_number::FieldElement;
+use powdr_number::{BigUint, FieldElement, LargeInt};
 
 use crate::common::{instruction_flag, return_instruction, RETURN_NAME};
 
-pub fn convert_machine<T: FieldElement>(machine: Machine<T>, rom: Option<Rom<T>>) -> Machine<T> {
+pub fn convert_machine<T: FieldElement>(machine: Machine, rom: Option<Rom>) -> Machine {
     let output_count = machine
         .operations()
         .map(|f| f.params.outputs.len())
         .max()
         .unwrap_or_default();
-    ASMPILConverter::with_output_count(output_count).convert_machine(machine, rom)
+    ASMPILConverter::<T>::with_output_count(output_count).convert_machine(machine, rom)
 }
 
 pub enum Input {
@@ -43,11 +42,13 @@ pub enum LiteralKind {
     UnsignedConstant,
 }
 
+/// Component that turns a virtual machine into a constrained machine.
+/// TODO check if the conversion really depends on the finite field.
 #[derive(Default)]
 struct ASMPILConverter<T> {
-    pil: Vec<PilStatement<T>>,
+    pil: Vec<PilStatement>,
     pc_name: Option<String>,
-    registers: BTreeMap<String, Register<T>>,
+    registers: BTreeMap<String, Register>,
     instructions: BTreeMap<String, Instruction>,
     code_lines: Vec<CodeLine<T>>,
     /// Pairs of columns that are used in the connecting plookup
@@ -56,6 +57,7 @@ struct ASMPILConverter<T> {
     rom_constant_names: Vec<String>,
     /// the maximum number of inputs in all functions
     output_count: usize,
+    _phantom: std::marker::PhantomData<T>,
 }
 
 impl<T: FieldElement> ASMPILConverter<T> {
@@ -66,7 +68,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         }
     }
 
-    fn convert_machine(mut self, mut input: Machine<T>, rom: Option<Rom<T>>) -> Machine<T> {
+    fn convert_machine(mut self, mut input: Machine, rom: Option<Rom>) -> Machine {
         if !input.has_pc() {
             assert!(rom.is_none());
             return input;
@@ -105,7 +107,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
             SourceRef::unknown(),
             "first_step".to_string(),
             FunctionDefinition::Array(
-                ArrayExpression::value(vec![T::one().into()]).pad_with_zeroes(),
+                ArrayExpression::value(vec![Expression::Number(1u32.into(), None)])
+                    .pad_with_zeroes(),
             ),
         ));
 
@@ -133,8 +136,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                         SourceRef::unknown(),
                                         build::identity(
                                             lhs,
-                                            (Expression::from(T::one())
-                                                - next_reference("first_step"))
+                                            (Expression::from(1) - next_reference("first_step"))
                                                 * direct_reference(pc_update_name),
                                         ),
                                     ),
@@ -142,11 +144,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             }
                             // Unconstrain read-only registers when calling `_reset`
                             ReadOnly => {
-                                let not_reset: Expression<T> =
-                                    Expression::from(T::one()) - direct_reference("instr__reset");
+                                let not_reset: Expression =
+                                    Expression::from(1) - direct_reference("instr__reset");
                                 vec![PilStatement::Expression(
                                     SourceRef::unknown(),
-                                    build::identity(not_reset * (lhs - rhs), T::zero().into()),
+                                    build::identity(not_reset * (lhs - rhs), 0.into()),
                                 )]
                             }
                             _ => {
@@ -196,7 +198,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         input
     }
 
-    fn handle_batch(&mut self, batch: Batch<T>) {
+    fn handle_batch(&mut self, batch: Batch) {
         let code_line = batch
             .statements
             .into_iter()
@@ -222,7 +224,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         self.code_lines.push(code_line);
     }
 
-    fn handle_statement(&mut self, statement: FunctionStatement<T>) -> CodeLine<T> {
+    fn handle_statement(&mut self, statement: FunctionStatement) -> CodeLine<T> {
         match statement {
             FunctionStatement::Assignment(AssignmentStatement {
                 source,
@@ -271,7 +273,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 self.pc_name = Some(name.to_string());
                 self.line_lookup
                     .push((name.to_string(), "p_line".to_string()));
-                default_update = Some(direct_reference(&name) + T::one().into());
+                default_update = Some(direct_reference(&name) + 1.into());
             }
             RegisterTy::Assignment => {
                 // no default update as this is transient
@@ -306,11 +308,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         self.pil.push(witness_column(source, name, None));
     }
 
-    fn handle_instruction_def(
-        &mut self,
-        input: &mut Machine<T>,
-        s: InstructionDefinitionStatement<T>,
-    ) {
+    fn handle_instruction_def(&mut self, input: &mut Machine, s: InstructionDefinitionStatement) {
         let instruction_name = s.name.clone();
         let instruction_flag = format!("instr_{instruction_name}");
         self.create_witness_fixed_pair(s.source.clone(), &instruction_flag);
@@ -365,8 +363,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
         source: SourceRef,
         name: &String,
         flag: String,
-        params: &Params<T>,
-        mut body: Vec<PilStatement<T>>,
+        params: &Params,
+        mut body: Vec<PilStatement>,
     ) {
         // check inputs are literals or assignment registers
         let mut literal_arg_names = vec![];
@@ -447,7 +445,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     }
                     (None, expr) => self.pil.push(PilStatement::Expression(
                         source,
-                        build::identity(direct_reference(&flag) * expr.clone(), T::zero().into()),
+                        build::identity(direct_reference(&flag) * expr.clone(), 0.into()),
                     )),
                 }
             } else {
@@ -474,9 +472,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
         &mut self,
         source: SourceRef,
         flag: String,
-        params: &Params<T>,
-        mut callable: CallableRef<T>,
-    ) -> LinkDefinitionStatement<T> {
+        params: &Params,
+        mut callable: CallableRef,
+    ) -> LinkDefinitionStatement {
         let lhs = params;
         let rhs = &mut callable.params;
 
@@ -569,7 +567,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         &mut self,
         _source: SourceRef,
         lhs_with_reg: Vec<(String, String)>,
-        value: Expression<T>,
+        value: Expression,
     ) -> CodeLine<T> {
         assert!(
             lhs_with_reg.len() == 1,
@@ -589,8 +587,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
     fn handle_functional_instruction(
         &mut self,
         lhs_with_regs: Vec<(String, String)>,
-        function: Expression<T>,
-        mut args: Vec<Expression<T>>,
+        function: Expression,
+        mut args: Vec<Expression>,
     ) -> CodeLine<T> {
         let Expression::Reference(reference) = function else {
             panic!("Expected instruction name");
@@ -613,7 +611,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         self.handle_instruction(instr_name.clone(), args)
     }
 
-    fn handle_instruction(&mut self, instr_name: String, args: Vec<Expression<T>>) -> CodeLine<T> {
+    fn handle_instruction(&mut self, instr_name: String, args: Vec<Expression>) -> CodeLine<T> {
         let instr = &self
             .instructions
             .get(&instr_name)
@@ -639,8 +637,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         }
                         Input::Literal(_, LiteralKind::Label) => {
                             if let Expression::Reference(r) = a {
-                                instruction_literal_arg
-                                    .push(InstructionLiteralArg::LabelRef(r.try_to_identifier().unwrap().clone()));
+                                instruction_literal_arg.push(InstructionLiteralArg::LabelRef(
+                                    r.try_to_identifier().unwrap().clone(),
+                                ));
                             } else {
                                 panic!();
                             }
@@ -648,8 +647,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         Input::Literal(_, LiteralKind::UnsignedConstant) => {
                             // TODO evaluate expression
                             if let Expression::Number(n, _) = a {
-                                assert!(n.is_in_lower_half(), "Number passed to unsigned parameter is negative or too large: {n}");
-                                instruction_literal_arg.push(InstructionLiteralArg::Number(n));
+                                let half_modulus = T::modulus().to_arbitrary_integer() / BigUint::from(2u64);
+                                assert!(n < half_modulus, "Number passed to unsigned parameter is negative or too large: {n}");
+                                instruction_literal_arg.push(InstructionLiteralArg::Number(
+                                    T::from(n),
+                                ));
                             } else {
                                 panic!("expected unsigned number, received {}", a);
                             }
@@ -657,11 +659,15 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         Input::Literal(_, LiteralKind::SignedConstant) => {
                             // TODO evaluate expression
                             if let Expression::Number(n, _) = a {
-                                instruction_literal_arg.push(InstructionLiteralArg::Number(n));
+                                instruction_literal_arg.push(InstructionLiteralArg::Number(
+                                    T::checked_from(n).unwrap(),
+                                ));
                             } else if let Expression::UnaryOperation(UnaryOperator::Minus, expr) = a
                             {
                                 if let Expression::Number(n, _) = *expr {
-                                    instruction_literal_arg.push(InstructionLiteralArg::Number(-n));
+                                    instruction_literal_arg.push(InstructionLiteralArg::Number(
+                                        -T::checked_from(n).unwrap(),
+                                    ))
                                 } else {
                                     panic!();
                                 }
@@ -698,10 +704,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         }
     }
 
-    fn process_assignment_value(
-        &self,
-        value: Expression<T>,
-    ) -> Vec<(T, AffineExpressionComponent<T>)> {
+    fn process_assignment_value(&self, value: Expression) -> Vec<(T, AffineExpressionComponent)> {
         match value {
             Expression::PublicReference(_) => panic!(),
             Expression::IndexAccess(_) => panic!(),
@@ -711,7 +714,12 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 let name = reference.try_to_identifier().unwrap();
                 vec![(1.into(), AffineExpressionComponent::Register(name.clone()))]
             }
-            Expression::Number(value, _) => vec![(value, AffineExpressionComponent::Constant)],
+            Expression::Number(value, _) => {
+                vec![(
+                    T::try_from(value).unwrap(),
+                    AffineExpressionComponent::Constant,
+                )]
+            }
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
             Expression::ArrayLiteral(_) => panic!(),
@@ -795,9 +803,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
     fn add_assignment_value(
         &self,
-        mut left: Vec<(T, AffineExpressionComponent<T>)>,
-        right: Vec<(T, AffineExpressionComponent<T>)>,
-    ) -> Vec<(T, AffineExpressionComponent<T>)> {
+        mut left: Vec<(T, AffineExpressionComponent)>,
+        right: Vec<(T, AffineExpressionComponent)>,
+    ) -> Vec<(T, AffineExpressionComponent)> {
         // TODO combine (or at leats check for) same components.
         left.extend(right);
         left
@@ -805,8 +813,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
     fn negate_assignment_value(
         &self,
-        expr: Vec<(T, AffineExpressionComponent<T>)>,
-    ) -> Vec<(T, AffineExpressionComponent<T>)> {
+        expr: Vec<(T, AffineExpressionComponent)>,
+    ) -> Vec<(T, AffineExpressionComponent)> {
         expr.into_iter().map(|(v, c)| (-v, c)).collect()
     }
 
@@ -823,7 +831,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .chain(self.read_only_register_names())
             .cloned()
             .collect::<Vec<_>>();
-        let assign_constraint: Expression<T> = read_registers
+        let assign_constraint: Expression = read_registers
             .iter()
             .map(|name| {
                 let read_coefficient = format!("read_{register}_{name}");
@@ -850,11 +858,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
             FunctionDefinition::Array(
                 ArrayExpression::Value(
                     (0..self.code_lines.len())
-                        .map(|i| T::from(i as u32).into())
+                        .map(|i| BigUint::from(i as u64).into())
                         .collect(),
                 )
                 .pad_with_last()
-                .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![T::zero().into()])),
+                .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()])),
             ),
         ));
         // TODO check that all of them are matched against execution trace witnesses.
@@ -904,7 +912,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 .get_mut(assign_reg)
                                 .unwrap()
                                 .push(MatchArm {
-                                    pattern: MatchPattern::Pattern(T::from(i as u64).into()),
+                                    pattern: MatchPattern::Pattern(BigUint::from(i as u64).into()),
                                     value: expr.clone(),
                                 });
                         }
@@ -966,14 +974,19 @@ impl<T: FieldElement> ASMPILConverter<T> {
         self.pil.extend(free_value_pil);
         for (name, values) in rom_constants {
             let array_expression = if values.iter().all(|v| v == &values[0]) {
-                // Performance optimization: The block below converts every T to an Expression<T>,
+                // Performance optimization: The block below converts every T to an Expression,
                 // which has a 7x larger memory footprint. This is wasteful for constant columns,
                 // of which there are a lot because this code has not been optimized yet.
-                ArrayExpression::RepeatedValue(vec![values[0].into()])
+                ArrayExpression::RepeatedValue(vec![values[0].to_arbitrary_integer().into()])
             } else {
-                ArrayExpression::value(values.into_iter().map(Expression::from).collect())
-                    .pad_with_last()
-                    .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![T::zero().into()]))
+                ArrayExpression::value(
+                    values
+                        .into_iter()
+                        .map(|v| v.to_arbitrary_integer().into())
+                        .collect(),
+                )
+                .pad_with_last()
+                .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()]))
             };
             self.pil.push(PilStatement::PolynomialConstantDefinition(
                 SourceRef::unknown(),
@@ -1027,14 +1040,14 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .filter_map(|(n, r)| r.ty.is_read_only().then_some(n))
     }
 
-    fn return_instruction(&self) -> powdr_ast::asm_analysis::Instruction<T> {
+    fn return_instruction(&self) -> powdr_ast::asm_analysis::Instruction {
         return_instruction(self.output_count, self.pc_name.as_ref().unwrap())
     }
 
     /// Return an expression of degree at most 1 whose value matches that of `expr`
     /// Intermediate witness columns can be introduced, with names starting with `prefix` optionally followed by a suffix
     /// Suffixes are defined as follows: "", "_1", "_2", "_3" etc
-    fn linearize(&mut self, prefix: &str, expr: Expression<T>) -> Expression<T> {
+    fn linearize(&mut self, prefix: &str, expr: Expression) -> Expression {
         self.linearize_rec(prefix, 0, expr).1
     }
 
@@ -1042,8 +1055,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
         &mut self,
         prefix: &str,
         counter: usize,
-        expr: Expression<T>,
-    ) -> (usize, Expression<T>) {
+        expr: Expression,
+    ) -> (usize, Expression) {
         match expr {
             Expression::BinaryOperation(left, operator, right) => match operator {
                 BinaryOperator::Add => {
@@ -1082,18 +1095,18 @@ impl<T: FieldElement> ASMPILConverter<T> {
     }
 }
 
-struct Register<T> {
+struct Register {
     /// Constraints to update this register, first item being the
     /// condition, second item the value.
     /// TODO check that condition is bool
-    conditioned_updates: Vec<(Expression<T>, Expression<T>)>,
-    default_update: Option<Expression<T>>,
+    conditioned_updates: Vec<(Expression, Expression)>,
+    default_update: Option<Expression>,
     ty: RegisterTy,
 }
 
-impl<T: FieldElement> Register<T> {
+impl Register {
     /// Returns the expression assigned to this register in the next row.
-    pub fn update_expression(&self) -> Option<Expression<T>> {
+    pub fn update_expression(&self) -> Option<Expression> {
         // TODO conditions need to be all boolean
         let updates = self
             .conditioned_updates
@@ -1107,7 +1120,7 @@ impl<T: FieldElement> Register<T> {
             (0, update) => update.clone(),
             (_, None) => Some(updates),
             (_, Some(def)) => {
-                let default_condition = Expression::from(T::one())
+                let default_condition = Expression::from(1)
                     - self
                         .conditioned_updates
                         .iter()
@@ -1141,16 +1154,16 @@ struct CodeLine<T> {
     /// Maps assignment register to a vector of regular registers.
     write_regs: BTreeMap<String, Vec<String>>,
     /// The value on the right-hand-side, per assignment register
-    value: BTreeMap<String, Vec<(T, AffineExpressionComponent<T>)>>,
+    value: BTreeMap<String, Vec<(T, AffineExpressionComponent)>>,
     labels: BTreeSet<String>,
     instructions: Vec<(String, Vec<InstructionLiteralArg<T>>)>,
     debug_directives: Vec<DebugDirective>,
 }
 
-enum AffineExpressionComponent<T> {
+enum AffineExpressionComponent {
     Register(String),
     Constant,
-    FreeInput(Expression<T>),
+    FreeInput(Expression),
 }
 
 enum InstructionLiteralArg<T> {
@@ -1158,11 +1171,11 @@ enum InstructionLiteralArg<T> {
     Number(T),
 }
 
-fn witness_column<S: Into<String>, T>(
+fn witness_column<S: Into<String>>(
     source: SourceRef,
     name: S,
-    def: Option<FunctionDefinition<T>>,
-) -> PilStatement<T> {
+    def: Option<FunctionDefinition>,
+) -> PilStatement {
     PilStatement::PolynomialCommitDeclaration(
         source,
         vec![PolynomialName {
@@ -1173,7 +1186,7 @@ fn witness_column<S: Into<String>, T>(
     )
 }
 
-fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expression<T>) {
+fn extract_update(expr: Expression) -> (Option<String>, Expression) {
     let Expression::BinaryOperation(left, BinaryOperator::Identity, right) = expr else {
         panic!("Invalid statement for instruction body, expected constraint: {expr}");
     };
@@ -1199,11 +1212,11 @@ mod test {
 
     use crate::compile;
 
-    fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> AnalysisASMFile<T> {
+    fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> AnalysisASMFile {
         let parsed = powdr_parser::parse_asm(None, input).unwrap();
         // let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
         let analyzed = powdr_analysis::analyze(parsed).unwrap();
-        compile(analyzed)
+        compile::<T>(analyzed)
     }
 
     #[test]

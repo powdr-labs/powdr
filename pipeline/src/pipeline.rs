@@ -39,20 +39,20 @@ pub struct Artifacts<T: FieldElement> {
     /// The contents of a single .asm file, with an optional Path (for imports).
     asm_string: Option<(Option<PathBuf>, String)>,
     /// A parsed .asm file, with an optional Path (for imports).
-    parsed_asm_file: Option<(Option<PathBuf>, ASMProgram<T>)>,
+    parsed_asm_file: Option<(Option<PathBuf>, ASMProgram)>,
     /// A tree of .asm modules (with all dependencies potentially imported
     /// from other files) with all references resolved to absolute symbol paths.
-    resolved_module_tree: Option<ASMProgram<T>>,
+    resolved_module_tree: Option<ASMProgram>,
     /// The analyzed .asm file: Assignment registers are inferred, instructions
     /// are batched and some properties are checked.
-    analyzed_asm: Option<AnalysisASMFile<T>>,
+    analyzed_asm: Option<AnalysisASMFile>,
     /// A machine collection that only contains constrained machines.
-    constrained_machine_collection: Option<AnalysisASMFile<T>>,
+    constrained_machine_collection: Option<AnalysisASMFile>,
     /// The airgen graph, i.e. a collection of constrained machines with resolved
     /// links between them.
-    linked_machine_graph: Option<PILGraph<T>>,
+    linked_machine_graph: Option<PILGraph>,
     /// A single parsed pil file.
-    parsed_pil_file: Option<PILFile<T>>,
+    parsed_pil_file: Option<PILFile>,
     /// The path to a single .pil file.
     pil_file_path: Option<PathBuf>,
     /// The contents of a single .pil file.
@@ -546,7 +546,7 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn compute_parsed_asm_file(
         &mut self,
-    ) -> Result<&(Option<PathBuf>, ASMProgram<T>), Vec<String>> {
+    ) -> Result<&(Option<PathBuf>, ASMProgram), Vec<String>> {
         if self.artifact.parsed_asm_file.is_none() {
             self.artifact.parsed_asm_file = Some({
                 let (path, asm_string) = self.compute_asm_string()?;
@@ -568,11 +568,11 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.parsed_asm_file.as_ref().unwrap())
     }
 
-    pub fn parsed_asm_file(&self) -> Result<&(Option<PathBuf>, ASMProgram<T>), Vec<String>> {
+    pub fn parsed_asm_file(&self) -> Result<&(Option<PathBuf>, ASMProgram), Vec<String>> {
         Ok(self.artifact.parsed_asm_file.as_ref().unwrap())
     }
 
-    pub fn compute_resolved_module_tree(&mut self) -> Result<&ASMProgram<T>, Vec<String>> {
+    pub fn compute_resolved_module_tree(&mut self) -> Result<&ASMProgram, Vec<String>> {
         if self.artifact.resolved_module_tree.is_none() {
             self.artifact.resolved_module_tree = Some({
                 let (path, parsed) = self.compute_parsed_asm_file()?.clone();
@@ -585,11 +585,11 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.resolved_module_tree.as_ref().unwrap())
     }
 
-    pub fn resolved_module_tree(&self) -> Result<&ASMProgram<T>, Vec<String>> {
+    pub fn resolved_module_tree(&self) -> Result<&ASMProgram, Vec<String>> {
         Ok(self.artifact.resolved_module_tree.as_ref().unwrap())
     }
 
-    pub fn compute_analyzed_asm(&mut self) -> Result<&AnalysisASMFile<T>, Vec<String>> {
+    pub fn compute_analyzed_asm(&mut self) -> Result<&AnalysisASMFile, Vec<String>> {
         if self.artifact.analyzed_asm.is_none() {
             self.artifact.analyzed_asm = Some({
                 let resolved = self.compute_resolved_module_tree()?.clone();
@@ -606,17 +606,17 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.analyzed_asm.as_ref().unwrap())
     }
 
-    pub fn analyzed_asm(&self) -> Result<&AnalysisASMFile<T>, Vec<String>> {
+    pub fn analyzed_asm(&self) -> Result<&AnalysisASMFile, Vec<String>> {
         Ok(self.artifact.analyzed_asm.as_ref().unwrap())
     }
 
     pub fn compute_constrained_machine_collection(
         &mut self,
-    ) -> Result<&AnalysisASMFile<T>, Vec<String>> {
+    ) -> Result<&AnalysisASMFile, Vec<String>> {
         if self.artifact.constrained_machine_collection.is_none() {
             self.artifact.constrained_machine_collection = Some({
                 let analyzed_asm = self.compute_analyzed_asm()?.clone();
-                powdr_asm_to_pil::compile(analyzed_asm)
+                powdr_asm_to_pil::compile::<T>(analyzed_asm)
             });
         }
 
@@ -627,7 +627,7 @@ impl<T: FieldElement> Pipeline<T> {
             .unwrap())
     }
 
-    pub fn constrained_machine_collection(&self) -> Result<&AnalysisASMFile<T>, Vec<String>> {
+    pub fn constrained_machine_collection(&self) -> Result<&AnalysisASMFile, Vec<String>> {
         Ok(self
             .artifact
             .constrained_machine_collection
@@ -635,7 +635,7 @@ impl<T: FieldElement> Pipeline<T> {
             .unwrap())
     }
 
-    pub fn compute_linked_machine_graph(&mut self) -> Result<&PILGraph<T>, Vec<String>> {
+    pub fn compute_linked_machine_graph(&mut self) -> Result<&PILGraph, Vec<String>> {
         if self.artifact.linked_machine_graph.is_none() {
             self.artifact.linked_machine_graph = Some({
                 let analyzed_asm = self.compute_constrained_machine_collection()?.clone();
@@ -652,11 +652,11 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.linked_machine_graph.as_ref().unwrap())
     }
 
-    pub fn linked_machine_graph(&self) -> Result<&PILGraph<T>, Vec<String>> {
+    pub fn linked_machine_graph(&self) -> Result<&PILGraph, Vec<String>> {
         Ok(self.artifact.linked_machine_graph.as_ref().unwrap())
     }
 
-    pub fn compute_parsed_pil_file(&mut self) -> Result<&PILFile<T>, Vec<String>> {
+    pub fn compute_parsed_pil_file(&mut self) -> Result<&PILFile, Vec<String>> {
         if self.artifact.parsed_pil_file.is_none() {
             self.artifact.parsed_pil_file = Some({
                 self.log("Run linker");
@@ -674,7 +674,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.parsed_pil_file.as_ref().unwrap())
     }
 
-    pub fn parsed_pil_file(&self) -> Result<&PILFile<T>, Vec<String>> {
+    pub fn parsed_pil_file(&self) -> Result<&PILFile, Vec<String>> {
         Ok(self.artifact.parsed_pil_file.as_ref().unwrap())
     }
 

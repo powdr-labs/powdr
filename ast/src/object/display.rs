@@ -10,7 +10,7 @@ impl Display for Location {
     }
 }
 
-impl<T: Display> Display for PILGraph<T> {
+impl Display for PILGraph {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "// Utilities")?;
         for (name, ExpressionWithTypeScheme { e, type_scheme }) in &self.definitions {
@@ -36,7 +36,7 @@ impl<T: Display> Display for PILGraph<T> {
     }
 }
 
-impl<T: Display> Display for Object<T> {
+impl Display for Object {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if let Some(degree) = self.degree {
             writeln!(f, "// Degree {}", degree)?;
@@ -54,19 +54,19 @@ impl<T: Display> Display for Object<T> {
     }
 }
 
-impl<T: Display> Display for Link<T> {
+impl Display for Link {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} links to {}", self.from, self.to)
     }
 }
 
-impl<T: Display> Display for LinkFrom<T> {
+impl Display for LinkFrom {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} {}", self.flag, self.params)
     }
 }
 
-impl<T: Display> Display for LinkTo<T> {
+impl Display for LinkTo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} in {}", self.operation, self.machine)
     }
@@ -82,7 +82,7 @@ impl Display for Machine {
     }
 }
 
-impl<T: Display> Display for Operation<T> {
+impl Display for Operation {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,

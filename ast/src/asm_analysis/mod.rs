@@ -10,7 +10,7 @@ use std::{
 };
 
 use itertools::Either;
-use powdr_number::{BigUint, FieldElement};
+use powdr_number::BigUint;
 
 use crate::parsed::{
     asm::{
@@ -57,45 +57,45 @@ impl RegisterTy {
 }
 
 #[derive(Clone, Debug)]
-pub struct InstructionDefinitionStatement<T> {
+pub struct InstructionDefinitionStatement {
     pub source: SourceRef,
     pub name: String,
-    pub instruction: Instruction<T>,
+    pub instruction: Instruction,
 }
 
 #[derive(Clone, Debug)]
-pub struct Instruction<T> {
-    pub params: Params<T>,
-    pub body: InstructionBody<T>,
+pub struct Instruction {
+    pub params: Params,
+    pub body: InstructionBody,
 }
 
 #[derive(Clone, Debug)]
-pub struct LinkDefinitionStatement<T> {
+pub struct LinkDefinitionStatement {
     pub source: SourceRef,
     /// the flag which activates this link. Should be boolean.
-    pub flag: Expression<T>,
+    pub flag: Expression,
     /// the callable to invoke when the flag is on. TODO: check this during type checking
-    pub to: CallableRef<T>,
+    pub to: CallableRef,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct FunctionStatements<T> {
-    inner: Vec<FunctionStatement<T>>,
+pub struct FunctionStatements {
+    inner: Vec<FunctionStatement>,
     batches: Option<Vec<BatchMetadata>>,
 }
 
-pub struct BatchRef<'a, T> {
-    pub statements: &'a [FunctionStatement<T>],
+pub struct BatchRef<'a> {
+    pub statements: &'a [FunctionStatement],
     reason: &'a Option<IncompatibleSet>,
 }
 
-pub struct Batch<T> {
-    pub statements: Vec<FunctionStatement<T>>,
+pub struct Batch {
+    pub statements: Vec<FunctionStatement>,
     reason: Option<IncompatibleSet>,
 }
 
-impl<T> From<Vec<FunctionStatement<T>>> for Batch<T> {
-    fn from(statements: Vec<FunctionStatement<T>>) -> Self {
+impl From<Vec<FunctionStatement>> for Batch {
+    fn from(statements: Vec<FunctionStatement>) -> Self {
         Self {
             statements,
             reason: None,
@@ -103,7 +103,7 @@ impl<T> From<Vec<FunctionStatement<T>>> for Batch<T> {
     }
 }
 
-impl<T> Batch<T> {
+impl Batch {
     pub fn set_reason(&mut self, reason: IncompatibleSet) {
         self.reason = Some(reason);
     }
@@ -114,9 +114,9 @@ impl<T> Batch<T> {
     }
 }
 
-impl<T> FunctionStatements<T> {
+impl FunctionStatements {
     /// create with no batch information
-    pub fn new(inner: Vec<FunctionStatement<T>>) -> Self {
+    pub fn new(inner: Vec<FunctionStatement>) -> Self {
         Self {
             inner,
             batches: None,
@@ -124,7 +124,7 @@ impl<T> FunctionStatements<T> {
     }
 
     /// turn into the underlying statements, forgetting batch information
-    pub fn into_inner(self) -> Vec<FunctionStatement<T>> {
+    pub fn into_inner(self) -> Vec<FunctionStatement> {
         self.inner
     }
 
@@ -138,18 +138,18 @@ impl<T> FunctionStatements<T> {
     }
 
     /// iterate over the statements by reference
-    pub fn iter(&self) -> impl Iterator<Item = &FunctionStatement<T>> {
+    pub fn iter(&self) -> impl Iterator<Item = &FunctionStatement> {
         self.inner.iter()
     }
 
     /// iterate over the statements by mutable reference
     /// Warning: mutation should be checked not to invalidate batch information
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut FunctionStatement<T>> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut FunctionStatement> {
         self.inner.iter_mut()
     }
 
     /// iterate over the batches by reference
-    pub fn iter_batches(&self) -> impl Iterator<Item = BatchRef<T>> {
+    pub fn iter_batches(&self) -> impl Iterator<Item = BatchRef> {
         match &self.batches {
             Some(batches) => Either::Left(batches.iter()),
             None => Either::Right(
@@ -171,9 +171,9 @@ impl<T> FunctionStatements<T> {
     }
 }
 
-impl<T: FieldElement> FunctionStatements<T> {
+impl FunctionStatements {
     /// iterate over the batches by reference
-    pub fn into_iter_batches(self) -> impl Iterator<Item = Batch<T>> {
+    pub fn into_iter_batches(self) -> impl Iterator<Item = Batch> {
         let len = self.inner.len();
         let mut inner = self.inner.into_iter();
 
@@ -194,8 +194,8 @@ impl<T: FieldElement> FunctionStatements<T> {
     }
 }
 
-impl<T> FromIterator<Batch<T>> for FunctionStatements<T> {
-    fn from_iter<I: IntoIterator<Item = Batch<T>>>(iter: I) -> Self {
+impl FromIterator<Batch> for FunctionStatements {
+    fn from_iter<I: IntoIterator<Item = Batch>>(iter: I) -> Self {
         let mut inner = vec![];
         let mut batches = vec![];
 
@@ -215,43 +215,43 @@ impl<T> FromIterator<Batch<T>> for FunctionStatements<T> {
 }
 
 #[derive(Clone, Debug)]
-pub struct FunctionBody<T> {
-    pub statements: FunctionStatements<T>,
+pub struct FunctionBody {
+    pub statements: FunctionStatements,
 }
 
 #[derive(Debug)]
-pub struct CallableSymbolDefinitionRef<'a, T> {
+pub struct CallableSymbolDefinitionRef<'a> {
     /// the name of this symbol
     pub name: &'a str,
     /// a reference to the symbol
-    pub symbol: &'a CallableSymbol<T>,
+    pub symbol: &'a CallableSymbol,
 }
 
 #[derive(Debug)]
-pub struct CallableSymbolDefinitionMut<'a, T> {
+pub struct CallableSymbolDefinitionMut<'a> {
     /// the name of this symbol
     pub name: &'a str,
     /// a mutable reference to the symbol
-    pub symbol: &'a mut CallableSymbol<T>,
+    pub symbol: &'a mut CallableSymbol,
 }
 
 #[derive(Debug)]
-pub struct CallableSymbolDefinition<T> {
+pub struct CallableSymbolDefinition {
     /// the name of this symbol
     pub name: String,
     /// the symbol
-    pub symbol: CallableSymbol<T>,
+    pub symbol: CallableSymbol,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct CallableSymbolDefinitions<T>(pub BTreeMap<String, CallableSymbol<T>>);
+pub struct CallableSymbolDefinitions(pub BTreeMap<String, CallableSymbol>);
 
-impl<T> IntoIterator for CallableSymbolDefinitions<T> {
-    type Item = CallableSymbolDefinition<T>;
+impl IntoIterator for CallableSymbolDefinitions {
+    type Item = CallableSymbolDefinition;
 
     type IntoIter = std::iter::Map<
-        IntoIter<String, CallableSymbol<T>>,
-        fn((String, CallableSymbol<T>)) -> CallableSymbolDefinition<T>,
+        IntoIter<String, CallableSymbol>,
+        fn((String, CallableSymbol)) -> CallableSymbolDefinition,
     >;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -261,12 +261,12 @@ impl<T> IntoIterator for CallableSymbolDefinitions<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a CallableSymbolDefinitions<T> {
-    type Item = CallableSymbolDefinitionRef<'a, T>;
+impl<'a> IntoIterator for &'a CallableSymbolDefinitions {
+    type Item = CallableSymbolDefinitionRef<'a>;
 
     type IntoIter = std::iter::Map<
-        Iter<'a, String, CallableSymbol<T>>,
-        fn((&'a String, &'a CallableSymbol<T>)) -> CallableSymbolDefinitionRef<'a, T>,
+        Iter<'a, String, CallableSymbol>,
+        fn((&'a String, &'a CallableSymbol)) -> CallableSymbolDefinitionRef<'a>,
     >;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -276,12 +276,12 @@ impl<'a, T> IntoIterator for &'a CallableSymbolDefinitions<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a mut CallableSymbolDefinitions<T> {
-    type Item = CallableSymbolDefinitionMut<'a, T>;
+impl<'a> IntoIterator for &'a mut CallableSymbolDefinitions {
+    type Item = CallableSymbolDefinitionMut<'a>;
 
     type IntoIter = std::iter::Map<
-        IterMut<'a, String, CallableSymbol<T>>,
-        fn((&'a String, &'a mut CallableSymbol<T>)) -> CallableSymbolDefinitionMut<'a, T>,
+        IterMut<'a, String, CallableSymbol>,
+        fn((&'a String, &'a mut CallableSymbol)) -> CallableSymbolDefinitionMut<'a>,
     >;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -291,13 +291,13 @@ impl<'a, T> IntoIterator for &'a mut CallableSymbolDefinitions<T> {
     }
 }
 
-impl<T> FromIterator<CallableSymbolDefinition<T>> for CallableSymbolDefinitions<T> {
-    fn from_iter<I: IntoIterator<Item = CallableSymbolDefinition<T>>>(iter: I) -> Self {
+impl FromIterator<CallableSymbolDefinition> for CallableSymbolDefinitions {
+    fn from_iter<I: IntoIterator<Item = CallableSymbolDefinition>>(iter: I) -> Self {
         Self(iter.into_iter().map(|d| (d.name, d.symbol)).collect())
     }
 }
 
-impl<T> CallableSymbolDefinitions<T> {
+impl CallableSymbolDefinitions {
     /// Returns whether all definitions define operations
     pub fn is_only_operations(&self) -> bool {
         self.iter()
@@ -311,139 +311,139 @@ impl<T> CallableSymbolDefinitions<T> {
     }
 
     /// Returns an iterator over references to definitions
-    pub fn iter(&self) -> impl Iterator<Item = CallableSymbolDefinitionRef<T>> {
+    pub fn iter(&self) -> impl Iterator<Item = CallableSymbolDefinitionRef> {
         self.into_iter()
     }
 
     /// Returns an iterator over mutable references to definitions
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = CallableSymbolDefinitionMut<T>> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = CallableSymbolDefinitionMut> {
         self.into_iter()
     }
 
     /// Returns an iterator over references to operation definitions
-    pub fn operation_definitions(&self) -> impl Iterator<Item = OperationDefinitionRef<T>> {
+    pub fn operation_definitions(&self) -> impl Iterator<Item = OperationDefinitionRef> {
         self.0.iter().filter_map(|(name, symbol)| {
-            <&OperationSymbol<_>>::try_from(symbol)
+            <&OperationSymbol>::try_from(symbol)
                 .map(|operation| OperationDefinitionRef { name, operation })
                 .ok()
         })
     }
 
     /// Returns an iterator over references to function definitions
-    pub fn function_definitions(&self) -> impl Iterator<Item = FunctionDefinitionRef<T>> {
+    pub fn function_definitions(&self) -> impl Iterator<Item = FunctionDefinitionRef> {
         self.0.iter().filter_map(|(name, symbol)| {
-            <&FunctionSymbol<_>>::try_from(symbol)
+            <&FunctionSymbol>::try_from(symbol)
                 .map(|function| FunctionDefinitionRef { name, function })
                 .ok()
         })
     }
 
     /// Returns an iterator over mutable references to operation definitions
-    pub fn operation_definitions_mut(&mut self) -> impl Iterator<Item = OperationDefinitionMut<T>> {
+    pub fn operation_definitions_mut(&mut self) -> impl Iterator<Item = OperationDefinitionMut> {
         self.0.iter_mut().filter_map(|(name, symbol)| {
-            <&mut OperationSymbol<_>>::try_from(symbol)
+            <&mut OperationSymbol>::try_from(symbol)
                 .map(|operation| OperationDefinitionMut { name, operation })
                 .ok()
         })
     }
 
     /// Returns an iterator over mutable references to function definitions
-    pub fn function_definitions_mut(&mut self) -> impl Iterator<Item = FunctionDefinitionMut<T>> {
+    pub fn function_definitions_mut(&mut self) -> impl Iterator<Item = FunctionDefinitionMut> {
         self.0.iter_mut().filter_map(|(name, symbol)| {
-            <&mut FunctionSymbol<_>>::try_from(symbol)
+            <&mut FunctionSymbol>::try_from(symbol)
                 .map(|function| FunctionDefinitionMut { name, function })
                 .ok()
         })
     }
 
     /// Returns an iterator over references to operations
-    pub fn operations(&self) -> impl Iterator<Item = &OperationSymbol<T>> {
+    pub fn operations(&self) -> impl Iterator<Item = &OperationSymbol> {
         self.0
             .iter()
             .filter_map(|(_, symbol)| symbol.try_into().ok())
     }
 
     /// Returns an iterator over references to functions
-    pub fn functions(&self) -> impl Iterator<Item = &FunctionSymbol<T>> {
+    pub fn functions(&self) -> impl Iterator<Item = &FunctionSymbol> {
         self.0
             .iter()
             .filter_map(|(_, symbol)| symbol.try_into().ok())
     }
 
     /// Returns an iterator over references to operations
-    pub fn operations_mut(&mut self) -> impl Iterator<Item = &mut OperationSymbol<T>> {
+    pub fn operations_mut(&mut self) -> impl Iterator<Item = &mut OperationSymbol> {
         self.0
             .iter_mut()
             .filter_map(|(_, symbol)| symbol.try_into().ok())
     }
 
     /// Returns an iterator over references to functions
-    pub fn functions_mut(&mut self) -> impl Iterator<Item = &mut FunctionSymbol<T>> {
+    pub fn functions_mut(&mut self) -> impl Iterator<Item = &mut FunctionSymbol> {
         self.0
             .iter_mut()
             .filter_map(|(_, symbol)| symbol.try_into().ok())
     }
 
     /// insert a symbol with a given name
-    pub fn insert<S: Into<CallableSymbol<T>>>(
+    pub fn insert<S: Into<CallableSymbol>>(
         &mut self,
         name: String,
         s: S,
-    ) -> Option<CallableSymbol<T>> {
+    ) -> Option<CallableSymbol> {
         self.0.insert(name, s.into())
     }
 }
 
-pub struct OperationDefinitionRef<'a, T> {
+pub struct OperationDefinitionRef<'a> {
     /// the name of the operation
     pub name: &'a str,
     /// a reference to the operation
-    pub operation: &'a OperationSymbol<T>,
+    pub operation: &'a OperationSymbol,
 }
 
-pub struct OperationDefinitionMut<'a, T> {
+pub struct OperationDefinitionMut<'a> {
     /// the name of the operation
     pub name: &'a str,
     /// a mutable reference to the operation
-    pub operation: &'a mut OperationSymbol<T>,
+    pub operation: &'a mut OperationSymbol,
 }
 
-pub struct FunctionDefinitionRef<'a, T> {
+pub struct FunctionDefinitionRef<'a> {
     /// the name of the function
     pub name: &'a str,
     /// a reference to the function
-    pub function: &'a FunctionSymbol<T>,
+    pub function: &'a FunctionSymbol,
 }
 
-pub struct FunctionDefinitionMut<'a, T> {
+pub struct FunctionDefinitionMut<'a> {
     /// the name of the function
     pub name: &'a str,
     /// a mutable reference to the function
-    pub function: &'a mut FunctionSymbol<T>,
+    pub function: &'a mut FunctionSymbol,
 }
 
 #[derive(Clone, Debug)]
-pub enum CallableSymbol<T> {
-    Function(FunctionSymbol<T>),
-    Operation(OperationSymbol<T>),
+pub enum CallableSymbol {
+    Function(FunctionSymbol),
+    Operation(OperationSymbol),
 }
 
-impl<T> From<FunctionSymbol<T>> for CallableSymbol<T> {
-    fn from(value: FunctionSymbol<T>) -> Self {
+impl From<FunctionSymbol> for CallableSymbol {
+    fn from(value: FunctionSymbol) -> Self {
         Self::Function(value)
     }
 }
 
-impl<T> From<OperationSymbol<T>> for CallableSymbol<T> {
-    fn from(value: OperationSymbol<T>) -> Self {
+impl From<OperationSymbol> for CallableSymbol {
+    fn from(value: OperationSymbol) -> Self {
         Self::Operation(value)
     }
 }
 
-impl<T> TryFrom<CallableSymbol<T>> for FunctionSymbol<T> {
+impl TryFrom<CallableSymbol> for FunctionSymbol {
     type Error = ();
 
-    fn try_from(value: CallableSymbol<T>) -> Result<Self, Self::Error> {
+    fn try_from(value: CallableSymbol) -> Result<Self, Self::Error> {
         match value {
             CallableSymbol::Function(s) => Ok(s),
             _ => Err(()),
@@ -451,10 +451,10 @@ impl<T> TryFrom<CallableSymbol<T>> for FunctionSymbol<T> {
     }
 }
 
-impl<T> TryFrom<CallableSymbol<T>> for OperationSymbol<T> {
+impl TryFrom<CallableSymbol> for OperationSymbol {
     type Error = ();
 
-    fn try_from(value: CallableSymbol<T>) -> Result<Self, Self::Error> {
+    fn try_from(value: CallableSymbol) -> Result<Self, Self::Error> {
         match value {
             CallableSymbol::Operation(s) => Ok(s),
             _ => Err(()),
@@ -462,10 +462,10 @@ impl<T> TryFrom<CallableSymbol<T>> for OperationSymbol<T> {
     }
 }
 
-impl<'a, T> TryFrom<&'a CallableSymbol<T>> for &'a FunctionSymbol<T> {
+impl<'a> TryFrom<&'a CallableSymbol> for &'a FunctionSymbol {
     type Error = ();
 
-    fn try_from(value: &'a CallableSymbol<T>) -> Result<Self, Self::Error> {
+    fn try_from(value: &'a CallableSymbol) -> Result<Self, Self::Error> {
         match value {
             CallableSymbol::Function(s) => Ok(s),
             _ => Err(()),
@@ -473,10 +473,10 @@ impl<'a, T> TryFrom<&'a CallableSymbol<T>> for &'a FunctionSymbol<T> {
     }
 }
 
-impl<'a, T> TryFrom<&'a CallableSymbol<T>> for &'a OperationSymbol<T> {
+impl<'a> TryFrom<&'a CallableSymbol> for &'a OperationSymbol {
     type Error = ();
 
-    fn try_from(value: &'a CallableSymbol<T>) -> Result<Self, Self::Error> {
+    fn try_from(value: &'a CallableSymbol) -> Result<Self, Self::Error> {
         match value {
             CallableSymbol::Operation(s) => Ok(s),
             _ => Err(()),
@@ -484,10 +484,10 @@ impl<'a, T> TryFrom<&'a CallableSymbol<T>> for &'a OperationSymbol<T> {
     }
 }
 
-impl<'a, T> TryFrom<&'a mut CallableSymbol<T>> for &'a mut FunctionSymbol<T> {
+impl<'a> TryFrom<&'a mut CallableSymbol> for &'a mut FunctionSymbol {
     type Error = ();
 
-    fn try_from(value: &'a mut CallableSymbol<T>) -> Result<Self, Self::Error> {
+    fn try_from(value: &'a mut CallableSymbol) -> Result<Self, Self::Error> {
         match value {
             CallableSymbol::Function(s) => Ok(s),
             _ => Err(()),
@@ -495,10 +495,10 @@ impl<'a, T> TryFrom<&'a mut CallableSymbol<T>> for &'a mut FunctionSymbol<T> {
     }
 }
 
-impl<'a, T> TryFrom<&'a mut CallableSymbol<T>> for &'a mut OperationSymbol<T> {
+impl<'a> TryFrom<&'a mut CallableSymbol> for &'a mut OperationSymbol {
     type Error = ();
 
-    fn try_from(value: &'a mut CallableSymbol<T>) -> Result<Self, Self::Error> {
+    fn try_from(value: &'a mut CallableSymbol) -> Result<Self, Self::Error> {
         match value {
             CallableSymbol::Operation(s) => Ok(s),
             _ => Err(()),
@@ -507,21 +507,21 @@ impl<'a, T> TryFrom<&'a mut CallableSymbol<T>> for &'a mut OperationSymbol<T> {
 }
 
 #[derive(Clone, Debug)]
-pub struct FunctionSymbol<T> {
+pub struct FunctionSymbol {
     pub source: SourceRef,
     /// the parameters of this function, in the form of values
-    pub params: Params<T>,
+    pub params: Params,
     /// the body of the function
-    pub body: FunctionBody<T>,
+    pub body: FunctionBody,
 }
 
 #[derive(Clone, Debug)]
-pub struct OperationSymbol<T> {
+pub struct OperationSymbol {
     pub source: SourceRef,
     /// the id of this operation. This machine's operation id must be set to this value in order for this operation to be active.
-    pub id: OperationId<T>,
+    pub id: OperationId,
     /// the parameters of this operation, in the form of columns defined in some constraints block of this machine
-    pub params: Params<T>,
+    pub params: Params,
 }
 
 #[derive(Clone, Debug)]
@@ -530,18 +530,18 @@ pub struct DegreeStatement {
 }
 
 #[derive(Clone, Debug)]
-pub enum FunctionStatement<T> {
-    Assignment(AssignmentStatement<T>),
-    Instruction(InstructionStatement<T>),
+pub enum FunctionStatement {
+    Assignment(AssignmentStatement),
+    Instruction(InstructionStatement),
     Label(LabelStatement),
     DebugDirective(DebugDirective),
-    Return(Return<T>),
+    Return(Return),
 }
 
-impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for FunctionStatement<T> {
+impl ExpressionVisitable<Expression<NamespacedPolynomialReference>> for FunctionStatement {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> std::ops::ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, NamespacedPolynomialReference>) -> std::ops::ControlFlow<B>,
+        F: FnMut(&mut Expression<NamespacedPolynomialReference>) -> std::ops::ControlFlow<B>,
     {
         match self {
             FunctionStatement::Assignment(assignment) => {
@@ -563,7 +563,7 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Fu
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> std::ops::ControlFlow<B>
     where
-        F: FnMut(&Expression<T, NamespacedPolynomialReference>) -> std::ops::ControlFlow<B>,
+        F: FnMut(&Expression<NamespacedPolynomialReference>) -> std::ops::ControlFlow<B>,
     {
         match self {
             FunctionStatement::Assignment(assignment) => {
@@ -584,44 +584,44 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Fu
     }
 }
 
-impl<T> From<AssignmentStatement<T>> for FunctionStatement<T> {
-    fn from(value: AssignmentStatement<T>) -> Self {
+impl From<AssignmentStatement> for FunctionStatement {
+    fn from(value: AssignmentStatement) -> Self {
         Self::Assignment(value)
     }
 }
 
-impl<T> From<InstructionStatement<T>> for FunctionStatement<T> {
-    fn from(value: InstructionStatement<T>) -> Self {
+impl From<InstructionStatement> for FunctionStatement {
+    fn from(value: InstructionStatement) -> Self {
         Self::Instruction(value)
     }
 }
 
-impl<T> From<LabelStatement> for FunctionStatement<T> {
+impl From<LabelStatement> for FunctionStatement {
     fn from(value: LabelStatement) -> Self {
         Self::Label(value)
     }
 }
 
-impl<T> From<DebugDirective> for FunctionStatement<T> {
+impl From<DebugDirective> for FunctionStatement {
     fn from(value: DebugDirective) -> Self {
         Self::DebugDirective(value)
     }
 }
 
-impl<T> From<Return<T>> for FunctionStatement<T> {
-    fn from(value: Return<T>) -> Self {
+impl From<Return> for FunctionStatement {
+    fn from(value: Return) -> Self {
         Self::Return(value)
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct AssignmentStatement<T> {
+pub struct AssignmentStatement {
     pub source: SourceRef,
     pub lhs_with_reg: Vec<(String, AssignmentRegister)>,
-    pub rhs: Box<Expression<T>>,
+    pub rhs: Box<Expression>,
 }
 
-impl<T> AssignmentStatement<T> {
+impl AssignmentStatement {
     fn lhs(&self) -> impl Iterator<Item = &String> {
         self.lhs_with_reg.iter().map(|(lhs, _)| lhs)
     }
@@ -632,10 +632,10 @@ impl<T> AssignmentStatement<T> {
 }
 
 #[derive(Clone, Debug)]
-pub struct InstructionStatement<T> {
+pub struct InstructionStatement {
     pub source: SourceRef,
     pub instruction: String,
-    pub inputs: Vec<Expression<T>>,
+    pub inputs: Vec<Expression>,
 }
 
 #[derive(Clone, Debug)]
@@ -651,9 +651,9 @@ pub struct DebugDirective {
 }
 
 #[derive(Clone, Debug)]
-pub struct Return<T> {
+pub struct Return {
     pub source: SourceRef,
-    pub values: Vec<Expression<T>>,
+    pub values: Vec<Expression>,
 }
 
 #[derive(Clone, Debug)]
@@ -667,13 +667,13 @@ pub struct SubmachineDeclaration {
 /// An item that is part of the module tree after all modules,
 /// imports and references have been resolved.
 #[derive(Clone, Debug)]
-pub enum Item<T> {
-    Machine(Machine<T>),
-    Expression(ExpressionWithTypeScheme<T>),
+pub enum Item {
+    Machine(Machine),
+    Expression(ExpressionWithTypeScheme),
 }
 
-impl<T> Item<T> {
-    pub fn try_to_machine(&self) -> Option<&Machine<T>> {
+impl Item {
+    pub fn try_to_machine(&self) -> Option<&Machine> {
         match self {
             Item::Machine(m) => Some(m),
             Item::Expression(_) => None,
@@ -682,7 +682,7 @@ impl<T> Item<T> {
 }
 
 #[derive(Clone, Default, Debug)]
-pub struct Machine<T> {
+pub struct Machine {
     /// The degree if any, i.e. the number of rows in instances of this machine type
     pub degree: Option<DegreeStatement>,
     /// The latch, i.e. the boolean column whose values must be 1 in order for this machine to be accessed. Must be defined in one of the constraint blocks of this machine.
@@ -694,18 +694,18 @@ pub struct Machine<T> {
     /// The index of the program counter in the registers, if any
     pub pc: Option<usize>,
     /// The set of pil statements
-    pub pil: Vec<PilStatement<T>>,
+    pub pil: Vec<PilStatement>,
     /// The set of instructions which can be invoked in functions
-    pub instructions: Vec<InstructionDefinitionStatement<T>>,
+    pub instructions: Vec<InstructionDefinitionStatement>,
     /// The set of low level links to other machines
-    pub links: Vec<LinkDefinitionStatement<T>>,
+    pub links: Vec<LinkDefinitionStatement>,
     /// The set of functions and operations in the same namespace
-    pub callable: CallableSymbolDefinitions<T>,
+    pub callable: CallableSymbolDefinitions,
     /// The set of submachines
     pub submachines: Vec<SubmachineDeclaration>,
 }
 
-impl<T> Machine<T> {
+impl Machine {
     /// Returns whether this machine type features a program counter. This is how we differenciate virtual machines from constrained machines.
     pub fn has_pc(&self) -> bool {
         self.pc.is_some()
@@ -741,64 +741,64 @@ impl<T> Machine<T> {
     }
 
     /// Returns an iterator over references to the operation definitions    
-    pub fn operation_definitions(&self) -> impl Iterator<Item = OperationDefinitionRef<T>> {
+    pub fn operation_definitions(&self) -> impl Iterator<Item = OperationDefinitionRef> {
         self.callable.operation_definitions()
     }
 
     /// Returns an iterator over references to the function definitions
-    pub fn function_definitions(&self) -> impl Iterator<Item = FunctionDefinitionRef<T>> {
+    pub fn function_definitions(&self) -> impl Iterator<Item = FunctionDefinitionRef> {
         self.callable.function_definitions()
     }
 
     /// Returns an iterator over mutable references to the operation definitions
-    pub fn operation_definitions_mut(&mut self) -> impl Iterator<Item = OperationDefinitionMut<T>> {
+    pub fn operation_definitions_mut(&mut self) -> impl Iterator<Item = OperationDefinitionMut> {
         self.callable.operation_definitions_mut()
     }
 
     /// Returns an iterator over mutable references to the function definitions
-    pub fn function_definitions_mut(&mut self) -> impl Iterator<Item = FunctionDefinitionMut<T>> {
+    pub fn function_definitions_mut(&mut self) -> impl Iterator<Item = FunctionDefinitionMut> {
         self.callable.function_definitions_mut()
     }
 
     /// Returns an iterator over references to the operations    
-    pub fn operations(&self) -> impl Iterator<Item = &OperationSymbol<T>> {
+    pub fn operations(&self) -> impl Iterator<Item = &OperationSymbol> {
         self.callable.operations()
     }
 
     /// Returns an iterator over references to the functions
-    pub fn functions(&self) -> impl Iterator<Item = &FunctionSymbol<T>> {
+    pub fn functions(&self) -> impl Iterator<Item = &FunctionSymbol> {
         self.callable.functions()
     }
 
     /// Returns an iterator over mutable references to the operations    
-    pub fn operations_mut(&mut self) -> impl Iterator<Item = &mut OperationSymbol<T>> {
+    pub fn operations_mut(&mut self) -> impl Iterator<Item = &mut OperationSymbol> {
         self.callable.operations_mut()
     }
 
     /// Returns an iterator over mutable references to the functions
-    pub fn functions_mut(&mut self) -> impl Iterator<Item = &mut FunctionSymbol<T>> {
+    pub fn functions_mut(&mut self) -> impl Iterator<Item = &mut FunctionSymbol> {
         self.callable.functions_mut()
     }
 }
 
 #[derive(Clone, Default, Debug)]
-pub struct Rom<T> {
-    pub statements: FunctionStatements<T>,
+pub struct Rom {
+    pub statements: FunctionStatements,
 }
 
 #[derive(Default, Clone, Debug)]
-pub struct AnalysisASMFile<T> {
-    pub items: BTreeMap<AbsoluteSymbolPath, Item<T>>,
+pub struct AnalysisASMFile {
+    pub items: BTreeMap<AbsoluteSymbolPath, Item>,
 }
 
-impl<T> AnalysisASMFile<T> {
-    pub fn machines(&self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &Machine<T>)> {
+impl AnalysisASMFile {
+    pub fn machines(&self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &Machine)> {
         self.items.iter().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
             Item::Expression(_) => None,
         })
     }
-    pub fn machines_mut(&mut self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &mut Machine<T>)> {
+    pub fn machines_mut(&mut self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &mut Machine)> {
         self.items.iter_mut().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
             Item::Expression(_) => None,

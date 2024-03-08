@@ -4,15 +4,10 @@ use powdr_ast::{
     analyzed::{Expression, Reference},
     parsed::visitor::ExpressionVisitable,
 };
-use powdr_number::FieldElement;
 
 /// Returns a sorted list of symbols such that called symbols appear before the symbols that reference them.
 /// Circular dependencies appear in an arbitrary order.
-pub fn sort_called_first<
-    'a,
-    T: FieldElement,
-    I: Iterator<Item = (&'a str, Option<&'a Expression<T>>)>,
->(
+pub fn sort_called_first<'a, I: Iterator<Item = (&'a str, Option<&'a Expression>)>>(
     symbols: I,
 ) -> Vec<String> {
     let graph = call_graph(symbols);
@@ -43,14 +38,14 @@ fn topo_sort_visit<'a, 'b>(
     result.push(name.to_string());
 }
 
-fn call_graph<'a, T: FieldElement, I: Iterator<Item = (&'a str, Option<&'a Expression<T>>)>>(
+fn call_graph<'a, I: Iterator<Item = (&'a str, Option<&'a Expression>)>>(
     symbols: I,
 ) -> HashMap<&'a str, HashSet<String>> {
     symbols
         .map(|(name, expr)| {
             let mut called: HashSet<String> = HashSet::new();
             if let Some(e) = expr {
-                e.pre_visit_expressions(&mut |e: &Expression<T>| {
+                e.pre_visit_expressions(&mut |e: &Expression| {
                     if let Expression::Reference(Reference::Poly(r)) = e {
                         // Tried with &'a str here, but it does not really work
                         // with the lambda.

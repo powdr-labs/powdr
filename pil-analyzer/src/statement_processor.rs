@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::marker::PhantomData;
 
 use itertools::Itertools;
 
@@ -8,7 +7,7 @@ use powdr_ast::parsed::{
     self, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions, TypeName,
 };
 use powdr_ast::SourceRef;
-use powdr_number::{BigInt, DegreeType, FieldElement};
+use powdr_number::{BigInt, DegreeType, GoldilocksField};
 
 use powdr_ast::analyzed::{
     Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
@@ -20,10 +19,10 @@ use crate::AnalysisDriver;
 
 use crate::{evaluator, expression_processor::ExpressionProcessor};
 
-pub enum PILItem<T> {
-    Definition(Symbol, Option<FunctionValueDefinition<T>>),
+pub enum PILItem {
+    Definition(Symbol, Option<FunctionValueDefinition>),
     PublicDeclaration(PublicDeclaration),
-    Identity(Identity<Expression<T>>),
+    Identity(Identity<Expression>),
 }
 
 pub struct Counters {
@@ -73,28 +72,25 @@ impl Counters {
     }
 }
 
-pub struct StatementProcessor<'a, T, D> {
+pub struct StatementProcessor<'a, D> {
     driver: D,
     counters: &'a mut Counters,
     degree: Option<DegreeType>,
-    _phantom: PhantomData<T>,
 }
 
-impl<'a, T, D> StatementProcessor<'a, T, D>
+impl<'a, D> StatementProcessor<'a, D>
 where
-    T: FieldElement,
-    D: AnalysisDriver<T>,
+    D: AnalysisDriver,
 {
     pub fn new(driver: D, counters: &'a mut Counters, degree: Option<DegreeType>) -> Self {
         StatementProcessor {
             driver,
             counters,
             degree,
-            _phantom: Default::default(),
         }
     }
 
-    pub fn handle_statement(&mut self, statement: PilStatement<T>) -> Vec<PILItem<T>> {
+    pub fn handle_statement(&mut self, statement: PilStatement) -> Vec<PILItem> {
         match statement {
             PilStatement::Include(_, _) => {
                 panic!("Includes must be handled outside the statement processor.")
@@ -160,7 +156,7 @@ where
 
     fn name_and_type_from_polynomial_name(
         &mut self,
-        PolynomialName { name, array_size }: PolynomialName<T>,
+        PolynomialName { name, array_size }: PolynomialName,
     ) -> (String, Option<Type>) {
         let ty = Some(match array_size {
             None => Type::Col,
@@ -189,9 +185,9 @@ where
         &mut self,
         source: SourceRef,
         name: String,
-        type_scheme: Option<parsed::TypeScheme<parsed::Expression<T>>>,
-        value: Option<parsed::Expression<T>>,
-    ) -> Vec<PILItem<T>> {
+        type_scheme: Option<parsed::TypeScheme<parsed::Expression>>,
+        value: Option<parsed::Expression>,
+    ) -> Vec<PILItem> {
         let type_scheme = type_scheme.map(|ts| {
             let vars = ts.type_vars;
             let duplicates = vars.vars().duplicates().collect::<Vec<_>>();
@@ -282,7 +278,7 @@ where
         }
     }
 
-    fn handle_identity_statement(&mut self, statement: PilStatement<T>) -> Vec<PILItem<T>> {
+    fn handle_identity_statement(&mut self, statement: PilStatement) -> Vec<PILItem> {
         let (source, kind, left, right) = match statement {
             PilStatement::Expression(source, expression) => (
                 source,
@@ -335,9 +331,9 @@ where
     fn handle_polynomial_declarations(
         &mut self,
         source: SourceRef,
-        polynomials: Vec<PolynomialName<T>>,
+        polynomials: Vec<PolynomialName>,
         polynomial_type: PolynomialType,
-    ) -> Vec<PILItem<T>> {
+    ) -> Vec<PILItem> {
         polynomials
             .into_iter()
             .flat_map(|poly_name| {
@@ -359,8 +355,8 @@ where
         name: String,
         symbol_kind: SymbolKind,
         type_scheme: Option<TypeScheme>,
-        value: Option<FunctionDefinition<T>>,
-    ) -> Vec<PILItem<T>> {
+        value: Option<FunctionDefinition>,
+    ) -> Vec<PILItem> {
         let length = type_scheme.as_ref().and_then(|t| {
             if symbol_kind == SymbolKind::Other() {
                 None
@@ -417,9 +413,9 @@ where
         source: SourceRef,
         name: String,
         poly: parsed::NamespacedPolynomialReference,
-        array_index: Option<parsed::Expression<T>>,
-        index: parsed::Expression<T>,
-    ) -> Vec<PILItem<T>> {
+        array_index: Option<parsed::Expression>,
+        index: parsed::Expression,
+    ) -> Vec<PILItem> {
         let id = self.counters.dispense_public_id();
         let polynomial = self
             .expression_processor()
@@ -449,7 +445,7 @@ where
 
     /// Resolves a type name into a concrete type.
     /// This routine mainly evaluates array length expressions.
-    fn resolve_type_name(&self, mut n: TypeName<parsed::Expression<T>>) -> Result<Type, EvalError> {
+    fn resolve_type_name(&self, mut n: TypeName<parsed::Expression>) -> Result<Type, EvalError> {
         // Replace all expressions by number literals.
         // Any expression inside a type name has to be an array length,
         // so we expect an integer that fits u64.
@@ -463,26 +459,28 @@ where
         Ok(n.into())
     }
 
-    fn evaluate_expression_to_int(&self, expr: parsed::Expression<T>) -> Result<BigInt, EvalError> {
-        evaluator::evaluate_expression(
+    fn evaluate_expression_to_int(&self, expr: parsed::Expression) -> Result<BigInt, EvalError> {
+        // TODO we should maybe implement a separate evaluator that is able to run before type checking
+        // and is field-independent (only uses integers)?
+        evaluator::evaluate_expression::<GoldilocksField>(
             &ExpressionProcessor::new(self.driver).process_expression(expr),
             self.driver.definitions(),
         )?
         .try_to_integer()
     }
 
-    fn expression_processor(&self) -> ExpressionProcessor<T, D> {
+    fn expression_processor(&self) -> ExpressionProcessor<D> {
         ExpressionProcessor::new(self.driver)
     }
 
-    fn process_expression(&self, expr: parsed::Expression<T>) -> Expression<T> {
+    fn process_expression(&self, expr: parsed::Expression) -> Expression {
         self.expression_processor().process_expression(expr)
     }
 
     fn process_selected_expressions(
         &self,
-        expr: parsed::SelectedExpressions<parsed::Expression<T>>,
-    ) -> SelectedExpressions<Expression<T>> {
+        expr: parsed::SelectedExpressions<parsed::Expression>,
+    ) -> SelectedExpressions<Expression> {
         self.expression_processor()
             .process_selected_expressions(expr)
     }

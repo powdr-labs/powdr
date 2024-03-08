@@ -34,7 +34,7 @@ pub enum StatementIdentifier {
 pub struct Analyzed<T> {
     /// The degree of all namespaces, which must match. If there are no namespaces, then `None`.
     pub degree: Option<DegreeType>,
-    pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+    pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<AlgebraicExpression<T>>>,
@@ -66,13 +66,13 @@ impl<T> Analyzed<T> {
 
     pub fn constant_polys_in_source_order(
         &self,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
         self.definitions_in_source_order(PolynomialType::Constant)
     }
 
     pub fn committed_polys_in_source_order(
         &self,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
@@ -95,7 +95,7 @@ impl<T> Analyzed<T> {
     pub fn definitions_in_source_order(
         &self,
         poly_type: PolynomialType,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
         assert!(
             poly_type != PolynomialType::Intermediate,
             "Use intermediate_polys_in_source_order to get intermediate polys."
@@ -238,7 +238,7 @@ impl<T> Analyzed<T> {
                 poly.id = replacements[&poly_id].id;
             }
         });
-        let visitor = &mut |expr: &mut Expression<_>| {
+        let visitor = &mut |expr: &mut Expression| {
             if let Expression::Reference(Reference::Poly(poly)) = expr {
                 poly.poly_id = poly.poly_id.map(|poly_id| {
                     assert!(!to_remove.contains(&poly_id));
@@ -316,7 +316,7 @@ impl<T> Analyzed<T> {
 
     pub fn post_visit_expressions_in_definitions_mut<F>(&mut self, f: &mut F)
     where
-        F: FnMut(&mut Expression<T>),
+        F: FnMut(&mut Expression),
     {
         // TODO add public inputs if we change them to expressions at some point.
         self.definitions
@@ -440,9 +440,9 @@ fn inlined_expression_from_intermediate_poly_id<T: Copy + Display>(
 }
 
 /// Extracts the declared (or implicit) type from a definition.
-pub fn type_from_definition<T>(
+pub fn type_from_definition(
     symbol: &Symbol,
-    value: &Option<FunctionValueDefinition<T>>,
+    value: &Option<FunctionValueDefinition>,
 ) -> Option<TypeScheme> {
     if let Some(value) = value {
         match value {
@@ -543,23 +543,23 @@ pub enum SymbolKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub enum FunctionValueDefinition<T> {
-    Array(Vec<RepeatedArray<T>>),
-    Query(Expression<T>),
-    Expression(TypedExpression<T>),
+pub enum FunctionValueDefinition {
+    Array(Vec<RepeatedArray>),
+    Query(Expression),
+    Expression(TypedExpression),
 }
 
 /// An array of elements that might be repeated.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct RepeatedArray<T> {
+pub struct RepeatedArray {
     /// The pattern to be repeated
-    pattern: Vec<Expression<T>>,
+    pattern: Vec<Expression>,
     /// The number of values to be filled by repeating the pattern, possibly truncating it at the end
     size: DegreeType,
 }
 
-impl<T> RepeatedArray<T> {
-    pub fn new(pattern: Vec<Expression<T>>, size: DegreeType) -> Self {
+impl RepeatedArray {
+    pub fn new(pattern: Vec<Expression>, size: DegreeType) -> Self {
         if pattern.is_empty() {
             assert!(
                 size == 0,
@@ -575,12 +575,12 @@ impl<T> RepeatedArray<T> {
     }
 
     /// Returns the pattern to be repeated
-    pub fn pattern(&self) -> &[Expression<T>] {
+    pub fn pattern(&self) -> &[Expression] {
         &self.pattern
     }
 
     /// Returns the pattern to be repeated
-    pub fn pattern_mut(&mut self) -> &mut [Expression<T>] {
+    pub fn pattern_mut(&mut self) -> &mut [Expression] {
         &mut self.pattern
     }
 
@@ -681,7 +681,7 @@ impl<T> SelectedExpressions<AlgebraicExpression<T>> {
     }
 }
 
-pub type Expression<T> = parsed::Expression<T, Reference>;
+pub type Expression = parsed::Expression<Reference>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Reference {

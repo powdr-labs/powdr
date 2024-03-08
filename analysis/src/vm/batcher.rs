@@ -1,7 +1,5 @@
 //! Batch compatible statements in each function of each machine
 
-use std::marker::PhantomData;
-
 use itertools::Itertools;
 use powdr_ast::{
     asm_analysis::{
@@ -10,19 +8,18 @@ use powdr_ast::{
     },
     parsed::asm::AbsoluteSymbolPath,
 };
-use powdr_number::FieldElement;
 
-pub fn batch<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
+pub fn batch(file: AnalysisASMFile) -> AnalysisASMFile {
     RomBatcher::default().batch(file)
 }
 
 #[derive(Default)]
-struct Batch<'a, T> {
-    statements: Vec<&'a FunctionStatement<T>>,
+struct Batch<'a> {
+    statements: Vec<&'a FunctionStatement>,
 }
 
-impl<'a, T: FieldElement> Batch<'a, T> {
-    fn from_statement(s: &'a FunctionStatement<T>) -> Batch<T> {
+impl<'a> Batch<'a> {
+    fn from_statement(s: &'a FunctionStatement) -> Batch {
         Batch {
             statements: vec![s],
         }
@@ -47,8 +44,8 @@ impl<'a, T: FieldElement> Batch<'a, T> {
 
     fn try_absorb(
         &mut self,
-        s: &'a FunctionStatement<T>,
-    ) -> Result<(), (&'a FunctionStatement<T>, IncompatibleSet)> {
+        s: &'a FunctionStatement,
+    ) -> Result<(), (&'a FunctionStatement, IncompatibleSet)> {
         let batch = Self::from_statement(s);
         self.try_join(batch)
             .map_err(|(b, incompatible)| (b.statements.into_iter().next().unwrap(), incompatible))
@@ -73,13 +70,11 @@ impl<'a, T: FieldElement> Batch<'a, T> {
 }
 
 #[derive(Default)]
-struct RomBatcher<T> {
-    marker: PhantomData<T>,
-}
+struct RomBatcher {}
 
-impl<T: FieldElement> RomBatcher<T> {
+impl RomBatcher {
     // split a list of statements into compatible batches
-    fn extract_batches(&self, machine_name: &AbsoluteSymbolPath, machine: &mut Machine<T>) {
+    fn extract_batches(&self, machine_name: &AbsoluteSymbolPath, machine: &mut Machine) {
         for definition in machine.function_definitions_mut() {
             let batches: Vec<_> = definition
                 .function
@@ -136,7 +131,7 @@ impl<T: FieldElement> RomBatcher<T> {
         }
     }
 
-    pub fn batch(&mut self, mut asm_file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
+    pub fn batch(&mut self, mut asm_file: AnalysisASMFile) -> AnalysisASMFile {
         for (name, machine) in asm_file.items.iter_mut().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
             Item::Expression(_) => None,
@@ -154,7 +149,6 @@ mod tests {
     use std::{fs, path::PathBuf};
 
     use powdr_ast::asm_analysis::AnalysisASMFile;
-    use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -175,7 +169,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let batched: AnalysisASMFile<GoldilocksField> = batch_str(&input);
+        let batched: AnalysisASMFile = batch_str(&input);
 
         let result = format!("{batched}").replace("\n\n", "\n");
         let expected = expected.replace("\n\n", "\n");

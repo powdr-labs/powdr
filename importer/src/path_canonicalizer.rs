@@ -1,6 +1,4 @@
 /// Replace all relative paths in the program with absolute paths to the canonical symbol they point to, and remove all import statements in the program
-use powdr_number::FieldElement;
-
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     convert::Infallible,
@@ -22,9 +20,7 @@ use powdr_ast::{
 
 /// Changes all symbol references (symbol paths) from relative paths
 /// to absolute paths, and removes all import statements.
-pub fn canonicalize_paths<T: FieldElement>(
-    program: ASMProgram<T>,
-) -> Result<ASMProgram<T>, String> {
+pub fn canonicalize_paths(program: ASMProgram) -> Result<ASMProgram, String> {
     let paths = &generate_path_map(&program)?;
 
     let mut canonicalizer = Canonicalizer {
@@ -46,13 +42,13 @@ struct Canonicalizer<'a> {
     paths: &'a PathMap,
 }
 
-impl<'a, T> Folder<T> for Canonicalizer<'a> {
+impl<'a> Folder for Canonicalizer<'a> {
     // once the paths are resolved, canonicalization cannot fail
     type Error = Infallible;
 
     /// replace references to symbols with absolute paths. This removes the import statements.
     /// This always succeeds if the symbol table was generated correctly.
-    fn fold_module_value(&mut self, module: ASMModule<T>) -> Result<ASMModule<T>, Self::Error> {
+    fn fold_module_value(&mut self, module: ASMModule) -> Result<ASMModule, Self::Error> {
         Ok(ASMModule {
             statements: module
                 .statements
@@ -99,7 +95,7 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
         })
     }
 
-    fn fold_machine(&mut self, mut machine: Machine<T>) -> Result<Machine<T>, Self::Error> {
+    fn fold_machine(&mut self, mut machine: Machine) -> Result<Machine, Self::Error> {
         for s in &mut machine.statements {
             match s {
                 MachineStatement::Submachine(_, path, _) => {
@@ -119,8 +115,8 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
     }
 }
 
-fn canonicalize_inside_expression<T>(
-    e: &mut Expression<T>,
+fn canonicalize_inside_expression(
+    e: &mut Expression,
     path: &AbsoluteSymbolPath,
     paths: &'_ PathMap,
 ) {
@@ -138,9 +134,9 @@ fn canonicalize_inside_expression<T>(
 
 /// The state of the checking process. We visit the module tree collecting each relative path and pointing it to the absolute path it resolves to in the state.
 #[derive(PartialEq, Debug)]
-pub struct State<'a, T> {
+pub struct State<'a> {
     /// The root module of this program, so that we can visit any import encountered: if we are at absolute path `a` and see relative import `r`, we want to go to `a.join(r)` starting from `root`. It does not change as we visit the tree.
-    root: &'a ASMModule<T>,
+    root: &'a ASMModule,
     /// For each relative path at an absolute path, the absolute path of the canonical symbol it points to. It gets populated as we visit the tree.
     pub paths: PathMap,
 }
@@ -181,31 +177,24 @@ impl PathDependencyChain {
 /// # Errors
 ///
 /// This function will return an error if the relative path does not resolve to anything
-fn check_path<T>(
+fn check_path(
     // the path to check
     path: AbsoluteSymbolPath,
     // the current state
-    state: &mut State<'_, T>,
+    state: &mut State<'_>,
 ) -> Result<(), String> {
     check_path_internal(path, state, Default::default())?;
     Ok(())
 }
 
-fn check_path_internal<'a, T>(
+fn check_path_internal<'a>(
     // the path to check
     path: AbsoluteSymbolPath,
     // the current state
-    state: &mut State<'a, T>,
+    state: &mut State<'a>,
     // the locations visited so far
     mut chain: PathDependencyChain,
-) -> Result<
-    (
-        AbsoluteSymbolPath,
-        SymbolValueRef<'a, T>,
-        PathDependencyChain,
-    ),
-    String,
-> {
+) -> Result<(AbsoluteSymbolPath, SymbolValueRef<'a>, PathDependencyChain), String> {
     let root = state.root;
 
     chain.push(path.clone())?;
@@ -269,18 +258,18 @@ fn check_path_internal<'a, T>(
 /// # Errors
 ///
 /// This function will return an error if the imported path does not resolve to anything
-fn check_import<T: Clone>(
+fn check_import(
     // the location at which the import is made
     location: AbsoluteSymbolPath,
     // the imported path, relative to the location
     imported: Import,
     // the current state
-    state: &mut State<'_, T>,
+    state: &mut State<'_>,
 ) -> Result<(), String> {
     check_path(location.join(imported.path), state)
 }
 
-fn generate_path_map<T: FieldElement>(program: &ASMProgram<T>) -> Result<PathMap, String> {
+fn generate_path_map(program: &ASMProgram) -> Result<PathMap, String> {
     // an empty state starting from this module
     let mut state = State {
         root: &program.main,
@@ -300,10 +289,10 @@ fn generate_path_map<T: FieldElement>(program: &ASMProgram<T>) -> Result<PathMap
 /// # Errors
 ///
 /// This function will return an error if a name is not unique, or if any path in this module does not resolve to anything
-fn check_module<T: Clone>(
+fn check_module(
     location: AbsoluteSymbolPath,
-    module: &ASMModule<T>,
-    state: &mut State<'_, T>,
+    module: &ASMModule,
+    state: &mut State<'_>,
 ) -> Result<(), String> {
     module.symbol_definitions().try_fold(
         BTreeSet::default(),
@@ -345,10 +334,10 @@ fn check_module<T: Clone>(
 /// # Errors
 ///
 /// This function will return an error if any of the paths does not resolve to anything
-fn check_machine<T: Clone>(
+fn check_machine(
     location: AbsoluteSymbolPath,
-    m: &Machine<T>,
-    state: &mut State<'_, T>,
+    m: &Machine,
+    state: &mut State<'_>,
 ) -> Result<(), String> {
     // we check the path in the context of the parent module
     let module_location = location.clone().parent();
@@ -381,10 +370,10 @@ fn check_machine<T: Clone>(
 /// # Errors
 ///
 /// This function will return an error if any of the paths does not resolve to anything
-fn check_expression<T: Clone>(
+fn check_expression(
     location: &AbsoluteSymbolPath,
-    e: &Expression<T>,
-    state: &mut State<'_, T>,
+    e: &Expression,
+    state: &mut State<'_>,
     local_variables: &HashSet<String>,
 ) -> Result<(), String> {
     // We cannot use the visitor here because we need to change the local variables
@@ -447,10 +436,10 @@ fn check_expression<T: Clone>(
     }
 }
 
-fn check_expressions<T: Clone>(
+fn check_expressions(
     location: &AbsoluteSymbolPath,
-    expressions: &[Expression<T>],
-    state: &mut State<'_, T>,
+    expressions: &[Expression],
+    state: &mut State<'_>,
     local_variables: &HashSet<String>,
 ) -> Result<(), String> {
     expressions
@@ -463,7 +452,6 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use powdr_number::Bn254Field;
     use pretty_assertions::assert_eq;
 
     fn expect(path: &str, expected: Result<(), &str>) {
@@ -471,7 +459,7 @@ mod tests {
             .join(path)
             .with_extension("asm");
         let input_str = std::fs::read_to_string(input_path).unwrap();
-        let parsed = powdr_parser::parse_asm::<Bn254Field>(None, &input_str).unwrap();
+        let parsed = powdr_parser::parse_asm(None, &input_str).unwrap();
 
         let res = canonicalize_paths(parsed).map(|res| res.to_string().replace('\t', "    "));
         let expected = expected
