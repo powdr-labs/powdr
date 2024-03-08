@@ -643,7 +643,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
             "is_positive" => {
-                let r = if args[0].bin() as i32 > 0 { 1 } else { 0 };
+                let r = if args[0].bin() > 0 { 1 } else { 0 };
 
                 vec![r.into()]
             }
