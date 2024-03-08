@@ -143,8 +143,8 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         // generate circom
         let opt = pil2circom::StarkOption {
             enable_input: false,
-            verkey_input: true,
-            skip_main: false,
+            verkey_input: false,
+            skip_main: true,
             agg_stage: false,
         };
         let mut proofs: Vec<Proof> = vec![serde_json::to_vec(&starkproof).unwrap()];
