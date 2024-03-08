@@ -219,7 +219,7 @@ fn get_lookup_check_closure() -> String {
                 }
                 for (auto r : lookup_result) {
                     if (r != 0) {
-                        info(\"Lookup \", lookup_name, \" failed.\");
+                        throw_or_abort(format(\"Lookup \", lookup_name, \" failed.\"));
                         return false;
                     }
                 }
