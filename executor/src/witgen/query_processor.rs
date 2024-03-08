@@ -102,7 +102,11 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         name: &'a str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Definitions(&self.fixed_data.analyzed.definitions).lookup(name, generic_args)
+        Definitions(&self.fixed_data.analyzed.definitions).lookup_with_symbols(
+            name,
+            generic_args,
+            self,
+        )
     }
 
     fn eval_expr(&self, expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {

@@ -143,7 +143,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         if let Some(v) = self.cache.read().unwrap().get(name) {
             return Ok(v.clone());
         }
-        let result = Definitions(self.symbols).lookup(name, generic_args)?;
+        let result = Definitions(self.symbols).lookup_with_symbols(name, generic_args, self)?;
         self.cache
             .write()
             .unwrap()

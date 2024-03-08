@@ -325,11 +325,14 @@ pub struct Definitions<'a, T>(
     pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
 );
 
-impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a, T> {
-    fn lookup<'b>(
+impl<'a, T: FieldElement> Definitions<'a, T> {
+    /// Implementation of `lookup` that allows to provide a different implementation
+    /// of SymbolLookup for the recursive call.
+    pub fn lookup_with_symbols(
         &self,
         name: &str,
         generic_args: Option<Vec<Type>>,
+        symbols: &impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = name.to_string();
         let (symbol, value) = &self
@@ -366,13 +369,23 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a, T> {
                     type_scheme,
                 })) => {
                     let generic_args = generic_arg_mapping(type_scheme, generic_args);
-                    evaluate_generic(value, &generic_args, self)?
+                    evaluate_generic(value, &generic_args, symbols)?
                 }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
                 ))?,
             }
         })
+    }
+}
+
+impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a, T> {
+    fn lookup(
+        &self,
+        name: &str,
+        generic_args: Option<Vec<Type>>,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        self.lookup_with_symbols(name, generic_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
