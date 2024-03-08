@@ -57,7 +57,11 @@ impl<T: Display> Display for Analyzed<T> {
                                     PolynomialType::Constant => "fixed ",
                                     PolynomialType::Intermediate => panic!(),
                                 };
-                                write!(f, "    col {kind}{name}")?;
+                                let stage = symbol
+                                    .stage
+                                    .map(|s| format!("stage({s}) "))
+                                    .unwrap_or_default();
+                                write!(f, "    col {kind}{stage}{name}")?;
                                 if let Some(length) = symbol.length {
                                     if let PolynomialType::Committed = poly_type {
                                         write!(f, "[{length}]")?;
@@ -82,6 +86,7 @@ impl<T: Display> Display for Analyzed<T> {
                                 }
                             }
                             SymbolKind::Constant() => {
+                                assert!(symbol.stage.is_none());
                                 let indentation = if is_local { "    " } else { "" };
                                 let Some(FunctionValueDefinition::Expression(TypedExpression {
                                     e,
@@ -100,29 +105,32 @@ impl<T: Display> Display for Analyzed<T> {
 
                                 writeln!(f, "{indentation}constant {name} = {e};",)?;
                             }
-                            SymbolKind::Other() => match definition {
-                                Some(FunctionValueDefinition::Expression(TypedExpression {
-                                    e,
-                                    type_scheme,
-                                })) => {
-                                    writeln!(
-                                        f,
-                                        "    let{} = {e};",
-                                        format_type_scheme_around_name(&name, type_scheme)
-                                    )?;
+                            SymbolKind::Other() => {
+                                assert!(symbol.stage.is_none());
+                                match definition {
+                                    Some(FunctionValueDefinition::Expression(
+                                        TypedExpression { e, type_scheme },
+                                    )) => {
+                                        writeln!(
+                                            f,
+                                            "    let{} = {e};",
+                                            format_type_scheme_around_name(&name, type_scheme)
+                                        )?;
+                                    }
+                                    Some(FunctionValueDefinition::TypeDeclaration(
+                                        enum_declaration,
+                                    )) => {
+                                        write_indented_by(f, enum_declaration, 1)?;
+                                        writeln!(f)?;
+                                    }
+                                    _ => {
+                                        unreachable!("Invalid definition for symbol: {}", name)
+                                    }
                                 }
-                                Some(FunctionValueDefinition::TypeDeclaration(
-                                    enum_declaration,
-                                )) => {
-                                    write_indented_by(f, enum_declaration, 1)?;
-                                    writeln!(f)?;
-                                }
-                                _ => {
-                                    unreachable!("Invalid definition for symbol: {}", name)
-                                }
-                            },
+                            }
                         }
                     } else if let Some((symbol, definition)) = self.intermediate_columns.get(name) {
+                        assert!(symbol.stage.is_none());
                         let (name, _) = update_namespace(name, f)?;
                         assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate));
                         if let Some(length) = symbol.length {
@@ -290,6 +298,13 @@ impl<T: Display> Display for AlgebraicExpression<T> {
         match self {
             AlgebraicExpression::Reference(reference) => write!(f, "{reference}"),
             AlgebraicExpression::PublicReference(name) => write!(f, ":{name}"),
+            AlgebraicExpression::Challenge(challenge) => {
+                write!(
+                    f,
+                    "std::prover::challenge({}, {})",
+                    challenge.stage, challenge.id,
+                )
+            }
             AlgebraicExpression::Number(value) => write!(f, "{value}"),
             AlgebraicExpression::BinaryOperation(left, op, right) => {
                 write!(f, "({left} {op} {right})")

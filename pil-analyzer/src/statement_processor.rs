@@ -110,28 +110,39 @@ where
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Intermediate),
+                    None,
                     Some(Type::Expr.into()),
                     Some(FunctionDefinition::Expression(value)),
                 ),
             PilStatement::PublicDeclaration(source, name, polynomial, array_index, index) => {
                 self.handle_public_declaration(source, name, polynomial, array_index, index)
             }
-            PilStatement::PolynomialConstantDeclaration(source, polynomials) => {
-                self.handle_polynomial_declarations(source, polynomials, PolynomialType::Constant)
-            }
+            PilStatement::PolynomialConstantDeclaration(source, polynomials) => self
+                .handle_polynomial_declarations(
+                    source,
+                    None,
+                    polynomials,
+                    PolynomialType::Constant,
+                ),
             PilStatement::PolynomialConstantDefinition(source, name, definition) => self
                 .handle_symbol_definition(
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Constant),
+                    None,
                     Some(Type::Col.into()),
                     Some(definition),
                 ),
-            PilStatement::PolynomialCommitDeclaration(source, polynomials, None) => {
-                self.handle_polynomial_declarations(source, polynomials, PolynomialType::Committed)
-            }
+            PilStatement::PolynomialCommitDeclaration(source, stage, polynomials, None) => self
+                .handle_polynomial_declarations(
+                    source,
+                    stage,
+                    polynomials,
+                    PolynomialType::Committed,
+                ),
             PilStatement::PolynomialCommitDeclaration(
                 source,
+                stage,
                 mut polynomials,
                 Some(definition),
             ) => {
@@ -143,6 +154,7 @@ where
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Committed),
+                    stage,
                     ty.map(Into::into),
                     Some(definition),
                 )
@@ -151,6 +163,7 @@ where
                 source,
                 name,
                 SymbolKind::Constant(),
+                None,
                 Some(Type::Fe.into()),
                 Some(FunctionDefinition::Expression(value)),
             ),
@@ -162,6 +175,7 @@ where
                     source,
                     enum_declaration.name.clone(),
                     SymbolKind::Other(),
+                    None,
                     None,
                     Some(FunctionDefinition::TypeDeclaration(
                         enum_declaration.clone(),
@@ -253,6 +267,7 @@ where
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Committed),
+                    None,
                     Some(ty.into()),
                     None,
                 )
@@ -267,6 +282,7 @@ where
                     source,
                     name,
                     symbol_kind,
+                    None,
                     type_scheme,
                     Some(FunctionDefinition::Expression(value)),
                 )
@@ -360,6 +376,7 @@ where
     fn handle_polynomial_declarations(
         &mut self,
         source: SourceRef,
+        stage: Option<u32>,
         polynomials: Vec<PolynomialName>,
         polynomial_type: PolynomialType,
     ) -> Vec<PILItem> {
@@ -371,6 +388,7 @@ where
                     source.clone(),
                     name,
                     SymbolKind::Poly(polynomial_type),
+                    stage,
                     ty.map(Into::into),
                     None,
                 )
@@ -383,6 +401,7 @@ where
         source: SourceRef,
         name: String,
         symbol_kind: SymbolKind,
+        stage: Option<u32>,
         type_scheme: Option<TypeScheme>,
         value: Option<FunctionDefinition>,
     ) -> Vec<PILItem> {
@@ -398,11 +417,14 @@ where
                 None
             }
         });
+        assert!(stage.is_none() || symbol_kind == SymbolKind::Poly(PolynomialType::Committed));
+
         let id = self.counters.dispense_symbol_id(symbol_kind, length);
         let absolute_name = self.driver.resolve_decl(&name);
         let symbol = Symbol {
             id,
             source: source.clone(),
+            stage,
             absolute_name: absolute_name.clone(),
             kind: symbol_kind,
             length,
@@ -421,6 +443,7 @@ where
                         .driver
                         .resolve_namespaced_decl(&[&name, &variant.name])
                         .to_dotted_string(),
+                    stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
                 };
