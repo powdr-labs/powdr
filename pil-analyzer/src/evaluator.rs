@@ -23,13 +23,13 @@ pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    evaluate(expr, &Definitions(definitions))
+    evaluate(expr, &mut Definitions(definitions))
 }
 
 /// Evaluates an expression given a symbol lookup implementation
 pub fn evaluate<'a, T: FieldElement>(
     expr: &'a Expression,
-    symbols: &impl SymbolLookup<'a, T>,
+    symbols: &mut impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     evaluate_generic(expr, &Default::default(), symbols)
 }
@@ -39,7 +39,7 @@ pub fn evaluate<'a, T: FieldElement>(
 pub fn evaluate_generic<'a, 'b, T: FieldElement>(
     expr: &'a Expression,
     generic_args: &'b HashMap<String, Type>,
-    symbols: &impl SymbolLookup<'a, T>,
+    symbols: &mut impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     internal::evaluate(expr, &[], generic_args, symbols)
 }
@@ -48,7 +48,7 @@ pub fn evaluate_generic<'a, 'b, T: FieldElement>(
 pub fn evaluate_function_call<'a, T: FieldElement>(
     function: Arc<Value<'a, T>>,
     arguments: Vec<Arc<Value<'a, T>>>,
-    symbols: &impl SymbolLookup<'a, T>,
+    symbols: &mut impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     match function.as_ref() {
         Value::BuiltinFunction(b) => internal::evaluate_builtin_function(*b, arguments, symbols),
@@ -244,7 +244,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 8] = [
+const BUILTINS: [(&str, BuiltinFunction); 9] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -252,6 +252,7 @@ const BUILTINS: [(&str, BuiltinFunction); 8] = [
     ("std::convert::int", BuiltinFunction::ToInt),
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
+    ("std::prover::challenge", BuiltinFunction::Challenge),
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
 
@@ -273,6 +274,8 @@ pub enum BuiltinFunction {
     ToInt,
     /// std::convert::fe: int/fe -> fe, converts int to fe
     ToFe,
+    /// std::prover::challenge: int -> expr, returns a new challenge at the given stage
+    Challenge,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
     Eval,
 }
@@ -342,15 +345,14 @@ impl<'a> Definitions<'a> {
     /// Implementation of `lookup` that allows to provide a different implementation
     /// of SymbolLookup for the recursive call.
     pub fn lookup_with_symbols<T: FieldElement>(
-        &self,
+        definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
         name: &str,
         generic_args: Option<Vec<Type>>,
-        symbols: &impl SymbolLookup<'a, T>,
+        symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = name.to_string();
 
-        let (symbol, value) = &self
-            .0
+        let (symbol, value) = definitions
             .get(&name)
             .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))?;
 
@@ -402,11 +404,11 @@ impl<'a> Definitions<'a> {
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     fn lookup(
-        &self,
+        &mut self,
         name: &str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        self.lookup_with_symbols::<T>(name, generic_args, self)
+        Self::lookup_with_symbols(self.0, name, generic_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -422,7 +424,7 @@ impl<'a> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>> fo
 
 pub trait SymbolLookup<'a, T> {
     fn lookup(
-        &self,
+        &mut self,
         name: &'a str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError>;
@@ -435,6 +437,12 @@ pub trait SymbolLookup<'a, T> {
 
     fn eval_expr(&self, _expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::DataNotAvailable)
+    }
+
+    fn create_challenge(&mut self, _stage: u32) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "Function std::prover::challenge called outside of condenser context.".to_string(),
+        ))
     }
 }
 
@@ -449,7 +457,7 @@ mod internal {
         expr: &'a Expression,
         locals: &[Arc<Value<'a, T>>],
         generic_args: &'b HashMap<String, Type>,
-        symbols: &impl SymbolLookup<'a, T>,
+        symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(match expr {
             Expression::Reference(reference) => {
@@ -643,7 +651,7 @@ mod internal {
         reference: &'a Reference,
         locals: &[Arc<Value<'a, T>>],
         generic_args: &HashMap<String, Type>,
-        symbols: &impl SymbolLookup<'a, T>,
+        symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(match reference {
             Reference::LocalVar(i, _name) => locals[*i as usize].clone(),
@@ -746,7 +754,7 @@ mod internal {
     pub fn evaluate_builtin_function<'a, T: FieldElement>(
         b: BuiltinFunction,
         mut arguments: Vec<Arc<Value<'a, T>>>,
-        symbols: &impl SymbolLookup<'a, T>,
+        symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let params = match b {
             BuiltinFunction::ArrayLen => 1,
@@ -756,6 +764,7 @@ mod internal {
             BuiltinFunction::ToExpr => 1,
             BuiltinFunction::ToFe => 1,
             BuiltinFunction::ToInt => 1,
+            BuiltinFunction::Challenge => 1,
             BuiltinFunction::Eval => 1,
         };
 
@@ -808,6 +817,11 @@ mod internal {
             }
             BuiltinFunction::Modulus => {
                 Value::Integer(T::modulus().to_arbitrary_integer().into()).into()
+            }
+            BuiltinFunction::Challenge => {
+                let arg = arguments.pop().unwrap().as_ref().clone();
+                let Value::Integer(stage) = arg else { panic!() };
+                symbols.create_challenge(u32::try_from(stage).unwrap())?
             }
             BuiltinFunction::Eval => {
                 let arg = arguments.pop().unwrap();
@@ -889,7 +903,7 @@ mod test {
         else {
             panic!()
         };
-        evaluate::<GoldilocksField>(symbol, &Definitions(&analyzed.definitions))
+        evaluate::<GoldilocksField>(symbol, &mut Definitions(&analyzed.definitions))
             .unwrap()
             .to_string()
     }

@@ -161,13 +161,18 @@ ArrayLiteralTerm: ArrayExpression = {
 }
 
 PolynomialCommitDeclaration: PilStatement = {
-    <start:@L> PolCol CommitWitness <list:PolynomialNameList> ";" => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start), list, None),
-    <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression> ";"
+    <start:@L> PolCol CommitWitness <stage:Stage?> <list:PolynomialNameList> ";" => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start), stage, list, None),
+    <start:@L> PolCol CommitWitness <stage:Stage?> <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression> ";"
      => PilStatement::PolynomialCommitDeclaration(
         ctx.source_ref(start),
+        stage,
         vec![name],
         Some(FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression{params, body})))
     )
+}
+
+Stage: u32 = {
+    "stage" "(" <Number> ")" => u32::try_from(<>).unwrap()
 }
 
 PolynomialNameList: Vec<PolynomialName> = {
