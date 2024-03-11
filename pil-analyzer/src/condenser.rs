@@ -5,12 +5,16 @@ use std::collections::HashMap;
 
 use powdr_ast::{
     analyzed::{
-        types::{format_type_scheme_around_name, ArrayType, Type},
         AlgebraicExpression, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
         PolynomialReference, PolynomialType, PublicDeclaration, Reference, StatementIdentifier,
         Symbol, SymbolKind,
     },
-    parsed::{visitor::ExpressionVisitable, SelectedExpressions},
+    parsed::{
+        display::format_type_scheme_around_name,
+        types::{ArrayType, Type},
+        visitor::ExpressionVisitable,
+        SelectedExpressions,
+    },
 };
 use powdr_number::{DegreeType, FieldElement};
 

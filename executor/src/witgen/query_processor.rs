@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use powdr_ast::analyzed::{
-    types::Type, AlgebraicExpression, AlgebraicReference, Expression, PolyID, PolynomialType,
+    AlgebraicExpression, AlgebraicReference, Expression, PolyID, PolynomialType,
 };
+use powdr_ast::parsed::types::Type;
 use powdr_number::{BigInt, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
 

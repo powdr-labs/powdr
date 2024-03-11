@@ -7,7 +7,7 @@ use powdr_ast::{
         asm::AbsoluteSymbolPath,
         asm::SymbolPath,
         build::{direct_reference, index_access, namespaced_reference, next_reference},
-        Expression, ExpressionWithTypeScheme, PILFile, PilStatement, SelectedExpressions,
+        Expression, PILFile, PilStatement, SelectedExpressions, TypedExpression,
     },
     SourceRef,
 };
@@ -41,32 +41,30 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
             // Group by namespace and then sort by name.
             (namespace, name)
         })
-        .flat_map(
-            |(mut namespace, ExpressionWithTypeScheme { e, type_scheme })| {
-                let name = namespace.pop().unwrap();
-                let def = PilStatement::LetStatement(
-                    SourceRef::unknown(),
-                    name.to_string(),
-                    type_scheme,
-                    Some(e),
-                );
+        .flat_map(|(mut namespace, TypedExpression { e, type_scheme })| {
+            let name = namespace.pop().unwrap();
+            let def = PilStatement::LetStatement(
+                SourceRef::unknown(),
+                name.to_string(),
+                type_scheme,
+                Some(e),
+            );
 
-                // If there is a namespace change, insert a namespace statement.
-                if current_namespace != namespace {
-                    current_namespace = namespace.clone();
-                    vec![
-                        PilStatement::Namespace(
-                            SourceRef::unknown(),
-                            namespace.relative_to(&AbsoluteSymbolPath::default()),
-                            Expression::Number(main_degree.into(), None),
-                        ),
-                        def,
-                    ]
-                } else {
-                    vec![def]
-                }
-            },
-        )
+            // If there is a namespace change, insert a namespace statement.
+            if current_namespace != namespace {
+                current_namespace = namespace.clone();
+                vec![
+                    PilStatement::Namespace(
+                        SourceRef::unknown(),
+                        namespace.relative_to(&AbsoluteSymbolPath::default()),
+                        Expression::Number(main_degree.into(), None),
+                    ),
+                    def,
+                ]
+            } else {
+                vec![def]
+            }
+        })
         .collect::<Vec<_>>();
     pil.extend(graph.objects.into_iter().flat_map(|(location, object)| {
         let mut pil = vec![];

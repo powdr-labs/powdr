@@ -1,13 +1,13 @@
-use powdr_ast::analyzed::types::{format_type_scheme_around_name, TypeScheme};
+use powdr_ast::parsed::{display::format_type_scheme_around_name, types::TypeScheme};
 use powdr_number::GoldilocksField;
-use powdr_parser::{parse_type_name, parse_type_var_bounds};
+use powdr_parser::{parse_type, parse_type_var_bounds};
 use powdr_pil_analyzer::analyze_string;
 
 use pretty_assertions::assert_eq;
 
 fn parse_type_scheme(vars: &str, ty: &str) -> TypeScheme {
     let vars = parse_type_var_bounds(vars).unwrap();
-    let ty = parse_type_name(ty).unwrap();
+    let ty = parse_type(ty).unwrap();
     TypeScheme {
         vars,
         ty: ty.into(),

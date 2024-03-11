@@ -9,7 +9,8 @@ use crate::{
     indent,
     parsed::{
         asm::{AbsoluteSymbolPath, Part},
-        ExpressionWithTypeScheme,
+        display::format_type_scheme_around_name,
+        TypedExpression,
     },
     write_indented_by, write_items_indented,
 };
@@ -47,18 +48,11 @@ impl Display for AnalysisASMFile {
                 Item::Machine(machine) => {
                     write_indented_by(f, format!("machine {name}{machine}"), current_path.len())?;
                 }
-                Item::Expression(ExpressionWithTypeScheme { e, type_scheme }) => write_indented_by(
+                Item::Expression(TypedExpression { e, type_scheme }) => write_indented_by(
                     f,
                     format!(
-                        "let{} {name}{} = {e};\n",
-                        type_scheme
-                            .as_ref()
-                            .map(|ts| ts.type_vars_to_string())
-                            .unwrap_or_default(),
-                        type_scheme
-                            .as_ref()
-                            .map(|ts| format!(": {}", ts.type_name))
-                            .unwrap_or_default()
+                        "let{} = {e};\n",
+                        format_type_scheme_around_name(name, type_scheme)
                     ),
                     current_path.len(),
                 )?,

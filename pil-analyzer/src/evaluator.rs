@@ -7,13 +7,13 @@ use std::{
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
-        types::{Type, TypeScheme, TypedExpression},
         AlgebraicExpression, AlgebraicReference, Expression, FunctionValueDefinition, Reference,
-        Symbol, SymbolKind,
+        Symbol, SymbolKind, TypedExpression,
     },
     parsed::{
-        display::quote, BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern,
-        UnaryOperator,
+        display::quote,
+        types::{Type, TypeScheme},
+        BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern, UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -417,10 +417,7 @@ pub trait SymbolLookup<'a, T> {
 
 mod internal {
     use num_traits::Signed;
-    use powdr_ast::{
-        analyzed::AlgebraicBinaryOperator,
-        parsed::{NoArrayLengths, TypeName},
-    };
+    use powdr_ast::analyzed::AlgebraicBinaryOperator;
     use powdr_number::BigUint;
 
     use super::*;
@@ -586,22 +583,22 @@ mod internal {
 
     fn evaluate_literal<'a, T: FieldElement>(
         n: BigUint,
-        ty: &Option<TypeName<NoArrayLengths>>,
+        ty: &Option<Type<u64>>,
         generic_args: &HashMap<String, Type>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        let ty = if let Some(TypeName::TypeVar(tv)) = ty {
+        let ty = if let Some(Type::TypeVar(tv)) = ty {
             match &generic_args[tv] {
-                Type::Fe => TypeName::Fe,
-                Type::Int => TypeName::Int,
-                Type::Expr => TypeName::Expr,
+                Type::Fe => Type::Fe,
+                Type::Int => Type::Int,
+                Type::Expr => Type::Expr,
                 t => Err(EvalError::TypeError(format!(
                     "Invalid type name for number literal: {t}"
                 )))?,
             }
         } else {
-            ty.as_ref().cloned().unwrap_or_else(|| TypeName::Int)
+            ty.as_ref().cloned().unwrap_or_else(|| Type::Int)
         };
-        if ty == TypeName::Int {
+        if ty == Type::Int {
             return Ok(Value::Integer(n.into()).into());
         }
         let fe = T::checked_from(n.clone()).ok_or_else(|| {
@@ -609,9 +606,9 @@ mod internal {
                 "Number literal {n} is too large for field element."
             ))
         })?;
-        Ok((if ty == TypeName::Fe {
+        Ok((if ty == Type::Fe {
             Value::FieldElement(fe)
-        } else if ty == TypeName::Expr {
+        } else if ty == Type::Expr {
             AlgebraicExpression::Number(fe).into()
         } else {
             unreachable!();

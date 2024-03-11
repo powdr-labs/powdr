@@ -4,17 +4,17 @@ use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
 
-use powdr_ast::analyzed::types::{Type, TypedExpression};
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
 
+use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::{PILFile, PilStatement};
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PublicDeclaration, StatementIdentifier, Symbol,
+    PublicDeclaration, StatementIdentifier, Symbol, TypedExpression,
 };
-use powdr_parser::parse_type_name;
+use powdr_parser::parse_type;
 
 use crate::type_inference::{infer_types, ExpectedType};
 use crate::AnalysisDriver;
@@ -129,7 +129,7 @@ impl PILAnalyzer {
     }
 
     pub fn type_check(&mut self) {
-        let query_type: Type = parse_type_name("int -> (string, fe)").unwrap().into();
+        let query_type: Type = parse_type("int -> (string, fe)").unwrap().into();
         let mut expressions = vec![];
         // Collect all definitions with their types and expressions.
         // For Arrays, we also collect the inner expressions and expect them to be field elements.

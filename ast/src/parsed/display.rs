@@ -7,6 +7,8 @@ use crate::{
     write_items, write_items_indented,
 };
 
+use self::types::{ArrayType, FunctionType, TupleType, TypeBounds};
+
 use super::{asm::*, *};
 
 // TODO indentation
@@ -57,7 +59,7 @@ impl Display for ModuleStatement {
                 SymbolValue::Module(m @ Module::Local(_)) => {
                     write!(f, "mod {name} {m}")
                 }
-                SymbolValue::Expression(ExpressionWithTypeScheme { e, type_scheme }) => {
+                SymbolValue::Expression(TypedExpression { e, type_scheme }) => {
                     write!(
                         f,
                         "let{} = {e};",
@@ -573,32 +575,26 @@ impl Display for UnaryOperator {
     }
 }
 
-impl Display for NoArrayLengths {
-    fn fmt(&self, _: &mut Formatter<'_>) -> Result {
-        unreachable!("This type should not have an instance.");
-    }
-}
-
-impl<E: Display> Display for TypeName<E> {
+impl<E: Display> Display for Type<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            TypeName::Bottom => write!(f, "!"),
-            TypeName::Bool => write!(f, "bool"),
-            TypeName::Int => write!(f, "int"),
-            TypeName::Fe => write!(f, "fe"),
-            TypeName::String => write!(f, "string"),
-            TypeName::Col => write!(f, "col"),
-            TypeName::Expr => write!(f, "expr"),
-            TypeName::Constr => write!(f, "constr"),
-            TypeName::Array(array) => write!(f, "{array}"),
-            TypeName::Tuple(tuple) => write!(f, "{tuple}"),
-            TypeName::Function(fun) => write!(f, "{fun}"),
-            TypeName::TypeVar(name) => write!(f, "{name}"),
+            Type::Bottom => write!(f, "!"),
+            Type::Bool => write!(f, "bool"),
+            Type::Int => write!(f, "int"),
+            Type::Fe => write!(f, "fe"),
+            Type::String => write!(f, "string"),
+            Type::Col => write!(f, "col"),
+            Type::Expr => write!(f, "expr"),
+            Type::Constr => write!(f, "constr"),
+            Type::Array(array) => write!(f, "{array}"),
+            Type::Tuple(tuple) => write!(f, "{tuple}"),
+            Type::Function(fun) => write!(f, "{fun}"),
+            Type::TypeVar(name) => write!(f, "{name}"),
         }
     }
 }
 
-impl<E: Display> Display for ArrayTypeName<E> {
+impl<E: Display> Display for ArrayType<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -609,13 +605,13 @@ impl<E: Display> Display for ArrayTypeName<E> {
     }
 }
 
-impl<E: Display> Display for TupleTypeName<E> {
+impl<E: Display> Display for TupleType<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "({})", format_list_of_type_names(&self.items))
     }
 }
 
-impl<E: Display> Display for FunctionTypeName<E> {
+impl<E: Display> Display for FunctionType<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -627,7 +623,7 @@ impl<E: Display> Display for FunctionTypeName<E> {
     }
 }
 
-fn format_type_name_with_parentheses<E: Display>(name: &TypeName<E>) -> String {
+fn format_type_name_with_parentheses<E: Display>(name: &Type<E>) -> String {
     if name.needs_parentheses() {
         format!("({name})")
     } else {
@@ -635,7 +631,7 @@ fn format_type_name_with_parentheses<E: Display>(name: &TypeName<E>) -> String {
     }
 }
 
-fn format_list_of_type_names<E: Display>(type_names: &[TypeName<E>]) -> String {
+fn format_list_of_type_names<E: Display>(type_names: &[Type<E>]) -> String {
     type_names
         .iter()
         .map(format_type_name_with_parentheses)
@@ -651,7 +647,7 @@ pub fn format_type_scheme_around_name<E: Display>(
         format!(
             "{} {name}: {}",
             type_scheme.type_vars_to_string(),
-            type_scheme.type_name
+            type_scheme.ty
         )
     } else {
         format!(" {name}")
@@ -660,7 +656,7 @@ pub fn format_type_scheme_around_name<E: Display>(
 
 impl Display for TypeBounds {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        fn format_var((var, bounds): &(String, BTreeSet<String>)) -> String {
+        fn format_var((var, bounds): (&String, &BTreeSet<String>)) -> String {
             format!(
                 "{var}{}",
                 if bounds.is_empty() {
@@ -670,7 +666,7 @@ impl Display for TypeBounds {
                 }
             )
         }
-        write!(f, "{}", self.0.iter().map(format_var).format(", "))
+        write!(f, "{}", self.bounds().map(format_var).format(", "))
     }
 }
 

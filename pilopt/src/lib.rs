@@ -8,7 +8,8 @@ use powdr_ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, IdentityKind, PolyID, PolynomialReference,
     Reference,
 };
-use powdr_ast::parsed::{visitor::ExpressionVisitable, TypeName};
+use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{BigUint, FieldElement};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
@@ -269,7 +270,7 @@ fn substitute_polynomial_references<T: FieldElement>(
         })) = e
         {
             if let Some(value) = substitutions.get(poly_id) {
-                *e = Expression::Number(value.clone(), Some(TypeName::Fe));
+                *e = Expression::Number(value.clone(), Some(Type::Fe));
             }
         }
     });

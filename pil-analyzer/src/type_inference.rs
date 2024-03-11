@@ -2,15 +2,12 @@ use std::collections::{BTreeSet, HashMap};
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{
-        types::{
-            format_type_scheme_around_name, ArrayType, FunctionType, TupleType, Type, TypeScheme,
-        },
-        Expression, PolynomialReference, Reference,
-    },
+    analyzed::{Expression, PolynomialReference, Reference},
     parsed::{
-        visitor::ExpressionVisitable, ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression,
-        MatchArm, MatchPattern, TypeBounds, TypeName,
+        display::format_type_scheme_around_name,
+        types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
+        visitor::ExpressionVisitable,
+        ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, MatchArm, MatchPattern,
     },
 };
 
@@ -331,8 +328,8 @@ impl TypeChecker {
     ) -> Result<(), String> {
         match e {
             Expression::Number(n, annotated_type) => match annotated_type {
-                Some(TypeName::Int) | Some(TypeName::Fe) | Some(TypeName::Expr) => {}
-                Some(TypeName::TypeVar(tv)) => {
+                Some(Type::Int) | Some(Type::Fe) | Some(Type::Expr) => {}
+                Some(Type::TypeVar(tv)) => {
                     let mut ty = Type::TypeVar(tv.clone());
                     // Apply regular substitution obtained from unification.
                     self.substitute(&mut ty);
@@ -345,12 +342,12 @@ impl TypeChecker {
                     // Rename type vars (hopefully just a single one) to match the declaration scheme.
                     ty.substitute_type_vars(type_var_mapping);
                     if let Type::TypeVar(tv) = ty {
-                        *annotated_type = Some(TypeName::TypeVar(tv.clone()));
+                        *annotated_type = Some(Type::TypeVar(tv.clone()));
                     } else {
                         match ty {
-                            Type::Int => *annotated_type = Some(TypeName::Int),
-                            Type::Fe => *annotated_type = Some(TypeName::Fe),
-                            Type::Expr => *annotated_type = Some(TypeName::Expr),
+                            Type::Int => *annotated_type = Some(Type::Int),
+                            Type::Fe => *annotated_type = Some(Type::Fe),
+                            Type::Expr => *annotated_type = Some(Type::Expr),
                             t => panic!("Invalid resolved type literal number: {t}"),
                         }
                     }
@@ -443,14 +440,14 @@ impl TypeChecker {
             Expression::PublicReference(_) => Type::Expr,
             Expression::Number(_, annotated_type) => {
                 let ty = match annotated_type {
-                    Some(TypeName::Int) => Type::Int,
-                    Some(TypeName::Fe) => Type::Fe,
-                    Some(TypeName::Expr) => Type::Expr,
-                    Some(TypeName::TypeVar(tv)) => Type::TypeVar(tv.clone()),
+                    Some(Type::Int) => Type::Int,
+                    Some(Type::Fe) => Type::Fe,
+                    Some(Type::Expr) => Type::Expr,
+                    Some(Type::TypeVar(tv)) => Type::TypeVar(tv.clone()),
                     Some(t) => panic!("Type name annotation for number is not supported: {t}"),
                     None => {
                         let tv = self.new_type_var_name();
-                        *annotated_type = Some(TypeName::TypeVar(tv.clone()));
+                        *annotated_type = Some(Type::TypeVar(tv.clone()));
                         Type::TypeVar(tv)
                     }
                 };
@@ -596,10 +593,10 @@ impl TypeChecker {
         // This avoids creating tons of type variables for large arrays.
         if let Expression::Number(_, annotated_type @ None) = expr {
             match expected_type {
-                Type::Int => *annotated_type = Some(TypeName::Int),
-                Type::Fe => *annotated_type = Some(TypeName::Fe),
-                Type::Expr => *annotated_type = Some(TypeName::Expr),
-                Type::TypeVar(tv) => *annotated_type = Some(TypeName::TypeVar(tv.clone())),
+                Type::Int => *annotated_type = Some(Type::Int),
+                Type::Fe => *annotated_type = Some(Type::Fe),
+                Type::Expr => *annotated_type = Some(Type::Expr),
+                Type::TypeVar(tv) => *annotated_type = Some(Type::TypeVar(tv.clone())),
                 _ => {}
             };
         }

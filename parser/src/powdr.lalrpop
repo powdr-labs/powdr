@@ -1,6 +1,6 @@
 use std::str::FromStr;
 use std::collections::BTreeSet;
-use powdr_ast::parsed::{*, asm::*};
+use powdr_ast::parsed::{*, asm::*, types::*};
 use powdr_number::BigUint;
 use crate::{ParserContext, unescape_string};
 
@@ -60,7 +60,7 @@ LetStatementAtModuleLevel: SymbolDefinition = {
     "let" <name:GenericTypedName>  "=" <value:Expression> ";" =>
         SymbolDefinition {
             name: name.0,
-            value: SymbolValue::Expression(ExpressionWithTypeScheme{ e: value, type_scheme: name.1 })
+            value: SymbolValue::Expression(TypedExpression{ e: value, type_scheme: name.1 })
         }
 }
 
@@ -192,8 +192,8 @@ ConstantFixed = {
 
 GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
     <name:Identifier> => (name, None),
-    <type_vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <type_name:(":" <TypeName>)> =>
-        (name, Some(TypeScheme{ type_vars: type_vars.unwrap_or_default(), type_name }))
+    <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <ty:(":" <Type>)> =>
+        (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), ty }))
 }
 
 
@@ -548,34 +548,34 @@ IfExpression: Box<Expression> = {
 
 // ---------------------------- Type Names -----------------------------
 
-pub TypeName: TypeName<Expression> = {
-    <params:TypeNameTermList> "->" <value:TypeNameTermBox> => TypeName::Function(FunctionTypeName{<>}),
-    TypeNameTerm
+pub Type: Type<Expression> = {
+    <params:TypeTermList> "->" <value:TypeTermBox> => Type::Function(FunctionType{<>}),
+    TypeTerm
 }
 
-TypeNameTermList: Vec<TypeName<Expression>> = {
+TypeTermList: Vec<Type<Expression>> = {
     => vec![],
-    <mut list:( <TypeNameTerm> "," )*> <end:TypeNameTerm>  => { list.push(end); list }
+    <mut list:( <TypeTerm> "," )*> <end:TypeTerm>  => { list.push(end); list }
 }
 
-TypeNameTermBox: Box<TypeName<Expression>> = {
-    TypeNameTerm => Box::new(<>)
+TypeTermBox: Box<Type<Expression>> = {
+    TypeTerm => Box::new(<>)
 }
 
-TypeNameTerm: TypeName<Expression> = {
-    TypeVar => TypeName::TypeVar(<>),
-    "!" => TypeName::Bottom,
-    "bool" => TypeName::Bool,
-    "int" => TypeName::Int,
-    "fe" => TypeName::Fe,
-    "string" => TypeName::String,
-    "col" => TypeName::Col,
-    "expr" => TypeName::Expr,
-    "constr" => TypeName::Constr,
-    <base:TypeNameTerm> "[" <length:Expression?> "]" => TypeName::Array(ArrayTypeName{base: Box::new(base), length}),
-    "(" <mut items:( <TypeNameTerm> "," )+> <end:TypeNameTerm> ")" => { items.push(end); TypeName::Tuple(TupleTypeName{items}) },
-    "(" ")" => TypeName::Tuple(TupleTypeName{items: vec![]}),
-    "(" <TypeName> ")",
+TypeTerm: Type<Expression> = {
+    TypeVar => Type::TypeVar(<>),
+    "!" => Type::Bottom,
+    "bool" => Type::Bool,
+    "int" => Type::Int,
+    "fe" => Type::Fe,
+    "string" => Type::String,
+    "col" => Type::Col,
+    "expr" => Type::Expr,
+    "constr" => Type::Constr,
+    <base:TypeTerm> "[" <length:Expression?> "]" => Type::Array(ArrayType{base: Box::new(base), length}),
+    "(" <mut items:( <TypeTerm> "," )+> <end:TypeTerm> ")" => { items.push(end); Type::Tuple(TupleType{items}) },
+    "(" ")" => Type::Tuple(TupleType{items: vec![]}),
+    "(" <Type> ")",
 }
 
 TypeVar: String = {

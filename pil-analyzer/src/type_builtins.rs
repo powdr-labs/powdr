@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use powdr_ast::{
-    analyzed::types::{ArrayType, Type, TypeScheme},
+    parsed::types::{ArrayType, Type, TypeScheme},
     parsed::{BinaryOperator, UnaryOperator},
 };
-use powdr_parser::{parse_type_name, parse_type_var_bounds};
+use powdr_parser::{parse_type, parse_type_var_bounds};
 
 use lazy_static::lazy_static;
 
@@ -49,7 +49,7 @@ lazy_static! {
             name.to_string(),
             TypeScheme {
                 vars: parse_type_var_bounds(vars).unwrap(),
-                ty: parse_type_name(ty).unwrap().into(),
+                ty: parse_type(ty).unwrap().into(),
             },
         )
     })
@@ -82,7 +82,7 @@ lazy_static! {
             op,
             TypeScheme {
                 vars: parse_type_var_bounds(vars).unwrap(),
-                ty: parse_type_name(ty).unwrap().into(),
+                ty: parse_type(ty).unwrap().into(),
             },
         )
     })
@@ -97,7 +97,7 @@ lazy_static! {
         op,
         TypeScheme {
             vars: parse_type_var_bounds(vars).unwrap(),
-            ty: parse_type_name(ty).unwrap().into(),
+            ty: parse_type(ty).unwrap().into(),
         }
     ))
     .collect();

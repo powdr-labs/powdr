@@ -5,11 +5,11 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{
-        types::{ArrayType, Type, TypedExpression},
-        Analyzed, Expression, FunctionValueDefinition, Symbol,
+    analyzed::{Analyzed, Expression, FunctionValueDefinition, Symbol, TypedExpression},
+    parsed::{
+        types::{ArrayType, Type},
+        IndexAccess,
     },
-    parsed::IndexAccess,
 };
 use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
