@@ -220,16 +220,16 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
         machine.pil.extend([
             // inject the operation_id
             parse_pil_statement(&format!(
-                "col witness {operation_id}(i) query (\"hint\", {sink_id})"
+                "col witness {operation_id}(i) query (\"hint\", {sink_id});"
             )),
             // inject last step
-            parse_pil_statement(&format!("col constant {last_step} = [0]* + [1]")),
+            parse_pil_statement(&format!("col constant {last_step} = [0]* + [1];")),
             // the operation id must be constant within a block.
             parse_pil_statement(&format!(
-                "let {operation_id_no_change} = (1 - {last_step}) * (1 - {latch})"
+                "let {operation_id_no_change} = (1 - {last_step}) * (1 - {latch});"
             )),
             parse_pil_statement(&format!(
-                "{operation_id_no_change} * ({operation_id}' - {operation_id}) = 0"
+                "{operation_id_no_change} * ({operation_id}' - {operation_id}) = 0;"
             )),
         ]);
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
