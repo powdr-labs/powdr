@@ -775,24 +775,44 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let r = &self.eval_expression(r)[0];
 
                 let result = match (l, r) {
-                    (Elem::Binary(l), Elem::Binary(r)) => {
-                        let result = match op {
-                            powdr_ast::parsed::BinaryOperator::Add => l + r,
-                            powdr_ast::parsed::BinaryOperator::Sub => l - r,
-                            powdr_ast::parsed::BinaryOperator::Mul => l * r,
-                            powdr_ast::parsed::BinaryOperator::Div => l / r,
-                            powdr_ast::parsed::BinaryOperator::Mod => l % r,
-                            powdr_ast::parsed::BinaryOperator::Pow => {
-                                l.pow(u32::try_from(*r).unwrap())
+                    (Elem::Binary(l), Elem::Binary(r)) => match op {
+                        powdr_ast::parsed::BinaryOperator::Add => Elem::Binary(l + r),
+                        powdr_ast::parsed::BinaryOperator::Sub => Elem::Binary(l - r),
+                        powdr_ast::parsed::BinaryOperator::Mul => match l.checked_mul(*r) {
+                            // Multiplication is a special case as the input for
+                            // posseidon_gl requires field multiplication. So,
+                            // if native multiplication overflows, we use field
+                            // multiplication.
+                            //
+                            // TODO: support types in the zkVM specification, so
+                            // that we don't have to guess which kind of
+                            // arithmetic we have to use.
+                            Some(v) => Elem::Binary(v),
+                            None => {
+                                let l = F::from(*l);
+                                let r = F::from(*r);
+                                Elem::Field(l * r)
                             }
-                            _ => todo!(),
-                        };
-                        Elem::Binary(result)
-                    }
+                        },
+                        powdr_ast::parsed::BinaryOperator::Div => Elem::Binary(l / r),
+                        powdr_ast::parsed::BinaryOperator::Mod => Elem::Binary(l % r),
+                        powdr_ast::parsed::BinaryOperator::Pow => {
+                            Elem::Binary(l.pow(u32::try_from(*r).unwrap()))
+                        }
+                        _ => todo!(),
+                    },
                     (Elem::Field(l), Elem::Field(r)) => {
                         let result = match op {
                             // We need to subtract field elements in the bootloader:
                             powdr_ast::parsed::BinaryOperator::Sub => *l - *r,
+                            _ => todo!(),
+                        };
+                        Elem::Field(result)
+                    }
+                    (Elem::Binary(l), Elem::Field(r)) => {
+                        // We need to add a field element to a binary when calling poseidon_gl:
+                        let result = match op {
+                            powdr_ast::parsed::BinaryOperator::Add => F::from(*l) + *r,
                             _ => todo!(),
                         };
                         Elem::Field(result)
