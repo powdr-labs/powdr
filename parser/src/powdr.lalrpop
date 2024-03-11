@@ -14,7 +14,7 @@ match {
 }
 
 pub PILFile: PILFile = {
-    (<PilStatement> ";")* => PILFile(<>)
+    <PilStatement*> => PILFile(<>)
 };
 
 pub ASMModule: ASMModule = {
@@ -76,46 +76,46 @@ pub PilStatement = {
     PolynomialConstantDeclaration,
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
-    PlookupIdentity,
-    PermutationIdentity,
-    ConnectIdentity,
+    PlookupIdentityStatement,
+    PermutationIdentityStatement,
+    ConnectIdentityStatement,
     ExpressionStatement,
 };
 
 Include: PilStatement = {
-    <start:@L> "include" <file:StringLiteral> => PilStatement::Include(ctx.source_ref(start), file)
+    <start:@L> "include" <file:StringLiteral> ";" => PilStatement::Include(ctx.source_ref(start), file)
 };
 
 Namespace: PilStatement = {
-    <start:@L> "namespace" <name:SymbolPath> "(" <pol_degree:Expression> ")" => PilStatement::Namespace(ctx.source_ref(start), name, pol_degree)
+    <start:@L> "namespace" <name:SymbolPath> "(" <pol_degree:Expression> ")" ";" => PilStatement::Namespace(ctx.source_ref(start), name, pol_degree)
 }
 
 LetStatement: PilStatement = {
-    <start:@L> "let" <name:GenericTypedName> <expr:( "=" <Expression> )?> =>
+    <start:@L> "let" <name:GenericTypedName> <expr:( "=" <Expression> )?> ";" =>
         PilStatement::LetStatement(ctx.source_ref(start), name.0, name.1, expr)
 }
 
 ConstantDefinition: PilStatement = {
-    <start:@L> "constant" <id:ConstantIdentifier> "=" <expr:Expression> => PilStatement::ConstantDefinition(ctx.source_ref(start), id, expr)
+    <start:@L> "constant" <id:ConstantIdentifier> "=" <expr:Expression> ";" => PilStatement::ConstantDefinition(ctx.source_ref(start), id, expr)
 }
 
 PolynomialDefinition: PilStatement = {
-    <start:@L> PolCol <id:Identifier> "=" <expr:Expression> => PilStatement::PolynomialDefinition(ctx.source_ref(start), id, expr)
+    <start:@L> PolCol <id:Identifier> "=" <expr:Expression> ";" => PilStatement::PolynomialDefinition(ctx.source_ref(start), id, expr)
 }
 
 PublicDeclaration: PilStatement = {
     <start:@L> "public" <id:Identifier> "="
         <poly:NamespacedPolynomialReference>
         <expr1:("[" <Expression> "]")?>
-        "(" <expr2:Expression> ")" => PilStatement::PublicDeclaration(ctx.source_ref(start), id, poly, expr1, expr2)
+        "(" <expr2:Expression> ")" ";" => PilStatement::PublicDeclaration(ctx.source_ref(start), id, poly, expr1, expr2)
 }
 
 PolynomialConstantDeclaration: PilStatement = {
-    <start:@L> PolCol ConstantFixed <list:PolynomialNameList> => PilStatement::PolynomialConstantDeclaration(ctx.source_ref(start), list)
+    <start:@L> PolCol ConstantFixed <list:PolynomialNameList> ";" => PilStatement::PolynomialConstantDeclaration(ctx.source_ref(start), list)
 }
 
 PolynomialConstantDefinition: PilStatement = {
-    <start:@L> PolCol ConstantFixed <id:Identifier> <def:FunctionDefinition>
+    <start:@L> PolCol ConstantFixed <id:Identifier> <def:FunctionDefinition> ";"
         => PilStatement::PolynomialConstantDefinition(ctx.source_ref(start), id, def)
 }
 
@@ -140,8 +140,8 @@ ArrayLiteralTerm: ArrayExpression = {
 }
 
 PolynomialCommitDeclaration: PilStatement = {
-    <start:@L> PolCol CommitWitness <list:PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start), list, None),
-    <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression>
+    <start:@L> PolCol CommitWitness <list:PolynomialNameList> ";" => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start), list, None),
+    <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression> ";"
      => PilStatement::PolynomialCommitDeclaration(
         ctx.source_ref(start),
         vec![name],
@@ -157,6 +157,10 @@ PolynomialName: PolynomialName = {
     <name:Identifier> <array_size:( "[" <Expression> "]" )?> => PolynomialName{<>}
 }
 
+PlookupIdentityStatement: PilStatement = {
+    <PlookupIdentity> ";"
+}
+
 PlookupIdentity: PilStatement = {
     <start:@L> <se1:SelectedExpressions> "in" <se2:SelectedExpressions> => PilStatement::PlookupIdentity(ctx.source_ref(start), se1, se2)
 }
@@ -166,8 +170,16 @@ SelectedExpressions: SelectedExpressions<Expression> = {
     Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
 }
 
+PermutationIdentityStatement: PilStatement = {
+    <PermutationIdentity> ";"
+}
+
 PermutationIdentity: PilStatement = {
     <start:@L> <se1:SelectedExpressions> "is" <se2:SelectedExpressions> => PilStatement::PermutationIdentity(ctx.source_ref(start), se1, se2)
+}
+
+ConnectIdentityStatement: PilStatement = {
+    <ConnectIdentity> ";"
 }
 
 ConnectIdentity: PilStatement = {
@@ -175,6 +187,10 @@ ConnectIdentity: PilStatement = {
 }
 
 ExpressionStatement: PilStatement = {
+    <ExpressionStatementWithoutSemicolon> ";"
+}
+
+ExpressionStatementWithoutSemicolon: PilStatement = {
     <start:@L> <expr:Expression> => PilStatement::Expression(ctx.source_ref(start), expr)
 }
 
@@ -217,13 +233,13 @@ MachineStatement: MachineStatement = {
     RegisterDeclaration,
     InstructionDeclaration,
     LinkDeclaration,
-    PilStatementWithSemiColon,
+    PilStatementInMachine,
     FunctionDeclaration,
     OperationDeclaration,
 }
 
-PilStatementWithSemiColon: MachineStatement = {
-    <start:@L> <stmt:PilStatement> ";" => MachineStatement::Pil(ctx.source_ref(start), stmt)
+PilStatementInMachine: MachineStatement = {
+    <start:@L> <stmt:PilStatement> => MachineStatement::Pil(ctx.source_ref(start), stmt)
 }
 
 Degree: MachineStatement = {
@@ -276,7 +292,7 @@ InstructionBodyElements: Vec<PilStatement> = {
 InstructionBodyElement: PilStatement = {
     PlookupIdentity,
     PermutationIdentity,
-    ExpressionStatement,
+    ExpressionStatementWithoutSemicolon,
 }
 
 Params: Params = {

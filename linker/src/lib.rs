@@ -161,10 +161,10 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
                         let linker_first_step = "_linker_first_step";
                         pil.extend([
                             parse_pil_statement(&format!(
-                                "col fixed {linker_first_step} = [1] + [0]*"
+                                "col fixed {linker_first_step} = [1] + [0]*;"
                             )),
                             parse_pil_statement(&format!(
-                                "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0"
+                                "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
                             )),
                         ]);
                     }
