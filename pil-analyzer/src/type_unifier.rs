@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use powdr_ast::analyzed::types::Type;
+use powdr_ast::parsed::types::Type;
 
 use crate::type_builtins::elementary_type_bounds;
 

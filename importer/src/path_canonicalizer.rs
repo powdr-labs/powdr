@@ -13,8 +13,7 @@ use powdr_ast::{
         },
         folder::Folder,
         visitor::ExpressionVisitable,
-        ArrayLiteral, ExpressionWithTypeScheme, FunctionCall, IndexAccess, LambdaExpression,
-        MatchArm,
+        ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, MatchArm, TypedExpression,
     },
 };
 
@@ -80,7 +79,7 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 for tne in exp
                                     .type_scheme
                                     .iter_mut()
-                                    .flat_map(|ts| ts.type_name.expressions_mut())
+                                    .flat_map(|ts| ts.ty.expressions_mut())
                                 {
                                     canonicalize_inside_expression(tne, &self.path, self.paths);
                                 }
@@ -318,8 +317,8 @@ fn check_module(
                 check_module(location.with_part(name), m, state)?;
             }
             SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)?,
-            SymbolValue::Expression(ExpressionWithTypeScheme { e, type_scheme }) => {
-                for tne in type_scheme.iter().flat_map(|tn| tn.type_name.expressions()) {
+            SymbolValue::Expression(TypedExpression { e, type_scheme }) => {
+                for tne in type_scheme.iter().flat_map(|tn| tn.ty.expressions()) {
                     check_expression(&location, tne, state, &HashSet::default())?
                 }
                 check_expression(&location, e, state, &HashSet::default())?

@@ -1,5 +1,4 @@
 mod display;
-pub mod types;
 pub mod visitor;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -11,15 +10,13 @@ use powdr_number::{DegreeType, FieldElement};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::analyzed::types::ArrayType;
+use crate::parsed::types::{ArrayType, Type, TypeScheme};
 use crate::parsed::utils::expr_any;
 use crate::parsed::visitor::ExpressionVisitable;
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{self, SelectedExpressions};
 use crate::SourceRef;
-
-use self::types::{Type, TypeScheme, TypedExpression};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub enum StatementIdentifier {
@@ -682,6 +679,7 @@ impl<T> SelectedExpressions<AlgebraicExpression<T>> {
 }
 
 pub type Expression = parsed::Expression<Reference>;
+pub type TypedExpression = crate::parsed::TypedExpression<Reference, u64>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Reference {

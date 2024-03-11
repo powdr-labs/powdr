@@ -2,6 +2,7 @@ pub mod asm;
 pub mod build;
 pub mod display;
 pub mod folder;
+pub mod types;
 pub mod utils;
 pub mod visitor;
 
@@ -15,7 +16,10 @@ use powdr_number::{BigUint, DegreeType};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use self::asm::{Part, SymbolPath};
+use self::{
+    asm::{Part, SymbolPath},
+    types::{Type, TypeScheme},
+};
 use crate::SourceRef;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -104,7 +108,7 @@ impl PilStatement {
             PilStatement::LetStatement(_, _, type_scheme, value) => Box::new(
                 type_scheme
                     .iter()
-                    .flat_map(|t| t.type_name.expressions())
+                    .flat_map(|t| t.ty.expressions())
                     .chain(value),
             ),
 
@@ -136,7 +140,7 @@ impl PilStatement {
             PilStatement::LetStatement(_, _, type_name, value) => Box::new(
                 type_name
                     .iter_mut()
-                    .flat_map(|t| t.type_name.expressions_mut())
+                    .flat_map(|t| t.ty.expressions_mut())
                     .chain(value),
             ),
 
@@ -184,8 +188,8 @@ impl<Expr> SelectedExpressions<Expr> {
 pub enum Expression<Ref = NamespacedPolynomialReference> {
     Reference(Ref),
     PublicReference(String),
-    // A number literal and its type. The type is always elementary, so we use NoArrayLengths for the generic param.
-    Number(#[schemars(skip)] BigUint, Option<TypeName<NoArrayLengths>>),
+    // A number literal and its type.
+    Number(#[schemars(skip)] BigUint, Option<Type>),
     String(String),
     Tuple(Vec<Expression<Ref>>),
     LambdaExpression(LambdaExpression<Ref>),
@@ -516,196 +520,7 @@ impl ArrayExpression {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub enum TypeName<E> {
-    /// The bottom type `!`, which cannot have a value but is
-    /// compatible with all other types.
-    Bottom,
-    /// Boolean
-    Bool,
-    /// Integer (arbitrary precision)
-    Int,
-    /// Field element (unspecified field)
-    Fe,
-    /// String
-    String,
-    /// Column
-    Col,
-    /// Algebraic expression
-    Expr,
-    /// Polynomial identity
-    Constr,
-    Array(ArrayTypeName<E>),
-    Tuple(TupleTypeName<E>),
-    Function(FunctionTypeName<E>),
-    TypeVar(String),
-}
-
-// This type is used as TypeName<NoArrayLengths> if we only expect elementary types.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub enum NoArrayLengths {}
-
-impl<E> TypeName<E> {
-    /// Returns true if it is a non-complex type.
-    /// Type variables are not considered elementary.
-    pub fn is_elementary(&self) -> bool {
-        match self {
-            TypeName::Bottom
-            | TypeName::Bool
-            | TypeName::Int
-            | TypeName::Fe
-            | TypeName::String
-            | TypeName::Col
-            | TypeName::Expr
-            | TypeName::Constr => true,
-            TypeName::Array(_)
-            | TypeName::Tuple(_)
-            | TypeName::Function(_)
-            | TypeName::TypeVar(_) => false,
-        }
-    }
-    /// Returns true if the type name needs parentheses during formatting
-    /// when used inside a complex expression.
-    pub fn needs_parentheses(&self) -> bool {
-        match self {
-            _ if self.is_elementary() => false,
-            TypeName::Array(_) | TypeName::Tuple(_) | TypeName::TypeVar(_) => false,
-            TypeName::Function(_) => true,
-            _ => unreachable!(),
-        }
-    }
-
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
-        match self {
-            _ if self.is_elementary() => Box::new(empty()),
-            TypeName::TypeVar(_) => Box::new(empty()),
-            TypeName::Array(a) => a.expressions(),
-            TypeName::Tuple(t) => t.expressions(),
-            TypeName::Function(f) => f.expressions(),
-            _ => unreachable!(),
-        }
-    }
-
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
-        match self {
-            _ if self.is_elementary() => Box::new(empty()),
-            TypeName::TypeVar(_) => Box::new(empty()),
-            TypeName::Array(a) => a.expressions_mut(),
-            TypeName::Tuple(t) => t.expressions_mut(),
-            TypeName::Function(f) => f.expressions_mut(),
-            _ => unreachable!(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ArrayTypeName<E> {
-    pub base: Box<TypeName<E>>,
-    pub length: Option<E>,
-}
-
-impl<E> ArrayTypeName<E> {
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
-        Box::new(self.base.expressions().chain(self.length.iter()))
-    }
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
-        Box::new(self.base.expressions_mut().chain(self.length.iter_mut()))
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TupleTypeName<E> {
-    pub items: Vec<TypeName<E>>,
-}
-
-impl<E> TupleTypeName<E> {
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
-        Box::new(self.items.iter().flat_map(|t| t.expressions()))
-    }
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
-        Box::new(self.items.iter_mut().flat_map(|t| t.expressions_mut()))
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct FunctionTypeName<E> {
-    pub params: Vec<TypeName<E>>,
-    pub value: Box<TypeName<E>>,
-}
-
-impl<E> FunctionTypeName<E> {
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
-        Box::new(
-            self.params
-                .iter()
-                .flat_map(|t| t.expressions())
-                .chain(self.value.expressions()),
-        )
-    }
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
-        Box::new(
-            self.params
-                .iter_mut()
-                .flat_map(|t| t.expressions_mut())
-                .chain(self.value.expressions_mut()),
-        )
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TypeScheme<E> {
-    /// Type variables and their trait bounds.
-    pub type_vars: TypeBounds,
-    pub type_name: TypeName<E>,
-}
-
-impl<E> TypeScheme<E> {
-    pub fn type_vars_to_string(&self) -> String {
-        if self.type_vars.is_empty() {
-            String::new()
-        } else {
-            format!("<{}>", self.type_vars)
-        }
-    }
-}
-
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default, Serialize, Deserialize, JsonSchema,
-)]
-// TODO bounds should be SymbolPaths in the future.
-pub struct TypeBounds(Vec<(String, BTreeSet<String>)>);
-
-impl TypeBounds {
-    pub fn new<J: Into<BTreeSet<String>>, I: Iterator<Item = (String, J)>>(vars: I) -> Self {
-        Self(vars.map(|(n, x)| (n, x.into())).collect::<Vec<_>>())
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn vars(&self) -> impl Iterator<Item = &String> {
-        self.0.iter().map(|(n, _)| n)
-    }
-
-    pub fn bounds(&self) -> impl Iterator<Item = (&String, &BTreeSet<String>)> {
-        self.0.iter().map(|(n, x)| (n, x))
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ExpressionWithTypeScheme<Ref = NamespacedPolynomialReference> {
+pub struct TypedExpression<Ref = NamespacedPolynomialReference, E = Expression<Ref>> {
     pub e: Expression<Ref>,
-    pub type_scheme: Option<TypeScheme<Expression<Ref>>>,
+    pub type_scheme: Option<TypeScheme<E>>,
 }

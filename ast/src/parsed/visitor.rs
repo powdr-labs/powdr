@@ -1,9 +1,10 @@
 use std::{iter::once, ops::ControlFlow};
 
 use super::{
-    ArrayExpression, ArrayLiteral, ArrayTypeName, Expression, FunctionCall, FunctionDefinition,
-    FunctionTypeName, IfExpression, IndexAccess, LambdaExpression, MatchArm, MatchPattern,
-    NamespacedPolynomialReference, PilStatement, SelectedExpressions, TupleTypeName, TypeName,
+    types::{ArrayType, FunctionType, TupleType, Type},
+    ArrayExpression, ArrayLiteral, Expression, FunctionCall, FunctionDefinition, IfExpression,
+    IndexAccess, LambdaExpression, MatchArm, MatchPattern, NamespacedPolynomialReference,
+    PilStatement, SelectedExpressions,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -208,7 +209,7 @@ impl ExpressionVisitable<Expression<NamespacedPolynomialReference>> for PilState
 
             PilStatement::LetStatement(_, _, type_scheme, value) => {
                 if let Some(t) = type_scheme {
-                    t.type_name.visit_expressions_mut(f, o)?;
+                    t.ty.visit_expressions_mut(f, o)?;
                 };
                 if let Some(v) = value {
                     v.visit_expressions_mut(f, o)?;
@@ -252,7 +253,7 @@ impl ExpressionVisitable<Expression<NamespacedPolynomialReference>> for PilState
 
             PilStatement::LetStatement(_, _, type_scheme, value) => {
                 if let Some(t) = type_scheme {
-                    t.type_name.visit_expressions(f, o)?;
+                    t.ty.visit_expressions(f, o)?;
                 };
                 if let Some(v) = value {
                     v.visit_expressions(f, o)?;
@@ -493,17 +494,17 @@ impl<Ref> ExpressionVisitable<Expression<Ref>> for IfExpression<Ref> {
     }
 }
 
-impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for TypeName<E> {
+impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for Type<E> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut E) -> ControlFlow<B>,
     {
         match self {
             _ if self.is_elementary() => ControlFlow::Continue(()),
-            TypeName::TypeVar(_) => ControlFlow::Continue(()),
-            TypeName::Array(a) => a.visit_expressions_mut(f, o),
-            TypeName::Tuple(t) => t.visit_expressions_mut(f, o),
-            TypeName::Function(fun) => fun.visit_expressions_mut(f, o),
+            Type::TypeVar(_) => ControlFlow::Continue(()),
+            Type::Array(a) => a.visit_expressions_mut(f, o),
+            Type::Tuple(t) => t.visit_expressions_mut(f, o),
+            Type::Function(fun) => fun.visit_expressions_mut(f, o),
             _ => unreachable!(),
         }
     }
@@ -514,16 +515,16 @@ impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for TypeName<E> {
     {
         match self {
             _ if self.is_elementary() => ControlFlow::Continue(()),
-            TypeName::TypeVar(_) => ControlFlow::Continue(()),
-            TypeName::Array(a) => a.visit_expressions(f, o),
-            TypeName::Tuple(t) => t.visit_expressions(f, o),
-            TypeName::Function(fun) => fun.visit_expressions(f, o),
+            Type::TypeVar(_) => ControlFlow::Continue(()),
+            Type::Array(a) => a.visit_expressions(f, o),
+            Type::Tuple(t) => t.visit_expressions(f, o),
+            Type::Function(fun) => fun.visit_expressions(f, o),
             _ => unreachable!(),
         }
     }
 }
 
-impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for ArrayTypeName<E> {
+impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for ArrayType<E> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut E) -> ControlFlow<B>,
@@ -545,7 +546,7 @@ impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for ArrayTypeName<E> {
     }
 }
 
-impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for TupleTypeName<E> {
+impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for TupleType<E> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut E) -> ControlFlow<B>,
@@ -565,7 +566,7 @@ impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for TupleTypeName<E> {
     }
 }
 
-impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for FunctionTypeName<E> {
+impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for FunctionType<E> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut E) -> ControlFlow<B>,

@@ -2,9 +2,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use itertools::Itertools;
 
-use powdr_ast::analyzed::types::{ArrayType, Type, TypeScheme, TypedExpression};
+use powdr_ast::analyzed::TypedExpression;
+use powdr_ast::parsed::types::{ArrayType, TypeScheme};
 use powdr_ast::parsed::{
-    self, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions, TypeName,
+    self, types::Type, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions,
 };
 use powdr_ast::SourceRef;
 use powdr_number::{BigInt, DegreeType, GoldilocksField};
@@ -185,18 +186,18 @@ where
         &mut self,
         source: SourceRef,
         name: String,
-        type_scheme: Option<parsed::TypeScheme<parsed::Expression>>,
+        type_scheme: Option<TypeScheme<parsed::Expression>>,
         value: Option<parsed::Expression>,
     ) -> Vec<PILItem> {
         let type_scheme = type_scheme.map(|ts| {
-            let vars = ts.type_vars;
+            let vars = ts.vars;
             let duplicates = vars.vars().duplicates().collect::<Vec<_>>();
             if !duplicates.is_empty() {
                 panic!("Duplicate type variables in declaration of \"{name}\":\n{}", duplicates.iter().format(", "));
             }
 
-            let ty = self.resolve_type_name(ts.type_name.clone())
-                .map_err(|e| panic!("Error evaluating expressions in type name \"{}\" to reduce it to a type:\n{e})", ts.type_name))
+            let ty = self.resolve_type_name(ts.ty.clone())
+                .map_err(|e| panic!("Error evaluating expressions in type name \"{}\" to reduce it to a type:\n{e})", ts.ty))
                 .unwrap();
             let contained_type_vars = ty.contained_type_vars().collect::<HashSet<_>>();
             let declared_type_vars = vars.vars().collect::<HashSet<_>>();
@@ -445,7 +446,7 @@ where
 
     /// Resolves a type name into a concrete type.
     /// This routine mainly evaluates array length expressions.
-    fn resolve_type_name(&self, mut n: TypeName<parsed::Expression>) -> Result<Type, EvalError> {
+    fn resolve_type_name(&self, mut n: Type<parsed::Expression>) -> Result<Type, EvalError> {
         // Replace all expressions by number literals.
         // Any expression inside a type name has to be an array length,
         // so we expect an integer that fits u64.

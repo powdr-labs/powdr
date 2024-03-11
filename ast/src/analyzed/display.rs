@@ -10,9 +10,9 @@ use std::{
 
 use itertools::Itertools;
 
-use self::{
-    parsed::asm::{AbsoluteSymbolPath, SymbolPath},
-    types::{format_type_scheme_around_name, ArrayType, FunctionType, TupleType, Type},
+use self::parsed::{
+    asm::{AbsoluteSymbolPath, SymbolPath},
+    display::format_type_scheme_around_name,
 };
 
 use super::*;
@@ -308,68 +308,4 @@ impl Display for PolynomialReference {
         }
         Ok(())
     }
-}
-
-impl Display for Type {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Type::Bottom => write!(f, "!"),
-            Type::Bool => write!(f, "bool"),
-            Type::Int => write!(f, "int"),
-            Type::Fe => write!(f, "fe"),
-            Type::String => write!(f, "string"),
-            Type::Expr => write!(f, "expr"),
-            Type::Constr => write!(f, "constr"),
-            Type::Col => write!(f, "col"),
-            Type::Array(ar) => write!(f, "{ar}"),
-            Type::Tuple(tu) => write!(f, "{tu}"),
-            Type::Function(fun) => write!(f, "{fun}"),
-            Type::TypeVar(v) => write!(f, "{v}"),
-        }
-    }
-}
-
-impl Display for ArrayType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}[{}]",
-            format_type_with_parentheses(&self.base),
-            self.length.iter().format("")
-        )
-    }
-}
-
-impl Display for TupleType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "({})", format_list_of_types(&self.items))
-    }
-}
-
-impl Display for FunctionType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}{}-> {}",
-            format_list_of_types(&self.params),
-            if self.params.is_empty() { "" } else { " " },
-            format_type_with_parentheses(&self.value)
-        )
-    }
-}
-
-fn format_type_with_parentheses(ty: &Type) -> String {
-    if ty.needs_parentheses() {
-        format!("({ty})")
-    } else {
-        ty.to_string()
-    }
-}
-
-fn format_list_of_types(types: &[Type]) -> String {
-    types
-        .iter()
-        .map(format_type_with_parentheses)
-        .format(", ")
-        .to_string()
 }
