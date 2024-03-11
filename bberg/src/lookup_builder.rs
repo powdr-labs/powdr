@@ -63,8 +63,11 @@ impl LookupBuilder for BBFiles {
         let new_lookups = lookups
             .iter()
             .map(|lookup| Lookup {
-                attribute: lookup.attribute.clone(),
-                counts_poly: format!("{}_counts", lookup.attribute.clone().unwrap()),
+                attribute: lookup.attribute.clone().map(|att| att.to_lowercase()),
+                counts_poly: format!(
+                    "{}_counts",
+                    lookup.attribute.clone().unwrap().to_lowercase()
+                ),
                 left: get_lookup_side(&lookup.left),
                 right: get_lookup_side(&lookup.right),
             })
