@@ -116,6 +116,7 @@ pub fn read_polys_file<T: FieldElement>(
     file: &mut impl Read,
     columns: &[String],
 ) -> (Vec<(String, Vec<T>)>, DegreeType) {
+    assert!(!columns.is_empty());
     let width = ceil_div(T::BITS as usize, 64) * 8;
 
     let bytes_to_read = width * columns.len();
