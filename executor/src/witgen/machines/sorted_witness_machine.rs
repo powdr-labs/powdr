@@ -67,7 +67,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                         })
                         .collect::<Option<Vec<_>>>()?;
 
-                    Some((id.id(), rhs_expressions))
+                    Some((id.id, rhs_expressions))
                 })
                 .collect::<BTreeMap<_, _>>();
 
@@ -93,7 +93,7 @@ fn check_identity<T: FieldElement>(
     id: &Identity<Expression<T>>,
 ) -> Option<PolyID> {
     // Looking for NOTLAST { A' - A } in { POSITIVE }
-    if id.kind != IdentityKind::Plookup
+    if id.id.kind != IdentityKind::Plookup
         || id.right.selector.is_some()
         || id.left.expressions.len() != 1
     {

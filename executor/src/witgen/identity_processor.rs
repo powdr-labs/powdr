@@ -132,7 +132,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         identity: &'a Identity<Expression<T>>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let result = match identity.kind {
+        let result = match identity.id.kind {
             IdentityKind::Polynomial => self.process_polynomial_identity(identity, rows),
             IdentityKind::Plookup | IdentityKind::Permutation => {
                 self.process_plookup(identity, rows)
@@ -196,7 +196,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         if let Some(result) = self.mutable_state.fixed_lookup.process_plookup_timed(
             self.fixed_data,
             rows,
-            identity.kind,
+            identity.id.kind,
             &left,
             &identity.right,
         ) {
@@ -204,7 +204,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         }
 
         self.mutable_state.machines.call(
-            identity.id(),
+            identity.id,
             &left,
             self.mutable_state.fixed_lookup,
             self.mutable_state.query_callback,
@@ -280,10 +280,8 @@ pub struct IdentityData {
     pub success: u64,
 }
 
-type IdentityID = (u64, IdentityKind);
-
 lazy_static! {
-    static ref STATISTICS: Mutex<HashMap<IdentityID, IdentityData>> =
+    static ref STATISTICS: Mutex<HashMap<IdentityId, IdentityData>> =
         Mutex::new(Default::default());
 }
 
@@ -293,7 +291,7 @@ fn report_identity_solving<T: FieldElement, K>(
 ) {
     let success = result.as_ref().map(|r| r.is_complete()).unwrap_or_default() as u64;
     let mut stat = STATISTICS.lock().unwrap();
-    stat.entry((identity.id, identity.kind))
+    stat.entry(identity.id)
         .and_modify(|s| {
             s.invocations += 1;
             s.success += success;
@@ -304,7 +302,7 @@ fn report_identity_solving<T: FieldElement, K>(
         });
 }
 
-pub fn get_and_reset_solving_statistics() -> HashMap<IdentityID, IdentityData> {
+pub fn get_and_reset_solving_statistics() -> HashMap<IdentityId, IdentityData> {
     let mut stat = STATISTICS.lock().unwrap();
     std::mem::take(&mut (*stat))
 }

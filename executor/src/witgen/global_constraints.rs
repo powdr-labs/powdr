@@ -160,7 +160,7 @@ fn propagate_constraints<T: FieldElement>(
     full_span: &BTreeSet<PolyID>,
 ) -> (BTreeMap<PolyID, RangeConstraint<T>>, bool) {
     let mut remove = false;
-    match identity.kind {
+    match identity.id.kind {
         IdentityKind::Polynomial => {
             if let Some(p) = is_binary_constraint(identity.expression_for_poly_id()) {
                 assert!(known_constraints
@@ -199,7 +199,7 @@ fn propagate_constraints<T: FieldElement>(
                     }
                 }
             }
-            if identity.kind == IdentityKind::Plookup && identity.right.expressions.len() == 1 {
+            if identity.id.kind == IdentityKind::Plookup && identity.right.expressions.len() == 1 {
                 // We can only remove the lookup if the RHS is a fixed polynomial that
                 // provides all values in the span.
                 if let Some(name) = try_to_simple_poly(&identity.right.expressions[0]) {

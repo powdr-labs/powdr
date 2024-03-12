@@ -92,7 +92,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     })
                     .unwrap_or_default();
                 let line = identity.source.line;
-                let selector_degree = if identity.kind == IdentityKind::Polynomial {
+                let selector_degree = if identity.id.kind == IdentityKind::Polynomial {
                     2
                 } else {
                     1
@@ -102,7 +102,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     exporter.extract_expression_opt(&identity.left.selector, selector_degree);
                 let right = exporter.extract_expression_vec(&identity.right.expressions, 1);
                 let sel_right = exporter.extract_expression_opt(&identity.right.selector, 1);
-                match identity.kind {
+                match identity.id.kind {
                     IdentityKind::Polynomial => pol_identities.push(PolIdentity {
                         e: sel_left.unwrap(),
                         fileName: file_name,

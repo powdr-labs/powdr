@@ -127,7 +127,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // This is used later to decide to which lookup the machine should respond.
         let connecting_rhs = connecting_identities
             .iter()
-            .map(|id| (id.id(), &id.right))
+            .map(|id| (id.id, &id.right))
             .collect::<BTreeMap<_, _>>();
 
         for rhs in connecting_rhs.values() {
@@ -184,7 +184,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     // Connecting identities should either all be permutations or all lookups.
     let connection_type = connecting_identities
         .iter()
-        .map(|id| id.kind.try_into())
+        .map(|id| id.id.kind.try_into())
         .unique()
         .exactly_one()
         .ok()?
@@ -205,7 +205,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
             // The latch fixed column could be any fixed column that appears in any identity or the RHS selector.
             let mut latch_candidates = BTreeSet::new();
             for id in identities {
-                if id.kind == IdentityKind::Polynomial {
+                if id.id.kind == IdentityKind::Polynomial {
                     collect_fixed_cols(id.left.selector.as_ref().unwrap(), &mut latch_candidates);
                 };
             }

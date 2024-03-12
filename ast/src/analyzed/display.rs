@@ -202,7 +202,7 @@ impl Display for RepeatedArray {
 
 impl Display for Identity<Expression> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.kind {
+        match self.id.kind {
             IdentityKind::Polynomial => {
                 let expression = self.expression_for_poly_id();
                 if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expression {
@@ -220,7 +220,7 @@ impl Display for Identity<Expression> {
 
 impl<T: Display> Display for Identity<AlgebraicExpression<T>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.kind {
+        match self.id.kind {
             IdentityKind::Polynomial => {
                 let expression = self.expression_for_poly_id();
                 if let AlgebraicExpression::BinaryOperation(

@@ -259,18 +259,20 @@ impl<T> Analyzed<T> {
         identity: AlgebraicExpression<T>,
         source: SourceRef,
     ) -> u64 {
-        let id = self
+        // TODO: Is this correct? Shouldn't we filter by the type?
+        let local_id = self
             .identities
             .iter()
-            .map(|identity| identity.id)
+            .map(|identity| identity.id.local_id)
             .max()
             .unwrap_or_default()
             + 1;
-        self.identities
-            .push(Identity::from_polynomial_identity(id, source, identity));
+        self.identities.push(Identity::from_polynomial_identity(
+            local_id, source, identity,
+        ));
         self.source_order
             .push(StatementIdentifier::Identity(self.identities.len() - 1));
-        id
+        local_id
     }
 
     /// Remove some identities by their index (not their ID).
@@ -612,17 +614,18 @@ impl PublicDeclaration {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Serialize, Deserialize, JsonSchema,
+)]
 pub struct IdentityId {
-    id: u64,
-    kind: IdentityKind,
+    /// The ID is specific to the identity kind.
+    pub local_id: u64,
+    pub kind: IdentityKind,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Identity<Expr> {
-    /// The ID is specific to the identity kind.
-    pub id: u64,
-    pub kind: IdentityKind,
+    pub id: IdentityId,
     pub source: SourceRef,
     /// For a simple polynomial identity, the selector contains
     /// the actual expression (see expression_for_poly_id).
@@ -632,10 +635,12 @@ pub struct Identity<Expr> {
 
 impl<Expr> Identity<Expr> {
     /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
-    pub fn from_polynomial_identity(id: u64, source: SourceRef, identity: Expr) -> Self {
+    pub fn from_polynomial_identity(local_id: u64, source: SourceRef, identity: Expr) -> Self {
         Identity {
-            id,
-            kind: IdentityKind::Polynomial,
+            id: IdentityId {
+                local_id,
+                kind: IdentityKind::Polynomial,
+            },
             source,
             left: SelectedExpressions {
                 selector: Some(identity),
@@ -646,21 +651,14 @@ impl<Expr> Identity<Expr> {
     }
     /// Returns the expression in case this is a polynomial identity.
     pub fn expression_for_poly_id(&self) -> &Expr {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
+        assert_eq!(self.id.kind, IdentityKind::Polynomial);
         self.left.selector.as_ref().unwrap()
     }
 
     /// Returns the expression in case this is a polynomial identity.
     pub fn expression_for_poly_id_mut(&mut self) -> &mut Expr {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
+        assert_eq!(self.id.kind, IdentityKind::Polynomial);
         self.left.selector.as_mut().unwrap()
-    }
-
-    pub fn id(&self) -> IdentityId {
-        IdentityId {
-            id: self.id,
-            kind: self.kind,
-        }
     }
 }
 
@@ -991,7 +989,7 @@ mod tests {
         let mut pil_result = Analyzed::default();
         pil_result.append_polynomial_identity(AlgebraicExpression::Number(0), SourceRef::unknown());
         pil_result.append_polynomial_identity(AlgebraicExpression::Number(5), SourceRef::unknown());
-        pil_result.identities[1].id = 6;
+        pil_result.identities[1].id.local_id = 6;
         assert_eq!(pil.identities, pil_result.identities);
         assert_eq!(pil.source_order, pil_result.source_order);
     }

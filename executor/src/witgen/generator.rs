@@ -122,7 +122,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         Self {
             connecting_rhs: connecting_identities
                 .iter()
-                .map(|&identity| (identity.id(), &identity.right))
+                .map(|&identity| (identity.id, &identity.right))
                 .collect(),
             name,
             fixed_data,

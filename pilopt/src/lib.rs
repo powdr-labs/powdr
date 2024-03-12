@@ -185,7 +185,7 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     for identity in &mut pil_file
         .identities
         .iter_mut()
-        .filter(|id| id.kind == IdentityKind::Plookup)
+        .filter(|id| id.id.kind == IdentityKind::Plookup)
     {
         let mut extracted = HashSet::new();
         for (i, (l, r)) in identity
@@ -241,7 +241,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     let mut constant_polys = pil_file
         .identities
         .iter()
-        .filter(|&id| (id.kind == IdentityKind::Polynomial))
+        .filter(|&id| (id.id.kind == IdentityKind::Polynomial))
         .map(|id| id.expression_for_poly_id())
         .filter_map(constrained_to_constant)
         .collect::<BTreeMap<PolyID, _>>();
@@ -316,7 +316,7 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .identities
         .iter()
         .enumerate()
-        .filter_map(|(index, identity)| match identity.kind {
+        .filter_map(|(index, identity)| match identity.id.kind {
             IdentityKind::Polynomial => {
                 if let AlgebraicExpression::Number(n) = identity.expression_for_poly_id() {
                     if *n == 0.into() {

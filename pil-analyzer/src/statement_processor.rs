@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use itertools::Itertools;
 
-use powdr_ast::analyzed::TypedExpression;
+use powdr_ast::analyzed::{IdentityId, TypedExpression};
 use powdr_ast::parsed::types::{ArrayType, TypeScheme};
 use powdr_ast::parsed::{
     self, types::Type, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions,
@@ -321,8 +321,10 @@ where
         };
 
         vec![PILItem::Identity(Identity {
-            id: self.counters.dispense_identity_id(kind),
-            kind,
+            id: IdentityId {
+                local_id: self.counters.dispense_identity_id(kind),
+                kind,
+            },
             source,
             left,
             right,

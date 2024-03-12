@@ -199,7 +199,7 @@ fn all_row_connected_witnesses<T>(
     loop {
         let count = witnesses.len();
         for i in identities {
-            match i.kind {
+            match i.id.kind {
                 IdentityKind::Polynomial => {
                     // Any current witness in the identity adds all other witnesses.
                     let in_identity = &refs_in_identity(i) & all_witnesses;

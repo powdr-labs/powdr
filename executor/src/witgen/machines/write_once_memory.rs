@@ -60,7 +60,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
         if !connecting_identities
             .iter()
-            .all(|i| i.kind == IdentityKind::Plookup)
+            .all(|i| i.id.kind == IdentityKind::Plookup)
         {
             return None;
         }
@@ -106,7 +106,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         Some(Self {
-            connecting_identities: connecting_identities.iter().map(|&i| i.id()).collect(),
+            connecting_identities: connecting_identities.iter().map(|&i| i.id).collect(),
             name,
             fixed_data,
             rhs,

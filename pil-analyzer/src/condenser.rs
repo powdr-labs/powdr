@@ -136,12 +136,12 @@ impl<T: FieldElement> Condenser<T> {
         &self,
         identity: &Identity<Expression>,
     ) -> Vec<Identity<AlgebraicExpression<T>>> {
-        if identity.kind == IdentityKind::Polynomial {
+        if identity.id.kind == IdentityKind::Polynomial {
             self.condense_to_constraint_or_array(identity.expression_for_poly_id())
                 .into_iter()
                 .map(|constraint| {
                     Identity::from_polynomial_identity(
-                        identity.id,
+                        identity.id.local_id,
                         identity.source.clone(),
                         constraint,
                     )
@@ -150,7 +150,6 @@ impl<T: FieldElement> Condenser<T> {
         } else {
             vec![Identity {
                 id: identity.id,
-                kind: identity.kind,
                 source: identity.source.clone(),
                 left: self.condense_selected_expressions(&identity.left),
                 right: self.condense_selected_expressions(&identity.right),

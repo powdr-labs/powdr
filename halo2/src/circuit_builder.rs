@@ -184,7 +184,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         let identities = analyzed
             .identities_with_inlined_intermediate_polynomials()
             .into_iter()
-            .filter(|id| id.kind == IdentityKind::Polynomial)
+            .filter(|id| id.id.kind == IdentityKind::Polynomial)
             .collect::<Vec<_>>();
         if !identities.is_empty() {
             meta.create_gate("main", |meta| -> Vec<(String, Expression<F>)> {
@@ -229,7 +229,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         };
 
         for id in analyzed.identities_with_inlined_intermediate_polynomials() {
-            match id.kind {
+            match id.id.kind {
                 // Already handled above
                 IdentityKind::Polynomial => {}
                 IdentityKind::Connect => unimplemented!(),
