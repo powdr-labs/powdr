@@ -1,3 +1,5 @@
+use std::utils::force_bool;
+
 machine MemReadWrite {
     reg pc[@pc];
     reg X[<=];
@@ -22,7 +24,12 @@ machine MemReadWrite {
     col witness m_value;
     // If the operation is a write operation.
     col witness m_is_write;
-    col witness m_is_read;
+
+    col witness m_selector1;
+    col witness m_selector2;
+    force_bool(m_selector1);
+    force_bool(m_selector2);
+    (1 - m_selector1 - m_selector2) * m_is_write = 0;
 
     // positive numbers (assumed to be much smaller than the field order)
     col fixed POSITIVE(i) { i + 1 };
@@ -43,9 +50,6 @@ machine MemReadWrite {
     (1 - m_change) * LAST = 0;
 
     m_is_write * (1 - m_is_write) = 0;
-    m_is_read * (1 - m_is_read) = 0;
-    m_is_read * m_is_write = 0;
-
 
     // If the next line is a read and we stay at the same address, then the
     // value cannot change.
@@ -56,8 +60,8 @@ machine MemReadWrite {
     (1 - m_is_write') * m_change * m_value' = 0;
 
     instr assert_zero X { XIsZero = 1 }
-    instr mstore X { { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value } }
-    instr mload -> X { { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value } }
+    instr mload -> X { { 0, ADDR, STEP, X } is m_selector1 { m_is_write, m_addr, m_step, m_value } }
+    instr mstore X { { 1, ADDR, STEP, X } is m_selector2 { m_is_write, m_addr, m_step, m_value } }
 
     function main {
         ADDR <=X= 4;

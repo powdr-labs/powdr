@@ -123,7 +123,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         } else if let Some(machine) = DoubleSortedWitnesses::try_new(
             name_with_type("DoubleSortedWitnesses"),
             fixed,
-            &machine_identities,
+            &connecting_identities,
             &machine_witnesses,
             global_range_constraints,
         ) {

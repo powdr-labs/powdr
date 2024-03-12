@@ -20,14 +20,3 @@ pub fn try_to_simple_poly_ref<T>(expr: &Expression<T>) -> Option<&AlgebraicRefer
         None
     }
 }
-
-pub fn is_simple_poly_of_name<T>(expr: &Expression<T>, poly_name: &str) -> bool {
-    if let Expression::Reference(AlgebraicReference {
-        name, next: false, ..
-    }) = expr
-    {
-        name == poly_name
-    } else {
-        false
-    }
-}
