@@ -48,6 +48,7 @@ pub enum LiteralKind {
 struct ASMPILConverter<T> {
     pil: Vec<PilStatement>,
     pc_name: Option<String>,
+    assignment_register_names: Vec<String>,
     registers: BTreeMap<String, Register>,
     instructions: BTreeMap<String, Instruction>,
     code_lines: Vec<CodeLine<T>>,
@@ -74,7 +75,14 @@ impl<T: FieldElement> ASMPILConverter<T> {
             return input;
         }
 
-        // turn registers into constraints
+        // store the names of all assignment registers: we need them to generate assignment columns for other registers.
+        assert!(self.assignment_register_names.is_empty());
+        self.assignment_register_names = input
+            .assignment_register_names()
+            .map(|s| s.to_string())
+            .collect();
+
+        // turn registers into columns and constraints
         for reg in input.registers.drain(..) {
             self.handle_register_declaration(reg);
         }
@@ -882,9 +890,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 for reg in writes {
                     rom_constants
                         .get_mut(&format!("p_reg_write_{assign_reg}_{reg}"))
-                        .unwrap_or_else(|| {
-                            panic!("Register combination {reg} <={assign_reg}= not found.")
-                        })[i] = 1.into();
+                        .unwrap()[i] = 1.into();
                 }
             }
             for (assign_reg, value) in &line.value {
@@ -893,9 +899,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         AffineExpressionComponent::Register(reg) => {
                             rom_constants
                                 .get_mut(&format!("p_read_{assign_reg}_{reg}"))
-                                .unwrap_or_else(|| {
-                                    panic!("Register combination <={assign_reg}= {reg} not found.")
-                                })[i] += *coeff;
+                                .unwrap()[i] += *coeff;
                         }
                         AffineExpressionComponent::Constant => {
                             rom_constants
@@ -1017,9 +1021,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
     }
 
     fn assignment_register_names(&self) -> impl Iterator<Item = &String> {
-        self.registers
-            .iter()
-            .filter_map(|(n, r)| r.ty.is_assignment().then_some(n))
+        self.assignment_register_names.iter()
     }
 
     fn write_register_names(&self) -> impl Iterator<Item = &String> {
