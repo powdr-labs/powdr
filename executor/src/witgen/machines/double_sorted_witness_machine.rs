@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::iter::once;
 
 use itertools::Itertools;
@@ -8,7 +8,7 @@ use powdr_ast::parsed::SelectedExpressions;
 use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::global_constraints::GlobalConstraints;
-use crate::witgen::util::is_simple_poly_of_name;
+use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 use powdr_number::{DegreeType, FieldElement};
@@ -17,23 +17,38 @@ use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
 
-const EXPECTED_WITNESSES: [&str; 7] = [
+/// If all witnesses of a machine have a name in this list (disregarding the namespace),
+/// we'll consider it to be a double-sorted machine.
+/// This does not include the selectors, which are dynamically added to this list.
+const ALLOWED_WITNESSES: [&str; 8] = [
     "m_value",
     "m_addr",
     "m_step",
     "m_change",
     "m_is_write",
-    "m_is_read",
     "m_is_bootloader_write",
+    "m_diff_upper",
+    "m_diff_lower",
 ];
 
 const DIFF_COLUMNS: [&str; 2] = ["m_diff_upper", "m_diff_lower"];
-
 const BOOTLOADER_WRITE_COLUMN: &str = "m_is_bootloader_write";
+
+// The operation ID is decomposed into m_is_write + 2 * m_is_bootloader_write
+const OPERATION_ID_WRITE: u64 = 1;
+const OPERATION_ID_BOOTLOADER_WRITE: u64 = 2;
+
+fn split_column_name(name: &str) -> (&str, &str) {
+    let mut limbs = name.split('.');
+    let namespace = limbs.next().unwrap();
+    let col = limbs.next().unwrap();
+    (namespace, col)
+}
 
 /// TODO make this generic
 
-pub struct DoubleSortedWitnesses<T> {
+pub struct DoubleSortedWitnesses<'a, T> {
+    fixed: &'a FixedData<'a, T>,
     degree: DegreeType,
     //key_col: String,
     /// Position of the witness columns in the data.
@@ -49,41 +64,33 @@ pub struct DoubleSortedWitnesses<T> {
     diff_columns_base: Option<u64>,
     /// Whether this machine has a `m_is_bootloader_write` column.
     has_bootloader_write_column: bool,
+    /// All selector IDs that are used on the right-hand side connecting identities.
+    selector_ids: BTreeSet<PolyID>,
 }
 
 struct Operation<T> {
     pub is_normal_write: bool,
     pub is_bootloader_write: bool,
     pub value: T,
+    pub selector_id: PolyID,
 }
 
-impl<T: FieldElement> Operation<T> {
-    pub fn is_write(&self) -> bool {
-        self.is_normal_write || self.is_bootloader_write
-    }
-}
-
-impl<T: FieldElement> DoubleSortedWitnesses<T> {
+impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
     fn namespaced(&self, name: &str) -> String {
         format!("{}.{}", self.namespace, name)
     }
 
     pub fn try_new(
         name: String,
-        fixed_data: &FixedData<T>,
-        _identities: &[&Identity<Expression<T>>],
+        fixed_data: &'a FixedData<'a, T>,
+        connecting_identities: &[&Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
         global_range_constraints: &GlobalConstraints<T>,
     ) -> Option<Self> {
         // get the namespaces and column names
         let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = witness_cols
             .iter()
-            .map(|r| {
-                let mut limbs = fixed_data.column_name(r).split('.');
-                let namespace = limbs.next().unwrap();
-                let col = limbs.next().unwrap();
-                (namespace, col)
-            })
+            .map(|r| split_column_name(fixed_data.column_name(r)))
             .unzip();
 
         if namespaces.len() > 1 {
@@ -91,13 +98,26 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             return None;
         }
 
+        let selector_ids = connecting_identities
+            .iter()
+            .map(|i| {
+                i.right
+                    .selector
+                    .as_ref()
+                    .and_then(|r| try_to_simple_poly(r))
+                    .map(|p| p.poly_id)
+            })
+            .collect::<Option<BTreeSet<_>>>()?;
+
         let namespace = namespaces.drain().next().unwrap().into();
 
         // TODO check the identities.
-        let allowed_witnesses: HashSet<_> = EXPECTED_WITNESSES
+        let selector_names = selector_ids
+            .iter()
+            .map(|s| split_column_name(fixed_data.column_name(s)).1);
+        let allowed_witnesses: HashSet<_> = ALLOWED_WITNESSES
             .into_iter()
-            .chain(DIFF_COLUMNS)
-            .chain([BOOTLOADER_WRITE_COLUMN])
+            .chain(selector_names)
             .collect();
         if !columns.iter().all(|c| allowed_witnesses.contains(c)) {
             return None;
@@ -126,11 +146,13 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                 Some(Self {
                     name,
                     namespace,
+                    fixed: fixed_data,
                     degree: fixed_data.degree,
                     diff_columns_base,
                     has_bootloader_write_column,
                     trace: Default::default(),
                     data: Default::default(),
+                    selector_ids,
                 })
             } else {
                 None
@@ -139,17 +161,19 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             Some(Self {
                 name,
                 namespace,
+                fixed: fixed_data,
                 degree: fixed_data.degree,
                 diff_columns_base: None,
                 has_bootloader_write_column,
                 trace: Default::default(),
                 data: Default::default(),
+                selector_ids,
             })
         }
     }
 }
 
-impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
+impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
     fn name(&self) -> &str {
         &self.name
     }
@@ -161,15 +185,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
     ) -> Option<EvalResult<'a, T>> {
-        let right_selector = right.selector.as_ref()?;
-        if kind != IdentityKind::Permutation
-            || !(is_simple_poly_of_name(right_selector, &self.namespaced("m_is_read"))
-                || is_simple_poly_of_name(right_selector, &self.namespaced("m_is_write"))
-                || is_simple_poly_of_name(
-                    right_selector,
-                    &self.namespaced(BOOTLOADER_WRITE_COLUMN),
-                ))
-        {
+        if kind != IdentityKind::Permutation {
             return None;
         }
 
@@ -186,8 +202,21 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         let mut value = vec![];
         let mut is_normal_write = vec![];
         let mut is_bootloader_write = vec![];
-        let mut is_read = vec![];
         let mut diff = vec![];
+        let mut selectors = self
+            .selector_ids
+            .iter()
+            .map(|id| (id, Vec::new()))
+            .collect::<BTreeMap<_, _>>();
+        let mut set_selector = |selector_id: Option<PolyID>| {
+            for (id, v) in selectors.iter_mut() {
+                v.push(if Some(**id) == selector_id {
+                    T::one()
+                } else {
+                    T::zero()
+                })
+            }
+        };
 
         for ((a, s), o) in std::mem::take(&mut self.trace) {
             if let Some(prev_address) = addr.last() {
@@ -213,7 +242,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
 
             is_normal_write.push(o.is_normal_write.into());
             is_bootloader_write.push(o.is_bootloader_write.into());
-            is_read.push((!o.is_write()).into());
+            set_selector(Some(o.selector_id));
         }
         if addr.is_empty() {
             // No memory access at all - fill a first row with something.
@@ -222,7 +251,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             value.push(0.into());
             is_normal_write.push(0.into());
             is_bootloader_write.push(0.into());
-            is_read.push(0.into());
+            set_selector(None);
         }
         while addr.len() < self.degree as usize {
             addr.push(*addr.last().unwrap());
@@ -231,7 +260,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             value.push(*value.last().unwrap());
             is_normal_write.push(0.into());
             is_bootloader_write.push(0.into());
-            is_read.push(0.into());
+            set_selector(None);
         }
 
         // We have all diffs, except from the last to the first element, which is unconstrained.
@@ -270,51 +299,64 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             vec![]
         };
 
-        let is_bootloader_write = if self.has_bootloader_write_column {
+        let bootloader_columns = if self.has_bootloader_write_column {
             vec![(
                 self.namespaced(BOOTLOADER_WRITE_COLUMN),
-                is_bootloader_write,
+                is_bootloader_write.clone(),
             )]
         } else {
             vec![]
         };
+
+        let selector_columns = selectors
+            .into_iter()
+            .map(|(id, v)| (self.fixed.column_name(id).to_string(), v))
+            .collect::<Vec<_>>();
 
         [
             (self.namespaced("m_value"), value),
             (self.namespaced("m_addr"), addr),
             (self.namespaced("m_step"), step),
             (self.namespaced("m_change"), change),
-            (self.namespaced("m_is_write"), is_normal_write),
-            (self.namespaced("m_is_read"), is_read),
+            (self.namespaced("m_is_write"), is_normal_write.clone()),
         ]
         .into_iter()
         .chain(diff_columns)
-        .chain(is_bootloader_write)
+        .chain(bootloader_columns)
+        .chain(selector_columns)
         .collect()
     }
 }
 
-impl<T: FieldElement> DoubleSortedWitnesses<T> {
-    fn process_plookup_internal<'a>(
+impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
+    fn process_plookup_internal(
         &mut self,
         left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &SelectedExpressions<Expression<T>>,
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
-        // OP { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value }
-        // or
-        // OP { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value }
+        // OP { operation_id, ADDR, STEP, X } is <selector> { operation_id, m_addr, m_step, m_value }
+        // Where:
+        // - operation_id == 0: Read
+        // - operation_id == 1: Write
+        // - operation_id == 2: Bootloader write
 
-        let is_bootloader_write = match &right.selector {
-            Some(Expression::Reference(p)) => p.name == self.namespaced(BOOTLOADER_WRITE_COLUMN),
-            _ => panic!(),
+        let operation_id = match left[0].constant_value() {
+            Some(v) => v,
+            None => {
+                return Ok(EvalValue::incomplete(
+                    IncompleteCause::NonConstantRequiredArgument("operation_id"),
+                ))
+            }
         };
-        let is_normal_write = match &right.selector {
-            Some(Expression::Reference(p)) => p.name == self.namespaced("m_is_write"),
-            _ => panic!(),
-        };
+
+        let right_selector = right.selector.as_ref().unwrap();
+        let selector_id = try_to_simple_poly(right_selector).unwrap().poly_id;
+
+        let is_normal_write = operation_id == T::from(OPERATION_ID_WRITE);
+        let is_bootloader_write = operation_id == T::from(OPERATION_ID_BOOTLOADER_WRITE);
         let is_write = is_bootloader_write || is_normal_write;
-        let addr = match left[0].constant_value() {
+        let addr = match left[1].constant_value() {
             Some(v) => v,
             None => {
                 return Ok(EvalValue::incomplete(
@@ -323,27 +365,29 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             }
         };
 
-        let step = left[1]
+        let step = left[2]
             .constant_value()
-            .ok_or_else(|| format!("Step must be known: {} = {}", left[1], right.expressions[1]))?;
+            .ok_or_else(|| format!("Step must be known: {} = {}", left[2], right.expressions[1]))?;
+
+        let value_expr = &left[3];
 
         log::trace!(
-            "Query addr={:x}, step={step}, write: {is_write}, left: {}",
+            "Query addr={:x}, step={step}, write: {is_write}, value: {}",
             addr.to_arbitrary_integer(),
-            left[2]
+            value_expr
         );
         if !(addr.clone().to_arbitrary_integer() % 4u32).is_zero() {
             panic!(
-                "Unaligned memory access: addr={:x}, step={step}, write: {is_write}, left: {}",
+                "Unaligned memory access: addr={:x}, step={step}, write: {is_write}, value: {}",
                 addr.to_arbitrary_integer(),
-                left[2]
+                value_expr
             );
         }
 
         // TODO this does not check any of the failure modes
         let mut assignments = EvalValue::complete(vec![]);
         if is_write {
-            let value = match left[2].constant_value() {
+            let value = match value_expr.constant_value() {
                 Some(v) => v,
                 None => {
                     return Ok(EvalValue::incomplete(
@@ -364,6 +408,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                     is_normal_write,
                     is_bootloader_write,
                     value,
+                    selector_id,
                 },
             );
         } else {
@@ -374,6 +419,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                     is_normal_write,
                     is_bootloader_write,
                     value: *value,
+                    selector_id,
                 },
             );
             log::trace!(
@@ -381,7 +427,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                 addr,
                 value
             );
-            let ass = (left[2].clone() - (*value).into()).solve()?;
+            let ass = (value_expr.clone() - (*value).into()).solve()?;
             assignments.combine(ass);
         }
         Ok(assignments)

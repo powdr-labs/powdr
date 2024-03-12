@@ -670,18 +670,23 @@ fn memory(with_bootloader: bool) -> String {
     //   associated with it). In that case, `m_change` can be 0 everywhere.
     let bootloader_specific_parts = if with_bootloader {
         r#"
-    // Memory operation flags
+    // Memory operation flags: If none is active, it's a read.
     col witness m_is_write;
     col witness m_is_bootloader_write;
-    col witness m_is_read;
-
-    // All operation flags are boolean and either all 0 or exactly 1 is set.
     std::utils::force_bool(m_is_write);
-    std::utils::force_bool(m_is_read);
     std::utils::force_bool(m_is_bootloader_write);
-    m_is_read * m_is_write = 0;
-    m_is_read * m_is_bootloader_write = 0;
-    m_is_bootloader_write * m_is_write = 0;
+
+    // Selectors
+    col witness m_selector_read;
+    col witness m_selector_write;
+    col witness m_selector_bootloader_write;
+    std::utils::force_bool(m_selector_read);
+    std::utils::force_bool(m_selector_write);
+    std::utils::force_bool(m_selector_bootloader_write);
+
+    // No selector active -> no write
+    (1 - m_selector_read - m_selector_write - m_selector_bootloader_write) * m_is_write = 0;
+    (1 - m_selector_read - m_selector_write - m_selector_bootloader_write) * m_is_bootloader_write = 0;
 
     // The first operation of a new address has to be a bootloader write
     m_change * (1 - m_is_bootloader_write') = 0;
@@ -697,23 +702,31 @@ fn memory(with_bootloader: bool) -> String {
     // value cannot change.
     (1 - m_is_write' - m_is_bootloader_write') * (1 - m_change) * (m_value' - m_value) = 0;
 
+    col operation_id = m_is_write + 2 * m_is_bootloader_write;
+
     /// Like mstore, but setting the m_is_bootloader_write flag.
     instr mstore_bootloader Y, Z {
-        { X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_is_bootloader_write { m_addr, m_step, m_value },
+        { 2, X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_selector_bootloader_write { operation_id, m_addr, m_step, m_value },
         // Wrap the addr value
         Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
 "#
     } else {
         r#"
-    // Memory operation flags
+    // Memory operation flags: If none is active, it's a read.
     col witness m_is_write;
-    col witness m_is_read;
-
-    // All operation flags are boolean and either all 0 or exactly 1 is set.
     std::utils::force_bool(m_is_write);
-    std::utils::force_bool(m_is_read);
-    m_is_read * m_is_write = 0;
+
+    // Selectors
+    col witness m_selector_read;
+    col witness m_selector_write;
+    std::utils::force_bool(m_selector_read);
+    std::utils::force_bool(m_selector_write);
+
+    // No selector active -> no write
+    (1 - m_selector_read - m_selector_write) * m_is_write = 0;
+    
+    col operation_id = m_is_write;
 
     // If the next line is a not a write and we have an address change,
     // then the value is zero.
@@ -779,10 +792,11 @@ fn memory(with_bootloader: bool) -> String {
         Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z,
         { X_b1 } in { six_bits },
         {
+            0,
             X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4,
             STEP,
             X
-        } is m_is_read { m_addr, m_step, m_value }
+        } is m_selector_read { operation_id, m_addr, m_step, m_value }
         // If we could access the shift machine here, we
         // could even do the following to complete the mload:
         // { W, X, Z} in { shr.value, shr.amount, shr.amount}
@@ -791,7 +805,7 @@ fn memory(with_bootloader: bool) -> String {
     /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
     /// Y should be a multiple of 4, but this instruction does not enforce it.
     instr mstore Y, Z {
-        { X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_is_write { m_addr, m_step, m_value },
+        { 1, X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_selector_write { operation_id, m_addr, m_step, m_value },
         // Wrap the addr value
         Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }

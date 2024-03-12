@@ -75,7 +75,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 /// which requires that all lifetime parameters are 'static.
 pub enum KnownMachine<'a, T: FieldElement> {
     SortedWitnesses(SortedWitnesses<'a, T>),
-    DoubleSortedWitnesses(DoubleSortedWitnesses<T>),
+    DoubleSortedWitnesses(DoubleSortedWitnesses<'a, T>),
     WriteOnceMemory(WriteOnceMemory<'a, T>),
     BlockMachine(BlockMachine<'a, T>),
     Vm(Generator<'a, T>),
