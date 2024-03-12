@@ -1,9 +1,8 @@
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, PolyID,
 };
-use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::{DegreeType, FieldElement};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::machines::profiling::{record_end, record_start};
@@ -27,6 +26,7 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
+    connecting_identities: BTreeMap<IdentityId, &'a Identity<Expression<T>>>,
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<Expression<T>>>,
     witnesses: HashSet<PolyID>,
@@ -37,6 +37,10 @@ pub struct Generator<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
+    fn identities(&self) -> Vec<IdentityId> {
+        self.connecting_identities.keys().cloned().collect()
+    }
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -44,43 +48,39 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
-        _kind: IdentityKind,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
-    ) -> Option<EvalResult<'a, T>> {
-        if right.selector != self.latch {
-            None
-        } else {
-            log::trace!("Start processing secondary VM '{}'", self.name());
-            log::trace!("Arguments:");
-            for (r, l) in right.expressions.iter().zip(left) {
-                log::trace!("  {r} = {l}");
-            }
-
-            let first_row = self
-                .data
-                .last()
-                .cloned()
-                .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
-
-            let outer_query = OuterQuery {
-                left: left.to_vec(),
-                right,
-            };
-            let ProcessResult { eval_value, block } =
-                self.process(first_row, 0, mutable_state, Some(outer_query), false);
-
-            if eval_value.is_complete() {
-                log::trace!("End processing VM '{}' (successfully)", self.name());
-                // Remove the last row of the previous block, as it is the first row of the current
-                // block.
-                self.data.pop();
-                self.data.extend(block);
-            } else {
-                log::trace!("End processing VM '{}' (incomplete)", self.name());
-            }
-            Some(Ok(eval_value))
+        identity: IdentityId,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
+    ) -> EvalResult<'a, T> {
+        log::trace!("Start processing secondary VM '{}'", self.name());
+        log::trace!("Arguments:");
+        let right = &self.connecting_identities[&identity].right;
+        for (r, l) in right.expressions.iter().zip(args) {
+            log::trace!("  {r} = {l}");
         }
+
+        let first_row = self
+            .data
+            .last()
+            .cloned()
+            .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
+
+        let outer_query = OuterQuery {
+            left: args.to_vec(),
+            right,
+        };
+        let ProcessResult { eval_value, block } =
+            self.process(first_row, 0, mutable_state, Some(outer_query), false);
+
+        if eval_value.is_complete() {
+            log::trace!("End processing VM '{}' (successfully)", self.name());
+            // Remove the last row of the previous block, as it is the first row of the current
+            // block.
+            self.data.pop();
+            self.data.extend(block);
+        } else {
+            log::trace!("End processing VM '{}' (incomplete)", self.name());
+        }
+        Ok(eval_value)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -111,6 +111,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
+        connecting_identities: &[&'a Identity<Expression<T>>],
         identities: Vec<&'a Identity<Expression<T>>>,
         witnesses: HashSet<PolyID>,
         global_range_constraints: GlobalConstraints<T>,
@@ -118,6 +119,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     ) -> Self {
         let data = FinalizableData::new(&witnesses);
         Self {
+            connecting_identities: connecting_identities
+                .iter()
+                .map(|&identity| (identity.id(), identity))
+                .collect(),
             name,
             fixed_data,
             identities,

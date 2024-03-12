@@ -115,6 +115,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         if let Some(machine) = SortedWitnesses::try_new(
             name_with_type("SortedWitness"),
             fixed,
+            &connecting_identities,
             &machine_identities,
             &machine_witnesses,
         ) {
@@ -124,6 +125,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             name_with_type("DoubleSortedWitnesses"),
             fixed,
             &connecting_identities,
+            &machine_identities,
             &machine_witnesses,
             global_range_constraints,
         ) {
@@ -171,6 +173,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             machines.push(KnownMachine::Vm(Generator::new(
                 name_with_type("Vm"),
                 fixed,
+                &connecting_identities,
                 machine_identities,
                 machine_witnesses,
                 global_range_constraints.clone(),

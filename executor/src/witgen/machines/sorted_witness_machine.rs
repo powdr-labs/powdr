@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use itertools::Itertools;
-use powdr_ast::parsed::SelectedExpressions;
 
 use super::super::affine_expression::AffineExpression;
 use super::{EvalResult, FixedData};
@@ -12,7 +11,8 @@ use crate::witgen::{
 };
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, IdentityKind,
+    PolyID,
 };
 use powdr_number::FieldElement;
 
@@ -24,6 +24,7 @@ use powdr_number::FieldElement;
 ///  - NOTLAST is zero only on the last row
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses<'a, T> {
+    connecting_identities: BTreeMap<IdentityId, &'a Identity<Expression<T>>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -36,6 +37,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<T>,
+        connecting_identities: &[&'a Identity<Expression<T>>],
         identities: &[&Identity<Expression<T>>],
         witnesses: &HashSet<PolyID>,
     ) -> Option<Self> {
@@ -52,6 +54,10 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .collect();
 
             SortedWitnesses {
+                connecting_identities: connecting_identities
+                    .iter()
+                    .map(|&id| (id.id(), id))
+                    .collect(),
                 name,
                 key_col,
                 witness_positions,
@@ -132,6 +138,10 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
+    fn identities(&self) -> Vec<IdentityId> {
+        self.connecting_identities.keys().cloned().collect()
+    }
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -139,31 +149,30 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,
-        kind: IdentityKind,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
-    ) -> Option<EvalResult<'a, T>> {
-        if kind != IdentityKind::Plookup || right.selector.is_some() {
-            return None;
-        }
-        let rhs = right
+        identity: IdentityId,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
+    ) -> EvalResult<'a, T> {
+        let rhs = self
+            .connecting_identities
+            .get(&identity)
+            .unwrap()
+            .right
             .expressions
             .iter()
             .map(|e| match e {
                 Expression::Reference(p) => {
                     assert!(!p.next);
-                    if p.poly_id == self.key_col || self.witness_positions.contains_key(&p.poly_id)
-                    {
-                        Some(p)
-                    } else {
-                        None
-                    }
+                    assert!(
+                        p.poly_id == self.key_col
+                            || self.witness_positions.contains_key(&p.poly_id)
+                    );
+                    p
                 }
-                _ => None,
+                _ => panic!(),
             })
-            .collect::<Option<Vec<_>>>()?;
+            .collect::<Vec<_>>();
 
-        Some(self.process_plookup_internal(left, right, rhs))
+        self.process_plookup_internal(identity, args, rhs)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -199,10 +208,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
 impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     fn process_plookup_internal(
         &mut self,
+        identity: IdentityId,
         left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &SelectedExpressions<Expression<T>>,
         rhs: Vec<&AlgebraicReference>,
     ) -> EvalResult<'a, T> {
+        let right = &self.connecting_identities.get(&identity).unwrap().right;
         let key_index = rhs.iter().position(|&x| x.poly_id == self.key_col).unwrap();
 
         let key_value = left[key_index].constant_value().ok_or_else(|| {

@@ -1,9 +1,14 @@
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Mutex,
+};
 
 use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
 use powdr_ast::{
-    analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind},
+    analyzed::{
+        AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, IdentityKind,
+    },
     parsed::SelectedExpressions,
 };
 use powdr_number::FieldElement;
@@ -11,12 +16,15 @@ use powdr_number::FieldElement;
 use crate::witgen::{machines::Machine, EvalError};
 
 use super::{
-    affine_expression::AffineExpression, machines::KnownMachine, rows::RowPair, EvalResult,
-    EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
+    affine_expression::AffineExpression,
+    machines::{FixedLookup, KnownMachine},
+    rows::RowPair,
+    EvalResult, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A list of mutable references to machines.
 pub struct Machines<'a, 'b, T: FieldElement> {
+    identity_to_machine_index: BTreeMap<IdentityId, usize>,
     machines: Vec<&'b mut KnownMachine<'a, T>>,
 }
 
@@ -51,6 +59,25 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
     pub fn iter_mut(&'b mut self) -> impl Iterator<Item = &'b mut KnownMachine<'a, T>> {
         self.machines.iter_mut().map(|m| &mut **m)
     }
+
+    pub fn call<Q: QueryCallback<T>>(
+        &mut self,
+        identity: IdentityId,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        fixed_lookup: &mut FixedLookup<T>,
+        query_callback: &mut Q,
+    ) -> EvalResult<'a, T> {
+        let i = *self.identity_to_machine_index.get(&identity).unwrap();
+
+        let (current, others) = self.split(i);
+        let mut mutable_state = MutableState {
+            fixed_lookup,
+            machines: others,
+            query_callback,
+        };
+
+        current.process_plookup_timed(&mut mutable_state, identity, args)
+    }
 }
 
 impl<'a, 'b, T, I> From<I> for Machines<'a, 'b, T>
@@ -59,8 +86,15 @@ where
     I: Iterator<Item = &'b mut KnownMachine<'a, T>>,
 {
     fn from(machines: I) -> Self {
+        let machines = machines.collect::<Vec<_>>();
+        let identity_to_machine_index = machines
+            .iter()
+            .enumerate()
+            .flat_map(|(index, m)| m.identities().into_iter().map(move |id| (id, index)))
+            .collect();
         Self {
-            machines: machines.collect(),
+            machines,
+            identity_to_machine_index,
         }
     }
 }
@@ -166,25 +200,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             return result;
         }
 
-        for i in 0..self.mutable_state.machines.len() {
-            let (current, others) = self.mutable_state.machines.split(i);
-            let mut mutable_state = MutableState {
-                fixed_lookup: self.mutable_state.fixed_lookup,
-                machines: others,
-                query_callback: self.mutable_state.query_callback,
-            };
-
-            if let Some(result) = current.process_plookup_timed(
-                &mut mutable_state,
-                identity.kind,
-                &left,
-                &identity.right,
-            ) {
-                return result;
-            }
-        }
-
-        unimplemented!("No executor machine matched identity `{identity}`")
+        self.mutable_state.machines.call(
+            identity.id(),
+            &left,
+            self.mutable_state.fixed_lookup,
+            self.mutable_state.query_callback,
+        )
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.

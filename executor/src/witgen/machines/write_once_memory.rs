@@ -2,12 +2,9 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::{Either, Itertools};
 
-use powdr_ast::{
-    analyzed::{
-        AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-        PolynomialType,
-    },
-    parsed::SelectedExpressions,
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, PolyID,
+    PolynomialType,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -32,11 +29,9 @@ use super::{FixedLookup, Machine};
 /// instr mload X -> Y { {X, Y} in {ADDR, v} }
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
+    connecting_identities: BTreeMap<IdentityId, &'a Identity<Expression<T>>>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
-    /// The right-hand side of the connecting identity
-    /// (if there are several, they must all be the same)
-    rhs: &'a SelectedExpressions<Expression<T>>,
     /// The polynomials that are used as values (witness polynomials on the RHS)
     value_polys: Vec<PolyID>,
     /// A map from keys to row indices
@@ -98,9 +93,9 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         Some(Self {
+            connecting_identities: connecting_identities.iter().map(|&i| (i.id(), i)).collect(),
             name,
             fixed_data,
-            rhs,
             value_polys,
             key_to_index,
             data: BTreeMap::new(),
@@ -109,10 +104,11 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
     fn process_plookup_internal(
         &mut self,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
+        identity: IdentityId,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
-        let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = left
+        let right = &self.connecting_identities.get(&identity).unwrap().right;
+        let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = args
             .iter()
             .zip(right.expressions.iter())
             .partition(|(_, r)| {
@@ -193,6 +189,10 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
+    fn identities(&self) -> Vec<IdentityId> {
+        self.connecting_identities.keys().cloned().collect()
+    }
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -200,12 +200,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
-        kind: IdentityKind,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
-    ) -> Option<EvalResult<'a, T>> {
-        (right == self.rhs && kind == IdentityKind::Plookup)
-            .then(|| self.process_plookup_internal(left, right))
+        identity: IdentityId,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
+    ) -> EvalResult<'a, T> {
+        self.process_plookup_internal(identity, args)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(

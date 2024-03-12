@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
-use powdr_ast::analyzed::AlgebraicExpression as Expression;
 use powdr_ast::analyzed::AlgebraicReference;
-use powdr_ast::parsed::SelectedExpressions;
+use powdr_ast::analyzed::IdentityId;
 use powdr_number::FieldElement;
 
 use self::block_machine::BlockMachine;
@@ -12,7 +11,6 @@ use self::profiling::record_end;
 use self::profiling::record_start;
 use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
-use powdr_ast::analyzed::IdentityKind;
 
 use super::affine_expression::AffineExpression;
 use super::generator::Generator;
@@ -36,12 +34,11 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_plookup_timed<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
-        kind: IdentityKind,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
-    ) -> Option<EvalResult<'a, T>> {
+        identity: IdentityId,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
+    ) -> EvalResult<'a, T> {
         record_start(self.name());
-        let result = self.process_plookup(mutable_state, kind, left, right);
+        let result = self.process_plookup(mutable_state, identity, args);
         record_end(self.name());
         result
     }
@@ -57,10 +54,9 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
-        kind: IdentityKind,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
-    ) -> Option<EvalResult<'a, T>>;
+        identity: IdentityId,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
+    ) -> EvalResult<'a, T>;
 
     /// Returns the final values of the witness columns.
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -68,6 +64,8 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         fixed_lookup: &'b mut FixedLookup<T>,
         query_callback: &'b mut Q,
     ) -> HashMap<String, Vec<T>>;
+
+    fn identities(&self) -> Vec<IdentityId>;
 }
 
 /// All known implementations of [Machine].
@@ -85,18 +83,17 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
-        kind: IdentityKind,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
-    ) -> Option<EvalResult<'a, T>> {
+        identity: IdentityId,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
+    ) -> EvalResult<'a, T> {
         match self {
-            KnownMachine::SortedWitnesses(m) => m.process_plookup(mutable_state, kind, left, right),
+            KnownMachine::SortedWitnesses(m) => m.process_plookup(mutable_state, identity, args),
             KnownMachine::DoubleSortedWitnesses(m) => {
-                m.process_plookup(mutable_state, kind, left, right)
+                m.process_plookup(mutable_state, identity, args)
             }
-            KnownMachine::WriteOnceMemory(m) => m.process_plookup(mutable_state, kind, left, right),
-            KnownMachine::BlockMachine(m) => m.process_plookup(mutable_state, kind, left, right),
-            KnownMachine::Vm(m) => m.process_plookup(mutable_state, kind, left, right),
+            KnownMachine::WriteOnceMemory(m) => m.process_plookup(mutable_state, identity, args),
+            KnownMachine::BlockMachine(m) => m.process_plookup(mutable_state, identity, args),
+            KnownMachine::Vm(m) => m.process_plookup(mutable_state, identity, args),
         }
     }
 
@@ -129,6 +126,16 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
                 m.take_witness_col_values(fixed_lookup, query_callback)
             }
             KnownMachine::Vm(m) => m.take_witness_col_values(fixed_lookup, query_callback),
+        }
+    }
+
+    fn identities(&self) -> Vec<IdentityId> {
+        match self {
+            KnownMachine::SortedWitnesses(m) => m.identities(),
+            KnownMachine::DoubleSortedWitnesses(m) => m.identities(),
+            KnownMachine::WriteOnceMemory(m) => m.identities(),
+            KnownMachine::BlockMachine(m) => m.identities(),
+            KnownMachine::Vm(m) => m.identities(),
         }
     }
 }

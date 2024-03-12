@@ -612,6 +612,12 @@ impl PublicDeclaration {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub struct IdentityId {
+    id: u64,
+    kind: IdentityKind,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Identity<Expr> {
     /// The ID is specific to the identity kind.
@@ -648,6 +654,13 @@ impl<Expr> Identity<Expr> {
     pub fn expression_for_poly_id_mut(&mut self) -> &mut Expr {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         self.left.selector.as_mut().unwrap()
+    }
+
+    pub fn id(&self) -> IdentityId {
+        IdentityId {
+            id: self.id,
+            kind: self.kind,
+        }
     }
 }
 
