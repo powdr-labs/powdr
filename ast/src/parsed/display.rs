@@ -599,7 +599,7 @@ impl<E: Display> Display for ArrayType<E> {
         write!(
             f,
             "{}[{}]",
-            format_type_name_with_parentheses(&self.base),
+            format_type_with_parentheses(&self.base),
             self.length.iter().format("")
         )
     }
@@ -607,7 +607,7 @@ impl<E: Display> Display for ArrayType<E> {
 
 impl<E: Display> Display for TupleType<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "({})", format_list_of_type_names(&self.items))
+        write!(f, "({})", format_list_of_types(&self.items))
     }
 }
 
@@ -616,14 +616,14 @@ impl<E: Display> Display for FunctionType<E> {
         write!(
             f,
             "{}{}-> {}",
-            format_list_of_type_names(&self.params),
+            format_list_of_types(&self.params),
             if self.params.is_empty() { "" } else { " " },
-            format_type_name_with_parentheses(&self.value)
+            format_type_with_parentheses(&self.value)
         )
     }
 }
 
-fn format_type_name_with_parentheses<E: Display>(name: &Type<E>) -> String {
+fn format_type_with_parentheses<E: Display>(name: &Type<E>) -> String {
     if name.needs_parentheses() {
         format!("({name})")
     } else {
@@ -631,10 +631,10 @@ fn format_type_name_with_parentheses<E: Display>(name: &Type<E>) -> String {
     }
 }
 
-fn format_list_of_type_names<E: Display>(type_names: &[Type<E>]) -> String {
-    type_names
+fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
+    types
         .iter()
-        .map(format_type_name_with_parentheses)
+        .map(format_type_with_parentheses)
         .format(", ")
         .to_string()
 }
