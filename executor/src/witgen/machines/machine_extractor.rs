@@ -125,7 +125,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
             name_with_type("DoubleSortedWitnesses"),
             fixed,
             &connecting_identities,
-            &machine_identities,
             &machine_witnesses,
             global_range_constraints,
         ) {

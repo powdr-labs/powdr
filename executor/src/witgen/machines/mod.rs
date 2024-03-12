@@ -65,6 +65,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         query_callback: &'b mut Q,
     ) -> HashMap<String, Vec<T>>;
 
+    /// Returns the identity IDs that this machine is responsible for.
     fn identities(&self) -> Vec<IdentityId>;
 }
 

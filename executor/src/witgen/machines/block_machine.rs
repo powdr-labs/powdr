@@ -92,8 +92,7 @@ impl TryFrom<IdentityKind> for ConnectionType {
 pub struct BlockMachine<'a, T: FieldElement> {
     /// Block size, the period of the selector.
     block_size: usize,
-    /// The right-hand side of the connecting identity, needed to identify
-    /// when this machine is responsible.
+    /// The right-hand sides of the connecting identities.
     connecting_rhs: BTreeMap<IdentityId, &'a SelectedExpressions<Expression<T>>>,
     /// The type of constraint used to connect this machine to its caller.
     connection_type: ConnectionType,
@@ -284,16 +283,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         args: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
         let previous_len = self.data.len();
-        {
-            let result = self.process_plookup_internal(mutable_state, identity, args);
-            if let Ok(assignments) = &result {
-                if !assignments.is_complete() {
-                    // rollback the changes.
-                    self.data.truncate(previous_len);
-                }
+        let result = self.process_plookup_internal(mutable_state, identity, args);
+        if let Ok(assignments) = &result {
+            if !assignments.is_complete() {
+                // rollback the changes.
+                self.data.truncate(previous_len);
             }
-            result
         }
+        result
     }
 
     fn name(&self) -> &str {

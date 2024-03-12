@@ -13,7 +13,7 @@ use crate::witgen::{EvalValue, IncompleteCause};
 use powdr_number::{DegreeType, FieldElement};
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, IdentityKind, PolyID
 };
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
@@ -83,7 +83,6 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         name: String,
         fixed_data: &'a FixedData<T>,
         connecting_identities: &[&Identity<Expression<T>>],
-        _identities: &[&Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
         global_range_constraints: &GlobalConstraints<T>,
     ) -> Option<Self> {
@@ -95,6 +94,13 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 
         if namespaces.len() > 1 {
             // columns are not in the same namespace, fail
+            return None;
+        }
+
+        if !connecting_identities
+            .iter()
+            .all(|i| i.kind == IdentityKind::Permutation)
+        {
             return None;
         }
 

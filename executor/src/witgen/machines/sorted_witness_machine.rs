@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use itertools::Itertools;
-use powdr_ast::parsed::SelectedExpressions;
 
 use super::super::affine_expression::AffineExpression;
 use super::{EvalResult, FixedData};
@@ -25,7 +24,7 @@ use powdr_number::FieldElement;
 ///  - NOTLAST is zero only on the last row
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses<'a, T> {
-    connecting_rhs: BTreeMap<IdentityId, &'a SelectedExpressions<Expression<T>>>,
+    rhs_references: BTreeMap<IdentityId, Vec<&'a AlgebraicReference>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -45,7 +44,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         if identities.len() != 1 {
             return None;
         }
-        check_identity(fixed_data, identities.first().unwrap()).map(|key_col| {
+        check_identity(fixed_data, identities.first().unwrap()).and_then(|key_col| {
             let witness_positions = witnesses
                 .iter()
                 .filter(|&w| *w != key_col)
@@ -54,17 +53,37 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .map(|(i, &x)| (x, i))
                 .collect();
 
-            SortedWitnesses {
-                connecting_rhs: connecting_identities
-                    .iter()
-                    .map(|&id| (id.id(), &id.right))
-                    .collect(),
+            let rhs_references = connecting_identities
+                .iter()
+                .filter_map(|&id| {
+                    let rhs_expressions = id
+                        .right
+                        .expressions
+                        .iter()
+                        .map(|expr| match expr {
+                            // Expect all RHS expressions to be references without a next operator applied.
+                            Expression::Reference(p) => (!p.next).then_some(p),
+                            _ => None,
+                        })
+                        .collect::<Option<Vec<_>>>()?;
+
+                    Some((id.id(), rhs_expressions))
+                })
+                .collect::<BTreeMap<_, _>>();
+
+            if rhs_references.len() != connecting_identities.len() {
+                // Not all connected identities meet the criteria above, so this is not a DoubleSortedWitnesses machine.
+                return None;
+            }
+
+            Some(SortedWitnesses {
+                rhs_references,
                 name,
                 key_col,
                 witness_positions,
                 data: Default::default(),
                 fixed_data,
-            }
+            })
         })
     }
 }
@@ -140,7 +159,7 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
 
 impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
     fn identities(&self) -> Vec<IdentityId> {
-        self.connecting_rhs.keys().cloned().collect()
+        self.rhs_references.keys().cloned().collect()
     }
 
     fn name(&self) -> &str {
@@ -153,26 +172,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
         identity: IdentityId,
         args: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
-        let rhs = self
-            .connecting_rhs
-            .get(&identity)
-            .unwrap()
-            .expressions
-            .iter()
-            .map(|e| match e {
-                Expression::Reference(p) => {
-                    assert!(!p.next);
-                    assert!(
-                        p.poly_id == self.key_col
-                            || self.witness_positions.contains_key(&p.poly_id)
-                    );
-                    p
-                }
-                _ => panic!(),
-            })
-            .collect::<Vec<_>>();
-
-        self.process_plookup_internal(identity, args, rhs)
+        self.process_plookup_internal(identity, args)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -210,15 +210,14 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         &mut self,
         identity: IdentityId,
         left: &[AffineExpression<&'a AlgebraicReference, T>],
-        rhs: Vec<&AlgebraicReference>,
     ) -> EvalResult<'a, T> {
-        let right = &self.connecting_rhs.get(&identity).unwrap();
+        let rhs = self.rhs_references.get(&identity).unwrap();
         let key_index = rhs.iter().position(|&x| x.poly_id == self.key_col).unwrap();
 
         let key_value = left[key_index].constant_value().ok_or_else(|| {
             format!(
                 "Value of unique key must be known: {} = {}",
-                left[key_index], right.expressions[key_index]
+                left[key_index], rhs[key_index]
             )
         })?;
 

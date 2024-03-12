@@ -67,9 +67,12 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
         fixed_lookup: &mut FixedLookup<T>,
         query_callback: &mut Q,
     ) -> EvalResult<'a, T> {
-        let i = *self.identity_to_machine_index.get(&identity).unwrap();
+        let machine_index = *self
+            .identity_to_machine_index
+            .get(&identity)
+            .expect("No executor machine matched identity `{identity}`");
 
-        let (current, others) = self.split(i);
+        let (current, others) = self.split(machine_index);
         let mut mutable_state = MutableState {
             fixed_lookup,
             machines: others,

@@ -4,8 +4,8 @@ use itertools::{Either, Itertools};
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, PolyID,
-        PolynomialType,
+        AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, IdentityKind,
+        PolyID, PolynomialType,
     },
     parsed::SelectedExpressions,
 };
@@ -55,6 +55,13 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         identities: &[&Identity<Expression<T>>],
     ) -> Option<Self> {
         if !identities.is_empty() {
+            return None;
+        }
+
+        if !connecting_identities
+            .iter()
+            .all(|i| i.kind == IdentityKind::Plookup)
+        {
             return None;
         }
 
