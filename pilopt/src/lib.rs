@@ -1,7 +1,7 @@
 //! PIL-based optimizer
 #![deny(clippy::print_stdout)]
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
@@ -20,6 +20,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     remove_constant_witness_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
+    remove_duplicate_identities(&mut pil_file);
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
     log::info!(
         "Removed {} witness and {} fixed columns. Total count now: {} witness and {} fixed columns.",
@@ -340,6 +341,23 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     pil_file.remove_identities(&to_remove);
 }
 
+fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    // Set of (left, right) tuples.
+    let mut identity_expressions = BTreeSet::new();
+    let to_remove = pil_file
+        .identities
+        .iter()
+        .enumerate()
+        .filter_map(|(index, identity)| {
+            match identity_expressions.insert((&identity.left, &identity.right)) {
+                false => Some(index),
+                true => None,
+            }
+        })
+        .collect();
+    pil_file.remove_identities(&to_remove);
+}
+
 #[cfg(test)]
 mod test {
     use powdr_number::GoldilocksField;
@@ -428,6 +446,35 @@ mod test {
         let expectation = r#"namespace N(65536);
     col witness x[1];
     col witness y[0];
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
+    fn remove_duplicates() {
+        let input = r#"namespace N(65536);
+        col witness x;
+        col fixed cnt(i) { i };
+
+        x * (x - 1) = 0;
+        x * (x - 1) = 0;
+        x * (x - 1) = 0;
+
+        { x } in { cnt };
+        { x } in { cnt };
+        { x } in { cnt };
+
+        { x + 1 } in { cnt };
+        { x } in { cnt + 1 };
+    "#;
+        let expectation = r#"namespace N(65536);
+    col witness x;
+    col fixed cnt(i) { i };
+    (N.x * (N.x - 1)) = 0;
+    { N.x } in { N.cnt };
+    { (N.x + 1) } in { N.cnt };
+    { N.x } in { (N.cnt + 1) };
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
