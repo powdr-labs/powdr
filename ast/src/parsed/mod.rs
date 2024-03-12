@@ -137,9 +137,8 @@ impl PilStatement {
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
-            PilStatement::LetStatement(_, _, type_name, value) => Box::new(
-                type_name
-                    .iter_mut()
+            PilStatement::LetStatement(_, _, ty, value) => Box::new(
+                ty.iter_mut()
                     .flat_map(|t| t.ty.expressions_mut())
                     .chain(value),
             ),

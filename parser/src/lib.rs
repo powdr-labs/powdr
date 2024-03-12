@@ -42,7 +42,7 @@ impl ParserContext {
 lazy_static::lazy_static! {
     static ref PIL_FILE_PARSER: powdr::PILFileParser = powdr::PILFileParser::new();
     static ref ASM_MODULE_PARSER: powdr::ASMModuleParser = powdr::ASMModuleParser::new();
-    static ref TYPE_NAME_PARSER: powdr::TypeParser = powdr::TypeParser::new();
+    static ref TYPE_PARSER: powdr::TypeParser = powdr::TypeParser::new();
     static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
@@ -75,7 +75,7 @@ pub fn parse_module<'a>(
 
 pub fn parse_type(input: &str) -> Result<Type<powdr_ast::parsed::Expression>, ParseError<'_>> {
     let ctx = ParserContext::new(None, input);
-    TYPE_NAME_PARSER
+    TYPE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, None, input))
 }

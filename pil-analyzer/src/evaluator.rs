@@ -208,24 +208,30 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::FieldElement(x) => Ok(x.to_arbitrary_integer().into()),
             v => Err(EvalError::TypeError(format!(
                 "Expected integer but got {v}: {}",
-                v.type_name()
+                v.type_formatted()
             ))),
         }
     }
 
-    pub fn type_name(&self) -> String {
+    pub fn type_formatted(&self) -> String {
         match self {
             Value::Bool(_) => "bool".to_string(),
             Value::Integer(_) => "int".to_string(),
             Value::FieldElement(_) => "fe".to_string(),
             Value::String(_) => "string".to_string(),
             Value::Tuple(elements) => {
-                format!("({})", elements.iter().map(|e| e.type_name()).format(", "))
+                format!(
+                    "({})",
+                    elements.iter().map(|e| e.type_formatted()).format(", ")
+                )
             }
             Value::Array(elements) => {
-                format!("[{}]", elements.iter().map(|e| e.type_name()).format(", "))
+                format!(
+                    "[{}]",
+                    elements.iter().map(|e| e.type_formatted()).format(", ")
+                )
             }
-            Value::Closure(c) => c.type_name(),
+            Value::Closure(c) => c.type_formatted(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
             Value::Identity(_, _) => "constr".to_string(),
@@ -264,10 +270,6 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
     Eval,
-}
-
-pub trait Custom: Display + fmt::Debug + Clone + PartialEq {
-    fn type_name(&self) -> String;
 }
 
 impl<'a, T: Display> Display for Value<'a, T> {
@@ -315,7 +317,7 @@ impl<'a, T> From<Closure<'a, T>> for Value<'a, T> {
 }
 
 impl<'a, T> Closure<'a, T> {
-    pub fn type_name(&self) -> String {
+    pub fn type_formatted(&self) -> String {
         // TODO should use proper types as soon as we have them
         "closure".to_string()
     }
@@ -487,7 +489,7 @@ mod internal {
                     .into(),
                     (_, inner) => Err(EvalError::TypeError(format!(
                         "Operator {op} not supported on types: {inner}: {}",
-                        inner.type_name()
+                        inner.type_formatted()
                     )))?,
                 }
             }
@@ -518,7 +520,7 @@ mod internal {
                             }
                             index => Err(EvalError::TypeError(format!(
                                     "Expected integer for array index access but got {index}: {}",
-                                    index.type_name()
+                                    index.type_formatted()
                             )))?,
                         }
                     }
@@ -713,8 +715,8 @@ mod internal {
             },
             (l, op, r) => Err(EvalError::TypeError(format!(
                 "Operator {op} not supported on types: {l}: {}, {r}: {}",
-                l.type_name(),
-                r.type_name()
+                l.type_formatted(),
+                r.type_formatted()
             )))?,
         })
     }
@@ -747,7 +749,7 @@ mod internal {
                 Value::Array(arr) => Value::Integer((arr.len() as u64).into()).into(),
                 v => panic!(
                     "Expected array for std::array::len, but got {v}: {}",
-                    v.type_name()
+                    v.type_formatted()
                 ),
             },
             BuiltinFunction::Panic => {
@@ -755,7 +757,7 @@ mod internal {
                     Value::String(msg) => msg.clone(),
                     v => panic!(
                         "Expected string for std::check::panic, but got {v}: {}",
-                        v.type_name()
+                        v.type_formatted()
                     ),
                 };
                 Err(EvalError::FailedAssertion(msg))?
@@ -765,7 +767,7 @@ mod internal {
                     Value::String(msg) => msg.clone(),
                     v => panic!(
                         "Expected string for std::debug::print, but got {v}: {}",
-                        v.type_name()
+                        v.type_formatted()
                     ),
                 };
                 print!("{msg}");
@@ -792,7 +794,7 @@ mod internal {
                     Value::Expression(e) => symbols.eval_expr(e)?,
                     v => panic!(
                         "Expected expression for std::prover::eval, but got {v}: {}",
-                        v.type_name()
+                        v.type_formatted()
                     ),
                 }
             }
