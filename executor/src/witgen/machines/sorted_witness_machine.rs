@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use itertools::Itertools;
+use powdr_ast::parsed::SelectedExpressions;
 
 use super::super::affine_expression::AffineExpression;
 use super::{EvalResult, FixedData};
@@ -24,7 +25,7 @@ use powdr_number::FieldElement;
 ///  - NOTLAST is zero only on the last row
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses<'a, T> {
-    connecting_identities: BTreeMap<IdentityId, &'a Identity<Expression<T>>>,
+    connecting_rhs: BTreeMap<IdentityId, &'a SelectedExpressions<Expression<T>>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -54,9 +55,9 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .collect();
 
             SortedWitnesses {
-                connecting_identities: connecting_identities
+                connecting_rhs: connecting_identities
                     .iter()
-                    .map(|&id| (id.id(), id))
+                    .map(|&id| (id.id(), &id.right))
                     .collect(),
                 name,
                 key_col,
@@ -139,7 +140,7 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
 
 impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
     fn identities(&self) -> Vec<IdentityId> {
-        self.connecting_identities.keys().cloned().collect()
+        self.connecting_rhs.keys().cloned().collect()
     }
 
     fn name(&self) -> &str {
@@ -153,10 +154,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
         args: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
         let rhs = self
-            .connecting_identities
+            .connecting_rhs
             .get(&identity)
             .unwrap()
-            .right
             .expressions
             .iter()
             .map(|e| match e {
@@ -212,7 +212,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         left: &[AffineExpression<&'a AlgebraicReference, T>],
         rhs: Vec<&AlgebraicReference>,
     ) -> EvalResult<'a, T> {
-        let right = &self.connecting_identities.get(&identity).unwrap().right;
+        let right = &self.connecting_rhs.get(&identity).unwrap();
         let key_index = rhs.iter().position(|&x| x.poly_id == self.key_col).unwrap();
 
         let key_value = left[key_index].constant_value().ok_or_else(|| {

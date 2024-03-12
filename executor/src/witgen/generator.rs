@@ -1,6 +1,7 @@
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, PolyID,
 };
+use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -26,7 +27,7 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
-    connecting_identities: BTreeMap<IdentityId, &'a Identity<Expression<T>>>,
+    connecting_rhs: BTreeMap<IdentityId, &'a SelectedExpressions<Expression<T>>>,
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<Expression<T>>>,
     witnesses: HashSet<PolyID>,
@@ -38,7 +39,7 @@ pub struct Generator<'a, T: FieldElement> {
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn identities(&self) -> Vec<IdentityId> {
-        self.connecting_identities.keys().cloned().collect()
+        self.connecting_rhs.keys().cloned().collect()
     }
 
     fn name(&self) -> &str {
@@ -53,7 +54,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     ) -> EvalResult<'a, T> {
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
-        let right = &self.connecting_identities[&identity].right;
+        let right = &self.connecting_rhs.get(&identity).unwrap();
         for (r, l) in right.expressions.iter().zip(args) {
             log::trace!("  {r} = {l}");
         }
@@ -119,9 +120,9 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     ) -> Self {
         let data = FinalizableData::new(&witnesses);
         Self {
-            connecting_identities: connecting_identities
+            connecting_rhs: connecting_identities
                 .iter()
-                .map(|&identity| (identity.id(), identity))
+                .map(|&identity| (identity.id(), &identity.right))
                 .collect(),
             name,
             fixed_data,

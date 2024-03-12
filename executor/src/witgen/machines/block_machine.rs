@@ -95,7 +95,6 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// The right-hand side of the connecting identity, needed to identify
     /// when this machine is responsible.
     connecting_rhs: BTreeMap<IdentityId, &'a SelectedExpressions<Expression<T>>>,
-    connecting_identities: Vec<IdentityId>,
     /// The type of constraint used to connect this machine to its caller.
     connection_type: ConnectionType,
     /// The internal identities
@@ -163,7 +162,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             connecting_rhs,
             connection_type: is_permutation,
             identities: identities.to_vec(),
-            connecting_identities: connecting_identities.iter().map(|id| id.id()).collect(),
             data,
             row_factory,
             witness_cols: witness_cols.clone(),
@@ -276,7 +274,7 @@ fn try_to_period<T: FieldElement>(
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn identities(&self) -> Vec<IdentityId> {
-        self.connecting_identities.clone()
+        self.connecting_rhs.keys().copied().collect()
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(

@@ -49,7 +49,6 @@ fn split_column_name(name: &str) -> (&str, &str) {
 pub struct DoubleSortedWitnesses<'a, T> {
     fixed: &'a FixedData<'a, T>,
     degree: DegreeType,
-    connecting_identities: Vec<IdentityId>,
     //key_col: String,
     /// Position of the witness columns in the data.
     /// The key column has a position of usize::max
@@ -149,7 +148,6 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                     namespace,
                     fixed: fixed_data,
                     degree: fixed_data.degree,
-                    connecting_identities: connecting_identities.iter().map(|i| i.id()).collect(),
                     diff_columns_base,
                     has_bootloader_write_column,
                     trace: Default::default(),
@@ -164,7 +162,6 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 name,
                 namespace,
                 fixed: fixed_data,
-                connecting_identities: connecting_identities.iter().map(|i| i.id()).collect(),
                 degree: fixed_data.degree,
                 diff_columns_base: None,
                 has_bootloader_write_column,
@@ -178,7 +175,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
     fn identities(&self) -> Vec<IdentityId> {
-        self.connecting_identities.clone()
+        self.selector_ids.keys().cloned().collect()
     }
     fn name(&self) -> &str {
         &self.name
