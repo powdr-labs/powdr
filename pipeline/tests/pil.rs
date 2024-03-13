@@ -4,18 +4,22 @@ use powdr_number::GoldilocksField;
 use powdr_pipeline::{
     test_util::{
         assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
-        assert_proofs_fail_for_invalid_witnesses_halo2,
         assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, resolve_test_file,
         test_halo2, verify_test_file,
     },
     Pipeline,
 };
+
+#[cfg(feature = "halo2")]
+use powdr_pipeline::test_util::assert_proofs_fail_for_invalid_witnesses_halo2;
+
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
     verify_test_file(file_name, inputs, vec![]).unwrap();
 }
 
+#[cfg(feature = "halo2")]
 #[test]
 fn test_invalid_witness() {
     let f = "pil/trivial.pil";
@@ -23,6 +27,7 @@ fn test_invalid_witness() {
     assert_proofs_fail_for_invalid_witnesses(f, &witness);
 }
 
+#[cfg(feature = "halo2")]
 #[test]
 #[should_panic = "Number not included: F3G { cube: [Fr(0x0000000000000000), Fr(0x0000000000000000), Fr(0x0000000000000000)], dim: 3 }"]
 fn test_lookup_with_selector() {
@@ -50,6 +55,7 @@ fn test_lookup_with_selector() {
     assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
 }
 
+#[cfg(feature = "halo2")]
 #[test]
 #[should_panic = "assertion failed: check_val._eq(&F::one())"]
 fn test_permutation_with_selector() {

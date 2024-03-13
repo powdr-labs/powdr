@@ -172,6 +172,29 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 #[cfg(not(feature = "halo2"))]
 pub fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
+#[cfg(feature = "plonky3")]
+pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
+    Pipeline::default()
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs.clone())
+        .with_backend(powdr_backend::BackendType::Plonky3)
+        .compute_proof()
+        .unwrap();
+
+    gen_plonky3_proof(file_name, inputs)
+}
+
+#[cfg(not(feature = "plonky3"))]
+pub fn test_plonky3(_: &str, _: Vec<GoldilocksField>) {}
+
+#[cfg(feature = "plonky3")]
+pub fn gen_plonky3_proof(_: &str, _: Vec<GoldilocksField>) {
+    todo!()
+}
+
+#[cfg(not(feature = "plonky3"))]
+pub fn gen_plonky3_proof(_: &str, _: Vec<GoldilocksField>) {}
+
 /// Returns the analyzed PIL containing only the std library.
 pub fn std_analyzed<T: FieldElement>() -> Analyzed<T> {
     // airgen needs a main machine.
