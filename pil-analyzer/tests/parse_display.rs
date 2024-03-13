@@ -389,3 +389,32 @@ namespace N(16);
 "#;
     assert_eq!(formatted, expected);
 }
+
+#[test]
+fn col_array_is_array() {
+    let input = "
+    namespace std::convert(16);
+        let expr = [];
+    namespace std::array(16);
+        let len = [];
+    namespace main(16);
+        pol commit x1[16];
+        let x2: col[16];
+        let t: int = std::array::len(x1);
+        let r: int = std::array::len(x2);
+        x1[0] * std::convert::expr(t) = x2[0] * std::convert::expr(r);
+    ";
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace std::convert(16);
+    let expr = [];
+namespace std::array(16);
+    let len = [];
+namespace main(16);
+    col witness x1[16];
+    col witness x2[16];
+    let t: int = std::array::len::<expr>(main.x1);
+    let r: int = std::array::len::<expr>(main.x2);
+    (main.x1[0] * 16) = (main.x2[0] * 16);
+"#;
+    assert_eq!(formatted, expected);
+}

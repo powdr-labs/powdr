@@ -268,3 +268,17 @@ fn error_for_column_type() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+fn col_array_is_array() {
+    let input = "
+    namespace std::array(16);
+        let len = [];
+    namespace main(16);
+        pol commit x1[16];
+        let x2: col[16];
+        let t: int = std::array::len(x1);
+        let r: int = std::array::len(x2);
+    ";
+    type_check(input, &[]);
+}
