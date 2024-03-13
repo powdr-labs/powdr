@@ -3,6 +3,7 @@
 #[cfg(feature = "halo2")]
 mod halo2_impl;
 mod pilstark;
+mod plonky3_impl;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;

@@ -18,7 +18,7 @@ pub use goldilocks::GoldilocksField;
 pub use traits::KnownField;
 
 pub use ibig::{IBig as BigInt, UBig as BigUint};
-pub use traits::{FieldElement, LargeInt};
+pub use traits::{FieldElement, LargeInt, Plonky3FieldElement};
 /// An arbitrary precision big integer, to be used as a last recourse
 
 /// The type of polynomial degrees and indices into columns.
