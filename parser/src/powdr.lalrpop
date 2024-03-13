@@ -281,7 +281,13 @@ pub InstructionBody: InstructionBody = {
 }
 
 pub CallableRef: CallableRef = {
-    <instance:Identifier> "." <callable:Identifier> <params:Params> => CallableRef { instance, callable, params },
+    <instance:Identifier> "." <callable:Identifier> <params:CallableParams> => CallableRef { instance, callable, params },
+}
+
+CallableParams: CallableParams = {
+    <inputs: ExpressionList> "->" <output: ExpressionList> => CallableParams::new(inputs, output),
+    // we can ommit the arrow if there are no outputs
+    <inputs: ExpressionList> => CallableParams::new(inputs, vec![])
 }
 
 InstructionBodyElements: Vec<PilStatement> = {
@@ -295,7 +301,7 @@ InstructionBodyElement: PilStatement = {
     ExpressionStatementWithoutSemicolon,
 }
 
-Params: Params = {
+Params: Params<Param> = {
     <_input: ParamList> "->" <output: ParamList> => Params::new(_input, output),
     // we can ommit the arrow if there are no outputs
     <_input: ParamList> => Params::new(_input, vec![])

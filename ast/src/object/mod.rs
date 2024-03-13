@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use powdr_number::BigUint;
 
 use crate::parsed::{
-    asm::{AbsoluteSymbolPath, Params},
+    asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
     Expression, PilStatement, TypedExpression,
 };
 
@@ -63,7 +63,7 @@ pub struct Link {
 #[derive(Clone)]
 pub struct LinkFrom {
     pub flag: Expression,
-    pub params: Params,
+    pub params: CallableParams,
 }
 
 #[derive(Clone)]
@@ -91,5 +91,5 @@ pub struct Operation {
     /// the value of the operation id of this machine which activates this operation
     pub id: Option<BigUint>,
     /// the parameters
-    pub params: Params,
+    pub params: OperationParams,
 }

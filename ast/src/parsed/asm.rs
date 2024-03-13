@@ -397,23 +397,22 @@ pub struct MachineArguments {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
-pub struct Params {
-    pub inputs: Vec<Param>,
-    pub outputs: Vec<Param>,
+pub struct Params<T> {
+    pub inputs: Vec<T>,
+    pub outputs: Vec<T>,
 }
 
-impl Params {
-    pub fn inputs_and_outputs(&self) -> impl Iterator<Item = &Param> {
-        self.inputs.iter().chain(self.outputs.iter())
-    }
+pub type CallableParams = Params<Expression>;
+// TODO: should we have separate Param types here?
+// - Function: doesn't use `index` or `type`
+// - Instruction: doesn't use `index`
+// - Operation: doesn't use `type`
+pub type FunctionParams = Params<Param>;
+pub type InstructionParams = Params<Param>;
+pub type OperationParams = Params<Param>;
 
-    pub fn inputs_and_outputs_mut(&mut self) -> impl Iterator<Item = &mut Param> {
-        self.inputs.iter_mut().chain(self.outputs.iter_mut())
-    }
-}
-
-impl Params {
-    pub fn new(inputs: Vec<Param>, outputs: Vec<Param>) -> Self {
+impl<T> Params<T> {
+    pub fn new(inputs: Vec<T>, outputs: Vec<T>) -> Self {
         Self { inputs, outputs }
     }
 
@@ -421,6 +420,16 @@ impl Params {
         self.inputs.is_empty() && self.outputs.is_empty()
     }
 
+    pub fn inputs_and_outputs(&self) -> impl Iterator<Item = &T> {
+        self.inputs.iter().chain(self.outputs.iter())
+    }
+
+    pub fn inputs_and_outputs_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.inputs.iter_mut().chain(self.outputs.iter_mut())
+    }
+}
+
+impl<T: Display> Params<T> {
     pub fn prepend_space_if_non_empty(&self) -> String {
         let mut params_str = self.to_string();
         if !self.is_empty() {
@@ -438,7 +447,7 @@ pub struct OperationId {
 
 #[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct Instruction {
-    pub params: Params,
+    pub params: Params<Param>,
     pub body: InstructionBody,
 }
 
@@ -450,8 +459,8 @@ pub enum MachineStatement {
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),
     InstructionDeclaration(SourceRef, String, Instruction),
     LinkDeclaration(SourceRef, LinkDeclaration),
-    FunctionDeclaration(SourceRef, String, Params, Vec<FunctionStatement>),
-    OperationDeclaration(SourceRef, String, OperationId, Params),
+    FunctionDeclaration(SourceRef, String, FunctionParams, Vec<FunctionStatement>),
+    OperationDeclaration(SourceRef, String, OperationId, OperationParams),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -464,7 +473,7 @@ pub struct LinkDeclaration {
 pub struct CallableRef {
     pub instance: String,
     pub callable: String,
-    pub params: Params,
+    pub params: CallableParams,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -516,7 +525,7 @@ pub enum RegisterFlag {
     IsReadOnly,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Param {
     pub name: String,
     pub index: Option<BigUint>,

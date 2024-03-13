@@ -13,13 +13,11 @@ use powdr_ast::{
     parsed::{
         self,
         asm::{
-            self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, CallableRef,
-            FunctionStatement, InstructionBody, LinkDeclaration, MachineStatement, ModuleStatement,
-            RegisterFlag, SymbolDefinition,
+            self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
+            InstructionBody, LinkDeclaration, MachineStatement, ModuleStatement, RegisterFlag,
+            SymbolDefinition,
         },
-        Expression,
     },
-    SourceRef,
 };
 
 /// Verifies certain properties of each machine and constructs the Machine objects.
@@ -78,10 +76,7 @@ impl TypeChecker {
                     }
                 }
                 MachineStatement::LinkDeclaration(source, LinkDeclaration { flag, to }) => {
-                    match self.check_link_declaration(source, flag, to) {
-                        Ok(link_definition) => links.push(link_definition),
-                        Err(e) => errors.extend(e),
-                    }
+                    links.push(LinkDefinitionStatement { source, flag, to });
                 }
                 MachineStatement::Pil(_source, statement) => {
                     pil.push(statement);
@@ -368,30 +363,6 @@ impl TypeChecker {
             params: instruction.params,
             body: instruction.body,
         })
-    }
-
-    fn check_link_declaration(
-        &self,
-        source: SourceRef,
-        flag: Expression,
-        to: CallableRef,
-    ) -> Result<LinkDefinitionStatement, Vec<String>> {
-        let mut err = vec![];
-
-        to.params.inputs_and_outputs().for_each(|p| {
-            if let Some(ty) = &p.ty {
-                err.push(format!(
-                    "Invalid type '{}: {}' in link declaration",
-                    p.name, ty
-                ));
-            }
-        });
-
-        if err.is_empty() {
-            Ok(LinkDefinitionStatement { source, flag, to })
-        } else {
-            Err(err)
-        }
     }
 }
 

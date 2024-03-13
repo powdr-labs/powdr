@@ -9,7 +9,7 @@ use powdr_ast::{
         LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
-        asm::{CallableRef, InstructionBody, Params},
+        asm::{CallableRef, InstructionBody, InstructionParams},
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
@@ -353,7 +353,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 Some(ty) if ty == "unsigned" => {
                     Input::Literal(param.name, LiteralKind::UnsignedConstant)
                 }
-                Some(ty) if ty == "write" => Input::Register(param.name),
                 None => Input::Register(param.name),
                 Some(ty) => panic!("Invalid param type {}", ty),
             })
@@ -371,7 +370,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         source: SourceRef,
         name: &String,
         flag: String,
-        params: &Params,
+        params: &InstructionParams,
         mut body: Vec<PilStatement>,
     ) {
         // check inputs are literals or assignment registers
@@ -480,7 +479,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         &mut self,
         source: SourceRef,
         flag: String,
-        params: &Params,
+        params: &InstructionParams,
         mut callable: CallableRef,
     ) -> LinkDefinitionStatement {
         let lhs = params;
@@ -490,7 +489,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         lhs.inputs_and_outputs().for_each(|p| {
             assert!(
                 p.index.is_none(),
-                "Cannot use array elements for instruction outputs."
+                "Cannot use array elements for lhs params"
             );
 
             let is_assignment_register = self
@@ -506,64 +505,70 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
         if rhs.is_empty() {
             // we allow declarations with an empty RHS as syntactic sugar for when RHS = LHS.
-            *rhs = lhs.clone();
-        } else {
-            // if rhs is not empty, check it's valid
-            // rhs params must either be assignment registers declared in the lhs or write registers
-            rhs
+            rhs.inputs = lhs
                 .inputs
-                .iter_mut()
-                .chain(rhs.outputs.iter_mut())
-                .for_each(|p| {
-                    let reg = self.registers.get(&p.name).expect("All rhs params must be registers");
-                    assert!(p.ty.is_none());
-                    match reg.ty {
-                        RegisterTy::Assignment => {
-                            assert!(lhs.inputs_and_outputs().any(|p_lhs| p_lhs.name == p.name),
-                                    "Assignment register '{}' on rhs must be also present on lhs params", p.name);
-                        }
-                        RegisterTy::Write => {
-                            // the linker needs this information to build the
-                            // plookup when a write register is used as output.
-                            // TODO: less hackish way of passing this info? proper type for param.ty?
-                            p.ty = Some("write".to_string());
-                        },
-                        _ => panic!("The rhs of an external instruction declaration must only use write or assignment registers"),
-                    }
-                });
+                .iter()
+                .map(|p| direct_reference(p.name.clone()))
+                .collect();
+            rhs.outputs = lhs
+                .outputs
+                .iter()
+                .map(|p| direct_reference(p.name.clone()))
+                .collect();
+        } else {
+            let mut rhs_assignment_registers = BTreeSet::new();
+            let mut rhs_next_write_registers = BTreeSet::new();
 
-            // all lhs params must be used on rhs
+            // collect assignment registers and next references to write registers used on rhs
+            for expr in rhs.inputs_and_outputs() {
+                expr.pre_visit_expressions(&mut |e| match e {
+                    Expression::Reference(poly) => {
+                        poly.try_to_identifier()
+                            .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
+                            .filter(|(_, reg)| reg.ty == RegisterTy::Assignment)
+                            .map(|(name, _)| rhs_assignment_registers.insert(name.clone()));
+                    }
+                    Expression::UnaryOperation(UnaryOperator::Next, e) => {
+                        if let Expression::Reference(poly) = e.as_ref() {
+                            poly.try_to_identifier()
+                                .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
+                                .filter(|(_, reg)| reg.ty == RegisterTy::Write)
+                                .map(|(name, _)| rhs_next_write_registers.insert(name.clone()));
+                        }
+                    }
+                    _ => {}
+                })
+            }
+
+            // any assignment register present on the rhs (input or output) must be present on the lhs
+            for name in &rhs_assignment_registers {
+                assert!(
+                    lhs.inputs_and_outputs().any(|p_lhs| p_lhs.name == *name),
+                    "Assignment register '{}' used on rhs must be present on lhs params",
+                    name
+                );
+            }
+
+            // all lhs assignment registers must be used on rhs
             lhs.inputs_and_outputs().for_each(|p| {
                 assert!(
-                    rhs.inputs_and_outputs().any(|rhs_p| rhs_p.name == p.name),
+                    rhs_assignment_registers.contains(&p.name),
                     "'{}' is declared on lhs but not used on the rhs",
                     p.name
                 )
             });
 
-            // can't repeat registers on output of rhs
-            let uniq: BTreeSet<_> = rhs.outputs.iter().map(|p| &p.name).collect();
-            assert_eq!(
-                rhs.outputs.len(),
-                uniq.len(),
-                "rhs of external instruction can't have repeated output registers"
-            );
-        }
-
-        // if a write register is used as output in an external instruction mapping, we
-        // must induce a tautology in the update clause (Reg' = Reg') when the
-        // instruction is active, to allow the operation plookup to match.
-        for p in rhs.outputs.iter() {
-            let reg = self
-                .registers
-                .get_mut(&p.name)
-                .expect("All rhs params must be registers");
-            if reg.ty.is_write() {
-                let value = next_reference(&p.name);
+            // if a write register next reference (R') is used in the instruction mapping,
+            // we must induce a tautology in the update clause (R' = R') when the
+            // instruction is active, to allow the operation plookup to match.
+            for name in rhs_next_write_registers {
+                let reg = self.registers.get_mut(&name).unwrap();
+                let value = next_reference(name);
                 reg.conditioned_updates
                     .push((direct_reference(&flag), value));
             }
         }
+
         LinkDefinitionStatement {
             source,
             flag: direct_reference(flag),
@@ -1210,13 +1215,13 @@ fn extract_update(expr: Expression) -> (Option<String>, Expression) {
 #[cfg(test)]
 mod test {
     use powdr_ast::asm_analysis::AnalysisASMFile;
+    use powdr_importer::load_dependencies_and_resolve_str;
     use powdr_number::{FieldElement, GoldilocksField};
 
     use crate::compile;
 
     fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> AnalysisASMFile {
-        let parsed = powdr_parser::parse_asm(None, input).unwrap();
-        // let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
+        let parsed = load_dependencies_and_resolve_str(input);
         let analyzed = powdr_analysis::analyze(parsed).unwrap();
         compile::<T>(analyzed)
     }
@@ -1231,46 +1236,6 @@ machine Main {
   reg A;
 
   instr foo A = vm.foo A;
-
-  function main {
-    foo;
-  }
-}
-";
-        parse_analyse_and_compile::<GoldilocksField>(asm);
-    }
-
-    #[test]
-    #[should_panic(expected = "All rhs params must be registers")]
-    fn instr_external_rhs_not_register1() {
-        let asm = r"
-machine Main {
-  degree 8;
-  reg pc[@pc];
-  reg X[<=];
-  reg A;
-
-  instr foo X = vm.foo B;
-
-  function main {
-    foo;
-  }
-}
-";
-        parse_analyse_and_compile::<GoldilocksField>(asm);
-    }
-
-    #[test]
-    #[should_panic(expected = "All rhs params must be registers")]
-    fn instr_external_rhs_not_register2() {
-        let asm = r"
-machine Main {
-  degree 8;
-  reg pc[@pc];
-  reg X[<=];
-  reg A;
-
-  instr foo = vm.foo l: label;
 
   function main {
     foo;
@@ -1302,7 +1267,7 @@ machine Main {
     }
 
     #[test]
-    #[should_panic(expected = "Assignment register 'Y' on rhs must be also present on lhs params")]
+    #[should_panic(expected = "Assignment register 'Y' used on rhs must be present on lhs params")]
     fn instr_external_rhs_register_not_on_lhs() {
         let asm = r"
 machine Main {
@@ -1313,27 +1278,6 @@ machine Main {
   reg A;
 
   instr foo X = vm.foo X -> Y;
-
-  function main {
-    foo;
-  }
-}
-";
-        parse_analyse_and_compile::<GoldilocksField>(asm);
-    }
-
-    #[test]
-    #[should_panic(expected = "rhs of external instruction can't have repeated output registers")]
-    fn instr_external_rhs_repeated_output_register() {
-        let asm = r"
-machine Main {
-  degree 8;
-  reg pc[@pc];
-  reg X[<=];
-  reg Y[<=];
-  reg A;
-
-  instr foo X  = vm.foo X -> A, A;
 
   function main {
     foo;
