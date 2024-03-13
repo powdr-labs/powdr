@@ -368,3 +368,24 @@ fn double_used_undeclared_type_var() {
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);
 }
+
+#[test]
+fn to_expr() {
+    let input = r#"
+    namespace std::convert(16);
+        let expr = [];
+    namespace N(16);
+        let mul_two: int -> int = |i| i * 2;
+        col witness y;
+        y = y * std::convert::expr(mul_two(7));
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace std::convert(16);
+    let expr = [];
+namespace N(16);
+    let mul_two: int -> int = (|i| (i * 2));
+    col witness y;
+    N.y = (N.y * 14);
+"#;
+    assert_eq!(formatted, expected);
+}

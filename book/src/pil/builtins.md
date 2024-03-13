@@ -66,6 +66,16 @@ It converts a field element to an integer.
 
 If the argument is already an integer, it is returned without modification.
 
+```rust
+let<T: FromLiteral> std::convert::expr: T -> expr
+```
+
+This function is meant to be used on `int`, but also works on `fe` and `expr` for convenience.
+
+It converts an integer to an expr.
+
+If the argument is already an expr, it is returned without modification.
+
 ### Printing
 
 ```rust
