@@ -43,7 +43,7 @@ pub use halo2_proofs::SerdeFormat;
 /// This only works with Bn254, so it really shouldn't be generic over the field
 /// element, but without RFC #1210, the only alternative I found is a very ugly
 /// "unsafe" code, and unsafe code is harder to explain and maintain.
-pub struct Halo2Prover<'a, F: FieldElement> {
+pub struct Halo2Prover<'a, F> {
     analyzed: &'a Analyzed<F>,
     circuit: PowdrCircuit<'a, F>,
     params: ParamsKZG<Bn256>,
