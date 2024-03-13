@@ -92,6 +92,8 @@ impl TryFrom<IdentityKind> for ConnectionType {
 pub struct BlockMachine<'a, T: FieldElement> {
     /// Block size, the period of the selector.
     block_size: usize,
+    /// The row index (within the block) of the latch row
+    latch_row: usize,
     /// The right-hand side of the connecting identity, needed to identify
     /// when this machine is responsible.
     connecting_rhs: BTreeSet<&'a SelectedExpressions<Expression<T>>>,
@@ -159,6 +161,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         Some(BlockMachine {
             name,
             block_size,
+            latch_row,
             connecting_rhs,
             connection_type: is_permutation,
             identities: identities.to_vec(),
@@ -204,22 +207,35 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
         }
         ConnectionType::Permutation => {
             // The latch fixed column could be any fixed column that appears in any identity or the RHS selector.
+
+            let find_max_period = |latch_candidates: BTreeSet<Option<Expression<T>>>| {
+                latch_candidates
+                    .iter()
+                    .filter_map(|e| try_to_period(e, fixed_data))
+                    // If there is more than one period, the block size is the maximum period.
+                    .max_by_key(|&(_, period)| period)
+            };
             let mut latch_candidates = BTreeSet::new();
-            for id in identities {
-                if id.kind == IdentityKind::Polynomial {
-                    collect_fixed_cols(id.left.selector.as_ref().unwrap(), &mut latch_candidates);
-                };
-            }
             for id in connecting_identities {
                 if let Some(selector) = &id.right.selector {
                     collect_fixed_cols(selector, &mut latch_candidates);
                 }
             }
-            latch_candidates
-                .iter()
-                .filter_map(|e| try_to_period(e, fixed_data))
-                // If there is more than one period, the block size is the maximum period.
-                .max()?
+            // If there is a fixed column among the selectors, use that.
+            find_max_period(latch_candidates).or_else(|| {
+                // Otherwise, try to all other fixed columns. For example, it could be that the selector
+                // is just a witness column that is constrained such that it can only be 1 with some period.
+                let mut latch_candidates = BTreeSet::new();
+                for id in identities {
+                    if id.kind == IdentityKind::Polynomial {
+                        collect_fixed_cols(
+                            id.left.selector.as_ref().unwrap(),
+                            &mut latch_candidates,
+                        );
+                    };
+                }
+                find_max_period(latch_candidates)
+            })?
         }
     };
     Some((connection_type, block_size, latch_row))
@@ -345,7 +361,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             for rhs in &self.connecting_rhs {
                 processor
                     .set_value(
-                        self.block_size,
+                        self.latch_row + 1,
                         rhs.selector.as_ref().unwrap(),
                         T::zero(),
                         || "Zero selectors".to_string(),
