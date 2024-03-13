@@ -149,6 +149,13 @@ pub trait FieldElement:
     fn try_into_i32(&self) -> Option<i32>;
 }
 
+// TODO: should we bother with this or just go through bignumber?
+pub trait Plonky3FieldElement: FieldElement {
+    type Plonky3Field: Into<Self>;
+
+    fn into_plonky3(self) -> Self::Plonky3Field;
+}
+
 #[cfg(test)]
 pub fn int_from_hex_str<T: FieldElement>(s: &str) -> T::Integer {
     T::Integer::try_from(BigUint::from_str_radix(s, 16).unwrap()).unwrap()

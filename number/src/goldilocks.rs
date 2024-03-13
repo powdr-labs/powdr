@@ -2,6 +2,8 @@ use ark_ff::{Fp64, MontBackend, MontConfig};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::Plonky3FieldElement;
+
 #[derive(MontConfig)]
 #[modulus = "18446744069414584321"]
 #[generator = "7"]
@@ -9,6 +11,20 @@ pub struct GoldilocksBaseFieldConfig;
 pub type GoldilocksBaseField = Fp64<MontBackend<GoldilocksBaseFieldConfig, 1>>;
 
 powdr_field!(GoldilocksField, GoldilocksBaseField);
+
+impl From<p3_goldilocks::Goldilocks> for GoldilocksField {
+    fn from(_: p3_goldilocks::Goldilocks) -> Self {
+        todo!()
+    }
+}
+
+impl Plonky3FieldElement for GoldilocksField {
+    type Plonky3Field = p3_goldilocks::Goldilocks;
+
+    fn into_plonky3(self) -> Self::Plonky3Field {
+        todo!()
+    }
+}
 
 #[cfg(test)]
 mod test {
