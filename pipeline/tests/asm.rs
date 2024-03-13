@@ -1,5 +1,9 @@
-use powdr_number::{FieldElement, GoldilocksField};
-use powdr_pipeline::test_util::{gen_estark_proof, test_halo2, verify_test_file};
+use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
+use powdr_pipeline::{
+    test_util::{gen_estark_proof, resolve_test_file, test_halo2, verify_test_file},
+    util::{try_read_poly_set, FixedPolySet, WitnessPolySet},
+    Pipeline,
+};
 use test_log::test;
 
 fn verify_asm(file_name: &str, inputs: Vec<GoldilocksField>) {
@@ -321,6 +325,36 @@ fn pil_at_module_level() {
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn read_poly_files() {
+    let asm_files = ["asm/vm_to_block_unique_interface.asm", "asm/empty.asm"];
+    for f in asm_files {
+        let tmp_dir = mktemp::Temp::new_dir().unwrap();
+
+        // generate poly files
+        let mut pipeline = Pipeline::<Bn254Field>::default()
+            .from_file(resolve_test_file(f))
+            .with_output(tmp_dir.to_path_buf(), true);
+        pipeline.compute_witness().unwrap();
+        let name = pipeline.name().to_string();
+        let pil = pipeline.compute_optimized_pil().unwrap();
+
+        // check fixed cols (may have no fixed cols)
+        if let Some((fixed, degree)) =
+            try_read_poly_set::<FixedPolySet, _>(&pil, tmp_dir.as_path(), &name)
+        {
+            assert_eq!(pil.degree(), degree);
+            assert_eq!(pil.degree(), fixed[0].1.len() as u64);
+        }
+
+        // check witness cols (examples assumed to have at least one witness col)
+        let (witness, degree) =
+            try_read_poly_set::<WitnessPolySet, _>(&pil, tmp_dir.as_path(), &name).unwrap();
+        assert_eq!(pil.degree(), degree);
+        assert_eq!(pil.degree(), witness[0].1.len() as u64);
+    }
 }
 
 mod book {
