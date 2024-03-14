@@ -6,13 +6,11 @@ use std::collections::HashMap;
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-        PolynomialReference, PolynomialType, PublicDeclaration, Reference, StatementIdentifier,
-        Symbol, SymbolKind,
+        PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        visitor::ExpressionVisitable,
         SelectedExpressions,
     },
 };
@@ -91,19 +89,16 @@ pub fn condense<T: FieldElement>(
         .collect();
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
 
-    definitions.values_mut().for_each(|(_, definition)| {
-        if let Some(def) = definition {
-            def.post_visit_expressions_mut(&mut |e| {
-                if let Expression::Reference(Reference::Poly(poly)) = e {
-                    condenser.assign_id(poly)
-                }
-            })
-        }
-    });
-    // TODO at some point, merge public declarations with definitions as well.
-    public_declarations
-        .values_mut()
-        .for_each(|public_decl| condenser.assign_id(&mut public_decl.polynomial));
+    for decl in public_declarations.values_mut() {
+        let symbol = &definitions
+            .get(&decl.polynomial.name)
+            .unwrap_or_else(|| panic!("Symbol {} not found.", decl.polynomial))
+            .0;
+        let reference = &mut decl.polynomial;
+        // TODO this is the only point we still assign poly_id,
+        // maybe move it into PublicDeclaration.
+        reference.poly_id = Some(symbol.into());
+    }
     Analyzed {
         degree,
         definitions,
@@ -121,17 +116,6 @@ pub struct Condenser<T> {
 }
 
 impl<T: FieldElement> Condenser<T> {
-    // TODO this is only used externally now
-    pub fn assign_id(&self, reference: &mut PolynomialReference) {
-        let (poly, _) = self
-            .symbols
-            .get(&reference.name)
-            .unwrap_or_else(|| panic!("Symbol {} not found.", reference.name));
-        if let SymbolKind::Poly(_) = &poly.kind {
-            reference.poly_id = Some(poly.into());
-        }
-    }
-
     pub fn condense_identity(
         &self,
         identity: &Identity<Expression>,
