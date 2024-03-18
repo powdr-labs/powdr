@@ -33,6 +33,8 @@ machine Add4(latch, operation_id) {
     link 1 => adder.add x, y -> n;
     // - constrain the values of `z`, `w`, and `m` so that `m = adder.add(z, w)`
     link 1 => adder.add z, w -> m;
+    // - constrain the values of `m`, `n` and `r` so that `r = adder.add(m,n)`
+    link 1 => adder.add m, n -> r;
 
     col fixed operation_id = [0]*;
     col fixed latch = [1]*;
@@ -44,8 +46,6 @@ machine Add4(latch, operation_id) {
     col witness r;
     col witness m;
     col witness n;
-
-    r = m + n;
 }
 
 // ANCHOR: one_operation

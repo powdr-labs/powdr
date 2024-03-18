@@ -30,10 +30,10 @@ An external instruction calling into this operation can be declared as follows:
 ```
 {{#include ../../../test_data/asm/book/instructions.asm:trivial}}
 ```
-The left-hand side of the definition declares the local instruction and which assignment registers are used for its inputs and outputs.
-The right-hand side of the definition specifies the external operation being called and how it should be called.
+The left-hand side of the definition declares the local instruction and which assignment registers are used in its inputs and outputs.
+It describes how the instruction is used.
+The right-hand side of the definition specifies the call to the external operation, with its inputs and outputs.
 All assignment registers on the left-hand side must be used in the call to the external operation.
-Additionally, regular registers can also be used in the call (can be seen as implicit inputs/outputs of the instruction).
 
 In the previous example, parameters of the instruction match exactly with how the target operation should be called, and the right-hand parameters can thus be omitted.
 The following example shows more complex usages of external instructions:

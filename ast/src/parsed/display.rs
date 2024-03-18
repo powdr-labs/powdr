@@ -274,7 +274,7 @@ impl Display for RegisterFlag {
     }
 }
 
-impl Display for Params {
+impl<T: Display> Display for Params<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -683,7 +683,7 @@ mod tests {
             ty: Some("ty".into()),
         };
         assert_eq!(p.to_string(), "abc: ty");
-        let empty = Params::default();
+        let empty = Params::<Param>::default();
         assert_eq!(empty.to_string(), "");
         assert_eq!(empty.prepend_space_if_non_empty(), "");
         let in_out = Params {

@@ -8,8 +8,9 @@ use powdr_ast::{
     parsed::Expression,
     parsed::{
         asm::{
-            ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Machine, MachineStatement, Module,
-            ModuleRef, ModuleStatement, SymbolDefinition, SymbolValue, SymbolValueRef,
+            ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Instruction, InstructionBody,
+            LinkDeclaration, Machine, MachineStatement, Module, ModuleRef, ModuleStatement,
+            SymbolDefinition, SymbolValue, SymbolValueRef,
         },
         folder::Folder,
         visitor::ExpressionVisitable,
@@ -356,6 +357,25 @@ fn check_machine(
             MachineStatement::Pil(_, statement) => statement
                 .expressions()
                 .try_for_each(|e| check_expression(&module_location, e, state, &local_variables))?,
+            // check rhs input exrpressions for `instr` and `link` declarations
+            MachineStatement::LinkDeclaration(
+                _,
+                LinkDeclaration {
+                    to: callable_ref, ..
+                },
+            )
+            | MachineStatement::InstructionDeclaration(
+                _,
+                _,
+                Instruction {
+                    body: InstructionBody::CallableRef(callable_ref),
+                    ..
+                },
+            ) => {
+                callable_ref.params.inputs.iter().try_for_each(|e| {
+                    check_expression(&module_location, e, state, &local_variables)
+                })?;
+            }
             _ => {}
         }
     }

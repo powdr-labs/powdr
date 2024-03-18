@@ -6,7 +6,7 @@ use powdr_ast::{
     parsed::{
         asm::AbsoluteSymbolPath,
         asm::SymbolPath,
-        build::{direct_reference, index_access, namespaced_reference, next_reference},
+        build::{index_access, namespaced_reference},
         Expression, PILFile, PilStatement, SelectedExpressions, TypedExpression,
     },
     SourceRef,
@@ -98,24 +98,12 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
                 .iter()
                 .cloned()
                 .map(|n| Expression::Number(n, None));
-            let inputs = from
-                .params
-                .inputs
-                .into_iter()
-                .map(|i| {
-                    assert!(i.ty.is_none() || i.ty == Some("write".to_string()));
-                    (i.name, i.index)
-                })
-                .map(|(name, index)| index_access(direct_reference(name), index));
-            let outputs = from.params.outputs.into_iter().map(|p| match p.ty {
-                None => index_access(direct_reference(p.name), p.index),
-                // write register as output is mapped as a next ref in the plookup
-                Some(s) if s == "write" => index_access(next_reference(p.name), p.index),
-                _ => panic!(),
-            });
             let lhs = SelectedExpressions {
                 selector: Some(from.flag),
-                expressions: op_id.chain(inputs).chain(outputs).collect(),
+                expressions: op_id
+                    .chain(from.params.inputs)
+                    .chain(from.params.outputs)
+                    .collect(),
             };
 
             // the rhs is `latch { operation_id, inputs, outputs }`
@@ -567,7 +555,7 @@ machine Main {
 
     SubVM vm;
 
-    instr add5_into_A X = vm.add5 X -> A;
+    instr add5_into_A X = vm.add5 X -> A';
 
     function main {
         add5_into_A 10; // A <== 15
