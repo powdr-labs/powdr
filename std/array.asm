@@ -9,6 +9,9 @@ let<T> new: int, (int -> T) -> T[] = |length, f| std::utils::fold(length, f, [],
 /// Evaluates to the array [f(arr[0]), f(arr[1]), ..., f(arr[len(arr) - 1])].
 let<T1, T2> map: T1[], (T1 -> T2) -> T2[] = |arr, f| new(len(arr), |i| f(arr[i]));
 
+/// Evaluates to the array [f(0, arr[0]), f(1, arr[1]), ..., f(len(arr) - 1, arr[len(arr) - 1])].
+let<T1, T2> map_enumerated: T1[], (int, T1 -> T2) -> T2[] = |arr, f| new(len(arr), |i| f(i, arr[i]));
+
 /// Computes folder(...folder(folder(initial, arr[0]), arr[1]) ..., arr[len(arr) - 1])
 let<T1, T2> fold: T1[], T2, (T2, T1 -> T2) -> T2 = |arr, initial, folder| std::utils::fold(len(arr), |i| arr[i], initial, folder);
 
