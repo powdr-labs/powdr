@@ -31,16 +31,22 @@ pub fn verify_test_file(
     verify_pipeline(pipeline)
 }
 
-pub fn verify_asm_string(
+pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     file_name: &str,
     contents: &str,
     inputs: Vec<GoldilocksField>,
     external_witness_values: Vec<(String, Vec<GoldilocksField>)>,
+    data: Option<Vec<(u32, S)>>,
 ) {
-    let pipeline = Pipeline::default()
+    let mut pipeline = Pipeline::default()
         .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)))
         .with_prover_inputs(inputs)
         .add_external_witness_values(external_witness_values);
+
+    if let Some(data) = data {
+        pipeline = pipeline.add_data_vec(&data);
+    }
+
     verify_pipeline(pipeline).unwrap();
 }
 

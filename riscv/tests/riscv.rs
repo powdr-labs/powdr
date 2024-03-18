@@ -173,16 +173,25 @@ static BYTECODE: &str = "61029a60005260206000f3";
 #[test]
 fn test_evm() {
     let case = "evm";
-    let powdr_asm = compile_riscv_crate(case, &CoProcessors::base());
-
     let bytes = hex::decode(BYTECODE).unwrap();
 
-    let pipeline = Pipeline::<GoldilocksField>::default()
-        .with_name(case.to_string())
-        .from_asm_string(powdr_asm, None)
-        .add_data(666, &bytes);
+    verify_riscv_crate_with_data(case, vec![], &CoProcessors::base(), vec![(666, bytes)]);
+}
 
-    powdr_pipeline::test_util::verify_pipeline(pipeline).unwrap();
+#[ignore = "Too slow"]
+#[test]
+fn test_sum_serde() {
+    let case = "sum_serde";
+
+    let data: Vec<u32> = vec![1, 2, 8, 5];
+    let answer = data.iter().sum::<u32>();
+
+    verify_riscv_crate_with_data(
+        case,
+        vec![answer.into()],
+        &CoProcessors::base(),
+        vec![(42, data)],
+    );
 }
 
 #[test]
@@ -229,7 +238,7 @@ fn verify_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProces
         powdr_riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
     let powdr_asm = powdr_riscv::compiler::compile(riscv_asm, coprocessors, false);
 
-    verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs, vec![]);
+    verify_asm_string::<()>(&format!("{case}.asm"), &powdr_asm, inputs, vec![], None);
 }
 
 #[test]
@@ -248,13 +257,24 @@ fn verify_riscv_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &Co
         powdr_riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
     let powdr_asm = powdr_riscv::compiler::compile(riscv_asm, coprocessors, false);
 
-    verify_riscv_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
+    verify_riscv_asm_string::<()>(&format!("{case}.asm"), &powdr_asm, inputs, None);
 }
 
 fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProcessors) {
     let powdr_asm = compile_riscv_crate(case, coprocessors);
 
-    verify_riscv_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
+    verify_riscv_asm_string::<()>(&format!("{case}.asm"), &powdr_asm, inputs, None);
+}
+
+fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
+    case: &str,
+    inputs: Vec<GoldilocksField>,
+    coprocessors: &CoProcessors,
+    data: Vec<(u32, S)>,
+) {
+    let powdr_asm = compile_riscv_crate(case, coprocessors);
+
+    verify_riscv_asm_string(&format!("{case}.asm"), &powdr_asm, inputs, Some(data));
 }
 
 fn compile_riscv_crate(case: &str, coprocessors: &CoProcessors) -> String {

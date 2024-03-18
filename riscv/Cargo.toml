@@ -44,5 +44,7 @@ test-log = "0.2.12"
 env_logger = "0.10.0"
 hex = "0.4.3"
 
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
+
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
