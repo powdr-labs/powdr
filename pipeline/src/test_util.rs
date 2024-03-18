@@ -1,14 +1,15 @@
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
+use powdr_executor::witgen::extract_publics;
 use powdr_number::{BigInt, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::path::PathBuf;
 
 use std::sync::Arc;
-#[cfg(feature = "halo2")]
 use std::{fs::File, io::BufWriter};
 
 use crate::pipeline::Pipeline;
+use crate::util::write_or_panic;
 use crate::verify::verify;
 
 pub fn resolve_test_file(file_name: &str) -> PathBuf {
@@ -58,13 +59,36 @@ pub fn verify_pipeline(pipeline: Pipeline<GoldilocksField>) -> Result<(), String
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
-    Pipeline::default()
+    let mut pipeline = Pipeline::default()
         .with_tmp_output(&tmp_dir)
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(powdr_backend::BackendType::EStark)
-        .compute_proof()
-        .unwrap();
+        .with_backend(powdr_backend::BackendType::EStark);
+
+    pipeline.clone().compute_proof().unwrap();
+
+    // Repeat the proof generation, but with an externally generated verification key
+    let pil = pipeline.compute_optimized_pil().unwrap();
+
+    // Verification Key
+    let vkey_file_path = tmp_dir.as_path().join("verification_key.bin");
+    let vkey_file = BufWriter::new(File::create(&vkey_file_path).unwrap());
+    write_or_panic(vkey_file, |writer| {
+        pipeline.export_verification_key(writer).unwrap()
+    });
+
+    // Create the proof before adding the vkey to the pipeline,
+    // so that it's generated during the proof
+    let proof: Vec<u8> = pipeline.compute_proof().unwrap().clone();
+
+    let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
+
+    let publics: Vec<GoldilocksField> = extract_publics(&pipeline.witness().unwrap(), &pil)
+        .iter()
+        .map(|(_name, v)| *v)
+        .collect();
+
+    pipeline.verify(&proof, &[publics]).unwrap();
 }
 
 #[cfg(feature = "halo2")]
@@ -94,10 +118,6 @@ pub fn test_halo2(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 #[cfg(feature = "halo2")]
 pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
-    use powdr_executor::witgen::extract_publics;
-
-    use crate::util::write_or_panic;
-
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
     let mut pipeline = Pipeline::default()
         .with_tmp_output(&tmp_dir)
@@ -128,11 +148,12 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     write_or_panic(vkey_file, |writer| {
         pipeline.export_verification_key(writer).unwrap()
     });
-    let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
 
     // Create the proof before adding the setup and vkey to the backend,
     // so that they're generated during the proof
     let proof: Vec<u8> = pipeline.compute_proof().unwrap().clone();
+
+    let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
 
     let publics: Vec<Bn254Field> = extract_publics(&pipeline.witness().unwrap(), &pil)
         .iter()
