@@ -78,8 +78,10 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
                 None
             }
         }
-        FunctionValueDefinition::Query(_) => None,
-        FunctionValueDefinition::Expression(_) => None,
+        FunctionValueDefinition::Query(_)
+        | FunctionValueDefinition::Expression(_)
+        | FunctionValueDefinition::TypeDeclaration(_)
+        | FunctionValueDefinition::TypeConstructor(_, _) => None,
     }
 }
 
@@ -227,6 +229,7 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         let mut c = 0usize;
         identity.right.expressions.retain(|_i| {
             c += 1;
+
             !extracted.contains(&(c - 1))
         });
     }

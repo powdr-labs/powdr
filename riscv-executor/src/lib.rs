@@ -17,6 +17,7 @@ use std::{
 
 use builder::TraceBuilder;
 
+use itertools::Itertools;
 use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
@@ -839,31 +840,46 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Expression::Reference(f) if f.to_string() == "std::prover::eval" => {
                     self.eval_expression(&arguments[0])
                 }
+                Expression::Reference(f) if f.to_string() == "std::convert::int" => {
+                    // whatever. we don't need to convert anything
+                    self.eval_expression(&arguments[0])
+                }
                 Expression::Reference(f) => {
                     self.exec_instruction(f.try_to_identifier().unwrap(), arguments)
                 }
-                _ => panic!(),
+                _ => {
+                    unimplemented!(
+                        "Function call not implemented: {function}{}",
+                        arguments.iter().format(", ")
+                    )
+                }
             },
             Expression::FreeInput(expr) => {
-                if let Expression::Tuple(t) = &**expr {
-                    let mut all_strings: Vec<String> = Vec::new();
-                    for expr in t {
-                        if let Expression::String(_) = expr {
-                            all_strings.push(expr.to_string());
-                        } else {
-                            let val = self.eval_expression(expr)[0];
-                            all_strings.push(val.to_string());
-                        }
+                let Expression::FunctionCall(FunctionCall {
+                    function,
+                    arguments,
+                }) = expr.as_ref()
+                else {
+                    panic!("Free input does not match pattern: {expr}");
+                };
+                let Expression::Reference(f) = function.as_ref() else {
+                    panic!("Free input does not match pattern: {expr}");
+                };
+                let variant = f
+                    .to_string()
+                    .strip_prefix("std::prover::Query::")
+                    .unwrap_or_else(|| panic!("Free input does not match pattern: {expr}"))
+                    .to_string();
+                let values = arguments
+                    .iter()
+                    .map(|arg| self.eval_expression(arg)[0].to_string())
+                    .collect::<Vec<_>>();
+                let query = format!("{variant}({})", values.join(","));
+                match (self.inputs)(&query).unwrap() {
+                    Some(val) => vec![Elem::new_from_fe_as_bin(&val)],
+                    None => {
+                        panic!("unknown query command: {query}");
                     }
-                    let query = format!("({})", all_strings.join(","));
-                    match (self.inputs)(&query).unwrap() {
-                        Some(val) => vec![Elem::new_from_fe_as_bin(&val)],
-                        None => {
-                            panic!("unknown query command: {query}");
-                        }
-                    }
-                } else {
-                    panic!("does not match IO pattern")
                 }
             }
             Expression::MatchExpression(_, _) => todo!(),

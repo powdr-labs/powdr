@@ -109,8 +109,7 @@ enum Commands {
         #[arg(short, long)]
         witness_values: Option<String>,
 
-        /// Comma-separated list of free inputs (numbers). Assumes queries to have the form
-        /// ("input", <index>).
+        /// Comma-separated list of free inputs (numbers).
         #[arg(short, long)]
         #[arg(default_value_t = String::new())]
         inputs: String,

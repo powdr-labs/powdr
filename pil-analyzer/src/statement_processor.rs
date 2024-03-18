@@ -1,12 +1,16 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::iter;
+use std::str::FromStr;
 
 use itertools::Itertools;
 
 use powdr_ast::analyzed::TypedExpression;
+use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::types::{ArrayType, TypeScheme};
 use powdr_ast::parsed::{
     self, types::Type, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions,
 };
+use powdr_ast::parsed::{EnumDeclaration, EnumVariant};
 use powdr_ast::SourceRef;
 use powdr_number::{BigInt, DegreeType, GoldilocksField};
 
@@ -151,6 +155,16 @@ where
             PilStatement::LetStatement(source, name, type_scheme, value) => {
                 self.handle_generic_definition(source, name, type_scheme, value)
             }
+            PilStatement::EnumDeclaration(source, enum_declaration) => self
+                .handle_symbol_definition(
+                    source,
+                    enum_declaration.name.clone(),
+                    SymbolKind::Other(),
+                    None,
+                    Some(FunctionDefinition::TypeDeclaration(
+                        enum_declaration.clone(),
+                    )),
+                ),
             _ => self.handle_identity_statement(statement),
         }
     }
@@ -193,25 +207,24 @@ where
             let vars = ts.vars;
             let duplicates = vars.vars().duplicates().collect::<Vec<_>>();
             if !duplicates.is_empty() {
-                panic!("Duplicate type variables in declaration of \"{name}\":\n{}", duplicates.iter().format(", "));
+                panic!(
+                    "Duplicate type variables in declaration of \"{name}\":\n{}",
+                    duplicates.iter().format(", ")
+                );
             }
-
-            let ty = self.resolve_type_name(ts.ty.clone())
-                .map_err(|e| panic!("Error evaluating expressions in type name \"{}\" to reduce it to a type:\n{e})", ts.ty))
-                .unwrap();
-            let contained_type_vars = ty.contained_type_vars().collect::<HashSet<_>>();
             let declared_type_vars = vars.vars().collect::<HashSet<_>>();
+            let ty = self.handle_type(&declared_type_vars, &ts.ty);
+            let contained_type_vars = ty.contained_type_vars().collect::<HashSet<_>>();
             if contained_type_vars != declared_type_vars {
-                let excess_declared = declared_type_vars.difference(&contained_type_vars).format(", ").to_string();
-                let excess_contained = contained_type_vars.difference(&declared_type_vars).format(", ").to_string();
-                let details = (!excess_declared.is_empty()).then(||
-                    format!("Excess type variables in declaration: {excess_declared}")
-                ).iter().chain((!excess_contained.is_empty()).then(||
-                    format!("Excess type variables in type: {excess_contained}")
-                ).iter()).format("\n").to_string();
-                panic!("Set of declared and used type variables are not the same in declaration:\nlet<{vars}> {name}: {ty}\n{details}");
+                assert!(contained_type_vars.is_subset(&declared_type_vars));
+                panic!(
+                    "Unused type variable(s) in declaration: {}\nlet<{vars}> {name}: {ty}",
+                    declared_type_vars
+                        .difference(&contained_type_vars)
+                        .format(", ")
+                );
             };
-            TypeScheme{vars, ty}
+            TypeScheme { vars, ty }
         });
 
         match value {
@@ -257,6 +270,19 @@ where
                 )
             }
         }
+    }
+
+    /// Handles a type occurring in a context that has the given type variables declared.
+    fn handle_type(&self, type_vars: &HashSet<&String>, ty: &Type<parsed::Expression>) -> Type {
+        let mut ty = self.evaluate_array_lengths(ty.clone())
+            .map_err(|e| panic!("Error evaluating expressions in type name \"{}\" to reduce it to a type:\n{e})", ty))
+            .unwrap();
+        ty.map_to_type_vars(type_vars);
+        ty.contained_named_types_mut().for_each(|n| {
+            let name = self.driver.resolve_type_ref(n);
+            *n = SymbolPath::from_str(&name).unwrap();
+        });
+        ty
     }
 
     fn symbol_kind_from_type(ts: &TypeScheme) -> SymbolKind {
@@ -371,14 +397,44 @@ where
             }
         });
         let id = self.counters.dispense_symbol_id(symbol_kind, length);
-        let name = self.driver.resolve_decl(&name);
+        let absolute_name = self.driver.resolve_decl(&name);
         let symbol = Symbol {
             id,
-            source,
-            absolute_name: name.clone(),
+            source: source.clone(),
+            absolute_name: absolute_name.clone(),
             kind: symbol_kind,
             length,
         };
+
+        if let Some(FunctionDefinition::TypeDeclaration(enum_decl)) = value {
+            // For enums, we add PILItems both for the enum itself and also for all
+            // its type constructors.
+            assert_eq!(symbol_kind, SymbolKind::Other());
+            let enum_decl = self.process_enum_declaration(enum_decl);
+            let var_items = enum_decl.variants.iter().map(|variant| {
+                let var_symbol = Symbol {
+                    id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
+                    source: source.clone(),
+                    absolute_name: self
+                        .driver
+                        .resolve_namespaced_decl(&[&name, &variant.name])
+                        .to_dotted_string(),
+                    kind: SymbolKind::Other(),
+                    length: None,
+                };
+                let value = FunctionValueDefinition::TypeConstructor(
+                    absolute_name.clone(),
+                    variant.clone(),
+                );
+                PILItem::Definition(var_symbol, Some(value))
+            });
+            return iter::once(PILItem::Definition(
+                symbol,
+                Some(FunctionValueDefinition::TypeDeclaration(enum_decl.clone())),
+            ))
+            .chain(var_items)
+            .collect();
+        }
 
         let value = value.map(|v| match v {
             FunctionDefinition::Expression(expr) => {
@@ -405,6 +461,7 @@ where
                 assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
                 FunctionValueDefinition::Array(expression)
             }
+            FunctionDefinition::TypeDeclaration(_enum_declaration) => unreachable!(),
         });
         vec![PILItem::Definition(symbol, value)]
     }
@@ -444,9 +501,8 @@ where
         })]
     }
 
-    /// Resolves a type name into a concrete type.
-    /// This routine mainly evaluates array length expressions.
-    fn resolve_type_name(&self, mut n: Type<parsed::Expression>) -> Result<Type, EvalError> {
+    /// Turns a Type<Expression> to a Type<u64> by evaluating the array legnth expressions.
+    fn evaluate_array_lengths(&self, mut n: Type<parsed::Expression>) -> Result<Type, EvalError> {
         // Replace all expressions by number literals.
         // Any expression inside a type name has to be an array length,
         // so we expect an integer that fits u64.
@@ -484,5 +540,30 @@ where
     ) -> SelectedExpressions<Expression> {
         self.expression_processor()
             .process_selected_expressions(expr)
+    }
+
+    fn process_enum_declaration(
+        &self,
+        enum_decl: EnumDeclaration<parsed::Expression>,
+    ) -> EnumDeclaration {
+        EnumDeclaration {
+            name: enum_decl.name,
+            variants: enum_decl
+                .variants
+                .into_iter()
+                .map(|v| self.process_enum_variant(v))
+                .collect(),
+        }
+    }
+
+    fn process_enum_variant(&self, enum_variant: EnumVariant<parsed::Expression>) -> EnumVariant {
+        EnumVariant {
+            name: enum_variant.name,
+            fields: enum_variant.fields.map(|f| {
+                f.into_iter()
+                    .map(|ty| self.handle_type(&Default::default(), &ty))
+                    .collect()
+            }),
+        }
     }
 }

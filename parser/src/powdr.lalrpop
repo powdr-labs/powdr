@@ -24,6 +24,10 @@ pub ASMModule: ASMModule = {
 ModuleStatement: ModuleStatement = {
     <MachineDefinition> => ModuleStatement::SymbolDefinition(<>),
     <LetStatementAtModuleLevel> => ModuleStatement::SymbolDefinition(<>),
+    <EnumDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
+            name: <>.name.clone(),
+            value: SymbolValue::TypeDeclaration(<>),
+        }),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
@@ -56,6 +60,22 @@ Part: Part = {
     <name:Identifier> => Part::Named(name),
 }
 
+/// Same as SymbolPath except that we do not allow 'int' and 'fe' to be parsed as identifiers.
+TypeSymbolPath: SymbolPath = {
+    <abs:"::"?> <parts:( <TypeSymbolPathPart> "::" )*> <end:TypeSymbolPathPart>  => {
+        SymbolPath::from_parts([
+            abs.map(|_| vec![Part::Named(String::new())]).unwrap_or_default(),
+            parts,
+            vec![end],
+        ].concat())
+    },
+}
+
+TypeSymbolPathPart: Part = {
+    "super" => Part::Super,
+    <name:NonSpecialIdentifier> => Part::Named(name),
+}
+
 LetStatementAtModuleLevel: SymbolDefinition = {
     "let" <name:GenericTypedName>  "=" <value:Expression> ";" =>
         SymbolDefinition {
@@ -76,6 +96,7 @@ pub PilStatement = {
     PolynomialConstantDeclaration,
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
+    <start:@L> <decl:EnumDeclaration> => PilStatement::EnumDeclaration(ctx.source_ref(start), decl),
     PlookupIdentityStatement,
     PermutationIdentityStatement,
     ConnectIdentityStatement,
@@ -568,6 +589,21 @@ IfExpression: Box<Expression> = {
         "{" <else_body:BoxedExpression> "}" => Box::new(Expression::IfExpression(IfExpression{<>}))
 }
 
+// ---------------------------- Type Declarations -----------------------------
+
+EnumDeclaration: EnumDeclaration<Expression> = {
+    "enum" <name:Identifier> "{" <variants:EnumVariants> "}" => EnumDeclaration{<>}
+}
+
+EnumVariants: Vec<EnumVariant<Expression>> = {
+    => vec![],
+    <mut list:( <EnumVariant> "," )*> <end:EnumVariant> ","?  => { list.push(end); list }
+}
+
+EnumVariant: EnumVariant<Expression> = {
+    <name:Identifier> <fields:("(" <TypeTermList> ")")?> => EnumVariant{<>}
+}
+
 // ---------------------------- Type Names -----------------------------
 
 pub Type: Type<Expression> = {
@@ -585,7 +621,9 @@ TypeTermBox: Box<Type<Expression>> = {
 }
 
 TypeTerm: Type<Expression> = {
-    TypeVar => Type::TypeVar(<>),
+    // The parser parses all identifiers as NamedTypes, some are translated
+    // to TypeVars later.
+    TypeSymbolPath => Type::NamedType(<>),
     "!" => Type::Bottom,
     "bool" => Type::Bool,
     "int" => Type::Int,
@@ -603,6 +641,7 @@ TypeTerm: Type<Expression> = {
 TypeVar: String = {
     UppercaseIdentifier => <>,
 }
+
 
 // bounds should be SymbolPaths in the future.
 pub TypeVarBounds: TypeBounds = {
@@ -632,6 +671,11 @@ Identifier: String = {
     r"[a-z_][a-zA-Z$_0-9@]*" => <>.to_string(),
     UppercaseIdentifier,
     SpecialIdentifier => <>.to_string(),
+}
+
+NonSpecialIdentifier: String = {
+    r"[a-z_][a-zA-Z$_0-9@]*" => <>.to_string(),
+    UppercaseIdentifier => <>.to_string(),
 }
 
 UppercaseIdentifier: String = {

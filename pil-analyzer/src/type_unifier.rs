@@ -44,6 +44,9 @@ impl Unifier {
         if let Type::TypeVar(n) = ty {
             self.add_type_var_bound(n.clone(), bound);
             Ok(())
+        } else if let Type::NamedType(n) = ty {
+            // Change this as soon as we support user-implemented traits.
+            Err(format!("Type {n} does not satisfy trait {bound}."))
         } else {
             let bounds = elementary_type_bounds(ty);
             if bounds.contains(&bound.as_str()) {

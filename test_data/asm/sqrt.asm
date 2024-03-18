@@ -1,3 +1,5 @@
+use std::prover::Query;
+
 machine Sqrt(latch, operation_id) {
 
     operation sqrt<0> x -> y;
@@ -23,7 +25,7 @@ machine Sqrt(latch, operation_id) {
             sqrt_rec((y + x / y) / 2, x)
         };
 
-    col witness y(i) query ("hint", sqrt_hint(std::prover::eval(x)));
+    col witness y(i) query Query::Hint(sqrt_hint(std::prover::eval(x)));
     
     y * y = x;
     

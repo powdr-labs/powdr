@@ -357,6 +357,14 @@ fn read_poly_files() {
     }
 }
 
+#[test]
+fn enum_in_asm() {
+    let f = "asm/enum_in_asm.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
 mod book {
     use super::*;
     use test_log::test;

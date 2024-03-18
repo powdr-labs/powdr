@@ -49,7 +49,8 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
 
 #[derive(Default)]
 struct PILAnalyzer {
-    known_symbols: HashSet<String>,
+    /// The set of all known symbols. If the flag is true, the symbol is a type name.
+    known_symbols: HashMap<String, bool>,
     current_namespace: AbsoluteSymbolPath,
     polynomial_degree: Option<DegreeType>,
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
@@ -129,14 +130,19 @@ impl PILAnalyzer {
     }
 
     pub fn type_check(&mut self) {
-        let query_type: Type = parse_type("int -> (string, fe)").unwrap().into();
+        let query_type: Type = parse_type("int -> std::prover::Query").unwrap().into();
         let mut expressions = vec![];
         // Collect all definitions with their types and expressions.
+        // We filter out enum type declarations (the constructor functions have been added
+        // by the statement processor already).
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
         let definitions = self
             .definitions
             .iter_mut()
-            .map(|(name, (symbol, value))| {
+            .filter(|(_name, (_symbol, value))| {
+                !matches!(value, Some(FunctionValueDefinition::TypeDeclaration(_)))
+            })
+            .flat_map(|(name, (symbol, value))| {
                 let (type_scheme, expr) =
                     if let Some(FunctionValueDefinition::Expression(TypedExpression {
                         type_scheme,
@@ -158,8 +164,6 @@ impl PILAnalyzer {
                                 );
                             }
                             Some(FunctionValueDefinition::Query(query)) => {
-                                // Query functions are int -> (string, fe).
-                                // TODO replace this by an enum.
                                 expressions.push((
                                     query,
                                     ExpectedType {
@@ -173,7 +177,7 @@ impl PILAnalyzer {
 
                         (type_scheme, None)
                     };
-                (name.clone(), (type_scheme, expr))
+                Some((name.clone(), (type_scheme, expr)))
             })
             .collect();
         // Collect all expressions in identities.
@@ -198,7 +202,6 @@ impl PILAnalyzer {
                 }
             }
         }
-
         let inferred_types = infer_types(definitions, &mut expressions)
             .map_err(|e| {
                 eprintln!("\nError during type inference:\n{e}");
@@ -236,10 +239,25 @@ impl PILAnalyzer {
             }
             PilStatement::Include(_, _) => unreachable!(),
             _ => {
-                for name in statement.symbol_definition_names() {
-                    let absolute_name = self.driver().resolve_decl(name);
-                    if !self.known_symbols.insert(absolute_name.clone()) {
-                        panic!("Duplicate symbol definition: {absolute_name}");
+                let names = statement
+                    .symbol_definition_names()
+                    .map(|(name, is_type)| (self.driver().resolve_decl(name), is_type))
+                    .chain(
+                        statement
+                            .defined_contained_names()
+                            .map(|(name, inner, is_type)| {
+                                (
+                                    self.driver()
+                                        .resolve_namespaced_decl(&[name, inner])
+                                        .to_dotted_string(),
+                                    is_type,
+                                )
+                            }),
+                    )
+                    .collect::<Vec<_>>();
+                for (name, is_type) in names {
+                    if self.known_symbols.insert(name.clone(), is_type).is_some() {
+                        panic!("Duplicate symbol definition: {name}");
                     }
                 }
             }
@@ -317,18 +335,20 @@ impl PILAnalyzer {
 struct Driver<'a>(&'a PILAnalyzer);
 
 impl<'a> AnalysisDriver for Driver<'a> {
-    fn resolve_decl(&self, name: &str) -> String {
-        (if name.starts_with('%') {
-            // Constants are not namespaced
-            AbsoluteSymbolPath::default()
-        } else {
-            self.0.current_namespace.clone()
-        })
-        .with_part(name)
-        .to_dotted_string()
+    fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath {
+        path.iter()
+            .fold(self.0.current_namespace.clone(), |path, part| {
+                if part.starts_with('%') {
+                    // Constants are not namespaced
+                    AbsoluteSymbolPath::default()
+                } else {
+                    path
+                }
+                .with_part(part)
+            })
     }
 
-    fn resolve_ref(&self, path: &SymbolPath) -> String {
+    fn resolve_ref(&self, path: &SymbolPath, is_type: bool) -> String {
         // Try to resolve the name starting at the current namespace and then
         // go up level by level until the root.
 
@@ -337,7 +357,14 @@ impl<'a> AnalysisDriver for Driver<'a> {
             .iter_to_root()
             .find_map(|prefix| {
                 let path = prefix.join(path.clone()).to_dotted_string();
-                self.0.known_symbols.contains(&path).then_some(path)
+                self.0.known_symbols.get(&path).map(|t| {
+                    if *t && !is_type {
+                        panic!("Expected value but got type: {path}");
+                    } else if !t && is_type {
+                        panic!("Expected type but got value: {path}");
+                    }
+                    path
+                })
             })
             .unwrap_or_else(|| panic!("Symbol not found: {}", path.to_dotted_string()))
     }

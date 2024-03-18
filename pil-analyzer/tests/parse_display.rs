@@ -6,6 +6,9 @@ use pretty_assertions::assert_eq;
 
 #[test]
 fn parse_print_analyzed() {
+    // Re-add this line once we can parse the turbofish operator.
+    //    col witness X_free_value(__i) query match std::prover::eval(T.pc) { 0 => std::prover::Query::Input(1), 3 => std::prover::Query::Input(std::convert::int::<fe>(std::prover::eval(T.CNT) + 1)), 7 => std::prover::Query::Input(0), };
+
     // This is rather a test for the Display trait than for the analyzer.
     let input = r#"constant %N = 65536;
 public P = T.pc(2);
@@ -13,6 +16,11 @@ namespace Bin(65536);
     col witness bla;
 namespace std::prover(65536);
     let eval: expr -> fe = [];
+    enum Query {
+        Input(int),
+    }
+namespace std::convert(65536);
+    let int = [];
 namespace T(65536);
     col fixed first_step = [1] + [0]*;
     col fixed line(i) { i };
@@ -42,7 +50,7 @@ namespace T(65536);
     col witness reg_write_X_A;
     T.X = ((((T.read_X_A * T.A) + (T.read_X_CNT * T.CNT)) + T.X_const) + (T.X_read_free * T.X_free_value));
     T.A' = (((T.first_step' * 0) + (T.reg_write_X_A * T.X)) + ((1 - (T.first_step' + T.reg_write_X_A)) * T.A));
-    col witness X_free_value(__i) query match std::prover::eval(T.pc) { 0 => ("input", 1), 3 => ("input", (std::prover::eval(T.CNT) + 1)), 7 => ("input", 0), };
+    col witness X_free_value(__i) query match std::prover::eval(T.pc) { 0 => std::prover::Query::Input(1), 7 => std::prover::Query::Input(0), };
     col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
     col fixed p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1] + [0]*;
@@ -346,7 +354,7 @@ fn constraint_but_expected_expression() {
 }
 
 #[test]
-#[should_panic = "Set of declared and used type variables are not the same"]
+#[should_panic = "Symbol not found: T"]
 fn used_undeclared_type_var() {
     let input = r#"let x: T = 8;"#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
@@ -354,7 +362,7 @@ fn used_undeclared_type_var() {
 }
 
 #[test]
-#[should_panic = "Set of declared and used type variables are not the same"]
+#[should_panic = "Unused type variable(s) in declaration: T"]
 fn declared_unused_type_var() {
     let input = r#"let<T> x: int = 8;"#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
@@ -362,7 +370,7 @@ fn declared_unused_type_var() {
 }
 
 #[test]
-#[should_panic = "Excess type variables in declaration: K\nExcess type variables in type: T"]
+#[should_panic = "Symbol not found: T"]
 fn double_used_undeclared_type_var() {
     let input = r#"let<K> x: T = 8;"#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();

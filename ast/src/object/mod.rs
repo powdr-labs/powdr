@@ -4,7 +4,7 @@ use powdr_number::BigUint;
 
 use crate::parsed::{
     asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
-    Expression, PilStatement, TypedExpression,
+    EnumDeclaration, Expression, PilStatement, TypedExpression,
 };
 
 mod display;
@@ -32,7 +32,13 @@ pub struct PILGraph {
     pub main: Machine,
     pub entry_points: Vec<Operation>,
     pub objects: BTreeMap<Location, Object>,
-    pub definitions: BTreeMap<AbsoluteSymbolPath, TypedExpression>,
+    pub definitions: BTreeMap<AbsoluteSymbolPath, TypeOrExpression>,
+}
+
+#[derive(Clone)]
+pub enum TypeOrExpression {
+    Type(EnumDeclaration<Expression>),
+    Expression(TypedExpression),
 }
 
 #[derive(Default, Clone)]

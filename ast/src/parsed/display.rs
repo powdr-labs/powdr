@@ -4,14 +4,12 @@ use itertools::Itertools;
 
 use crate::{
     parsed::{BinaryOperator, UnaryOperator},
-    write_items, write_items_indented,
+    write_indented_by, write_items, write_items_indented,
 };
 
 use self::types::{ArrayType, FunctionType, TupleType, TypeBounds};
 
 use super::{asm::*, *};
-
-// TODO indentation
 
 impl Display for PILFile {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -66,6 +64,7 @@ impl Display for ModuleStatement {
                         format_type_scheme_around_name(name, type_scheme)
                     )
                 }
+                SymbolValue::TypeDeclaration(ty) => write!(f, "{ty}"),
             },
         }
     }
@@ -417,6 +416,7 @@ impl Display for PilStatement {
             PilStatement::Expression(_, e) => {
                 write!(f, "    {e};")
             }
+            PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
         }
     }
 }
@@ -461,7 +461,32 @@ impl Display for FunctionDefinition {
                 )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
+            FunctionDefinition::TypeDeclaration(_) => {
+                panic!("Should not use this formatting function.")
+            }
         }
+    }
+}
+
+impl<E: Display> Display for EnumDeclaration<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "enum {} {{", self.name)?;
+        write_items_indented(f, self.variants.iter())?;
+        write!(f, "}}")
+    }
+}
+
+impl<E: Display> Display for EnumVariant<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.name)?;
+        if let Some(fields) = &self.fields {
+            write!(
+                f,
+                "({})",
+                fields.iter().map(format_type_with_parentheses).format(", ")
+            )?;
+        }
+        write!(f, ",")
     }
 }
 
@@ -590,6 +615,7 @@ impl<E: Display> Display for Type<E> {
             Type::Tuple(tuple) => write!(f, "{tuple}"),
             Type::Function(fun) => write!(f, "{fun}"),
             Type::TypeVar(name) => write!(f, "{name}"),
+            Type::NamedType(name) => write!(f, "{name}"),
         }
     }
 }

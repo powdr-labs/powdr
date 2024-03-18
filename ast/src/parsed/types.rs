@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, HashSet},
     fmt::Display,
     iter::empty,
 };
@@ -8,7 +8,7 @@ use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::Expression;
+use super::{asm::SymbolPath, Expression};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Type<E = u64> {
@@ -33,6 +33,9 @@ pub enum Type<E = u64> {
     Tuple(TupleType<E>),
     Function(FunctionType<E>),
     TypeVar(String),
+    /// A named type like an enum. Directly aftar parsing, type variables are also
+    /// represented as NamedTypes, because the parser cannot distinguish.
+    NamedType(SymbolPath),
 }
 
 impl<E> Type<E> {
@@ -48,7 +51,11 @@ impl<E> Type<E> {
             | Type::Col
             | Type::Expr
             | Type::Constr => true,
-            Type::Array(_) | Type::Tuple(_) | Type::Function(_) | Type::TypeVar(_) => false,
+            Type::Array(_)
+            | Type::Tuple(_)
+            | Type::Function(_)
+            | Type::TypeVar(_)
+            | Type::NamedType(_) => false,
         }
     }
     /// Returns true if the type name needs parentheses during formatting
@@ -56,7 +63,7 @@ impl<E> Type<E> {
     pub fn needs_parentheses(&self) -> bool {
         match self {
             _ if self.is_elementary() => false,
-            Type::Array(_) | Type::Tuple(_) | Type::TypeVar(_) => false,
+            Type::Array(_) | Type::Tuple(_) | Type::TypeVar(_) | Type::NamedType(_) => false,
             Type::Function(_) => true,
             _ => unreachable!(),
         }
@@ -66,7 +73,7 @@ impl<E> Type<E> {
     pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
         match self {
             _ if self.is_elementary() => Box::new(empty()),
-            Type::TypeVar(_) => Box::new(empty()),
+            Type::TypeVar(_) | Type::NamedType(_) => Box::new(empty()),
             Type::Array(a) => a.expressions(),
             Type::Tuple(t) => t.expressions(),
             Type::Function(f) => f.expressions(),
@@ -78,11 +85,45 @@ impl<E> Type<E> {
     pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
         match self {
             _ if self.is_elementary() => Box::new(empty()),
-            Type::TypeVar(_) => Box::new(empty()),
+            Type::TypeVar(_) | Type::NamedType(_) => Box::new(empty()),
             Type::Array(a) => a.expressions_mut(),
             Type::Tuple(t) => t.expressions_mut(),
             Type::Function(f) => f.expressions_mut(),
             _ => unreachable!(),
+        }
+    }
+
+    /// Turns all NamedTypes that are single identifiers in the given set
+    /// to TypeVars.
+    pub fn map_to_type_vars(&mut self, type_vars: &HashSet<&String>) {
+        match self {
+            Type::NamedType(n) => {
+                if let Some(identifier) = n.try_to_identifier() {
+                    if type_vars.contains(identifier) {
+                        *self = Type::TypeVar(identifier.clone());
+                    }
+                }
+            }
+            _ => self
+                .sub_types_mut()
+                .for_each(|t| t.map_to_type_vars(type_vars)),
+        }
+    }
+
+    pub fn contained_named_types(&self) -> Box<dyn Iterator<Item = &SymbolPath> + '_> {
+        match self {
+            Type::NamedType(n) => Box::new(std::iter::once(n)),
+            _ => Box::new(self.sub_types().flat_map(|t| t.contained_named_types())),
+        }
+    }
+
+    pub fn contained_named_types_mut(&mut self) -> Box<dyn Iterator<Item = &mut SymbolPath> + '_> {
+        match self {
+            Type::NamedType(n) => Box::new(std::iter::once(n)),
+            _ => Box::new(
+                self.sub_types_mut()
+                    .flat_map(|t| t.contained_named_types_mut()),
+            ),
         }
     }
 
@@ -110,23 +151,9 @@ impl<E: Clone> Type<E> {
                     *self = t.clone();
                 }
             }
-            Type::Array(ArrayType { base, length: _ }) => {
-                base.substitute_type_vars(substitutions);
-            }
-            Type::Tuple(TupleType { items }) => {
-                items
-                    .iter_mut()
-                    .for_each(|t| t.substitute_type_vars(substitutions));
-            }
-            Type::Function(FunctionType { params, value }) => {
-                params
-                    .iter_mut()
-                    .for_each(|t| t.substitute_type_vars(substitutions));
-                value.substitute_type_vars(substitutions);
-            }
-            _ => {
-                assert!(self.is_elementary());
-            }
+            _ => self
+                .sub_types_mut()
+                .for_each(|t| t.substitute_type_vars(substitutions)),
         }
     }
 
@@ -140,18 +167,38 @@ impl<E> Type<E> {
     fn contained_type_vars_with_repetitions(&self) -> Box<dyn Iterator<Item = &String> + '_> {
         match self {
             Type::TypeVar(n) => Box::new(std::iter::once(n)),
-            Type::Array(ar) => ar.base.contained_type_vars_with_repetitions(),
-            Type::Tuple(tu) => Box::new(
-                tu.items
-                    .iter()
+            _ => Box::new(
+                self.sub_types()
                     .flat_map(|t| t.contained_type_vars_with_repetitions()),
             ),
+        }
+    }
+
+    /// Returns an iterator over all the Types (directly) nested inside this one.
+    fn sub_types(&self) -> Box<dyn Iterator<Item = &Type<E>> + '_> {
+        match self {
+            Type::Array(ar) => Box::new(std::iter::once(&*ar.base)),
+            Type::Tuple(tu) => Box::new(tu.items.iter()),
+            Type::Function(fun) => Box::new(fun.params.iter().chain(std::iter::once(&*fun.value))),
+            Type::NamedType(_) => Box::new(std::iter::empty()),
+            _ => {
+                assert!(self.is_elementary());
+                Box::new(std::iter::empty())
+            }
+        }
+    }
+
+    /// Returns an iterator over all the Types (directly) nested inside this one.
+    fn sub_types_mut(&mut self) -> Box<dyn Iterator<Item = &mut Type<E>> + '_> {
+        match self {
+            Type::Array(ar) => Box::new(std::iter::once(&mut *ar.base)),
+            Type::Tuple(tu) => Box::new(tu.items.iter_mut()),
             Type::Function(fun) => Box::new(
                 fun.params
-                    .iter()
-                    .flat_map(|t| t.contained_type_vars_with_repetitions())
-                    .chain(fun.value.contained_type_vars_with_repetitions()),
+                    .iter_mut()
+                    .chain(std::iter::once(&mut *fun.value)),
             ),
+            Type::NamedType(_) | Type::TypeVar(_) => Box::new(std::iter::empty()),
             _ => {
                 assert!(self.is_elementary());
                 Box::new(std::iter::empty())
@@ -175,6 +222,7 @@ impl<R: Display> From<Type<Expression<R>>> for Type<u64> {
             Type::Tuple(t) => Type::Tuple(t.into()),
             Type::Function(f) => Type::Function(f.into()),
             Type::TypeVar(n) => Type::TypeVar(n),
+            Type::NamedType(n) => Type::NamedType(n),
         }
     }
 }

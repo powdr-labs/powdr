@@ -2,3 +2,15 @@
 /// Since this needs the concept of a "current row", it is only
 /// valid in query functions.
 let eval: expr -> fe = [];
+
+/// The return type of a prover query function.
+enum Query {
+    /// Query a prover input element by index.
+    Input(int),
+    /// Print a character on stdout.
+    PrintChar(int),
+    /// Generate a hint to fill a witness column with.
+    Hint(fe),
+    /// Query a prover input element by index and data id.
+    DataIdentifier(int, int)
+}
