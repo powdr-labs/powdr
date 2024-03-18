@@ -15,7 +15,7 @@ machine SplitGL(RESET, _) {
     // previous block)
     // A hint is provided because automatic witness generation does not
     // understand step 3 to figure out that the byte decomposition is unique.
-    let select_byte: fe, int -> fe = |input, byte| std::convert::fe((std::convert::int(input) >> (byte * 8)) % 0xff);
+    let select_byte: fe, int -> fe = |input, byte| std::convert::fe((std::convert::int(input) >> (byte * 8)) & 0xff);
     col witness bytes(i) query ("hint", select_byte(std::prover::eval(in_acc'), (i + 1) % 8));
     // Puts the bytes together to form the input
     col witness in_acc;
