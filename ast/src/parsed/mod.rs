@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use self::{
     asm::{Part, SymbolPath},
-    types::{Type, TypeScheme},
+    types::{FunctionType, Type, TypeScheme},
 };
 use crate::SourceRef;
 
@@ -64,21 +64,27 @@ pub enum PilStatement {
     ),
     ConnectIdentity(SourceRef, Vec<Expression>, Vec<Expression>),
     ConstantDefinition(SourceRef, String, Expression),
+    EnumDeclaration(SourceRef, EnumDeclaration<Expression>),
     Expression(SourceRef, Expression),
 }
 
 impl PilStatement {
     /// If the statement is a symbol definition, returns all (local) names of defined symbols.
-    pub fn symbol_definition_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+    /// Note it does not return nested definitions (for an enum for example).
+    /// The boolean indicates if the name is a type definition or a value definition.
+    pub fn symbol_definition_names(&self) -> Box<dyn Iterator<Item = (&String, bool)> + '_> {
         match self {
             PilStatement::PolynomialDefinition(_, name, _)
             | PilStatement::PolynomialConstantDefinition(_, name, _)
             | PilStatement::ConstantDefinition(_, name, _)
             | PilStatement::PublicDeclaration(_, name, _, _, _)
-            | PilStatement::LetStatement(_, name, _, _) => Box::new(once(name)),
+            | PilStatement::LetStatement(_, name, _, _) => Box::new(once((name, false))),
+            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants: _ }) => {
+                Box::new(once((name, true)))
+            }
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
             | PilStatement::PolynomialCommitDeclaration(_, polynomials, _) => {
-                Box::new(polynomials.iter().map(|p| &p.name))
+                Box::new(polynomials.iter().map(|p| (&p.name, false)))
             }
 
             PilStatement::Include(_, _)
@@ -87,6 +93,20 @@ impl PilStatement {
             | PilStatement::PermutationIdentity(_, _, _)
             | PilStatement::ConnectIdentity(_, _, _)
             | PilStatement::Expression(_, _) => Box::new(empty()),
+        }
+    }
+
+    /// If the statement defines any symbols inside a namespace, returns
+    /// the name of the namespace and defined names inside that namespace.
+    /// The boolean indicates if the name is a type definition or a value definition.
+    pub fn defined_contained_names(
+        &self,
+    ) -> Box<dyn Iterator<Item = (&String, &String, bool)> + '_> {
+        match self {
+            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants }) => {
+                Box::new(variants.iter().map(move |v| (name, &v.name, false)))
+            }
+            _ => Box::new(empty()),
         }
     }
 
@@ -104,6 +124,8 @@ impl PilStatement {
             | PilStatement::Namespace(_, _, e)
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
+
+            PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.expressions(),
 
             PilStatement::LetStatement(_, _, type_scheme, value) => Box::new(
                 type_scheme
@@ -137,6 +159,8 @@ impl PilStatement {
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
+            PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.expressions_mut(),
+
             PilStatement::LetStatement(_, _, ty, value) => Box::new(
                 ty.iter_mut()
                     .flat_map(|t| t.ty.expressions_mut())
@@ -153,6 +177,78 @@ impl PilStatement {
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct EnumDeclaration<E = u64> {
+    pub name: String,
+    pub variants: Vec<EnumVariant<E>>,
+}
+
+impl EnumDeclaration<u64> {
+    pub fn expressions<R>(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(empty())
+    }
+    pub fn expressions_mut<R>(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(empty())
+    }
+}
+
+impl<R> EnumDeclaration<Expression<R>> {
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(self.variants.iter().flat_map(|v| v.expressions()))
+    }
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(self.variants.iter_mut().flat_map(|v| v.expressions_mut()))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct EnumVariant<E = u64> {
+    pub name: String,
+    pub fields: Option<Vec<Type<E>>>,
+}
+
+impl<E: Clone> EnumVariant<E> {
+    /// Returns the type of the constructor function for this variant
+    /// given the name of the enum type.
+    pub fn constructor_type(&self, type_name: SymbolPath) -> Type<E> {
+        match &self.fields {
+            None => Type::NamedType(type_name),
+            Some(fields) => Type::Function(FunctionType {
+                params: (*fields).clone(),
+                value: Type::NamedType(type_name).into(),
+            }),
+        }
+    }
+}
+
+impl EnumVariant<u64> {
+    pub fn expressions<R>(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(empty())
+    }
+    pub fn expressions_mut<R>(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(empty())
+    }
+}
+
+impl<R> EnumVariant<Expression<R>> {
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(
+            self.fields
+                .iter()
+                .flat_map(|f| f.iter())
+                .flat_map(|f| f.expressions()),
+        )
+    }
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(
+            self.fields
+                .iter_mut()
+                .flat_map(|f| f.iter_mut())
+                .flat_map(|f| f.expressions_mut()),
+        )
     }
 }
 
@@ -397,6 +493,8 @@ pub enum FunctionDefinition {
     Query(Expression),
     /// Generic expression
     Expression(Expression),
+    /// A type declaration.
+    TypeDeclaration(EnumDeclaration<Expression>),
 }
 
 impl FunctionDefinition {
@@ -405,6 +503,7 @@ impl FunctionDefinition {
         match self {
             FunctionDefinition::Array(ae) => ae.expressions(),
             FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => Box::new(once(e)),
+            FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
         }
     }
 
@@ -413,6 +512,7 @@ impl FunctionDefinition {
         match self {
             FunctionDefinition::Array(ae) => ae.expressions_mut(),
             FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => Box::new(once(e)),
+            FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
         }
     }
 }

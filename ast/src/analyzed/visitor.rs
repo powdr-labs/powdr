@@ -93,6 +93,12 @@ impl ExpressionVisitable<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Array(array) => array
                 .iter_mut()
                 .try_for_each(move |item| item.visit_expressions_mut(f, o)),
+            FunctionValueDefinition::TypeDeclaration(enum_declaration) => enum_declaration
+                .expressions_mut()
+                .try_for_each(move |item| item.visit_expressions_mut(f, o)),
+            FunctionValueDefinition::TypeConstructor(_, variant) => variant
+                .expressions_mut()
+                .try_for_each(move |item| item.visit_expressions_mut(f, o)),
         }
     }
 
@@ -107,6 +113,12 @@ impl ExpressionVisitable<Expression> for FunctionValueDefinition {
             }
             FunctionValueDefinition::Array(array) => array
                 .iter()
+                .try_for_each(move |item| item.visit_expressions(f, o)),
+            FunctionValueDefinition::TypeDeclaration(enum_declaration) => enum_declaration
+                .expressions()
+                .try_for_each(move |item| item.visit_expressions(f, o)),
+            FunctionValueDefinition::TypeConstructor(_, variant) => variant
+                .expressions()
                 .try_for_each(move |item| item.visit_expressions(f, o)),
         }
     }

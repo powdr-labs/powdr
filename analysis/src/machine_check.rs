@@ -320,6 +320,12 @@ impl TypeChecker {
                         asm::SymbolValue::Expression(e) => {
                             res.insert(ctx.clone().with_part(&name), Item::Expression(e));
                         }
+                        asm::SymbolValue::TypeDeclaration(enum_decl) => {
+                            res.insert(
+                                ctx.clone().with_part(&name),
+                                Item::TypeDeclaration(enum_decl),
+                            );
+                        }
                     }
                 }
             }

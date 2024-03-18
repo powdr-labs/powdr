@@ -117,7 +117,9 @@ fn generate_values<T: FieldElement>(
                     values
                 })
         }
-        FunctionValueDefinition::Query(_) => panic!("Query used for fixed column."),
+        FunctionValueDefinition::Query(_)
+        | FunctionValueDefinition::TypeDeclaration(_)
+        | FunctionValueDefinition::TypeConstructor(_, _) => panic!(),
     };
     match result {
         Err(err) => {

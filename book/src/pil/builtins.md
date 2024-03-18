@@ -128,7 +128,7 @@ machine Sqrt {
     };
 
     col witness x;
-    col witness y(i) query ("hint", sqrt_hint(std::prover::eval(x)));
+    col witness y(i) query std::prover::Query::Hint(sqrt_hint(std::prover::eval(x)));
 
     y * y = x;
 

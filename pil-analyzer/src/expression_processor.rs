@@ -174,7 +174,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
         path: &SymbolPath,
     ) -> PolynomialReference {
         PolynomialReference {
-            name: self.driver.resolve_ref(path),
+            name: self.driver.resolve_value_ref(path),
             poly_id: None,
             // These will be filled by the type checker.
             // TODO at some point we should support the turbofish operator

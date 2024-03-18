@@ -5,17 +5,19 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::ops::{self, ControlFlow};
+use std::str::FromStr;
 
 use powdr_number::{DegreeType, FieldElement};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::parsed::asm::SymbolPath;
 use crate::parsed::types::{ArrayType, Type, TypeScheme};
 use crate::parsed::utils::expr_any;
 use crate::parsed::visitor::ExpressionVisitable;
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
-use crate::parsed::{self, SelectedExpressions};
+use crate::parsed::{self, EnumDeclaration, EnumVariant, SelectedExpressions};
 use crate::SourceRef;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -328,6 +330,12 @@ impl<T> Analyzed<T> {
                     e,
                     type_scheme: _,
                 })) => e.post_visit_expressions_mut(f),
+                Some(
+                    FunctionValueDefinition::TypeDeclaration(_)
+                    | FunctionValueDefinition::TypeConstructor(_, _),
+                ) => {
+                    // no expressions to visit
+                }
                 None => {}
             });
     }
@@ -449,6 +457,14 @@ pub fn type_from_definition(
             FunctionValueDefinition::Expression(TypedExpression { e: _, type_scheme }) => {
                 type_scheme.clone()
             }
+            FunctionValueDefinition::TypeDeclaration(_) => {
+                panic!("Requested type of type declaration.")
+            }
+            FunctionValueDefinition::TypeConstructor(type_name, variant) => Some(
+                variant
+                    .constructor_type(SymbolPath::from_str(type_name).unwrap())
+                    .into(),
+            ),
         }
     } else {
         assert!(
@@ -544,6 +560,8 @@ pub enum FunctionValueDefinition {
     Array(Vec<RepeatedArray>),
     Query(Expression),
     Expression(TypedExpression),
+    TypeDeclaration(EnumDeclaration),
+    TypeConstructor(String, EnumVariant),
 }
 
 /// An array of elements that might be repeated.

@@ -8,10 +8,12 @@ use itertools::Itertools;
 use powdr_number::BigUint;
 
 use derive_more::From;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::SourceRef;
 
-use super::{Expression, PilStatement, TypedExpression};
+use super::{EnumDeclaration, EnumVariant, Expression, PilStatement, TypedExpression};
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct ASMProgram {
@@ -52,6 +54,8 @@ pub enum SymbolValue {
     Module(Module),
     /// A generic symbol / function.
     Expression(TypedExpression),
+    /// A type declaration (currently only enums)
+    TypeDeclaration(EnumDeclaration<Expression>),
 }
 
 impl SymbolValue {
@@ -61,6 +65,7 @@ impl SymbolValue {
             SymbolValue::Import(i) => SymbolValueRef::Import(i),
             SymbolValue::Module(m) => SymbolValueRef::Module(m.as_ref()),
             SymbolValue::Expression(e) => SymbolValueRef::Expression(e),
+            SymbolValue::TypeDeclaration(t) => SymbolValueRef::TypeDeclaration(t),
         }
     }
 }
@@ -75,6 +80,10 @@ pub enum SymbolValueRef<'a> {
     Module(ModuleRef<'a>),
     /// A generic symbol / function.
     Expression(&'a TypedExpression),
+    /// A type declaration (currently only enums)
+    TypeDeclaration(&'a EnumDeclaration<Expression>),
+    /// A type constructor of an enum.
+    TypeConstructor(&'a EnumVariant<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]
@@ -107,7 +116,9 @@ pub struct Import {
 /// A symbol path is a sequence of strings separated by ``::`.
 /// It can contain the special word `super`, which goes up a level.
 /// If it does not start with `::`, it is relative.
-#[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(
+    Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 pub struct SymbolPath {
     /// The parts between each `::`.
     parts: Vec<Part>,
@@ -341,7 +352,7 @@ impl Display for AbsoluteSymbolPath {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub enum Part {
     Super,
     Named(String),
@@ -377,16 +388,24 @@ pub struct Machine {
 impl Machine {
     /// Returns a vector of all local variables / names defined in the machine.
     pub fn local_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
-        Box::new(self.statements.iter().flat_map(|s| match s {
-            MachineStatement::RegisterDeclaration(_, name, _) => Box::new(once(name)),
-            MachineStatement::Pil(_, statement) => statement.symbol_definition_names(),
-            MachineStatement::Degree(_, _)
-            | MachineStatement::Submachine(_, _, _)
-            | MachineStatement::InstructionDeclaration(_, _, _)
-            | MachineStatement::LinkDeclaration(_, _)
-            | MachineStatement::FunctionDeclaration(_, _, _, _)
-            | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
-        }))
+        Box::new(
+            self.statements
+                .iter()
+                .flat_map(|s| -> Box<dyn Iterator<Item = &String> + '_> {
+                    match s {
+                        MachineStatement::RegisterDeclaration(_, name, _) => Box::new(once(name)),
+                        MachineStatement::Pil(_, statement) => {
+                            Box::new(statement.symbol_definition_names().map(|(s, _)| s))
+                        }
+                        MachineStatement::Degree(_, _)
+                        | MachineStatement::Submachine(_, _, _)
+                        | MachineStatement::InstructionDeclaration(_, _, _)
+                        | MachineStatement::LinkDeclaration(_, _)
+                        | MachineStatement::FunctionDeclaration(_, _, _, _)
+                        | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
+                    }
+                }),
+        )
     }
 }
 
@@ -509,6 +528,29 @@ pub enum FunctionStatement {
     Label(SourceRef, String),
     DebugDirective(SourceRef, DebugDirective),
     Return(SourceRef, Vec<Expression>),
+}
+
+impl FunctionStatement {
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        match self {
+            FunctionStatement::Assignment(_, _, _, e) => Box::new(once(e.as_ref())),
+            FunctionStatement::Instruction(_, _, expressions)
+            | FunctionStatement::Return(_, expressions) => Box::new(expressions.iter()),
+            FunctionStatement::Label(_, _) | FunctionStatement::DebugDirective(_, _) => {
+                Box::new(empty())
+            }
+        }
+    }
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        match self {
+            FunctionStatement::Assignment(_, _, _, e) => Box::new(once(e.as_mut())),
+            FunctionStatement::Instruction(_, _, expressions)
+            | FunctionStatement::Return(_, expressions) => Box::new(expressions.iter_mut()),
+            FunctionStatement::Label(_, _) | FunctionStatement::DebugDirective(_, _) => {
+                Box::new(empty())
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

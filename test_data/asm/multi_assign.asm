@@ -13,7 +13,7 @@ machine MultiAssign {
     instr assert_zero X { XIsZero = 1 }
 
     function main {
-        A <=X= ${ ("input", 0) };
+        A <=X= ${ std::prover::Query::Input(0) };
         A <=Y= A - 7;
         assert_zero A;
         return;

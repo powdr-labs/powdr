@@ -3,7 +3,10 @@
 #![deny(clippy::print_stdout)]
 
 use lalrpop_util::*;
-use powdr_ast::parsed::{asm::ASMProgram, types::Type, types::TypeBounds};
+use powdr_ast::parsed::{
+    asm::ASMProgram,
+    types::{Type, TypeBounds, TypeScheme},
+};
 use powdr_ast::SourceRef;
 
 use powdr_parser_util::{handle_parse_error, ParseError};
@@ -87,6 +90,16 @@ pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, ParseError<'_>> 
     TYPE_VAR_BOUNDS_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, None, input))
+}
+
+pub fn parse_type_scheme(vars: &str, ty: &str) -> TypeScheme {
+    let vars = parse_type_var_bounds(vars).unwrap();
+    let mut ty = parse_type(ty).unwrap();
+    ty.map_to_type_vars(&vars.vars().collect());
+    TypeScheme {
+        vars,
+        ty: ty.into(),
+    }
 }
 
 /// Parse an escaped string - used in the grammar.
@@ -246,7 +259,8 @@ mod test {
             | PilStatement::PermutationIdentity(s, _, _)
             | PilStatement::ConnectIdentity(s, _, _)
             | PilStatement::ConstantDefinition(s, _, _)
-            | PilStatement::Expression(s, _) => *s = SourceRef::unknown(),
+            | PilStatement::Expression(s, _)
+            | PilStatement::EnumDeclaration(s, _) => *s = SourceRef::unknown(),
         }
     }
 
@@ -304,7 +318,8 @@ mod test {
                 }
                 SymbolValue::Module(Module::External(_))
                 | SymbolValue::Import(_)
-                | SymbolValue::Expression(_) => (),
+                | SymbolValue::Expression(_)
+                | SymbolValue::TypeDeclaration(_) => (),
             }
         }
 
@@ -460,5 +475,22 @@ namespace Fibonacci(%N);
             let printed = format!("{}", parse(Some("input"), input).unwrap());
             assert_eq!(input.trim(), printed.trim());
         }
+    }
+
+    #[test]
+    fn enum_decls() {
+        let input = r#"
+namespace N(2);
+    enum X {
+    }
+    enum Y {
+        A,
+        B(),
+        C(int),
+        D(int, (int -> fe)),
+    }
+"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        assert_eq!(input.trim(), printed.trim());
     }
 }
