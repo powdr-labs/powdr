@@ -243,6 +243,14 @@ impl<T: FieldElement> Pipeline<T> {
         self.add_query_callback(Arc::new(serde_data_to_query_callback(channel, data)))
     }
 
+    pub fn add_data_vec<S: serde::Serialize + Send + Sync + 'static>(
+        self,
+        data: &[(u32, S)],
+    ) -> Self {
+        data.iter()
+            .fold(self, |pipeline, data| pipeline.add_data(data.0, &data.1))
+    }
+
     pub fn with_prover_inputs(self, inputs: Vec<T>) -> Self {
         self.add_query_callback(Arc::new(inputs_to_query_callback(inputs)))
     }
