@@ -116,7 +116,10 @@ let std::prover::eval: expr -> fe
 ```
 
 Evaluates a column (potentially with `'` applied) on the current row.
-This function can only be used for prover queries or hints.
+
+This function can only be used for prover queries or hints and it only
+works on columns (and "'"-ed-columns). This means you cannot use
+`std::prover::eval(x + 1)`.
 
 In the following example, the column `x` is evaluated in a prover
 hint that returns the square root of a number.
@@ -134,6 +137,20 @@ machine Sqrt {
 
 }}
 ```
+
+
+### Challenges
+
+```rust
+let std::prover::challenge: int, int -> expr
+```
+
+Constructs a challenge object, essentially asking the verifier for a random number.
+
+The first argument is the proof stage and the second is the identifier of the challenge.
+
+If you want two challanges to be different, you have to choose different IDs.
+
 
 ## Operators
 
