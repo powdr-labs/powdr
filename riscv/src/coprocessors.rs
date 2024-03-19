@@ -3,6 +3,8 @@ use std::{
     convert::TryFrom,
 };
 
+use powdr_number::{FieldElement, KnownField};
+
 type RuntimeFunctionImpl = (&'static str, fn() -> String);
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
@@ -120,14 +122,19 @@ impl TryFrom<Vec<&str>> for CoProcessors {
 
 impl CoProcessors {
     /// The base version only adds the commonly used bitwise and shift operations.
-    pub fn base() -> CoProcessors {
-        Self {
-            coprocessors: BTreeMap::from([
-                (BINARY_COPROCESSOR.name, &BINARY_COPROCESSOR),
-                (SHIFT_COPROCESSOR.name, &SHIFT_COPROCESSOR),
-                (INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR),
-            ]),
+    pub fn base<T: FieldElement>() -> CoProcessors {
+        let mut coprocessors = BTreeMap::from([
+            (BINARY_COPROCESSOR.name, &BINARY_COPROCESSOR),
+            (SHIFT_COPROCESSOR.name, &SHIFT_COPROCESSOR),
+            (INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR),
+        ]);
+
+        if matches!(T::known_field(), Some(KnownField::GoldilocksField)) {
+            // The mul instructions needs the split machine.
+            coprocessors.insert(SPLIT_GL_COPROCESSOR.name, &SPLIT_GL_COPROCESSOR);
         }
+
+        Self { coprocessors }
     }
 
     /// Poseidon also uses the Split machine.

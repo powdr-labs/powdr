@@ -11,9 +11,13 @@ repository = { workspace = true }
 powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
 
-halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2", tag = "v0.3.0", features = ["circuit-params"] }
+# TODO change this once Halo2 releases 0.3.1
+#halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2", tag = "v0.3.0", features = ["circuit-params"] }
+halo2_proofs = { git = "https://github.com/powdr-labs/halo2", branch = "make-emit-public-v0.3.0", features = ["circuit-params"] }
 halo2_curves = { version = "0.6.1", package = "halo2curves" }
-snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier", tag = "v2024_01_31" }
+# TODO change this once Halo2 releases 0.3.1 and snark-verifier uses it
+#snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier", tag = "v2024_01_31" }
+snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier", branch = "powdr-halo2" }
 
 num-traits = "0.2.15"
 num-integer = "0.1.45"

@@ -6,11 +6,11 @@ use itertools::Itertools;
 
 use powdr_ast::analyzed::{IdentityId, TypedExpression};
 use powdr_ast::parsed::asm::SymbolPath;
-use powdr_ast::parsed::types::{ArrayType, TypeScheme};
+use powdr_ast::parsed::types::{ArrayType, Type, TypeScheme};
 use powdr_ast::parsed::{
-    self, types::Type, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions,
+    self, visitor::Children, EnumDeclaration, EnumVariant, FunctionDefinition, PilStatement,
+    PolynomialName, SelectedExpressions,
 };
-use powdr_ast::parsed::{EnumDeclaration, EnumVariant};
 use powdr_ast::SourceRef;
 use powdr_number::{BigInt, DegreeType, GoldilocksField};
 
@@ -508,13 +508,15 @@ where
         // Replace all expressions by number literals.
         // Any expression inside a type name has to be an array length,
         // so we expect an integer that fits u64.
-        for e in n.expressions_mut() {
-            let v = self.evaluate_expression_to_int(e.clone())?;
-            let v_u64: u64 = v.clone().try_into().map_err(|_| {
-                EvalError::TypeError(format!("Number too large, expected u64, but got {v}"))
+        n.children_mut()
+            .try_for_each(|e: &mut parsed::Expression| {
+                let v = self.evaluate_expression_to_int(e.clone())?;
+                let v_u64: u64 = v.clone().try_into().map_err(|_| {
+                    EvalError::TypeError(format!("Number too large, expected u64, but got {v}"))
+                })?;
+                *e = parsed::Expression::Number(v_u64.into(), None);
+                Ok(())
             })?;
-            *e = parsed::Expression::Number(v_u64.into(), None);
-        }
         Ok(n.into())
     }
 
