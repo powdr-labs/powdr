@@ -476,13 +476,6 @@ fn run_command(command: Commands) {
             just_execute,
             continuations,
         } => {
-            let coprocessors = match coprocessors {
-                Some(list) => {
-                    powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>())
-                        .unwrap()
-                }
-                None => powdr_riscv::CoProcessors::base(),
-            };
             call_with_field!(run_rust::<field>(
                 &file,
                 split_inputs(&inputs),
@@ -518,13 +511,6 @@ fn run_command(command: Commands) {
                 Cow::Borrowed("output")
             };
 
-            let coprocessors = match coprocessors {
-                Some(list) => {
-                    powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>())
-                        .unwrap()
-                }
-                None => powdr_riscv::CoProcessors::base(),
-            };
             call_with_field!(run_riscv_asm::<field>(
                 &name,
                 files.into_iter(),
@@ -681,11 +667,17 @@ fn run_rust<F: FieldElement>(
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
-    coprocessors: powdr_riscv::CoProcessors,
+    coprocessors: Option<String>,
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let (asm_file_path, asm_contents) = compile_rust(
+    let coprocessors = match coprocessors {
+        Some(list) => {
+            powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+        }
+        None => powdr_riscv::CoProcessors::base::<F>(),
+    };
+    let (asm_file_path, asm_contents) = compile_rust::<F>(
         file_name,
         output_dir,
         force_overwrite,
@@ -724,11 +716,17 @@ fn run_riscv_asm<F: FieldElement>(
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
-    coprocessors: powdr_riscv::CoProcessors,
+    coprocessors: Option<String>,
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let (asm_file_path, asm_contents) = compile_riscv_asm(
+    let coprocessors = match coprocessors {
+        Some(list) => {
+            powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+        }
+        None => powdr_riscv::CoProcessors::base::<F>(),
+    };
+    let (asm_file_path, asm_contents) = compile_riscv_asm::<F>(
         original_file_name,
         file_names,
         output_dir,

@@ -13,6 +13,9 @@ pub enum IncompleteCause<K = usize> {
     BitUnconstrained(Vec<K>),
     /// Some bit constraints are overlapping. Example: `x + y == 0x3` with `x | 0x3` and `y | 0x3`
     OverlappingBitConstraints,
+    /// There are bit constraints, but they might over-flow the field.
+    /// Example: `some_field_element == 2**64 * x` with `x | 0x3` and a 64-bit field.
+    OverflowingBitConstraints,
     /// Multiple rows match a lookup query. Example: `{x, 1} in [{1, 1}, {2, 1}]`
     MultipleLookupMatches,
     /// A linear constraint does not have a unique solution. Example: `x + y == 0`
