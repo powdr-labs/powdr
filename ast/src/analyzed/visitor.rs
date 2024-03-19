@@ -1,5 +1,7 @@
 use crate::parsed::visitor::VisitOrder;
 
+use self::parsed::visitor::Children;
+
 use super::*;
 
 impl<T> ExpressionVisitable<AlgebraicExpression<T>> for AlgebraicExpression<T> {
@@ -50,33 +52,29 @@ impl<T> ExpressionVisitable<AlgebraicExpression<T>> for AlgebraicExpression<T> {
     }
 }
 
-impl<Expr: ExpressionVisitable<Expr>> ExpressionVisitable<Expr> for Identity<Expr> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expr) -> ControlFlow<B>,
-    {
-        self.left
-            .selector
-            .as_mut()
-            .into_iter()
-            .chain(self.left.expressions.iter_mut())
-            .chain(self.right.selector.as_mut())
-            .chain(self.right.expressions.iter_mut())
-            .try_for_each(move |item| item.visit_expressions_mut(f, o))
+impl<Expr> Children<Expr> for Identity<Expr> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expr> + '_> {
+        Box::new(
+            self.left
+                .selector
+                .as_mut()
+                .into_iter()
+                .chain(self.left.expressions.iter_mut())
+                .chain(self.right.selector.as_mut())
+                .chain(self.right.expressions.iter_mut()),
+        )
     }
 
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expr) -> ControlFlow<B>,
-    {
-        self.left
-            .selector
-            .as_ref()
-            .into_iter()
-            .chain(self.left.expressions.iter())
-            .chain(self.right.selector.iter())
-            .chain(self.right.expressions.iter())
-            .try_for_each(move |item| item.visit_expressions(f, o))
+    fn children(&self) -> Box<dyn Iterator<Item = &Expr> + '_> {
+        Box::new(
+            self.left
+                .selector
+                .as_ref()
+                .into_iter()
+                .chain(self.left.expressions.iter())
+                .chain(self.right.selector.iter())
+                .chain(self.right.expressions.iter()),
+        )
     }
 }
 
@@ -94,10 +92,10 @@ impl ExpressionVisitable<Expression> for FunctionValueDefinition {
                 .iter_mut()
                 .try_for_each(move |item| item.visit_expressions_mut(f, o)),
             FunctionValueDefinition::TypeDeclaration(enum_declaration) => enum_declaration
-                .expressions_mut()
+                .children_mut()
                 .try_for_each(move |item| item.visit_expressions_mut(f, o)),
             FunctionValueDefinition::TypeConstructor(_, variant) => variant
-                .expressions_mut()
+                .children_mut()
                 .try_for_each(move |item| item.visit_expressions_mut(f, o)),
         }
     }
@@ -115,10 +113,10 @@ impl ExpressionVisitable<Expression> for FunctionValueDefinition {
                 .iter()
                 .try_for_each(move |item| item.visit_expressions(f, o)),
             FunctionValueDefinition::TypeDeclaration(enum_declaration) => enum_declaration
-                .expressions()
+                .children()
                 .try_for_each(move |item| item.visit_expressions(f, o)),
             FunctionValueDefinition::TypeConstructor(_, variant) => variant
-                .expressions()
+                .children()
                 .try_for_each(move |item| item.visit_expressions(f, o)),
         }
     }

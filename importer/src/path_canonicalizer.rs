@@ -5,20 +5,17 @@ use std::{
     iter::once,
 };
 
-use powdr_ast::{
-    parsed::Expression,
-    parsed::{
-        asm::{
-            ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Instruction, InstructionBody,
-            LinkDeclaration, Machine, MachineStatement, Module, ModuleRef, ModuleStatement,
-            SymbolDefinition, SymbolValue, SymbolValueRef,
-        },
-        folder::Folder,
-        types::{Type, TypeScheme},
-        visitor::ExpressionVisitable,
-        ArrayLiteral, EnumDeclaration, EnumVariant, FunctionCall, IndexAccess, LambdaExpression,
-        MatchArm, PilStatement, TypedExpression,
+use powdr_ast::parsed::{
+    asm::{
+        ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Instruction, InstructionBody,
+        LinkDeclaration, Machine, MachineStatement, Module, ModuleRef, ModuleStatement,
+        SymbolDefinition, SymbolValue, SymbolValueRef,
     },
+    folder::Folder,
+    types::{Type, TypeScheme},
+    visitor::{Children, ExpressionVisitable},
+    ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall, IndexAccess,
+    LambdaExpression, MatchArm, PilStatement, TypedExpression,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -125,7 +122,7 @@ impl<'a> Folder for Canonicalizer<'a> {
                             canonicalize_inside_expression(expr, &self.path, self.paths);
                         }
                     } else {
-                        for e in statement.expressions_mut() {
+                        for e in statement.children_mut() {
                             canonicalize_inside_expression(e, &self.path, self.paths);
                         }
                     }
@@ -134,7 +131,7 @@ impl<'a> Folder for Canonicalizer<'a> {
                     // Only check free inputs inside statements for now.
                     for e in statements
                         .iter_mut()
-                        .flat_map(|s| s.expressions_mut())
+                        .flat_map(|s| s.children_mut())
                         .flat_map(free_inputs_in_expression_mut)
                     {
                         canonicalize_inside_expression(e, &self.path, self.paths);
@@ -251,7 +248,7 @@ fn canonicalize_inside_type(
         *p = abs.relative_to(&Default::default()).clone();
     }
 
-    for tne in ty.expressions_mut() {
+    for tne in ty.children_mut() {
         canonicalize_inside_expression(tne, path, paths);
     }
 }
@@ -498,14 +495,14 @@ fn check_machine(
             }
             MachineStatement::FunctionDeclaration(_, _, _, statements) => statements
                 .iter()
-                .flat_map(|s| s.expressions())
+                .flat_map(|s| s.children())
                 .flat_map(free_inputs_in_expression)
                 .try_for_each(|e| check_expression(&module_location, e, state, &local_variables))?,
             MachineStatement::Pil(_, statement) => {
                 if let PilStatement::LetStatement(_, _, Some(type_scheme), _) = statement {
                     check_type_scheme(&module_location, type_scheme, state, &local_variables)?;
                 }
-                statement.expressions().try_for_each(|e| {
+                statement.children().try_for_each(|e| {
                     check_expression(&module_location, e, state, &local_variables)
                 })?
             }
@@ -682,7 +679,7 @@ fn check_type(
         }
         check_path(location.clone().join(p.clone()), state)?
     }
-    ty.expressions()
+    ty.children()
         .try_for_each(|e| check_expression(location, e, state, local_variables))
 }
 

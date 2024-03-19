@@ -13,7 +13,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::SourceRef;
 
-use super::{EnumDeclaration, EnumVariant, Expression, PilStatement, TypedExpression};
+use super::{
+    visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, TypedExpression,
+};
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct ASMProgram {
@@ -530,8 +532,8 @@ pub enum FunctionStatement {
     Return(SourceRef, Vec<Expression>),
 }
 
-impl FunctionStatement {
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+impl Children<Expression> for FunctionStatement {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
             FunctionStatement::Assignment(_, _, _, e) => Box::new(once(e.as_ref())),
             FunctionStatement::Instruction(_, _, expressions)
@@ -541,7 +543,7 @@ impl FunctionStatement {
             }
         }
     }
-    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
             FunctionStatement::Assignment(_, _, _, e) => Box::new(once(e.as_mut())),
             FunctionStatement::Instruction(_, _, expressions)
