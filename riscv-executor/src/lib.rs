@@ -979,6 +979,7 @@ pub enum ExecMode {
 /// converted to i64, so it is important to the execution itself.
 pub fn execute<F: FieldElement>(
     asm_source: &str,
+    initial_memory: MemoryState,
     inputs: &Callback<F>,
     bootloader_inputs: &[Elem<F>],
     mode: ExecMode,
@@ -993,7 +994,7 @@ pub fn execute<F: FieldElement>(
     log::info!("Executing...");
     execute_ast(
         &analyzed,
-        MemoryState::new(),
+        initial_memory,
         inputs,
         bootloader_inputs,
         usize::MAX,
