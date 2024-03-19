@@ -816,6 +816,7 @@ fn run<F: FieldElement>(
             let program = pipeline.compute_asm_string().unwrap().clone();
             powdr_riscv_executor::execute::<F>(
                 &program.1,
+                powdr_riscv_executor::MemoryState::new(),
                 pipeline.data_callback().unwrap(),
                 &[],
                 powdr_riscv_executor::ExecMode::Fast,
