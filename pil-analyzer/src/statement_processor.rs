@@ -5,11 +5,13 @@ use std::str::FromStr;
 use itertools::Itertools;
 
 use powdr_ast::analyzed::{IdentityId, TypedExpression};
-use powdr_ast::parsed::asm::SymbolPath;
-use powdr_ast::parsed::types::{ArrayType, Type, TypeScheme};
 use powdr_ast::parsed::{
-    self, visitor::Children, EnumDeclaration, EnumVariant, FunctionDefinition, PilStatement,
-    PolynomialName, SelectedExpressions,
+    self,
+    asm::SymbolPath,
+    types::{ArrayType, Type, TypeScheme},
+    visitor::Children,
+    EnumDeclaration, EnumVariant, FunctionDefinition, PilStatement, PolynomialName,
+    SelectedExpressions,
 };
 use powdr_ast::SourceRef;
 use powdr_number::{BigInt, DegreeType, GoldilocksField};
