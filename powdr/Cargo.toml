@@ -8,10 +8,12 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
+powdr-ast = { path = "../ast" }
 powdr-backend = { path = "../backend" }
 powdr-executor = { path = "../executor" }
 powdr-number = { path = "../number" }
 powdr-pipeline = { path = "../pipeline" }
+powdr-pil-analyzer = { path = "../pil-analyzer" }
 powdr-riscv = { path = "../riscv" }
 powdr-riscv-executor = { path = "../riscv-executor" }
 
