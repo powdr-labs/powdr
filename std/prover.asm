@@ -14,3 +14,7 @@ enum Query {
     /// Query a prover input element by index and data id.
     DataIdentifier(int, int)
 }
+
+/// Constructs a challenge object.
+/// The arguments are the proof stage and the id of the challenge, in this order.
+let challenge: int, int -> expr = [];

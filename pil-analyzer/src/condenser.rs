@@ -109,7 +109,6 @@ pub fn condense<T: FieldElement>(
 pub struct Condenser<T> {
     /// All the definitions from the PIL file.
     pub symbols: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub next_challenge_id: u64,
     _phantom: std::marker::PhantomData<T>,
 }
 
@@ -117,7 +116,6 @@ impl<T: FieldElement> Condenser<T> {
     pub fn new(symbols: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
         Self {
             symbols,
-            next_challenge_id: 0,
             _phantom: Default::default(),
         }
     }

@@ -274,7 +274,7 @@ pub enum BuiltinFunction {
     ToInt,
     /// std::convert::fe: int/fe -> fe, converts int to fe
     ToFe,
-    /// std::prover::challenge: int -> expr, returns a new challenge at the given stage
+    /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
     Eval,
@@ -822,8 +822,6 @@ mod internal {
                 let Value::Integer(id) = (**index).clone() else {
                     panic!()
                 };
-                // TODO is there a way to do this by just a "well-known" struct type?
-                // It would need to convert to `expr` for it to work.
                 Value::Expression(AlgebraicExpression::Challenge(Challenge {
                     id: u64::try_from(id).unwrap(),
                     stage: u32::try_from(stage).unwrap(),
