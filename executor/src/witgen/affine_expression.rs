@@ -234,10 +234,13 @@ where
         }
     }
 
+    /// Solves equations of the form `dividend = divisor * quotient + remainder`
+    /// where `dividend` and `divisor` are known and `remainder` is range-constrained to be smaller than `divisor`.
     fn try_solve_division(
         &self,
         known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> Option<EvalResult<T, K>> {
+        // Detect pattern: `dividend = divisor * quotient + remainder`
         let (first, second, offset) = match self {
             AffineExpression::ManyVars(coefficients, offset) => {
                 let [first, second] = &coefficients[..] else {
@@ -257,11 +260,10 @@ where
         } else {
             (-*offset, first.1, first.0, second.0)
         };
-        // Now we have: dividend = remainder + divisor * quotient
-        let (remainder_lower, remainder_upper) =
-            known_constraints.range_constraint(remainder)?.range();
 
         // Check that remainder is in [0, divisor - 1].
+        let (remainder_lower, remainder_upper) =
+            known_constraints.range_constraint(remainder)?.range();
         if remainder_lower > remainder_upper || remainder_upper >= divisor {
             return None;
         }
@@ -380,6 +382,12 @@ where
                 ),
             )]));
             offset &= !mask;
+        }
+
+        if covered_bits >= T::modulus() {
+            return Ok(EvalValue::incomplete(
+                IncompleteCause::OverflowingBitConstraints,
+            ));
         }
 
         if !offset.is_zero() {
