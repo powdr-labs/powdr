@@ -4,7 +4,7 @@ use powdr_ast::{
     parsed::types::{ArrayType, Type, TypeScheme},
     parsed::{BinaryOperator, UnaryOperator},
 };
-use powdr_parser::{parse_type, parse_type_var_bounds};
+use powdr_parser::parse_type_scheme;
 
 use lazy_static::lazy_static;
 
@@ -39,20 +39,13 @@ lazy_static! {
         ("std::convert::expr", ("T: FromLiteral", "T -> expr")),
         ("std::convert::fe", ("T: FromLiteral", "T -> fe")),
         ("std::convert::int", ("T: FromLiteral", "T -> int")),
+        ("std::convert::expr", ("T: FromLiteral", "T -> expr")),
         ("std::debug::print", ("", "string -> constr[]")),
         ("std::field::modulus", ("", "-> int")),
         ("std::prover::eval", ("", "expr -> fe")),
     ]
     .into_iter()
-    .map(|(name, (vars, ty))| {
-        (
-            name.to_string(),
-            TypeScheme {
-                vars: parse_type_var_bounds(vars).unwrap(),
-                ty: parse_type(ty).unwrap().into(),
-            },
-        )
-    })
+    .map(|(name, (vars, ty))| { (name.to_string(), parse_type_scheme(vars, ty)) })
     .collect();
     static ref BINARY_OPERATOR_SCHEMES: HashMap<BinaryOperator, TypeScheme> = [
         (BinaryOperator::Add, ("T: Add", "T, T -> T")),
@@ -77,15 +70,7 @@ lazy_static! {
         (BinaryOperator::LogicalAnd, ("", "bool, bool -> bool")),
     ]
     .into_iter()
-    .map(|(op, (vars, ty))| {
-        (
-            op,
-            TypeScheme {
-                vars: parse_type_var_bounds(vars).unwrap(),
-                ty: parse_type(ty).unwrap().into(),
-            },
-        )
-    })
+    .map(|(op, (vars, ty))| { (op, parse_type_scheme(vars, ty)) })
     .collect();
     static ref UNARY_OPERATOR_SCHEMES: HashMap<UnaryOperator, TypeScheme> = [
         (UnaryOperator::Minus, ("T: Neg", "T -> T")),
@@ -93,13 +78,7 @@ lazy_static! {
         (UnaryOperator::Next, ("", "expr -> expr")),
     ]
     .into_iter()
-    .map(|(op, (vars, ty))| (
-        op,
-        TypeScheme {
-            vars: parse_type_var_bounds(vars).unwrap(),
-            ty: parse_type(ty).unwrap().into(),
-        }
-    ))
+    .map(|(op, (vars, ty))| (op, parse_type_scheme(vars, ty)))
     .collect();
 }
 
@@ -156,6 +135,6 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
         Type::Array(_) => &["Add"],
         Type::Tuple(_) => &[],
         Type::Function(_) => &[],
-        Type::TypeVar(_) => unreachable!(),
+        Type::TypeVar(_) | Type::NamedType(_) => unreachable!(),
     }
 }

@@ -8,7 +8,7 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [features]
-halo2 = ["dep:powdr-halo2", "powdr-backend/halo2"]
+halo2 = ["powdr-backend/halo2"]
 
 [dependencies]
 powdr-airgen = { path = "../airgen" }
@@ -18,7 +18,6 @@ powdr-asm-utils = { path = "../asm-utils" }
 powdr-ast = { path = "../ast" }
 powdr-backend = { path = "../backend" }
 powdr-executor = { path = "../executor" }
-powdr-halo2 = { path = "../halo2", optional = true }
 powdr-importer = { path = "../importer" }
 powdr-linker = { path = "../linker" }
 powdr-number = { path = "../number" }

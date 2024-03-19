@@ -12,6 +12,7 @@ The powdr-pil language has the following types:
 - `expr` (expression)
 - `constr` (constraint)
 - `!` ("bottom" or "unreachable" type)
+- enum types
 
 > The `col` type is special in that it is only used for declaring columns, but cannot appear as the type of an expression.
 > See [Declaring and Referencing Columns](#declaring-and-referencing-columns) for details.
@@ -288,3 +289,33 @@ Type name: `!`
 The bottom type essentially is the return type of a function that never returns, which currently only happens
 if you call the `panic` function. The bottom type is compatible with any other type, which means
 that you can call the `panic` function in any context.
+
+### Enum Types
+
+Enums are user-defined types that can hold different named alternatives plus data. An enum type has a (namespaced) name
+that uniquely identifies it and is also used to reference the type.
+
+Enums are declared in the following way:
+
+```rust
+enum EnumName {
+    Variant1,
+    Variant2(),
+    Variant3(int),
+    Variant4(int, int[], EnumName),
+}
+```
+
+The variants must have unique names inside the enum and they can optionally take additional data.
+Each variant declares a type constructor function that can be used to create a value of the enum:
+
+```rust
+let a = EnumName::Variant1;
+let b = EnumName::Variant2();
+let c = EnumName::Variant3(3);
+let d = EnumName::Variant4(1, [2, 3], EnumName::Variant1);
+```
+
+Recursive enums are allowed.
+
+Enums do not allow any operators.

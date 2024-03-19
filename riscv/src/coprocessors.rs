@@ -59,7 +59,7 @@ static POSEIDON_GL_COPROCESSOR: CoProcessor = CoProcessor {
     import: "use std::hash::poseidon_gl::PoseidonGL;",
     instructions: r#"
 // ================== hashing instructions ==============
-instr poseidon_gl = poseidon_gl.poseidon_permutation P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11 -> P0, P1, P2, P3;
+instr poseidon_gl = poseidon_gl.poseidon_permutation P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11 -> P0', P1', P2', P3';
 
 "#,
     runtime_function_impl: Some(("poseidon_gl_coprocessor", poseidon_gl_call)),
@@ -252,7 +252,7 @@ fn poseidon_gl_call() -> String {
 }
 
 fn prover_input_call() -> String {
-    "x10 <=X= ${ (\"data_identifier\", x11, x10) };".to_string()
+    "x10 <=X= ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(x11)), std::convert::int(std::prover::eval(x10))) };".to_string()
 }
 
 // This could also potentially go in the impl of CoProcessors,

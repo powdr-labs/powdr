@@ -7,8 +7,8 @@ machine Main {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
-    reg Z[<=];
     reg A;
+    reg Z[<=]; // we declare this assignment register last to test that the ordering does not matter
 
     instr add X, Y -> Z = arith.add;
     instr mul X, Y -> Z = arith.mul;

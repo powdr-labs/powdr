@@ -27,7 +27,7 @@ use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
     inputs_to_query_callback, serde_data_to_query_callback,
-    util::{read_poly_set, write_or_panic, FixedPolySet, WitnessPolySet},
+    util::{try_read_poly_set, write_or_panic, FixedPolySet, WitnessPolySet},
 };
 
 type Columns<T> = Vec<(String, Vec<T>)>;
@@ -243,6 +243,14 @@ impl<T: FieldElement> Pipeline<T> {
         self.add_query_callback(Arc::new(serde_data_to_query_callback(channel, data)))
     }
 
+    pub fn add_data_vec<S: serde::Serialize + Send + Sync + 'static>(
+        self,
+        data: &[(u32, S)],
+    ) -> Self {
+        data.iter()
+            .fold(self, |pipeline, data| pipeline.add_data(data.0, &data.1))
+    }
+
     pub fn with_prover_inputs(self, inputs: Vec<T>) -> Self {
         self.add_query_callback(Arc::new(inputs_to_query_callback(inputs)))
     }
@@ -361,11 +369,14 @@ impl<T: FieldElement> Pipeline<T> {
 
     /// Reads previously generated fixed columns from the provided directory.
     pub fn read_constants(mut self, directory: &Path) -> Self {
-        let name = self.name().to_string();
         let pil = self.compute_optimized_pil().unwrap();
-        let (fixed, degree_fixed) = read_poly_set::<FixedPolySet, T>(&pil, directory, &name);
 
-        assert_eq!(pil.degree.unwrap(), degree_fixed);
+        let fixed = try_read_poly_set::<FixedPolySet, T>(&pil, directory, self.name())
+            .map(|(fixed, degree_fixed)| {
+                assert_eq!(pil.degree.unwrap(), degree_fixed);
+                fixed
+            })
+            .unwrap_or_default();
 
         Pipeline {
             artifact: Artifacts {
@@ -378,11 +389,14 @@ impl<T: FieldElement> Pipeline<T> {
 
     /// Reads a previously generated witness from the provided directory.
     pub fn read_witness(mut self, directory: &Path) -> Self {
-        let name = self.name().to_string();
         let pil = self.compute_optimized_pil().unwrap();
-        let (witness, degree_witness) = read_poly_set::<WitnessPolySet, T>(&pil, directory, &name);
 
-        assert_eq!(pil.degree.unwrap(), degree_witness);
+        let witness = try_read_poly_set::<WitnessPolySet, T>(&pil, directory, self.name())
+            .map(|(witness, degree_witness)| {
+                assert_eq!(pil.degree.unwrap(), degree_witness);
+                witness
+            })
+            .unwrap_or_default();
 
         Pipeline {
             artifact: Artifacts {
@@ -875,6 +889,7 @@ impl<T: FieldElement> Pipeline<T> {
             }
             _ => panic!(),
         };
+
         drop(backend);
 
         self.maybe_write_proof(&proof)?;
@@ -945,11 +960,11 @@ impl<T: FieldElement> Pipeline<T> {
             .expect("backend must be set before generating verification key!");
         let factory = backend.factory::<T>();
 
-        let mut setup_file = if let Some(path) = &self.arguments.setup_file {
-            BufReader::new(fs::File::open(path).unwrap())
-        } else {
-            panic!("Setup should have been provided for verification")
-        };
+        let mut setup_file = self
+            .arguments
+            .setup_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
 
         let mut vkey_file = if let Some(ref path) = self.arguments.vkey_file {
             BufReader::new(fs::File::open(path).unwrap())
@@ -965,7 +980,9 @@ impl<T: FieldElement> Pipeline<T> {
                 pil.borrow(),
                 &fixed_cols[..],
                 self.output_dir(),
-                Some(&mut setup_file),
+                setup_file
+                    .as_mut()
+                    .map(|file| file as &mut dyn std::io::Read),
                 Some(&mut vkey_file),
             )
             .unwrap();

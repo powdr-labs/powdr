@@ -1,7 +1,7 @@
 # Links
 
 Links enable a constrained machine to call into another machine.
-They are defined by a boolean flag and a mapping from local machine columns to the operation and its parameters (inputs and outputs):
+They are defined by a boolean flag and a call to the operation, where inputs and outputs are expressions.
 ```
 {{#include ../../../test_data/asm/book/operations_and_links.asm:links}}
 ```

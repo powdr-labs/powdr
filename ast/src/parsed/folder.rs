@@ -3,8 +3,8 @@ use super::{
         ASMModule, ASMProgram, Import, Machine, Module, ModuleStatement, SymbolDefinition,
         SymbolValue,
     },
-    ArrayLiteral, Expression, FunctionCall, IfExpression, IndexAccess, LambdaExpression, MatchArm,
-    MatchPattern,
+    ArrayLiteral, EnumDeclaration, Expression, FunctionCall, IfExpression, IndexAccess,
+    LambdaExpression, MatchArm, MatchPattern,
 };
 
 pub trait Folder {
@@ -30,6 +30,9 @@ pub trait Folder {
                         // is a different trait.
                         Ok(SymbolValue::Expression(e))
                     }
+                    SymbolValue::TypeDeclaration(ty) => {
+                        self.fold_type_declaration(ty).map(From::from)
+                    }
                 }
                 .map(|value| ModuleStatement::SymbolDefinition(SymbolDefinition { value, ..d })),
             })
@@ -51,6 +54,13 @@ pub trait Folder {
 
     fn fold_import(&mut self, import: Import) -> Result<Import, Self::Error> {
         Ok(import)
+    }
+
+    fn fold_type_declaration(
+        &mut self,
+        ty: EnumDeclaration<Expression>,
+    ) -> Result<EnumDeclaration<Expression>, Self::Error> {
+        Ok(ty)
     }
 }
 

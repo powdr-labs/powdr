@@ -11,19 +11,25 @@ pub mod verify;
 
 pub use pipeline::Pipeline;
 
-use itertools::Itertools;
 pub use powdr_backend::{BackendType, Proof};
 use powdr_executor::witgen::QueryCallback;
 
 use powdr_number::FieldElement;
 
-pub fn parse_query(query: &str) -> Result<Vec<&str>, String> {
-    // We are expecting a tuple
-    let query = query
-        .strip_prefix('(')
-        .and_then(|q| q.strip_suffix(')'))
-        .ok_or_else(|| "Prover query has to be a tuple".to_string())?;
-    Ok(query.split(',').map(|s| s.trim()).collect::<Vec<_>>())
+// TODO at some point, we could also just pass evaluator::Values around - would be much faster.
+pub fn parse_query(query: &str) -> Result<(&str, Vec<&str>), String> {
+    // We are expecting an enum value
+    if let Some(paren) = query.find('(') {
+        let name = &query[..paren];
+        let data = query[paren + 1..].strip_suffix(')').ok_or_else(|| {
+            format!(
+                "Error parsing query input \"{query}\". Could not find closing ')' in enum data."
+            )
+        })?;
+        Ok((name, data.split(',').map(|s| s.trim()).collect::<Vec<_>>()))
+    } else {
+        Ok((query, vec![]))
+    }
 }
 
 pub fn access_element<T: FieldElement>(
@@ -46,15 +52,18 @@ pub fn access_element<T: FieldElement>(
     }
 }
 
-#[allow(clippy::print_stdout)]
 pub fn serde_data_to_query_callback<T: FieldElement, S: serde::Serialize + Send + Sync>(
     channel: u32,
     data: &S,
 ) -> impl QueryCallback<T> {
     let bytes = serde_cbor::to_vec(&data).unwrap();
     move |query: &str| -> Result<Option<T>, String> {
-        match &parse_query(query)?[..] {
-            ["\"data_identifier\"", index, cb_channel] => {
+        let (id, data) = parse_query(query)?;
+        match id {
+            "DataIdentifier" => {
+                let [index, cb_channel] = data[..] else {
+                    panic!()
+                };
                 let cb_channel = cb_channel
                     .parse::<u32>()
                     .map_err(|e| format!("Error parsing callback data channel: {e})"))?;
@@ -73,33 +82,48 @@ pub fn serde_data_to_query_callback<T: FieldElement, S: serde::Serialize + Send 
                     index => (bytes[index - 1] as u64).into(),
                 }))
             }
-            k => Err(format!("Unsupported query: {}", k.iter().format(", "))),
+            _ => handle_simple_queries(id, &data, query),
+        }
+    }
+}
+
+pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCallback<T> {
+    move |query: &str| -> Result<Option<T>, String> {
+        // TODO In the future, when match statements need to be exhaustive,
+        // this function should answer None by Ok(None).
+
+        let (id, data) = parse_query(query)?;
+        match id {
+            "Input" => {
+                assert_eq!(data.len(), 1);
+                access_element("prover inputs", &inputs, data[0])
+            }
+            _ => handle_simple_queries(id, &data, query),
         }
     }
 }
 
 #[allow(clippy::print_stdout)]
-pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCallback<T> {
-    move |query: &str| -> Result<Option<T>, String> {
-        // TODO In the future, when match statements need to be exhaustive,
-        // This function probably gets an Option as argument and it should
-        // answer None by Ok(None).
-
-        match &parse_query(query)?[..] {
-            ["\"input\"", index] => access_element("prover inputs", &inputs, index),
-            ["\"print_char\"", ch] => {
-                print!(
-                    "{}",
-                    ch.parse::<u8>()
-                        .map_err(|e| format!("Invalid char to print: {e}"))?
-                        as char
-                );
-                // We do not answer None because we don't want this function to be
-                // called again.
-                Ok(Some(0.into()))
-            }
-            ["\"hint\"", value] => Ok(Some(T::from_str(value).unwrap())),
-            k => Err(format!("Unsupported query: {}", k.iter().format(", "))),
+fn handle_simple_queries<T: FieldElement>(
+    id: &str,
+    data: &[&str],
+    query: &str,
+) -> Result<Option<T>, String> {
+    match id {
+        "PrintChar" => {
+            assert_eq!(data.len(), 1);
+            print!(
+                "{}",
+                data[0]
+                    .parse::<u8>()
+                    .map_err(|e| format!("Invalid char to print: {e}"))? as char
+            );
+            Ok(Some(0.into()))
         }
+        "Hint" => {
+            assert_eq!(data.len(), 1);
+            Ok(Some(T::from_str(data[0]).unwrap()))
+        }
+        _ => Err(format!("Unsupported query: {query}")),
     }
 }

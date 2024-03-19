@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use powdr_number::BigUint;
 
 use crate::parsed::{
-    asm::{AbsoluteSymbolPath, Params},
-    Expression, PilStatement, TypedExpression,
+    asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
+    EnumDeclaration, Expression, PilStatement, TypedExpression,
 };
 
 mod display;
@@ -32,7 +32,13 @@ pub struct PILGraph {
     pub main: Machine,
     pub entry_points: Vec<Operation>,
     pub objects: BTreeMap<Location, Object>,
-    pub definitions: BTreeMap<AbsoluteSymbolPath, TypedExpression>,
+    pub definitions: BTreeMap<AbsoluteSymbolPath, TypeOrExpression>,
+}
+
+#[derive(Clone)]
+pub enum TypeOrExpression {
+    Type(EnumDeclaration<Expression>),
+    Expression(TypedExpression),
 }
 
 #[derive(Default, Clone)]
@@ -63,7 +69,7 @@ pub struct Link {
 #[derive(Clone)]
 pub struct LinkFrom {
     pub flag: Expression,
-    pub params: Params,
+    pub params: CallableParams,
 }
 
 #[derive(Clone)]
@@ -91,5 +97,5 @@ pub struct Operation {
     /// the value of the operation id of this machine which activates this operation
     pub id: Option<BigUint>,
     /// the parameters
-    pub params: Params,
+    pub params: OperationParams,
 }

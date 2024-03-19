@@ -52,6 +52,7 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     match function.as_ref() {
         Value::BuiltinFunction(b) => internal::evaluate_builtin_function(*b, arguments, symbols),
+        Value::TypeConstructor(name) => Ok(Value::Enum(name, Some(arguments)).into()),
         Value::Closure(Closure {
             lambda,
             environment,
@@ -156,6 +157,8 @@ pub enum Value<'a, T> {
     Tuple(Vec<Arc<Self>>),
     Array(Vec<Arc<Self>>),
     Closure(Closure<'a, T>),
+    TypeConstructor(&'a str),
+    Enum(&'a str, Option<Vec<Arc<Self>>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
     Identity(AlgebraicExpression<T>, AlgebraicExpression<T>),
@@ -232,6 +235,8 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 )
             }
             Value::Closure(c) => c.type_formatted(),
+            Value::TypeConstructor(name) => format!("{name}_constructor"),
+            Value::Enum(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
             Value::Identity(_, _) => "constr".to_string(),
@@ -282,6 +287,14 @@ impl<'a, T: Display> Display for Value<'a, T> {
             Value::Tuple(items) => write!(f, "({})", items.iter().format(", ")),
             Value::Array(elements) => write!(f, "[{}]", elements.iter().format(", ")),
             Value::Closure(closure) => write!(f, "{closure}"),
+            Value::TypeConstructor(name) => write!(f, "{name}_constructor"),
+            Value::Enum(name, data) => {
+                write!(f, "{name}")?;
+                if let Some(data) = data {
+                    write!(f, "({})", data.iter().format(", "))?;
+                }
+                Ok(())
+            }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
             Value::Identity(left, right) => write!(f, "{left} = {right}"),
@@ -335,6 +348,7 @@ impl<'a> Definitions<'a> {
         symbols: &impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = name.to_string();
+
         let (symbol, value) = &self
             .0
             .get(&name)
@@ -370,6 +384,13 @@ impl<'a> Definitions<'a> {
                 })) => {
                     let generic_args = generic_arg_mapping(type_scheme, generic_args);
                     evaluate_generic(value, &generic_args, symbols)?
+                }
+                Some(FunctionValueDefinition::TypeConstructor(_type_name, variant)) => {
+                    if variant.fields.is_none() {
+                        Value::Enum(&variant.name, None).into()
+                    } else {
+                        Value::TypeConstructor(&variant.name).into()
+                    }
                 }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),

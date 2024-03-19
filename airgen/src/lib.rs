@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use powdr_ast::{
     asm_analysis::{AnalysisASMFile, Item, LinkDefinitionStatement, SubmachineDeclaration},
-    object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph},
+    object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph, TypeOrExpression},
     parsed::{
         asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef},
         PilStatement,
@@ -87,12 +87,10 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     let definitions = input
         .items
         .into_iter()
-        .filter_map(|(n, v)| {
-            if let Item::Expression(e) = v {
-                Some((n, e))
-            } else {
-                None
-            }
+        .filter_map(|(n, v)| match v {
+            Item::Expression(e) => Some((n, TypeOrExpression::Expression(e))),
+            Item::TypeDeclaration(type_decl) => Some((n, TypeOrExpression::Type(type_decl))),
+            _ => None,
         })
         .collect();
 

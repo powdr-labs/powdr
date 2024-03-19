@@ -2,9 +2,9 @@ use std::{iter::once, ops::ControlFlow};
 
 use super::{
     types::{ArrayType, FunctionType, TupleType, Type},
-    ArrayExpression, ArrayLiteral, Expression, FunctionCall, FunctionDefinition, IfExpression,
-    IndexAccess, LambdaExpression, MatchArm, MatchPattern, NamespacedPolynomialReference,
-    PilStatement, SelectedExpressions,
+    ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall,
+    FunctionDefinition, IfExpression, IndexAccess, LambdaExpression, MatchArm, MatchPattern,
+    NamespacedPolynomialReference, PilStatement, SelectedExpressions,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -228,6 +228,8 @@ impl ExpressionVisitable<Expression<NamespacedPolynomialReference>> for PilState
             PilStatement::PolynomialCommitDeclaration(_, _, None)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _) => ControlFlow::Continue(()),
+
+            PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.visit_expressions_mut(f, o),
         }
     }
 
@@ -272,6 +274,7 @@ impl ExpressionVisitable<Expression<NamespacedPolynomialReference>> for PilState
             PilStatement::PolynomialCommitDeclaration(_, _, None)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _) => ControlFlow::Continue(()),
+            PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.visit_expressions(f, o),
         }
     }
 }
@@ -310,6 +313,9 @@ impl ExpressionVisitable<Expression> for FunctionDefinition {
                 e.visit_expressions_mut(f, o)
             }
             FunctionDefinition::Array(ae) => ae.visit_expressions_mut(f, o),
+            FunctionDefinition::TypeDeclaration(enum_declaration) => {
+                enum_declaration.visit_expressions_mut(f, o)
+            }
         }
     }
 
@@ -322,7 +328,52 @@ impl ExpressionVisitable<Expression> for FunctionDefinition {
                 e.visit_expressions(f, o)
             }
             FunctionDefinition::Array(ae) => ae.visit_expressions(f, o),
+            FunctionDefinition::TypeDeclaration(enum_declaration) => {
+                enum_declaration.visit_expressions(f, o)
+            }
         }
+    }
+}
+
+impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for EnumDeclaration<E> {
+    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
+    where
+        F: FnMut(&mut E) -> ControlFlow<B>,
+    {
+        self.variants
+            .iter_mut()
+            .try_for_each(|v| v.visit_expressions_mut(f, o))
+    }
+
+    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
+    where
+        F: FnMut(&E) -> ControlFlow<B>,
+    {
+        self.variants
+            .iter()
+            .try_for_each(|v| v.visit_expressions(f, o))
+    }
+}
+
+impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for EnumVariant<E> {
+    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
+    where
+        F: FnMut(&mut E) -> ControlFlow<B>,
+    {
+        self.fields
+            .iter_mut()
+            .flat_map(|e| e.iter_mut())
+            .try_for_each(|ty| ty.visit_expressions_mut(f, o))
+    }
+
+    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
+    where
+        F: FnMut(&E) -> ControlFlow<B>,
+    {
+        self.fields
+            .iter()
+            .flat_map(|f| f.iter())
+            .try_for_each(|ty| ty.visit_expressions(f, o))
     }
 }
 

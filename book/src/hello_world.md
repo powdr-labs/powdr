@@ -76,4 +76,4 @@ The proof can be verified by anyone via:
 powdr verify hello_world.asm --field bn254 --backend halo2 --vkey "vkey.bin" --params "params.bin" --proof "hello_world_proof.bin"
 ```
 
-> Note that CLI proof verification is only supported for Halo2. CLI eSTARK proof verification is under development.
+> Note that CLI proof verification works analogously for eSTARK, without the setup step and using the Goldilocks field instead of Bn254.

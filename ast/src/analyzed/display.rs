@@ -10,6 +10,8 @@ use std::{
 
 use itertools::Itertools;
 
+use crate::write_indented_by;
+
 use self::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
     display::format_type_scheme_around_name,
@@ -40,6 +42,13 @@ impl<T: Display> Display for Analyzed<T> {
             match statement {
                 StatementIdentifier::Definition(name) => {
                     if let Some((symbol, definition)) = self.definitions.get(name) {
+                        if matches!(
+                            definition,
+                            Some(FunctionValueDefinition::TypeConstructor(_, _))
+                        ) {
+                            // These are printed as part of the enum.
+                            continue;
+                        }
                         let (name, is_local) = update_namespace(name, f)?;
                         match symbol.kind {
                             SymbolKind::Poly(poly_type) => {
@@ -101,6 +110,12 @@ impl<T: Display> Display for Analyzed<T> {
                                         "    let{} = {e};",
                                         format_type_scheme_around_name(&name, type_scheme)
                                     )?;
+                                }
+                                Some(FunctionValueDefinition::TypeDeclaration(
+                                    enum_declaration,
+                                )) => {
+                                    write_indented_by(f, enum_declaration, 1)?;
+                                    writeln!(f)?;
                                 }
                                 _ => {
                                     unreachable!("Invalid definition for symbol: {}", name)
@@ -167,6 +182,10 @@ impl Display for FunctionValueDefinition {
             }) => {
                 assert!(ts.vars.is_empty(), "Should not have called this display function, since we cannot properly format the type vars.");
                 write!(f, ": {} = {e}", ts.ty)
+            }
+            FunctionValueDefinition::TypeDeclaration(_)
+            | FunctionValueDefinition::TypeConstructor(_, _) => {
+                panic!("Should not use this formatting function.")
             }
         }
     }

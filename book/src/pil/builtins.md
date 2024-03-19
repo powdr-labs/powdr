@@ -66,6 +66,16 @@ It converts a field element to an integer.
 
 If the argument is already an integer, it is returned without modification.
 
+```rust
+let<T: FromLiteral> std::convert::expr: T -> expr
+```
+
+This function is meant to be used on `int`, but also works on `fe` and `expr` for convenience.
+
+It converts an integer to an expr.
+
+If the argument is already an expr, it is returned without modification.
+
 ### Printing
 
 ```rust
@@ -118,7 +128,7 @@ machine Sqrt {
     };
 
     col witness x;
-    col witness y(i) query ("hint", sqrt_hint(std::prover::eval(x)));
+    col witness y(i) query std::prover::Query::Hint(sqrt_hint(std::prover::eval(x)));
 
     y * y = x;
 

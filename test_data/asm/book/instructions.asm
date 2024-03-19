@@ -40,11 +40,17 @@ machine Main {
     instr add X, Y -> Z = submachine.add; // - trivial usage, equivalent to:
                                           //   instr add X, Y -> Z = submachine.add X, Y -> Z;
 // ANCHOR_END: trivial
-    instr add_to_A X, Y = submachine.add X, Y -> A; // - output to a regular register
+    instr add_to_A X, Y = submachine.add X, Y -> A';// - output to a regular register
     instr addAB -> X = submachine.add A, B -> X;    // - inputs from regular registers
-    instr addAB_to_C = submachine.add A, B -> C;    // - all inputs and output are regular registers
-    instr addAB_to_A = submachine.add A, B -> A;    // - reusing an input register as output
-    instr sub X, Y -> Z = submachine.add Y, Z -> X; // - find input for a given output (doesn't always work!)
+    instr addAB_to_C = submachine.add A, B -> C';   // - inputs and output from regular registers
+    instr addAB_to_A = submachine.add A, B -> A';   // - reusing an input register as output
+    instr sub X, Y -> Z = submachine.add Y, Z -> X; // - swapping input/output
+    // any expression can be used in the external call
+    instr add5 X -> Z = submachine.add X, 3+2 -> Z; // - literal expression as argument
+    col fixed STEP(i) { i };
+    instr add_current_time_step X -> Z = submachine.add X, STEP -> Z;// - columns can be referenced
+    let arr = [1,2,3,4,5];                          // - functions can be used
+    instr add_arr_sum X -> Z = submachine.add X, std::array::sum(arr) -> Z;
 
     instr assert_eq X, Y { X = Y }
 
@@ -69,6 +75,16 @@ machine Main {
         B <=X= 44;
         addAB_to_A;
         assert_eq A, 77;
+
+        A <== add5(2);
+        assert_eq A, 7;
+        A <== add_arr_sum(3);
+        assert_eq A, 18;
+
+        // Note that the result of this operation depends on when it executed
+        A <== add_current_time_step(42);
+        B <== add_current_time_step(42);
+        assert_eq B - A, 1;
 
         return;
     }

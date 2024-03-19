@@ -67,7 +67,7 @@ impl<T: FieldElement> From<Analyzed<T>> for AnalyzedWrapper<T> {
 }
 
 #[derive(Clone)]
-pub(crate) struct PowdrCircuit<'a, T: FieldElement> {
+pub(crate) struct PowdrCircuit<'a, T> {
     /// The analyzed PIL
     analyzed: &'a Analyzed<T>,
     /// The value of the fixed columns

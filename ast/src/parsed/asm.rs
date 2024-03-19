@@ -8,10 +8,12 @@ use itertools::Itertools;
 use powdr_number::BigUint;
 
 use derive_more::From;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::SourceRef;
 
-use super::{Expression, PilStatement, TypedExpression};
+use super::{EnumDeclaration, EnumVariant, Expression, PilStatement, TypedExpression};
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct ASMProgram {
@@ -52,6 +54,8 @@ pub enum SymbolValue {
     Module(Module),
     /// A generic symbol / function.
     Expression(TypedExpression),
+    /// A type declaration (currently only enums)
+    TypeDeclaration(EnumDeclaration<Expression>),
 }
 
 impl SymbolValue {
@@ -61,6 +65,7 @@ impl SymbolValue {
             SymbolValue::Import(i) => SymbolValueRef::Import(i),
             SymbolValue::Module(m) => SymbolValueRef::Module(m.as_ref()),
             SymbolValue::Expression(e) => SymbolValueRef::Expression(e),
+            SymbolValue::TypeDeclaration(t) => SymbolValueRef::TypeDeclaration(t),
         }
     }
 }
@@ -75,6 +80,10 @@ pub enum SymbolValueRef<'a> {
     Module(ModuleRef<'a>),
     /// A generic symbol / function.
     Expression(&'a TypedExpression),
+    /// A type declaration (currently only enums)
+    TypeDeclaration(&'a EnumDeclaration<Expression>),
+    /// A type constructor of an enum.
+    TypeConstructor(&'a EnumVariant<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]
@@ -107,7 +116,9 @@ pub struct Import {
 /// A symbol path is a sequence of strings separated by ``::`.
 /// It can contain the special word `super`, which goes up a level.
 /// If it does not start with `::`, it is relative.
-#[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(
+    Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 pub struct SymbolPath {
     /// The parts between each `::`.
     parts: Vec<Part>,
@@ -341,7 +352,7 @@ impl Display for AbsoluteSymbolPath {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub enum Part {
     Super,
     Named(String),
@@ -377,16 +388,24 @@ pub struct Machine {
 impl Machine {
     /// Returns a vector of all local variables / names defined in the machine.
     pub fn local_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
-        Box::new(self.statements.iter().flat_map(|s| match s {
-            MachineStatement::RegisterDeclaration(_, name, _) => Box::new(once(name)),
-            MachineStatement::Pil(_, statement) => statement.symbol_definition_names(),
-            MachineStatement::Degree(_, _)
-            | MachineStatement::Submachine(_, _, _)
-            | MachineStatement::InstructionDeclaration(_, _, _)
-            | MachineStatement::LinkDeclaration(_, _)
-            | MachineStatement::FunctionDeclaration(_, _, _, _)
-            | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
-        }))
+        Box::new(
+            self.statements
+                .iter()
+                .flat_map(|s| -> Box<dyn Iterator<Item = &String> + '_> {
+                    match s {
+                        MachineStatement::RegisterDeclaration(_, name, _) => Box::new(once(name)),
+                        MachineStatement::Pil(_, statement) => {
+                            Box::new(statement.symbol_definition_names().map(|(s, _)| s))
+                        }
+                        MachineStatement::Degree(_, _)
+                        | MachineStatement::Submachine(_, _, _)
+                        | MachineStatement::InstructionDeclaration(_, _, _)
+                        | MachineStatement::LinkDeclaration(_, _)
+                        | MachineStatement::FunctionDeclaration(_, _, _, _)
+                        | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
+                    }
+                }),
+        )
     }
 }
 
@@ -397,23 +416,22 @@ pub struct MachineArguments {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
-pub struct Params {
-    pub inputs: Vec<Param>,
-    pub outputs: Vec<Param>,
+pub struct Params<T> {
+    pub inputs: Vec<T>,
+    pub outputs: Vec<T>,
 }
 
-impl Params {
-    pub fn inputs_and_outputs(&self) -> impl Iterator<Item = &Param> {
-        self.inputs.iter().chain(self.outputs.iter())
-    }
+pub type CallableParams = Params<Expression>;
+// TODO: should we have separate Param types here?
+// - Function: doesn't use `index` or `type`
+// - Instruction: doesn't use `index`
+// - Operation: doesn't use `type`
+pub type FunctionParams = Params<Param>;
+pub type InstructionParams = Params<Param>;
+pub type OperationParams = Params<Param>;
 
-    pub fn inputs_and_outputs_mut(&mut self) -> impl Iterator<Item = &mut Param> {
-        self.inputs.iter_mut().chain(self.outputs.iter_mut())
-    }
-}
-
-impl Params {
-    pub fn new(inputs: Vec<Param>, outputs: Vec<Param>) -> Self {
+impl<T> Params<T> {
+    pub fn new(inputs: Vec<T>, outputs: Vec<T>) -> Self {
         Self { inputs, outputs }
     }
 
@@ -421,6 +439,16 @@ impl Params {
         self.inputs.is_empty() && self.outputs.is_empty()
     }
 
+    pub fn inputs_and_outputs(&self) -> impl Iterator<Item = &T> {
+        self.inputs.iter().chain(self.outputs.iter())
+    }
+
+    pub fn inputs_and_outputs_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.inputs.iter_mut().chain(self.outputs.iter_mut())
+    }
+}
+
+impl<T: Display> Params<T> {
     pub fn prepend_space_if_non_empty(&self) -> String {
         let mut params_str = self.to_string();
         if !self.is_empty() {
@@ -438,7 +466,7 @@ pub struct OperationId {
 
 #[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct Instruction {
-    pub params: Params,
+    pub params: Params<Param>,
     pub body: InstructionBody,
 }
 
@@ -450,8 +478,8 @@ pub enum MachineStatement {
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),
     InstructionDeclaration(SourceRef, String, Instruction),
     LinkDeclaration(SourceRef, LinkDeclaration),
-    FunctionDeclaration(SourceRef, String, Params, Vec<FunctionStatement>),
-    OperationDeclaration(SourceRef, String, OperationId, Params),
+    FunctionDeclaration(SourceRef, String, FunctionParams, Vec<FunctionStatement>),
+    OperationDeclaration(SourceRef, String, OperationId, OperationParams),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -464,7 +492,7 @@ pub struct LinkDeclaration {
 pub struct CallableRef {
     pub instance: String,
     pub callable: String,
-    pub params: Params,
+    pub params: CallableParams,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -502,6 +530,29 @@ pub enum FunctionStatement {
     Return(SourceRef, Vec<Expression>),
 }
 
+impl FunctionStatement {
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        match self {
+            FunctionStatement::Assignment(_, _, _, e) => Box::new(once(e.as_ref())),
+            FunctionStatement::Instruction(_, _, expressions)
+            | FunctionStatement::Return(_, expressions) => Box::new(expressions.iter()),
+            FunctionStatement::Label(_, _) | FunctionStatement::DebugDirective(_, _) => {
+                Box::new(empty())
+            }
+        }
+    }
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        match self {
+            FunctionStatement::Assignment(_, _, _, e) => Box::new(once(e.as_mut())),
+            FunctionStatement::Instruction(_, _, expressions)
+            | FunctionStatement::Return(_, expressions) => Box::new(expressions.iter_mut()),
+            FunctionStatement::Label(_, _) | FunctionStatement::DebugDirective(_, _) => {
+                Box::new(empty())
+            }
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum DebugDirective {
     File(usize, String, String),
@@ -516,7 +567,7 @@ pub enum RegisterFlag {
     IsReadOnly,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Param {
     pub name: String,
     pub index: Option<BigUint>,

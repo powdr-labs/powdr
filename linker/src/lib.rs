@@ -2,11 +2,10 @@
 
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
-    object::{Location, PILGraph},
+    object::{Location, PILGraph, TypeOrExpression},
     parsed::{
-        asm::AbsoluteSymbolPath,
-        asm::SymbolPath,
-        build::{direct_reference, index_access, namespaced_reference, next_reference},
+        asm::{AbsoluteSymbolPath, SymbolPath},
+        build::{index_access, namespaced_reference},
         Expression, PILFile, PilStatement, SelectedExpressions, TypedExpression,
     },
     SourceRef,
@@ -30,7 +29,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
 
     let mut errors = vec![];
 
-    // Extract the utilities and sort them into namespaces where possible.
+    // Extract the utilities and type declarations and sort them into namespaces where possible.
     let mut current_namespace = Default::default();
     let mut pil = graph
         .definitions
@@ -41,14 +40,21 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
             // Group by namespace and then sort by name.
             (namespace, name)
         })
-        .flat_map(|(mut namespace, TypedExpression { e, type_scheme })| {
+        .flat_map(|(mut namespace, type_or_expr)| {
             let name = namespace.pop().unwrap();
-            let def = PilStatement::LetStatement(
-                SourceRef::unknown(),
-                name.to_string(),
-                type_scheme,
-                Some(e),
-            );
+            let statement = match type_or_expr {
+                TypeOrExpression::Expression(TypedExpression { e, type_scheme }) => {
+                    PilStatement::LetStatement(
+                        SourceRef::unknown(),
+                        name.to_string(),
+                        type_scheme,
+                        Some(e),
+                    )
+                }
+                TypeOrExpression::Type(enum_decl) => {
+                    PilStatement::EnumDeclaration(SourceRef::unknown(), enum_decl)
+                }
+            };
 
             // If there is a namespace change, insert a namespace statement.
             if current_namespace != namespace {
@@ -59,10 +65,10 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
                         namespace.relative_to(&AbsoluteSymbolPath::default()),
                         Expression::Number(main_degree.into(), None),
                     ),
-                    def,
+                    statement,
                 ]
             } else {
-                vec![def]
+                vec![statement]
             }
         })
         .collect::<Vec<_>>();
@@ -98,24 +104,12 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
                 .iter()
                 .cloned()
                 .map(|n| Expression::Number(n, None));
-            let inputs = from
-                .params
-                .inputs
-                .into_iter()
-                .map(|i| {
-                    assert!(i.ty.is_none() || i.ty == Some("write".to_string()));
-                    (i.name, i.index)
-                })
-                .map(|(name, index)| index_access(direct_reference(name), index));
-            let outputs = from.params.outputs.into_iter().map(|p| match p.ty {
-                None => index_access(direct_reference(p.name), p.index),
-                // write register as output is mapped as a next ref in the plookup
-                Some(s) if s == "write" => index_access(next_reference(p.name), p.index),
-                _ => panic!(),
-            });
             let lhs = SelectedExpressions {
                 selector: Some(from.flag),
-                expressions: op_id.chain(inputs).chain(outputs).collect(),
+                expressions: op_id
+                    .chain(from.params.inputs)
+                    .chain(from.params.outputs)
+                    .collect(),
             };
 
             // the rhs is `latch { operation_id, inputs, outputs }`
@@ -262,7 +256,7 @@ mod test {
     #[test]
     fn compile_empty_vm() {
         let expectation = r#"namespace main(8);
-    pol commit _operation_id(i) query ("hint", 2);
+    pol commit _operation_id(i) query std::prover::Query::Hint(2);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
     ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
@@ -295,7 +289,7 @@ mod test {
     #[test]
     fn compile_different_signatures() {
         let expectation = r#"namespace main(16);
-    pol commit _operation_id(i) query ("hint", 4);
+    pol commit _operation_id(i) query std::prover::Query::Hint(4);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
     ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
@@ -353,7 +347,7 @@ mod test {
     pol constant _linker_first_step = [1] + [0]*;
     ((_linker_first_step * (_operation_id - 2)) = 0);
 namespace main_sub(16);
-    pol commit _operation_id(i) query ("hint", 5);
+    pol commit _operation_id(i) query std::prover::Query::Hint(5);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
     ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
@@ -403,7 +397,7 @@ namespace main_sub(16);
     (XIsZero = (1 - (X * XInv)));
     ((XIsZero * X) = 0);
     ((XIsZero * (1 - XIsZero)) = 0);
-    pol commit _operation_id(i) query ("hint", 10);
+    pol commit _operation_id(i) query std::prover::Query::Hint(10);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
     ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
@@ -438,7 +432,7 @@ namespace main_sub(16);
     pol pc_update = ((((((instr_jmpz * (instr_jmpz_pc_update + instr_jmpz_pc_update_1)) + (instr_jmp * instr_jmp_param_l)) + (instr__jump_to_operation * _operation_id)) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((((instr_jmpz + instr_jmp) + instr__jump_to_operation) + instr__loop) + instr_return)) * (pc + 1)));
     (pc' = ((1 - first_step') * pc_update));
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] + [10]*;
-    pol commit X_free_value(__i) query match std::prover::eval(pc) { 2 => ("input", 1), 4 => ("input", (std::prover::eval(CNT) + 1)), 7 => ("input", 0), };
+    pol commit X_free_value(__i) query match std::prover::eval(pc) { 2 => std::prover::Query::Input(1), 4 => std::prover::Query::Input(std::convert::int((std::prover::eval(CNT) + 1))), 7 => std::prover::Query::Input(0), };
     pol constant p_X_const = [0]*;
     pol constant p_X_read_free = [0, 0, 1, 0, 1, 0, 0, 18446744069414584320, 0, 0, 0] + [0]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
@@ -488,7 +482,7 @@ machine Machine {
 }
 "#;
         let expectation = r#"namespace main(1024);
-    pol commit _operation_id(i) query ("hint", 4);
+    pol commit _operation_id(i) query std::prover::Query::Hint(4);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
     ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
@@ -567,7 +561,7 @@ machine Main {
 
     SubVM vm;
 
-    instr add5_into_A X = vm.add5 X -> A;
+    instr add5_into_A X = vm.add5 X -> A';
 
     function main {
         add5_into_A 10; // A <== 15
@@ -575,7 +569,7 @@ machine Main {
 }
 ";
         let expected = r#"namespace main(1024);
-    pol commit _operation_id(i) query ("hint", 3);
+    pol commit _operation_id(i) query std::prover::Query::Hint(3);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
     ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);

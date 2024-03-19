@@ -11,6 +11,8 @@
 // between integers and field elements.
 use std::convert::int;
 
+use std::prover::Query;
+
 machine Main {
     reg pc[@pc]; // "@pc" means "pc' = pc + 1" is the default propagation (instead of pc' = pc) and it tracks the line in the program.
     reg X[<=]; // "<=" means it is the default assignment register.
@@ -33,17 +35,17 @@ machine Main {
     instr assert_zero X { XIsZero = 1 }
 
     function main {
-        CNT <=X= ${ ("input", 1) };
+        CNT <=X= ${ Query::Input(1) };
 
         start:
         jmpz CNT, check;
-        A <=X= A + ${ ("input", std::prover::eval(CNT) + 1) };
+        A <=X= A + ${ Query::Input(std::convert::int(std::prover::eval(CNT) + 1)) };
         // Could use "CNT <=X= CNT - 1", but that would need X.
         dec_CNT;
         jmp start;
 
         check:
-        A <=X= A - ${ ("input", 0) };
+        A <=X= A - ${ Query::Input(0) };
         assert_zero A;
         return;
     }

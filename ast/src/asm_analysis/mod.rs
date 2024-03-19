@@ -14,10 +14,11 @@ use powdr_number::BigUint;
 
 use crate::parsed::{
     asm::{
-        AbsoluteSymbolPath, AssignmentRegister, CallableRef, InstructionBody, OperationId, Params,
+        AbsoluteSymbolPath, AssignmentRegister, CallableRef, FunctionParams, InstructionBody,
+        InstructionParams, OperationId, OperationParams,
     },
     visitor::{ExpressionVisitable, VisitOrder},
-    NamespacedPolynomialReference, PilStatement, TypedExpression,
+    EnumDeclaration, NamespacedPolynomialReference, PilStatement, TypedExpression,
 };
 use crate::SourceRef;
 
@@ -65,7 +66,7 @@ pub struct InstructionDefinitionStatement {
 
 #[derive(Clone, Debug)]
 pub struct Instruction {
-    pub params: Params,
+    pub params: InstructionParams,
     pub body: InstructionBody,
 }
 
@@ -510,7 +511,7 @@ impl<'a> TryFrom<&'a mut CallableSymbol> for &'a mut OperationSymbol {
 pub struct FunctionSymbol {
     pub source: SourceRef,
     /// the parameters of this function, in the form of values
-    pub params: Params,
+    pub params: FunctionParams,
     /// the body of the function
     pub body: FunctionBody,
 }
@@ -521,7 +522,7 @@ pub struct OperationSymbol {
     /// the id of this operation. This machine's operation id must be set to this value in order for this operation to be active.
     pub id: OperationId,
     /// the parameters of this operation, in the form of columns defined in some constraints block of this machine
-    pub params: Params,
+    pub params: OperationParams,
 }
 
 #[derive(Clone, Debug)]
@@ -670,13 +671,14 @@ pub struct SubmachineDeclaration {
 pub enum Item {
     Machine(Machine),
     Expression(TypedExpression),
+    TypeDeclaration(EnumDeclaration<Expression>),
 }
 
 impl Item {
     pub fn try_to_machine(&self) -> Option<&Machine> {
         match self {
             Item::Machine(m) => Some(m),
-            Item::Expression(_) => None,
+            Item::Expression(_) | Item::TypeDeclaration(_) => None,
         }
     }
 }
@@ -795,13 +797,13 @@ impl AnalysisASMFile {
     pub fn machines(&self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &Machine)> {
         self.items.iter().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
-            Item::Expression(_) => None,
+            Item::Expression(_) | Item::TypeDeclaration(_) => None,
         })
     }
     pub fn machines_mut(&mut self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &mut Machine)> {
         self.items.iter_mut().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
-            Item::Expression(_) => None,
+            Item::Expression(_) | Item::TypeDeclaration(_) => None,
         })
     }
 }
