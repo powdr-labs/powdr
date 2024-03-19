@@ -186,9 +186,9 @@ pub fn evaluate_function<'a, T: FieldElement>(
     function: &'a str,
     arguments: Vec<Arc<evaluator::Value<'a, T>>>,
 ) -> evaluator::Value<'a, T> {
-    let mut symbols = evaluator::Definitions(&analyzed.definitions);
+    let symbols = evaluator::Definitions(&analyzed.definitions);
     let function = symbols.lookup(function, None).unwrap();
-    evaluator::evaluate_function_call(function, arguments, &mut symbols)
+    evaluator::evaluate_function_call(function, arguments, &symbols)
         .unwrap()
         .as_ref()
         .clone()

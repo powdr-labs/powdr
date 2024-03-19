@@ -23,13 +23,13 @@ pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    evaluate(expr, &mut Definitions(definitions))
+    evaluate(expr, &Definitions(definitions))
 }
 
 /// Evaluates an expression given a symbol lookup implementation
 pub fn evaluate<'a, T: FieldElement>(
     expr: &'a Expression,
-    symbols: &mut impl SymbolLookup<'a, T>,
+    symbols: &impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     evaluate_generic(expr, &Default::default(), symbols)
 }
@@ -39,7 +39,7 @@ pub fn evaluate<'a, T: FieldElement>(
 pub fn evaluate_generic<'a, 'b, T: FieldElement>(
     expr: &'a Expression,
     generic_args: &'b HashMap<String, Type>,
-    symbols: &mut impl SymbolLookup<'a, T>,
+    symbols: &impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     internal::evaluate(expr, &[], generic_args, symbols)
 }
@@ -48,7 +48,7 @@ pub fn evaluate_generic<'a, 'b, T: FieldElement>(
 pub fn evaluate_function_call<'a, T: FieldElement>(
     function: Arc<Value<'a, T>>,
     arguments: Vec<Arc<Value<'a, T>>>,
-    symbols: &mut impl SymbolLookup<'a, T>,
+    symbols: &impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     match function.as_ref() {
         Value::BuiltinFunction(b) => internal::evaluate_builtin_function(*b, arguments, symbols),
@@ -348,7 +348,7 @@ impl<'a> Definitions<'a> {
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
         name: &str,
         generic_args: Option<Vec<Type>>,
-        symbols: &mut impl SymbolLookup<'a, T>,
+        symbols: &impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = name.to_string();
 
@@ -404,7 +404,7 @@ impl<'a> Definitions<'a> {
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     fn lookup(
-        &mut self,
+        &self,
         name: &str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -424,7 +424,7 @@ impl<'a> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>> fo
 
 pub trait SymbolLookup<'a, T> {
     fn lookup(
-        &mut self,
+        &self,
         name: &'a str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError>;
@@ -451,7 +451,7 @@ mod internal {
         expr: &'a Expression,
         locals: &[Arc<Value<'a, T>>],
         generic_args: &'b HashMap<String, Type>,
-        symbols: &mut impl SymbolLookup<'a, T>,
+        symbols: &impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(match expr {
             Expression::Reference(reference) => {
@@ -645,7 +645,7 @@ mod internal {
         reference: &'a Reference,
         locals: &[Arc<Value<'a, T>>],
         generic_args: &HashMap<String, Type>,
-        symbols: &mut impl SymbolLookup<'a, T>,
+        symbols: &impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(match reference {
             Reference::LocalVar(i, _name) => locals[*i as usize].clone(),
@@ -748,7 +748,7 @@ mod internal {
     pub fn evaluate_builtin_function<'a, T: FieldElement>(
         b: BuiltinFunction,
         mut arguments: Vec<Arc<Value<'a, T>>>,
-        symbols: &mut impl SymbolLookup<'a, T>,
+        symbols: &impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let params = match b {
             BuiltinFunction::ArrayLen => 1,
