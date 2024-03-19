@@ -16,7 +16,7 @@ use powdr_ast::{
 };
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::evaluator::{self, Definitions, SymbolLookup, Value};
+use crate::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
 
 pub fn condense<T: FieldElement>(
     degree: Option<DegreeType>,
@@ -237,6 +237,13 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CondenserSymbols<'a> {
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)
+    }
+
+    fn lookup_public_reference(
+        &self,
+        name: &str,
+    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+        Definitions(self.symbols).lookup_public_reference(name)
     }
 
     fn create_challenge(&mut self, stage: u32) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {

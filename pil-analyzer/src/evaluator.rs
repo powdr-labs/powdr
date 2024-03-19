@@ -429,7 +429,7 @@ pub trait SymbolLookup<'a, T> {
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError>;
 
-    fn lookup_public_reference(&self, name: &'a str) -> Result<Arc<Value<'a, T>>, EvalError> {
+    fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::Unsupported(format!(
             "Cannot evaluate public reference: {name}"
         )))
