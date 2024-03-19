@@ -15,6 +15,7 @@ use powdr_asm_utils::{
     },
     Architecture,
 };
+use powdr_number::{FieldElement, KnownField};
 
 use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
 use crate::coprocessors::*;
@@ -102,7 +103,7 @@ impl Architecture for RiscvArchitecture {
 }
 
 /// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
-pub fn compile(
+pub fn compile<T: FieldElement>(
     mut assemblies: BTreeMap<String, String>,
     coprocessors: &CoProcessors,
     with_bootloader: bool,
@@ -258,7 +259,7 @@ pub fn compile(
 
     riscv_machine(
         &coprocessors.machine_imports(),
-        &preamble(degree, coprocessors, with_bootloader),
+        &preamble::<T>(degree, coprocessors, with_bootloader),
         initial_mem,
         &coprocessors.declarations(),
         program,
@@ -475,12 +476,18 @@ let initial_memory: (fe, fe)[] = [
     )
 }
 
-fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> String {
+fn preamble<T: FieldElement>(
+    degree: u64,
+    coprocessors: &CoProcessors,
+    with_bootloader: bool,
+) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
         bootloader_preamble()
     } else {
         "".to_string()
     };
+
+    let mul_instruction = mul_instruction::<T>();
 
     format!("degree {degree};")
         + r#"
@@ -643,7 +650,15 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
         // quotient is 32 bits:
         Z = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
+"# + mul_instruction
+}
 
+fn mul_instruction<T: FieldElement>() -> &'static str {
+    match T::known_field().expect("Unknown field!") {
+        KnownField::Bn254Field => {
+            // The BN254 field can fit any 64-bit number, so we can naively de-compose
+            // Z * W into 8 bytes and put them together to get the upper and lower word.
+            r#"
     // Multiply two 32-bits unsigned, return the upper and lower unsigned 32-bit
     // halves of the result.
     // X is the lower half (least significant bits)
@@ -654,6 +669,19 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
         Y = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
     }
 "#
+        }
+        KnownField::GoldilocksField => {
+            // The Goldilocks field cannot fit some 64-bit numbers, so we have to use
+            // the split machine. Note that it can fit a product of two 32-bit numbers.
+            r#"
+    // Multiply two 32-bits unsigned, return the upper and lower unsigned 32-bit
+    // halves of the result.
+    // X is the lower half (least significant bits)
+    // Y is the higher half (most significant bits)
+    instr mul Z, W -> X, Y = split_gl.split Z * W -> X, Y;
+"#
+        }
+    }
 }
 
 fn memory(with_bootloader: bool) -> String {
