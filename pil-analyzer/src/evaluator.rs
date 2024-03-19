@@ -438,17 +438,11 @@ pub trait SymbolLookup<'a, T> {
     fn eval_expr(&self, _expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::DataNotAvailable)
     }
-
-    fn create_challenge(&mut self, _stage: u32) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Err(EvalError::Unsupported(
-            "Function std::prover::challenge called outside of condenser context.".to_string(),
-        ))
-    }
 }
 
 mod internal {
     use num_traits::Signed;
-    use powdr_ast::analyzed::AlgebraicBinaryOperator;
+    use powdr_ast::analyzed::{AlgebraicBinaryOperator, Challenge};
     use powdr_number::BigUint;
 
     use super::*;
@@ -764,7 +758,7 @@ mod internal {
             BuiltinFunction::ToExpr => 1,
             BuiltinFunction::ToFe => 1,
             BuiltinFunction::ToInt => 1,
-            BuiltinFunction::Challenge => 1,
+            BuiltinFunction::Challenge => 2,
             BuiltinFunction::Eval => 1,
         };
 
@@ -819,9 +813,22 @@ mod internal {
                 Value::Integer(T::modulus().to_arbitrary_integer().into()).into()
             }
             BuiltinFunction::Challenge => {
-                let arg = arguments.pop().unwrap().as_ref().clone();
-                let Value::Integer(stage) = arg else { panic!() };
-                symbols.create_challenge(u32::try_from(stage).unwrap())?
+                let [stage, index] = &arguments[..] else {
+                    panic!()
+                };
+                let Value::Integer(stage) = (**stage).clone() else {
+                    panic!()
+                };
+                let Value::Integer(id) = (**index).clone() else {
+                    panic!()
+                };
+                // TODO is there a way to do this by just a "well-known" struct type?
+                // It would need to convert to `expr` for it to work.
+                Value::Expression(AlgebraicExpression::Challenge(Challenge {
+                    id: u64::try_from(id).unwrap(),
+                    stage: u32::try_from(stage).unwrap(),
+                }))
+                .into()
             }
             BuiltinFunction::Eval => {
                 let arg = arguments.pop().unwrap();

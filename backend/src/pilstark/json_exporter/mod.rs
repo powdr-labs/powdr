@@ -304,6 +304,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                 StarkyExpr {
                     op: "challenge".to_string(),
                     deg: 0,
+                    // TOOD is the ID unique to the stage or not?
                     id: Some(challenge.id as usize),
                     ..DEFAULT_EXPR
                 },

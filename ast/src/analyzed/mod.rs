@@ -771,6 +771,8 @@ pub enum AlgebraicExpression<T> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Challenge {
+    /// Challenge ID, unique to the stage
+    /// TODO is that true?
     pub id: u64,
     pub stage: u32,
 }

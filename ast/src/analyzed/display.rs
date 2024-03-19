@@ -299,7 +299,11 @@ impl<T: Display> Display for AlgebraicExpression<T> {
             AlgebraicExpression::Reference(reference) => write!(f, "{reference}"),
             AlgebraicExpression::PublicReference(name) => write!(f, ":{name}"),
             AlgebraicExpression::Challenge(challenge) => {
-                write!(f, "challenge_{}_stage_{}", challenge.id, challenge.stage)
+                write!(
+                    f,
+                    "std::prover::challenge({}, {})",
+                    challenge.stage, challenge.id,
+                )
             }
             AlgebraicExpression::Number(value) => write!(f, "{value}"),
             AlgebraicExpression::BinaryOperation(left, op, right) => {

@@ -451,7 +451,7 @@ fn challenges() {
         col fixed first = [1] + [0]*;
         col witness x;
         col witness stage(2) y;
-        let a: expr = std::prover::challenge(2);
+        let a: expr = std::prover::challenge(2, 1);
 
         x' = (x + 1) * (1 - first);
         y' = (x + a) * (1 - first);
@@ -463,7 +463,7 @@ namespace Main(8);
     col fixed first = [1] + [0]*;
     col witness x;
     col witness stage(2) y;
-    col a = challenge_0_stage_2;
+    col a = std::prover::challenge(2, 1);
     Main.x' = ((Main.x + 1) * (1 - Main.first));
     Main.y' = ((Main.x + Main.a) * (1 - Main.first));
 "#;

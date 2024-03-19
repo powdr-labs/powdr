@@ -5,8 +5,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, Analyzed, Challenge, Expression, FunctionValueDefinition, Identity,
-        IdentityKind, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind,
+        AlgebraicExpression, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
+        PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         display::format_type_scheme_around_name,
@@ -16,7 +16,7 @@ use powdr_ast::{
 };
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
+use crate::evaluator::{self, Definitions, SymbolLookup, Value};
 
 pub fn condense<T: FieldElement>(
     degree: Option<DegreeType>,
@@ -219,15 +219,12 @@ impl<T: FieldElement> Condenser<T> {
     fn symbols(&mut self) -> CondenserSymbols<'_> {
         CondenserSymbols {
             symbols: &self.symbols,
-            next_challenge_id: &mut self.next_challenge_id,
         }
     }
 }
 
-// TODO can we implement it on Condenser directly?
 struct CondenserSymbols<'a> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    next_challenge_id: &'a mut u64,
 }
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for CondenserSymbols<'a> {
@@ -244,11 +241,5 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CondenserSymbols<'a> {
         name: &str,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         Definitions(self.symbols).lookup_public_reference(name)
-    }
-
-    fn create_challenge(&mut self, stage: u32) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        let id = *self.next_challenge_id;
-        *self.next_challenge_id += 1;
-        Ok(Value::Expression(AlgebraicExpression::Challenge(Challenge { id, stage })).into())
     }
 }
