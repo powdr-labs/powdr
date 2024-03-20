@@ -42,6 +42,7 @@ impl TypeChecker {
         let mut errors = vec![];
 
         let mut degree = None;
+        let mut call_selectors = None;
         let mut registers = vec![];
         let mut pil = vec![];
         let mut instructions = vec![];
@@ -55,6 +56,15 @@ impl TypeChecker {
                     degree = Some(DegreeStatement {
                         degree: degree_value,
                     });
+                }
+                MachineStatement::CallSelectors(_, sel) => {
+                    if let Some(other_sel) = &call_selectors {
+                        errors.push(format!(
+                            "Machine {ctx} already has call_selectors ({other_sel})"
+                        ));
+                    } else {
+                        call_selectors = Some(sel);
+                    }
                 }
                 MachineStatement::RegisterDeclaration(source, name, flag) => {
                     let ty = match flag {
@@ -75,8 +85,20 @@ impl TypeChecker {
                         Err(e) => errors.extend(e),
                     }
                 }
-                MachineStatement::LinkDeclaration(source, LinkDeclaration { flag, to }) => {
-                    links.push(LinkDefinitionStatement { source, flag, to });
+                MachineStatement::LinkDeclaration(
+                    source,
+                    LinkDeclaration {
+                        flag,
+                        to,
+                        is_permutation,
+                    },
+                ) => {
+                    links.push(LinkDefinitionStatement {
+                        source,
+                        flag,
+                        to,
+                        is_permutation,
+                    });
                 }
                 MachineStatement::Pil(_source, statement) => {
                     pil.push(statement);
@@ -232,9 +254,15 @@ impl TypeChecker {
                     ctx
                 ));
             }
+            if call_selectors.is_some() {
+                errors.push(format!(
+                    "Machine {} should not have call_selectors as it has a pc",
+                    ctx
+                ));
+            }
             for l in &links {
                 errors.push(format!(
-                    "Machine {} should not have links as it has a pc, found `{}`. Use an external instruction instead.",
+                    "Machine {} should not have links as it has a pc, found `{}`. Use an external instruction instead",
                     ctx, l.flag
                 ));
             }
@@ -254,6 +282,7 @@ impl TypeChecker {
             degree,
             latch,
             operation_id,
+            call_selectors,
             pc: registers
                 .iter()
                 .enumerate()
@@ -436,7 +465,7 @@ machine Main {
         expect_check_str(
             src,
             Err(vec![
-                "Machine ::Main should not have links as it has a pc, found `foo`. Use an external instruction instead.",
+                "Machine ::Main should not have links as it has a pc, found `foo`. Use an external instruction instead",
             ]),
         );
     }
@@ -472,5 +501,22 @@ machine Arith(latch, _) {
 }
 "#;
         expect_check_str(src, Err(vec!["Operation `add` in machine ::Arith can't have an operation id because the machine does not have an operation id column"]));
+    }
+
+    #[test]
+    fn virtual_machine_has_no_call_selectors() {
+        let src = r#"
+machine Main {
+   reg pc[@pc];
+
+   call_selectors sel;
+}
+"#;
+        expect_check_str(
+            src,
+            Err(vec![
+                "Machine ::Main should not have call_selectors as it has a pc",
+            ]),
+        );
     }
 }

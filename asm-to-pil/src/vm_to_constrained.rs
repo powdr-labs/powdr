@@ -331,13 +331,23 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 &params,
                 body,
             ),
-            InstructionBody::CallableRef(callable) => {
+            InstructionBody::CallablePlookup(callable) => {
                 let link = self.handle_external_instruction_def(
                     s.source,
                     instruction_flag,
                     &params,
                     callable,
                 );
+                input.links.push(link);
+            }
+            InstructionBody::CallablePermutation(callable) => {
+                let mut link = self.handle_external_instruction_def(
+                    s.source,
+                    instruction_flag,
+                    &params,
+                    callable,
+                );
+                link.is_permutation = true;
                 input.links.push(link);
             }
         }
@@ -573,6 +583,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             source,
             flag: direct_reference(flag),
             to: callable,
+            is_permutation: false,
         }
     }
 

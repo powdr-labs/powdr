@@ -48,6 +48,12 @@ pub struct Object {
     pub pil: Vec<PilStatement>,
     /// the links from this machine to its children
     pub links: Vec<Link>,
+    /// name of the latch column
+    pub latch: Option<String>,
+    /// call selector array
+    pub call_selectors: Option<String>,
+    /// true if this machine has a PC
+    pub has_pc: bool,
 }
 
 impl Object {
@@ -64,6 +70,8 @@ pub struct Link {
     pub from: LinkFrom,
     /// the link target, i.e. a callable in some machine
     pub to: LinkTo,
+    /// true if this is a permutation link
+    pub is_permutation: bool,
 }
 
 #[derive(Clone)]
@@ -78,6 +86,8 @@ pub struct LinkTo {
     pub machine: Machine,
     /// the operation we link to
     pub operation: Operation,
+    /// index into the permutation selector (None if lookup)
+    pub selector_idx: Option<u64>,
 }
 
 #[derive(Clone)]
@@ -86,6 +96,8 @@ pub struct Machine {
     pub location: Location,
     /// its latch
     pub latch: Option<String>,
+    /// call selector array
+    pub call_selectors: Option<String>,
     /// its operation id
     pub operation_id: Option<String>,
 }

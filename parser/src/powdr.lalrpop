@@ -250,6 +250,7 @@ MachineArguments: MachineArguments = {
 
 MachineStatement: MachineStatement = {
     Degree,
+    CallSelectors,
     Submachine,
     RegisterDeclaration,
     InstructionDeclaration,
@@ -265,6 +266,10 @@ PilStatementInMachine: MachineStatement = {
 
 Degree: MachineStatement = {
     <start:@L> "degree" <deg:UnsignedInteger> ";" => MachineStatement::Degree(ctx.source_ref(start), deg)
+}
+
+CallSelectors: MachineStatement = {
+    <start:@L> "call_selectors" <id:Identifier> ";" => MachineStatement::CallSelectors(ctx.source_ref(start), id)
 }
 
 Submachine: MachineStatement = {
@@ -292,13 +297,15 @@ pub Instruction: Instruction = {
 }
 
 pub LinkDeclaration: MachineStatement = {
-    <start:@L> "link" <flag:Expression> "=>" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start), LinkDeclaration { flag, to })
+    <start:@L> "link" <flag:Expression> "=>" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start), LinkDeclaration { flag, to, is_permutation: false, }),
+    <start:@L> "link" <flag:Expression> "~>" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start), LinkDeclaration { flag, to, is_permutation: true, }),
 }
 
 pub InstructionBody: InstructionBody = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
-    "=" <f_ref:CallableRef> ";" => InstructionBody::CallableRef(f_ref),
+    "=" <f_ref:CallableRef> ";" => InstructionBody::CallablePlookup(f_ref),
+    "~" <f_ref:CallableRef> ";" => InstructionBody::CallablePermutation(f_ref),
 }
 
 pub CallableRef: CallableRef = {
