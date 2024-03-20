@@ -299,6 +299,15 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     ..DEFAULT_EXPR
                 },
             ),
+            Expression::Challenge(challenge) => (
+                0,
+                StarkyExpr {
+                    op: "challenge".to_string(),
+                    deg: 0,
+                    id: Some(challenge.id as usize),
+                    ..DEFAULT_EXPR
+                },
+            ),
             Expression::Number(value) => (
                 0,
                 StarkyExpr {

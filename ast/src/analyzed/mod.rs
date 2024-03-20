@@ -490,6 +490,7 @@ pub struct Symbol {
     pub id: u64,
     pub source: SourceRef,
     pub absolute_name: String,
+    pub stage: Option<u32>,
     pub kind: SymbolKind,
     pub length: Option<DegreeType>,
 }
@@ -752,10 +753,12 @@ impl Hash for AlgebraicReference {
         self.next.hash(state);
     }
 }
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum AlgebraicExpression<T> {
     Reference(AlgebraicReference),
     PublicReference(String),
+    Challenge(Challenge),
     Number(T),
     BinaryOperation(
         Box<AlgebraicExpression<T>>,
@@ -764,6 +767,13 @@ pub enum AlgebraicExpression<T> {
     ),
 
     UnaryOperation(AlgebraicUnaryOperator, Box<AlgebraicExpression<T>>),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct Challenge {
+    /// Challenge ID
+    pub id: u64,
+    pub stage: u32,
 }
 
 #[derive(

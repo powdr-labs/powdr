@@ -184,6 +184,7 @@ mod test {
                         line: 1,
                         col: 13,
                     },
+                    None,
                     vec![PolynomialName {
                         name: "t".to_string(),
                         array_size: None
@@ -254,7 +255,7 @@ mod test {
             | PilStatement::PublicDeclaration(s, _, _, _, _)
             | PilStatement::PolynomialConstantDeclaration(s, _)
             | PilStatement::PolynomialConstantDefinition(s, _, _)
-            | PilStatement::PolynomialCommitDeclaration(s, _, _)
+            | PilStatement::PolynomialCommitDeclaration(s, _, _, _)
             | PilStatement::PlookupIdentity(s, _, _)
             | PilStatement::PermutationIdentity(s, _, _)
             | PilStatement::ConnectIdentity(s, _, _)

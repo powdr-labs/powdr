@@ -406,10 +406,11 @@ impl Display for PilStatement {
             PilStatement::PolynomialConstantDefinition(_, name, definition) => {
                 write!(f, "    pol constant {name}{definition};")
             }
-            PilStatement::PolynomialCommitDeclaration(_, names, value) => {
+            PilStatement::PolynomialCommitDeclaration(_, stage, names, value) => {
                 write!(
                     f,
-                    "    pol commit {}{};",
+                    "    pol commit {}{}{};",
+                    stage.map(|s| format!("stage({s}) ")).unwrap_or_default(),
                     names.iter().format(", "),
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
                 )

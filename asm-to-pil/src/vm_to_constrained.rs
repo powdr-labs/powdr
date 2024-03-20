@@ -1196,6 +1196,7 @@ fn witness_column<S: Into<String>>(
 ) -> PilStatement {
     PilStatement::PolynomialCommitDeclaration(
         source,
+        None,
         vec![PolynomialName {
             name: name.into(),
             array_size: None,

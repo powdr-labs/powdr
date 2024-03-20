@@ -15,6 +15,7 @@ impl<T> ExpressionVisitable<AlgebraicExpression<T>> for AlgebraicExpression<T> {
         match self {
             AlgebraicExpression::Reference(_)
             | AlgebraicExpression::PublicReference(_)
+            | AlgebraicExpression::Challenge(_)
             | AlgebraicExpression::Number(_) => {}
             AlgebraicExpression::BinaryOperation(left, _, right) => {
                 left.visit_expressions_mut(f, o)?;
@@ -38,6 +39,7 @@ impl<T> ExpressionVisitable<AlgebraicExpression<T>> for AlgebraicExpression<T> {
         match self {
             AlgebraicExpression::Reference(_)
             | AlgebraicExpression::PublicReference(_)
+            | AlgebraicExpression::Challenge(_)
             | AlgebraicExpression::Number(_) => {}
             AlgebraicExpression::BinaryOperation(left, _, right) => {
                 left.visit_expressions(f, o)?;
