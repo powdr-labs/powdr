@@ -54,7 +54,7 @@ where
     T: FieldElement,
 {
     fn default() -> Self {
-        // Halo2 calles Params::default() in the Circuit::params() default implementation,
+        // Halo2 calls Params::default() in the Circuit::params() default implementation,
         // which we overwrite...
         unreachable!()
     }

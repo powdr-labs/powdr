@@ -235,10 +235,10 @@ pub fn refs_in_identity<T>(identity: &Identity<Expression<T>>) -> HashSet<PolyID
 
 /// Extracts all references to names from selected expressions.
 pub fn refs_in_selected_expressions<T>(
-    selexpr: &SelectedExpressions<Expression<T>>,
+    sel_expr: &SelectedExpressions<Expression<T>>,
 ) -> HashSet<PolyID> {
     let mut refs: HashSet<PolyID> = Default::default();
-    selexpr.pre_visit_expressions(&mut |expr| {
+    sel_expr.pre_visit_expressions(&mut |expr| {
         ref_of_expression(expr).map(|id| refs.insert(id));
     });
     refs

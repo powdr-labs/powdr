@@ -291,7 +291,7 @@ mod test {
             namespace F(N);
             let seq_f = |i| i;
             col fixed seq(i) { i };
-            col fixed doub(i) { std::convert::int(seq_f((2 * i) % N)) + 1 };
+            col fixed double_plus_one(i) { std::convert::int(seq_f((2 * i) % N)) + 1 };
             let half_nibble_f = |i| i & 0x7;
             col fixed half_nibble(i) { half_nibble_f(i) };
             col fixed doubled_half_nibble(i) { half_nibble_f(i / 2) };
@@ -307,7 +307,7 @@ mod test {
         assert_eq!(
             constants[1],
             (
-                "F.doub".to_string(),
+                "F.double_plus_one".to_string(),
                 convert([1i32, 3, 5, 7, 9, 1, 3, 5, 7, 9].to_vec())
             )
         );

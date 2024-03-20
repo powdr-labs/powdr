@@ -10,7 +10,7 @@ pub enum DataValue {
     // alignment size and the byte value used as padding
     Alignment(usize, u8),
     Reference(String),
-    // This is needed for .word diretives such as
+    // This is needed for .word directives such as
     // .word	.Lfunc_begin0-.Lfunc_begin0
     Offset(String, String),
 }

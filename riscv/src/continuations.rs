@@ -226,7 +226,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // The number of rows of the full trace that we consider proven.
     // Initialized with `first_real_execution_row`, because the bootloader
     // execution in the first chunk will be different from the full trace
-    // execution (because of paged-in memeory).
+    // execution (because of paged-in memory).
     let mut proven_trace = first_real_execution_row;
     let mut chunk_index = 0;
 

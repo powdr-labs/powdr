@@ -20,7 +20,7 @@ pub enum IncompleteCause<K = usize> {
     MultipleLookupMatches,
     /// A linear constraint does not have a unique solution. Example: `x + y == 0`
     MultipleLinearSolutions,
-    /// No progress transferring. TODO: not sure this could not be coverred by other cases
+    /// No progress transferring. TODO: not sure this could not be covered by other cases
     NoProgressTransferring,
     /// Quadratic term found trying to detect an affine expression. Example: `a*b + 2c + d`
     QuadraticTerm,
@@ -218,7 +218,7 @@ impl<T: FieldElement> fmt::Display for EvalError<T> {
                 write!(f, "Range constraints in the expression are conflicting or do not match the constant / offset.",)
             }
             EvalError::InvalidDivision => {
-                write!(f, "A division pattern was recognized but the range constrainst are conflicting with the solution.",)
+                write!(f, "A division pattern was recognized but the range constraints are conflicting with the solution.",)
             }
             EvalError::RowsExhausted => write!(f, "Table rows exhausted"),
             EvalError::FixedLookupFailed(input_assignment) => {

@@ -712,7 +712,7 @@ pub struct Machine {
 }
 
 impl Machine {
-    /// Returns whether this machine type features a program counter. This is how we differenciate virtual machines from constrained machines.
+    /// Returns whether this machine type features a program counter. This is how we differentiate virtual machines from constrained machines.
     pub fn has_pc(&self) -> bool {
         self.pc.is_some()
     }

@@ -1,4 +1,4 @@
-//! Utilites for generating initialization code that stores data objects in memory.
+//! Utilities for generating initialization code that stores data objects in memory.
 
 use std::collections::BTreeMap;
 

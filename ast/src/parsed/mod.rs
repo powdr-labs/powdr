@@ -147,8 +147,8 @@ impl Children<Expression> for PilStatement {
 
             PilStatement::PublicDeclaration(_, _, _, i, e) => Box::new(i.iter().chain(once(e))),
 
-            PilStatement::PolynomialConstantDefinition(_, _, fundef)
-            | PilStatement::PolynomialCommitDeclaration(_, _, _, Some(fundef)) => fundef.children(),
+            PilStatement::PolynomialConstantDefinition(_, _, def)
+            | PilStatement::PolynomialCommitDeclaration(_, _, _, Some(def)) => def.children(),
             PilStatement::PolynomialCommitDeclaration(_, _, _, None)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
@@ -178,10 +178,8 @@ impl Children<Expression> for PilStatement {
 
             PilStatement::PublicDeclaration(_, _, _, i, e) => Box::new(i.iter_mut().chain(once(e))),
 
-            PilStatement::PolynomialConstantDefinition(_, _, fundef)
-            | PilStatement::PolynomialCommitDeclaration(_, _, _, Some(fundef)) => {
-                fundef.children_mut()
-            }
+            PilStatement::PolynomialConstantDefinition(_, _, def)
+            | PilStatement::PolynomialCommitDeclaration(_, _, _, Some(def)) => def.children_mut(),
             PilStatement::PolynomialCommitDeclaration(_, _, _, None)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),

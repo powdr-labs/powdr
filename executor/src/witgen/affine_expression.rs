@@ -127,7 +127,7 @@ where
     /// If the affine expression has only a single variable (with nonzero coefficient),
     /// returns the index of the variable and the assignment that evaluates the
     /// affine expression to zero.
-    /// Returns an error if the constraint is unsat
+    /// Returns an error if the constraint is unsatisfiable
     pub fn solve(&self) -> EvalResult<T, K> {
         let ((v, c), offset) = match self {
             AffineExpression::Constant(c) if c.is_zero() => {

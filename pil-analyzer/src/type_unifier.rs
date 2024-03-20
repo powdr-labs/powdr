@@ -11,7 +11,7 @@ use crate::type_builtins::elementary_type_bounds;
 // that smaller map during the recursive substitutions.
 // 2) We could have a wrapper around type that stores which type variables are contained in it.
 // This way we can exit early if we know that all contained type vars are substituted.
-// This migt be especially useful inside add_substitution.
+// This might be especially useful inside add_substitution.
 
 #[derive(Default, Clone)]
 pub struct Unifier {

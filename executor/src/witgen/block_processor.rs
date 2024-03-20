@@ -90,7 +90,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
             sequence_iterator.report_progress(progress);
         }
 
-        match self.processor.finshed_outer_query() {
+        match self.processor.finished_outer_query() {
             true => Ok(EvalValue::complete(outer_assignments)),
             false => Ok(EvalValue::incomplete_with_constraints(
                 outer_assignments,

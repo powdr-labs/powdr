@@ -62,7 +62,7 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
     match function {
         FunctionValueDefinition::Array(expressions) => {
             // TODO use a proper evaluator at some point,
-            // combine with constant_evalutaor
+            // combine with constant_evaluator
             let mut values = expressions
                 .iter()
                 .filter(|e| !e.is_empty())
