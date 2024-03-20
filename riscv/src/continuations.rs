@@ -134,7 +134,7 @@ fn sanity_check(program: &AnalysisASMFile) {
     assert_eq!(machine_registers, expected_registers);
 }
 
-fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
+pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
     let machine = get_main_machine(program);
     let Some(expr) = machine.pil.iter().find_map(|v| match v {
         PilStatement::LetStatement(_, n, _, expr) if n == "initial_memory" => expr.as_ref(),
