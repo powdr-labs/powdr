@@ -12,7 +12,7 @@ use halo2_proofs::{
     },
     transcript::{EncodedChallenge, TranscriptReadBuffer, TranscriptWriterBuffer},
 };
-use powdr_ast::analyzed::Analyzed;
+use powdr_ast::{analyzed::Analyzed, WitgenCallback};
 use powdr_number::{DegreeType, FieldElement, KnownField};
 use snark_verifier::{
     loader::native::NativeLoader,
@@ -45,6 +45,7 @@ pub use halo2_proofs::SerdeFormat;
 /// "unsafe" code, and unsafe code is harder to explain and maintain.
 pub struct Halo2Prover<'a, F> {
     analyzed: &'a Analyzed<F>,
+    fixed: &'a [(String, Vec<F>)],
     circuit: PowdrCircuit<'a, F>,
     params: ParamsKZG<Bn256>,
     vkey: Option<VerifyingKey<G1Affine>>,
@@ -75,10 +76,12 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             })
             .unwrap_or_else(|| generate_setup(analyzed.degree()));
 
-        let circuit = PowdrCircuit::new(analyzed, fixed);
+        // TODO
+        let circuit = PowdrCircuit::new(analyzed, fixed, Box::new(|_, _, _| panic!()));
 
         Ok(Self {
             analyzed,
+            fixed,
             circuit,
             params,
             vkey: None,
@@ -89,10 +92,15 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         self.params.write(output)
     }
 
-    pub fn prove_ast(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
+    pub fn prove_ast(
+        &self,
+        witness: &[(String, Vec<F>)],
+        witgen_callback: Box<dyn WitgenCallback<F>>,
+    ) -> Result<Vec<u8>, String> {
         log::info!("Starting proof generation...");
 
-        let circuit = self.circuit.clone().with_witness(witness);
+        let circuit =
+            PowdrCircuit::new(self.analyzed, self.fixed, witgen_callback).with_witness(witness);
         let publics = vec![circuit.instance_column()];
 
         log::info!("Generating PK for snark...");

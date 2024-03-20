@@ -21,7 +21,7 @@ fn run_witgen<T: FieldElement>(
     let query_callback = inputs_to_query_callback(vec![]);
     powdr_executor::witgen::WitnessGenerator::new(analyzed, constants, &query_callback)
         .with_external_witness_values(external_witness_values)
-        .generate();
+        .generate(Default::default(), 0);
 }
 
 fn executor_benchmark(c: &mut Criterion) {

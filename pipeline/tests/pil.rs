@@ -86,6 +86,12 @@ fn test_fibonacci() {
 }
 
 #[test]
+fn test_permutation_via_challenges() {
+    let f = "pil/permutation_via_challenges.pil";
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn test_fibonacci_invalid_witness() {
     let f = "pil/fibonacci.pil";
 

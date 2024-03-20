@@ -1,7 +1,10 @@
-use powdr_ast::analyzed::AlgebraicReference;
+use powdr_ast::analyzed::{AlgebraicReference, Challenge};
 use powdr_number::{DegreeType, FieldElement};
 
-use super::{affine_expression::AffineResult, expression_evaluator::SymbolicVariables, FixedData};
+use super::{
+    affine_expression::AffineResult, expression_evaluator::SymbolicVariables, FixedData,
+    IncompleteCause,
+};
 
 pub trait WitnessColumnEvaluator<T> {
     /// Returns a symbolic or concrete value for the given witness column and next flag.
@@ -49,6 +52,16 @@ where
             let row =
                 if poly.next { self.row + 1 } else { self.row } % (values.len() as DegreeType);
             Ok(values[row as usize].into())
+        }
+    }
+
+    fn resolve_challenge<'b>(
+        &self,
+        challenge: &'b Challenge,
+    ) -> AffineResult<&'b AlgebraicReference, T> {
+        match self.fixed_data.challenges.get(&challenge.id) {
+            Some(value) => Ok((*value).into()),
+            None => Err(IncompleteCause::MissingChallenge(challenge.id)),
         }
     }
 }

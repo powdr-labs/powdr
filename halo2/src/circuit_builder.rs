@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, iter};
+use std::{cmp::max, collections::BTreeMap, iter, rc::Rc};
 
 use halo2_curves::ff::PrimeField;
 use halo2_proofs::{
@@ -13,6 +13,7 @@ use halo2_proofs::{
 use powdr_ast::{
     analyzed::{AlgebraicBinaryOperator, AlgebraicExpression},
     parsed::SelectedExpressions,
+    WitgenCallback,
 };
 use powdr_ast::{
     analyzed::{Analyzed, IdentityKind},
@@ -79,10 +80,16 @@ pub(crate) struct PowdrCircuit<'a, T> {
     witness: Option<&'a [(String, Vec<T>)]>,
     /// Column name and index of the public cells
     publics: Vec<(String, usize)>,
+
+    witgen_callback: Rc<dyn WitgenCallback<T>>,
 }
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
-    pub(crate) fn new(analyzed: &'a Analyzed<T>, fixed: &'a [(String, Vec<T>)]) -> Self {
+    pub(crate) fn new(
+        analyzed: &'a Analyzed<T>,
+        fixed: &'a [(String, Vec<T>)],
+        witgen_callback: Box<dyn WitgenCallback<T>>,
+    ) -> Self {
         let mut publics = analyzed
             .public_declarations
             .values()
@@ -100,6 +107,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             fixed,
             witness: None,
             publics,
+            witgen_callback: witgen_callback.into(),
         }
     }
 
@@ -310,6 +318,27 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         // |  None            |    None      |   None           |  | <-- Halo2 will put blinding factors in the last few rows
         // |  None            |    None      |   None           | /      of the witness columns.
 
+        let mut new_witness = Vec::new();
+        if let Some(witness) = self.witness {
+            let mut phase = 1;
+            let challenges = config
+                .challenges
+                .iter()
+                .filter_map(|(&challenge_id, challenge)| {
+                    let mut challenge_value = None;
+                    layouter.get_challenge(*challenge).map(|x| {
+                        phase = max(phase, challenge.phase() + 1);
+                        challenge_value = Some(T::from_bytes_le(&x.to_repr()))
+                    });
+                    challenge_value.map(|v| (challenge_id, v))
+                })
+                .collect::<BTreeMap<u64, T>>();
+            if !challenges.is_empty() {
+                log::info!("Running witness generation for phase {phase}!");
+                new_witness = (self.witgen_callback)(witness, challenges, phase);
+            }
+        }
+
         let public_cells = layouter.assign_region(
             || "main",
             |mut region| {
@@ -349,17 +378,19 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
 
                 // Set witness values
                 let mut public_cells = Vec::new();
+                let witness: Option<&[(String, Vec<T>)]> = if !new_witness.is_empty() {
+                    Some(&new_witness)
+                } else {
+                    self.witness
+                };
                 for (name, &column) in config.advice.iter() {
                     // Note that we can't skip this loop if we don't have a witness,
                     // because the copy_advice() call below also adds copy constraints,
                     // which are needed to compute the verification key.
-                    let values = self.witness.as_ref().map(|witness| {
-                        witness
-                            .iter()
-                            .find_map(|(witness_name, values)| {
-                                (witness_name == name).then_some(values)
-                            })
-                            .unwrap_or_else(|| panic!("Missing witness: {}", name))
+                    let values = witness.as_ref().and_then(|witness| {
+                        witness.iter().find_map(|(witness_name, values)| {
+                            (witness_name == name).then_some(values)
+                        })
                     });
                     for i in 0..degree {
                         let value = values

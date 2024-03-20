@@ -3,8 +3,19 @@
 use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt::{Display, Result, Write};
 use std::sync::Arc;
+
+// TODO: Find a better place for this
+pub trait WitgenCallback<T>:
+    Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)>
+{
+}
+impl<T, F> WitgenCallback<T> for F where
+    F: Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)>
+{
+}
 
 /// Analyzed PIL
 pub mod analyzed;

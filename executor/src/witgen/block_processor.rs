@@ -149,7 +149,7 @@ mod tests {
             .into_iter()
             .map(|(n, c)| (n.to_string(), c))
             .collect::<Vec<_>>();
-        let fixed_data = FixedData::new(&analyzed, &constants, vec![]);
+        let fixed_data = FixedData::new(&analyzed, &constants, vec![], Default::default());
 
         // No global range constraints
         let global_range_constraints = GlobalConstraints {

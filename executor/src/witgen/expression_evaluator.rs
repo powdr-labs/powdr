@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicReference,
-    AlgebraicUnaryOperator,
+    AlgebraicUnaryOperator, Challenge,
 };
 
 use powdr_number::FieldElement;
@@ -12,6 +12,13 @@ use super::{affine_expression::AffineResult, IncompleteCause};
 pub trait SymbolicVariables<T> {
     /// Value of a polynomial (fixed or witness).
     fn value<'a>(&self, poly: &'a AlgebraicReference) -> AffineResult<&'a AlgebraicReference, T>;
+
+    fn resolve_challenge<'a>(
+        &self,
+        _challenge: &'a Challenge,
+    ) -> AffineResult<&'a AlgebraicReference, T> {
+        unimplemented!()
+    }
 }
 
 pub struct ExpressionEvaluator<T, SV> {
@@ -43,9 +50,8 @@ where
                 self.evaluate_binary_operation(left, op, right)
             }
             Expression::UnaryOperation(op, expr) => self.evaluate_unary_operation(op, expr),
-            e => Err(IncompleteCause::ExpressionEvaluationUnimplemented(
-                e.to_string(),
-            )),
+            Expression::Challenge(challenge) => self.variables.resolve_challenge(challenge),
+            e => panic!("Unexpected expression: {}", e),
         }
     }
 

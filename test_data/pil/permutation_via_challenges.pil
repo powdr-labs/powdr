@@ -1,0 +1,23 @@
+let N: int = 8;
+namespace std::prover(N);
+    let challenge = [];
+    enum Query {
+        Hint(int)
+    }
+
+namespace Main(N);
+    col fixed first = [1] + [0]*;
+
+    // Two witness columns, claimed to be permutations of one another
+    col witness a(i) query std::prover::Query::Hint(i);
+    col witness b(i) query std::prover::Query::Hint(7 - i);
+
+    col witness stage(1) z;
+    let beta: expr = std::prover::challenge(0, 12345);
+
+    // First and last z needs to be 1
+    first * (z - 1) = 0;
+
+    // Update rule:
+    // z' = z * (beta - a) / (beta - b)
+    (beta - b) * z' = z * (beta - a);

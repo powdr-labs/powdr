@@ -1,10 +1,7 @@
-use std::{
-    io::{self},
-    path::Path,
-};
+use std::{io, path::Path};
 
 use crate::{Backend, BackendFactory, Error, Proof};
-use powdr_ast::analyzed::Analyzed;
+use powdr_ast::{analyzed::Analyzed, WitgenCallback};
 use powdr_halo2::{generate_setup, Halo2Prover, Params};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -45,10 +42,11 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
         &self,
         witness: &[(String, Vec<T>)],
         prev_proof: Option<Proof>,
+        witgen_callback: Box<dyn WitgenCallback<T>>,
     ) -> Result<Proof, Error> {
         let proof = match prev_proof {
             Some(proof) => self.prove_aggr(witness, proof),
-            None => self.prove_ast(witness),
+            None => self.prove_ast(witness, witgen_callback),
         };
 
         Ok(proof?)
@@ -97,12 +95,14 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<'a, T> {
         &self,
         witness: &[(String, Vec<T>)],
         prev_proof: Option<Proof>,
+        witgen_callback: Box<dyn WitgenCallback<T>>,
     ) -> Result<Proof, Error> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
 
-        powdr_halo2::mock_prove(self.pil, self.fixed, witness).map_err(Error::BackendError)?;
+        powdr_halo2::mock_prove(self.pil, self.fixed, witness, witgen_callback)
+            .map_err(Error::BackendError)?;
 
         Ok(vec![])
     }

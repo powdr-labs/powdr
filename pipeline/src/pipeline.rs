@@ -1,5 +1,6 @@
 use std::{
     borrow::Borrow,
+    collections::BTreeMap,
     fmt::Display,
     fs,
     io::{self, BufReader, BufWriter},
@@ -820,7 +821,7 @@ impl<T: FieldElement> Pipeline<T> {
             query_callback.borrow(),
         )
         .with_external_witness_values(external_witness_values)
-        .generate();
+        .generate(Default::default(), 0);
 
         self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
@@ -843,6 +844,30 @@ impl<T: FieldElement> Pipeline<T> {
         let pil = self.compute_optimized_pil()?;
         let fixed_cols = self.compute_fixed_cols()?;
         let witness = self.compute_witness()?;
+
+        let query_callback = self
+            .arguments
+            .query_callback
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(powdr_executor::witgen::unused_query_callback()));
+
+        let pil_copy = pil.clone();
+        let fixed_cols_copy = fixed_cols.clone();
+
+        let generate_witness = move |current_witness: &[(String, Vec<T>)],
+                                     challenges: BTreeMap<u64, T>,
+                                     phase: u8|
+              -> Vec<(String, Vec<T>)> {
+            let external_witness_values = current_witness.to_vec();
+            powdr_executor::witgen::WitnessGenerator::new(
+                &pil_copy,
+                &fixed_cols_copy,
+                query_callback.borrow(),
+            )
+            .with_external_witness_values(external_witness_values)
+            .generate(challenges, phase)
+        };
 
         let backend = self
             .arguments
@@ -882,7 +907,7 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| fs::read(path).unwrap());
 
-        let proof = match backend.prove(&witness, existing_proof) {
+        let proof = match backend.prove(&witness, existing_proof, Box::new(generate_witness)) {
             Ok(proof) => proof,
             Err(powdr_backend::Error::BackendError(e)) => {
                 return Err(vec![e.to_string()]);
