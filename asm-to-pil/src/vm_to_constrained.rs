@@ -150,7 +150,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                     ),
                                 ]
                             }
-                            // Unconstrain read-only registers when calling `_reset`
+                            // Un-constrain read-only registers when calling `_reset`
                             ReadOnly => {
                                 let not_reset: Expression =
                                     Expression::from(1) - direct_reference("instr__reset");
@@ -830,7 +830,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         mut left: Vec<(T, AffineExpressionComponent)>,
         right: Vec<(T, AffineExpressionComponent)>,
     ) -> Vec<(T, AffineExpressionComponent)> {
-        // TODO combine (or at leats check for) same components.
+        // TODO combine (or at least check for) same components.
         left.extend(right);
         left
     }
@@ -1232,7 +1232,7 @@ mod test {
 
     use crate::compile;
 
-    fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> AnalysisASMFile {
+    fn parse_analyze_and_compile<T: FieldElement>(input: &str) -> AnalysisASMFile {
         let parsed = load_dependencies_and_resolve_str(input);
         let analyzed = powdr_analysis::analyze(parsed).unwrap();
         compile::<T>(analyzed)
@@ -1254,7 +1254,7 @@ machine Main {
   }
 }
 ";
-        parse_analyse_and_compile::<GoldilocksField>(asm);
+        parse_analyze_and_compile::<GoldilocksField>(asm);
     }
 
     #[test]
@@ -1275,7 +1275,7 @@ machine Main {
   }
 }
 ";
-        parse_analyse_and_compile::<GoldilocksField>(asm);
+        parse_analyze_and_compile::<GoldilocksField>(asm);
     }
 
     #[test]
@@ -1296,6 +1296,6 @@ machine Main {
   }
 }
 ";
-        parse_analyse_and_compile::<GoldilocksField>(asm);
+        parse_analyze_and_compile::<GoldilocksField>(asm);
     }
 }

@@ -526,7 +526,7 @@ where
         })]
     }
 
-    /// Turns a Type<Expression> to a Type<u64> by evaluating the array legnth expressions.
+    /// Turns a Type<Expression> to a Type<u64> by evaluating the array length expressions.
     fn evaluate_array_lengths(&self, mut n: Type<parsed::Expression>) -> Result<Type, EvalError> {
         // Replace all expressions by number literals.
         // Any expression inside a type name has to be an array length,

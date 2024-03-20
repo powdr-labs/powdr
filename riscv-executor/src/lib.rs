@@ -235,9 +235,9 @@ mod builder {
     fn register_names(main: &Machine) -> Vec<&str> {
         main.registers
             .iter()
-            .filter_map(|stmnt| {
-                if stmnt.ty != RegisterTy::Assignment {
-                    Some(&stmnt.name[..])
+            .filter_map(|statement| {
+                if statement.ty != RegisterTy::Assignment {
+                    Some(&statement.name[..])
                 } else {
                     None
                 }
@@ -781,7 +781,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                         powdr_ast::parsed::BinaryOperator::Sub => Elem::Binary(l - r),
                         powdr_ast::parsed::BinaryOperator::Mul => match l.checked_mul(*r) {
                             // Multiplication is a special case as the input for
-                            // posseidon_gl requires field multiplication. So,
+                            // poseidon_gl requires field multiplication. So,
                             // if native multiplication overflows, we use field
                             // multiplication.
                             //

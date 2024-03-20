@@ -34,7 +34,7 @@ pub trait AnalysisDriver: Clone + Copy {
     }
     /// Turns a reference to a name with an optional namespace into an absolute name.
     /// If `is_type` is true, expects references to type names, otherwise
-    /// only references to vaule names.
+    /// only references to value names.
     fn resolve_ref(&self, path: &SymbolPath, is_type: bool) -> String;
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>;
 }

@@ -63,7 +63,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
                 let operation_id = main_machine.operation_id.clone();
                 match (operation_id, main_operation_id) {
                     (Some(operation_id), Some(main_operation_id)) => {
-                        // call the main operation by initialising `operation_id` to that of the main operation
+                        // call the main operation by initializing `operation_id` to that of the main operation
                         let linker_first_step = "_linker_first_step";
                         pil.extend([
                             parse_pil_statement(&format!(
@@ -243,7 +243,7 @@ mod test {
 
     use crate::{link, DEFAULT_DEGREE};
 
-    fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> PILGraph {
+    fn parse_analyze_and_compile<T: FieldElement>(input: &str) -> PILGraph {
         let parsed = parse_asm(None, input).unwrap();
         let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
         powdr_airgen::compile(convert_asm_to_pil::<T>(resolved).unwrap())
@@ -332,7 +332,7 @@ mod test {
             env!("CARGO_MANIFEST_DIR")
         );
         let contents = fs::read_to_string(file_name).unwrap();
-        let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
+        let graph = parse_analyze_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -435,7 +435,7 @@ namespace main_sub(16);
             env!("CARGO_MANIFEST_DIR")
         );
         let contents = fs::read_to_string(file_name).unwrap();
-        let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
+        let graph = parse_analyze_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -510,7 +510,7 @@ namespace main_sub(16);
             env!("CARGO_MANIFEST_DIR")
         );
         let contents = fs::read_to_string(file_name).unwrap();
-        let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
+        let graph = parse_analyze_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -566,7 +566,7 @@ machine Machine {
     pol constant _linker_first_step = [1] + [0]*;
     ((_linker_first_step * (_operation_id - 2)) = 0);
 "#;
-        let graph = parse_analyse_and_compile::<GoldilocksField>(source);
+        let graph = parse_analyze_and_compile::<GoldilocksField>(source);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -579,14 +579,14 @@ machine NegativeForUnsigned {
     reg pc[@pc];
     reg fp;
     
-    instr instro x: unsigned { pc' = pc + x }
+    instr my_instr x: unsigned { pc' = pc + x }
     
     function main {
-        instro 9223372034707292161;
+        my_instr 9223372034707292161;
     }
 }
 "#;
-        let graph = parse_analyse_and_compile::<GoldilocksField>(source);
+        let graph = parse_analyze_and_compile::<GoldilocksField>(source);
         let _ = link(graph);
     }
 
@@ -665,7 +665,7 @@ namespace main_vm(1024);
     pol commit y;
     (y = (x + 5));
 "#;
-        let graph = parse_analyse_and_compile::<GoldilocksField>(asm);
+        let graph = parse_analyze_and_compile::<GoldilocksField>(asm);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&(pil.to_string())), expected);
     }
@@ -784,7 +784,7 @@ namespace main_bin(65536);
             env!("CARGO_MANIFEST_DIR")
         );
         let contents = fs::read_to_string(file_name).unwrap();
-        let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
+        let graph = parse_analyze_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }

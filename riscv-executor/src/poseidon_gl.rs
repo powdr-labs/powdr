@@ -35,7 +35,7 @@ const MDS_MATRIX: [[u64; 12]; 12] = [
 /// Ported from:
 /// - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil
 /// - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/src/sm/sm_poseidong.js
-/// It's also equaivalent to std::hash::poseidon_gl::PoseidonGL from the Powdr standard library.
+/// It's also equivalent to std::hash::poseidon_gl::PoseidonGL from the Powdr standard library.
 pub fn poseidon_gl<F: FieldElement>(inputs: &[F]) -> [F; 4] {
     assert_eq!(inputs.len(), 12);
     let mut state = [F::zero(); 12];

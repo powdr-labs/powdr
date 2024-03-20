@@ -296,8 +296,8 @@ mod test {
                 }
                 MachineStatement::FunctionDeclaration(s, _, _, statements) => {
                     *s = SourceRef::unknown();
-                    for fstmt in statements {
-                        match fstmt {
+                    for statement in statements {
+                        match statement {
                             FunctionStatement::Assignment(s, _, _, _)
                             | FunctionStatement::Instruction(s, _, _)
                             | FunctionStatement::Label(s, _)

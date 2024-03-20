@@ -30,7 +30,7 @@ mod sorted_witness_machine;
 mod write_once_memory;
 
 /// A machine is a set of witness columns and identities where the columns
-/// are used on the right-hand-side of lookups. It can process plookups.
+/// are used on the right-hand-side of lookups. It can process lookups.
 pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Like `process_plookup`, but also records the time spent in this machine.
     fn process_plookup_timed<'b, Q: QueryCallback<T>>(

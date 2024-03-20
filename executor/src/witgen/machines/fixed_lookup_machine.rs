@@ -32,7 +32,7 @@ impl IndexValue {
         Self(None)
     }
     pub fn single_row(row: usize) -> Self {
-        // TODO check how expensive the cehck is
+        // TODO check how expensive the check is
         // We negate to make it actually nonzero.
         Self(NonZeroUsize::new(!row))
     }

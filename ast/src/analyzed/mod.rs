@@ -913,7 +913,7 @@ pub struct PolynomialReference {
     /// TODO make this non-optional
     pub poly_id: Option<PolyID>,
     /// The type arguments if the symbol is generic.
-    /// Guarenteed to be Some(_) after type checking is completed.
+    /// Guaranteed to be Some(_) after type checking is completed.
     pub generic_args: Option<Vec<Type>>,
 }
 

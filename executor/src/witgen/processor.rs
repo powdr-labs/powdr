@@ -114,7 +114,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         }
     }
 
-    pub fn finshed_outer_query(&self) -> bool {
+    pub fn finished_outer_query(&self) -> bool {
         self.outer_query
             .as_ref()
             .map(|outer_query| outer_query.is_complete())
