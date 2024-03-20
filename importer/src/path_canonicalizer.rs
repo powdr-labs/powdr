@@ -517,7 +517,15 @@ fn check_machine(
                 _,
                 _,
                 Instruction {
-                    body: InstructionBody::CallableRef(callable_ref),
+                    body: InstructionBody::CallablePlookup(callable_ref),
+                    ..
+                },
+            )
+            | MachineStatement::InstructionDeclaration(
+                _,
+                _,
+                Instruction {
+                    body: InstructionBody::CallablePermutation(callable_ref),
                     ..
                 },
             ) => {
