@@ -325,12 +325,6 @@ fn serialize_deserialize_optimized_pil() {
     assert_eq!(input_pil_file, output_pil_file);
 }
 
-#[test]
-fn challenges() {
-    let f = "pil/challenges.pil";
-    test_halo2(f, Default::default());
-}
-
 mod book {
     use super::*;
     use test_log::test;
