@@ -6,6 +6,9 @@ machine SplitGL(RESET, _) {
 
     operation split in_acc -> output_low, output_high;
 
+    // Allow this machine to be connected via a permutation
+    call_selectors sel;
+
     // Latch and operation ID
     col fixed RESET(i) { if i % 8 == 7 { 1 } else { 0 } };
 
