@@ -515,7 +515,7 @@ fn let_inside_block() {
 }
 
 #[test]
-#[should_panic = "some message"]
+#[should_panic = "Variable already defined: t"]
 fn let_inside_block_redefine() {
     let input = "
     namespace Main(8);

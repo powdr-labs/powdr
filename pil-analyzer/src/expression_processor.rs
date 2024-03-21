@@ -185,7 +185,9 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
             .map(|LetStatementInsideBlock { name, value }| {
                 let value = value.map(|v| self.process_expression(v));
                 let id = self.local_variable_counter;
-                self.local_variables.insert(name.clone(), id);
+                if self.local_variables.insert(name.clone(), id).is_some() {
+                    panic!("Variable already defined: {name}");
+                }
                 self.local_variable_counter += 1;
                 LetStatementInsideBlock { name, value }
             })
