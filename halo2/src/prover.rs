@@ -95,7 +95,6 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     ) -> Result<Vec<u8>, String> {
         log::info!("Starting proof generation...");
 
-        // Make a new circuit (as opposed to using `self.circuit`) with the witgen callback and the witness.
         let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);

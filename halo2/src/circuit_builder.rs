@@ -395,10 +395,11 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
 
                 // Set witness values
                 let mut public_cells = Vec::new();
-                let witness: Option<&[(String, Vec<T>)]> = if !new_witness.is_empty() {
-                    Some(&new_witness)
-                } else {
+                let witness: Option<&[(String, Vec<T>)]> = if new_witness.is_empty() {
+                    // We're in phase 0, use the original witness
                     self.witness
+                } else {
+                    Some(&new_witness)
                 };
                 for (name, &column) in config.advice.iter() {
                     // Note that we can't skip this loop if we don't have a witness,
