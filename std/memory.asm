@@ -17,34 +17,30 @@ machine Memory(LATCH, m_is_write) {
     let LATCH = 1;
 
     // =============== read-write memory =======================
-    // Read-write memory. Columns are sorted by m_addr and
-    // then by m_step. m_change is 1 if and only if m_addr changes
+    // Read-write memory. Columns are sorted by addr and
+    // then by step. change is 1 if and only if addr changes
     // in the next row.
+    // Note that these column names are used by witgen to detect
+    // this machine...
     col witness m_addr;
     col witness m_step;
     col witness m_change;
     col witness m_value;
 
-    // Memory operation flags: If none is active, it's a read.
+    // Memory operation flags
     col witness m_is_write;
     std::utils::force_bool(m_is_write);
 
-    // Selectors
-    col witness m_selector_read;
-    col witness m_selector_write;
-    std::utils::force_bool(m_selector_read);
-    std::utils::force_bool(m_selector_write);
-
-    // No selector active -> no write
-    (1 - m_selector_read - m_selector_write) * m_is_write = 0;
-    
-    col operation_id = m_is_write;
+    // is_write can only be 1 if a selector is active
+    let is_mem_op = array::sum(selectors);
+    is_mem_op * (1 - is_mem_op) = 0;
+    (1 - is_mem_op) * m_is_write = 0;
 
     // If the next line is a not a write and we have an address change,
     // then the value is zero.
     (1 - m_is_write') * m_change * m_value' = 0;
 
-    // m_change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
+    // change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
     (1 - m_change) * LAST = 0;
 
     // If the next line is a read and we stay at the same address, then the
@@ -64,13 +60,13 @@ machine Memory(LATCH, m_is_write) {
 
     std::utils::force_bool(m_change);
 
-    // if m_change is zero, m_addr has to stay the same.
+    // if change is zero, addr has to stay the same.
     (m_addr' - m_addr) * (1 - m_change) = 0;
 
-    // Except for the last row, if m_change is 1, then m_addr has to increase,
-    // if it is zero, m_step has to increase.
+    // Except for the last row, if change is 1, then addr has to increase,
+    // if it is zero, step has to increase.
     // `m_diff_upper * 2**16 + m_diff_lower` has to be equal to the difference **minus one**.
-    // Since we know that both m_addr and m_step can only be 32-Bit, this enforces that
+    // Since we know that both addr and step can only be 32-Bit, this enforces that
     // the values are strictly increasing.
     col diff = (m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step));
     (1 - LAST) * (diff - 1 - m_diff_upper * 2**16 - m_diff_lower) = 0;
