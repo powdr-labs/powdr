@@ -1,7 +1,8 @@
 use std::{io, path::Path};
 
 use crate::{Backend, BackendFactory, Error, Proof};
-use powdr_ast::{analyzed::Analyzed, WitgenCallback};
+use powdr_ast::analyzed::Analyzed;
+use powdr_executor::witgen::WitgenCallback;
 use powdr_halo2::{generate_setup, Halo2Prover, Params};
 use powdr_number::{DegreeType, FieldElement};
 

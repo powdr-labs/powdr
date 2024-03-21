@@ -8,7 +8,8 @@ use std::{
 };
 
 use crate::{Backend, BackendFactory, Error, Proof};
-use powdr_ast::{analyzed::Analyzed, WitgenCallback};
+use powdr_ast::analyzed::Analyzed;
+use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 
 pub struct PilStarkCliFactory;

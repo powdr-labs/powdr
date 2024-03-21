@@ -12,7 +12,8 @@ use halo2_proofs::{
     },
     transcript::{EncodedChallenge, TranscriptReadBuffer, TranscriptWriterBuffer},
 };
-use powdr_ast::{analyzed::Analyzed, WitgenCallback};
+use powdr_ast::analyzed::Analyzed;
+use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, KnownField};
 use snark_verifier::{
     loader::native::NativeLoader,

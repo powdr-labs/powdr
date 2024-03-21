@@ -1,4 +1,5 @@
-use powdr_ast::{analyzed::Analyzed, WitgenCallback};
+use powdr_ast::analyzed::Analyzed;
+use powdr_executor::witgen::WitgenCallback;
 
 use crate::circuit_builder::PowdrCircuit;
 

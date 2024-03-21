@@ -43,6 +43,15 @@ static OUTER_CODE_NAME: &str = "witgen (outer code)";
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
+pub trait WitgenCallback<T>:
+    Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)>
+{
+}
+impl<T, F> WitgenCallback<T> for F where
+    F: Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)>
+{
+}
+
 pub fn chain_callbacks<T: FieldElement>(
     c1: Arc<dyn QueryCallback<T>>,
     c2: Arc<dyn QueryCallback<T>>,

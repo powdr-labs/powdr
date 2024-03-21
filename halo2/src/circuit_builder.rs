@@ -13,12 +13,12 @@ use halo2_proofs::{
 use powdr_ast::{
     analyzed::{AlgebraicBinaryOperator, AlgebraicExpression},
     parsed::SelectedExpressions,
-    WitgenCallback,
 };
 use powdr_ast::{
     analyzed::{Analyzed, IdentityKind},
     parsed::visitor::ExpressionVisitable,
 };
+use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 
 const ENABLE_NAME: &str = "__enable";

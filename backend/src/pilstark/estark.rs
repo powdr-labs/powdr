@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use crate::{pilstark, Backend, BackendFactory, Error};
 use powdr_ast::analyzed::Analyzed;
-use powdr_ast::WitgenCallback;
+use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, GoldilocksField, LargeInt};
 
 use starky::{
