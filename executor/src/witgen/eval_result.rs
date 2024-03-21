@@ -40,8 +40,6 @@ pub enum IncompleteCause<K = usize> {
     NonConstantRequiredArgument(&'static str),
     /// The left selector in a lookup is not constant. Example: `x * {1} in [{1}]` where `x` is not constant.
     NonConstantLeftSelector,
-    /// An expression cannot be evaluated.
-    ExpressionEvaluationUnimplemented(String),
     /// A value is not found on the left side of a match. Example: `match x {1 => 2, 3 => 4}` where `x == 0`
     NoMatchArmFound,
     /// A lookup into a block machine was not able to assign all variables in the query. It could be that we just need to re-run it.

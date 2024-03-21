@@ -55,10 +55,7 @@ where
         }
     }
 
-    fn resolve_challenge<'b>(
-        &self,
-        challenge: &'b Challenge,
-    ) -> AffineResult<&'b AlgebraicReference, T> {
+    fn challenge<'b>(&self, challenge: &'b Challenge) -> AffineResult<&'b AlgebraicReference, T> {
         match self.fixed_data.challenges.get(&challenge.id) {
             Some(value) => Ok((*value).into()),
             None => Err(IncompleteCause::MissingChallenge(challenge.id)),

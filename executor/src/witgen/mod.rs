@@ -43,6 +43,7 @@ static OUTER_CODE_NAME: &str = "witgen (outer code)";
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
+/// A callback passed to the backend to compute the next phase witness.
 pub trait WitgenCallback<T>:
     Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)>
 {

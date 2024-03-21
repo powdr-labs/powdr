@@ -184,6 +184,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
         &self,
         witness: &[(String, Vec<F>)],
         prev_proof: Option<crate::Proof>,
+        // TODO: Implement challenges
         _witgen_callback: Box<dyn WitgenCallback<F>>,
     ) -> Result<crate::Proof, Error> {
         if prev_proof.is_some() {
