@@ -10,7 +10,7 @@ use std::{
 
 use itertools::Itertools;
 
-use crate::write_indented_by;
+use crate::{writeln_indented, writeln_indented_by};
 
 use self::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
@@ -51,43 +51,11 @@ impl<T: Display> Display for Analyzed<T> {
                         }
                         let (name, is_local) = update_namespace(name, f)?;
                         match symbol.kind {
-                            SymbolKind::Poly(poly_type) => {
-                                let kind = match &poly_type {
-                                    PolynomialType::Committed => "witness ",
-                                    PolynomialType::Constant => "fixed ",
-                                    PolynomialType::Intermediate => panic!(),
-                                };
-                                let stage = symbol
-                                    .stage
-                                    .map(|s| format!("stage({s}) "))
-                                    .unwrap_or_default();
-                                write!(f, "    col {kind}{stage}{name}")?;
-                                if let Some(length) = symbol.length {
-                                    if let PolynomialType::Committed = poly_type {
-                                        write!(f, "[{length}]")?;
-                                        assert!(definition.is_none());
-                                    } else {
-                                        // Do not print an array size, because we will do it as part of the type.
-                                        assert!(matches!(
-                                            definition,
-                                            None | Some(FunctionValueDefinition::Expression(
-                                                TypedExpression {
-                                                    e: _,
-                                                    type_scheme: Some(_)
-                                                }
-                                            ))
-                                        ));
-                                    }
-                                }
-                                if let Some(value) = definition {
-                                    writeln!(f, "{value};")?
-                                } else {
-                                    writeln!(f, ";")?
-                                }
+                            SymbolKind::Poly(_) => {
+                                writeln_indented(f, format_poly(&name, symbol, definition))?;
                             }
                             SymbolKind::Constant() => {
                                 assert!(symbol.stage.is_none());
-                                let indentation = if is_local { "    " } else { "" };
                                 let Some(FunctionValueDefinition::Expression(TypedExpression {
                                     e,
                                     type_scheme,
@@ -102,8 +70,11 @@ impl<T: Display> Display for Analyzed<T> {
                                     type_scheme.is_none()
                                         || type_scheme == &Some((Type::Fe).into())
                                 );
-
-                                writeln!(f, "{indentation}constant {name} = {e};",)?;
+                                writeln_indented_by(
+                                    f,
+                                    format!("constant {name} = {e};"),
+                                    is_local.into(),
+                                )?;
                             }
                             SymbolKind::Other() => {
                                 assert!(symbol.stage.is_none());
@@ -111,17 +82,18 @@ impl<T: Display> Display for Analyzed<T> {
                                     Some(FunctionValueDefinition::Expression(
                                         TypedExpression { e, type_scheme },
                                     )) => {
-                                        writeln!(
+                                        writeln_indented(
                                             f,
-                                            "    let{} = {e};",
-                                            format_type_scheme_around_name(&name, type_scheme)
+                                            format!(
+                                                "let{} = {e};",
+                                                format_type_scheme_around_name(&name, type_scheme)
+                                            ),
                                         )?;
                                     }
                                     Some(FunctionValueDefinition::TypeDeclaration(
                                         enum_declaration,
                                     )) => {
-                                        write_indented_by(f, enum_declaration, 1)?;
-                                        writeln!(f)?;
+                                        writeln_indented(f, enum_declaration)?;
                                     }
                                     _ => {
                                         unreachable!("Invalid definition for symbol: {}", name)
@@ -134,14 +106,16 @@ impl<T: Display> Display for Analyzed<T> {
                         let (name, _) = update_namespace(name, f)?;
                         assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate));
                         if let Some(length) = symbol.length {
-                            writeln!(
+                            writeln_indented(
                                 f,
-                                "    col {name}[{length}] = [{}];",
-                                definition.iter().format(", ")
+                                format!(
+                                    "col {name}[{length}] = [{}];",
+                                    definition.iter().format(", ")
+                                ),
                             )?;
                         } else {
                             assert_eq!(definition.len(), 1);
-                            writeln!(f, "    col {name} = {};", definition[0])?;
+                            writeln_indented(f, format!("col {name} = {};", definition[0]))?;
                         }
                     } else {
                         panic!()
@@ -150,23 +124,74 @@ impl<T: Display> Display for Analyzed<T> {
                 StatementIdentifier::PublicDeclaration(name) => {
                     let decl = &self.public_declarations[name];
                     let (name, is_local) = update_namespace(&decl.name, f)?;
-                    let indentation = if is_local { "    " } else { "" };
-                    writeln!(
+                    writeln_indented_by(
                         f,
-                        "{indentation}public {name} = {}{}({});",
-                        decl.polynomial,
-                        decl.array_index
-                            .map(|i| format!("[{i}]"))
-                            .unwrap_or_default(),
-                        decl.index
+                        format_public_declaration(&name, decl),
+                        is_local.into(),
                     )?;
                 }
-                StatementIdentifier::Identity(i) => writeln!(f, "    {}", &self.identities[*i])?,
+                StatementIdentifier::Identity(i) => {
+                    writeln_indented(f, &self.identities[*i])?;
+                }
             }
         }
 
         Ok(())
     }
+}
+
+fn format_poly(
+    name: &str,
+    symbol: &Symbol,
+    definition: &Option<FunctionValueDefinition>,
+) -> String {
+    let SymbolKind::Poly(poly_type) = symbol.kind else {
+        panic!()
+    };
+    let kind = match &poly_type {
+        PolynomialType::Committed => "witness ",
+        PolynomialType::Constant => "fixed ",
+        PolynomialType::Intermediate => panic!(),
+    };
+    let stage = symbol
+        .stage
+        .map(|s| format!("stage({s}) "))
+        .unwrap_or_default();
+    let length = symbol
+        .length
+        .and_then(|length| {
+            if let PolynomialType::Committed = poly_type {
+                assert!(definition.is_none());
+                Some(format!("[{length}]"))
+            } else {
+                // Do not print an array size, because we will do it as part of the type.
+                assert!(matches!(
+                    definition,
+                    None | Some(FunctionValueDefinition::Expression(TypedExpression {
+                        e: _,
+                        type_scheme: Some(_)
+                    }))
+                ));
+                None
+            }
+        })
+        .unwrap_or_default();
+    let value = definition
+        .as_ref()
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    format!("col {kind}{stage}{name}{length}{value};")
+}
+
+fn format_public_declaration(name: &str, decl: &PublicDeclaration) -> String {
+    format!(
+        "public {name} = {}{}({});",
+        decl.polynomial,
+        decl.array_index
+            .map(|i| format!("[{i}]"))
+            .unwrap_or_default(),
+        decl.index
+    )
 }
 
 impl Display for FunctionValueDefinition {
