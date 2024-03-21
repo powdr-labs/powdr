@@ -9,6 +9,7 @@ use halo2_proofs::{
     },
     poly::Rotation,
 };
+use powdr_executor::witgen::WitgenCallback;
 
 use powdr_ast::{
     analyzed::{AlgebraicBinaryOperator, AlgebraicExpression},
@@ -18,7 +19,6 @@ use powdr_ast::{
     analyzed::{Analyzed, IdentityKind},
     parsed::visitor::ExpressionVisitable,
 };
-use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 
 const ENABLE_NAME: &str = "__enable";
@@ -177,7 +177,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                     0 => meta.advice_column_in(FirstPhase),
                     1 => meta.advice_column_in(SecondPhase),
                     2 => meta.advice_column_in(ThirdPhase),
-                    _ => panic!("Unknown phase: {}", stage),
+                    _ => panic!("Stage too large for Halo2 backend: {}", stage),
                 };
                 (name.clone(), col)
             })
@@ -204,7 +204,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                             0 => meta.challenge_usable_after(FirstPhase),
                             1 => meta.challenge_usable_after(SecondPhase),
                             2 => meta.challenge_usable_after(ThirdPhase),
-                            _ => panic!("Unknown phase: {}", challenge.stage),
+                            _ => panic!("Stage too large for Halo2 backend: {}", challenge.stage),
                         });
                 }
             })
