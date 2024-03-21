@@ -487,12 +487,12 @@ impl Display for FunctionDefinition {
             FunctionDefinition::Expression(Expression::LambdaExpression(lambda))
                 if lambda.params.len() == 1 =>
             {
-                write!(
-                    f,
-                    "({}) {{ {} }}",
-                    lambda.params.iter().format(", "),
-                    lambda.body,
-                )
+                let body = if matches!(lambda.body.as_ref(), Expression::BlockExpression(_, _)) {
+                    format!("{}", lambda.body)
+                } else {
+                    format!("{{ {} }}", lambda.body)
+                };
+                write!(f, "({}) {body}", lambda.params.iter().format(", "),)
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
             FunctionDefinition::TypeDeclaration(_) => {
