@@ -3,9 +3,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use powdr_ast::analyzed::{
-    AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialType,
-    SymbolKind,
+    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
+    PolynomialType, SymbolKind,
 };
+use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
@@ -157,7 +158,26 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         );
         let identities = self
             .analyzed
-            .identities_with_inlined_intermediate_polynomials();
+            .identities_with_inlined_intermediate_polynomials()
+            .into_iter()
+            .filter(|identity| {
+                let mut keep = true;
+                identity.pre_visit_expressions(&mut |expr| {
+                    if let AlgebraicExpression::Challenge(challenge) = expr {
+                        if challenge.stage >= self.stage.into() {
+                            keep = false;
+                        }
+                    }
+                });
+                if !keep {
+                    log::debug!(
+                        "Skipping identity that references challenge of later stage: {}",
+                        identity
+                    );
+                }
+                keep
+            })
+            .collect::<Vec<_>>();
 
         let (
             constraints,

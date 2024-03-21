@@ -16,8 +16,6 @@ pub enum IncompleteCause<K = usize> {
     /// There are bit constraints, but they might over-flow the field.
     /// Example: `some_field_element == 2**64 * x` with `x | 0x3` and a 64-bit field.
     OverflowingBitConstraints,
-    /// A challenge of a given ID was not yet available.
-    MissingChallenge(u64),
     /// Multiple rows match a lookup query. Example: `{x, 1} in [{1, 1}, {2, 1}]`
     MultipleLookupMatches,
     /// A linear constraint does not have a unique solution. Example: `x + y == 0`
