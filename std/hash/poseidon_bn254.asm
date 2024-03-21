@@ -14,6 +14,9 @@ machine PoseidonBN254(FIRSTBLOCK, operation_id) {
     // hash functions.
     operation poseidon_permutation<0> state[0], state[1], state[2] -> output[0];
 
+    // Allow this machine to be connected via a permutation
+    call_selectors sel;
+
     col witness operation_id;
 
     // Using parameters from https://eprint.iacr.org/2019/458.pdf
