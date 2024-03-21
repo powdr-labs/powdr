@@ -161,21 +161,20 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .identities_with_inlined_intermediate_polynomials()
             .into_iter()
             .filter(|identity| {
-                let mut keep = true;
-                identity.pre_visit_expressions(&mut |expr| {
+                let discard = identity.expr_any(|expr| {
                     if let AlgebraicExpression::Challenge(challenge) = expr {
-                        if challenge.stage >= self.stage.into() {
-                            keep = false;
-                        }
+                        challenge.stage >= self.stage.into()
+                    } else {
+                        false
                     }
                 });
-                if !keep {
+                if discard {
                     log::debug!(
                         "Skipping identity that references challenge of later stage: {}",
                         identity
                     );
                 }
-                keep
+                !discard
             })
             .collect::<Vec<_>>();
 
