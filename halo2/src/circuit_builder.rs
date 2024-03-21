@@ -4,16 +4,19 @@ use halo2_curves::ff::PrimeField;
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
-        Advice, Any, Circuit, Column, ConstraintSystem, Error, Expression, FirstPhase, Fixed,
-        Instance, VirtualCells,
+        Advice, Any, Challenge, Circuit, Column, ConstraintSystem, Error, Expression, FirstPhase,
+        Fixed, Instance, SecondPhase, ThirdPhase, VirtualCells,
     },
     poly::Rotation,
 };
 
-use powdr_ast::analyzed::{Analyzed, IdentityKind};
 use powdr_ast::{
     analyzed::{AlgebraicBinaryOperator, AlgebraicExpression},
     parsed::SelectedExpressions,
+};
+use powdr_ast::{
+    analyzed::{Analyzed, IdentityKind},
+    parsed::visitor::ExpressionVisitable,
 };
 use powdr_number::FieldElement;
 
@@ -26,7 +29,7 @@ pub(crate) struct PowdrCircuitConfig {
     fixed: BTreeMap<String, Column<Fixed>>,
     enable: Column<Fixed>,
     instance: Column<Instance>,
-    // TODO(challenges): Add challenges
+    challenges: BTreeMap<u64, Challenge>,
 }
 
 impl PowdrCircuitConfig {
@@ -152,9 +155,21 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         let advice = analyzed
             .committed_polys_in_source_order()
             .iter()
-            .flat_map(|(symbol, _)| symbol.array_elements())
-            // TODO(challenges): Set correct phase
-            .map(|(name, _)| (name.clone(), meta.advice_column_in(FirstPhase)))
+            .flat_map(|(symbol, _)| {
+                symbol
+                    .array_elements()
+                    .map(|(name, _)| (name, symbol.stage))
+            })
+            .map(|(name, stage)| {
+                let stage = stage.unwrap_or(0);
+                let col = match stage {
+                    0 => meta.advice_column_in(FirstPhase),
+                    1 => meta.advice_column_in(SecondPhase),
+                    2 => meta.advice_column_in(ThirdPhase),
+                    _ => panic!("Stage too large for Halo2 backend: {}", stage),
+                };
+                (name.clone(), col)
+            })
             .collect();
 
         let fixed = analyzed
@@ -167,11 +182,29 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         let enable = meta.fixed_column();
         let instance = meta.instance_column();
 
+        // Collect expressions
+        let mut challenges = BTreeMap::new();
+        for identity in analyzed.identities_with_inlined_intermediate_polynomials() {
+            identity.pre_visit_expressions(&mut |expr| {
+                if let AlgebraicExpression::Challenge(challenge) = expr {
+                    challenges
+                        .entry(challenge.id)
+                        .or_insert_with(|| match &challenge.stage {
+                            0 => meta.challenge_usable_after(FirstPhase),
+                            1 => meta.challenge_usable_after(SecondPhase),
+                            2 => meta.challenge_usable_after(ThirdPhase),
+                            _ => panic!("Stage too large for Halo2 backend: {}", challenge.stage),
+                        });
+                }
+            })
+        }
+
         let config = PowdrCircuitConfig {
             advice,
             fixed,
             enable,
             instance,
+            challenges,
         };
 
         // Enable equality for all witness columns & instance
@@ -389,7 +422,6 @@ fn to_halo2_expression<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(
     match expr {
         AlgebraicExpression::Number(n) => Expression::Constant(convert_field(*n)),
         AlgebraicExpression::Reference(polyref) => {
-            // TODO(challenges): Handle reference to challenge
             let rotation = match polyref.next {
                 false => Rotation::cur(),
                 true => Rotation::next(),
@@ -424,6 +456,9 @@ fn to_halo2_expression<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(
                     }
                 }
             }
+        }
+        AlgebraicExpression::Challenge(challenge) => {
+            config.challenges.get(&challenge.id).unwrap().expr()
         }
         _ => unimplemented!("{:?}", expr),
     }

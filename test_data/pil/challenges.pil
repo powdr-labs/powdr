@@ -5,8 +5,8 @@ namespace std::prover(N);
 namespace Main(N);
     col fixed first = [1] + [0]*;
     col witness x;
-    col witness stage(2) y;
-    let a: expr = std::prover::challenge(2, 1);
+    col witness stage(1) y;
+    let a: expr = std::prover::challenge(0, 42);
 
     x' = (x + 1) * (1 - first);
     y' = (x + a) * (1 - first);
