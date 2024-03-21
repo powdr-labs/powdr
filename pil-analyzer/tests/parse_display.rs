@@ -513,3 +513,54 @@ fn let_inside_block() {
 ";
     assert_eq!(formatted, expected);
 }
+
+#[test]
+#[should_panic = "some message"]
+fn let_inside_block_redefine() {
+    let input = "
+    namespace Main(8);
+        let t: int -> int = |i| {
+            let t = 2;
+            let t = 3;
+            t
+        };
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+fn let_inside_block_scoping_separate() {
+    let input = "
+    namespace Main(8);
+        let t: int -> int = |i| {
+            let t = {
+                let w = 8;
+                w
+            };
+            let r = {
+                // New scope, so no name clash.
+                let w = 8;
+                w
+            };
+            t + r
+        };
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+#[should_panic = "Symbol not found: w"]
+fn let_inside_block_scoping_limited() {
+    let input = "
+    namespace Main(8);
+        let t: int -> expr = |i| {
+            let r = {
+                let w = 8;
+                w
+            };
+            // w is not available here any more.
+            w
+        };
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
