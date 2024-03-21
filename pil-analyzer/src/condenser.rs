@@ -28,6 +28,7 @@ pub fn condense<T: FieldElement>(
     let mut condenser = Condenser::new(definitions.clone());
 
     let mut condensed_identities = vec![];
+    let mut intermediate_columns = HashMap::new();
     // Condense identities and update the source order.
     let source_order = source_order
         .into_iter()
@@ -44,46 +45,46 @@ pub fn condense<T: FieldElement>(
                     })
                     .collect()
             }
+            StatementIdentifier::Definition(name)
+                if matches!(
+                    definitions[&name].0.kind,
+                    SymbolKind::Poly(PolynomialType::Intermediate)
+                ) =>
+            {
+                let (symbol, definition) = &definitions[&name];
+                let Some(FunctionValueDefinition::Expression(e)) = definition else {
+                    panic!("Expected expression")
+                };
+                let value = if let Some(length) = symbol.length {
+                    let scheme = e.type_scheme.as_ref();
+                    assert!(
+                        scheme.unwrap().vars.is_empty()
+                            && matches!(
+                                &scheme.unwrap().ty,
+                                Type::Array(ArrayType { base, length: _ })
+                                if base.as_ref() == &Type::Expr),
+                        "Intermediate column type has to be expr[], but got: {}",
+                        format_type_scheme_around_name(&name, &e.type_scheme)
+                    );
+                    let result = condenser.condense_to_array_of_algebraic_expressions(&e.e);
+                    assert_eq!(result.len() as u64, length);
+                    result
+                } else {
+                    assert_eq!(
+                        e.type_scheme,
+                        Some(Type::Expr.into()),
+                        "Intermediate column type has to be expr, but got: {}",
+                        format_type_scheme_around_name(&name, &e.type_scheme)
+                    );
+                    vec![condenser.condense_to_algebraic_expression(&e.e)]
+                };
+                intermediate_columns.insert(name.clone(), (symbol.clone(), value));
+                vec![StatementIdentifier::Definition(name)]
+            }
             s => vec![s],
         })
         .collect();
 
-    // Extract intermediate columns
-    let intermediate_columns: HashMap<_, _> = definitions
-        .iter()
-        .filter_map(|(name, (symbol, definition))| {
-            if !matches!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate)) {
-                return None;
-            }
-            let Some(FunctionValueDefinition::Expression(e)) = definition else {
-                panic!("Expected expression")
-            };
-            let value = if let Some(length) = symbol.length {
-                let scheme = e.type_scheme.as_ref();
-                assert!(
-                    scheme.unwrap().vars.is_empty()
-                        && matches!(
-                            &scheme.unwrap().ty,
-                            Type::Array(ArrayType { base, length: _ })
-                            if base.as_ref() == &Type::Expr),
-                    "Intermediate column type has to be expr[], but got: {}",
-                    format_type_scheme_around_name(name, &e.type_scheme)
-                );
-                let result = condenser.condense_to_array_of_algebraic_expressions(&e.e);
-                assert_eq!(result.len() as u64, length);
-                result
-            } else {
-                assert_eq!(
-                    e.type_scheme,
-                    Some(Type::Expr.into()),
-                    "Intermediate column type has to be expr, but got: {}",
-                    format_type_scheme_around_name(name, &e.type_scheme)
-                );
-                vec![condenser.condense_to_algebraic_expression(&e.e)]
-            };
-            Some((name.clone(), (symbol.clone(), value)))
-        })
-        .collect();
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
 
     for decl in public_declarations.values_mut() {
