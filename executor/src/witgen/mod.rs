@@ -65,12 +65,12 @@ impl<T: FieldElement> WitgenCallback<T> {
         }
     }
 
-    /// Computes the next-phase witness, given the current witness and challenges.
-    pub fn next_phase_witness(
+    /// Computes the next-stage witness, given the current witness and challenges.
+    pub fn next_stage_witness(
         &self,
         current_witness: &[(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
-        phase: u8,
+        stage: u8,
     ) -> Vec<(String, Vec<T>)> {
         WitnessGenerator::new(
             &self.analyzed,
@@ -78,7 +78,7 @@ impl<T: FieldElement> WitgenCallback<T> {
             &*self.query_callback,
         )
         .with_external_witness_values(current_witness)
-        .with_challenges(phase, challenges)
+        .with_challenges(stage, challenges)
         .generate()
     }
 }
@@ -107,7 +107,7 @@ pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
     fixed_col_values: &'b [(String, Vec<T>)],
     query_callback: &'b dyn QueryCallback<T>,
     external_witness_values: &'b [(String, Vec<T>)],
-    phase: u8,
+    stage: u8,
     challenges: BTreeMap<u64, T>,
 }
 
@@ -122,7 +122,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             fixed_col_values,
             query_callback,
             external_witness_values: &[],
-            phase: 0,
+            stage: 0,
             challenges: BTreeMap::new(),
         }
     }
@@ -137,9 +137,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         }
     }
 
-    pub fn with_challenges(self, phase: u8, challenges: BTreeMap<u64, T>) -> Self {
+    pub fn with_challenges(self, stage: u8, challenges: BTreeMap<u64, T>) -> Self {
         WitnessGenerator {
-            phase,
+            stage,
             challenges,
             ..self
         }
@@ -216,7 +216,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .analyzed
             .committed_polys_in_source_order()
             .into_iter()
-            .filter(|(symbol, _)| symbol.stage.unwrap_or_default() <= self.phase.into())
+            .filter(|(symbol, _)| symbol.stage.unwrap_or_default() <= self.stage.into())
             .flat_map(|(p, _)| p.array_elements())
             .map(|(name, _id)| {
                 let column = columns.remove(&name).unwrap();

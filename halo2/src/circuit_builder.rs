@@ -80,7 +80,7 @@ pub(crate) struct PowdrCircuit<'a, T> {
     witness: Option<&'a [(String, Vec<T>)]>,
     /// Column name and index of the public cells
     publics: Vec<(String, usize)>,
-    /// Callback to augment the witness in the later phases.
+    /// Callback to augment the witness in the later stages.
     witgen_callback: Option<WitgenCallback<T>>,
 }
 
@@ -321,38 +321,39 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         // |  None            |    None      |   None           |  | <-- Halo2 will put blinding factors in the last few rows
         // |  None            |    None      |   None           | /      of the witness columns.
 
-        // If we're in a later phase, augment the original phase-0 witness by calling the witgen_callback.
-        // If we're in phase 0, we already have the full witness and don't do anything.
+        // If we're in a later stage, augment the original stage-0 witness by calling the witgen_callback.
+        // If we're in stage 0, we already have the full witness and don't do anything.
         let mut new_witness = Vec::new();
         if let Some(witness) = self.witness {
-            let mut phase = 1;
+            let mut stage = 1;
             let challenges = config
                 .challenges
                 .iter()
                 .filter_map(|(&challenge_id, challenge)| {
-                    let mut challenge_value = None;
+                    let mut challenge_key_value_pair = None;
                     layouter.get_challenge(*challenge).map(|x| {
-                        // The current phase is the maximum of all available challenges + 1
-                        phase = max(phase, challenge.phase() + 1);
+                        // The current stage is the maximum of all available challenges + 1
+                        stage = max(stage, challenge.phase() + 1);
                         // Set the challenge value. We don't return it here, because we'd get
                         // a Value<T> and Halo2 doesn't let us convert it to an Option<T> easily...
-                        challenge_value = Some(T::from_bytes_le(&x.to_repr()))
+                        challenge_key_value_pair =
+                            Some((challenge_id, T::from_bytes_le(&x.to_repr())))
                     });
-                    challenge_value.map(|v| (challenge_id, v))
+                    challenge_key_value_pair
                 })
                 .collect::<BTreeMap<u64, T>>();
 
-            // If there are no available challenges, we are in phase 0 and do nothing.
+            // If there are no available challenges, we are in stage 0 and do nothing.
             if !challenges.is_empty() {
                 log::info!(
-                    "Running witness generation for phase {phase} ({} challenges)!",
+                    "Running witness generation for stage {stage} ({} challenges)!",
                     challenges.len()
                 );
                 new_witness = self
                     .witgen_callback
                     .as_ref()
                     .expect("Expected witgen callback!")
-                    .next_phase_witness(witness, challenges, phase);
+                    .next_stage_witness(witness, challenges, stage);
             }
         }
 
@@ -396,7 +397,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                 // Set witness values
                 let mut public_cells = Vec::new();
                 let witness: Option<&[(String, Vec<T>)]> = if new_witness.is_empty() {
-                    // We're in phase 0, use the original witness
+                    // We're in stage 0, use the original witness
                     self.witness
                 } else {
                     Some(&new_witness)
