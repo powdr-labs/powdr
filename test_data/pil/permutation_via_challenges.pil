@@ -16,6 +16,7 @@ namespace Main(N);
     let beta: expr = std::prover::challenge(0, 12345);
 
     // First and last z needs to be 1
+    // (because of wrapping, the z[0] and z[N] are the same)
     first * (z - 1) = 0;
 
     // Update rule:
