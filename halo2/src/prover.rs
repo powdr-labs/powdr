@@ -77,7 +77,8 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             })
             .unwrap_or_else(|| generate_setup(analyzed.degree()));
 
-        // TODO
+        // At this point, we don't have a witgen callback.
+        // The circuit can still be used to generate the verification key.
         let circuit = PowdrCircuit::new(analyzed, fixed, Box::new(|_, _, _| panic!()));
 
         Ok(Self {
@@ -100,6 +101,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     ) -> Result<Vec<u8>, String> {
         log::info!("Starting proof generation...");
 
+        // Make a new circuit (as opposed to using `self.circuit`) with the witgen callback and the witness.
         let circuit =
             PowdrCircuit::new(self.analyzed, self.fixed, witgen_callback).with_witness(witness);
         let publics = vec![circuit.instance_column()];

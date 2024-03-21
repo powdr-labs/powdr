@@ -319,6 +319,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         // |  None            |    None      |   None           | /      of the witness columns.
 
         // If we're in a later phase, augment the original phase-0 witness by calling the witgen_callback.
+        // If we're in phase 0, we already have the full witness and don't do anything.
         let mut new_witness = Vec::new();
         if let Some(witness) = self.witness {
             let mut phase = 1;
@@ -328,14 +329,22 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                 .filter_map(|(&challenge_id, challenge)| {
                     let mut challenge_value = None;
                     layouter.get_challenge(*challenge).map(|x| {
+                        // The current phase is the maximum of all available challenges + 1
                         phase = max(phase, challenge.phase() + 1);
+                        // Set the challenge value. We don't return it here, because we'd get
+                        // a Value<T> and Halo2 doesn't let us convert it to an Option<T> easily...
                         challenge_value = Some(T::from_bytes_le(&x.to_repr()))
                     });
                     challenge_value.map(|v| (challenge_id, v))
                 })
                 .collect::<BTreeMap<u64, T>>();
+
+            // If there are no available challenges, we are in phase 0 and do nothing.
             if !challenges.is_empty() {
-                log::info!("Running witness generation for phase {phase}!");
+                log::info!(
+                    "Running witness generation for phase {phase} ({} challenges)!",
+                    challenges.len()
+                );
                 new_witness = (self.witgen_callback)(witness, challenges, phase);
             }
         }
