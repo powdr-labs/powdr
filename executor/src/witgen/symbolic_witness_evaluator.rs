@@ -58,6 +58,9 @@ where
     fn challenge<'b>(&self, challenge: &'b Challenge) -> AffineResult<&'b AlgebraicReference, T> {
         match self.fixed_data.challenges.get(&challenge.id) {
             Some(value) => Ok((*value).into()),
+            // The requested challenge is not yet available. Note that this means that any
+            // identity referencing it will be effectively ignored throughout the entire
+            // witness generation.
             None => Err(IncompleteCause::MissingChallenge(challenge.id)),
         }
     }

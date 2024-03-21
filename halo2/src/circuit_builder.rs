@@ -80,7 +80,7 @@ pub(crate) struct PowdrCircuit<'a, T> {
     witness: Option<&'a [(String, Vec<T>)]>,
     /// Column name and index of the public cells
     publics: Vec<(String, usize)>,
-
+    /// Callback to augment the witness in the later phases.
     witgen_callback: Rc<dyn WitgenCallback<T>>,
 }
 
@@ -190,7 +190,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         let enable = meta.fixed_column();
         let instance = meta.instance_column();
 
-        // Collect expressions
+        // Collect challenges referenced in any identity.
         let mut challenges = BTreeMap::new();
         for identity in analyzed.identities_with_inlined_intermediate_polynomials() {
             identity.pre_visit_expressions(&mut |expr| {
@@ -318,6 +318,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         // |  None            |    None      |   None           |  | <-- Halo2 will put blinding factors in the last few rows
         // |  None            |    None      |   None           | /      of the witness columns.
 
+        // If we're in a later phase, augment the original phase-0 witness by calling the witgen_callback.
         let mut new_witness = Vec::new();
         if let Some(witness) = self.witness {
             let mut phase = 1;
