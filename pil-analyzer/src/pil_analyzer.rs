@@ -7,17 +7,18 @@ use std::path::{Path, PathBuf};
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
 
 use powdr_ast::parsed::types::Type;
-use powdr_ast::parsed::{PILFile, PilStatement};
+use powdr_ast::parsed::visitor::Children;
+use powdr_ast::parsed::{FunctionKind, LambdaExpression, PILFile, PilStatement};
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PublicDeclaration, StatementIdentifier, Symbol, TypedExpression,
+    PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
 };
 use powdr_parser::parse_type;
 
 use crate::type_inference::{infer_types, ExpectedType};
-use crate::AnalysisDriver;
+use crate::{side_effect_checker, AnalysisDriver};
 
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
 use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
@@ -43,6 +44,7 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
 fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
+    analyzer.side_effect_check();
     analyzer.type_check();
     analyzer.condense::<T>()
 }
@@ -126,6 +128,46 @@ impl PILAnalyzer {
             for statement in file {
                 self.handle_statement(statement);
             }
+        }
+    }
+
+    /// Check that query and constr functions are used in the correct contexts.
+    pub fn side_effect_check(&self) {
+        for (name, (symbol, value)) in &self.definitions {
+            let Some(value) = value else { continue };
+            // We are in constr context unless we are checking a witness column with a query
+            // function or a lambda expression with a specific kind (this essentially allows
+            // declaring query helper functions).
+            let context = match symbol.kind {
+                SymbolKind::Poly(PolynomialType::Committed) => FunctionKind::Query,
+                SymbolKind::Other() => match value {
+                    FunctionValueDefinition::Expression(TypedExpression { type_scheme: _, e }) => {
+                        if let Expression::LambdaExpression(LambdaExpression { kind, .. }) = e {
+                            *kind
+                        } else {
+                            FunctionKind::Constr
+                        }
+                    }
+                    FunctionValueDefinition::Query(_) => FunctionKind::Query,
+                    _ => FunctionKind::Constr,
+                },
+                _ => FunctionKind::Constr,
+            };
+            value
+                .children()
+                .try_for_each(|e| side_effect_checker::check(&self.definitions, context, e))
+                .unwrap_or_else(|err| {
+                    panic!("Error checking side-effects of {name} {value}: {err}")
+                })
+        }
+
+        // for all identities, check that they call pure or constr functions
+        for id in &self.identities {
+            id.children()
+                .try_for_each(|e| {
+                    side_effect_checker::check(&self.definitions, FunctionKind::Constr, e)
+                })
+                .unwrap_or_else(|err| panic!("Error checking side-effects of identity {id}: {err}"))
         }
     }
 

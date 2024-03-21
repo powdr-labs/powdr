@@ -141,7 +141,8 @@ PolynomialConstantDefinition: PilStatement = {
 }
 
 FunctionDefinition: FunctionDefinition = {
-    "(" <params:ParameterList> ")" <body:BracedExpression> => FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{params, body})),
+    "(" <params:ParameterList> ")" <body:BracedExpression> =>
+        FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{kind: FunctionKind::Pure, params, body})),
     "=" <ArrayLiteralExpression> => FunctionDefinition::Array(<>),
 }
 
@@ -167,7 +168,7 @@ PolynomialCommitDeclaration: PilStatement = {
         ctx.source_ref(start),
         stage,
         vec![name],
-        Some(FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression{params, body})))
+        Some(FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression{kind: FunctionKind::Query, params, body})))
     )
 }
 
@@ -431,9 +432,15 @@ BoxedExpression: Box<Expression> = {
 }
 
 LambdaExpression: Box<Expression> = {
-    "||" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{params: vec![], body})),
-    "|" <params:ParameterList> "|" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{params, body})),
+    <kind:FunctionKind> "||" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{kind, params: vec![], body})),
+    <kind:FunctionKind> "|" <params:ParameterList> "|" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{kind, params, body})),
     LogicalOr
+}
+
+FunctionKind: FunctionKind = {
+    => FunctionKind::Pure,
+    "query" => FunctionKind::Query,
+    "constr" => FunctionKind::Constr,
 }
 
 LogicalOr: Box<Expression> = {
@@ -718,7 +725,6 @@ SpecialIdentifier: &'input str = {
     "int",
     "fe",
     "expr",
-    "constr",
     "bool",
 }
 

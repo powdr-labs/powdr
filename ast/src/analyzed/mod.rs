@@ -4,6 +4,7 @@ pub mod visitor;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
+use std::iter::once;
 use std::ops::{self, ControlFlow};
 use std::str::FromStr;
 
@@ -14,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::parsed::asm::SymbolPath;
 use crate::parsed::types::{ArrayType, Type, TypeScheme};
 use crate::parsed::utils::expr_any;
-use crate::parsed::visitor::ExpressionVisitable;
+use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{self, EnumDeclaration, EnumVariant, SelectedExpressions};
@@ -565,6 +566,40 @@ pub enum FunctionValueDefinition {
     TypeConstructor(String, EnumVariant),
 }
 
+impl Children<Expression> for FunctionValueDefinition {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        match self {
+            FunctionValueDefinition::Query(e)
+            | FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
+                Box::new(once(e))
+            }
+            FunctionValueDefinition::Array(array) => {
+                Box::new(array.iter().flat_map(|i| i.children()))
+            }
+            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
+                enum_declaration.children()
+            }
+            FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        match self {
+            FunctionValueDefinition::Query(e)
+            | FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
+                Box::new(once(e))
+            }
+            FunctionValueDefinition::Array(array) => {
+                Box::new(array.iter_mut().flat_map(|i| i.children_mut()))
+            }
+            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
+                enum_declaration.children_mut()
+            }
+            FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
+        }
+    }
+}
+
 /// An array of elements that might be repeated.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RepeatedArray {
@@ -608,6 +643,16 @@ impl RepeatedArray {
     /// Returns whether pattern needs to be repeated (or truncated) in order to match the size.
     pub fn is_repeated(&self) -> bool {
         self.size != self.pattern.len() as DegreeType
+    }
+}
+
+impl Children<Expression> for RepeatedArray {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(self.pattern.iter())
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(self.pattern.iter_mut())
     }
 }
 
@@ -673,6 +718,32 @@ impl<Expr> Identity<Expr> {
 impl<T> Identity<AlgebraicExpression<T>> {
     pub fn contains_next_ref(&self) -> bool {
         self.left.contains_next_ref() || self.right.contains_next_ref()
+    }
+}
+
+impl<Expr> Children<Expr> for Identity<Expr> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expr> + '_> {
+        Box::new(
+            self.left
+                .selector
+                .as_mut()
+                .into_iter()
+                .chain(self.left.expressions.iter_mut())
+                .chain(self.right.selector.as_mut())
+                .chain(self.right.expressions.iter_mut()),
+        )
+    }
+
+    fn children(&self) -> Box<dyn Iterator<Item = &Expr> + '_> {
+        Box::new(
+            self.left
+                .selector
+                .as_ref()
+                .into_iter()
+                .chain(self.left.expressions.iter())
+                .chain(self.right.selector.iter())
+                .chain(self.right.expressions.iter()),
+        )
     }
 }
 

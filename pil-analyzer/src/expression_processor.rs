@@ -89,9 +89,9 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
                     items: self.process_expressions(items),
                 })
             }
-            PExpression::LambdaExpression(LambdaExpression { params, body }) => {
+            PExpression::LambdaExpression(LambdaExpression { kind, params, body }) => {
                 let body = Box::new(self.process_function(&params, *body));
-                Expression::LambdaExpression(LambdaExpression { params, body })
+                Expression::LambdaExpression(LambdaExpression { kind, params, body })
             }
             PExpression::BinaryOperation(left, op, right) => Expression::BinaryOperation(
                 Box::new(self.process_expression(*left)),

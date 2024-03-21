@@ -129,6 +129,7 @@ pub trait ExpressionFolder<Ref> {
         l: LambdaExpression<Ref>,
     ) -> Result<LambdaExpression<Ref>, Self::Error> {
         Ok(LambdaExpression {
+            kind: l.kind,
             params: l.params,
             body: self.fold_boxed_expression(*l.body)?,
         })

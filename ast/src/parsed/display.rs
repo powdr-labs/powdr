@@ -591,7 +591,23 @@ impl Display for NamespacedPolynomialReference {
 
 impl<Ref: Display> Display for LambdaExpression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "(|{}| {})", self.params.iter().format(", "), self.body)
+        write!(
+            f,
+            "({}|{}| {})",
+            self.kind,
+            self.params.iter().format(", "),
+            self.body
+        )
+    }
+}
+
+impl Display for FunctionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FunctionKind::Pure => write!(f, ""),
+            FunctionKind::Constr => write!(f, "constr "),
+            FunctionKind::Query => write!(f, "query "),
+        }
     }
 }
 

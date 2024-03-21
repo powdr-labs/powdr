@@ -7,14 +7,14 @@ use pretty_assertions::assert_eq;
 #[test]
 fn new_witness_column() {
     let input = r#"namespace N(16);
-    let new_wit = || { let x; x };
+    let new_wit = constr || { let x; x };
     let x;
     let y;
     let z = new_wit();
     z = y;
     "#;
     let expected = r#"namespace N(16);
-    let new_wit: -> expr = (|| {
+    let new_wit: -> expr = (constr || {
         let x;
         x
     });
@@ -31,11 +31,11 @@ fn new_witness_column() {
 #[test]
 fn new_witness_column_name_clash() {
     let input = r#"namespace N(16);
-    let new_wit = || { let x; x };
+    let new_wit = constr || { let x; x };
     new_wit() = new_wit() + new_wit();
     "#;
     let expected = r#"namespace N(16);
-    let new_wit: -> expr = (|| {
+    let new_wit: -> expr = (constr || {
         let x;
         x
     });

@@ -13,7 +13,7 @@ use powdr_ast::{
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
-        LambdaExpression, MatchArm, MatchPattern, PilStatement, PolynomialName,
+        FunctionKind, LambdaExpression, MatchArm, MatchPattern, PilStatement, PolynomialName,
         SelectedExpressions, UnaryOperator,
     },
     SourceRef,
@@ -979,6 +979,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
                     FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression {
+                        kind: FunctionKind::Query,
                         params: vec!["__i".to_string()],
                         body: Box::new(Expression::MatchExpression(
                             Box::new(Expression::FunctionCall(FunctionCall {

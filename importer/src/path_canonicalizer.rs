@@ -569,7 +569,11 @@ fn check_expression(
         Expression::Tuple(items) | Expression::ArrayLiteral(ArrayLiteral { items }) => {
             check_expressions(location, items, state, local_variables)
         }
-        Expression::LambdaExpression(LambdaExpression { params, body }) => {
+        Expression::LambdaExpression(LambdaExpression {
+            kind: _,
+            params,
+            body,
+        }) => {
             // Add the local variables, ignore collisions.
             let mut local_variables = local_variables.clone();
             local_variables.extend(params.iter().cloned());

@@ -462,7 +462,11 @@ impl TypeChecker {
                     .map(|item| self.infer_type_of_expression(item))
                     .collect::<Result<_, _>>()?,
             }),
-            Expression::LambdaExpression(LambdaExpression { params, body }) => {
+            Expression::LambdaExpression(LambdaExpression {
+                kind: _,
+                params,
+                body,
+            }) => {
                 let param_types = (0..params.len())
                     .map(|_| self.new_type_var())
                     .collect::<Vec<_>>();

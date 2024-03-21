@@ -379,14 +379,14 @@ impl<R> Expression<R> {
     /// Returns an iterator over all (top-level) expressions in this expression.
     /// This specifically does not implement Children so that we can implement
     /// ExpressionVisitable generically.
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+    pub fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         match self {
             Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
                 Box::new(empty())
             }
             Expression::Number(_, _) => Box::new(empty()),
             Expression::Tuple(v) => Box::new(v.iter()),
-            Expression::LambdaExpression(LambdaExpression { params: _, body }) => {
+            Expression::LambdaExpression(LambdaExpression { body, .. }) => {
                 Box::new(once(body.as_ref()))
             }
             Expression::ArrayLiteral(ArrayLiteral { items }) => Box::new(items.iter()),
@@ -422,14 +422,14 @@ impl<R> Expression<R> {
     /// Returns an iterator over all (top-level) expressions in this expression.
     /// This specifically does not implement Children so that we can implement
     /// ExpressionVisitable generically.
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+    pub fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         match self {
             Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
                 Box::new(empty())
             }
             Expression::Number(_, _) => Box::new(empty()),
             Expression::Tuple(v) => Box::new(v.iter_mut()),
-            Expression::LambdaExpression(LambdaExpression { params: _, body }) => {
+            Expression::LambdaExpression(LambdaExpression { body, .. }) => {
                 Box::new(once(body.as_mut()))
             }
             Expression::ArrayLiteral(ArrayLiteral { items }) => Box::new(items.iter_mut()),
@@ -494,6 +494,7 @@ impl NamespacedPolynomialReference {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub struct LambdaExpression<Ref = NamespacedPolynomialReference> {
+    pub kind: FunctionKind,
     pub params: Vec<String>,
     pub body: Box<Expression<Ref>>,
 }
@@ -506,6 +507,15 @@ impl<R> Children<Expression<R>> for LambdaExpression<R> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         Box::new(once(self.body.as_mut()))
     }
+}
+
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+pub enum FunctionKind {
+    Pure,
+    Constr,
+    Query,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -693,6 +703,7 @@ pub enum FunctionDefinition {
     /// Array expression.
     Array(ArrayExpression),
     /// Prover query. The Expression usually is a LambdaExpression.
+    /// TODO can we replace this by a query-marked lambda expcession?
     Query(Expression),
     /// Generic expression
     Expression(Expression),
