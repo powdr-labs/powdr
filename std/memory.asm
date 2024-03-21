@@ -33,7 +33,7 @@ machine Memory(LATCH, m_is_write) {
 
     // is_write can only be 1 if a selector is active
     let is_mem_op = array::sum(selectors);
-    is_mem_op * (1 - is_mem_op) = 0;
+    std::utils::force_bool(is_mem_op);
     (1 - is_mem_op) * m_is_write = 0;
 
     // If the next line is a not a write and we have an address change,
