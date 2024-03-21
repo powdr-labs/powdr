@@ -67,6 +67,8 @@ pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
     fixed_col_values: &'b [(String, Vec<T>)],
     query_callback: &'b dyn QueryCallback<T>,
     external_witness_values: Vec<(String, Vec<T>)>,
+    phase: u8,
+    challenges: BTreeMap<u64, T>,
 }
 
 impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
@@ -80,6 +82,8 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             fixed_col_values,
             query_callback,
             external_witness_values: Vec::new(),
+            phase: 0,
+            challenges: BTreeMap::new(),
         }
     }
 
@@ -93,15 +97,23 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         }
     }
 
+    pub fn with_challenges(self, phase: u8, challenges: BTreeMap<u64, T>) -> Self {
+        WitnessGenerator {
+            phase,
+            challenges,
+            ..self
+        }
+    }
+
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
-    pub fn generate(self, challenges: BTreeMap<u64, T>, phase: u8) -> Vec<(String, Vec<T>)> {
+    pub fn generate(self) -> Vec<(String, Vec<T>)> {
         record_start(OUTER_CODE_NAME);
         let fixed = FixedData::new(
             self.analyzed,
             self.fixed_col_values,
             self.external_witness_values,
-            challenges,
+            self.challenges,
         );
         let identities = self
             .analyzed
@@ -164,7 +176,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .analyzed
             .committed_polys_in_source_order()
             .into_iter()
-            .filter(|(symbol, _)| symbol.stage.unwrap_or_default() <= phase.into())
+            .filter(|(symbol, _)| symbol.stage.unwrap_or_default() <= self.phase.into())
             .flat_map(|(p, _)| p.array_elements())
             .map(|(name, _id)| {
                 let column = columns.remove(&name).unwrap();

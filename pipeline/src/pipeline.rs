@@ -821,7 +821,7 @@ impl<T: FieldElement> Pipeline<T> {
             query_callback.borrow(),
         )
         .with_external_witness_values(external_witness_values)
-        .generate(Default::default(), 0);
+        .generate();
 
         self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
@@ -866,7 +866,8 @@ impl<T: FieldElement> Pipeline<T> {
                 query_callback.borrow(),
             )
             .with_external_witness_values(external_witness_values)
-            .generate(challenges, phase)
+            .with_challenges(phase, challenges)
+            .generate()
         };
 
         let backend = self
