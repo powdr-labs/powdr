@@ -43,7 +43,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
         &self,
         witness: &[(String, Vec<T>)],
         prev_proof: Option<Proof>,
-        witgen_callback: Box<dyn WitgenCallback<T>>,
+        witgen_callback: WitgenCallback<T>,
     ) -> Result<Proof, Error> {
         let proof = match prev_proof {
             Some(proof) => self.prove_aggr(witness, proof),
@@ -96,7 +96,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<'a, T> {
         &self,
         witness: &[(String, Vec<T>)],
         prev_proof: Option<Proof>,
-        witgen_callback: Box<dyn WitgenCallback<T>>,
+        witgen_callback: WitgenCallback<T>,
     ) -> Result<Proof, Error> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);

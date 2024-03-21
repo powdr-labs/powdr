@@ -185,7 +185,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
         witness: &[(String, Vec<F>)],
         prev_proof: Option<crate::Proof>,
         // TODO: Implement challenges
-        _witgen_callback: Box<dyn WitgenCallback<F>>,
+        _witgen_callback: WitgenCallback<F>,
     ) -> Result<crate::Proof, Error> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);

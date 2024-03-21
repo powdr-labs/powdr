@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use powdr_ast::analyzed::{
@@ -43,14 +44,43 @@ static OUTER_CODE_NAME: &str = "witgen (outer code)";
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
-/// A callback passed to the backend to compute the next phase witness.
-pub trait WitgenCallback<T>:
-    Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)>
-{
+#[derive(Clone)]
+pub struct WitgenCallback<T> {
+    analyzed: Rc<Analyzed<T>>,
+    fixed_col_values: Rc<Vec<(String, Vec<T>)>>,
+    query_callback: Arc<dyn QueryCallback<T>>,
 }
-impl<T, F> WitgenCallback<T> for F where
-    F: Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)>
-{
+
+impl<T: FieldElement> WitgenCallback<T> {
+    pub fn new(
+        analyzed: Rc<Analyzed<T>>,
+        fixed_col_values: Rc<Vec<(String, Vec<T>)>>,
+        query_callback: Option<Arc<dyn QueryCallback<T>>>,
+    ) -> Self {
+        let query_callback = query_callback.unwrap_or_else(|| Arc::new(unused_query_callback()));
+        Self {
+            analyzed,
+            fixed_col_values,
+            query_callback,
+        }
+    }
+
+    /// Computes the next-phase witness, given the current witness and challenges.
+    pub fn next_phase_witness(
+        &self,
+        current_witness: &[(String, Vec<T>)],
+        challenges: BTreeMap<u64, T>,
+        phase: u8,
+    ) -> Vec<(String, Vec<T>)> {
+        WitnessGenerator::new(
+            &self.analyzed,
+            &self.fixed_col_values,
+            &*self.query_callback,
+        )
+        .with_external_witness_values(current_witness)
+        .with_challenges(phase, challenges)
+        .generate()
+    }
 }
 
 pub fn chain_callbacks<T: FieldElement>(

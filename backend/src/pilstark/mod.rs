@@ -47,7 +47,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for PilStarkCli<'a, F> {
         _witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
         // TODO: Implement challenges
-        _witgen_callback: Box<dyn WitgenCallback<F>>,
+        _witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);

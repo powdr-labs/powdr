@@ -11,7 +11,7 @@ pub fn mock_prove<T: FieldElement>(
     pil: &Analyzed<T>,
     constants: &[(String, Vec<T>)],
     witness: &[(String, Vec<T>)],
-    witgen_callback: Box<dyn WitgenCallback<T>>,
+    witgen_callback: WitgenCallback<T>,
 ) -> Result<(), String> {
     if !matches!(T::known_field(), Some(KnownField::Bn254Field)) {
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
@@ -23,7 +23,9 @@ pub fn mock_prove<T: FieldElement>(
     let circuit_row_count_log = usize::BITS - pil.degree().leading_zeros();
     let expanded_row_count_log = circuit_row_count_log + 1;
 
-    let circuit = PowdrCircuit::new(pil, constants, witgen_callback).with_witness(witness);
+    let circuit = PowdrCircuit::new(pil, constants)
+        .with_witness(witness)
+        .with_witgen_callback(witgen_callback);
     let mock_prover = MockProver::<Fr>::run(
         expanded_row_count_log,
         &circuit,
@@ -58,7 +60,8 @@ mod test {
         let pil = pipeline.compute_optimized_pil().unwrap();
         let fixed_cols = pipeline.compute_fixed_cols().unwrap();
         let witness = pipeline.compute_witness().unwrap();
-        mock_prove(&pil, &fixed_cols, &witness, Box::new(|_, _, _| panic!())).unwrap();
+        let witgen_callback = pipeline.witgen_callback().unwrap();
+        mock_prove(&pil, &fixed_cols, &witness, witgen_callback).unwrap();
     }
 
     #[test]
@@ -70,7 +73,8 @@ mod test {
         let pil = pipeline.compute_optimized_pil().unwrap();
         let fixed_cols = pipeline.compute_fixed_cols().unwrap();
         let witness = pipeline.compute_witness().unwrap();
-        mock_prove(&pil, &fixed_cols, &witness, Box::new(|_, _, _| panic!())).unwrap();
+        let witgen_callback = pipeline.witgen_callback().unwrap();
+        mock_prove(&pil, &fixed_cols, &witness, witgen_callback).unwrap();
     }
 
     #[test]

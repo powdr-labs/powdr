@@ -1,6 +1,5 @@
 use std::{
     borrow::Borrow,
-    collections::BTreeMap,
     fmt::Display,
     fs,
     io::{self, BufReader, BufWriter},
@@ -21,7 +20,9 @@ use powdr_ast::{
 use powdr_backend::{BackendType, Proof};
 use powdr_executor::{
     constant_evaluator,
-    witgen::{chain_callbacks, QueryCallback},
+    witgen::{
+        chain_callbacks, unused_query_callback, QueryCallback, WitgenCallback, WitnessGenerator,
+    },
 };
 use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
 use powdr_schemas::SerializedAnalyzed;
@@ -814,14 +815,10 @@ impl<T: FieldElement> Pipeline<T> {
             .arguments
             .query_callback
             .take()
-            .unwrap_or_else(|| Arc::new(powdr_executor::witgen::unused_query_callback()));
-        let witness = powdr_executor::witgen::WitnessGenerator::new(
-            &pil,
-            &fixed_cols,
-            query_callback.borrow(),
-        )
-        .with_external_witness_values(&external_witness_values)
-        .generate();
+            .unwrap_or_else(|| Arc::new(unused_query_callback()));
+        let witness = WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
+            .with_external_witness_values(&external_witness_values)
+            .generate();
 
         self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
@@ -836,6 +833,14 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }
 
+    pub fn witgen_callback(&mut self) -> Result<WitgenCallback<T>, Vec<String>> {
+        Ok(WitgenCallback::new(
+            self.compute_optimized_pil()?,
+            self.compute_fixed_cols()?,
+            self.arguments.query_callback.as_ref().cloned(),
+        ))
+    }
+
     pub fn compute_proof(&mut self) -> Result<&Proof, Vec<String>> {
         if self.artifact.proof.is_some() {
             return Ok(self.artifact.proof.as_ref().unwrap());
@@ -844,32 +849,7 @@ impl<T: FieldElement> Pipeline<T> {
         let pil = self.compute_optimized_pil()?;
         let fixed_cols = self.compute_fixed_cols()?;
         let witness = self.compute_witness()?;
-
-        // Get reference-counted pointers that are moved inside the witgen callback.
-        let query_callback = self
-            .arguments
-            .query_callback
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| Arc::new(powdr_executor::witgen::unused_query_callback()));
-        let pil_copy = pil.clone();
-        let fixed_cols_copy = fixed_cols.clone();
-
-        let generate_witness = move |current_witness: &[(String, Vec<T>)],
-                                     challenges: BTreeMap<u64, T>,
-                                     phase: u8|
-              -> Vec<(String, Vec<T>)> {
-            // Re-run witgen with the current challenges available,
-            // using the current witness as an "external" witness.
-            powdr_executor::witgen::WitnessGenerator::new(
-                &pil_copy,
-                &fixed_cols_copy,
-                query_callback.borrow(),
-            )
-            .with_external_witness_values(current_witness)
-            .with_challenges(phase, challenges)
-            .generate()
-        };
+        let witgen_callback = self.witgen_callback()?;
 
         let backend = self
             .arguments
@@ -909,7 +889,7 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| fs::read(path).unwrap());
 
-        let proof = match backend.prove(&witness, existing_proof, Box::new(generate_witness)) {
+        let proof = match backend.prove(&witness, existing_proof, witgen_callback) {
             Ok(proof) => proof,
             Err(powdr_backend::Error::BackendError(e)) => {
                 return Err(vec![e.to_string()]);

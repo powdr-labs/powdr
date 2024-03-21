@@ -102,7 +102,7 @@ pub trait Backend<'a, F: FieldElement> {
         &self,
         witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
-        witgen_callback: Box<dyn WitgenCallback<F>>,
+        witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error>;
 
     /// Verifies a proof.

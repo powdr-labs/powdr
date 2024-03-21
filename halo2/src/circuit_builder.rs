@@ -1,4 +1,4 @@
-use std::{cmp::max, collections::BTreeMap, iter, rc::Rc};
+use std::{cmp::max, collections::BTreeMap, iter};
 
 use halo2_curves::ff::PrimeField;
 use halo2_proofs::{
@@ -81,15 +81,11 @@ pub(crate) struct PowdrCircuit<'a, T> {
     /// Column name and index of the public cells
     publics: Vec<(String, usize)>,
     /// Callback to augment the witness in the later phases.
-    witgen_callback: Rc<dyn WitgenCallback<T>>,
+    witgen_callback: Option<WitgenCallback<T>>,
 }
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
-    pub(crate) fn new(
-        analyzed: &'a Analyzed<T>,
-        fixed: &'a [(String, Vec<T>)],
-        witgen_callback: Box<dyn WitgenCallback<T>>,
-    ) -> Self {
+    pub(crate) fn new(analyzed: &'a Analyzed<T>, fixed: &'a [(String, Vec<T>)]) -> Self {
         let mut publics = analyzed
             .public_declarations
             .values()
@@ -107,13 +103,20 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             fixed,
             witness: None,
             publics,
-            witgen_callback: witgen_callback.into(),
+            witgen_callback: None,
         }
     }
 
     pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
         Self {
             witness: Some(witness),
+            ..self
+        }
+    }
+
+    pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
+        Self {
+            witgen_callback: Some(witgen_callback),
             ..self
         }
     }
@@ -345,7 +348,11 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                     "Running witness generation for phase {phase} ({} challenges)!",
                     challenges.len()
                 );
-                new_witness = (self.witgen_callback)(witness, challenges, phase);
+                new_witness = self
+                    .witgen_callback
+                    .as_ref()
+                    .expect("Expected witgen callback!")
+                    .next_phase_witness(witness, challenges, phase);
             }
         }
 
