@@ -150,7 +150,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                     ),
                                 ]
                             }
-                            // Unconstrain read-only registers when calling `_reset`
+                            // Un-constrain read-only registers when calling `_reset`
                             ReadOnly => {
                                 let not_reset: Expression =
                                     Expression::from(1) - direct_reference("instr__reset");
@@ -331,13 +331,23 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 &params,
                 body,
             ),
-            InstructionBody::CallableRef(callable) => {
+            InstructionBody::CallablePlookup(callable) => {
                 let link = self.handle_external_instruction_def(
                     s.source,
                     instruction_flag,
                     &params,
                     callable,
                 );
+                input.links.push(link);
+            }
+            InstructionBody::CallablePermutation(callable) => {
+                let mut link = self.handle_external_instruction_def(
+                    s.source,
+                    instruction_flag,
+                    &params,
+                    callable,
+                );
+                link.is_permutation = true;
                 input.links.push(link);
             }
         }
@@ -573,6 +583,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             source,
             flag: direct_reference(flag),
             to: callable,
+            is_permutation: false,
         }
     }
 
@@ -819,7 +830,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         mut left: Vec<(T, AffineExpressionComponent)>,
         right: Vec<(T, AffineExpressionComponent)>,
     ) -> Vec<(T, AffineExpressionComponent)> {
-        // TODO combine (or at leats check for) same components.
+        // TODO combine (or at least check for) same components.
         left.extend(right);
         left
     }
@@ -1185,6 +1196,7 @@ fn witness_column<S: Into<String>>(
 ) -> PilStatement {
     PilStatement::PolynomialCommitDeclaration(
         source,
+        None,
         vec![PolynomialName {
             name: name.into(),
             array_size: None,
@@ -1220,7 +1232,7 @@ mod test {
 
     use crate::compile;
 
-    fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> AnalysisASMFile {
+    fn parse_analyze_and_compile<T: FieldElement>(input: &str) -> AnalysisASMFile {
         let parsed = load_dependencies_and_resolve_str(input);
         let analyzed = powdr_analysis::analyze(parsed).unwrap();
         compile::<T>(analyzed)
@@ -1242,7 +1254,7 @@ machine Main {
   }
 }
 ";
-        parse_analyse_and_compile::<GoldilocksField>(asm);
+        parse_analyze_and_compile::<GoldilocksField>(asm);
     }
 
     #[test]
@@ -1263,7 +1275,7 @@ machine Main {
   }
 }
 ";
-        parse_analyse_and_compile::<GoldilocksField>(asm);
+        parse_analyze_and_compile::<GoldilocksField>(asm);
     }
 
     #[test]
@@ -1284,6 +1296,6 @@ machine Main {
   }
 }
 ";
-        parse_analyse_and_compile::<GoldilocksField>(asm);
+        parse_analyze_and_compile::<GoldilocksField>(asm);
     }
 }

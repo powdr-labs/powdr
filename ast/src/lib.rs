@@ -51,6 +51,22 @@ where
     write!(f, "{}", indent(s, indentation))
 }
 
+pub fn writeln_indented_by<S, W>(f: &mut W, s: S, indentation: usize) -> Result
+where
+    S: Display,
+    W: Write,
+{
+    writeln!(f, "{}", indent(s, indentation))
+}
+
+pub fn writeln_indented<S, W>(f: &mut W, s: S) -> Result
+where
+    S: Display,
+    W: Write,
+{
+    writeln_indented_by(f, s, 1)
+}
+
 fn write_items<S, I, W>(f: &mut W, items: I) -> Result
 where
     S: Display,

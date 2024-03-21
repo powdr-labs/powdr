@@ -1407,7 +1407,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                     let dest = if instr == "tail" { "tmp1" } else { "x1" };
                     vec![format!("{dest} <== jump({arg});")]
                 }
-                // Both "call" and "tail" are pseudoinstructions that are
+                // Both "call" and "tail" are pseudo-instructions that are
                 // supposed to use x6 to calculate the high bits of the
                 // destination address. Our implementation does not touch x6,
                 // but no sane program would rely on this behavior, so we are
@@ -1549,10 +1549,10 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             let (rd, rs, off) = rro(args);
             assert_eq!(off, 0);
             // TODO misaligned access should raise misaligned address exceptions
-            let mut statments =
+            let mut statements =
                 only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs});")], rd);
-            statments.push("lr_sc_reservation <=X= 1;".into());
-            statments
+            statements.push("lr_sc_reservation <=X= 1;".into());
+            statements
         }
 
         insn if insn.starts_with("sc.w") => {

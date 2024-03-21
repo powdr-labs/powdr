@@ -17,7 +17,7 @@ pub fn run() -> Result<(), String> {
 
     let output_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("files");
     let bn254_path = output_dir.join("bn254.schema");
-    let goldilocks_path = output_dir.join("goldilock.schema");
+    let goldilocks_path = output_dir.join("goldilocks.schema");
 
     let old_bn254schema: RootSchema = serde_cbor::from_reader(
         File::open(&bn254_path).map_err(|e| format!("Failed to open bn254.schema: {}", e))?,
@@ -26,9 +26,9 @@ pub fn run() -> Result<(), String> {
 
     let old_goldilocks_schema: RootSchema = serde_cbor::from_reader(
         File::open(&goldilocks_path)
-            .map_err(|e| format!("Failed to open goldilock.schema: {}", e))?,
+            .map_err(|e| format!("Failed to open goldilocks.schema: {}", e))?,
     )
-    .map_err(|e| format!("Failed to deserialize goldilock.schema: {}", e))?;
+    .map_err(|e| format!("Failed to deserialize goldilocks.schema: {}", e))?;
 
     if old_bn254schema.schema != current_bn254_schema.schema
         || old_goldilocks_schema.schema != current_goldilocks_schema.schema
@@ -54,10 +54,10 @@ pub fn run() -> Result<(), String> {
         .map_err(|e| format!("Failed to write bn254.schema: {}", e))?;
         serde_cbor::to_writer(
             &mut File::create(goldilocks_path)
-                .map_err(|e| format!("Failed to open goldilock.schema: {}", e))?,
+                .map_err(|e| format!("Failed to open goldilocks.schema: {}", e))?,
             &current_goldilocks_schema,
         )
-        .map_err(|e| format!("Failed to write goldilock.schema: {}", e))?;
+        .map_err(|e| format!("Failed to write goldilocks.schema: {}", e))?;
 
         println!("Updated schemas to version {}", new_version);
     } else {

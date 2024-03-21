@@ -399,6 +399,7 @@ impl Machine {
                         MachineStatement::Pil(_, statement) => {
                             Box::new(statement.symbol_definition_names().map(|(s, _)| s))
                         }
+                        MachineStatement::CallSelectors(_, name) => Box::new(once(name)),
                         MachineStatement::Degree(_, _)
                         | MachineStatement::Submachine(_, _, _)
                         | MachineStatement::InstructionDeclaration(_, _, _)
@@ -475,6 +476,7 @@ pub struct Instruction {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement {
     Degree(SourceRef, BigUint),
+    CallSelectors(SourceRef, String),
     Pil(SourceRef, PilStatement),
     Submachine(SourceRef, SymbolPath, String),
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),
@@ -488,6 +490,7 @@ pub enum MachineStatement {
 pub struct LinkDeclaration {
     pub flag: Expression,
     pub to: CallableRef,
+    pub is_permutation: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -500,7 +503,8 @@ pub struct CallableRef {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum InstructionBody {
     Local(Vec<PilStatement>),
-    CallableRef(CallableRef),
+    CallablePlookup(CallableRef),
+    CallablePermutation(CallableRef),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

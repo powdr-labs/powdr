@@ -140,7 +140,7 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(CsvRenderModeCLI))]
         csv_mode: CsvRenderModeCLI,
 
-        /// Just execute in the RISCV/Powdr executor
+        /// Just execute in the RISC-V/Powdr executor
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         just_execute: bool,
@@ -203,7 +203,7 @@ enum Commands {
         #[arg(long)]
         coprocessors: Option<String>,
 
-        /// Just execute in the RISCV/Powdr executor
+        /// Just execute in the RISC-V/Powdr executor
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         just_execute: bool,
@@ -267,7 +267,7 @@ enum Commands {
         #[arg(long)]
         coprocessors: Option<String>,
 
-        /// Just execute in the RISCV/Powdr executor
+        /// Just execute in the RISC-V/Powdr executor
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         just_execute: bool,
@@ -816,6 +816,7 @@ fn run<F: FieldElement>(
             let program = pipeline.compute_asm_string().unwrap().clone();
             powdr_riscv_executor::execute::<F>(
                 &program.1,
+                powdr_riscv_executor::MemoryState::new(),
                 pipeline.data_callback().unwrap(),
                 &[],
                 powdr_riscv_executor::ExecMode::Fast,

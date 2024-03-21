@@ -1,7 +1,7 @@
 //! Component that turns data from the PILAnalyzer into Analyzed,
 //! i.e. it turns more complex expressions in identities to simpler expressions.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use powdr_ast::{
     analyzed::{
@@ -16,7 +16,7 @@ use powdr_ast::{
 };
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::evaluator::{self, Definitions, Value};
+use crate::evaluator::{self, Definitions, SymbolLookup, Value};
 
 pub fn condense<T: FieldElement>(
     degree: Option<DegreeType>,
@@ -25,12 +25,10 @@ pub fn condense<T: FieldElement>(
     identities: &[Identity<Expression>],
     source_order: Vec<StatementIdentifier>,
 ) -> Analyzed<T> {
-    let condenser = Condenser {
-        symbols: definitions.clone(),
-        _phantom: Default::default(),
-    };
+    let mut condenser = Condenser::new(definitions.clone());
 
     let mut condensed_identities = vec![];
+    let mut intermediate_columns = HashMap::new();
     // Condense identities and update the source order.
     let source_order = source_order
         .into_iter()
@@ -47,46 +45,46 @@ pub fn condense<T: FieldElement>(
                     })
                     .collect()
             }
+            StatementIdentifier::Definition(name)
+                if matches!(
+                    definitions[&name].0.kind,
+                    SymbolKind::Poly(PolynomialType::Intermediate)
+                ) =>
+            {
+                let (symbol, definition) = &definitions[&name];
+                let Some(FunctionValueDefinition::Expression(e)) = definition else {
+                    panic!("Expected expression")
+                };
+                let value = if let Some(length) = symbol.length {
+                    let scheme = e.type_scheme.as_ref();
+                    assert!(
+                        scheme.unwrap().vars.is_empty()
+                            && matches!(
+                                &scheme.unwrap().ty,
+                                Type::Array(ArrayType { base, length: _ })
+                                if base.as_ref() == &Type::Expr),
+                        "Intermediate column type has to be expr[], but got: {}",
+                        format_type_scheme_around_name(&name, &e.type_scheme)
+                    );
+                    let result = condenser.condense_to_array_of_algebraic_expressions(&e.e);
+                    assert_eq!(result.len() as u64, length);
+                    result
+                } else {
+                    assert_eq!(
+                        e.type_scheme,
+                        Some(Type::Expr.into()),
+                        "Intermediate column type has to be expr, but got: {}",
+                        format_type_scheme_around_name(&name, &e.type_scheme)
+                    );
+                    vec![condenser.condense_to_algebraic_expression(&e.e)]
+                };
+                intermediate_columns.insert(name.clone(), (symbol.clone(), value));
+                vec![StatementIdentifier::Definition(name)]
+            }
             s => vec![s],
         })
         .collect();
 
-    // Extract intermediate columns
-    let intermediate_columns: HashMap<_, _> = definitions
-        .iter()
-        .filter_map(|(name, (symbol, definition))| {
-            if !matches!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate)) {
-                return None;
-            }
-            let Some(FunctionValueDefinition::Expression(e)) = definition else {
-                panic!("Expected expression")
-            };
-            let value = if let Some(length) = symbol.length {
-                let scheme = e.type_scheme.as_ref();
-                assert!(
-                    scheme.unwrap().vars.is_empty()
-                        && matches!(
-                            &scheme.unwrap().ty,
-                            Type::Array(ArrayType { base, length: _ })
-                            if base.as_ref() == &Type::Expr),
-                    "Intermediate column type has to be expr[], but got: {}",
-                    format_type_scheme_around_name(name, &e.type_scheme)
-                );
-                let result = condenser.condense_to_array_of_algebraic_expressions(&e.e);
-                assert_eq!(result.len() as u64, length);
-                result
-            } else {
-                assert_eq!(
-                    e.type_scheme,
-                    Some(Type::Expr.into()),
-                    "Intermediate column type has to be expr, but got: {}",
-                    format_type_scheme_around_name(name, &e.type_scheme)
-                );
-                vec![condenser.condense_to_algebraic_expression(&e.e)]
-            };
-            Some((name.clone(), (symbol.clone(), value)))
-        })
-        .collect();
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
 
     for decl in public_declarations.values_mut() {
@@ -116,8 +114,14 @@ pub struct Condenser<T> {
 }
 
 impl<T: FieldElement> Condenser<T> {
+    pub fn new(symbols: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
+        Self {
+            symbols,
+            _phantom: Default::default(),
+        }
+    }
     pub fn condense_identity(
-        &self,
+        &mut self,
         identity: &Identity<Expression>,
     ) -> Vec<Identity<AlgebraicExpression<T>>> {
         if identity.id.kind == IdentityKind::Polynomial {
@@ -142,7 +146,7 @@ impl<T: FieldElement> Condenser<T> {
     }
 
     fn condense_selected_expressions(
-        &self,
+        &mut self,
         sel_expr: &SelectedExpressions<Expression>,
     ) -> SelectedExpressions<AlgebraicExpression<T>> {
         SelectedExpressions {
@@ -159,8 +163,8 @@ impl<T: FieldElement> Condenser<T> {
     }
 
     /// Evaluates the expression and expects it to result in an algebraic expression.
-    fn condense_to_algebraic_expression(&self, e: &Expression) -> AlgebraicExpression<T> {
-        let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
+    fn condense_to_algebraic_expression(&mut self, e: &Expression) -> AlgebraicExpression<T> {
+        let result = evaluator::evaluate(e, &mut self.symbols()).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
         match result.as_ref() {
@@ -171,10 +175,10 @@ impl<T: FieldElement> Condenser<T> {
 
     /// Evaluates the expression and expects it to result in an array of algebraic expressions.
     fn condense_to_array_of_algebraic_expressions(
-        &self,
+        &mut self,
         e: &Expression,
     ) -> Vec<AlgebraicExpression<T>> {
-        let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
+        let result = evaluator::evaluate(e, &mut self.symbols()).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
         match result.as_ref() {
@@ -190,8 +194,8 @@ impl<T: FieldElement> Condenser<T> {
     }
 
     /// Evaluates an expression and expects a single constraint or an array of constraints.
-    fn condense_to_constraint_or_array(&self, e: &Expression) -> Vec<AlgebraicExpression<T>> {
-        let result = evaluator::evaluate(e, &self.symbols()).unwrap_or_else(|err| {
+    fn condense_to_constraint_or_array(&mut self, e: &Expression) -> Vec<AlgebraicExpression<T>> {
+        let result = evaluator::evaluate(e, &mut self.symbols()).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
         match result.as_ref() {
@@ -210,7 +214,30 @@ impl<T: FieldElement> Condenser<T> {
         }
     }
 
-    fn symbols(&self) -> Definitions<'_> {
-        Definitions(&self.symbols)
+    fn symbols(&mut self) -> CondenserSymbols<'_> {
+        CondenserSymbols {
+            symbols: &self.symbols,
+        }
+    }
+}
+
+struct CondenserSymbols<'a> {
+    symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+}
+
+impl<'a, T: FieldElement> SymbolLookup<'a, T> for CondenserSymbols<'a> {
+    fn lookup(
+        &mut self,
+        name: &'a str,
+        generic_args: Option<Vec<Type>>,
+    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+        Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)
+    }
+
+    fn lookup_public_reference(
+        &self,
+        name: &str,
+    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+        Definitions(self.symbols).lookup_public_reference(name)
     }
 }

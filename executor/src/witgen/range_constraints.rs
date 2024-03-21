@@ -62,7 +62,7 @@ impl<T: FieldElement> RangeConstraint<T> {
         Self { mask, min, max }
     }
 
-    /// Returns a bit mask. This might be drastically underfitted in case
+    /// Returns a bit mask. This might be drastically under-fitted in case
     /// the constraint is more resembling an interval.
     /// Semantics: X & mask == X holds for all possible values of X.
     pub fn mask(&self) -> &T::Integer {
@@ -476,7 +476,7 @@ mod test {
     #[test]
     fn interval_intersections() {
         type F = GoldilocksField;
-        fn comutativity_test(a: (F, F), b: (F, F)) -> Option<(F, F)> {
+        fn commutativity_test(a: (F, F), b: (F, F)) -> Option<(F, F)> {
             let direct = interval_intersection(a, b);
             let inverse = interval_intersection(b, a);
             assert_eq!(direct, inverse);
@@ -489,18 +489,18 @@ mod test {
         // a is contained in b
         {
             let a = (50.into(), 60.into());
-            assert_eq!(comutativity_test(a, (10.into(), 100.into())), Some(a));
+            assert_eq!(commutativity_test(a, (10.into(), 100.into())), Some(a));
         }
 
         // a has an intersection with b
         assert_eq!(
-            comutativity_test((10.into(), 60.into()), (40.into(), 100.into())),
+            commutativity_test((10.into(), 60.into()), (40.into(), 100.into())),
             Some((40.into(), 60.into()))
         );
 
         // a and b does not intersect
         assert_eq!(
-            comutativity_test((10.into(), 40.into()), (60.into(), 100.into())),
+            commutativity_test((10.into(), 40.into()), (60.into(), 100.into())),
             None
         );
 
@@ -510,55 +510,55 @@ mod test {
         // (should return the smallest of the two ranges)
         {
             let a = (10.into(), 100.into());
-            assert_eq!(comutativity_test(a, (90.into(), 20.into())), Some(a));
+            assert_eq!(commutativity_test(a, (90.into(), 20.into())), Some(a));
         }
 
         // a intersects with the beginning of b, and almost intersects with the end
         assert_eq!(
-            comutativity_test((21.into(), 100.into()), (90.into(), 20.into())),
+            commutativity_test((21.into(), 100.into()), (90.into(), 20.into())),
             Some((90.into(), 100.into()))
         );
 
         // a intersects with the end of b, and almost intersects with the beginning
         assert_eq!(
-            comutativity_test((10.into(), 89.into()), (90.into(), 20.into())),
+            commutativity_test((10.into(), 89.into()), (90.into(), 20.into())),
             Some((10.into(), 20.into()))
         );
 
         // an intersection that contains zero
         assert_eq!(
-            comutativity_test((F::from(-50), 10.into()), (F::from(-10), 50.into())),
+            commutativity_test((F::from(-50), 10.into()), (F::from(-10), 50.into())),
             Some((F::from(-10), 10.into()))
         );
 
         // a intersects with b right before zero
         assert_eq!(
-            comutativity_test((F::from(-50), F::from(-10)), (F::from(-20), 20.into())),
+            commutativity_test((F::from(-50), F::from(-10)), (F::from(-20), 20.into())),
             Some((F::from(-20), F::from(-10)))
         );
 
         // a intersects with b right after zero
         assert_eq!(
-            comutativity_test((10.into(), 50.into()), (F::from(-20), 20.into())),
+            commutativity_test((10.into(), 50.into()), (F::from(-20), 20.into())),
             Some((10.into(), 20.into()))
         );
 
         // a is contained in b, both contains 0
         {
             let a = (F::from(-20), 20.into());
-            assert_eq!(comutativity_test(a, (F::from(-50), 90.into())), Some(a));
+            assert_eq!(commutativity_test(a, (F::from(-50), 90.into())), Some(a));
         }
 
         // a is contained in b before 0
         {
             let a = (F::from(-20), F::from(-10));
-            assert_eq!(comutativity_test(a, (F::from(-50), 90.into())), Some(a));
+            assert_eq!(commutativity_test(a, (F::from(-50), 90.into())), Some(a));
         }
 
         // a is contained in b after 0
         {
             let a = (10.into(), 20.into());
-            assert_eq!(comutativity_test(a, (F::from(-50), 90.into())), Some(a));
+            assert_eq!(commutativity_test(a, (F::from(-50), 90.into())), Some(a));
         }
     }
 

@@ -78,7 +78,7 @@ impl DefaultSequenceIterator {
             // In the last row, we want to do one more action, processing the outer query.
             self.identities_count as i32 + 1
         } else {
-            // Otherwise, we want to process all identites + 1 action processing the prover queries
+            // Otherwise, we want to process all identities + 1 action processing the prover queries
             self.identities_count as i32
         };
 

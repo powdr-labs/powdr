@@ -82,12 +82,12 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
             rows.current_row_index,
         ))))];
-        let symbols = Symbols {
+        let mut symbols = Symbols {
             fixed_data: self.fixed_data,
             rows,
         };
-        let fun = evaluator::evaluate(query, &symbols)?;
-        evaluator::evaluate_function_call(fun, arguments, &symbols).map(|v| v.to_string())
+        let fun = evaluator::evaluate(query, &mut symbols)?;
+        evaluator::evaluate_function_call(fun, arguments, &mut symbols).map(|v| v.to_string())
     }
 }
 
@@ -99,11 +99,12 @@ struct Symbols<'a, T: FieldElement> {
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     fn lookup<'b>(
-        &self,
+        &mut self,
         name: &'a str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Definitions(&self.fixed_data.analyzed.definitions).lookup_with_symbols(
+        Definitions::lookup_with_symbols(
+            &self.fixed_data.analyzed.definitions,
             name,
             generic_args,
             self,

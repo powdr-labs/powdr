@@ -426,3 +426,46 @@ namespace main(16);
 "#;
     assert_eq!(formatted, expected);
 }
+
+#[test]
+fn stages() {
+    let input = "    let N: int = 8;
+namespace Main(8);
+    col witness x;
+    col witness stage(2) y;
+    col witness stage(1) z[4];
+    Main.x = Main.y;
+    Main.z[0] = Main.x;
+";
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}
+
+#[test]
+fn challenges() {
+    let input = "
+    namespace std::prover(8);
+        let challenge = [];
+
+    namespace Main(8);
+        col fixed first = [1] + [0]*;
+        col witness x;
+        col witness stage(2) y;
+        let a: expr = std::prover::challenge(2, 1);
+
+        x' = (x + 1) * (1 - first);
+        y' = (x + a) * (1 - first);
+    ";
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace std::prover(8);
+    let challenge = [];
+namespace Main(8);
+    col fixed first = [1] + [0]*;
+    col witness x;
+    col witness stage(2) y;
+    col a = std::prover::challenge(2, 1);
+    Main.x' = ((Main.x + 1) * (1 - Main.first));
+    Main.y' = ((Main.x + Main.a) * (1 - Main.first));
+"#;
+    assert_eq!(formatted, expected);
+}

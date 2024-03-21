@@ -41,7 +41,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
         let (current, after) = after.split_at_mut(1);
         let current: &'c mut KnownMachine<'a, T> = current.first_mut().unwrap();
 
-        // Reborrow machines to convert from `&'c mut &'b mut KnownMachine<'a, T>` to
+        // Re-borrow machines to convert from `&'c mut &'b mut KnownMachine<'a, T>` to
         // `&'c mut KnownMachine<'a, T>`.
         let others: Vec<&'c mut KnownMachine<'a, T>> = before
             .iter_mut()
@@ -153,7 +153,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
         match rows.evaluate(identity.expression_for_poly_id()) {
-            Err(inclomplete_cause) => Ok(EvalValue::incomplete(inclomplete_cause)),
+            Err(incomplete_cause) => Ok(EvalValue::incomplete(incomplete_cause)),
             Ok(evaluated) => evaluated.solve_with_range_constraints(rows),
         }
     }
@@ -262,7 +262,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         rows: &RowPair<T>,
     ) -> Option<EvalValue<&'a AlgebraicReference, T>> {
         let value = match rows.evaluate(left_selector) {
-            Err(inclomplete_cause) => return Some(EvalValue::incomplete(inclomplete_cause)),
+            Err(incomplete_cause) => return Some(EvalValue::incomplete(incomplete_cause)),
             Ok(value) => value,
         };
         match value.constant_value() {

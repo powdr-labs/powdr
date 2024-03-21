@@ -42,12 +42,18 @@ impl Display for ModuleStatement {
                             },
                         ..
                     },
-                ) => match (latch, operation_id) {
-                    (None, None) => write!(f, "machine {name} {m}"),
-                    (Some(latch), None) => write!(f, "machine {name}({latch}, _) {m}"),
-                    (None, Some(op_id)) => write!(f, "machine {name}(_, {op_id}) {m}"),
-                    (Some(latch), Some(op_id)) => write!(f, "machine {name}({latch}, {op_id}) {m}"),
-                },
+                ) => {
+                    if let (None, None) = (latch, operation_id) {
+                        write!(f, "machine {name} {m}")
+                    } else {
+                        write!(
+                            f,
+                            "machine {name}({}, {}) {m}",
+                            latch.as_deref().unwrap_or("_"),
+                            operation_id.as_deref().unwrap_or("_"),
+                        )
+                    }
+                }
                 SymbolValue::Import(i) => {
                     write!(f, "{i} as {name};")
                 }
@@ -108,7 +114,8 @@ impl Display for InstructionBody {
                     .map(format_instruction_statement)
                     .format(", ")
             ),
-            InstructionBody::CallableRef(r) => write!(f, " = {r};"),
+            InstructionBody::CallablePlookup(r) => write!(f, " = {r};"),
+            InstructionBody::CallablePermutation(r) => write!(f, " ~ {r};"),
         }
     }
 }
@@ -141,7 +148,13 @@ impl Display for Instruction {
 
 impl Display for LinkDeclaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "link {} => {};", self.flag, self.to)
+        write!(
+            f,
+            "link {} {} {};",
+            self.flag,
+            if self.is_permutation { "~>" } else { "=>" },
+            self.to,
+        )
     }
 }
 
@@ -155,6 +168,7 @@ impl Display for MachineStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             MachineStatement::Degree(_, degree) => write!(f, "degree {};", degree),
+            MachineStatement::CallSelectors(_, sel) => write!(f, "call_selectors {};", sel),
             MachineStatement::Pil(_, statement) => write!(f, "{statement}"),
             MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),
             MachineStatement::RegisterDeclaration(_, name, flag) => write!(
@@ -392,10 +406,11 @@ impl Display for PilStatement {
             PilStatement::PolynomialConstantDefinition(_, name, definition) => {
                 write!(f, "    pol constant {name}{definition};")
             }
-            PilStatement::PolynomialCommitDeclaration(_, names, value) => {
+            PilStatement::PolynomialCommitDeclaration(_, stage, names, value) => {
                 write!(
                     f,
-                    "    pol commit {}{};",
+                    "    pol commit {}{}{};",
+                    stage.map(|s| format!("stage({s}) ")).unwrap_or_default(),
                     names.iter().format(", "),
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
                 )

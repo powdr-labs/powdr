@@ -77,6 +77,8 @@ pub struct LinkDefinitionStatement {
     pub flag: Expression,
     /// the callable to invoke when the flag is on. TODO: check this during type checking
     pub to: CallableRef,
+    /// true if this is a permutation link
+    pub is_permutation: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -691,6 +693,8 @@ pub struct Machine {
     pub latch: Option<String>,
     /// The operation id, i.e. the column whose values determine which operation is being invoked in the current block. Must be defined in one of the constraint blocks of this machine.
     pub operation_id: Option<String>,
+    /// call selector array
+    pub call_selectors: Option<String>,
     /// The set of registers for this machine
     pub registers: Vec<RegisterDeclarationStatement>,
     /// The index of the program counter in the registers, if any
@@ -708,7 +712,7 @@ pub struct Machine {
 }
 
 impl Machine {
-    /// Returns whether this machine type features a program counter. This is how we differenciate virtual machines from constrained machines.
+    /// Returns whether this machine type features a program counter. This is how we differentiate virtual machines from constrained machines.
     pub fn has_pc(&self) -> bool {
         self.pc.is_some()
     }

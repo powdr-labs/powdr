@@ -52,7 +52,15 @@ pub enum PilStatement {
     ),
     PolynomialConstantDeclaration(SourceRef, Vec<PolynomialName>),
     PolynomialConstantDefinition(SourceRef, String, FunctionDefinition),
-    PolynomialCommitDeclaration(SourceRef, Vec<PolynomialName>, Option<FunctionDefinition>),
+    PolynomialCommitDeclaration(
+        SourceRef,
+        // Stage
+        Option<u32>,
+        // Names
+        Vec<PolynomialName>,
+        // Value (prover query / hint)
+        Option<FunctionDefinition>,
+    ),
     PlookupIdentity(
         SourceRef,
         SelectedExpressions<Expression>,
@@ -84,7 +92,7 @@ impl PilStatement {
                 Box::new(once((name, true)))
             }
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
-            | PilStatement::PolynomialCommitDeclaration(_, polynomials, _) => {
+            | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => {
                 Box::new(polynomials.iter().map(|p| (&p.name, false)))
             }
 
@@ -139,9 +147,9 @@ impl Children<Expression> for PilStatement {
 
             PilStatement::PublicDeclaration(_, _, _, i, e) => Box::new(i.iter().chain(once(e))),
 
-            PilStatement::PolynomialConstantDefinition(_, _, fundef)
-            | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => fundef.children(),
-            PilStatement::PolynomialCommitDeclaration(_, _, None)
+            PilStatement::PolynomialConstantDefinition(_, _, def)
+            | PilStatement::PolynomialCommitDeclaration(_, _, _, Some(def)) => def.children(),
+            PilStatement::PolynomialCommitDeclaration(_, _, _, None)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
         }
@@ -170,11 +178,9 @@ impl Children<Expression> for PilStatement {
 
             PilStatement::PublicDeclaration(_, _, _, i, e) => Box::new(i.iter_mut().chain(once(e))),
 
-            PilStatement::PolynomialConstantDefinition(_, _, fundef)
-            | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => {
-                fundef.children_mut()
-            }
-            PilStatement::PolynomialCommitDeclaration(_, _, None)
+            PilStatement::PolynomialConstantDefinition(_, _, def)
+            | PilStatement::PolynomialCommitDeclaration(_, _, _, Some(def)) => def.children_mut(),
+            PilStatement::PolynomialCommitDeclaration(_, _, _, None)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
         }

@@ -184,7 +184,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                 if let Some(latch) = self.processor.latch_value(row_index as usize) {
                     if latch {
                         log::trace!("Machine returns!");
-                        if self.processor.finshed_outer_query() {
+                        if self.processor.finished_outer_query() {
                             return EvalValue::complete(outer_assignments);
                         } else {
                             return EvalValue::incomplete_with_constraints(
@@ -271,7 +271,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         // Check that the computed row is "final" by asserting that all unknown values can
         // be set to 0.
         // This check is only done for the primary machine, as secondary machines might simply
-        // not have all the inputs yet and therefore be underconstrained.
+        // not have all the inputs yet and therefore be under-constrained.
         if !self.processor.has_outer_query() {
             log::trace!(
                 "  Checking that remaining identities hold when unknown values are set to 0"
@@ -288,7 +288,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                     UnknownStrategy::Zero,
                 )
             })
-            .map_err(|e| self.report_failure_and_panic_underconstrained(row_index, e))
+            .map_err(|e| self.report_failure_and_panic_under_constrained(row_index, e))
             .unwrap();
         }
 
@@ -435,7 +435,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         panic!("Witness generation failed.");
     }
 
-    fn report_failure_and_panic_underconstrained(
+    fn report_failure_and_panic_under_constrained(
         &self,
         row_index: DegreeType,
         failures: Vec<EvalError<T>>,
@@ -446,7 +446,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         );
         let row_index = row_index as usize;
 
-        log::debug!("Some columns could not be determined, but setting them to zero does not satisfy the constraints. This typically means that the system is underconstrained!");
+        log::debug!("Some columns could not be determined, but setting them to zero does not satisfy the constraints. This typically means that the system is under-constrained!");
         log::debug!(
             "{}",
             self.processor.row(row_index).render(

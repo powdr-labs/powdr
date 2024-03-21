@@ -285,6 +285,21 @@ fn referencing_arrays() {
 }
 
 #[test]
+fn naive_byte_decomposition_bn254() {
+    // This should pass, because BN254 is a field that can fit all 64-Bit integers.
+    let f = "pil/naive_byte_decomposition.pil";
+    test_halo2(f, Default::default());
+}
+
+#[test]
+#[should_panic = "Witness generation failed."]
+fn naive_byte_decomposition_gl() {
+    // This should fail, because GoldilocksField is a field that cannot fit all 64-Bit integers.
+    let f = "pil/naive_byte_decomposition.pil";
+    verify_pil(f, Default::default());
+}
+
+#[test]
 fn serialize_deserialize_optimized_pil() {
     let f = "pil/fibonacci.pil";
     let path = powdr_pipeline::test_util::resolve_test_file(f);
@@ -303,6 +318,15 @@ fn serialize_deserialize_optimized_pil() {
 
     assert_eq!(input_pil_file, output_pil_file);
 }
+
+// TODO re-enable when we have a working backend.
+// #[test]
+// fn challenges() {
+//     let f = "pil/challenges.pil";
+//     verify_pil(f, Default::default());
+//     test_halo2(f, Default::default());
+//     gen_estark_proof(f, Default::default());
+// }
 
 mod book {
     use super::*;

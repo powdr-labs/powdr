@@ -42,6 +42,7 @@ lazy_static! {
         ("std::convert::expr", ("T: FromLiteral", "T -> expr")),
         ("std::debug::print", ("", "string -> constr[]")),
         ("std::field::modulus", ("", "-> int")),
+        ("std::prover::challenge", ("", "int, int -> expr")),
         ("std::prover::eval", ("", "expr -> fe")),
     ]
     .into_iter()

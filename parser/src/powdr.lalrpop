@@ -161,13 +161,18 @@ ArrayLiteralTerm: ArrayExpression = {
 }
 
 PolynomialCommitDeclaration: PilStatement = {
-    <start:@L> PolCol CommitWitness <list:PolynomialNameList> ";" => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start), list, None),
-    <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression> ";"
+    <start:@L> PolCol CommitWitness <stage:Stage?> <list:PolynomialNameList> ";" => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start), stage, list, None),
+    <start:@L> PolCol CommitWitness <stage:Stage?> <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression> ";"
      => PilStatement::PolynomialCommitDeclaration(
         ctx.source_ref(start),
+        stage,
         vec![name],
         Some(FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression{params, body})))
     )
+}
+
+Stage: u32 = {
+    "stage" "(" <Number> ")" => u32::try_from(<>).unwrap()
 }
 
 PolynomialNameList: Vec<PolynomialName> = {
@@ -250,6 +255,7 @@ MachineArguments: MachineArguments = {
 
 MachineStatement: MachineStatement = {
     Degree,
+    CallSelectors,
     Submachine,
     RegisterDeclaration,
     InstructionDeclaration,
@@ -265,6 +271,10 @@ PilStatementInMachine: MachineStatement = {
 
 Degree: MachineStatement = {
     <start:@L> "degree" <deg:UnsignedInteger> ";" => MachineStatement::Degree(ctx.source_ref(start), deg)
+}
+
+CallSelectors: MachineStatement = {
+    <start:@L> "call_selectors" <id:Identifier> ";" => MachineStatement::CallSelectors(ctx.source_ref(start), id)
 }
 
 Submachine: MachineStatement = {
@@ -292,13 +302,15 @@ pub Instruction: Instruction = {
 }
 
 pub LinkDeclaration: MachineStatement = {
-    <start:@L> "link" <flag:Expression> "=>" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start), LinkDeclaration { flag, to })
+    <start:@L> "link" <flag:Expression> "=>" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start), LinkDeclaration { flag, to, is_permutation: false, }),
+    <start:@L> "link" <flag:Expression> "~>" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start), LinkDeclaration { flag, to, is_permutation: true, }),
 }
 
 pub InstructionBody: InstructionBody = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
-    "=" <f_ref:CallableRef> ";" => InstructionBody::CallableRef(f_ref),
+    "=" <f_ref:CallableRef> ";" => InstructionBody::CallablePlookup(f_ref),
+    "~" <f_ref:CallableRef> ";" => InstructionBody::CallablePermutation(f_ref),
 }
 
 pub CallableRef: CallableRef = {

@@ -506,7 +506,7 @@ fn check_machine(
                     check_expression(&module_location, e, state, &local_variables)
                 })?
             }
-            // check rhs input exrpressions for `instr` and `link` declarations
+            // check rhs input expressions for `instr` and `link` declarations
             MachineStatement::LinkDeclaration(
                 _,
                 LinkDeclaration {
@@ -517,7 +517,15 @@ fn check_machine(
                 _,
                 _,
                 Instruction {
-                    body: InstructionBody::CallableRef(callable_ref),
+                    body: InstructionBody::CallablePlookup(callable_ref),
+                    ..
+                },
+            )
+            | MachineStatement::InstructionDeclaration(
+                _,
+                _,
+                Instruction {
+                    body: InstructionBody::CallablePermutation(callable_ref),
                     ..
                 },
             ) => {

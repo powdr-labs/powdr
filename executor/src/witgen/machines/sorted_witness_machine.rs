@@ -103,7 +103,7 @@ fn check_identity<T: FieldElement>(
     // Check for A' - A in the LHS
     let key_column = check_constraint(id.left.expressions.first().unwrap())?;
 
-    let notlast = id.left.selector.as_ref()?;
+    let not_last = id.left.selector.as_ref()?;
     let positive = id.right.expressions.first().unwrap();
 
     // TODO this could be rather slow. We should check the code for identity instead
@@ -111,7 +111,7 @@ fn check_identity<T: FieldElement>(
     let degree = fixed_data.degree as usize;
     for row in 0..(degree) {
         let ev = ExpressionEvaluator::new(FixedEvaluator::new(fixed_data, row));
-        let nl = ev.evaluate(notlast).ok()?.constant_value()?;
+        let nl = ev.evaluate(not_last).ok()?.constant_value()?;
         if (row == degree - 1 && !nl.is_zero()) || (row < degree - 1 && !nl.is_one()) {
             return None;
         }
@@ -233,7 +233,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 Some(v) => {
                     match (l.clone() - (*v).into()).solve() {
                         Err(_) => {
-                            // The LHS value is known and it is differetn from the stored one.
+                            // The LHS value is known and it is different from the stored one.
                             return Err(format!(
                                 "Lookup mismatch: There is already a unique row with {} = \
                             {key_value} and {r} = {v}, but wanted to store {r} = {l}",

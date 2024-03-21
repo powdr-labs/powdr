@@ -33,7 +33,7 @@ pub enum Type<E = u64> {
     Tuple(TupleType<E>),
     Function(FunctionType<E>),
     TypeVar(String),
-    /// A named type like an enum. Directly aftar parsing, type variables are also
+    /// A named type like an enum. Directly after parsing, type variables are also
     /// represented as NamedTypes, because the parser cannot distinguish.
     NamedType(SymbolPath),
 }

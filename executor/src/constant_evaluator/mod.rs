@@ -79,12 +79,12 @@ fn generate_values<T: FieldElement>(
             (0..degree)
                 .into_par_iter()
                 .map(|i| {
-                    let symbols = symbols.clone();
-                    let fun = evaluator::evaluate(e, &symbols).unwrap();
+                    let mut symbols = symbols.clone();
+                    let fun = evaluator::evaluate(e, &mut symbols).unwrap();
                     evaluator::evaluate_function_call(
                         fun,
                         vec![Arc::new(Value::Integer(BigInt::from(i)))],
-                        &symbols,
+                        &mut symbols,
                     )
                     .and_then(|v| v.try_to_field_element())
                 })
@@ -99,8 +99,9 @@ fn generate_values<T: FieldElement>(
                         .pattern()
                         .iter()
                         .map(|v| {
-                            let symbols = symbols.clone();
-                            evaluator::evaluate(v, &symbols).and_then(|v| v.try_to_field_element())
+                            let mut symbols = symbols.clone();
+                            evaluator::evaluate(v, &mut symbols)
+                                .and_then(|v| v.try_to_field_element())
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 
@@ -138,14 +139,14 @@ pub struct CachedSymbols<'a, T> {
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
     fn lookup(
-        &self,
+        &mut self,
         name: &'a str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         if let Some(v) = self.cache.read().unwrap().get(name) {
             return Ok(v.clone());
         }
-        let result = Definitions(self.symbols).lookup_with_symbols(name, generic_args, self)?;
+        let result = Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)?;
         self.cache
             .write()
             .unwrap()
@@ -290,7 +291,7 @@ mod test {
             namespace F(N);
             let seq_f = |i| i;
             col fixed seq(i) { i };
-            col fixed doub(i) { std::convert::int(seq_f((2 * i) % N)) + 1 };
+            col fixed double_plus_one(i) { std::convert::int(seq_f((2 * i) % N)) + 1 };
             let half_nibble_f = |i| i & 0x7;
             col fixed half_nibble(i) { half_nibble_f(i) };
             col fixed doubled_half_nibble(i) { half_nibble_f(i / 2) };
@@ -306,7 +307,7 @@ mod test {
         assert_eq!(
             constants[1],
             (
-                "F.doub".to_string(),
+                "F.double_plus_one".to_string(),
                 convert([1i32, 3, 5, 7, 9, 1, 3, 5, 7, 9].to_vec())
             )
         );

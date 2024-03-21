@@ -92,6 +92,8 @@ impl TryFrom<IdentityKind> for ConnectionType {
 pub struct BlockMachine<'a, T: FieldElement> {
     /// Block size, the period of the selector.
     block_size: usize,
+    /// The row index (within the block) of the latch row
+    latch_row: usize,
     /// The right-hand sides of the connecting identities.
     connecting_rhs: BTreeMap<IdentityId, &'a SelectedExpressions<Expression<T>>>,
     /// The type of constraint used to connect this machine to its caller.
@@ -147,7 +149,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
         // Because block shapes are not always rectangular, we add the last block to the data at the
         // beginning. It starts out with unknown values. Should the first block decide to write to
-        // rows < 0, they will be writen to this block.
+        // rows < 0, they will be written to this block.
         // In `take_witness_col_values()`, this block will be removed and its values will be used to
         // construct the "default" block used to fill up unused rows.
         let start_index = RowIndex::from_i64(-(block_size as i64), fixed_data.degree);
@@ -158,6 +160,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         Some(BlockMachine {
             name,
             block_size,
+            latch_row,
             connecting_rhs,
             connection_type: is_permutation,
             identities: identities.to_vec(),
@@ -203,22 +206,35 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
         }
         ConnectionType::Permutation => {
             // The latch fixed column could be any fixed column that appears in any identity or the RHS selector.
+
+            let find_max_period = |latch_candidates: BTreeSet<Option<Expression<T>>>| {
+                latch_candidates
+                    .iter()
+                    .filter_map(|e| try_to_period(e, fixed_data))
+                    // If there is more than one period, the block size is the maximum period.
+                    .max_by_key(|&(_, period)| period)
+            };
             let mut latch_candidates = BTreeSet::new();
-            for id in identities {
-                if id.id.kind == IdentityKind::Polynomial {
-                    collect_fixed_cols(id.left.selector.as_ref().unwrap(), &mut latch_candidates);
-                };
-            }
             for id in connecting_identities {
                 if let Some(selector) = &id.right.selector {
                     collect_fixed_cols(selector, &mut latch_candidates);
                 }
             }
-            latch_candidates
-                .iter()
-                .filter_map(|e| try_to_period(e, fixed_data))
-                // If there is more than one period, the block size is the maximum period.
-                .max()?
+            // If there is a fixed column among the selectors, use that.
+            find_max_period(latch_candidates).or_else(|| {
+                // Otherwise, try to all other fixed columns. For example, it could be that the selector
+                // is just a witness column that is constrained such that it can only be 1 with some period.
+                let mut latch_candidates = BTreeSet::new();
+                for id in identities {
+                    if id.id.kind == IdentityKind::Polynomial {
+                        collect_fixed_cols(
+                            id.left.selector.as_ref().unwrap(),
+                            &mut latch_candidates,
+                        );
+                    };
+                }
+                find_max_period(latch_candidates)
+            })?
         }
     };
     Some((connection_type, block_size, latch_row))
@@ -341,7 +357,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             for rhs in self.connecting_rhs.values() {
                 processor
                     .set_value(
-                        self.block_size,
+                        self.latch_row + 1,
                         rhs.selector.as_ref().unwrap(),
                         T::zero(),
                         || "Zero selectors".to_string(),
@@ -433,7 +449,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// that is not periodic, because values of committed polynomials are copy-pasted
     /// from the default block.
     /// This is the case for the _operation_id_no_change column, generated when
-    /// compiling a block machine from Posdr ASM and constrained as:
+    /// compiling a block machine from Powdr ASM and constrained as:
     /// _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - <Latch>));
     /// This function fixes this exception by setting _operation_id_no_change to 0.
     fn handle_last_row(&self, data: &mut HashMap<PolyID, Vec<T>>) {

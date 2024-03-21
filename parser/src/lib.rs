@@ -184,6 +184,7 @@ mod test {
                         line: 1,
                         col: 13,
                     },
+                    None,
                     vec![PolynomialName {
                         name: "t".to_string(),
                         array_size: None
@@ -254,7 +255,7 @@ mod test {
             | PilStatement::PublicDeclaration(s, _, _, _, _)
             | PilStatement::PolynomialConstantDeclaration(s, _)
             | PilStatement::PolynomialConstantDefinition(s, _, _)
-            | PilStatement::PolynomialCommitDeclaration(s, _, _)
+            | PilStatement::PolynomialCommitDeclaration(s, _, _, _)
             | PilStatement::PlookupIdentity(s, _, _)
             | PilStatement::PermutationIdentity(s, _, _)
             | PilStatement::ConnectIdentity(s, _, _)
@@ -274,6 +275,7 @@ mod test {
         fn clear_machine_stmt(stmt: &mut MachineStatement) {
             match stmt {
                 MachineStatement::Degree(s, _)
+                | MachineStatement::CallSelectors(s, _)
                 | MachineStatement::Submachine(s, _, _)
                 | MachineStatement::RegisterDeclaration(s, _, _)
                 | MachineStatement::OperationDeclaration(s, _, _, _)
@@ -294,8 +296,8 @@ mod test {
                 }
                 MachineStatement::FunctionDeclaration(s, _, _, statements) => {
                     *s = SourceRef::unknown();
-                    for fstmt in statements {
-                        match fstmt {
+                    for statement in statements {
+                        match statement {
                             FunctionStatement::Assignment(s, _, _, _)
                             | FunctionStatement::Instruction(s, _, _)
                             | FunctionStatement::Label(s, _)

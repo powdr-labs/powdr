@@ -365,6 +365,51 @@ fn enum_in_asm() {
     gen_estark_proof(f, Default::default());
 }
 
+#[test]
+fn permutation_simple() {
+    let f = "asm/permutations/simple.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn permutation_to_block() {
+    let f = "asm/permutations/vm_to_block.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+#[should_panic = "Witness generation failed"]
+fn permutation_to_vm() {
+    // TODO: witgen issue
+    let f = "asm/permutations/vm_to_vm.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+#[should_panic = "Witness generation failed"]
+fn permutation_to_block_to_block() {
+    // TODO: witgen issue
+    let f = "asm/permutations/block_to_block.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+#[should_panic = "has incoming permutations but doesn't declare call_selectors"]
+fn permutation_incoming_needs_selector() {
+    let f = "asm/permutations/incoming_needs_selector.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
 mod book {
     use super::*;
     use test_log::test;
