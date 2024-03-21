@@ -76,7 +76,7 @@ pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
     fixed_col_values: &'b [(String, Vec<T>)],
     query_callback: &'b dyn QueryCallback<T>,
-    external_witness_values: Vec<(String, Vec<T>)>,
+    external_witness_values: &'b [(String, Vec<T>)],
     phase: u8,
     challenges: BTreeMap<u64, T>,
 }
@@ -91,7 +91,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             analyzed,
             fixed_col_values,
             query_callback,
-            external_witness_values: Vec::new(),
+            external_witness_values: &[],
             phase: 0,
             challenges: BTreeMap::new(),
         }
@@ -99,7 +99,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
     pub fn with_external_witness_values(
         self,
-        external_witness_values: Vec<(String, Vec<T>)>,
+        external_witness_values: &'b [(String, Vec<T>)],
     ) -> Self {
         WitnessGenerator {
             external_witness_values,
@@ -236,10 +236,13 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     pub fn new(
         analyzed: &'a Analyzed<T>,
         fixed_col_values: &'a [(String, Vec<T>)],
-        external_witness_values: Vec<(String, Vec<T>)>,
+        external_witness_values: &'a [(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
     ) -> Self {
-        let mut external_witness_values = BTreeMap::from_iter(external_witness_values);
+        let mut external_witness_values = external_witness_values
+            .iter()
+            .map(|(name, values)| (name.clone(), values))
+            .collect::<BTreeMap<_, _>>();
 
         let witness_cols =
             WitnessColumnMap::from(analyzed.committed_polys_in_source_order().iter().flat_map(
@@ -341,7 +344,7 @@ pub struct WitnessColumn<'a, T> {
     query: Option<&'a Expression>,
     /// A list of externally computed witness values, if any.
     /// The length of this list must be equal to the degree.
-    external_values: Option<Vec<T>>,
+    external_values: Option<&'a Vec<T>>,
 }
 
 impl<'a, T> WitnessColumn<'a, T> {
@@ -349,7 +352,7 @@ impl<'a, T> WitnessColumn<'a, T> {
         id: usize,
         name: &str,
         value: &'a Option<FunctionValueDefinition>,
-        external_values: Option<Vec<T>>,
+        external_values: Option<&'a Vec<T>>,
     ) -> WitnessColumn<'a, T> {
         let query = if let Some(FunctionValueDefinition::Query(query)) = value {
             Some(query)

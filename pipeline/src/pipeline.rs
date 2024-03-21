@@ -820,7 +820,7 @@ impl<T: FieldElement> Pipeline<T> {
             &fixed_cols,
             query_callback.borrow(),
         )
-        .with_external_witness_values(external_witness_values)
+        .with_external_witness_values(&external_witness_values)
         .generate();
 
         self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
@@ -845,13 +845,13 @@ impl<T: FieldElement> Pipeline<T> {
         let fixed_cols = self.compute_fixed_cols()?;
         let witness = self.compute_witness()?;
 
+        // Get reference-counted pointers that are moved inside the witgen callback.
         let query_callback = self
             .arguments
             .query_callback
             .as_ref()
             .cloned()
             .unwrap_or_else(|| Arc::new(powdr_executor::witgen::unused_query_callback()));
-
         let pil_copy = pil.clone();
         let fixed_cols_copy = fixed_cols.clone();
 
@@ -859,13 +859,14 @@ impl<T: FieldElement> Pipeline<T> {
                                      challenges: BTreeMap<u64, T>,
                                      phase: u8|
               -> Vec<(String, Vec<T>)> {
-            let external_witness_values = current_witness.to_vec();
+            // Re-run witgen with the current challenges available,
+            // using the current witness as an "external" witness.
             powdr_executor::witgen::WitnessGenerator::new(
                 &pil_copy,
                 &fixed_cols_copy,
                 query_callback.borrow(),
             )
-            .with_external_witness_values(external_witness_values)
+            .with_external_witness_values(current_witness)
             .with_challenges(phase, challenges)
             .generate()
         };
