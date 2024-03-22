@@ -46,6 +46,18 @@ machine Main {
         A <== mload(104);
         assert_eq A, 1234;
 
+        // Write very big field element
+        mstore 200, -1;
+        A <== mload(200);
+        assert_eq A, -1;
+
+        // Store at maximal address
+        mstore 0xfffffffc, 1;
+        A <== mload(0xfffffffc);
+        assert_eq A, 1;
+
+
+
         return;
     }
 }
