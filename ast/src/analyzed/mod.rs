@@ -4,6 +4,7 @@ pub mod visitor;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
+use std::iter;
 use std::ops::{self, ControlFlow};
 use std::str::FromStr;
 
@@ -14,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::parsed::asm::SymbolPath;
 use crate::parsed::types::{ArrayType, Type, TypeScheme};
 use crate::parsed::utils::expr_any;
-use crate::parsed::visitor::ExpressionVisitable;
+use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{self, EnumDeclaration, EnumVariant, SelectedExpressions};
@@ -320,24 +321,8 @@ impl<T> Analyzed<T> {
         // TODO add public inputs if we change them to expressions at some point.
         self.definitions
             .values_mut()
-            .for_each(|(_poly, definition)| match definition {
-                Some(FunctionValueDefinition::Query(e)) => e.post_visit_expressions_mut(f),
-                Some(FunctionValueDefinition::Array(elements)) => elements
-                    .iter_mut()
-                    .flat_map(|e| e.pattern.iter_mut())
-                    .for_each(|e| e.post_visit_expressions_mut(f)),
-                Some(FunctionValueDefinition::Expression(TypedExpression {
-                    e,
-                    type_scheme: _,
-                })) => e.post_visit_expressions_mut(f),
-                Some(
-                    FunctionValueDefinition::TypeDeclaration(_)
-                    | FunctionValueDefinition::TypeConstructor(_, _),
-                ) => {
-                    // no expressions to visit
-                }
-                None => {}
-            });
+            .filter_map(|(_poly, definition)| definition.as_mut())
+            .for_each(|definition| definition.post_visit_expressions_mut(f))
     }
 }
 
@@ -565,6 +550,40 @@ pub enum FunctionValueDefinition {
     TypeConstructor(String, EnumVariant),
 }
 
+impl Children<Expression> for FunctionValueDefinition {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        match self {
+            FunctionValueDefinition::Query(e)
+            | FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
+                Box::new(iter::once(e))
+            }
+            FunctionValueDefinition::Array(array) => {
+                Box::new(array.iter().flat_map(|i| i.children()))
+            }
+            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
+                enum_declaration.children()
+            }
+            FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        match self {
+            FunctionValueDefinition::Query(e)
+            | FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
+                Box::new(iter::once(e))
+            }
+            FunctionValueDefinition::Array(array) => {
+                Box::new(array.iter_mut().flat_map(|i| i.children_mut()))
+            }
+            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
+                enum_declaration.children_mut()
+            }
+            FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
+        }
+    }
+}
+
 /// An array of elements that might be repeated.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RepeatedArray {
@@ -608,6 +627,16 @@ impl RepeatedArray {
     /// Returns whether pattern needs to be repeated (or truncated) in order to match the size.
     pub fn is_repeated(&self) -> bool {
         self.size != self.pattern.len() as DegreeType
+    }
+}
+
+impl Children<Expression> for RepeatedArray {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(self.pattern.iter())
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(self.pattern.iter_mut())
     }
 }
 
@@ -673,6 +702,16 @@ impl<Expr> Identity<Expr> {
 impl<T> Identity<AlgebraicExpression<T>> {
     pub fn contains_next_ref(&self) -> bool {
         self.left.contains_next_ref() || self.right.contains_next_ref()
+    }
+}
+
+impl<Expr> Children<Expr> for Identity<Expr> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expr> + '_> {
+        Box::new(self.left.children_mut().chain(self.right.children_mut()))
+    }
+
+    fn children(&self) -> Box<dyn Iterator<Item = &Expr> + '_> {
+        Box::new(self.left.children().chain(self.right.children()))
     }
 }
 
@@ -767,6 +806,41 @@ pub enum AlgebraicExpression<T> {
     ),
 
     UnaryOperation(AlgebraicUnaryOperator, Box<AlgebraicExpression<T>>),
+}
+
+impl<T> AlgebraicExpression<T> {
+    /// Returns an iterator over all (top-level) expressions in this expression.
+    /// This specifically does not implement Children because otherwise it would
+    /// have a wrong implementation of ExpressionVisitable (which is implemented
+    /// generically for all types that implement Children<Expr>).
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        match self {
+            AlgebraicExpression::Reference(_)
+            | AlgebraicExpression::PublicReference(_)
+            | AlgebraicExpression::Challenge(_)
+            | AlgebraicExpression::Number(_) => Box::new(iter::empty()),
+            AlgebraicExpression::BinaryOperation(left, _, right) => {
+                Box::new([left.as_ref(), right.as_ref()].into_iter())
+            }
+            AlgebraicExpression::UnaryOperation(_, e) => Box::new([e.as_ref()].into_iter()),
+        }
+    }
+    /// Returns an iterator over all (top-level) expressions in this expression.
+    /// This specifically does not implement Children because otherwise it would
+    /// have a wrong implementation of ExpressionVisitable (which is implemented
+    /// generically for all types that implement Children<Expr>).
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        match self {
+            AlgebraicExpression::Reference(_)
+            | AlgebraicExpression::PublicReference(_)
+            | AlgebraicExpression::Challenge(_)
+            | AlgebraicExpression::Number(_) => Box::new(iter::empty()),
+            AlgebraicExpression::BinaryOperation(left, _, right) => {
+                Box::new([left.as_mut(), right.as_mut()].into_iter())
+            }
+            AlgebraicExpression::UnaryOperation(_, e) => Box::new([e.as_mut()].into_iter()),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
