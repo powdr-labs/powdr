@@ -580,4 +580,24 @@ mod test {
             ("F.y[1]".to_string(), convert([1, 2, 3, 4].to_vec()))
         );
     }
+
+    #[test]
+    pub fn generic_cache() {
+        // Tests that the evaluation cache stores symbols with their
+        // generic arguments.
+        let src = r#"
+            namespace std::convert(4);
+                let fe = || fe();
+            namespace F(4);
+                let<T: FromLiteral> seven: T = 7;
+                let a: col = |i| std::convert::fe(i + seven) + seven;
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants[0],
+            ("F.a".to_string(), convert([8, 9, 10, 11].to_vec()))
+        );
+    }
 }
