@@ -42,9 +42,6 @@ fn new_witness_column() {
     assert_eq!(formatted, expected);
 }
 
-// TODO also test if ``let z = new_wit();`` is evaluated multiple times if used
-// as a local variable - I would assume not.
-
 #[test]
 fn new_witness_column_name_clash() {
     let input = r#"namespace N(16);

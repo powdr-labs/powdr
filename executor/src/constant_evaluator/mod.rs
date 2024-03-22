@@ -143,12 +143,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         name: &'a str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        // TODO can we ignore generic args here?
         if let Some(v) = self.cache.read().unwrap().get(name) {
             return Ok(v.clone());
         }
         let result = Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)?;
-        // TODO only insert if it is not there yet?
         self.cache
             .write()
             .unwrap()
