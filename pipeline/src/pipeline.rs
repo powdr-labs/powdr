@@ -589,7 +589,8 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn compute_resolved_module_tree(&mut self) -> Result<&ASMProgram, Vec<String>> {
         if self.artifact.resolved_module_tree.is_none() {
             self.artifact.resolved_module_tree = Some({
-                let (path, parsed) = self.compute_parsed_asm_file()?.clone();
+                self.compute_parsed_asm_file()?;
+                let (path, parsed) = self.artifact.parsed_asm_file.take().unwrap();
 
                 self.log("Loading dependencies and resolving references");
                 powdr_importer::load_dependencies_and_resolve(path, parsed).map_err(|e| vec![e])?
@@ -606,7 +607,8 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn compute_analyzed_asm(&mut self) -> Result<&AnalysisASMFile, Vec<String>> {
         if self.artifact.analyzed_asm.is_none() {
             self.artifact.analyzed_asm = Some({
-                let resolved = self.compute_resolved_module_tree()?.clone();
+                self.compute_resolved_module_tree()?;
+                let resolved = self.artifact.resolved_module_tree.take().unwrap();
 
                 self.log("Run analysis");
                 let analyzed_asm = powdr_analysis::analyze(resolved)?;
@@ -629,7 +631,8 @@ impl<T: FieldElement> Pipeline<T> {
     ) -> Result<&AnalysisASMFile, Vec<String>> {
         if self.artifact.constrained_machine_collection.is_none() {
             self.artifact.constrained_machine_collection = Some({
-                let analyzed_asm = self.compute_analyzed_asm()?.clone();
+                self.compute_analyzed_asm()?;
+                let analyzed_asm = self.artifact.analyzed_asm.take().unwrap();
                 powdr_asm_to_pil::compile::<T>(analyzed_asm)
             });
         }
@@ -652,7 +655,8 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn compute_linked_machine_graph(&mut self) -> Result<&PILGraph, Vec<String>> {
         if self.artifact.linked_machine_graph.is_none() {
             self.artifact.linked_machine_graph = Some({
-                let analyzed_asm = self.compute_constrained_machine_collection()?.clone();
+                self.compute_constrained_machine_collection()?;
+                let analyzed_asm = self.artifact.constrained_machine_collection.take().unwrap();
 
                 self.log("Run airgen");
                 let graph = powdr_airgen::compile(analyzed_asm);
@@ -675,9 +679,10 @@ impl<T: FieldElement> Pipeline<T> {
             self.artifact.parsed_pil_file = Some({
                 self.log("Run linker");
 
-                let graph = self.compute_linked_machine_graph()?;
+                self.compute_linked_machine_graph()?;
+                let graph = self.artifact.linked_machine_graph.take().unwrap();
 
-                let linked = powdr_linker::link(graph.clone())?;
+                let linked = powdr_linker::link(graph)?;
                 log::trace!("{linked}");
                 self.maybe_write_pil(&linked, "")?;
 
@@ -695,9 +700,10 @@ impl<T: FieldElement> Pipeline<T> {
     fn compute_analyzed_pil_from_parsed_pil_file(&mut self) -> Result<Analyzed<T>, Vec<String>> {
         self.log("Analyzing pil...");
 
-        let linked = self.compute_parsed_pil_file()?;
+        self.compute_parsed_pil_file()?;
+        let linked = self.artifact.parsed_pil_file.take().unwrap();
 
-        let analyzed = powdr_pil_analyzer::analyze_ast(linked.clone());
+        let analyzed = powdr_pil_analyzer::analyze_ast(linked);
         self.maybe_write_pil(&analyzed, "_analyzed")?;
 
         Ok(analyzed)
@@ -756,7 +762,8 @@ impl<T: FieldElement> Pipeline<T> {
             return Ok(optimized_pil.clone());
         }
 
-        let analyzed_pil = self.compute_analyzed_pil()?.clone();
+        self.compute_analyzed_pil()?;
+        let analyzed_pil = self.artifact.analyzed_pil.take().unwrap();
 
         self.log("Optimizing pil...");
         let optimized = powdr_pilopt::optimize(analyzed_pil);
