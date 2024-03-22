@@ -3,8 +3,6 @@ use std::{
     convert::TryFrom,
 };
 
-use powdr_number::{FieldElement, KnownField};
-
 type RuntimeFunctionImpl = (&'static str, fn() -> String);
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
@@ -15,45 +13,6 @@ struct CoProcessor {
     instructions: &'static str,
     runtime_function_impl: Option<RuntimeFunctionImpl>,
 }
-
-static BINARY_COPROCESSOR: CoProcessor = CoProcessor {
-    name: "binary",
-    ty: "Binary",
-    import: "use std::binary::Binary;",
-    instructions: r#"
-    // ================= binary/bitwise instructions =================
-    instr and Y, Z -> X = binary.and;
-    instr or Y, Z -> X = binary.or;
-    instr xor Y, Z -> X = binary.xor;
-
-            "#,
-    runtime_function_impl: None,
-};
-
-static SHIFT_COPROCESSOR: CoProcessor = CoProcessor {
-    name: "shift",
-    ty: "Shift",
-    import: "use std::shift::Shift;",
-    instructions: r#"
-    // ================= shift instructions =================
-    instr shl Y, Z -> X = shift.shl;
-    instr shr Y, Z -> X = shift.shr;
-
-            "#,
-    runtime_function_impl: None,
-};
-
-static SPLIT_GL_COPROCESSOR: CoProcessor = CoProcessor {
-    name: "split_gl",
-    ty: "SplitGL",
-    import: "use std::split::split_gl::SplitGL;",
-    instructions: r#"
-// ================== wrapping instructions ==============
-instr split_gl Z -> X, Y = split_gl.split;
-
-    "#,
-    runtime_function_impl: None,
-};
 
 static POSEIDON_GL_COPROCESSOR: CoProcessor = CoProcessor {
     name: "poseidon_gl",
@@ -75,10 +34,7 @@ static INPUT_COPROCESSOR: CoProcessor = CoProcessor {
     runtime_function_impl: Some(("input_coprocessor", prover_input_call)),
 };
 
-static ALL_COPROCESSORS: [(&str, &CoProcessor); 5] = [
-    (BINARY_COPROCESSOR.name, &BINARY_COPROCESSOR),
-    (SHIFT_COPROCESSOR.name, &SHIFT_COPROCESSOR),
-    (SPLIT_GL_COPROCESSOR.name, &SPLIT_GL_COPROCESSOR),
+static ALL_COPROCESSORS: [(&str, &CoProcessor); 2] = [
     (POSEIDON_GL_COPROCESSOR.name, &POSEIDON_GL_COPROCESSOR),
     (INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR),
 ];
@@ -122,25 +78,13 @@ impl TryFrom<Vec<&str>> for CoProcessors {
 
 impl CoProcessors {
     /// The base version only adds the commonly used bitwise and shift operations.
-    pub fn base<T: FieldElement>() -> CoProcessors {
-        let mut coprocessors = BTreeMap::from([
-            (BINARY_COPROCESSOR.name, &BINARY_COPROCESSOR),
-            (SHIFT_COPROCESSOR.name, &SHIFT_COPROCESSOR),
-            (INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR),
-        ]);
-
-        if matches!(T::known_field(), Some(KnownField::GoldilocksField)) {
-            // The mul instructions needs the split machine.
-            coprocessors.insert(SPLIT_GL_COPROCESSOR.name, &SPLIT_GL_COPROCESSOR);
-        }
-
+    pub fn base() -> CoProcessors {
+        let coprocessors = BTreeMap::from([(INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR)]);
         Self { coprocessors }
     }
 
     /// Poseidon also uses the Split machine.
     pub fn with_poseidon(mut self) -> Self {
-        self.coprocessors
-            .insert(SPLIT_GL_COPROCESSOR.name, &SPLIT_GL_COPROCESSOR);
         self.coprocessors
             .insert(POSEIDON_GL_COPROCESSOR.name, &POSEIDON_GL_COPROCESSOR);
         self
@@ -270,12 +214,9 @@ pub fn call_every_submachine(coprocessors: &CoProcessors) -> Vec<String> {
     // automatically.
     // https://github.com/powdr-labs/powdr/issues/548
     let mut calls = vec![];
-    if coprocessors.has(BINARY_COPROCESSOR.name) {
-        calls.push("x10 <== and(x10, x10);".to_string());
-    }
-    if coprocessors.has(SHIFT_COPROCESSOR.name) {
-        calls.push("x10 <== shl(x10, x10);".to_string());
-    }
+    calls.push("x10 <== and(x10, x10);".to_string());
+    calls.push("x10 <== shl(x10, x10);".to_string());
+
     if coprocessors.has(POSEIDON_GL_COPROCESSOR.name) {
         calls.extend(vec![
             "poseidon_gl;".to_string(),
@@ -285,9 +226,8 @@ pub fn call_every_submachine(coprocessors: &CoProcessors) -> Vec<String> {
             "P3 <=X= 0;".to_string(),
         ]);
     }
-    if coprocessors.has(SPLIT_GL_COPROCESSOR.name) {
-        calls.push("x10, x11 <== split_gl(x10);".to_string());
-    }
+
+    calls.push("x10, x11 <== split_gl(x10);".to_string());
 
     calls.extend(vec!["x10 <=X= 0;".to_string(), "x11 <=X= 0;".to_string()]);
 

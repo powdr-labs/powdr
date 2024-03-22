@@ -32,7 +32,7 @@ fn executor_benchmark(c: &mut Criterion) {
     let tmp_dir = Temp::new_dir().unwrap();
     let riscv_asm_files =
         compile_rust_crate_to_riscv_asm("../riscv/tests/riscv_data/keccak/Cargo.toml", &tmp_dir);
-    let contents = compiler::compile::<T>(riscv_asm_files, &CoProcessors::base::<T>(), false);
+    let contents = compiler::compile::<T>(riscv_asm_files, &CoProcessors::base(), false);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     let pil = pipeline.compute_optimized_pil().unwrap();
     let fixed_cols = pipeline.compute_fixed_cols().unwrap();
@@ -44,11 +44,8 @@ fn executor_benchmark(c: &mut Criterion) {
     // The first chunk of `many_chunks`, with Poseidon co-processor & bootloader
     let riscv_asm_files =
         compile_rust_to_riscv_asm("../riscv/tests/riscv_data/many_chunks.rs", &tmp_dir);
-    let contents = compiler::compile::<T>(
-        riscv_asm_files,
-        &CoProcessors::base::<T>().with_poseidon(),
-        true,
-    );
+    let contents =
+        compiler::compile::<T>(riscv_asm_files, &CoProcessors::base().with_poseidon(), true);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     let pil = pipeline.compute_optimized_pil().unwrap();
     let fixed_cols = pipeline.compute_fixed_cols().unwrap();

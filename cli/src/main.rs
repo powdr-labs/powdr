@@ -675,7 +675,7 @@ fn run_rust<F: FieldElement>(
         Some(list) => {
             powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
         }
-        None => powdr_riscv::CoProcessors::base::<F>(),
+        None => powdr_riscv::CoProcessors::base(),
     };
     let (asm_file_path, asm_contents) = compile_rust::<F>(
         file_name,
@@ -724,7 +724,7 @@ fn run_riscv_asm<F: FieldElement>(
         Some(list) => {
             powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
         }
-        None => powdr_riscv::CoProcessors::base::<F>(),
+        None => powdr_riscv::CoProcessors::base(),
     };
     let (asm_file_path, asm_contents) = compile_riscv_asm::<F>(
         original_file_name,
