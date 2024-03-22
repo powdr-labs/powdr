@@ -133,11 +133,13 @@ pub fn condense<T: FieldElement>(
     }
 }
 
+type SymbolCacheKey = (String, Option<Vec<Type>>);
+
 pub struct Condenser<'a, T> {
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Evaluation cache.
-    symbol_values: BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>,
+    symbol_values: BTreeMap<SymbolCacheKey, Arc<Value<'a, T>>>,
     /// Current namespace (for names of generated witnesses).
     namespace: AbsoluteSymbolPath,
     next_witness_id: u64,
