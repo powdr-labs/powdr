@@ -11,7 +11,7 @@ mod instruction_tests {
         // TODO Should we create one powdr-asm from all tests or keep them separate?
         let powdr_asm = compile::<GoldilocksField>(
             [(name.to_string(), assembly.to_string())].into(),
-            &CoProcessors::base::<GoldilocksField>(),
+            &CoProcessors::base(),
             false,
         );
 
