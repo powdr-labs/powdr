@@ -7,13 +7,16 @@ use pretty_assertions::assert_eq;
 #[test]
 fn new_witness_column() {
     let input = r#"namespace N(16);
+    let even: col = |i| i * 2;
     let new_wit = || { let x; x };
     let x;
     let y;
     let z = new_wit();
     z = y;
+    z { z } in { even };
     "#;
     let expected = r#"namespace N(16);
+    col fixed even(i) { (i * 2) };
     let new_wit: -> expr = (|| {
         let x;
         x
@@ -23,6 +26,7 @@ fn new_witness_column() {
     let z: expr = N.new_wit();
     col witness x_1;
     N.x_1 = N.y;
+    N.x_1 { N.x_1 } in { N.even };
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
