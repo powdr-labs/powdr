@@ -136,6 +136,9 @@ pub fn condense<T: FieldElement>(
 pub struct Condenser<'a, T> {
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    /// Evaluation cache.
+    symbol_values: HashMap<String, Arc<Value<'a, T>>>,
+    /// Current namespace (for names of generated witnesses).
     namespace: AbsoluteSymbolPath,
     next_witness_id: u64,
     /// The generated witness columns since the last extraction.
@@ -159,6 +162,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             .unwrap_or_default();
         Self {
             symbols,
+            symbol_values: Default::default(),
             namespace: Default::default(),
             next_witness_id,
             new_witnesses: vec![],
@@ -284,7 +288,17 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         name: &'a str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)
+        // TODO can we ignore generic_args for the cache?
+        // Cache already computed values.
+        // Note that the cache is essential because otherwise
+        // we re-evaluate simple values, which users would not expect.
+        if let Some(v) = self.symbol_values.get(name) {
+            return Ok(v.clone());
+        }
+        let value = Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)?;
+        // TODO could it be that the value has been inserted in the meantime via a recursive lookup?
+        self.symbol_values.insert(name.to_string(), value.clone());
+        Ok(value)
     }
 
     fn lookup_public_reference(
