@@ -298,25 +298,16 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         &mut self,
         name: &str,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        self.next_witness_id += 1;
-        let id = self.next_witness_id;
-        // Find an unused name.
-        let name = once(None)
-            .chain((1..).map(Some))
-            .map(|cnt| format!("{name}{}", cnt.map(|c| format!("_{c}")).unwrap_or_default()))
-            .map(|name| self.namespace.with_part(&name).to_dotted_string())
-            .find(|name| {
-                !self.symbols.contains_key(name) && !self.all_new_witness_names.contains(name)
-            })
-            .unwrap();
+        let name = self.find_unused_name(name);
         let symbol = Symbol {
-            id,
+            id: self.next_witness_id,
             source: SourceRef::unknown(),
             absolute_name: name.clone(),
             stage: None,
             kind: SymbolKind::Poly(PolynomialType::Committed),
             length: None,
         };
+        self.next_witness_id += 1;
         self.all_new_witness_names.insert(name.clone());
         self.new_witnesses.push(symbol.clone());
         Ok(
@@ -327,5 +318,18 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }))
             .into(),
         )
+    }
+}
+
+impl<'a, T> Condenser<'a, T> {
+    fn find_unused_name(&self, name: &str) -> String {
+        once(None)
+            .chain((1..).map(Some))
+            .map(|cnt| format!("{name}{}", cnt.map(|c| format!("_{c}")).unwrap_or_default()))
+            .map(|name| self.namespace.with_part(&name).to_dotted_string())
+            .find(|name| {
+                !self.symbols.contains_key(name) && !self.all_new_witness_names.contains(name)
+            })
+            .unwrap()
     }
 }
