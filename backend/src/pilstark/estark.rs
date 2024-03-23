@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use crate::{pilstark, Backend, BackendFactory, Error};
 use powdr_ast::analyzed::Analyzed;
-use powdr_number::{DegreeType, FieldElement, GoldilocksField, LargeInt};
+use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 
 use starky::{
     merklehash::MerkleTreeGL,
@@ -14,8 +14,10 @@ use starky::{
     stark_verify::stark_verify,
     traits::FieldExtension,
     transcript::TranscriptGL,
-    types::{StarkStruct, Step, PIL},
+    types::{StarkStruct, PIL},
 };
+
+use super::create_stark_struct;
 
 pub struct EStarkFactory;
 
@@ -37,24 +39,7 @@ impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
             return Err(Error::NoSetupAvailable);
         }
 
-        let degree = pil.degree();
-        assert!(degree > 1);
-        let n_bits = (DegreeType::BITS - (degree - 1).leading_zeros()) as usize;
-        let n_bits_ext = n_bits + 1;
-
-        let steps = (2..=n_bits_ext)
-            .rev()
-            .step_by(4)
-            .map(|b| Step { nBits: b })
-            .collect();
-
-        let params = StarkStruct {
-            nBits: n_bits,
-            nBitsExt: n_bits_ext,
-            nQueries: 2,
-            verificationHashType: "GL".to_owned(),
-            steps,
-        };
+        let params = create_stark_struct(pil.degree());
 
         let (pil_json, fixed) = pil_json(pil, fixed);
         let const_pols = to_starky_pols_array(&fixed, &pil_json, PolKind::Constant);

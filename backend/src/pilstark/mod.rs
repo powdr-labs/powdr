@@ -9,9 +9,31 @@ use std::{
 
 use crate::{Backend, BackendFactory, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
-use powdr_number::FieldElement;
+use powdr_number::{DegreeType, FieldElement};
+use serde::Serialize;
+use starky::types::{StarkStruct, Step};
 
 pub struct PilStarkCliFactory;
+
+fn create_stark_struct(degree: DegreeType) -> StarkStruct {
+    assert!(degree > 1);
+    let n_bits = (DegreeType::BITS - (degree - 1).leading_zeros()) as usize;
+    let n_bits_ext = n_bits + 1;
+
+    let steps = (2..=n_bits_ext)
+        .rev()
+        .step_by(4)
+        .map(|b| Step { nBits: b })
+        .collect();
+
+    StarkStruct {
+        nBits: n_bits,
+        nBitsExt: n_bits_ext,
+        nQueries: 2,
+        verificationHashType: "GL".to_owned(),
+        steps,
+    }
+}
 
 impl<F: FieldElement> BackendFactory<F> for PilStarkCliFactory {
     fn create<'a>(
@@ -40,6 +62,13 @@ pub struct PilStarkCli<'a, F: FieldElement> {
     output_dir: Option<&'a Path>,
 }
 
+fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), Error> {
+    let mut writer = BufWriter::new(File::create(path)?);
+    serde_json::to_writer(&mut writer, data).map_err(|e| e.to_string())?;
+    writer.flush()?;
+    Ok(())
+}
+
 impl<'a, F: FieldElement> Backend<'a, F> for PilStarkCli<'a, F> {
     fn prove(
         &self,
@@ -52,11 +81,18 @@ impl<'a, F: FieldElement> Backend<'a, F> for PilStarkCli<'a, F> {
 
         // Write the constraints in the format expected by the prover-cpp
         if let Some(output_dir) = self.output_dir {
-            let path = output_dir.join("constraints.json");
-            let mut writer = BufWriter::new(File::create(path)?);
-            serde_json::to_writer(&mut writer, &json_exporter::export(self.analyzed))
-                .map_err(|e| e.to_string())?;
-            writer.flush()?;
+            // Write the stark struct JSON.
+            let stark_struct_path = output_dir.join("starkstruct.json");
+            log::info!("Writing {}.", stark_struct_path.to_string_lossy());
+            write_json_file(
+                &stark_struct_path,
+                &create_stark_struct(self.analyzed.degree()),
+            )?;
+
+            // Write the constraints in the json format expected by the zkvm-prover:
+            let contraints_path = output_dir.join("constraints.json");
+            log::info!("Writing {}.", contraints_path.to_string_lossy());
+            write_json_file(&contraints_path, &json_exporter::export(self.analyzed))?;
         } else {
             // If we were going to call the prover-cpp, we could write the
             // constraints.json to a temporary directory in case no output_dir
