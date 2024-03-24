@@ -4,7 +4,7 @@ use powdr_ast::{
     analyzed::{
         Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
     },
-    parsed::{FunctionKind, LambdaExpression},
+    parsed::{FunctionKind, LambdaExpression, StatementInsideBlock},
 };
 
 use lazy_static::lazy_static;
@@ -59,11 +59,23 @@ impl<'a> SideEffectChecker<'a> {
             }
             Expression::BlockExpression(statements, _expr) => {
                 for s in statements {
-                    if s.value.is_none() && self.context != FunctionKind::Constr {
-                        return Err(format!(
-                            "Tried to create a witness column in a {} context: {s}",
-                            self.context
-                        ));
+                    match s {
+                        StatementInsideBlock::LetStatement(s) => {
+                            if s.value.is_none() && self.context != FunctionKind::Constr {
+                                return Err(format!(
+                                    "Tried to create a witness column in a {} context: {s}",
+                                    self.context
+                                ));
+                            }
+                        }
+                        StatementInsideBlock::Expression(expr) => {
+                            if self.context != FunctionKind::Constr {
+                                return Err(format!(
+                                    "Tried to add a constraint in a {} context: {expr}",
+                                    self.context
+                                ));
+                            }
+                        }
                     }
                 }
                 e.children().try_for_each(|e| self.check(e))

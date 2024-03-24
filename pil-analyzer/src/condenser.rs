@@ -24,7 +24,10 @@ use powdr_ast::{
 };
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::evaluator::{self, Definitions, SymbolLookup, Value};
+use crate::{
+    evaluator::{self, Definitions, SymbolLookup, Value},
+    statement_processor::Counters,
+};
 
 pub fn condense<T: FieldElement>(
     degree: Option<DegreeType>,
@@ -34,6 +37,9 @@ pub fn condense<T: FieldElement>(
     source_order: Vec<StatementIdentifier>,
 ) -> Analyzed<T> {
     let mut condenser = Condenser::new(&definitions);
+
+    // Counter needed to re-assign identity IDs.
+    let mut counters = Counters::default();
 
     let mut condensed_identities = vec![];
     let mut intermediate_columns = HashMap::new();
@@ -91,22 +97,32 @@ pub fn condense<T: FieldElement>(
                 }
                 s => Some(s),
             };
-            // Extract and prepend the new witness columns.
-            let new_wits = condenser.extract_new_witness_columns();
-            new_witness_columns.extend(new_wits.clone());
-            condensed_identities.extend(condenser.extract_new_constraints());
-            identities
-            .into_iter()
-            .map(|identity| {
-                let id = condensed_identities.len();
-                condensed_identities.push(identity);
-                StatementIdentifier::Identity(id)
-            })
-            .collect()
+            // Extract and prepend the new witness columns, then identites
+            // and finally the original statment (if it exists).
+            let new_wits = condenser
+                .extract_new_witness_columns()
+                .into_iter()
+                .map(|new_wit| {
+                    let name = new_wit.absolute_name.clone();
+                    new_witness_columns.push(new_wit);
+                    StatementIdentifier::Definition(name)
+                })
+                .collect::<Vec<_>>();
+
+            let identity_statements = condenser
+                .extract_new_constraints()
+                .into_iter()
+                .map(|mut identity| {
+                    let index = condensed_identities.len();
+                    identity.id = counters.dispense_identity_id(identity.kind);
+                    condensed_identities.push(identity);
+                    StatementIdentifier::Identity(index)
+                })
+                .collect::<Vec<_>>();
 
             new_wits
                 .into_iter()
-                .map(|s| StatementIdentifier::Definition(s.absolute_name))
+                .chain(identity_statements)
                 .chain(statement)
         })
         .collect();
@@ -170,29 +186,26 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         }
     }
 
-    pub fn condense_identity(
-        &mut self,
-        identity: &'a Identity<Expression>,
-    ) -> Vec<Identity<AlgebraicExpression<T>>> {
+    pub fn condense_identity(&mut self, identity: &'a Identity<Expression>) {
         if identity.kind == IdentityKind::Polynomial {
-            self.condense_to_constraint_or_array(identity.expression_for_poly_id())
-                .into_iter()
-                .map(|constraint| {
-                    Identity::from_polynomial_identity(
-                        identity.id,
-                        identity.source.clone(),
-                        constraint,
+            let expr = identity.expression_for_poly_id();
+            evaluator::evaluate(expr, self)
+                .and_then(|expr| self.add_constraints(expr, identity.source.clone()))
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "Error reducing expression to constraint:\nExpression: {expr}\nError: {err:?}"
                     )
-                })
-                .collect()
+                });
         } else {
-            vec![Identity {
+            let left = self.condense_selected_expressions(&identity.left);
+            let right = self.condense_selected_expressions(&identity.right);
+            self.new_constraints.push(Identity {
                 id: identity.id,
                 kind: identity.kind,
                 source: identity.source.clone(),
-                left: self.condense_selected_expressions(&identity.left),
-                right: self.condense_selected_expressions(&identity.right),
-            }]
+                left,
+                right,
+            })
         }
     }
 
@@ -262,30 +275,6 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             _ => panic!("Expected array of algebraic expressions, but got {result}"),
         }
     }
-
-    /// Evaluates an expression and expects a single constraint or an array of constraints.
-    fn condense_to_constraint_or_array(
-        &mut self,
-        e: &'a Expression,
-    ) -> Vec<AlgebraicExpression<T>> {
-        let result = evaluator::evaluate(e, self).unwrap_or_else(|err| {
-            panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
-        });
-        match result.as_ref() {
-            Value::Identity(left, right) => vec![left.clone() - right.clone()],
-            Value::Array(items) => items
-                .iter()
-                .map(|item| {
-                    if let Value::Identity(left, right) = item.as_ref() {
-                        left.clone() - right.clone()
-                    } else {
-                        panic!("Expected constraint, but got {item}")
-                    }
-                })
-                .collect::<Vec<_>>(),
-            _ => panic!("Expected constraint or array of constraints, but got {result}"),
-        }
-    }
 }
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
@@ -307,6 +296,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn new_witness_column(
         &mut self,
         name: &str,
+        source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         self.next_witness_id += 1;
         let id = self.next_witness_id;
@@ -321,7 +311,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             .unwrap();
         let symbol = Symbol {
             id,
-            source: SourceRef::unknown(),
+            source,
             absolute_name: name.clone(),
             stage: None,
             kind: SymbolKind::Poly(PolynomialType::Committed),
@@ -342,33 +332,39 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn add_constraints(
         &mut self,
         constraints: Arc<Value<'a, T>>,
+        source: SourceRef,
     ) -> Result<(), evaluator::EvalError> {
         match constraints.as_ref() {
             Value::Identity(left, right) => {
-                self.new_constraints.push(Identity {
-                    id: 0,
-                    kind: IdentityKind::Polynomial,
-                    source: SourceRef::unknown(),
-                    left: left.clone(),
-                    right: right.clone(),
-                });
+                self.new_constraints
+                    .push(Identity::from_polynomial_identity(
+                        0, // ID will be re-assigned later.
+                        source.clone(),
+                        left.clone() - right.clone(),
+                    ));
             }
             Value::Array(items) => {
                 for item in items.iter() {
                     if let Value::Identity(left, right) = item.as_ref() {
-                        self.new_constraints.push(Identity {
-                            id: 0,
-                            kind: IdentityKind::Polynomial,
-                            source: SourceRef::unknown(),
-                            left: left.clone(),
-                            right: right.clone(),
-                        });
+                        self.new_constraints
+                            .push(Identity::from_polynomial_identity(
+                                0, // ID will be re-assigned later.
+                                source.clone(),
+                                left.clone() - right.clone(),
+                            ));
                     } else {
-                        return Err(evaluator::EvalError::UnexpectedValue(item.clone()));
+                        return Err(evaluator::EvalError::TypeError(
+                            "Expected constraint".to_string(),
+                        ));
                     }
                 }
             }
-            _ => return Err(evaluator::EvalError::UnexpectedValue(constraints.clone())),
+            _ => {
+                return Err(evaluator::EvalError::TypeError(
+                    "Expected constraint".to_string(),
+                ));
+            }
         }
+        Ok(())
     }
 }

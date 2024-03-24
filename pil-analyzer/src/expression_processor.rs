@@ -4,8 +4,8 @@ use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
-        MatchArm, MatchPattern, NamespacedPolynomialReference, SelectedExpressions,
-        StatementInsideBlock,
+        LetStatementInsideBlock, MatchArm, MatchPattern, NamespacedPolynomialReference,
+        SelectedExpressions, StatementInsideBlock,
     },
 };
 use powdr_number::DegreeType;
@@ -180,22 +180,29 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
     ) -> Expression {
         let previous_local_vars = self.local_variables.clone();
 
+        let mut local_var_count = 0;
         let processed_statements = statements
             .into_iter()
-            .map(|StatementInsideBlock { name, value }| {
-                let value = value.map(|v| self.process_expression(v));
-                let id = self.local_variable_counter;
-                if self.local_variables.insert(name.clone(), id).is_some() {
-                    panic!("Variable already defined: {name}");
+            .map(|statement| match statement {
+                StatementInsideBlock::LetStatement(LetStatementInsideBlock { name, value }) => {
+                    let value = value.map(|v| self.process_expression(v));
+                    let id = self.local_variable_counter;
+                    if self.local_variables.insert(name.clone(), id).is_some() {
+                        panic!("Variable already defined: {name}");
+                    }
+                    self.local_variable_counter += 1;
+                    local_var_count += 1;
+                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { name, value })
                 }
-                self.local_variable_counter += 1;
-                StatementInsideBlock { name, value }
+                StatementInsideBlock::Expression(expr) => {
+                    StatementInsideBlock::Expression(self.process_expression(expr))
+                }
             })
             .collect::<Vec<_>>();
 
         let processed_expr = self.process_expression(expr);
         self.local_variables = previous_local_vars;
-        self.local_variable_counter -= processed_statements.len() as u64;
+        self.local_variable_counter -= local_var_count;
         Expression::BlockExpression(processed_statements, Box::new(processed_expr))
     }
 

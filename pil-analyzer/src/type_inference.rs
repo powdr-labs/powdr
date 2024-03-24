@@ -7,8 +7,8 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
-        ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, MatchArm, MatchPattern,
-        StatementInsideBlock,
+        ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock,
+        MatchArm, MatchPattern, StatementInsideBlock,
     },
 };
 
@@ -387,40 +387,49 @@ impl TypeChecker {
         expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<(), String> {
         for (e, expected_type) in expressions {
-            if expected_type.allow_array {
-                self.infer_type_of_expression(e)
-                    .and_then(|ty| {
-                        let ty = self.type_into_substituted(ty);
-                        let expected_type = if matches!(ty, Type::Array(_)) {
-                            Type::Array(ArrayType {
-                                base: Box::new(expected_type.ty.clone()),
-                                length: None,
-                            })
-                        } else {
-                            expected_type.ty.clone()
-                        };
-
-                        self.unifier
-                            .unify_types(ty.clone(), expected_type.clone())
-                            .map_err(|err| {
-                                format!(
-                                    "Expected type {} but got type {}.\n{err}",
-                                    self.type_into_substituted(expected_type),
-                                    self.type_into_substituted(ty)
-                                )
-                            })
-                    })
-                    .map_err(|err| {
-                        format!(
-                            "Expression is expected to evaluate to {} or ({})[]:\n  {e}:\n{err}",
-                            expected_type.ty, expected_type.ty
-                        )
-                    })?;
-            } else {
-                self.expect_type(&expected_type.ty, e)?;
-            }
+            self.expect_type_with_flexibility(expected_type, e)?;
         }
         Ok(())
+    }
+
+    /// Process an expression, inferring its type and expecting either a certain type or potentially an array of that type.
+    fn expect_type_with_flexibility(
+        &mut self,
+        expected_type: &ExpectedType,
+        expr: &mut Expression,
+    ) -> Result<(), String> {
+        if expected_type.allow_array {
+            self.infer_type_of_expression(expr)
+                .and_then(|ty| {
+                    let ty = self.type_into_substituted(ty);
+                    let expected_type = if matches!(ty, Type::Array(_)) {
+                        Type::Array(ArrayType {
+                            base: Box::new(expected_type.ty.clone()),
+                            length: None,
+                        })
+                    } else {
+                        expected_type.ty.clone()
+                    };
+
+                    self.unifier
+                        .unify_types(ty.clone(), expected_type.clone())
+                        .map_err(|err| {
+                            format!(
+                                "Expected type {} but got type {}.\n{err}",
+                                self.type_into_substituted(expected_type),
+                                self.type_into_substituted(ty)
+                            )
+                        })
+                })
+                .map_err(|err| {
+                    format!(
+                        "Expression is expected to evaluate to {} or ({})[]:\n  {expr}:\n{err}",
+                        expected_type.ty, expected_type.ty
+                    )
+                })
+        } else {
+            self.expect_type(&expected_type.ty, expr)
+        }
     }
 
     /// Process an expression and return the type of the expression.
@@ -550,18 +559,35 @@ impl TypeChecker {
                 result
             }
             Expression::BlockExpression(statements, expr) => {
-                let statements_len = statements.len();
-                for StatementInsideBlock { name: _, value } in statements {
-                    let var_type = if let Some(value) = value {
-                        self.infer_type_of_expression(value)?
-                    } else {
-                        Type::Expr
-                    };
-                    self.local_var_types.push(var_type);
+                let mut local_var_count = 0;
+                for statement in statements {
+                    match statement {
+                        StatementInsideBlock::LetStatement(LetStatementInsideBlock {
+                            name: _,
+                            value,
+                        }) => {
+                            let var_type = if let Some(value) = value {
+                                self.infer_type_of_expression(value)?
+                            } else {
+                                Type::Expr
+                            };
+                            self.local_var_types.push(var_type);
+                            local_var_count += 1;
+                        }
+                        StatementInsideBlock::Expression(expr) => {
+                            self.expect_type_with_flexibility(
+                                &ExpectedType {
+                                    ty: Type::Constr,
+                                    allow_array: true,
+                                },
+                                expr,
+                            )?;
+                        }
+                    }
                 }
                 let result = self.infer_type_of_expression(expr);
                 self.local_var_types
-                    .truncate(self.local_var_types.len() - statements_len);
+                    .truncate(self.local_var_types.len() - local_var_count);
                 result?
             }
         })
