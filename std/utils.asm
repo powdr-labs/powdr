@@ -35,7 +35,8 @@ let new_bool: -> expr = constr || {
 /// Creates a new witness column which is 1 on each row where `x` is zero
 /// and 0 otherwise.
 let is_zero: expr -> expr = constr |x| {
-    let x_is_zero = new_bool();
+    let x_is_zero;
+    force_bool(x_is_zero);
     /// This is the inverse of x in the field as long as x is not zero.
     /// It is unconstrained if x is zero.
     let x_inv;
