@@ -444,13 +444,19 @@ pub trait SymbolLookup<'a, T> {
             "Tried to create witness column outside of statement context: {name}"
         )))
     }
+
+    fn add_constraints(&mut self, constraints: Arc<Value<'a, T>>) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(format!(
+            "Tried to add constraints outside of statement context."
+        )))
+    }
 }
 
 mod internal {
     use num_traits::Signed;
     use powdr_ast::{
         analyzed::{AlgebraicBinaryOperator, Challenge},
-        parsed::LetStatementInsideBlock,
+        parsed::{LetStatementInsideBlock, StatementInsideBlock},
     };
     use powdr_number::BigUint;
 
@@ -611,13 +617,24 @@ mod internal {
             }
             Expression::BlockExpression(statements, expr) => {
                 let mut locals = locals.to_vec();
-                for LetStatementInsideBlock { name, value } in statements {
-                    let value = if let Some(value) = value {
-                        evaluate(value, &locals, generic_args, symbols)?
-                    } else {
-                        symbols.new_witness_column(name)?
-                    };
-                    locals.push(value);
+                for statement in statements {
+                    match statement {
+                        StatementInsideBlock::LetStatement(LetStatementInsideBlock {
+                            name,
+                            value,
+                        }) => {
+                            let value = if let Some(value) = value {
+                                evaluate(value, &locals, generic_args, symbols)?
+                            } else {
+                                symbols.new_witness_column(name)?
+                            };
+                            locals.push(value);
+                        }
+                        StatementInsideBlock::Expression(expr) => {
+                            let result = evaluate(expr, &locals, generic_args, symbols)?;
+                            symbols.add_constraints(result)?;
+                        }
+                    }
                 }
                 evaluate(expr, &locals, generic_args, symbols)?
             }

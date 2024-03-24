@@ -48,17 +48,10 @@ pub fn condense<T: FieldElement>(
                 namespace.pop();
                 condenser.set_namespace(namespace);
             }
-            let statements = match s {
+            let statement = match s {
                 StatementIdentifier::Identity(index) => {
-                    let identities = condenser.condense_identity(&identities[index]);
-                    identities
-                        .into_iter()
-                        .map(|identity| {
-                            let id = condensed_identities.len();
-                            condensed_identities.push(identity);
-                            StatementIdentifier::Identity(id)
-                        })
-                        .collect()
+                    condenser.condense_identity(&identities[index]);
+                    None
                 }
                 StatementIdentifier::Definition(name)
                     if matches!(
@@ -94,17 +87,27 @@ pub fn condense<T: FieldElement>(
                         vec![condenser.condense_to_algebraic_expression(&e.e)]
                     };
                     intermediate_columns.insert(name.clone(), (symbol.clone(), value));
-                    vec![StatementIdentifier::Definition(name)]
+                    Some(StatementIdentifier::Definition(name))
                 }
-                s => vec![s],
+                s => Some(s),
             };
             // Extract and prepend the new witness columns.
             let new_wits = condenser.extract_new_witness_columns();
             new_witness_columns.extend(new_wits.clone());
+            condensed_identities.extend(condenser.extract_new_constraints());
+            identities
+            .into_iter()
+            .map(|identity| {
+                let id = condensed_identities.len();
+                condensed_identities.push(identity);
+                StatementIdentifier::Identity(id)
+            })
+            .collect()
+
             new_wits
                 .into_iter()
                 .map(|s| StatementIdentifier::Definition(s.absolute_name))
-                .chain(statements)
+                .chain(statement)
         })
         .collect();
 
@@ -142,7 +145,7 @@ pub struct Condenser<'a, T> {
     new_witnesses: Vec<Symbol>,
     /// The names of all new witness columns ever generated, to avoid duplicates.
     all_new_witness_names: HashSet<String>,
-    _phantom: std::marker::PhantomData<T>,
+    new_constraints: Vec<Identity<AlgebraicExpression<T>>>,
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
@@ -163,7 +166,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             next_witness_id,
             new_witnesses: vec![],
             all_new_witness_names: HashSet::new(),
-            _phantom: Default::default(),
+            new_constraints: vec![],
         }
     }
 
@@ -203,6 +206,13 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         let mut new_witnesses = vec![];
         std::mem::swap(&mut self.new_witnesses, &mut new_witnesses);
         new_witnesses
+    }
+
+    /// Returns the new constraints generated since the last call to this function.
+    pub fn extract_new_constraints(&mut self) -> Vec<Identity<AlgebraicExpression<T>>> {
+        let mut new_constraints = vec![];
+        std::mem::swap(&mut self.new_constraints, &mut new_constraints);
+        new_constraints
     }
 
     fn condense_selected_expressions(
@@ -327,5 +337,38 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }))
             .into(),
         )
+    }
+
+    fn add_constraints(
+        &mut self,
+        constraints: Arc<Value<'a, T>>,
+    ) -> Result<(), evaluator::EvalError> {
+        match constraints.as_ref() {
+            Value::Identity(left, right) => {
+                self.new_constraints.push(Identity {
+                    id: 0,
+                    kind: IdentityKind::Polynomial,
+                    source: SourceRef::unknown(),
+                    left: left.clone(),
+                    right: right.clone(),
+                });
+            }
+            Value::Array(items) => {
+                for item in items.iter() {
+                    if let Value::Identity(left, right) = item.as_ref() {
+                        self.new_constraints.push(Identity {
+                            id: 0,
+                            kind: IdentityKind::Polynomial,
+                            source: SourceRef::unknown(),
+                            left: left.clone(),
+                            right: right.clone(),
+                        });
+                    } else {
+                        return Err(evaluator::EvalError::UnexpectedValue(item.clone()));
+                    }
+                }
+            }
+            _ => return Err(evaluator::EvalError::UnexpectedValue(constraints.clone())),
+        }
     }
 }

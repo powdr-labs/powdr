@@ -347,6 +347,15 @@ impl<Ref: Display> Display for IfExpression<Ref> {
     }
 }
 
+impl<Ref: Display> Display for StatementInsideBlock<Ref> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            StatementInsideBlock::LetStatement(s) => write!(f, "{s}"),
+            StatementInsideBlock::Expression(e) => write!(f, "{e};"),
+        }
+    }
+}
+
 impl<Ref: Display> Display for LetStatementInsideBlock<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "let {}", self.name)?;

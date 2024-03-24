@@ -610,16 +610,17 @@ IfExpression: Box<Expression> = {
 }
 
 BlockExpression: Box<Expression> = {
-    "{" <LetStatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>))
+    "{" <StatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>))
 }
 
 BracedExpression: Box<Expression> = {
-    "{" <LetStatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>)),
+    "{" <StatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>)),
     "{" <BoxedExpression> "}" => Box::new(Expression::BlockExpression(vec![], <>))
 }
 
-LetStatementInsideBlock: LetStatementInsideBlock = {
-    "let" <name:Identifier> <value:("=" <Expression>)?> ";" => LetStatementInsideBlock{<>}
+StatementInsideBlock: StatementInsideBlock = {
+    "let" <name:Identifier> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
+    <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
 
 // ---------------------------- Type Declarations -----------------------------

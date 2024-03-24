@@ -15,7 +15,8 @@ use powdr_ast::parsed::{
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, PilStatement, TypedExpression,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, PilStatement, StatementInsideBlock,
+    TypedExpression,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -572,6 +573,7 @@ fn check_expression(
         Expression::LambdaExpression(LambdaExpression {
             kind: _,
             params,
+
             body,
         }) => {
             // Add the local variables, ignore collisions.
@@ -615,13 +617,20 @@ fn check_expression(
             check_expression(location, body, state, local_variables)?;
             check_expression(location, else_body, state, local_variables)
         }
-        Expression::BlockExpression(statments, expr) => {
+        Expression::BlockExpression(statements, expr) => {
             let mut local_variables = local_variables.clone();
-            for LetStatementInsideBlock { name, value } in statments {
-                if let Some(value) = value {
-                    check_expression(location, value, state, &local_variables)?;
+            for statement in statements {
+                match statement {
+                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { name, value }) => {
+                        if let Some(value) = value {
+                            check_expression(location, value, state, &local_variables)?;
+                        }
+                        local_variables.insert(name.clone());
+                    }
+                    StatementInsideBlock::Expression(expr) => {
+                        check_expression(location, expr, state, &local_variables)?;
+                    }
                 }
-                local_variables.insert(name.clone());
             }
             check_expression(location, expr, state, &local_variables)
         }

@@ -4,8 +4,8 @@ use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, MatchPattern, NamespacedPolynomialReference,
-        SelectedExpressions,
+        MatchArm, MatchPattern, NamespacedPolynomialReference, SelectedExpressions,
+        StatementInsideBlock,
     },
 };
 use powdr_number::DegreeType;
@@ -175,21 +175,21 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
 
     fn process_block_expression(
         &mut self,
-        statements: Vec<LetStatementInsideBlock>,
+        statements: Vec<StatementInsideBlock>,
         expr: ::powdr_ast::parsed::Expression,
     ) -> Expression {
         let previous_local_vars = self.local_variables.clone();
 
         let processed_statements = statements
             .into_iter()
-            .map(|LetStatementInsideBlock { name, value }| {
+            .map(|StatementInsideBlock { name, value }| {
                 let value = value.map(|v| self.process_expression(v));
                 let id = self.local_variable_counter;
                 if self.local_variables.insert(name.clone(), id).is_some() {
                     panic!("Variable already defined: {name}");
                 }
                 self.local_variable_counter += 1;
-                LetStatementInsideBlock { name, value }
+                StatementInsideBlock { name, value }
             })
             .collect::<Vec<_>>();
 
