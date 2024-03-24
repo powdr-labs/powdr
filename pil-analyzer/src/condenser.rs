@@ -317,6 +317,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             kind: SymbolKind::Poly(PolynomialType::Committed),
             length: None,
         };
+        println!("Creating new wit col with name {name} and id {id}.");
         self.all_new_witness_names.insert(name.clone());
         self.new_witnesses.push(symbol.clone());
         Ok(
