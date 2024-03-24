@@ -2,7 +2,7 @@
 //! i.e. it turns more complex expressions in identities to simpler expressions.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     iter::once,
     str::FromStr,
     sync::Arc,
@@ -152,9 +152,14 @@ pub fn condense<T: FieldElement>(
     }
 }
 
+type SymbolCacheKey = (String, Option<Vec<Type>>);
+
 pub struct Condenser<'a, T> {
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    /// Evaluation cache.
+    symbol_values: BTreeMap<SymbolCacheKey, Arc<Value<'a, T>>>,
+    /// Current namespace (for names of generated witnesses).
     namespace: AbsoluteSymbolPath,
     next_witness_id: u64,
     /// The generated witness columns since the last extraction.
@@ -178,6 +183,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             .unwrap_or_default();
         Self {
             symbols,
+            symbol_values: Default::default(),
             namespace: Default::default(),
             next_witness_id,
             new_witnesses: vec![],
@@ -283,7 +289,18 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         name: &'a str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)
+        // Cache already computed values.
+        // Note that the cache is essential because otherwise
+        // we re-evaluate simple values, which users would not expect.
+        let cache_key = (name.to_string(), generic_args.clone());
+        if let Some(v) = self.symbol_values.get(&cache_key) {
+            return Ok(v.clone());
+        }
+        let value = Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)?;
+        self.symbol_values
+            .entry(cache_key)
+            .or_insert_with(|| value.clone());
+        Ok(value)
     }
 
     fn lookup_public_reference(
@@ -298,26 +315,16 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         name: &str,
         source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        self.next_witness_id += 1;
-        let id = self.next_witness_id;
-        // Find an unused name.
-        let name = once(None)
-            .chain((1..).map(Some))
-            .map(|cnt| format!("{name}{}", cnt.map(|c| format!("_{c}")).unwrap_or_default()))
-            .map(|name| self.namespace.with_part(&name).to_dotted_string())
-            .find(|name| {
-                !self.symbols.contains_key(name) && !self.all_new_witness_names.contains(name)
-            })
-            .unwrap();
+        let name = self.find_unused_name(name);
         let symbol = Symbol {
-            id,
+            id: self.next_witness_id,
             source,
             absolute_name: name.clone(),
             stage: None,
             kind: SymbolKind::Poly(PolynomialType::Committed),
             length: None,
         };
-        println!("Creating new wit col with name {name} and id {id}.");
+        self.next_witness_id += 1;
         self.all_new_witness_names.insert(name.clone());
         self.new_witnesses.push(symbol.clone());
         Ok(
@@ -367,5 +374,18 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
         }
         Ok(())
+    }
+}
+
+impl<'a, T> Condenser<'a, T> {
+    fn find_unused_name(&self, name: &str) -> String {
+        once(None)
+            .chain((1..).map(Some))
+            .map(|cnt| format!("{name}{}", cnt.map(|c| format!("_{c}")).unwrap_or_default()))
+            .map(|name| self.namespace.with_part(&name).to_dotted_string())
+            .find(|name| {
+                !self.symbols.contains_key(name) && !self.all_new_witness_names.contains(name)
+            })
+            .unwrap()
     }
 }
