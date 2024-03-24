@@ -47,3 +47,50 @@ fn new_witness_column_name_clash() {
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
 }
+
+#[test]
+fn create_constrainst() {
+    let input = r#"namespace N(16);
+    let force_bool: expr -> constr = |c| c * (1 - c) = 0;
+    let new_bool: -> expr = constr || { let x; force_bool(x); x };
+    let is_zero: expr -> expr = constr |x| {
+        let x_is_zero;
+        force_bool(x_is_zero);
+        let x_inv;
+        x_is_zero = 1 - x * x_inv;
+        x_is_zero * x = 0;
+        x_is_zero
+    };
+    let x;
+    let x_is_zero = is_zero(x);
+    let y;
+    y = x_is_zero + 2;
+    "#;
+    let expected = r#"namespace N(16);
+    let force_bool: expr -> constr = (|c| ((c * (1 - c)) = 0));
+    let new_bool: -> expr = (constr || {
+        let x;
+        N.force_bool(x);
+        x
+    });
+    let is_zero: expr -> expr = (constr |x| {
+        let x_is_zero;
+        N.force_bool(x_is_zero);
+        let x_inv;
+        (x_is_zero = (1 - (x * x_inv)));
+        ((x_is_zero * x) = 0);
+        x_is_zero
+    });
+    col witness x;
+    let x_is_zero: expr = N.is_zero(N.x);
+    col witness y;
+    col witness x_is_zero_1;
+    col witness x_inv;
+    (N.x_is_zero_1 * (1 - N.x_is_zero_1)) = 0;
+    N.x_is_zero_1 = (1 - (N.x * N.x_inv));
+    (N.x_is_zero_1 * N.x) = 0;
+    N.y = (N.x_is_zero_1 + 2);
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
+}
