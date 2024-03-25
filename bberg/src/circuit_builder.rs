@@ -26,12 +26,12 @@ fn circuit_hpp_includes(name: &str, relations: &[String], permutations: &[String
     #include \"barretenberg/common/constexpr_utils.hpp\"
     #include \"barretenberg/common/throw_or_abort.hpp\"
     #include \"barretenberg/ecc/curves/bn254/fr.hpp\"
-    #include \"barretenberg/proof_system/circuit_builder/circuit_builder_base.hpp\"
+    #include \"barretenberg/stdlib_circuit_builders/circuit_builder_base.hpp\"
     #include \"barretenberg/relations/generic_permutation/generic_permutation_relation.hpp\"
     #include \"barretenberg/relations/generic_lookup/generic_lookup_relation.hpp\"
     #include \"barretenberg/honk/proof_system/logderivative_library.hpp\"
     
-    #include \"barretenberg/flavor/generated/{name}_flavor.hpp\"
+    #include \"barretenberg/vm/generated/{name}_flavor.hpp\"
     {relation_imports}
 "
     )

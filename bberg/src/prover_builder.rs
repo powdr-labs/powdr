@@ -223,12 +223,13 @@ fn includes_hpp(name: &str) -> String {
     format!(
         "
 #pragma once
-#include \"barretenberg/flavor/generated/{name}_flavor.hpp\"
 #include \"barretenberg/commitment_schemes/zeromorph/zeromorph.hpp\"
-#include \"barretenberg/sumcheck/sumcheck_output.hpp\"
-#include \"barretenberg/transcript/transcript.hpp\"
 #include \"barretenberg/plonk/proof_system/types/proof.hpp\"
 #include \"barretenberg/relations/relation_parameters.hpp\"
+#include \"barretenberg/sumcheck/sumcheck_output.hpp\"
+#include \"barretenberg/transcript/transcript.hpp\"
+
+#include \"barretenberg/vm/generated/{name}_flavor.hpp\"
 
     "
     )
@@ -243,8 +244,8 @@ fn includes_cpp(name: &str) -> String {
     #include \"barretenberg/commitment_schemes/commitment_key.hpp\"
     #include \"barretenberg/honk/proof_system/logderivative_library.hpp\"
     #include \"barretenberg/honk/proof_system/permutation_library.hpp\"
+    #include \"barretenberg/plonk_honk_shared/library/grand_product_library.hpp\"
     #include \"barretenberg/polynomials/polynomial.hpp\"
-    #include \"barretenberg/proof_system/library/grand_product_library.hpp\"
     #include \"barretenberg/relations/lookup_relation.hpp\"
     #include \"barretenberg/relations/permutation_relation.hpp\"
     #include \"barretenberg/sumcheck/sumcheck.hpp\"

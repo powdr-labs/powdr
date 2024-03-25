@@ -6,7 +6,6 @@ pub struct BBFiles {
     pub file_name: String,
     pub base: String,
     pub rel: String,
-    pub arith: String,
     pub circuit: String,
     pub flavor: String,
     pub composer: String,
@@ -15,7 +14,7 @@ pub struct BBFiles {
 
 impl BBFiles {
     pub fn default(file_name: String) -> Self {
-        Self::new(file_name, None, None, None, None, None, None, None)
+        Self::new(file_name, None, None, None, None, None, None)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -23,7 +22,6 @@ impl BBFiles {
         file_name: String,
         base: Option<String>,
         rel: Option<String>,
-        arith: Option<String>,
         circuit: Option<String>,
         flavor: Option<String>,
         composer: Option<String>,
@@ -31,9 +29,8 @@ impl BBFiles {
     ) -> Self {
         let base = base.unwrap_or("src/barretenberg".to_owned());
         let rel = rel.unwrap_or("relations/generated".to_owned());
-        let arith = arith.unwrap_or("proof_system/arithmetization/generated".to_owned());
-        let circuit = circuit.unwrap_or("proof_system/circuit_builder/generated".to_owned());
-        let flavor = flavor.unwrap_or("flavor/generated".to_owned());
+        let circuit = circuit.unwrap_or("vm/generated".to_owned());
+        let flavor = flavor.unwrap_or("vm/generated".to_owned());
         let composer = composer.unwrap_or("vm/generated".to_owned());
         let prover = prover.unwrap_or("vm/generated".to_owned());
 
@@ -42,7 +39,6 @@ impl BBFiles {
 
             base,
             rel,
-            arith,
             circuit,
             flavor,
             composer,

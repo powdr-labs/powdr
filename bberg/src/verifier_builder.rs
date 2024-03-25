@@ -167,9 +167,9 @@ fn include_hpp(name: &str) -> String {
     format!(
         "
 #pragma once
-#include \"barretenberg/flavor/generated/{name}_flavor.hpp\"
-#include \"barretenberg/sumcheck/sumcheck.hpp\"
 #include \"barretenberg/plonk/proof_system/types/proof.hpp\"
+#include \"barretenberg/sumcheck/sumcheck.hpp\"
+#include \"barretenberg/vm/generated/{name}_flavor.hpp\"
 "
     )
 }
