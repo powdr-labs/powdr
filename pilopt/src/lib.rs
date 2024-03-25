@@ -70,14 +70,14 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     let definitions_to_remove = pil_file
         .definitions
         .keys()
+        .chain(pil_file.intermediate_columns.keys())
         .filter(|name| !required_names.contains(*name))
         .cloned()
         .collect();
     pil_file.remove_definitions(&definitions_to_remove);
 }
 
-/// Collect all names that are referenced in identities, public declarations or hint functions
-/// of witness columns.
+/// Collect all names that are referenced in identities and public declarations.
 fn collect_required_names<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<String> {
     // TODO we could re-borrow from definitions here or something.
     let mut required_names: HashSet<String> = Default::default();

@@ -7,6 +7,7 @@ use std::hash::{Hash, Hasher};
 use std::ops::{self, ControlFlow};
 use std::str::FromStr;
 
+use itertools::Itertools;
 use powdr_number::{DegreeType, FieldElement};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -150,55 +151,30 @@ impl<T> Analyzed<T> {
 
     /// Updates the IDs of all polynomials so that they are contiguous again.
     fn realign_poly_ids(&mut self) {
-        let mut replacements: BTreeMap<PolyID, PolyID> = [
-            // We have to do it separately because we need to re-start the counter
-            // for each kind.
-            self.committed_polys_in_source_order(),
-            self.constant_polys_in_source_order(),
-        ]
-        .map(|polys| {
-            polys
-                .iter()
-                .fold(
-                    (0, BTreeMap::new()),
-                    |(new_id, mut replacements), (poly, _def)| {
-                        let length = poly.length.unwrap_or(1);
-                        for (i, (_name, id)) in poly.array_elements().enumerate() {
-                            replacements.insert(
-                                id,
-                                PolyID {
-                                    id: new_id + i as u64,
-                                    ..id
-                                },
-                            );
-                        }
-                        // we still need a replacement for zero sized array,
-                        // but array_elements() won't return any items in this case
-                        // TODO: handle this differently? https://github.com/powdr-labs/powdr/issues/1142
-                        if let Some(0) = poly.length {
-                            let poly_id = poly.into();
-                            replacements.insert(
-                                poly_id,
-                                PolyID {
-                                    id: new_id,
-                                    ..poly_id
-                                },
-                            );
-                        }
-                        (new_id + length, replacements)
-                    },
-                )
-                .1
-        })
-        .into_iter()
-        .flatten()
-        .collect();
+        let mut replacements: BTreeMap<PolyID, PolyID> = Default::default();
 
-        for (poly, _) in self.intermediate_columns.values() {
-            poly.array_elements().for_each(|(_name, id)| {
-                replacements.insert(id, id);
-            });
-        }
+        let mut handle_symbol = |new_id: u64, symbol: &Symbol| -> u64 {
+            let length = symbol.length.unwrap_or(1);
+            for i in 0..length {
+                let poly_id = PolyID {
+                    id: new_id + i,
+                    ..PolyID::from(symbol)
+                };
+                replacements.insert(symbol.into(), poly_id);
+            }
+            new_id + length
+        };
+
+        // Create and update the replacement map for all polys.
+        self.committed_polys_in_source_order()
+            .iter()
+            .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
+        self.constant_polys_in_source_order()
+            .iter()
+            .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
+        self.intermediate_polys_in_source_order()
+            .iter()
+            .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
 
         self.definitions.values_mut().for_each(|(poly, _def)| {
             if matches!(poly.kind, SymbolKind::Poly(_)) {
@@ -206,6 +182,12 @@ impl<T> Analyzed<T> {
                 poly.id = replacements[&poly_id].id;
             }
         });
+        self.intermediate_columns
+            .values_mut()
+            .for_each(|(poly, _def)| {
+                let poly_id = PolyID::from(poly as &Symbol);
+                poly.id = replacements[&poly_id].id;
+            });
         let visitor = &mut |expr: &mut Expression| {
             if let Expression::Reference(Reference::Poly(poly)) = expr {
                 poly.poly_id = poly.poly_id.map(|poly_id| replacements[&poly_id]);
@@ -262,10 +244,12 @@ impl<T> Analyzed<T> {
         })
     }
 
-    /// Removes the given definitions by name. Those definitions must not be referenced
+    /// Removes the given definitions and itermediate columns by name. Those must not be referenced
     /// by any remaining definitions, identities or public declarations.
     pub fn remove_definitions(&mut self, to_remove: &BTreeSet<String>) {
         self.definitions.retain(|name, _| !to_remove.contains(name));
+        self.intermediate_columns
+            .retain(|name, _| !to_remove.contains(name));
         self.source_order.retain_mut(|s| {
             if let StatementIdentifier::Definition(name) = s {
                 !to_remove.contains(name)
