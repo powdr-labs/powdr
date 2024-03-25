@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use powdr_ast::{
     analyzed::{Expression, Reference},
-    parsed::visitor::ExpressionVisitable,
+    parsed::visitor::{AllChildren},
 };
 
 /// Returns a sorted list of symbols such that called symbols appear before the symbols that reference them.
@@ -22,7 +22,7 @@ pub fn sort_called_first<'a, I: Iterator<Item = (&'a str, Option<&'a Expression>
 
 fn topo_sort_visit<'a, 'b>(
     name: &'a str,
-    graph: &'b HashMap<&'a str, HashSet<String>>,
+    graph: &'b HashMap<&'a str, HashSet<&'a str>>,
     visited: &'b mut HashSet<&'a str>,
     result: &'b mut Vec<String>,
 ) {
@@ -31,8 +31,7 @@ fn topo_sort_visit<'a, 'b>(
     }
     if let Some(called) = graph.get(name) {
         for c in called {
-            let n = graph.get_key_value(c.as_str()).unwrap().0;
-            topo_sort_visit(n, graph, visited, result);
+            topo_sort_visit(c, graph, visited, result);
         }
     }
     result.push(name.to_string());
@@ -40,18 +39,16 @@ fn topo_sort_visit<'a, 'b>(
 
 fn call_graph<'a, I: Iterator<Item = (&'a str, Option<&'a Expression>)>>(
     symbols: I,
-) -> HashMap<&'a str, HashSet<String>> {
+) -> HashMap<&'a str, HashSet<&'a str>> {
     symbols
         .map(|(name, expr)| {
-            let mut called: HashSet<String> = HashSet::new();
+            let mut called: HashSet<&str> = HashSet::new();
             if let Some(e) = expr {
-                e.pre_visit_expressions(&mut |e: &Expression| {
+                e.all_children().for_each(|e| {
                     if let Expression::Reference(Reference::Poly(r)) = e {
-                        // Tried with &'a str here, but it does not really work
-                        // with the lambda.
-                        called.insert(r.name.clone());
+                        called.insert(r.name.as_str());
                     }
-                })
+                });
             }
             (name, called)
         })
