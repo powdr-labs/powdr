@@ -1,7 +1,7 @@
 mod display;
 pub mod visitor;
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::ops::{self, ControlFlow};
@@ -148,11 +148,8 @@ impl<T> Analyzed<T> {
         type_from_definition(sym, value).unwrap()
     }
 
-    /// Removes the specified polynomials and updates the IDs of the other polynomials
-    /// so that they are contiguous again.
-    /// There must not be any reference to the removed polynomials left.
-    /// Does not support arrays or array elements.
-    pub fn remove_polynomials(&mut self, to_remove: &BTreeSet<PolyID>) {
+    /// Updates the IDs of all polynomials so that they are contiguous again.
+    fn realign_poly_ids(&mut self) {
         let mut replacements: BTreeMap<PolyID, PolyID> = [
             // We have to do it separately because we need to re-start the counter
             // for each kind.
@@ -165,35 +162,30 @@ impl<T> Analyzed<T> {
                 .fold(
                     (0, BTreeMap::new()),
                     |(new_id, mut replacements), (poly, _def)| {
-                        let poly_id = poly.into();
                         let length = poly.length.unwrap_or(1);
-                        if to_remove.contains(&poly_id) {
-                            (new_id, replacements)
-                        } else {
-                            for (i, (_name, id)) in poly.array_elements().enumerate() {
-                                replacements.insert(
-                                    id,
-                                    PolyID {
-                                        id: new_id + i as u64,
-                                        ..id
-                                    },
-                                );
-                            }
-                            // we still need a replacement for zero sized array,
-                            // but array_elements() won't return any items in this case
-                            // TODO: handle this differently? https://github.com/powdr-labs/powdr/issues/1142
-                            if let Some(0) = poly.length {
-                                let poly_id = poly.into();
-                                replacements.insert(
-                                    poly_id,
-                                    PolyID {
-                                        id: new_id,
-                                        ..poly_id
-                                    },
-                                );
-                            }
-                            (new_id + length, replacements)
+                        for (i, (_name, id)) in poly.array_elements().enumerate() {
+                            replacements.insert(
+                                id,
+                                PolyID {
+                                    id: new_id + i as u64,
+                                    ..id
+                                },
+                            );
                         }
+                        // we still need a replacement for zero sized array,
+                        // but array_elements() won't return any items in this case
+                        // TODO: handle this differently? https://github.com/powdr-labs/powdr/issues/1142
+                        if let Some(0) = poly.length {
+                            let poly_id = poly.into();
+                            replacements.insert(
+                                poly_id,
+                                PolyID {
+                                    id: new_id,
+                                    ..poly_id
+                                },
+                            );
+                        }
+                        (new_id + length, replacements)
                     },
                 )
                 .1
@@ -202,52 +194,26 @@ impl<T> Analyzed<T> {
         .flatten()
         .collect();
 
-        // We assume for now that intermediate columns are not removed.
         for (poly, _) in self.intermediate_columns.values() {
             poly.array_elements().for_each(|(_name, id)| {
-                assert!(!to_remove.contains(&id));
                 replacements.insert(id, id);
             });
         }
 
-        let mut names_to_remove: HashSet<String> = Default::default();
-        self.definitions.retain(|name, (poly, _def)| {
-            if matches!(poly.kind, SymbolKind::Poly(_))
-                && to_remove.contains(&(poly as &Symbol).into())
-            {
-                names_to_remove.insert(name.clone());
-                false
-            } else {
-                true
-            }
-        });
-        self.source_order.retain(|s| {
-            if let StatementIdentifier::Definition(name) = s {
-                if names_to_remove.contains(name) {
-                    return false;
-                }
-            }
-            true
-        });
         self.definitions.values_mut().for_each(|(poly, _def)| {
             if matches!(poly.kind, SymbolKind::Poly(_)) {
                 let poly_id = PolyID::from(poly as &Symbol);
-                assert!(!to_remove.contains(&poly_id));
                 poly.id = replacements[&poly_id].id;
             }
         });
         let visitor = &mut |expr: &mut Expression| {
             if let Expression::Reference(Reference::Poly(poly)) = expr {
-                poly.poly_id = poly.poly_id.map(|poly_id| {
-                    assert!(!to_remove.contains(&poly_id));
-                    replacements[&poly_id]
-                });
+                poly.poly_id = poly.poly_id.map(|poly_id| replacements[&poly_id]);
             }
         };
         self.post_visit_expressions_in_definitions_mut(visitor);
         let algebraic_visitor = &mut |expr: &mut AlgebraicExpression<_>| {
             if let AlgebraicExpression::Reference(poly) = expr {
-                assert!(!to_remove.contains(&poly.poly_id));
                 poly.poly_id = replacements[&poly.poly_id];
             }
         };
@@ -294,6 +260,20 @@ impl<T> Analyzed<T> {
             index += 1;
             retain
         })
+    }
+
+    /// Removes the given definitions by name. Those definitions must not be referenced
+    /// by any remaining definitions, identities or public declarations.
+    pub fn remove_definitions(&mut self, to_remove: &BTreeSet<String>) {
+        self.definitions.retain(|name, _| !to_remove.contains(name));
+        self.source_order.retain_mut(|s| {
+            if let StatementIdentifier::Definition(name) = s {
+                !to_remove.contains(name)
+            } else {
+                true
+            }
+        });
+        self.realign_poly_ids();
     }
 
     pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)

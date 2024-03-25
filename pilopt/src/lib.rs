@@ -14,6 +14,7 @@ use powdr_number::{BigUint, FieldElement};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
+    remove_unreferenced_definitions(&mut pil_file);
     remove_constant_fixed_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
     extract_constant_lookups(&mut pil_file);
@@ -21,6 +22,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     simplify_identities(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
     remove_duplicate_identities(&mut pil_file);
+    remove_unreferenced_definitions(&mut pil_file);
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
     log::info!(
         "Removed {} witness and {} fixed columns. Total count now: {} witness and {} fixed columns.",
@@ -30,6 +32,69 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         col_count_post.1
     );
     pil_file
+}
+
+/// Removes all definitions that are not referenced by an identity, public declaration
+/// or witness column hint.
+fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    let mut required_names = collect_required_names(pil_file);
+    let mut to_process = required_names.iter().cloned().collect::<Vec<_>>();
+    while let Some(n) = to_process.pop() {
+        if let Some((_, value)) = pil_file.definitions.get(&n) {
+            let Some(value) = value else { continue };
+            value.pre_visit_expressions(&mut |e| {
+                if let Expression::Reference(Reference::Poly(PolynomialReference {
+                    name, ..
+                })) = e
+                {
+                    if required_names.insert(name.clone()) {
+                        to_process.push(name.clone());
+                    }
+                }
+            })
+        } else if let Some((_, value)) = pil_file.intermediate_columns.get(&n) {
+            for v in value {
+                v.pre_visit_expressions(&mut |e| {
+                    if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = e {
+                        if required_names.insert(name.clone()) {
+                            to_process.push(name.clone());
+                        }
+                    }
+                })
+            }
+        } else {
+            panic!("Symbol not found: {n}");
+        }
+    }
+
+    let definitions_to_remove = pil_file
+        .definitions
+        .keys()
+        .filter(|name| !required_names.contains(*name))
+        .cloned()
+        .collect();
+    pil_file.remove_definitions(&definitions_to_remove);
+}
+
+/// Collect all names that are referenced in identities, public declarations or hint functions
+/// of witness columns.
+fn collect_required_names<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<String> {
+    // TODO we could re-borrow from definitions here or something.
+    let mut required_names: HashSet<String> = Default::default();
+    required_names.extend(
+        pil_file
+            .public_declarations
+            .values()
+            .map(|p| p.polynomial.name.clone()),
+    );
+    for id in &pil_file.identities {
+        id.pre_visit_expressions(&mut |e: &AlgebraicExpression<T>| {
+            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = e {
+                required_names.insert(name.clone());
+            }
+        });
+    }
+    required_names
 }
 
 /// Identifies fixed columns that only have a single value, replaces every
@@ -53,7 +118,6 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .collect::<BTreeMap<PolyID, _>>();
 
     substitute_polynomial_references(pil_file, &constant_polys);
-    pil_file.remove_polynomials(&constant_polys.into_keys().collect());
 }
 
 /// Checks if a fixed column defined through a function has a constant
@@ -258,7 +322,6 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     constant_polys.retain(|id, _| columns.contains(id));
 
     substitute_polynomial_references(pil_file, &constant_polys);
-    pil_file.remove_polynomials(&constant_polys.into_keys().collect());
 }
 
 /// Substitutes all references to certain polynomials by the given field elements.
@@ -441,20 +504,6 @@ mod test {
     }
 
     #[test]
-    fn zero_sized_array() {
-        let input = r#"namespace N(65536);
-        col witness x[1];
-        col witness y[0];
-    "#;
-        let expectation = r#"namespace N(65536);
-    col witness x[1];
-    col witness y[0];
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
     fn remove_duplicates() {
         let input = r#"namespace N(65536);
         col witness x;
@@ -478,6 +527,31 @@ mod test {
     { N.x } in { N.cnt };
     { (N.x + 1) } in { N.cnt };
     { N.x } in { (N.cnt + 1) };
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
+    fn remove_unreferenced() {
+        let input = r#"namespace N(65536);
+        col witness x;
+        col fixed cnt(i) { inc(i) };
+        let inc = |x| x + 1;
+        // these are removed
+        col witness k;
+        let rec: -> int = || rec();
+        let a: int -> int = |i| b(i + 1);
+        let b: int -> int = |j| 8;
+        // identity
+        { x } in { cnt };
+
+    "#;
+        let expectation = r#"namespace N(65536);
+    col witness x;
+    col fixed cnt(i) { N.inc(i) };
+    let inc: int -> int = (|x| (x + 1));
+    { N.x } in { N.cnt };
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
