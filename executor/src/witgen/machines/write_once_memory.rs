@@ -32,6 +32,7 @@ use super::{FixedLookup, Machine};
 /// instr mload X -> Y { {X, Y} in {ADDR, v} }
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
+    connecting_identities: Vec<u64>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
     /// The right-hand side of the connecting identity
@@ -54,6 +55,13 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         identities: &[&Identity<Expression<T>>],
     ) -> Option<Self> {
         if !identities.is_empty() {
+            return None;
+        }
+
+        if !connecting_identities
+            .iter()
+            .all(|i| i.kind == IdentityKind::Plookup)
+        {
             return None;
         }
 
@@ -98,6 +106,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         Some(Self {
+            connecting_identities: connecting_identities.iter().map(|&i| i.id).collect(),
             name,
             fixed_data,
             rhs,
@@ -109,12 +118,11 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
     fn process_plookup_internal(
         &mut self,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
-        let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = left
+        let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = args
             .iter()
-            .zip(right.expressions.iter())
+            .zip(self.rhs.expressions.iter())
             .partition(|(_, r)| {
                 try_to_simple_poly(r).unwrap().poly_id.ptype == PolynomialType::Constant
             });
@@ -193,6 +201,10 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
+    fn identity_ids(&self) -> Vec<u64> {
+        self.connecting_identities.clone()
+    }
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -200,12 +212,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
-        kind: IdentityKind,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
-    ) -> Option<EvalResult<'a, T>> {
-        (right == self.rhs && kind == IdentityKind::Plookup)
-            .then(|| self.process_plookup_internal(left, right))
+        _identity_id: u64,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
+    ) -> EvalResult<'a, T> {
+        self.process_plookup_internal(args)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
