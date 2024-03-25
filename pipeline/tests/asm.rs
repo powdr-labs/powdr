@@ -441,3 +441,10 @@ fn test_failing_assertion() {
     let i = [];
     verify_asm(f, slice_to_vec(&i));
 }
+
+#[test]
+fn generic_permutation() {
+    let f = "asm/generic_permutation.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+}

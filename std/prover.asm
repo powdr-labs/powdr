@@ -18,3 +18,6 @@ enum Query {
 /// Constructs a challenge object.
 /// The arguments are the proof stage and the id of the challenge, in this order.
 let challenge: int, int -> expr = [];
+
+
+let new_witness_in_stage: string, int -> expr = [];

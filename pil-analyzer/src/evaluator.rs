@@ -245,7 +245,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 9] = [
+const BUILTINS: [(&str, BuiltinFunction); 10] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -255,6 +255,10 @@ const BUILTINS: [(&str, BuiltinFunction); 9] = [
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prover::challenge", BuiltinFunction::Challenge),
     ("std::prover::eval", BuiltinFunction::Eval),
+    (
+        "std::prover::new_witness_in_stage",
+        BuiltinFunction::NewWitnessInStage,
+    ),
 ];
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -279,6 +283,7 @@ pub enum BuiltinFunction {
     Challenge,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
     Eval,
+    NewWitnessInStage,
 }
 
 impl<'a, T: Display> Display for Value<'a, T> {
@@ -443,6 +448,7 @@ pub trait SymbolLookup<'a, T> {
     fn new_witness_column(
         &mut self,
         name: &str,
+        _stage: Option<u32>,
         _source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::Unsupported(format!(
@@ -635,7 +641,7 @@ mod internal {
                             let value = if let Some(value) = value {
                                 evaluate(value, &locals, generic_args, symbols)?
                             } else {
-                                symbols.new_witness_column(name, SourceRef::unknown())?
+                                symbols.new_witness_column(name, None, SourceRef::unknown())?
                             };
                             locals.push(value);
                         }
@@ -807,6 +813,7 @@ mod internal {
             BuiltinFunction::ToInt => 1,
             BuiltinFunction::Challenge => 2,
             BuiltinFunction::Eval => 1,
+            BuiltinFunction::NewWitnessInStage => 2,
         };
 
         if arguments.len() != params {
@@ -884,6 +891,22 @@ mod internal {
                         v.type_formatted()
                     ),
                 }
+            }
+            BuiltinFunction::NewWitnessInStage => {
+                let [name, stage] = &arguments[..] else {
+                    panic!()
+                };
+                let Value::String(name) = name.as_ref() else {
+                    panic!();
+                };
+                let Value::Integer(stage) = stage.as_ref() else {
+                    panic!()
+                };
+                symbols.new_witness_column(
+                    name,
+                    Some(stage.try_into().unwrap()),
+                    SourceRef::unknown(),
+                )?
             }
         })
     }

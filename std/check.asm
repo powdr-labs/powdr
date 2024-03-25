@@ -10,3 +10,6 @@ let panic: string -> ! = [];
 /// The panic message is obtained by calling the function `reason`.
 /// Returns an empty array on success, which allows it to be used at statement level.
 let assert: bool, (-> string) -> constr[] = |condition, reason| if !condition { panic(reason()) } else { [] };
+
+
+let<T: Eq, R> assert_eq: T, T -> R[] = |a, b| if a != b { panic("Arguments are not equal.") } else { [] };

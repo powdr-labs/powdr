@@ -44,6 +44,10 @@ lazy_static! {
         ("std::field::modulus", ("", "-> int")),
         ("std::prover::challenge", ("", "int, int -> expr")),
         ("std::prover::eval", ("", "expr -> fe")),
+        (
+            "std::prover::new_witness_in_stage",
+            ("", "string, int -> expr")
+        ),
     ]
     .into_iter()
     .map(|(name, (vars, ty))| { (name.to_string(), parse_type_scheme(vars, ty)) })

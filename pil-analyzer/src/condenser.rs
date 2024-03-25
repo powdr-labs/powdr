@@ -313,6 +313,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn new_witness_column(
         &mut self,
         name: &str,
+        stage: Option<u32>,
         source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         let name = self.find_unused_name(name);
@@ -320,7 +321,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             id: self.next_witness_id,
             source,
             absolute_name: name.clone(),
-            stage: None,
+            stage,
             kind: SymbolKind::Poly(PolynomialType::Committed),
             length: None,
         };
