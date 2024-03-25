@@ -40,7 +40,7 @@ impl Display for PILGraph {
 
 impl Display for Object {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if let Some(degree) = self.degree {
+        if let Some(degree) = self.degree.as_ref() {
             writeln!(f, "// Degree {}", degree)?;
         }
         for s in &self.pil {

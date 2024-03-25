@@ -20,7 +20,9 @@ use powdr_ast::{
 use powdr_backend::{BackendType, Proof};
 use powdr_executor::{
     constant_evaluator,
-    witgen::{chain_callbacks, QueryCallback},
+    witgen::{
+        chain_callbacks, unused_query_callback, QueryCallback, WitgenCallback, WitnessGenerator,
+    },
 };
 use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
 use powdr_schemas::SerializedAnalyzed;
@@ -589,7 +591,8 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn compute_resolved_module_tree(&mut self) -> Result<&ASMProgram, Vec<String>> {
         if self.artifact.resolved_module_tree.is_none() {
             self.artifact.resolved_module_tree = Some({
-                let (path, parsed) = self.compute_parsed_asm_file()?.clone();
+                self.compute_parsed_asm_file()?;
+                let (path, parsed) = self.artifact.parsed_asm_file.take().unwrap();
 
                 self.log("Loading dependencies and resolving references");
                 powdr_importer::load_dependencies_and_resolve(path, parsed).map_err(|e| vec![e])?
@@ -606,7 +609,8 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn compute_analyzed_asm(&mut self) -> Result<&AnalysisASMFile, Vec<String>> {
         if self.artifact.analyzed_asm.is_none() {
             self.artifact.analyzed_asm = Some({
-                let resolved = self.compute_resolved_module_tree()?.clone();
+                self.compute_resolved_module_tree()?;
+                let resolved = self.artifact.resolved_module_tree.take().unwrap();
 
                 self.log("Run analysis");
                 let analyzed_asm = powdr_analysis::analyze(resolved)?;
@@ -629,7 +633,8 @@ impl<T: FieldElement> Pipeline<T> {
     ) -> Result<&AnalysisASMFile, Vec<String>> {
         if self.artifact.constrained_machine_collection.is_none() {
             self.artifact.constrained_machine_collection = Some({
-                let analyzed_asm = self.compute_analyzed_asm()?.clone();
+                self.compute_analyzed_asm()?;
+                let analyzed_asm = self.artifact.analyzed_asm.take().unwrap();
                 powdr_asm_to_pil::compile::<T>(analyzed_asm)
             });
         }
@@ -652,7 +657,8 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn compute_linked_machine_graph(&mut self) -> Result<&PILGraph, Vec<String>> {
         if self.artifact.linked_machine_graph.is_none() {
             self.artifact.linked_machine_graph = Some({
-                let analyzed_asm = self.compute_constrained_machine_collection()?.clone();
+                self.compute_constrained_machine_collection()?;
+                let analyzed_asm = self.artifact.constrained_machine_collection.take().unwrap();
 
                 self.log("Run airgen");
                 let graph = powdr_airgen::compile(analyzed_asm);
@@ -675,9 +681,10 @@ impl<T: FieldElement> Pipeline<T> {
             self.artifact.parsed_pil_file = Some({
                 self.log("Run linker");
 
-                let graph = self.compute_linked_machine_graph()?;
+                self.compute_linked_machine_graph()?;
+                let graph = self.artifact.linked_machine_graph.take().unwrap();
 
-                let linked = powdr_linker::link(graph.clone())?;
+                let linked = powdr_linker::link(graph)?;
                 log::trace!("{linked}");
                 self.maybe_write_pil(&linked, "")?;
 
@@ -695,9 +702,10 @@ impl<T: FieldElement> Pipeline<T> {
     fn compute_analyzed_pil_from_parsed_pil_file(&mut self) -> Result<Analyzed<T>, Vec<String>> {
         self.log("Analyzing pil...");
 
-        let linked = self.compute_parsed_pil_file()?;
+        self.compute_parsed_pil_file()?;
+        let linked = self.artifact.parsed_pil_file.take().unwrap();
 
-        let analyzed = powdr_pil_analyzer::analyze_ast(linked.clone());
+        let analyzed = powdr_pil_analyzer::analyze_ast(linked);
         self.maybe_write_pil(&analyzed, "_analyzed")?;
 
         Ok(analyzed)
@@ -756,7 +764,8 @@ impl<T: FieldElement> Pipeline<T> {
             return Ok(optimized_pil.clone());
         }
 
-        let analyzed_pil = self.compute_analyzed_pil()?.clone();
+        self.compute_analyzed_pil()?;
+        let analyzed_pil = self.artifact.analyzed_pil.take().unwrap();
 
         self.log("Optimizing pil...");
         let optimized = powdr_pilopt::optimize(analyzed_pil);
@@ -813,14 +822,10 @@ impl<T: FieldElement> Pipeline<T> {
             .arguments
             .query_callback
             .take()
-            .unwrap_or_else(|| Arc::new(powdr_executor::witgen::unused_query_callback()));
-        let witness = powdr_executor::witgen::WitnessGenerator::new(
-            &pil,
-            &fixed_cols,
-            query_callback.borrow(),
-        )
-        .with_external_witness_values(external_witness_values)
-        .generate();
+            .unwrap_or_else(|| Arc::new(unused_query_callback()));
+        let witness = WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
+            .with_external_witness_values(&external_witness_values)
+            .generate();
 
         self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
@@ -835,6 +840,14 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }
 
+    pub fn witgen_callback(&mut self) -> Result<WitgenCallback<T>, Vec<String>> {
+        Ok(WitgenCallback::new(
+            self.compute_optimized_pil()?,
+            self.compute_fixed_cols()?,
+            self.arguments.query_callback.as_ref().cloned(),
+        ))
+    }
+
     pub fn compute_proof(&mut self) -> Result<&Proof, Vec<String>> {
         if self.artifact.proof.is_some() {
             return Ok(self.artifact.proof.as_ref().unwrap());
@@ -843,6 +856,7 @@ impl<T: FieldElement> Pipeline<T> {
         let pil = self.compute_optimized_pil()?;
         let fixed_cols = self.compute_fixed_cols()?;
         let witness = self.compute_witness()?;
+        let witgen_callback = self.witgen_callback()?;
 
         let backend = self
             .arguments
@@ -882,7 +896,7 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| fs::read(path).unwrap());
 
-        let proof = match backend.prove(&witness, existing_proof) {
+        let proof = match backend.prove(&witness, existing_proof, witgen_callback) {
             Ok(proof) => proof,
             Err(powdr_backend::Error::BackendError(e)) => {
                 return Err(vec![e.to_string()]);

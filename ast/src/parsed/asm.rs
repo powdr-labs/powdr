@@ -475,8 +475,8 @@ pub struct Instruction {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement {
-    Degree(SourceRef, BigUint),
     CallSelectors(SourceRef, String),
+    Degree(SourceRef, Expression),
     Pil(SourceRef, PilStatement),
     Submachine(SourceRef, SymbolPath, String),
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),

@@ -43,7 +43,7 @@ pub enum TypeOrExpression {
 
 #[derive(Default, Clone)]
 pub struct Object {
-    pub degree: Option<u64>,
+    pub degree: Option<Expression>,
     /// the pil identities for this machine
     pub pil: Vec<PilStatement>,
     /// the links from this machine to its children
@@ -57,8 +57,8 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn with_degree(mut self, degree: Option<u64>) -> Self {
-        self.degree = degree;
+    pub fn with_degree<D: Into<Expression>>(mut self, degree: Option<D>) -> Self {
+        self.degree = degree.map(Into::into);
         self
     }
 }

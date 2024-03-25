@@ -1,5 +1,5 @@
 machine VM {
-    degree 8;
+    degree 4 + 4;
 
     reg pc[@pc];
 }
