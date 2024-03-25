@@ -4,7 +4,7 @@ use super::{
         SymbolValue,
     },
     ArrayLiteral, EnumDeclaration, Expression, FunctionCall, IfExpression, IndexAccess,
-    LambdaExpression, MatchArm, MatchPattern,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, MatchPattern,
 };
 
 pub trait Folder {
@@ -110,6 +110,13 @@ pub trait ExpressionFolder<Ref> {
             Expression::IfExpression(if_expr) => {
                 Expression::IfExpression(self.fold_if_expression(if_expr)?)
             }
+            Expression::BlockExpression(statements, expr) => Expression::BlockExpression(
+                statements
+                    .into_iter()
+                    .map(|s| self.fold_let_statement_inside_block(s))
+                    .collect::<Result<_, _>>()?,
+                self.fold_boxed_expression(*expr)?,
+            ),
         })
     }
 
@@ -182,6 +189,16 @@ pub trait ExpressionFolder<Ref> {
             condition: self.fold_boxed_expression(*condition)?,
             body: self.fold_boxed_expression(*body)?,
             else_body: self.fold_boxed_expression(*else_body)?,
+        })
+    }
+
+    fn fold_let_statement_inside_block(
+        &mut self,
+        LetStatementInsideBlock { name, value }: LetStatementInsideBlock<Ref>,
+    ) -> Result<LetStatementInsideBlock<Ref>, Self::Error> {
+        Ok(LetStatementInsideBlock {
+            name,
+            value: value.map(|v| self.fold_expression(v)).transpose()?,
         })
     }
 

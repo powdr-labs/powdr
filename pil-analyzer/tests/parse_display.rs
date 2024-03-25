@@ -478,3 +478,89 @@ namespace Main(8);
 "#;
     assert_eq!(formatted, expected);
 }
+
+#[test]
+fn let_inside_block() {
+    let input = "
+    namespace Main(8);
+        let w;
+        let t: int -> expr = |i| match i {
+            0 => { let x; x },
+            1 => w,
+            _ => if (i < 3) { let y; y } else { w },
+        };
+        {
+            let z;
+            z = 9
+        };
+    ";
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = "namespace Main(8);
+    col witness w;
+    let t: int -> expr = (|i| match i {
+        0 => {
+            let x;
+            x
+        },
+        1 => Main.w,
+        _ => if (i < 3) {
+            let y;
+            y
+        } else { Main.w },
+    });
+    col witness z;
+    Main.z = 9;
+";
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+#[should_panic = "Variable already defined: t"]
+fn let_inside_block_redefine() {
+    let input = "
+    namespace Main(8);
+        let t: int -> int = |i| {
+            let t = 2;
+            let t = 3;
+            t
+        };
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+fn let_inside_block_scoping_separate() {
+    let input = "
+    namespace Main(8);
+        let t: int -> int = |i| {
+            let t = {
+                let w = 8;
+                w
+            };
+            let r = {
+                // New scope, so no name clash.
+                let w = 8;
+                w
+            };
+            t + r
+        };
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+#[should_panic = "Symbol not found: w"]
+fn let_inside_block_scoping_limited() {
+    let input = "
+    namespace Main(8);
+        let t: int -> expr = |i| {
+            let r = {
+                let w = 8;
+                w
+            };
+            // w is not available here any more.
+            w
+        };
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}

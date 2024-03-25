@@ -229,7 +229,11 @@ fn format_outer_function(e: &Expression, qualifier: Option<&str>, f: &mut Format
     match e {
         parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1 => {
             let body = if q.is_empty() {
-                format!("{{ {} }}", lambda.body)
+                if matches!(lambda.body.as_ref(), Expression::BlockExpression(_, _)) {
+                    format!("{}", lambda.body)
+                } else {
+                    format!("{{ {} }}", lambda.body)
+                }
             } else {
                 format!("{}", lambda.body)
             };
