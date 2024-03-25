@@ -142,6 +142,7 @@ pub struct Condenser<'a, T> {
     symbol_values: BTreeMap<SymbolCacheKey, Arc<Value<'a, T>>>,
     /// Current namespace (for names of generated witnesses).
     namespace: AbsoluteSymbolPath,
+    next_identity_id: u64,
     next_witness_id: u64,
     /// The generated witness columns since the last extraction.
     new_witnesses: Vec<Symbol>,
@@ -167,10 +168,17 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             symbol_values: Default::default(),
             namespace: Default::default(),
             next_witness_id,
+            next_identity_id: 0,
             new_witnesses: vec![],
             all_new_witness_names: HashSet::new(),
             _phantom: Default::default(),
         }
+    }
+
+    fn dispense_identity_id(&mut self) -> u64 {
+        let id = self.next_identity_id;
+        self.next_identity_id += 1;
+        id
     }
 
     pub fn condense_identity(
@@ -182,7 +190,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
                 .into_iter()
                 .map(|constraint| {
                     Identity::from_polynomial_identity(
-                        identity.id,
+                        self.dispense_identity_id(),
                         identity.source.clone(),
                         constraint,
                     )
@@ -190,7 +198,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
                 .collect()
         } else {
             vec![Identity {
-                id: identity.id,
+                id: self.dispense_identity_id(),
                 kind: identity.kind,
                 source: identity.source.clone(),
                 left: self.condense_selected_expressions(&identity.left),
