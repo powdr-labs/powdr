@@ -21,3 +21,5 @@ col fixed C(i) {match i {
     _ => 0
 }};
 // ANCHOR_END: mapping
+let w;
+w = B;
