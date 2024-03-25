@@ -149,59 +149,6 @@ impl<T> Analyzed<T> {
         type_from_definition(sym, value).unwrap()
     }
 
-    /// Updates the IDs of all polynomials so that they are contiguous again.
-    fn realign_poly_ids(&mut self) {
-        let mut replacements: BTreeMap<PolyID, PolyID> = Default::default();
-
-        let mut handle_symbol = |new_id: u64, symbol: &Symbol| -> u64 {
-            let length = symbol.length.unwrap_or(1);
-            for i in 0..length {
-                let poly_id = PolyID {
-                    id: new_id + i,
-                    ..PolyID::from(symbol)
-                };
-                replacements.insert(symbol.into(), poly_id);
-            }
-            new_id + length
-        };
-
-        // Create and update the replacement map for all polys.
-        self.committed_polys_in_source_order()
-            .iter()
-            .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
-        self.constant_polys_in_source_order()
-            .iter()
-            .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
-        self.intermediate_polys_in_source_order()
-            .iter()
-            .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
-
-        self.definitions.values_mut().for_each(|(poly, _def)| {
-            if matches!(poly.kind, SymbolKind::Poly(_)) {
-                let poly_id = PolyID::from(poly as &Symbol);
-                poly.id = replacements[&poly_id].id;
-            }
-        });
-        self.intermediate_columns
-            .values_mut()
-            .for_each(|(poly, _def)| {
-                let poly_id = PolyID::from(poly as &Symbol);
-                poly.id = replacements[&poly_id].id;
-            });
-        let visitor = &mut |expr: &mut Expression| {
-            if let Expression::Reference(Reference::Poly(poly)) = expr {
-                poly.poly_id = poly.poly_id.map(|poly_id| replacements[&poly_id]);
-            }
-        };
-        self.post_visit_expressions_in_definitions_mut(visitor);
-        let algebraic_visitor = &mut |expr: &mut AlgebraicExpression<_>| {
-            if let AlgebraicExpression::Reference(poly) = expr {
-                poly.poly_id = replacements[&poly.poly_id];
-            }
-        };
-        self.post_visit_expressions_in_identities_mut(algebraic_visitor);
-    }
-
     /// Adds a polynomial identity and returns the ID.
     pub fn append_polynomial_identity(
         &mut self,
@@ -257,7 +204,57 @@ impl<T> Analyzed<T> {
                 true
             }
         });
-        self.realign_poly_ids();
+
+        // Now re-assign the IDs to be contiguous and in source order again.
+        let mut replacements: BTreeMap<PolyID, PolyID> = Default::default();
+
+        let mut handle_symbol = |new_id: u64, symbol: &Symbol| -> u64 {
+            let length = symbol.length.unwrap_or(1);
+            for i in 0..length {
+                let poly_id = PolyID {
+                    id: new_id + i,
+                    ..PolyID::from(symbol)
+                };
+                replacements.insert(symbol.into(), poly_id);
+            }
+            new_id + length
+        };
+
+        // Create and update the replacement map for all polys.
+        self.committed_polys_in_source_order()
+            .iter()
+            .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
+        self.constant_polys_in_source_order()
+            .iter()
+            .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
+        self.intermediate_polys_in_source_order()
+            .iter()
+            .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
+
+        self.definitions.values_mut().for_each(|(poly, _def)| {
+            if matches!(poly.kind, SymbolKind::Poly(_)) {
+                let poly_id = PolyID::from(poly as &Symbol);
+                poly.id = replacements[&poly_id].id;
+            }
+        });
+        self.intermediate_columns
+            .values_mut()
+            .for_each(|(poly, _def)| {
+                let poly_id = PolyID::from(poly as &Symbol);
+                poly.id = replacements[&poly_id].id;
+            });
+        let visitor = &mut |expr: &mut Expression| {
+            if let Expression::Reference(Reference::Poly(poly)) = expr {
+                poly.poly_id = poly.poly_id.map(|poly_id| replacements[&poly_id]);
+            }
+        };
+        self.post_visit_expressions_in_definitions_mut(visitor);
+        let algebraic_visitor = &mut |expr: &mut AlgebraicExpression<_>| {
+            if let AlgebraicExpression::Reference(poly) = expr {
+                poly.poly_id = replacements[&poly.poly_id];
+            }
+        };
+        self.post_visit_expressions_in_identities_mut(algebraic_visitor);
     }
 
     pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
