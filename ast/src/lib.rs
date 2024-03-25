@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 /// Analyzed PIL
 pub mod analyzed;
-/// A typed-checked ASM + PIL AST optimised for analysis
+/// A typed-checked ASM + PIL AST optimized for analysis
 pub mod asm_analysis;
 /// An AST for PIL objects
 pub mod object;

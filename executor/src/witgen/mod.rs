@@ -1,10 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use powdr_ast::analyzed::{
-    AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialType,
-    SymbolKind,
+    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
+    PolynomialType, SymbolKind,
 };
+use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
@@ -43,6 +45,45 @@ static OUTER_CODE_NAME: &str = "witgen (outer code)";
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
+#[derive(Clone)]
+pub struct WitgenCallback<T> {
+    analyzed: Rc<Analyzed<T>>,
+    fixed_col_values: Rc<Vec<(String, Vec<T>)>>,
+    query_callback: Arc<dyn QueryCallback<T>>,
+}
+
+impl<T: FieldElement> WitgenCallback<T> {
+    pub fn new(
+        analyzed: Rc<Analyzed<T>>,
+        fixed_col_values: Rc<Vec<(String, Vec<T>)>>,
+        query_callback: Option<Arc<dyn QueryCallback<T>>>,
+    ) -> Self {
+        let query_callback = query_callback.unwrap_or_else(|| Arc::new(unused_query_callback()));
+        Self {
+            analyzed,
+            fixed_col_values,
+            query_callback,
+        }
+    }
+
+    /// Computes the next-stage witness, given the current witness and challenges.
+    pub fn next_stage_witness(
+        &self,
+        current_witness: &[(String, Vec<T>)],
+        challenges: BTreeMap<u64, T>,
+        stage: u8,
+    ) -> Vec<(String, Vec<T>)> {
+        WitnessGenerator::new(
+            &self.analyzed,
+            &self.fixed_col_values,
+            &*self.query_callback,
+        )
+        .with_external_witness_values(current_witness)
+        .with_challenges(stage, challenges)
+        .generate()
+    }
+}
+
 pub fn chain_callbacks<T: FieldElement>(
     c1: Arc<dyn QueryCallback<T>>,
     c2: Arc<dyn QueryCallback<T>>,
@@ -66,7 +107,9 @@ pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
     fixed_col_values: &'b [(String, Vec<T>)],
     query_callback: &'b dyn QueryCallback<T>,
-    external_witness_values: Vec<(String, Vec<T>)>,
+    external_witness_values: &'b [(String, Vec<T>)],
+    stage: u8,
+    challenges: BTreeMap<u64, T>,
 }
 
 impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
@@ -79,16 +122,26 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             analyzed,
             fixed_col_values,
             query_callback,
-            external_witness_values: Vec::new(),
+            external_witness_values: &[],
+            stage: 0,
+            challenges: BTreeMap::new(),
         }
     }
 
     pub fn with_external_witness_values(
         self,
-        external_witness_values: Vec<(String, Vec<T>)>,
+        external_witness_values: &'b [(String, Vec<T>)],
     ) -> Self {
         WitnessGenerator {
             external_witness_values,
+            ..self
+        }
+    }
+
+    pub fn with_challenges(self, stage: u8, challenges: BTreeMap<u64, T>) -> Self {
+        WitnessGenerator {
+            stage,
+            challenges,
             ..self
         }
     }
@@ -101,10 +154,29 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             self.analyzed,
             self.fixed_col_values,
             self.external_witness_values,
+            self.challenges,
         );
         let identities = self
             .analyzed
-            .identities_with_inlined_intermediate_polynomials();
+            .identities_with_inlined_intermediate_polynomials()
+            .into_iter()
+            .filter(|identity| {
+                let discard = identity.expr_any(|expr| {
+                    if let AlgebraicExpression::Challenge(challenge) = expr {
+                        challenge.stage >= self.stage.into()
+                    } else {
+                        false
+                    }
+                });
+                if discard {
+                    log::debug!(
+                        "Skipping identity that references challenge of later stage: {}",
+                        identity
+                    );
+                }
+                !discard
+            })
+            .collect::<Vec<_>>();
 
         let (
             constraints,
@@ -163,6 +235,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .analyzed
             .committed_polys_in_source_order()
             .into_iter()
+            .filter(|(symbol, _)| symbol.stage.unwrap_or_default() <= self.stage.into())
             .flat_map(|(p, _)| p.array_elements())
             .map(|(name, _id)| {
                 let column = columns.remove(&name).unwrap();
@@ -205,15 +278,20 @@ pub struct FixedData<'a, T> {
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
     column_by_name: HashMap<String, PolyID>,
+    challenges: BTreeMap<u64, T>,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
     pub fn new(
         analyzed: &'a Analyzed<T>,
         fixed_col_values: &'a [(String, Vec<T>)],
-        external_witness_values: Vec<(String, Vec<T>)>,
+        external_witness_values: &'a [(String, Vec<T>)],
+        challenges: BTreeMap<u64, T>,
     ) -> Self {
-        let mut external_witness_values = BTreeMap::from_iter(external_witness_values);
+        let mut external_witness_values = external_witness_values
+            .iter()
+            .map(|(name, values)| (name.clone(), values))
+            .collect::<BTreeMap<_, _>>();
 
         let witness_cols =
             WitnessColumnMap::from(analyzed.committed_polys_in_source_order().iter().flat_map(
@@ -263,6 +341,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 .filter(|(_, (symbol, _))| matches!(symbol.kind, SymbolKind::Poly(_)))
                 .map(|(name, (symbol, _))| (name.clone(), symbol.into()))
                 .collect(),
+            challenges,
         }
     }
 
@@ -314,7 +393,7 @@ pub struct WitnessColumn<'a, T> {
     query: Option<&'a Expression>,
     /// A list of externally computed witness values, if any.
     /// The length of this list must be equal to the degree.
-    external_values: Option<Vec<T>>,
+    external_values: Option<&'a Vec<T>>,
 }
 
 impl<'a, T> WitnessColumn<'a, T> {
@@ -322,7 +401,7 @@ impl<'a, T> WitnessColumn<'a, T> {
         id: usize,
         name: &str,
         value: &'a Option<FunctionValueDefinition>,
-        external_values: Option<Vec<T>>,
+        external_values: Option<&'a Vec<T>>,
     ) -> WitnessColumn<'a, T> {
         let query = if let Some(FunctionValueDefinition::Query(query)) = value {
             Some(query)
