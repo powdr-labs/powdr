@@ -16,7 +16,7 @@ type T = GoldilocksField;
 fn run_witgen<T: FieldElement>(
     analyzed: &Analyzed<T>,
     constants: &[(String, Vec<T>)],
-    external_witness_values: Vec<(String, Vec<T>)>,
+    external_witness_values: &[(String, Vec<T>)],
 ) {
     let query_callback = inputs_to_query_callback(vec![]);
     powdr_executor::witgen::WitnessGenerator::new(analyzed, constants, &query_callback)
@@ -37,9 +37,7 @@ fn executor_benchmark(c: &mut Criterion) {
     let pil = pipeline.compute_optimized_pil().unwrap();
     let fixed_cols = pipeline.compute_fixed_cols().unwrap();
 
-    group.bench_function("keccak", |b| {
-        b.iter(|| run_witgen(&pil, &fixed_cols, vec![]))
-    });
+    group.bench_function("keccak", |b| b.iter(|| run_witgen(&pil, &fixed_cols, &[])));
 
     // The first chunk of `many_chunks`, with Poseidon co-processor & bootloader
     let riscv_asm_files =
@@ -58,7 +56,7 @@ fn executor_benchmark(c: &mut Criterion) {
             run_witgen(
                 &pil,
                 &fixed_cols,
-                vec![(
+                &[(
                     "main.bootloader_input_value".to_string(),
                     default_input(&[63, 64, 65])
                         .into_iter()

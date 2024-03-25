@@ -219,7 +219,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
             .map(|(value_index, poly)| {
                 let column = self.fixed_data.witness_cols[poly]
                     .external_values
-                    .clone()
+                    .cloned()
                     .map(|mut external_values| {
                         // External witness values might only be provided partially.
                         external_values.resize(self.fixed_data.degree as usize, T::zero());
