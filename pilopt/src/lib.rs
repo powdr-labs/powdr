@@ -37,27 +37,29 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
 /// Removes all definitions that are not referenced by an identity, public declaration
 /// or witness column hint.
 fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let mut required_names = collect_required_names(pil_file);
+    let poly_id_to_definition_name = build_poly_id_to_definition_name_lookup(pil_file);
+    let mut required_names = collect_required_names(pil_file, &poly_id_to_definition_name);
     let mut to_process = required_names.iter().cloned().collect::<Vec<_>>();
     while let Some(n) = to_process.pop() {
-        if let Some((_, value)) = pil_file.definitions.get(&n) {
+        if let Some((_, value)) = pil_file.definitions.get(n) {
             let Some(value) = value else { continue };
             value.pre_visit_expressions(&mut |e| {
                 if let Expression::Reference(Reference::Poly(PolynomialReference {
                     name, ..
                 })) = e
                 {
-                    if required_names.insert(name.clone()) {
-                        to_process.push(name.clone());
+                    if required_names.insert(&name) {
+                        to_process.push(&name);
                     }
                 }
             })
-        } else if let Some((_, value)) = pil_file.intermediate_columns.get(&n) {
+        } else if let Some((_, value)) = pil_file.intermediate_columns.get(n) {
             for v in value {
                 v.pre_visit_expressions(&mut |e| {
-                    if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = e {
-                        if required_names.insert(name.clone()) {
-                            to_process.push(name.clone());
+                    if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
+                        let name = poly_id_to_definition_name[poly_id];
+                        if required_names.insert(name) {
+                            to_process.push(name);
                         }
                     }
                 })
@@ -67,30 +69,52 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         }
     }
 
-    let definitions_to_remove = pil_file
+    let definitions_to_remove: BTreeSet<_> = pil_file
         .definitions
         .keys()
         .chain(pil_file.intermediate_columns.keys())
         .filter(|name| !required_names.contains(*name))
         .cloned()
         .collect();
+    println!("Removing {:?}", definitions_to_remove);
     pil_file.remove_definitions(&definitions_to_remove);
 }
 
+/// Builds a lookup-table that can be used to turn array elements
+/// (in form of their poly ids) into the names of the arrays.
+fn build_poly_id_to_definition_name_lookup(
+    pil_file: &Analyzed<impl FieldElement>,
+) -> BTreeMap<PolyID, &String> {
+    let mut poly_id_to_definition_name = BTreeMap::new();
+    for (name, (symbol, _)) in &pil_file.definitions {
+        symbol.array_elements().for_each(|(_, id)| {
+            poly_id_to_definition_name.insert(id, name);
+        });
+    }
+    for (name, (symbol, _)) in &pil_file.intermediate_columns {
+        symbol.array_elements().for_each(|(_, id)| {
+            poly_id_to_definition_name.insert(id, name);
+        });
+    }
+    poly_id_to_definition_name
+}
+
 /// Collect all names that are referenced in identities and public declarations.
-fn collect_required_names<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<String> {
-    // TODO we could re-borrow from definitions here or something.
-    let mut required_names: HashSet<String> = Default::default();
+fn collect_required_names<'a, T: FieldElement>(
+    pil_file: &Analyzed<T>,
+    poly_id_to_definition_name: &BTreeMap<PolyID, &'a String>,
+) -> HashSet<&'a String> {
+    let mut required_names: HashSet<&String> = Default::default();
     required_names.extend(
         pil_file
             .public_declarations
             .values()
-            .map(|p| p.polynomial.name.clone()),
+            .map(|p| poly_id_to_definition_name[&p.polynomial.poly_id.unwrap()]),
     );
     for id in &pil_file.identities {
         id.pre_visit_expressions(&mut |e: &AlgebraicExpression<T>| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = e {
-                required_names.insert(name.clone());
+            if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
+                required_names.insert(poly_id_to_definition_name[poly_id]);
             }
         });
     }
@@ -548,6 +572,25 @@ mod test {
         { x } in { cnt };
 
     "#;
+        let expectation = r#"namespace N(65536);
+    col witness x;
+    col fixed cnt(i) { N.inc(i) };
+    let inc: int -> int = (|x| (x + 1));
+    { N.x } in { N.cnt };
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
+    fn remove_unreferenced_parts_of_arrays() {
+        let input = r#"namespace N(65536);
+        col witness x[5];
+        let inter: expr[5] = x;
+        x[2] = inter[4];
+    "#;
+        // If we change the handling of intermediate columns,
+        // make sure that "inter" is still an array of intermediate columns.
         let expectation = r#"namespace N(65536);
     col witness x;
     col fixed cnt(i) { N.inc(i) };
