@@ -10,7 +10,6 @@ use std::{
 };
 
 use itertools::Either;
-use powdr_number::BigUint;
 
 use crate::parsed::{
     asm::{
@@ -529,7 +528,7 @@ pub struct OperationSymbol {
 
 #[derive(Clone, Debug)]
 pub struct DegreeStatement {
-    pub degree: BigUint,
+    pub degree: Expression,
 }
 
 #[derive(Clone, Debug)]

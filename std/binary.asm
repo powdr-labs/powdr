@@ -12,13 +12,16 @@ machine Binary(latch, operation_id) {
 
     operation xor<2> A, B -> C;
 
+    // Allow this machine to be connected via a permutation
+    call_selectors sel;
+
     col witness operation_id;
     unchanged_until(operation_id, latch);
 
     col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
-    // TOOD would be nice with destructuring assignment for arrays.
+    // TODO would be nice with destructuring assignment for arrays.
     let inputs: (int -> int)[] = cross_product([256, 256, 3]);
     let a = inputs[0];
     let b = inputs[1];

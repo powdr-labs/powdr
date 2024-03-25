@@ -3,7 +3,6 @@ pub mod build;
 pub mod display;
 pub mod folder;
 pub mod types;
-pub mod utils;
 pub mod visitor;
 
 use std::{

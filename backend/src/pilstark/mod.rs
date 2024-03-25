@@ -9,6 +9,7 @@ use std::{
 
 use crate::{Backend, BackendFactory, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
+use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 
 pub struct PilStarkCliFactory;
@@ -45,6 +46,8 @@ impl<'a, F: FieldElement> Backend<'a, F> for PilStarkCli<'a, F> {
         &self,
         _witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
+        // TODO: Implement challenges
+        _witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     sync::{Arc, RwLock},
 };
 
@@ -50,7 +50,7 @@ fn generate_values<T: FieldElement>(
 ) -> Vec<T> {
     let symbols = CachedSymbols {
         symbols: &analyzed.definitions,
-        cache: Arc::new(RwLock::new(HashMap::new())),
+        cache: Arc::new(RwLock::new(Default::default())),
     };
     let result = match body {
         FunctionValueDefinition::Expression(TypedExpression { e, type_scheme }) => {
@@ -131,10 +131,12 @@ fn generate_values<T: FieldElement>(
     }
 }
 
+type SymbolCache<'a, T> = BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>;
+
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    cache: Arc<RwLock<HashMap<String, Arc<Value<'a, T>>>>>,
+    cache: Arc<RwLock<SymbolCache<'a, T>>>,
 }
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
@@ -143,14 +145,16 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         name: &'a str,
         generic_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        if let Some(v) = self.cache.read().unwrap().get(name) {
+        let cache_key = (name.to_string(), generic_args.clone());
+        if let Some(v) = self.cache.read().unwrap().get(&cache_key) {
             return Ok(v.clone());
         }
         let result = Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)?;
         self.cache
             .write()
             .unwrap()
-            .insert(name.to_string(), result.clone());
+            .entry(cache_key)
+            .or_insert_with(|| result.clone());
         Ok(result)
     }
 }
@@ -578,6 +582,26 @@ mod test {
         assert_eq!(
             constants[1],
             ("F.y[1]".to_string(), convert([1, 2, 3, 4].to_vec()))
+        );
+    }
+
+    #[test]
+    pub fn generic_cache() {
+        // Tests that the evaluation cache stores symbols with their
+        // generic arguments.
+        let src = r#"
+            namespace std::convert(4);
+                let fe = || fe();
+            namespace F(4);
+                let<T: FromLiteral> seven: T = 7;
+                let a: col = |i| std::convert::fe(i + seven) + seven;
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants[0],
+            ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
         );
     }
 }

@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::parsed::asm::SymbolPath;
 use crate::parsed::types::{ArrayType, Type, TypeScheme};
-use crate::parsed::utils::expr_any;
 use crate::parsed::visitor::ExpressionVisitable;
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
@@ -165,17 +164,17 @@ impl<T> Analyzed<T> {
                 .iter()
                 .fold(
                     (0, BTreeMap::new()),
-                    |(shift, mut replacements), (poly, _def)| {
+                    |(new_id, mut replacements), (poly, _def)| {
                         let poly_id = poly.into();
                         let length = poly.length.unwrap_or(1);
                         if to_remove.contains(&poly_id) {
-                            (shift + length, replacements)
+                            (new_id, replacements)
                         } else {
-                            for (_name, id) in poly.array_elements() {
+                            for (i, (_name, id)) in poly.array_elements().enumerate() {
                                 replacements.insert(
                                     id,
                                     PolyID {
-                                        id: id.id - shift,
+                                        id: new_id + i as u64,
                                         ..id
                                     },
                                 );
@@ -188,12 +187,12 @@ impl<T> Analyzed<T> {
                                 replacements.insert(
                                     poly_id,
                                     PolyID {
-                                        id: poly.id - shift,
+                                        id: new_id,
                                         ..poly_id
                                     },
                                 );
                             }
-                            (shift, replacements)
+                            (new_id + length, replacements)
                         }
                     },
                 )
@@ -850,7 +849,7 @@ impl<T> AlgebraicExpression<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {
-        expr_any(self, |e| match e {
+        self.expr_any(|e| match e {
             AlgebraicExpression::Reference(poly) => poly.next,
             _ => false,
         })
@@ -858,7 +857,7 @@ impl<T> AlgebraicExpression<T> {
 
     /// @returns true if the expression contains a reference to a next value of a witness column.
     pub fn contains_next_witness_ref(&self) -> bool {
-        expr_any(self, |e| match e {
+        self.expr_any(|e| match e {
             AlgebraicExpression::Reference(poly) => poly.next && poly.is_witness(),
             _ => false,
         })
@@ -866,7 +865,7 @@ impl<T> AlgebraicExpression<T> {
 
     /// @returns true if the expression contains a reference to a witness column.
     pub fn contains_witness_ref(&self) -> bool {
-        expr_any(self, |e| match e {
+        self.expr_any(|e| match e {
             AlgebraicExpression::Reference(poly) => poly.is_witness(),
             _ => false,
         })
