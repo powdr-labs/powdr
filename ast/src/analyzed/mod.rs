@@ -261,19 +261,18 @@ impl<T> Analyzed<T> {
         identity: AlgebraicExpression<T>,
         source: SourceRef,
     ) -> u64 {
-        let local_id = self
+        let id = self
             .identities
             .iter()
             .map(|identity| identity.id)
             .max()
             .unwrap_or_default()
             + 1;
-        self.identities.push(Identity::from_polynomial_identity(
-            local_id, source, identity,
-        ));
+        self.identities
+            .push(Identity::from_polynomial_identity(id, source, identity));
         self.source_order
             .push(StatementIdentifier::Identity(self.identities.len() - 1));
-        local_id
+        id
     }
 
     /// Remove some identities by their index (not their ID).
