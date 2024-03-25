@@ -7,7 +7,6 @@ use std::hash::{Hash, Hasher};
 use std::ops::{self, ControlFlow};
 use std::str::FromStr;
 
-use itertools::Itertools;
 use powdr_number::{DegreeType, FieldElement};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
