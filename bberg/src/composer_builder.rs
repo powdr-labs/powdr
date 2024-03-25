@@ -187,10 +187,10 @@ fn cpp_includes(name: &str) -> String {
     format!(
         "
 #include \"./{name}_composer.hpp\"
+#include \"barretenberg/plonk_honk_shared/composer/composer_lib.hpp\"
+#include \"barretenberg/plonk_honk_shared/composer/permutation_lib.hpp\"
+#include \"barretenberg/vm/generated/{name}_circuit_builder.hpp\"
 #include \"barretenberg/vm/generated/{name}_verifier.hpp\"
-#include \"barretenberg/proof_system/circuit_builder/generated/{name}_circuit_builder.hpp\"
-#include \"barretenberg/proof_system/composer/composer_lib.hpp\"
-#include \"barretenberg/proof_system/composer/permutation_lib.hpp\"
 "
     )
 }
@@ -200,11 +200,11 @@ pub fn hpp_includes(name: &str) -> String {
         "
 #pragma once
 
+#include \"barretenberg/plonk_honk_shared/composer/composer_lib.hpp\"
+#include \"barretenberg/srs/global_crs.hpp\"
+#include \"barretenberg/vm/generated/{name}_circuit_builder.hpp\"
 #include \"barretenberg/vm/generated/{name}_prover.hpp\"
 #include \"barretenberg/vm/generated/{name}_verifier.hpp\"
-#include \"barretenberg/proof_system/circuit_builder/generated/{name}_circuit_builder.hpp\"
-#include \"barretenberg/proof_system/composer/composer_lib.hpp\"
-#include \"barretenberg/srs/global_crs.hpp\"
     "
     )
 }
