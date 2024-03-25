@@ -9,7 +9,7 @@ use powdr_ast::analyzed::{
     Reference,
 };
 use powdr_ast::parsed::types::Type;
-use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_number::{BigUint, FieldElement};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
@@ -43,7 +43,7 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     while let Some(n) = to_process.pop() {
         if let Some((_, value)) = pil_file.definitions.get(n) {
             let Some(value) = value else { continue };
-            value.pre_visit_expressions(&mut |e| {
+            value.all_children().for_each(|e| {
                 if let Expression::Reference(Reference::Poly(PolynomialReference {
                     name, ..
                 })) = e
@@ -52,7 +52,7 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
                         to_process.push(&name);
                     }
                 }
-            })
+            });
         } else if let Some((_, value)) = pil_file.intermediate_columns.get(n) {
             for v in value {
                 v.pre_visit_expressions(&mut |e| {
