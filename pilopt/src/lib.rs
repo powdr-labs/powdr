@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
     Analyzed, Expression, FunctionValueDefinition, IdentityKind, PolyID, PolynomialReference,
-    Reference,
+    Reference, SymbolKind,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
@@ -48,8 +48,8 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
                     name, ..
                 })) = e
                 {
-                    if required_names.insert(&name) {
-                        to_process.push(&name);
+                    if required_names.insert(name) {
+                        to_process.push(name);
                     }
                 }
             });
@@ -76,7 +76,6 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .filter(|name| !required_names.contains(*name))
         .cloned()
         .collect();
-    println!("Removing {:?}", definitions_to_remove);
     pil_file.remove_definitions(&definitions_to_remove);
 }
 
@@ -87,9 +86,11 @@ fn build_poly_id_to_definition_name_lookup(
 ) -> BTreeMap<PolyID, &String> {
     let mut poly_id_to_definition_name = BTreeMap::new();
     for (name, (symbol, _)) in &pil_file.definitions {
-        symbol.array_elements().for_each(|(_, id)| {
-            poly_id_to_definition_name.insert(id, name);
-        });
+        if matches!(symbol.kind, SymbolKind::Poly(_)) {
+            symbol.array_elements().for_each(|(_, id)| {
+                poly_id_to_definition_name.insert(id, name);
+            });
+        }
     }
     for (name, (symbol, _)) in &pil_file.intermediate_columns {
         symbol.array_elements().for_each(|(_, id)| {
@@ -592,10 +593,9 @@ mod test {
         // If we change the handling of intermediate columns,
         // make sure that "inter" is still an array of intermediate columns.
         let expectation = r#"namespace N(65536);
-    col witness x;
-    col fixed cnt(i) { N.inc(i) };
-    let inc: int -> int = (|x| (x + 1));
-    { N.x } in { N.cnt };
+    col witness x[5];
+    col inter[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
+    N.x[2] = N.inter[4];
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);

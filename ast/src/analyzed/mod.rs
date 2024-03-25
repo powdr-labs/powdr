@@ -211,11 +211,15 @@ impl<T> Analyzed<T> {
         let mut handle_symbol = |new_id: u64, symbol: &Symbol| -> u64 {
             let length = symbol.length.unwrap_or(1);
             for i in 0..length {
-                let poly_id = PolyID {
+                let old_poly_id = PolyID {
+                    id: symbol.id + i,
+                    ..PolyID::from(symbol)
+                };
+                let new_poly_id = PolyID {
                     id: new_id + i,
                     ..PolyID::from(symbol)
                 };
-                replacements.insert(symbol.into(), poly_id);
+                replacements.insert(old_poly_id, new_poly_id);
             }
             new_id + length
         };
