@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use powdr_ast::{
     analyzed::{Expression, Reference},
-    parsed::visitor::{AllChildren},
+    parsed::visitor::AllChildren,
 };
 
 /// Returns a sorted list of symbols such that called symbols appear before the symbols that reference them.
