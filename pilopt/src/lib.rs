@@ -540,6 +540,7 @@ mod test {
         let inc = |x| x + 1;
         // these are removed
         col witness k;
+        col k2 = k;
         let rec: -> int = || rec();
         let a: int -> int = |i| b(i + 1);
         let b: int -> int = |j| 8;
