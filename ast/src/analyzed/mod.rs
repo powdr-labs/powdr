@@ -165,17 +165,17 @@ impl<T> Analyzed<T> {
                 .iter()
                 .fold(
                     (0, BTreeMap::new()),
-                    |(shift, mut replacements), (poly, _def)| {
+                    |(new_id, mut replacements), (poly, _def)| {
                         let poly_id = poly.into();
                         let length = poly.length.unwrap_or(1);
                         if to_remove.contains(&poly_id) {
-                            (shift + length, replacements)
+                            (new_id, replacements)
                         } else {
-                            for (_name, id) in poly.array_elements() {
+                            for (i, (_name, id)) in poly.array_elements().enumerate() {
                                 replacements.insert(
                                     id,
                                     PolyID {
-                                        id: id.id - shift,
+                                        id: new_id + i as u64,
                                         ..id
                                     },
                                 );
@@ -188,12 +188,12 @@ impl<T> Analyzed<T> {
                                 replacements.insert(
                                     poly_id,
                                     PolyID {
-                                        id: poly.id - shift,
+                                        id: new_id,
                                         ..poly_id
                                     },
                                 );
                             }
-                            (shift, replacements)
+                            (new_id + length, replacements)
                         }
                     },
                 )
