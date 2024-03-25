@@ -661,7 +661,6 @@ impl PublicDeclaration {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Identity<Expr> {
-    /// The ID is specific to the identity kind.
     pub id: u64,
     pub kind: IdentityKind,
     pub source: SourceRef,
