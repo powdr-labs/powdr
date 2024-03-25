@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use crate::{pilstark, Backend, BackendFactory, Error};
 use powdr_ast::analyzed::Analyzed;
+use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, GoldilocksField, LargeInt};
 
 use starky::{
@@ -183,6 +184,8 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
         &self,
         witness: &[(String, Vec<F>)],
         prev_proof: Option<crate::Proof>,
+        // TODO: Implement challenges
+        _witgen_callback: WitgenCallback<F>,
     ) -> Result<crate::Proof, Error> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);

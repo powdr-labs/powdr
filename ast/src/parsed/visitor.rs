@@ -114,6 +114,17 @@ pub trait ExpressionVisitable<Expr> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, order: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expr) -> ControlFlow<B>;
+
+    fn expr_any(&self, mut f: impl FnMut(&Expr) -> bool) -> bool {
+        self.pre_visit_expressions_return(&mut |e| {
+            if f(e) {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .is_break()
+    }
 }
 
 impl<Ref> ExpressionVisitable<Expression<Ref>> for Expression<Ref> {
