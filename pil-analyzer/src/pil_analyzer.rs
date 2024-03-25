@@ -182,7 +182,7 @@ impl PILAnalyzer {
             .collect();
         // Collect all expressions in identities.
         for id in &mut self.identities {
-            if id.id.kind == IdentityKind::Polynomial {
+            if id.kind == IdentityKind::Polynomial {
                 // At statement level, we allow constr or constr[].
                 expressions.push((
                     id.expression_for_poly_id_mut(),

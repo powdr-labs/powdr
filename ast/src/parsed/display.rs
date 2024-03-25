@@ -376,61 +376,69 @@ impl Display for PilStatement {
             PilStatement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
-            PilStatement::LetStatement(_, name, type_scheme, value) => {
-                write!(
-                    f,
-                    "    let{}",
-                    format_type_scheme_around_name(name, type_scheme)
-                )?;
-                if let Some(value) = &value {
-                    write!(f, " = {value}")?;
-                }
-                write!(f, ";")
-            }
+            PilStatement::LetStatement(_, name, type_scheme, value) => write_indented_by(
+                f,
+                format!(
+                    "let{}{};",
+                    format_type_scheme_around_name(name, type_scheme),
+                    value
+                        .as_ref()
+                        .map(|value| format!(" = {value}"))
+                        .unwrap_or_default()
+                ),
+                1,
+            ),
             PilStatement::PolynomialDefinition(_, name, value) => {
-                write!(f, "    pol {name} = {value};")
+                write_indented_by(f, format!("pol {name} = {value};"), 1)
             }
             PilStatement::PublicDeclaration(_, name, poly, array_index, index) => {
-                write!(
+                write_indented_by(
                     f,
-                    "    public {name} = {poly}{}({index});",
-                    array_index
-                        .as_ref()
-                        .map(|i| format!("[{i}]"))
-                        .unwrap_or_default()
+                    format!(
+                        "public {name} = {poly}{}({index});",
+                        array_index
+                            .as_ref()
+                            .map(|i| format!("[{i}]"))
+                            .unwrap_or_default()
+                    ),
+                    1,
                 )
             }
             PilStatement::PolynomialConstantDeclaration(_, names) => {
-                write!(f, "    pol constant {};", names.iter().format(", "))
+                write_indented_by(f, format!("pol constant {};", names.iter().format(", ")), 1)
             }
             PilStatement::PolynomialConstantDefinition(_, name, definition) => {
-                write!(f, "    pol constant {name}{definition};")
+                write_indented_by(f, format!("pol constant {name}{definition};"), 1)
             }
-            PilStatement::PolynomialCommitDeclaration(_, stage, names, value) => {
-                write!(
-                    f,
-                    "    pol commit {}{}{};",
+            PilStatement::PolynomialCommitDeclaration(_, stage, names, value) => write_indented_by(
+                f,
+                format!(
+                    "pol commit {}{}{};",
                     stage.map(|s| format!("stage({s}) ")).unwrap_or_default(),
                     names.iter().format(", "),
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
-                )
+                ),
+                1,
+            ),
+            PilStatement::PlookupIdentity(_, left, right) => {
+                write_indented_by(f, format!("{left} in {right};"), 1)
             }
-            PilStatement::PlookupIdentity(_, left, right) => write!(f, "    {left} in {right};"),
             PilStatement::PermutationIdentity(_, left, right) => {
-                write!(f, "    {left} is {right};")
+                write_indented_by(f, format!("{left} is {right};"), 1)
             }
-            PilStatement::ConnectIdentity(_, left, right) => write!(
+            PilStatement::ConnectIdentity(_, left, right) => write_indented_by(
                 f,
-                "    {{ {} }} connect {{ {} }};",
-                format_expressions(left),
-                format_expressions(right)
+                format!(
+                    "{{ {} }} connect {{ {} }};",
+                    format_expressions(left),
+                    format_expressions(right)
+                ),
+                1,
             ),
             PilStatement::ConstantDefinition(_, name, value) => {
-                write!(f, "    constant {name} = {value};")
+                write_indented_by(f, format!("constant {name} = {value};"), 1)
             }
-            PilStatement::Expression(_, e) => {
-                write!(f, "    {e};")
-            }
+            PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
         }
     }
@@ -531,7 +539,9 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
             Expression::MatchExpression(scrutinee, arms) => {
-                write!(f, "match {scrutinee} {{ {} }}", arms.iter().format(" "))
+                writeln!(f, "match {scrutinee} {{")?;
+                write_items_indented(f, arms)?;
+                write!(f, "}}")
             }
             Expression::IfExpression(e) => write!(f, "{e}"),
         }

@@ -1,10 +1,10 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::iter;
 use std::str::FromStr;
 
 use itertools::Itertools;
 
-use powdr_ast::analyzed::{IdentityId, TypedExpression};
+use powdr_ast::analyzed::TypedExpression;
 use powdr_ast::parsed::{
     self,
     asm::SymbolPath,
@@ -34,7 +34,7 @@ pub enum PILItem {
 
 pub struct Counters {
     symbol_counters: BTreeMap<SymbolKind, u64>,
-    identity_counter: HashMap<IdentityKind, u64>,
+    identity_counter: u64,
     public_counter: u64,
 }
 
@@ -51,17 +51,16 @@ impl Default for Counters {
             .into_iter()
             .map(|k| (k, 0))
             .collect(),
-            identity_counter: Default::default(),
+            identity_counter: 0,
             public_counter: 0,
         }
     }
 }
 
 impl Counters {
-    pub fn dispense_identity_id(&mut self, kind: IdentityKind) -> u64 {
-        let cnt = self.identity_counter.entry(kind).or_default();
-        let id = *cnt;
-        *cnt += 1;
+    pub fn dispense_identity_id(&mut self) -> u64 {
+        let id = self.identity_counter;
+        self.identity_counter += 1;
         id
     }
 
@@ -365,10 +364,8 @@ where
         };
 
         vec![PILItem::Identity(Identity {
-            id: IdentityId {
-                local_id: self.counters.dispense_identity_id(kind),
-                kind,
-            },
+            id: self.counters.dispense_identity_id(),
+            kind,
             source,
             left,
             right,

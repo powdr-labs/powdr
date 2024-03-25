@@ -15,7 +15,7 @@ use powdr_ast::{
 
 use itertools::Itertools;
 
-const DEFAULT_DEGREE: u64 = 1024;
+const DEFAULT_DEGREE: u32 = 1024;
 const MAIN_OPERATION_NAME: &str = "main";
 
 /// a monolithic linker which outputs a single AIR
@@ -27,11 +27,12 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         .get(&main_machine.location)
         .unwrap()
         .degree
-        .unwrap_or(DEFAULT_DEGREE);
+        .clone()
+        .unwrap_or_else(|| DEFAULT_DEGREE.into());
 
     let mut errors = vec![];
 
-    let mut pil = process_definitions(main_degree, graph.definitions);
+    let mut pil = process_definitions(&main_degree, graph.definitions);
 
     for (location, object) in graph.objects.into_iter() {
         if let Some(degree) = object.degree {
@@ -47,7 +48,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
-            Expression::Number(main_degree.into(), None),
+            main_degree.clone(),
         ));
 
         pil.extend(object.pil);
@@ -90,7 +91,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
 
 // Extract the utilities and sort them into namespaces where possible.
 fn process_definitions(
-    main_degree: u64,
+    main_degree: &Expression,
     definitions: BTreeMap<AbsoluteSymbolPath, TypeOrExpression>,
 ) -> Vec<PilStatement> {
     let mut current_namespace = Default::default();
@@ -125,7 +126,7 @@ fn process_definitions(
                     PilStatement::Namespace(
                         SourceRef::unknown(),
                         namespace.relative_to(&AbsoluteSymbolPath::default()),
-                        Expression::Number(main_degree.into(), None),
+                        main_degree.clone(),
                     ),
                     statement,
                 ]
@@ -306,7 +307,7 @@ mod test {
 
     #[test]
     fn compile_empty_vm() {
-        let expectation = r#"namespace main(8);
+        let expectation = r#"namespace main((4 + 4));
     pol commit _operation_id(i) query std::prover::Query::Hint(2);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
@@ -483,7 +484,11 @@ namespace main_sub(16);
     pol pc_update = ((((((instr_jmpz * (instr_jmpz_pc_update + instr_jmpz_pc_update_1)) + (instr_jmp * instr_jmp_param_l)) + (instr__jump_to_operation * _operation_id)) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((((instr_jmpz + instr_jmp) + instr__jump_to_operation) + instr__loop) + instr_return)) * (pc + 1)));
     (pc' = ((1 - first_step') * pc_update));
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] + [10]*;
-    pol commit X_free_value(__i) query match std::prover::eval(pc) { 2 => std::prover::Query::Input(1), 4 => std::prover::Query::Input(std::convert::int((std::prover::eval(CNT) + 1))), 7 => std::prover::Query::Input(0), };
+    pol commit X_free_value(__i) query match std::prover::eval(pc) {
+        2 => std::prover::Query::Input(1),
+        4 => std::prover::Query::Input(std::convert::int((std::prover::eval(CNT) + 1))),
+        7 => std::prover::Query::Input(0),
+    };
     pol constant p_X_const = [0]*;
     pol constant p_X_read_free = [0, 0, 1, 0, 1, 0, 0, 18446744069414584320, 0, 0, 0] + [0]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;

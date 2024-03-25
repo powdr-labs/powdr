@@ -6,6 +6,9 @@ machine SplitBN254(RESET, _) {
 
     operation split in_acc -> o1, o2, o3, o4, o5, o6, o7, o8;
 
+    // Allow this machine to be connected via a permutation
+    call_selectors sel;
+
     // Latch and operation ID
     col fixed RESET(i) { if i % 32 == 31 { 1 } else { 0 } };
 

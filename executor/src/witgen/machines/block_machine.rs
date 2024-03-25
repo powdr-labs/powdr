@@ -18,8 +18,8 @@ use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, IdentityKind,
-    PolyID, PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+    PolynomialType,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::SelectedExpressions;
@@ -95,7 +95,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// The row index (within the block) of the latch row
     latch_row: usize,
     /// The right-hand sides of the connecting identities.
-    connecting_rhs: BTreeMap<IdentityId, &'a SelectedExpressions<Expression<T>>>,
+    connecting_rhs: BTreeMap<u64, &'a SelectedExpressions<Expression<T>>>,
     /// The type of constraint used to connect this machine to its caller.
     connection_type: ConnectionType,
     /// The internal identities
@@ -187,7 +187,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     // Connecting identities should either all be permutations or all lookups.
     let connection_type = connecting_identities
         .iter()
-        .map(|id| id.id.kind.try_into())
+        .map(|id| id.kind.try_into())
         .unique()
         .exactly_one()
         .ok()?
@@ -226,7 +226,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
                 // is just a witness column that is constrained such that it can only be 1 with some period.
                 let mut latch_candidates = BTreeSet::new();
                 for id in identities {
-                    if id.id.kind == IdentityKind::Polynomial {
+                    if id.kind == IdentityKind::Polynomial {
                         collect_fixed_cols(
                             id.left.selector.as_ref().unwrap(),
                             &mut latch_candidates,
@@ -288,18 +288,18 @@ fn try_to_period<T: FieldElement>(
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
-    fn identities(&self) -> Vec<IdentityId> {
+    fn identity_ids(&self) -> Vec<u64> {
         self.connecting_rhs.keys().copied().collect()
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
-        identity: IdentityId,
+        identity_id: u64,
         args: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
         let previous_len = self.data.len();
-        let result = self.process_plookup_internal(mutable_state, identity, args);
+        let result = self.process_plookup_internal(mutable_state, identity_id, args);
         if let Ok(assignments) = &result {
             if !assignments.is_complete() {
                 // rollback the changes.
@@ -484,7 +484,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
-        identity: IdentityId,
+        identity_id: u64,
         left: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
         log::trace!("Start processing block machine '{}'", self.name());
@@ -493,7 +493,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             log::trace!("  {}", l);
         }
 
-        let right = self.connecting_rhs.get(&identity).unwrap();
+        let right = self.connecting_rhs.get(&identity_id).unwrap();
 
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called

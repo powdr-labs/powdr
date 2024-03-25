@@ -6,9 +6,7 @@ use std::{
 use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
 use powdr_ast::{
-    analyzed::{
-        AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, IdentityKind,
-    },
+    analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind},
     parsed::SelectedExpressions,
 };
 use powdr_number::FieldElement;
@@ -24,7 +22,7 @@ use super::{
 
 /// A list of mutable references to machines.
 pub struct Machines<'a, 'b, T: FieldElement> {
-    identity_to_machine_index: BTreeMap<IdentityId, usize>,
+    identity_to_machine_index: BTreeMap<u64, usize>,
     machines: Vec<&'b mut KnownMachine<'a, T>>,
 }
 
@@ -62,14 +60,14 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
 
     pub fn call<Q: QueryCallback<T>>(
         &mut self,
-        identity: IdentityId,
+        identity_id: u64,
         args: &[AffineExpression<&'a AlgebraicReference, T>],
         fixed_lookup: &mut FixedLookup<T>,
         query_callback: &mut Q,
     ) -> EvalResult<'a, T> {
         let machine_index = *self
             .identity_to_machine_index
-            .get(&identity)
+            .get(&identity_id)
             .expect("No executor machine matched identity `{identity}`");
 
         let (current, others) = self.split(machine_index);
@@ -79,7 +77,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
             query_callback,
         };
 
-        current.process_plookup_timed(&mut mutable_state, identity, args)
+        current.process_plookup_timed(&mut mutable_state, identity_id, args)
     }
 }
 
@@ -93,7 +91,7 @@ where
         let identity_to_machine_index = machines
             .iter()
             .enumerate()
-            .flat_map(|(index, m)| m.identities().into_iter().map(move |id| (id, index)))
+            .flat_map(|(index, m)| m.identity_ids().into_iter().map(move |id| (id, index)))
             .collect();
         Self {
             machines,
@@ -132,7 +130,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         identity: &'a Identity<Expression<T>>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let result = match identity.id.kind {
+        let result = match identity.kind {
             IdentityKind::Polynomial => self.process_polynomial_identity(identity, rows),
             IdentityKind::Plookup | IdentityKind::Permutation => {
                 self.process_plookup(identity, rows)
@@ -196,7 +194,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         if let Some(result) = self.mutable_state.fixed_lookup.process_plookup_timed(
             self.fixed_data,
             rows,
-            identity.id.kind,
+            identity.kind,
             &left,
             &identity.right,
         ) {
@@ -280,8 +278,10 @@ pub struct IdentityData {
     pub success: u64,
 }
 
+type IdentityID = u64;
+
 lazy_static! {
-    static ref STATISTICS: Mutex<HashMap<IdentityId, IdentityData>> =
+    static ref STATISTICS: Mutex<HashMap<IdentityID, IdentityData>> =
         Mutex::new(Default::default());
 }
 
@@ -302,7 +302,7 @@ fn report_identity_solving<T: FieldElement, K>(
         });
 }
 
-pub fn get_and_reset_solving_statistics() -> HashMap<IdentityId, IdentityData> {
+pub fn get_and_reset_solving_statistics() -> HashMap<IdentityID, IdentityData> {
     let mut stat = STATISTICS.lock().unwrap();
     std::mem::take(&mut (*stat))
 }

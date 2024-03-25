@@ -364,7 +364,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             }
 
             let is_machine_call = matches!(
-                identity.id.kind,
+                identity.kind,
                 IdentityKind::Plookup | IdentityKind::Permutation
             );
             if is_machine_call && unknown_strategy == UnknownStrategy::Zero {

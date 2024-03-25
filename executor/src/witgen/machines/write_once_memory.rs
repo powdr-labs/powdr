@@ -4,8 +4,8 @@ use itertools::{Either, Itertools};
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, IdentityKind,
-        PolyID, PolynomialType,
+        AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+        PolynomialType,
     },
     parsed::SelectedExpressions,
 };
@@ -32,7 +32,7 @@ use super::{FixedLookup, Machine};
 /// instr mload X -> Y { {X, Y} in {ADDR, v} }
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
-    connecting_identities: Vec<IdentityId>,
+    connecting_identities: Vec<u64>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
     /// The right-hand side of the connecting identity
@@ -60,7 +60,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
         if !connecting_identities
             .iter()
-            .all(|i| i.id.kind == IdentityKind::Plookup)
+            .all(|i| i.kind == IdentityKind::Plookup)
         {
             return None;
         }
@@ -201,7 +201,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
-    fn identities(&self) -> Vec<IdentityId> {
+    fn identity_ids(&self) -> Vec<u64> {
         self.connecting_identities.clone()
     }
 
@@ -212,7 +212,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
-        _identity: IdentityId,
+        _identity_id: u64,
         args: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
         self.process_plookup_internal(args)
@@ -229,7 +229,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
             .map(|(value_index, poly)| {
                 let column = self.fixed_data.witness_cols[poly]
                     .external_values
-                    .clone()
+                    .cloned()
                     .map(|mut external_values| {
                         // External witness values might only be provided partially.
                         external_values.resize(self.fixed_data.degree as usize, T::zero());

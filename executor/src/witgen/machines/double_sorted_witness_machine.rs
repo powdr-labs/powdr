@@ -13,8 +13,7 @@ use crate::witgen::{EvalValue, IncompleteCause};
 use powdr_number::{DegreeType, FieldElement};
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, IdentityKind,
-    PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
@@ -65,7 +64,7 @@ pub struct DoubleSortedWitnesses<'a, T> {
     /// Whether this machine has a `m_is_bootloader_write` column.
     has_bootloader_write_column: bool,
     /// All selector IDs that are used on the right-hand side connecting identities.
-    selector_ids: BTreeMap<IdentityId, PolyID>,
+    selector_ids: BTreeMap<u64, PolyID>,
 }
 
 struct Operation<T> {
@@ -100,7 +99,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 
         if !connecting_identities
             .iter()
-            .all(|i| i.id.kind == IdentityKind::Permutation)
+            .all(|i| i.kind == IdentityKind::Permutation)
         {
             return None;
         }
@@ -181,9 +180,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
-    fn identities(&self) -> Vec<IdentityId> {
+    fn identity_ids(&self) -> Vec<u64> {
         self.selector_ids.keys().cloned().collect()
     }
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -191,10 +191,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,
-        identity: IdentityId,
+        identity_id: u64,
         args: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity, args)
+        self.process_plookup_internal(identity_id, args)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -336,7 +336,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
 impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
     fn process_plookup_internal(
         &mut self,
-        identity: IdentityId,
+        identity_id: u64,
         args: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
@@ -355,7 +355,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             }
         };
 
-        let selector_id = *self.selector_ids.get(&identity).unwrap();
+        let selector_id = *self.selector_ids.get(&identity_id).unwrap();
 
         let is_normal_write = operation_id == T::from(OPERATION_ID_WRITE);
         let is_bootloader_write = operation_id == T::from(OPERATION_ID_BOOTLOADER_WRITE);

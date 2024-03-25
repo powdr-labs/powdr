@@ -1,19 +1,23 @@
-use std::{collections::BTreeMap, iter};
+use std::{cmp::max, collections::BTreeMap, iter};
 
 use halo2_curves::ff::PrimeField;
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
-        Advice, Any, Circuit, Column, ConstraintSystem, Error, Expression, FirstPhase, Fixed,
-        Instance, VirtualCells,
+        Advice, Any, Challenge, Circuit, Column, ConstraintSystem, Error, Expression, FirstPhase,
+        Fixed, Instance, SecondPhase, ThirdPhase, VirtualCells,
     },
     poly::Rotation,
 };
+use powdr_executor::witgen::WitgenCallback;
 
-use powdr_ast::analyzed::{Analyzed, IdentityKind};
 use powdr_ast::{
     analyzed::{AlgebraicBinaryOperator, AlgebraicExpression},
     parsed::SelectedExpressions,
+};
+use powdr_ast::{
+    analyzed::{Analyzed, IdentityKind},
+    parsed::visitor::ExpressionVisitable,
 };
 use powdr_number::FieldElement;
 
@@ -26,7 +30,7 @@ pub(crate) struct PowdrCircuitConfig {
     fixed: BTreeMap<String, Column<Fixed>>,
     enable: Column<Fixed>,
     instance: Column<Instance>,
-    // TODO(challenges): Add challenges
+    challenges: BTreeMap<u64, Challenge>,
 }
 
 impl PowdrCircuitConfig {
@@ -76,6 +80,8 @@ pub(crate) struct PowdrCircuit<'a, T> {
     witness: Option<&'a [(String, Vec<T>)]>,
     /// Column name and index of the public cells
     publics: Vec<(String, usize)>,
+    /// Callback to augment the witness in the later stages.
+    witgen_callback: Option<WitgenCallback<T>>,
 }
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
@@ -97,12 +103,20 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             fixed,
             witness: None,
             publics,
+            witgen_callback: None,
         }
     }
 
     pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
         Self {
             witness: Some(witness),
+            ..self
+        }
+    }
+
+    pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
+        Self {
+            witgen_callback: Some(witgen_callback),
             ..self
         }
     }
@@ -152,9 +166,21 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         let advice = analyzed
             .committed_polys_in_source_order()
             .iter()
-            .flat_map(|(symbol, _)| symbol.array_elements())
-            // TODO(challenges): Set correct phase
-            .map(|(name, _)| (name.clone(), meta.advice_column_in(FirstPhase)))
+            .flat_map(|(symbol, _)| {
+                symbol
+                    .array_elements()
+                    .map(|(name, _)| (name, symbol.stage))
+            })
+            .map(|(name, stage)| {
+                let stage = stage.unwrap_or(0);
+                let col = match stage {
+                    0 => meta.advice_column_in(FirstPhase),
+                    1 => meta.advice_column_in(SecondPhase),
+                    2 => meta.advice_column_in(ThirdPhase),
+                    _ => panic!("Stage too large for Halo2 backend: {}", stage),
+                };
+                (name.clone(), col)
+            })
             .collect();
 
         let fixed = analyzed
@@ -167,11 +193,29 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         let enable = meta.fixed_column();
         let instance = meta.instance_column();
 
+        // Collect challenges referenced in any identity.
+        let mut challenges = BTreeMap::new();
+        for identity in analyzed.identities_with_inlined_intermediate_polynomials() {
+            identity.pre_visit_expressions(&mut |expr| {
+                if let AlgebraicExpression::Challenge(challenge) = expr {
+                    challenges
+                        .entry(challenge.id)
+                        .or_insert_with(|| match &challenge.stage {
+                            0 => meta.challenge_usable_after(FirstPhase),
+                            1 => meta.challenge_usable_after(SecondPhase),
+                            2 => meta.challenge_usable_after(ThirdPhase),
+                            _ => panic!("Stage too large for Halo2 backend: {}", challenge.stage),
+                        });
+                }
+            })
+        }
+
         let config = PowdrCircuitConfig {
             advice,
             fixed,
             enable,
             instance,
+            challenges,
         };
 
         // Enable equality for all witness columns & instance
@@ -184,7 +228,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         let identities = analyzed
             .identities_with_inlined_intermediate_polynomials()
             .into_iter()
-            .filter(|id| id.id.kind == IdentityKind::Polynomial)
+            .filter(|id| id.kind == IdentityKind::Polynomial)
             .collect::<Vec<_>>();
         if !identities.is_empty() {
             meta.create_gate("main", |meta| -> Vec<(String, Expression<F>)> {
@@ -229,7 +273,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         };
 
         for id in analyzed.identities_with_inlined_intermediate_polynomials() {
-            match id.id.kind {
+            match id.kind {
                 // Already handled above
                 IdentityKind::Polynomial => {}
                 IdentityKind::Connect => unimplemented!(),
@@ -277,6 +321,42 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         // |  None            |    None      |   None           |  | <-- Halo2 will put blinding factors in the last few rows
         // |  None            |    None      |   None           | /      of the witness columns.
 
+        // If we're in a later stage, augment the original stage-0 witness by calling the witgen_callback.
+        // If we're in stage 0, we already have the full witness and don't do anything.
+        let mut new_witness = Vec::new();
+        if let Some(witness) = self.witness {
+            let mut stage = 1;
+            let challenges = config
+                .challenges
+                .iter()
+                .filter_map(|(&challenge_id, challenge)| {
+                    let mut challenge_key_value_pair = None;
+                    layouter.get_challenge(*challenge).map(|x| {
+                        // The current stage is the maximum of all available challenges + 1
+                        stage = max(stage, challenge.phase() + 1);
+                        // Set the challenge value. We don't return it here, because we'd get
+                        // a Value<T> and Halo2 doesn't let us convert it to an Option<T> easily...
+                        challenge_key_value_pair =
+                            Some((challenge_id, T::from_bytes_le(&x.to_repr())))
+                    });
+                    challenge_key_value_pair
+                })
+                .collect::<BTreeMap<u64, T>>();
+
+            // If there are no available challenges, we are in stage 0 and do nothing.
+            if !challenges.is_empty() {
+                log::info!(
+                    "Running witness generation for stage {stage} ({} challenges)!",
+                    challenges.len()
+                );
+                new_witness = self
+                    .witgen_callback
+                    .as_ref()
+                    .expect("Expected witgen callback!")
+                    .next_stage_witness(witness, challenges, stage);
+            }
+        }
+
         let public_cells = layouter.assign_region(
             || "main",
             |mut region| {
@@ -316,17 +396,20 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
 
                 // Set witness values
                 let mut public_cells = Vec::new();
+                let witness: Option<&[(String, Vec<T>)]> = if new_witness.is_empty() {
+                    // We're in stage 0, use the original witness
+                    self.witness
+                } else {
+                    Some(&new_witness)
+                };
                 for (name, &column) in config.advice.iter() {
                     // Note that we can't skip this loop if we don't have a witness,
                     // because the copy_advice() call below also adds copy constraints,
                     // which are needed to compute the verification key.
-                    let values = self.witness.as_ref().map(|witness| {
-                        witness
-                            .iter()
-                            .find_map(|(witness_name, values)| {
-                                (witness_name == name).then_some(values)
-                            })
-                            .unwrap_or_else(|| panic!("Missing witness: {}", name))
+                    let values = witness.as_ref().and_then(|witness| {
+                        witness.iter().find_map(|(witness_name, values)| {
+                            (witness_name == name).then_some(values)
+                        })
                     });
                     for i in 0..degree {
                         let value = values
@@ -389,7 +472,6 @@ fn to_halo2_expression<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(
     match expr {
         AlgebraicExpression::Number(n) => Expression::Constant(convert_field(*n)),
         AlgebraicExpression::Reference(polyref) => {
-            // TODO(challenges): Handle reference to challenge
             let rotation = match polyref.next {
                 false => Rotation::cur(),
                 true => Rotation::next(),
@@ -424,6 +506,9 @@ fn to_halo2_expression<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(
                     }
                 }
             }
+        }
+        AlgebraicExpression::Challenge(challenge) => {
+            config.challenges.get(&challenge.id).unwrap().expr()
         }
         _ => unimplemented!("{:?}", expr),
     }

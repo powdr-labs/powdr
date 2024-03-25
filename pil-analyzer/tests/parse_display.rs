@@ -50,7 +50,10 @@ namespace T(65536);
     col witness reg_write_X_A;
     T.X = ((((T.read_X_A * T.A) + (T.read_X_CNT * T.CNT)) + T.X_const) + (T.X_read_free * T.X_free_value));
     T.A' = (((T.first_step' * 0) + (T.reg_write_X_A * T.X)) + ((1 - (T.first_step' + T.reg_write_X_A)) * T.A));
-    col witness X_free_value(__i) query match std::prover::eval(T.pc) { 0 => std::prover::Query::Input(1), 7 => std::prover::Query::Input(0), };
+    col witness X_free_value(__i) query match std::prover::eval(T.pc) {
+        0 => std::prover::Query::Input(1),
+        7 => std::prover::Query::Input(0),
+    };
     col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
     col fixed p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1] + [0]*;
@@ -202,7 +205,10 @@ fn symbolic_functions() {
     "#;
     let expected = r#"namespace N(16);
     let last_row: int = 15;
-    col fixed ISLAST(i) { match i { N.last_row => 1, _ => 0, } };
+    col fixed ISLAST(i) { match i {
+        N.last_row => 1,
+        _ => 0,
+    } };
     col witness x;
     col witness y;
     let constrain_equal_expr: expr, expr -> expr = (|A, B| (A - B));
@@ -244,7 +250,10 @@ fn fixed_symbolic() {
     "#;
     let expected = r#"namespace N(16);
     let last_row: int = 15;
-    let islast: int -> fe = (|i| match i { N.last_row => 1, _ => 0, });
+    let islast: int -> fe = (|i| match i {
+        N.last_row => 1,
+        _ => 0,
+    });
     col fixed ISLAST(i) { N.islast(i) };
     col witness x;
     col witness y;

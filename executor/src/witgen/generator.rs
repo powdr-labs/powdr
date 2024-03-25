@@ -1,5 +1,5 @@
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityId, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
 };
 use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::{DegreeType, FieldElement};
@@ -27,7 +27,7 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
-    connecting_rhs: BTreeMap<IdentityId, &'a SelectedExpressions<Expression<T>>>,
+    connecting_rhs: BTreeMap<u64, &'a SelectedExpressions<Expression<T>>>,
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<Expression<T>>>,
     witnesses: HashSet<PolyID>,
@@ -38,7 +38,7 @@ pub struct Generator<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
-    fn identities(&self) -> Vec<IdentityId> {
+    fn identity_ids(&self) -> Vec<u64> {
         self.connecting_rhs.keys().cloned().collect()
     }
 
@@ -49,12 +49,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
-        identity: IdentityId,
+        identity_id: u64,
         args: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
-        let right = &self.connecting_rhs.get(&identity).unwrap();
+        let right = &self.connecting_rhs.get(&identity_id).unwrap();
         for (r, l) in right.expressions.iter().zip(args) {
             log::trace!("  {r} = {l}");
         }

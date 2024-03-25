@@ -13,6 +13,7 @@ use halo2_proofs::{
     transcript::{EncodedChallenge, TranscriptReadBuffer, TranscriptWriterBuffer},
 };
 use powdr_ast::analyzed::Analyzed;
+use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, KnownField};
 use snark_verifier::{
     loader::native::NativeLoader,
@@ -45,7 +46,7 @@ pub use halo2_proofs::SerdeFormat;
 /// "unsafe" code, and unsafe code is harder to explain and maintain.
 pub struct Halo2Prover<'a, F> {
     analyzed: &'a Analyzed<F>,
-    circuit: PowdrCircuit<'a, F>,
+    fixed: &'a [(String, Vec<F>)],
     params: ParamsKZG<Bn256>,
     vkey: Option<VerifyingKey<G1Affine>>,
 }
@@ -75,11 +76,9 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             })
             .unwrap_or_else(|| generate_setup(analyzed.degree()));
 
-        let circuit = PowdrCircuit::new(analyzed, fixed);
-
         Ok(Self {
             analyzed,
-            circuit,
+            fixed,
             params,
             vkey: None,
         })
@@ -89,10 +88,16 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         self.params.write(output)
     }
 
-    pub fn prove_ast(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
+    pub fn prove_ast(
+        &self,
+        witness: &[(String, Vec<F>)],
+        witgen_callback: WitgenCallback<F>,
+    ) -> Result<Vec<u8>, String> {
         log::info!("Starting proof generation...");
 
-        let circuit = self.circuit.clone().with_witness(witness);
+        let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
+            .with_witgen_callback(witgen_callback)
+            .with_witness(witness);
         let publics = vec![circuit.instance_column()];
 
         log::info!("Generating PK for snark...");
@@ -140,7 +145,8 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         log::info!("Starting proof aggregation...");
 
         log::info!("Generating circuit for app snark...");
-        let circuit_app = self.circuit.clone().with_witness(witness);
+
+        let circuit_app = PowdrCircuit::new(self.analyzed, self.fixed).with_witness(witness);
         let publics = vec![circuit_app.instance_column()];
 
         assert_eq!(publics.len(), 1);
@@ -217,7 +223,8 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     }
 
     pub fn verification_key(&self) -> Result<VerifyingKey<G1Affine>, String> {
-        keygen_vk(&self.params, &self.circuit).map_err(|e| e.to_string())
+        let circuit = PowdrCircuit::new(self.analyzed, self.fixed);
+        keygen_vk(&self.params, &circuit).map_err(|e| e.to_string())
     }
 
     fn verify_inner<
