@@ -410,6 +410,14 @@ fn permutation_incoming_needs_selector() {
     gen_estark_proof(f, Default::default());
 }
 
+#[test]
+fn call_selectors_with_no_permutation() {
+    let f = "asm/permutations/call_selectors_with_no_permutation.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
 mod book {
     use super::*;
     use test_log::test;
