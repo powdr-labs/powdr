@@ -375,8 +375,9 @@ impl From<NamespacedPolynomialReference> for Expression {
 
 impl<R> Expression<R> {
     /// Returns an iterator over all (top-level) expressions in this expression.
-    /// This specifically does not implement Children so that we can implement
-    /// ExpressionVisitable generically.
+    /// This specifically does not implement Children because otherwise it would
+    /// have a wrong implementation of ExpressionVisitable (which is implemented
+    /// generically for all types that implement Children<Expr>).
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         match self {
             Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
@@ -412,8 +413,9 @@ impl<R> Expression<R> {
     }
 
     /// Returns an iterator over all (top-level) expressions in this expression.
-    /// This specifically does not implement Children so that we can implement
-    /// ExpressionVisitable generically.
+    /// This specifically does not implement Children because otherwise it would
+    /// have a wrong implementation of ExpressionVisitable (which is implemented
+    /// generically for all types that implement Children<Expr>).
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         match self {
             Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
