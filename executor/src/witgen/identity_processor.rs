@@ -256,7 +256,7 @@ pub struct IdentityData {
     pub success: u64,
 }
 
-type IdentityID = (u64, IdentityKind);
+type IdentityID = u64;
 
 lazy_static! {
     static ref STATISTICS: Mutex<HashMap<IdentityID, IdentityData>> =
@@ -269,7 +269,7 @@ fn report_identity_solving<T: FieldElement, K>(
 ) {
     let success = result.as_ref().map(|r| r.is_complete()).unwrap_or_default() as u64;
     let mut stat = STATISTICS.lock().unwrap();
-    stat.entry((identity.id, identity.kind))
+    stat.entry(identity.id)
         .and_modify(|s| {
             s.invocations += 1;
             s.success += success;
