@@ -37,10 +37,10 @@ let repeat_array = |arr, i| arr[i % array::len(arr)];
 
 machine Main {
 
-    col witness a(i) query std::prover::Query::Hint(repeat_array([1, 2, 3, 8]));
-    col witness b(i) query std::prover::Query::Hint(repeat_array([1, 5, 1, 9]));
-    col witness c(i) query std::prover::Query::Hint(repeat_array([3, 2, 8, 1]));
-    col witness d(i) query std::prover::Query::Hint(repeat_array([5, 1, 9, 1]));
+    col witness a(i) query std::prover::Query::Hint(repeat_array([1, 2, 3, 8], i));
+    col witness b(i) query std::prover::Query::Hint(repeat_array([1, 5, 1, 9], i));
+    col witness c(i) query std::prover::Query::Hint(repeat_array([1, 2, 8, 3], i));
+    col witness d(i) query std::prover::Query::Hint(repeat_array([1, 5, 9, 1], i));
 
     let first: col = |i| if i == 0 { 1 } else { 0 };
 
