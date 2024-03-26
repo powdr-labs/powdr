@@ -43,5 +43,8 @@ let extended_gcd = |a, b|
     } else {
         // TODO this is written in a complicated way
         // because we do not have tuple destructuring assignment
-        (|r| [r[1], r[0] - (a / b) * r[1]])(extended_gcd(b, a % b))
+        {
+            let r = extended_gcd(b, a % b);
+            [r[1], r[0] - (a / b) * r[1]]
+        }
     };

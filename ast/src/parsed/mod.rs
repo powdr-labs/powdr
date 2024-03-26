@@ -302,6 +302,7 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     FreeInput(Box<Expression<Ref>>),
     MatchExpression(Box<Expression<Ref>>, Vec<MatchArm<Ref>>),
     IfExpression(IfExpression<Ref>),
+    BlockExpression(Vec<LetStatementInsideBlock<Ref>>, Box<Expression<Ref>>),
 }
 
 impl<Ref> Expression<Ref> {
@@ -409,6 +410,12 @@ impl<R> Expression<R> {
                 body,
                 else_body,
             }) => Box::new([condition, body, else_body].into_iter().map(|e| e.as_ref())),
+            Expression::BlockExpression(statements, expr) => Box::new(
+                statements
+                    .iter()
+                    .flat_map(|s| s.children())
+                    .chain(once(expr.as_ref())),
+            ),
         }
     }
 
@@ -447,6 +454,12 @@ impl<R> Expression<R> {
                 body,
                 else_body,
             }) => Box::new([condition, body, else_body].into_iter().map(|e| e.as_mut())),
+            Expression::BlockExpression(statements, expr) => Box::new(
+                statements
+                    .iter_mut()
+                    .flat_map(|s| s.children_mut())
+                    .chain(once(expr.as_mut())),
+            ),
         }
     }
 }
@@ -656,6 +669,22 @@ impl<R> Children<Expression<R>> for IfExpression<R> {
                 .chain(once(&mut self.else_body))
                 .map(|e| e.as_mut()),
         )
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct LetStatementInsideBlock<Ref = NamespacedPolynomialReference> {
+    pub name: String,
+    pub value: Option<Expression<Ref>>,
+}
+
+impl<R> Children<Expression<R>> for LetStatementInsideBlock<R> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(self.value.iter())
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(self.value.iter_mut())
     }
 }
 

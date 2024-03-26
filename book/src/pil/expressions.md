@@ -71,6 +71,22 @@ Example:
 let is_seven = |i| if i == 7 { 1 } else { 0 };
 ```
 
+### Blocks and Let Statements
+
+A ``{``/``}``-block can be used everywhere where an expression is expected.
+
+It has the form ``{ <statement> ; <statement> ; ... ; <expression> }``, where the only valid statement is
+the let statement: ``let x = ...`` or ``let x;``.
+
+While the variant with value can be used everywhere, the form without value creates a new witness column and
+can only be used inside ``constr``-functions.
+
+Example:
+
+```rust
+let plus_on_squared = |x| { let y = x + 1; y * y };
+```
+
 
 ## Algebraic Expressions
 

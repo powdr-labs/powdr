@@ -7,7 +7,8 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
-        ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, MatchArm, MatchPattern,
+        ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock,
+        MatchArm, MatchPattern,
     },
 };
 
@@ -543,6 +544,21 @@ impl TypeChecker {
                 let result = self.infer_type_of_expression(&mut if_expr.body)?;
                 self.expect_type(&result, &mut if_expr.else_body)?;
                 result
+            }
+            Expression::BlockExpression(statements, expr) => {
+                let statements_len = statements.len();
+                for LetStatementInsideBlock { name: _, value } in statements {
+                    let var_type = if let Some(value) = value {
+                        self.infer_type_of_expression(value)?
+                    } else {
+                        Type::Expr
+                    };
+                    self.local_var_types.push(var_type);
+                }
+                let result = self.infer_type_of_expression(expr);
+                self.local_var_types
+                    .truncate(self.local_var_types.len() - statements_len);
+                result?
             }
         })
     }
