@@ -203,6 +203,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let mut generator = Generator::new(
             "Main Machine".to_string(),
             &fixed,
+            &[], // No connecting identities
             base_identities,
             base_witnesses,
             constraints.clone(),

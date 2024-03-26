@@ -16,7 +16,7 @@ pub trait Children<O> {
 
 pub trait AllChildren<O> {
     /// Returns an iterator over all direct and indirect children of kind O in this object.
-    /// Visitation order is pre-visit.
+    /// Pre-order visitor.
     fn all_children(&self) -> Box<dyn Iterator<Item = &O> + '_>;
 }
 

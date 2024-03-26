@@ -438,11 +438,20 @@ pub trait SymbolLookup<'a, T> {
     fn eval_expr(&self, _expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::DataNotAvailable)
     }
+
+    fn new_witness_column(&mut self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(format!(
+            "Tried to create witness column outside of statement context: {name}"
+        )))
+    }
 }
 
 mod internal {
     use num_traits::Signed;
-    use powdr_ast::analyzed::{AlgebraicBinaryOperator, Challenge};
+    use powdr_ast::{
+        analyzed::{AlgebraicBinaryOperator, Challenge},
+        parsed::LetStatementInsideBlock,
+    };
     use powdr_number::BigUint;
 
     use super::*;
@@ -599,6 +608,18 @@ mod internal {
                     &if_expr.else_body
                 };
                 evaluate(body.as_ref(), locals, generic_args, symbols)?
+            }
+            Expression::BlockExpression(statements, expr) => {
+                let mut locals = locals.to_vec();
+                for LetStatementInsideBlock { name, value } in statements {
+                    let value = if let Some(value) = value {
+                        evaluate(value, &locals, generic_args, symbols)?
+                    } else {
+                        symbols.new_witness_column(name)?
+                    };
+                    locals.push(value);
+                }
+                evaluate(expr, &locals, generic_args, symbols)?
             }
             Expression::FreeInput(_) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
@@ -1049,5 +1070,19 @@ mod test {
             let N = std::debug::print("test output\n");
         "#;
         parse_and_evaluate_symbol(src, "std::debug::N");
+    }
+
+    #[test]
+    pub fn local_vars() {
+        let src = r#"
+            let f: int -> int = |i| {
+                let x = i + 1;
+                let y = x - 1;
+                let z = y - i;
+                z
+            };
+            let t = f(8);
+        "#;
+        assert_eq!(parse_and_evaluate_symbol(src, "t"), "0".to_string());
     }
 }
