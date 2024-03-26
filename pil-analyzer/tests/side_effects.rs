@@ -2,109 +2,85 @@ use powdr_number::GoldilocksField;
 use powdr_pil_analyzer::analyze_string;
 use test_log::test;
 
-use pretty_assertions::assert_eq;
-
 #[test]
-fn new_witness_column() {
+#[should_panic = "Tried to create a witness column in a pure context: let x;"]
+fn new_wit_in_pure() {
     let input = r#"namespace N(16);
-    let even: col = |i| i * 2;
-    let new_wit = constr || { let x; x };
-    let new_wit_arr = constr || { let x; [x, x] };
-    let x;
-    let y;
-    let z = new_wit();
-    z = y;
-    z { z } in { even };
-    let t = new_wit_arr();
-    t[0] = t[1];
+    let new_col = || { let x; x };
     "#;
-    let expected = r#"namespace N(16);
-    col fixed even(i) { (i * 2) };
-    let new_wit: -> expr = (constr || {
-        let x;
-        x
-    });
-    let new_wit_arr: -> expr[] = (constr || {
-        let x;
-        [x, x]
-    });
-    col witness x;
-    col witness y;
-    let z: expr = N.new_wit();
-    col witness x_1;
-    N.x_1 = N.y;
-    N.x_1 { N.x_1 } in { N.even };
-    let t: expr[] = N.new_wit_arr();
-    col witness x_2;
-    N.x_2 = N.x_2;
-"#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
-    assert_eq!(formatted, expected);
+    analyze_string::<GoldilocksField>(input);
 }
 
 #[test]
-fn new_witness_column_name_clash() {
+#[should_panic = "Tried to add a constraint in a pure context: (x = 7)"]
+fn constr_in_pure() {
     let input = r#"namespace N(16);
-    let new_wit = constr || { let x; x };
-    new_wit() = new_wit() + new_wit();
+    let new_col = |x| { x = 7; [] };
     "#;
-    let expected = r#"namespace N(16);
-    let new_wit: -> expr = (constr || {
-        let x;
-        x
-    });
-    col witness x;
-    col witness x_1;
-    col witness x_2;
-    N.x = (N.x_1 + N.x_2);
-"#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
-    assert_eq!(formatted, expected);
+    analyze_string::<GoldilocksField>(input);
 }
 
 #[test]
-fn create_constrainst() {
+fn return_constr_in_pure() {
     let input = r#"namespace N(16);
-    let force_bool: expr -> constr = |c| c * (1 - c) = 0;
-    let new_bool: -> expr = constr || { let x; force_bool(x); x };
-    let is_zero: expr -> expr = constr |x| {
-        let x_is_zero;
-        force_bool(x_is_zero);
-        let x_inv;
-        x_is_zero = 1 - x * x_inv;
-        x_is_zero * x = 0;
-        x_is_zero
+    let new_col = |x| x = 7;
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Referenced a query function inside a pure context: std::prover::eval"]
+fn call_eval_in_pure() {
+    let input = r#"
+    namespace std::prover(16);
+        let eval = [];
+    namespace N(16);
+        let val_of_x = |x| std::prover::eval(x);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+fn call_eval_in_query() {
+    let input = r#"
+    namespace std::prover(16);
+        let eval = [];
+    namespace N(16);
+        let val_of_x = query |x| std::prover::eval(x);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Referenced a constr function inside a query context: N.new_wit"]
+fn call_constr_in_query() {
+    let input = r#"
+    namespace std::prover(16);
+        let eval = [];
+    namespace N(16);
+        let new_wit = constr || { let x; x };
+        let val_of_x = query |x| std::prover::eval(new_wit());
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Used a constr lambda function inside a pure context"]
+fn constr_lambda_in_pure() {
+    let input = r#"namespace N(16);
+    let f = |x| {
+        let new_wit = constr || { x = 7; 0};
+        8
     };
-    let x;
-    let x_is_zero = is_zero(x);
-    let y;
-    y = x_is_zero + 2;
     "#;
-    let expected = r#"namespace N(16);
-    let force_bool: expr -> constr = (|c| ((c * (1 - c)) = 0));
-    let new_bool: -> expr = (constr || {
-        let x;
-        N.force_bool(x);
-        x
-    });
-    let is_zero: expr -> expr = (constr |x| {
-        let x_is_zero;
-        N.force_bool(x_is_zero);
-        let x_inv;
-        (x_is_zero = (1 - (x * x_inv)));
-        ((x_is_zero * x) = 0);
-        x_is_zero
-    });
-    col witness x;
-    let x_is_zero: expr = N.is_zero(N.x);
-    col witness y;
-    col witness x_is_zero_1;
-    col witness x_inv;
-    (N.x_is_zero_1 * (1 - N.x_is_zero_1)) = 0;
-    N.x_is_zero_1 = (1 - (N.x * N.x_inv));
-    (N.x_is_zero_1 * N.x) = 0;
-    N.y = (N.x_is_zero_1 + 2);
-"#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
-    assert_eq!(formatted, expected);
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Tried to add a constraint in a pure context: (x = 7)"]
+fn reset_context() {
+    let input = r#"namespace N(16);
+    let new_col = |x| { x = 7; [] };
+    "#;
+    analyze_string::<GoldilocksField>(input);
 }

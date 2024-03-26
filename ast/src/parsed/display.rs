@@ -603,7 +603,10 @@ impl<Ref: Display> Display for LambdaExpression<Ref> {
         write!(
             f,
             "({}|{}| {})",
-            self.kind,
+            match self.kind {
+                FunctionKind::Pure => "".into(),
+                _ => format!("{} ", &self.kind),
+            },
             self.params.iter().format(", "),
             self.body
         )
@@ -613,9 +616,9 @@ impl<Ref: Display> Display for LambdaExpression<Ref> {
 impl Display for FunctionKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FunctionKind::Pure => write!(f, ""),
-            FunctionKind::Constr => write!(f, "constr "),
-            FunctionKind::Query => write!(f, "query "),
+            FunctionKind::Pure => write!(f, "pure"),
+            FunctionKind::Constr => write!(f, "constr"),
+            FunctionKind::Query => write!(f, "query"),
         }
     }
 }
