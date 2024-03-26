@@ -63,20 +63,21 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         // All connecting identities should have no selector or a selector of 1
-        if !connecting_identities.iter().all(|i| {
+        if connecting_identities.iter().any(|i| {
             i.right
                 .selector
                 .as_ref()
-                .map(|s| s == &T::one().into())
-                .unwrap_or(true)
+                .map(|s| s != &T::one().into())
+                .unwrap_or(false)
         }) {
             return None;
         }
 
+        // All RHS expressions should be the same
         let rhs_expressions = &connecting_identities[0].right.expressions;
-        if !connecting_identities
+        if connecting_identities
             .iter()
-            .all(|i| i.right.expressions == *rhs_expressions)
+            .any(|i| i.right.expressions != *rhs_expressions)
         {
             return None;
         }
