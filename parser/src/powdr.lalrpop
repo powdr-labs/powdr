@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use std::collections::BTreeSet;
 use powdr_ast::parsed::{*, asm::*, types::*};
-use powdr_number::BigUint;
+use powdr_number::{BigInt, BigUint};
 use crate::{ParserContext, unescape_string};
 
 grammar(ctx: &ParserContext);
@@ -77,6 +77,7 @@ TypeSymbolPathPart: Part = {
 }
 
 LetStatementAtModuleLevel: SymbolDefinition = {
+    // TODO
     "let" <name:GenericTypedName>  "=" <value:Expression> ";" =>
         SymbolDefinition {
             name: name.0,
@@ -112,6 +113,7 @@ Namespace: PilStatement = {
 }
 
 LetStatement: PilStatement = {
+    // TODO
     <start:@L> "let" <name:GenericTypedName> <expr:( "=" <Expression> )?> ";" =>
         PilStatement::LetStatement(ctx.source_ref(start), name.0, name.1, expr)
 }
@@ -147,6 +149,7 @@ FunctionDefinition: FunctionDefinition = {
 }
 
 ParameterList: Vec<String> = {
+    // TODO
     <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list },
     => vec![]
 }
@@ -234,6 +237,7 @@ ConstantFixed = {
 }
 
 GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
+    // TODO
     <name:Identifier> => (name, None),
     <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <ty:(":" <Type>)> =>
         (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), ty }))
@@ -433,6 +437,7 @@ BoxedExpression: Box<Expression> = {
 
 LambdaExpression: Box<Expression> = {
     <kind:FunctionKind> "||" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{kind, params: vec![], body})),
+    // TODO
     <kind:FunctionKind> "|" <params:ParameterList> "|" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{kind, params, body})),
     LogicalOr
 }
@@ -594,12 +599,7 @@ MatchArms: Vec<MatchArm> = {
 }
 
 MatchArm: MatchArm = {
-    <pattern: MatchPattern> "=>" <value: Expression> => MatchArm{pattern, value},
-}
-
-MatchPattern: MatchPattern = {
-    "_" => MatchPattern::CatchAll,
-    Expression => MatchPattern::Pattern(<>),
+    <pattern:Pattern> "=>" <value: Expression> => MatchArm{pattern, value},
 }
 
 IfExpression: Box<Expression> = {
@@ -619,9 +619,37 @@ BracedExpression: Box<Expression> = {
 }
 
 StatementInsideBlock: StatementInsideBlock = {
+    // TODO
     "let" <name:Identifier> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
     <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
+
+Pattern: Pattern = {
+    "_" => Pattern::CatchAll,
+    Number => Pattern::Number(<>.into()),
+    "-" <Number> => Pattern::Number(-BigInt::from(<>)),
+    StringLiteral => Pattern::String(<>),
+    TuplePattern,
+    ArrayPattern,
+    VariablePattern,
+    //EnumPattern,
+}
+
+TuplePattern: Pattern = {
+    "(" ")" => Pattern::Tuple(vec![]),
+    "(" <mut items:(<Pattern> ",")+> <last:Pattern> ")" => Pattern::Tuple({items.push(last); items})
+}
+
+ArrayPattern: Pattern = {
+    // TODO allow ".." - at end, at start, in middle?
+    "[" "]" => Pattern::Array(vec![]),
+    "[" <mut items:(<Pattern> ",")*> <last:Pattern> "]" => Pattern::Array({items.push(last); items})
+}
+
+VariablePattern: Pattern = {
+    <Identifier> => Pattern::Variable(<>),
+}
+
 
 // ---------------------------- Type Declarations -----------------------------
 
@@ -735,7 +763,6 @@ ConstantIdentifier: String = {
 
 PublicIdentifier: String = {
     r":[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.strip_prefix(":").unwrap().to_string()
-
 }
 
 Number: BigUint = {

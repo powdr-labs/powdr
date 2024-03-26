@@ -598,13 +598,9 @@ fn check_expression(
         Expression::MatchExpression(scrutinee, arms) => {
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
-                match pattern {
-                    powdr_ast::parsed::MatchPattern::CatchAll => Ok(()),
-                    powdr_ast::parsed::MatchPattern::Pattern(e) => {
-                        check_expression(location, e, state, local_variables)
-                    }
-                }?;
-                check_expression(location, value, state, local_variables)
+                let mut local_variables = local_variables.clone();
+                local_variables.extend(pattern.variables().cloned());
+                check_expression(location, value, state, &local_variables)
             })
         }
         Expression::IfExpression(powdr_ast::parsed::IfExpression {

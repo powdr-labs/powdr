@@ -13,7 +13,7 @@ use powdr_ast::{
     parsed::{
         display::quote,
         types::{Type, TypeScheme},
-        BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern, UnaryOperator,
+        BinaryOperator, FunctionCall, LambdaExpression, MatchArm, Pattern, UnaryOperator,
     },
     SourceRef,
 };
@@ -149,7 +149,7 @@ impl Display for EvalError {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub enum Value<'a, T> {
     Bool(bool),
     Integer(BigInt),
@@ -243,6 +243,57 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::Identity(_, _) => "constr".to_string(),
         }
     }
+
+    /// Tries to match this value against the given pattern.
+    /// Returns local variable bindings on success.
+    pub fn matches_pattern<'b>(
+        v: &Arc<Value<'b, T>>,
+        pattern: &Pattern,
+    ) -> Option<Vec<Arc<Value<'b, T>>>> {
+        match pattern {
+            Pattern::CatchAll => Some(vec![]),
+            Pattern::Number(n) => match v.as_ref() {
+                Value::Integer(x) if x == n => Some(vec![]),
+                Value::FieldElement(x) if BigInt::from(x.to_arbitrary_integer()) == *n => {
+                    Some(vec![])
+                }
+                // TODO Expr?
+                _ => None,
+            },
+            Pattern::String(s) => match v.as_ref() {
+                Value::String(x) if x == s => Some(vec![]),
+                _ => None,
+            },
+            Pattern::Tuple(items) => match v.as_ref() {
+                Value::Tuple(values) => {
+                    assert_eq!(values.len(), items.len());
+                    values
+                        .iter()
+                        .zip(items)
+                        .try_fold(vec![], |mut vars, (e, p)| {
+                            Value::matches_pattern(e, p).map(|v| {
+                                vars.extend(v);
+                                vars
+                            })
+                        })
+                }
+                _ => unreachable!(),
+            },
+            Pattern::Array(items) => match v.as_ref() {
+                Value::Array(values) if values.len() == items.len() => values
+                    .iter()
+                    .zip(items)
+                    .try_fold(vec![], |mut vars, (e, p)| {
+                        Value::matches_pattern(e, p).map(|v| {
+                            vars.extend(v);
+                            vars
+                        })
+                    }),
+                _ => None,
+            },
+            Pattern::Variable(_) => Some(vec![v.clone()]),
+        }
+    }
 }
 
 const BUILTINS: [(&str, BuiltinFunction); 9] = [
@@ -257,7 +308,7 @@ const BUILTINS: [(&str, BuiltinFunction); 9] = [
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum BuiltinFunction {
     /// std::array::len: _[] -> int, returns the length of an array
     ArrayLen,
@@ -311,14 +362,6 @@ pub struct Closure<'a, T> {
     pub lambda: &'a LambdaExpression<Reference>,
     pub environment: Vec<Arc<Value<'a, T>>>,
     pub generic_args: HashMap<String, Type>,
-}
-
-impl<'a, T> PartialEq for Closure<'a, T> {
-    fn eq(&self, _other: &Self) -> bool {
-        // Eq is used for pattern matching.
-        // In the future, we should introduce a proper pattern type.
-        panic!("Tried to compare closures.");
-    }
 }
 
 impl<'a, T: Display> Display for Closure<'a, T> {
@@ -587,27 +630,15 @@ mod internal {
             }
             Expression::MatchExpression(scrutinee, arms) => {
                 let v = evaluate(scrutinee, locals, generic_args, symbols)?;
-                let body = arms
+                let (vars, body) = arms
                     .iter()
-                    .find_map(|MatchArm { pattern, value }| match pattern {
-                        MatchPattern::Pattern(p) => {
-                            // TODO this uses PartialEq. As soon as we have proper match patterns
-                            // instead of value, we can remove the PartialEq requirement on Value.
-                            let p = evaluate(p, locals, generic_args, symbols).unwrap();
-                            if p == v {
-                                Some(value)
-                            } else {
-                                // TODO I don't think this part is needed now that we have the type checker.
-                                match (p.try_to_integer(), v.try_to_integer()) {
-                                    (Ok(p), Ok(v)) if p == v => Some(value),
-                                    _ => None,
-                                }
-                            }
-                        }
-                        MatchPattern::CatchAll => Some(value),
+                    .find_map(|MatchArm { pattern, value }| {
+                        Value::matches_pattern(&v, pattern).map(|vars| (vars, value))
                     })
                     .ok_or_else(EvalError::NoMatch)?;
-                evaluate(body, locals, generic_args, symbols)?
+                let mut locals = locals.to_vec();
+                locals.extend(vars);
+                evaluate(body, &locals, generic_args, symbols)?
             }
             Expression::IfExpression(if_expr) => {
                 let cond = evaluate(&if_expr.condition, locals, generic_args, symbols)?;
@@ -1110,5 +1141,25 @@ mod test {
             let t = f(8);
         "#;
         assert_eq!(parse_and_evaluate_symbol(src, "t"), "0".to_string());
+    }
+
+    #[test]
+    pub fn match_pattern() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [] => 0,
+                [x] => x,
+                [_, x] => x + 9,
+                [_, x, y] => x + y,
+                _ => 99,
+            };
+            let t = [
+                f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])
+            ];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[0, 1, 11, 5, 99]".to_string()
+        );
     }
 }
