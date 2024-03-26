@@ -182,7 +182,7 @@ impl<'a> ASMPILConverter<'a> {
             panic!();
         };
 
-        let degree = input.degree.map(|s| s.degree.try_into().unwrap());
+        let degree = input.degree.map(|s| s.degree);
 
         self.submachines = input.submachines;
 

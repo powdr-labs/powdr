@@ -257,11 +257,25 @@ pub fn compile<T: FieldElement>(
     assert!((18..=20).contains(&degree));
     let degree = 1 << degree;
 
+    let mut imports = vec![
+        "use std::binary::Binary;",
+        "use std::shift::Shift;",
+        "use std::split::split_gl::SplitGL;",
+    ];
+    imports.extend(coprocessors.machine_imports());
+
+    let mut declarations = vec![
+        ("binary", "Binary"),
+        ("shift", "Shift"),
+        ("split_gl", "SplitGL"),
+    ];
+    declarations.extend(coprocessors.declarations());
+
     riscv_machine(
-        &coprocessors.machine_imports(),
+        &imports,
         &preamble::<T>(degree, coprocessors, with_bootloader),
         initial_mem,
-        &coprocessors.declarations(),
+        &declarations,
         program,
     )
 }
@@ -551,6 +565,18 @@ fn preamble<T: FieldElement>(
     instr is_equal_zero X -> Y { Y = XIsZero }
     instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
 
+    // ================= binary/bitwise instructions =================
+    instr and Y, Z -> X ~ binary.and;
+    instr or Y, Z -> X ~ binary.or;
+    instr xor Y, Z -> X ~ binary.xor;
+
+    // ================= shift instructions =================
+    instr shl Y, Z -> X ~ shift.shl;
+    instr shr Y, Z -> X ~ shift.shr;
+
+    // ================== wrapping instructions ==============
+    instr split_gl Z -> X, Y ~ split_gl.split;
+
     // ================= coprocessor substitution instructions =================
 "# + &coprocessors.instructions()
         + r#"
@@ -674,7 +700,7 @@ fn mul_instruction<T: FieldElement>() -> &'static str {
     // halves of the result.
     // X is the lower half (least significant bits)
     // Y is the higher half (most significant bits)
-    instr mul Z, W -> X, Y = split_gl.split Z * W -> X, Y;
+    instr mul Z, W -> X, Y ~ split_gl.split Z * W -> X, Y;
 "#
         }
     }

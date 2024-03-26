@@ -271,7 +271,7 @@ PilStatementInMachine: MachineStatement = {
 }
 
 Degree: MachineStatement = {
-    <start:@L> "degree" <deg:UnsignedInteger> ";" => MachineStatement::Degree(ctx.source_ref(start), deg)
+    <start:@L> "degree" <deg:Expression> ";" => MachineStatement::Degree(ctx.source_ref(start), deg)
 }
 
 CallSelectors: MachineStatement = {

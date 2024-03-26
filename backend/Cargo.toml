@@ -15,6 +15,7 @@ powdr-ast = { path = "../ast" }
 powdr-halo2 = { path = "../halo2", optional = true }
 powdr-number = { path = "../number" }
 powdr-pil-analyzer = { path = "../pil-analyzer" }
+powdr-executor = { path = "../executor" }
 
 strum = { version = "0.24.1", features = ["derive"] }
 log = "0.4.17"

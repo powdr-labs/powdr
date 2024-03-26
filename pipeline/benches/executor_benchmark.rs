@@ -16,7 +16,7 @@ type T = GoldilocksField;
 fn run_witgen<T: FieldElement>(
     analyzed: &Analyzed<T>,
     constants: &[(String, Vec<T>)],
-    external_witness_values: Vec<(String, Vec<T>)>,
+    external_witness_values: &[(String, Vec<T>)],
 ) {
     let query_callback = inputs_to_query_callback(vec![]);
     powdr_executor::witgen::WitnessGenerator::new(analyzed, constants, &query_callback)
@@ -32,23 +32,18 @@ fn executor_benchmark(c: &mut Criterion) {
     let tmp_dir = Temp::new_dir().unwrap();
     let riscv_asm_files =
         compile_rust_crate_to_riscv_asm("../riscv/tests/riscv_data/keccak/Cargo.toml", &tmp_dir);
-    let contents = compiler::compile::<T>(riscv_asm_files, &CoProcessors::base::<T>(), false);
+    let contents = compiler::compile::<T>(riscv_asm_files, &CoProcessors::base(), false);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     let pil = pipeline.compute_optimized_pil().unwrap();
     let fixed_cols = pipeline.compute_fixed_cols().unwrap();
 
-    group.bench_function("keccak", |b| {
-        b.iter(|| run_witgen(&pil, &fixed_cols, vec![]))
-    });
+    group.bench_function("keccak", |b| b.iter(|| run_witgen(&pil, &fixed_cols, &[])));
 
     // The first chunk of `many_chunks`, with Poseidon co-processor & bootloader
     let riscv_asm_files =
         compile_rust_to_riscv_asm("../riscv/tests/riscv_data/many_chunks.rs", &tmp_dir);
-    let contents = compiler::compile::<T>(
-        riscv_asm_files,
-        &CoProcessors::base::<T>().with_poseidon(),
-        true,
-    );
+    let contents =
+        compiler::compile::<T>(riscv_asm_files, &CoProcessors::base().with_poseidon(), true);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     let pil = pipeline.compute_optimized_pil().unwrap();
     let fixed_cols = pipeline.compute_fixed_cols().unwrap();
@@ -58,7 +53,7 @@ fn executor_benchmark(c: &mut Criterion) {
             run_witgen(
                 &pil,
                 &fixed_cols,
-                vec![(
+                &[(
                     "main.bootloader_input_value".to_string(),
                     default_input(&[63, 64, 65])
                         .into_iter()

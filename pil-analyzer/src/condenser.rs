@@ -114,7 +114,7 @@ pub fn condense<T: FieldElement>(
                 .into_iter()
                 .map(|mut identity| {
                     let index = condensed_identities.len();
-                    identity.id = counters.dispense_identity_id(identity.kind);
+                    identity.id = counters.dispense_identity_id();
                     condensed_identities.push(identity);
                     StatementIdentifier::Identity(index)
                 })

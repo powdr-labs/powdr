@@ -12,9 +12,9 @@ machine Main {
 
     Binary binary;
 
-    instr and X0, X1 -> X2 = binary.and;
-    instr or X0, X1 -> X2 = binary.or;
-    instr xor X0, X1 -> X2 = binary.xor;
+    instr and X0, X1 -> X2 ~ binary.and;
+    instr or X0, X1 -> X2 ~ binary.or;
+    instr xor X0, X1 -> X2 ~ binary.xor;
 
     instr assert_eq X0, X1 {
         X0 = X1

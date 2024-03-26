@@ -86,6 +86,12 @@ fn test_fibonacci() {
 }
 
 #[test]
+fn test_permutation_via_challenges() {
+    let f = "pil/permutation_via_challenges.pil";
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn test_fibonacci_invalid_witness() {
     let f = "pil/fibonacci.pil";
 
@@ -318,15 +324,6 @@ fn serialize_deserialize_optimized_pil() {
 
     assert_eq!(input_pil_file, output_pil_file);
 }
-
-// TODO re-enable when we have a working backend.
-// #[test]
-// fn challenges() {
-//     let f = "pil/challenges.pil";
-//     verify_pil(f, Default::default());
-//     test_halo2(f, Default::default());
-//     gen_estark_proof(f, Default::default());
-// }
 
 mod book {
     use super::*;

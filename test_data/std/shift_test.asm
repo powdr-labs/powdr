@@ -12,8 +12,8 @@ machine Main {
 
     Shift shift;
 
-    instr shl X0, X1 -> X2 = shift.shl;
-    instr shr X0, X1 -> X2 = shift.shr;
+    instr shl X0, X1 -> X2 ~ shift.shl;
+    instr shr X0, X1 -> X2 ~ shift.shr;
 
     instr assert_eq X0, X1 {
         X0 = X1

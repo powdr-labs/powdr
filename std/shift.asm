@@ -9,6 +9,9 @@ machine Shift(latch, operation_id) {
 
     operation shr<1> A, B -> C;
 
+    // Allow this machine to be connected via a permutation
+    call_selectors sel;
+
     col witness operation_id;
     unchanged_until(operation_id, latch);
 

@@ -7,6 +7,7 @@ mod debug;
 mod field;
 mod hash;
 mod math;
+mod memory;
 mod prover;
 mod shift;
 mod split;
