@@ -139,3 +139,9 @@ pub fn snake_case(input: &str) -> String {
 
     result
 }
+
+pub fn sort_cols<F: FieldElement>(cols: &[(String, Vec<F>)]) -> Vec<(String, Vec<F>)> {
+    let mut cols = cols.to_vec();
+    cols.sort_by(|a, b| a.0.cmp(&b.0));
+    cols
+}

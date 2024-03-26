@@ -78,7 +78,8 @@ impl RelationBuilder for BBFiles {
         // Group relations per file
         let grouped_relations: HashMap<String, Vec<Identity<AlgebraicExpression<F>>>> =
             group_relations_per_file(analyzed_identities);
-        let relations = grouped_relations.keys().cloned().collect_vec();
+        let mut relations = grouped_relations.keys().cloned().collect_vec();
+        relations.sort();
 
         // Contains all of the rows in each relation, will be useful for creating composite builder types
         let mut all_rows: HashMap<String, String> = HashMap::new();
@@ -112,6 +113,9 @@ impl RelationBuilder for BBFiles {
                 labels_lookup,
             );
         }
+
+        shifted_polys.sort();
+        relations.sort();
 
         RelationOutput {
             relations,
@@ -460,8 +464,8 @@ pub(crate) fn create_identities<F: FieldElement>(
         println!("Public Identities: {:?}", collected_public_identities);
     }
 
-    let collected_cols: Vec<String> = collected_cols.drain().collect();
-    let collected_shifts: Vec<String> = collected_cols
+    let mut collected_cols: Vec<String> = collected_cols.drain().collect();
+    let mut collected_shifts: Vec<String> = collected_cols
         .clone()
         .iter()
         .filter_map(|col| {
@@ -472,6 +476,9 @@ pub(crate) fn create_identities<F: FieldElement>(
             }
         })
         .collect();
+
+    collected_cols.sort();
+    collected_shifts.sort();
 
     IdentitiesOutput {
         subrelations,
@@ -490,6 +497,7 @@ pub(crate) fn create_identities<F: FieldElement>(
 /// Note: this mapping will never be that big, so we are quite naive in implementation
 /// It should be able to be called from else where with relation_name::get_relation_label
 fn create_relation_labels(relation_name: &str, labels: HashMap<usize, String>) -> String {
+    // Sort labels by the index
     let label_transformation = |(index, label)| {
         format!(
             "case {index}:
@@ -498,7 +506,11 @@ fn create_relation_labels(relation_name: &str, labels: HashMap<usize, String>) -
         )
     };
 
-    let switch_statement: String = labels
+    // Sort the labels by their index
+    let mut sorted_labels: Vec<(usize, String)> = labels.into_iter().collect();
+    sorted_labels.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let switch_statement: String = sorted_labels
         .into_iter()
         .map(label_transformation)
         .collect::<Vec<String>>()

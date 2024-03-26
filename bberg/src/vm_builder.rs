@@ -18,6 +18,7 @@ use crate::relation_builder::RelationBuilder;
 use crate::relation_builder::RelationOutput;
 use crate::utils::collect_col;
 use crate::utils::flatten;
+use crate::utils::sort_cols;
 use crate::utils::sanitize_name;
 use crate::utils::transform_map;
 use crate::verifier_builder::VerifierBuilder;
@@ -51,11 +52,16 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     witness: &[(String, Vec<F>)],
     name: Option<String>,
 ) {
+    // Sort fixed and witness to ensure consistent ordering
+    let fixed = &sort_cols(fixed);
+    let witness = &sort_cols(witness);
+
     let file_name: &str = &name.unwrap_or("Example".to_owned());
     let mut bb_files = BBFiles::default(file_name.to_owned());
 
     // Inlining step to remove the intermediate poly definitions
-    let analyzed_identities = analyzed.identities_with_inlined_intermediate_polynomials();
+    let mut analyzed_identities = analyzed.identities_with_inlined_intermediate_polynomials();
+    analyzed_identities.sort_by(|a,b| a.id.cmp(&b.id));
 
     // ----------------------- Handle Standard Relation Identities -----------------------
     // We collect all references to shifts as we traverse all identities and create relation files
@@ -153,6 +159,7 @@ fn get_all_col_names<F: FieldElement>(
     // Gather sanitized column names
     let fixed_names = collect_col(fixed, sanitize);
     let witness_names = collect_col(witness, sanitize);
+
     let inverses = flatten(&[perm_inverses, lookup_inverses]);
     let witness_names = flatten(&[witness_names, inverses.clone(), lookup_counts]);
 
