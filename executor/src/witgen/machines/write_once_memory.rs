@@ -2,12 +2,9 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::{Either, Itertools};
 
-use powdr_ast::{
-    analyzed::{
-        AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-        PolynomialType,
-    },
-    parsed::SelectedExpressions,
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+    PolynomialType,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -37,7 +34,7 @@ pub struct WriteOnceMemory<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     /// The right-hand side of the connecting identity
     /// (if there are several, they must all be the same)
-    rhs: &'a SelectedExpressions<Expression<T>>,
+    rhs_expressions: &'a [Expression<T>],
     /// The polynomials that are used as values (witness polynomials on the RHS)
     value_polys: Vec<PolyID>,
     /// A map from keys to row indices
@@ -65,17 +62,26 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             return None;
         }
 
-        let rhs = &connecting_identities[0].right;
-        if !connecting_identities.iter().all(|i| i.right == *rhs) {
+        // All connecting identities should have no selector or a selector of 1
+        if !connecting_identities.iter().all(|i| {
+            i.right
+                .selector
+                .as_ref()
+                .map(|s| s == &T::one().into())
+                .unwrap_or(true)
+        }) {
             return None;
         }
 
-        if rhs.selector.is_some() {
+        let rhs_expressions = &connecting_identities[0].right.expressions;
+        if !connecting_identities
+            .iter()
+            .all(|i| i.right.expressions == *rhs_expressions)
+        {
             return None;
         }
 
-        let rhs_polys = rhs
-            .expressions
+        let rhs_polys = rhs_expressions
             .iter()
             .map(|e| try_to_simple_poly(e))
             .collect::<Option<Vec<_>>>();
@@ -109,7 +115,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             connecting_identities: connecting_identities.iter().map(|&i| i.id).collect(),
             name,
             fixed_data,
-            rhs,
+            rhs_expressions,
             value_polys,
             key_to_index,
             data: BTreeMap::new(),
@@ -122,7 +128,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     ) -> EvalResult<'a, T> {
         let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = args
             .iter()
-            .zip(self.rhs.expressions.iter())
+            .zip(self.rhs_expressions.iter())
             .partition(|(_, r)| {
                 try_to_simple_poly(r).unwrap().poly_id.ptype == PolynomialType::Constant
             });

@@ -12,3 +12,4 @@ mod prover;
 mod shift;
 mod split;
 mod utils;
+mod write_once_memory;
