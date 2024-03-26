@@ -573,7 +573,6 @@ fn check_expression(
         Expression::LambdaExpression(LambdaExpression {
             kind: _,
             params,
-
             body,
         }) => {
             // Add the local variables, ignore collisions.

@@ -3,7 +3,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    iter::once,
+    iter::{self, once},
     str::FromStr,
     sync::Arc,
 };
@@ -342,36 +342,21 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         constraints: Arc<Value<'a, T>>,
         source: SourceRef,
     ) -> Result<(), evaluator::EvalError> {
-        match constraints.as_ref() {
-            Value::Identity(left, right) => {
-                self.new_constraints
-                    .push(Identity::from_polynomial_identity(
-                        0, // ID will be re-assigned later.
-                        source.clone(),
-                        left.clone() - right.clone(),
-                    ));
-            }
-            Value::Array(items) => {
-                for item in items.iter() {
-                    if let Value::Identity(left, right) = item.as_ref() {
-                        self.new_constraints
-                            .push(Identity::from_polynomial_identity(
-                                0, // ID will be re-assigned later.
-                                source.clone(),
-                                left.clone() - right.clone(),
-                            ));
-                    } else {
-                        return Err(evaluator::EvalError::TypeError(
-                            "Expected constraint".to_string(),
-                        ));
-                    }
-                }
-            }
-            _ => {
-                return Err(evaluator::EvalError::TypeError(
-                    "Expected constraint".to_string(),
+        let identities = match constraints.as_ref() {
+            Value::Identity(left, right) => Box::new(iter::once((left, right))),
+            Value::Array(items) => Box::new(items.iter().map(|item| match item.as_ref() {
+                Value::Identity(left, right) => (left, right),
+                _ => panic!("Expected constraint, but got {item}"),
+            })),
+            _ => panic!("Expected constraint but got {constraints}"),
+        };
+        for (left, right) in identities {
+            self.new_constraints
+                .push(Identity::from_polynomial_identity(
+                    0, // ID will be re-assigned later.
+                    source.clone(),
+                    left.clone() - right.clone(),
                 ));
-            }
         }
         Ok(())
     }
