@@ -18,8 +18,8 @@ use crate::relation_builder::RelationBuilder;
 use crate::relation_builder::RelationOutput;
 use crate::utils::collect_col;
 use crate::utils::flatten;
-use crate::utils::sort_cols;
 use crate::utils::sanitize_name;
+use crate::utils::sort_cols;
 use crate::utils::transform_map;
 use crate::verifier_builder::VerifierBuilder;
 
@@ -61,7 +61,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
 
     // Inlining step to remove the intermediate poly definitions
     let mut analyzed_identities = analyzed.identities_with_inlined_intermediate_polynomials();
-    analyzed_identities.sort_by(|a,b| a.id.cmp(&b.id));
+    analyzed_identities.sort_by(|a, b| a.id.cmp(&b.id));
 
     // ----------------------- Handle Standard Relation Identities -----------------------
     // We collect all references to shifts as we traverse all identities and create relation files
