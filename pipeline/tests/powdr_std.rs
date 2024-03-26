@@ -55,6 +55,14 @@ fn memory_test() {
 }
 
 #[test]
+fn write_once_memory_test() {
+    let f = "std/write_once_memory_test.asm";
+    verify_test_file(f, Default::default(), vec![]).unwrap();
+    gen_estark_proof(f, Default::default());
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn binary_test() {
     let f = "std/binary_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();

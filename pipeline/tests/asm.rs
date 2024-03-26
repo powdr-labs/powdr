@@ -46,7 +46,12 @@ fn mem_write_once_external_write() {
     mem[17] = GoldilocksField::from(42);
     mem[62] = GoldilocksField::from(123);
     mem[255] = GoldilocksField::from(-1);
-    verify_test_file(f, Default::default(), vec![("main.v".to_string(), mem)]).unwrap();
+    verify_test_file(
+        f,
+        Default::default(),
+        vec![("main_memory.value".to_string(), mem)],
+    )
+    .unwrap();
 }
 
 #[test]

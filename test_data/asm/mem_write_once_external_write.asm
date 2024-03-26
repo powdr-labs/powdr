@@ -1,21 +1,20 @@
-// Very simple write-once memory, but without an mstore operation.
-// As a result, this only works if the content of the `v` column has
+use std::write_once_memory::WriteOnceMemory;
+
+// Uses a simple write-once memory, but without an mstore operation.
+// As a result, this only works if the content of the `value` column has
 // been provided externally.
-machine MemReadWrite {
+machine Main {
 
     degree 256;
+
+    WriteOnceMemory memory;
 
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
     reg A;
 
-    // Write-once memory
-    let ADDR: col = |i| i;
-    let v;
-    // Loads a value. If the cell is empty, the prover can choose a value.
-    instr mload X -> Y { {X, Y} in {ADDR, v} }
-
+    instr mload X -> Y = memory.access X, Y ->;
     instr assert_eq X, Y { X = Y }
 
     function main {
