@@ -210,7 +210,8 @@ impl<T> Analyzed<T> {
 
         let mut handle_symbol = |new_id: u64, symbol: &Symbol| -> u64 {
             let length = symbol.length.unwrap_or(1);
-            for i in 0..length {
+            // Empty arrays still need ID replacement
+            for i in 0..(if length == 0 { 1 } else { length }) {
                 let old_poly_id = PolyID {
                     id: symbol.id + i,
                     ..PolyID::from(symbol)

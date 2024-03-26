@@ -590,6 +590,25 @@ mod test {
     }
 
     #[test]
+    fn zero_sized_array() {
+        let input = r#"
+        namespace std::array(65536);
+            let<T> len: T[] -> int = [];
+        namespace N(65536);
+            col witness x[1];
+            col witness y[0];
+            let t: col = |i| std::array::len(y);
+            x[0] = t;
+    "#;
+        let expectation = r#"namespace N(65536);
+    col witness x[1];
+    col witness y[0];
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
     fn remove_duplicates() {
         let input = r#"namespace N(65536);
         col witness x;
