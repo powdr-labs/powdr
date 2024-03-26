@@ -156,6 +156,7 @@ impl<F: FieldElement> EStark<F> {
         let setup = if let Some(vkey) = verification_key {
             serde_json::from_reader(vkey).unwrap()
         } else {
+            log::info!("Creating consts merkle tree.");
             create_stark_setup(pil_json.clone(), &const_pols, &params)
         };
 
@@ -248,9 +249,7 @@ impl<F: FieldElement> EStark<F> {
 /// Polygon's zkevm-prover (i.e. little-endian).
 fn write_fr_slice<W: io::Write>(output: &mut W, slice: &[Fr]) -> Result<(), io::Error> {
     for f in slice {
-        for limb in f.0 .0.iter() {
-            output.write_all(&limb.to_le_bytes())?;
-        }
+        output.write_all(&f.as_int().to_le_bytes())?;
     }
     Ok(())
 }
