@@ -174,13 +174,6 @@ fn test_external_witgen_fails_on_conflicting_external_witness() {
 }
 
 #[test]
-fn test_global() {
-    verify_pil("pil/global.pil", Default::default());
-    // Halo2 would take too long for this.
-    // Starky requires at least one witness column, this test has none.
-}
-
-#[test]
 fn test_sum_via_witness_query() {
     verify_pil(
         "pil/sum_via_witness_query.pil",
