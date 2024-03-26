@@ -84,3 +84,10 @@ fn reset_context() {
     "#;
     analyze_string::<GoldilocksField>(input);
 }
+
+#[test]
+#[should_panic = "Used a constr lambda function inside a pure context"]
+fn fixed_with_constr_type() {
+    let input = "let x: col = constr |i| 2;";
+    analyze_string::<GoldilocksField>(input);
+}

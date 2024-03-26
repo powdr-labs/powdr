@@ -10,7 +10,7 @@ use std::{
 
 use itertools::Itertools;
 
-use crate::{writeln_indented, writeln_indented_by};
+use crate::{parsed::FunctionKind, writeln_indented, writeln_indented_by};
 
 use self::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
@@ -200,15 +200,14 @@ impl Display for FunctionValueDefinition {
             FunctionValueDefinition::Array(items) => {
                 write!(f, " = {}", items.iter().format(" + "))
             }
-            FunctionValueDefinition::Query(e) => format_outer_function(e, Some("query"), f),
             FunctionValueDefinition::Expression(TypedExpression {
                 e,
                 type_scheme: None,
-            }) => format_outer_function(e, None, f),
+            }) => format_outer_function(e, f),
             FunctionValueDefinition::Expression(TypedExpression {
                 e,
                 type_scheme: Some(ty),
-            }) if *ty == Type::Col.into() => format_outer_function(e, None, f),
+            }) if *ty == Type::Col.into() => format_outer_function(e, f),
             FunctionValueDefinition::Expression(TypedExpression {
                 e,
                 type_scheme: Some(ts),
@@ -224,22 +223,27 @@ impl Display for FunctionValueDefinition {
     }
 }
 
-fn format_outer_function(e: &Expression, qualifier: Option<&str>, f: &mut Formatter<'_>) -> Result {
-    let q = qualifier.map(|s| format!(" {s}")).unwrap_or_default();
+fn format_outer_function(e: &Expression, f: &mut Formatter<'_>) -> Result {
     match e {
         parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1 => {
-            let body = if q.is_empty() {
-                if matches!(lambda.body.as_ref(), Expression::BlockExpression(_, _)) {
-                    format!("{}", lambda.body)
-                } else {
-                    format!("{{ {} }}", lambda.body)
-                }
+            let body = if lambda.kind == FunctionKind::Pure
+                && !matches!(lambda.body.as_ref(), Expression::BlockExpression(_, _))
+            {
+                format!("{{ {} }}", lambda.body)
             } else {
                 format!("{}", lambda.body)
             };
-            write!(f, "({}){q} {body}", lambda.params.iter().format(", "),)
+            write!(
+                f,
+                "({}) {}{body}",
+                lambda.params.iter().format(", "),
+                match lambda.kind {
+                    FunctionKind::Pure => "".into(),
+                    _ => format!("{} ", &lambda.kind),
+                },
+            )
         }
-        _ => write!(f, " ={q} {e}"),
+        _ => write!(f, " = {e}"),
     }
 }
 

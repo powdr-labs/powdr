@@ -94,18 +94,15 @@ impl<'a> SideEffectChecker<'a> {
             // If referenced, columns are `expr`, so they are not functions and thus pure.
             return FunctionKind::Pure;
         }
-        let value = value.as_ref().unwrap();
-        match value {
-            FunctionValueDefinition::Expression(TypedExpression {
-                type_scheme: _,
-                e: Expression::LambdaExpression(LambdaExpression { kind, .. }),
-            }) => {
-                return *kind;
-            }
-            FunctionValueDefinition::Query(_) => return FunctionKind::Query,
-            _ => {}
+        if let Some(FunctionValueDefinition::Expression(TypedExpression {
+            type_scheme: _,
+            e: Expression::LambdaExpression(LambdaExpression { kind, .. }),
+        })) = value
+        {
+            *kind
+        } else {
+            FunctionKind::Pure
         }
-        FunctionKind::Pure
     }
 }
 

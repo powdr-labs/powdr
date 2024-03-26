@@ -435,9 +435,7 @@ pub fn type_from_definition(
 ) -> Option<TypeScheme> {
     if let Some(value) = value {
         match value {
-            FunctionValueDefinition::Array(_) | FunctionValueDefinition::Query(_) => {
-                Some(Type::Col.into())
-            }
+            FunctionValueDefinition::Array(_) => Some(Type::Col.into()),
             FunctionValueDefinition::Expression(TypedExpression { e: _, type_scheme }) => {
                 type_scheme.clone()
             }
@@ -543,7 +541,6 @@ pub enum SymbolKind {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum FunctionValueDefinition {
     Array(Vec<RepeatedArray>),
-    Query(Expression),
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(String, EnumVariant),
@@ -552,8 +549,7 @@ pub enum FunctionValueDefinition {
 impl Children<Expression> for FunctionValueDefinition {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
-            FunctionValueDefinition::Query(e)
-            | FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
+            FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 Box::new(iter::once(e))
             }
             FunctionValueDefinition::Array(array) => {
@@ -568,8 +564,7 @@ impl Children<Expression> for FunctionValueDefinition {
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
-            FunctionValueDefinition::Query(e)
-            | FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
+            FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 Box::new(iter::once(e))
             }
             FunctionValueDefinition::Array(array) => {

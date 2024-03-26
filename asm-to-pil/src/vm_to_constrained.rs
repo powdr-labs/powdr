@@ -978,7 +978,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 let free_value = format!("{reg}_free_value");
                 let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
-                    FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression {
+                    FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression {
                         kind: FunctionKind::Query,
                         params: vec!["__i".to_string()],
                         body: Box::new(Expression::MatchExpression(

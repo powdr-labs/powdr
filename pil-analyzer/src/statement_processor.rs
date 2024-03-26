@@ -13,6 +13,7 @@ use powdr_ast::parsed::{
     EnumDeclaration, EnumVariant, FunctionDefinition, PilStatement, PolynomialName,
     SelectedExpressions,
 };
+use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_ast::SourceRef;
 use powdr_number::{BigInt, DegreeType, GoldilocksField};
 
@@ -462,16 +463,21 @@ where
 
         let value = value.map(|v| match v {
             FunctionDefinition::Expression(expr) => {
-                assert!(symbol_kind != SymbolKind::Poly(PolynomialType::Committed));
+                if symbol_kind == SymbolKind::Poly(PolynomialType::Committed) {
+                    // The only allowed value for a witness column is a query function.
+                    assert!(matches!(
+                        expr,
+                        parsed::Expression::LambdaExpression(LambdaExpression {
+                            kind: FunctionKind::Query,
+                            ..
+                        })
+                    ));
+                    assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
+                }
                 FunctionValueDefinition::Expression(TypedExpression {
                     e: self.process_expression(expr),
                     type_scheme,
                 })
-            }
-            FunctionDefinition::Query(expr) => {
-                assert_eq!(symbol_kind, SymbolKind::Poly(PolynomialType::Committed));
-                assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
-                FunctionValueDefinition::Query(self.process_expression(expr))
             }
             FunctionDefinition::Array(value) => {
                 let size = value.solve(self.degree.unwrap());

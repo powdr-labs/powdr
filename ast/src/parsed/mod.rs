@@ -725,9 +725,6 @@ impl<R> Children<Expression<R>> for LetStatementInsideBlock<R> {
 pub enum FunctionDefinition {
     /// Array expression.
     Array(ArrayExpression),
-    /// Prover query. The Expression usually is a LambdaExpression.
-    /// TODO can we replace this by a query-marked lambda expcession?
-    Query(Expression),
     /// Generic expression
     Expression(Expression),
     /// A type declaration.
@@ -738,7 +735,7 @@ impl Children<Expression> for FunctionDefinition {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
             FunctionDefinition::Array(ae) => ae.children(),
-            FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => Box::new(once(e)),
+            FunctionDefinition::Expression(e) => Box::new(once(e)),
             FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
         }
     }
@@ -746,7 +743,7 @@ impl Children<Expression> for FunctionDefinition {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
             FunctionDefinition::Array(ae) => ae.children_mut(),
-            FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => Box::new(once(e)),
+            FunctionDefinition::Expression(e) => Box::new(once(e)),
             FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
         }
     }

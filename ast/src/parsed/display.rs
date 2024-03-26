@@ -484,24 +484,19 @@ impl Display for FunctionDefinition {
             FunctionDefinition::Array(array_expression) => {
                 write!(f, " = {array_expression}")
             }
-            FunctionDefinition::Query(Expression::LambdaExpression(lambda)) => write!(
-                f,
-                "({}) query {}",
-                lambda.params.iter().format(", "),
-                lambda.body,
-            ),
-            FunctionDefinition::Query(e) => {
-                write!(f, " query = {e}")
-            }
             FunctionDefinition::Expression(Expression::LambdaExpression(lambda))
                 if lambda.params.len() == 1 =>
             {
-                let body = if matches!(lambda.body.as_ref(), Expression::BlockExpression(_, _)) {
-                    format!("{}", lambda.body)
-                } else {
-                    format!("{{ {} }}", lambda.body)
-                };
-                write!(f, "({}) {body}", lambda.params.iter().format(", "),)
+                write!(
+                    f,
+                    "({}) {}{}",
+                    lambda.params.iter().format(", "),
+                    match lambda.kind {
+                        FunctionKind::Pure => "".into(),
+                        _ => format!("{} ", &lambda.kind),
+                    },
+                    lambda.body
+                )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
             FunctionDefinition::TypeDeclaration(_) => {

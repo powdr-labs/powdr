@@ -78,8 +78,7 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
                 None
             }
         }
-        FunctionValueDefinition::Query(_)
-        | FunctionValueDefinition::Expression(_)
+        FunctionValueDefinition::Expression(_)
         | FunctionValueDefinition::TypeDeclaration(_)
         | FunctionValueDefinition::TypeConstructor(_, _) => None,
     }

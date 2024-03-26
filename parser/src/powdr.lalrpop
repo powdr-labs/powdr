@@ -168,7 +168,7 @@ PolynomialCommitDeclaration: PilStatement = {
         ctx.source_ref(start),
         stage,
         vec![name],
-        Some(FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression{kind: FunctionKind::Query, params, body})))
+        Some(FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{kind: FunctionKind::Query, params, body})))
     )
 }
 
