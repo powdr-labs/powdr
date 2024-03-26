@@ -80,25 +80,25 @@ machine Arith(CLK32_31, operation_id){
     let s_int = || limbs_to_int(s);
 
     let eq1_active = || eval(selEq[1]) == 1;
-    let get_operation = || match eval(operation_id) {
+    let get_operation = query || match eval(operation_id) {
         1 => "affine_256",
         10 => "ec_add",
         12 => "ec_double",
         _ => panic("Unknown operation")
     };
-    let is_ec_operation: -> int = || match get_operation() {
+    let is_ec_operation: -> int = query || match get_operation() {
         "affine_256" => 0,
         "ec_add" => 1,
         "ec_double" => 1,
     };
 
-    let s_hint = || match get_operation() {
+    let s_hint = query || match get_operation() {
         "affine_256" => 0,
         "ec_add" => s_for_eq1(x1_int(), y1_int(), x2_int(), y2_int()),
         "ec_double" => s_for_eq2(x1_int(), y1_int()),
     };
 
-    let q0_hint = || match get_operation() {
+    let q0_hint = query || match get_operation() {
         "affine_256" => 0,
         "ec_add" => compute_q0_for_eq1(x1_int(), y1_int(), x2_int(), y2_int(), s_int()),
         "ec_double" => compute_q0_for_eq2(x1_int(), y1_int(), s_int()),
