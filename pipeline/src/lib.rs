@@ -2,6 +2,7 @@
 
 #![deny(clippy::print_stdout)]
 
+use std::collections::HashMap;
 use std::marker::{Send, Sync};
 
 pub mod pipeline;
@@ -97,6 +98,42 @@ pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCa
             "Input" => {
                 assert_eq!(data.len(), 1);
                 access_element("prover inputs", &inputs, data[0])
+            }
+            _ => handle_simple_queries(id, &data, query),
+        }
+    }
+}
+
+pub fn inputs_2d_to_query_callback<T: FieldElement>(
+    inputs: HashMap<u32, Vec<T>>,
+) -> impl QueryCallback<T> {
+    move |query: &str| -> Result<Option<T>, String> {
+        let (id, data) = parse_query(query)?;
+        match id {
+            "DataIdentifier" => {
+                let [index, cb_channel] = data[..] else {
+                    panic!()
+                };
+                let cb_channel = cb_channel
+                    .parse::<u32>()
+                    .map_err(|e| format!("Error parsing callback data channel: {e})"))?;
+
+                if !inputs.contains_key(&cb_channel) {
+                    return Ok(None);
+                }
+
+                let index = index
+                    .parse::<usize>()
+                    .map_err(|e| format!("Error parsing index: {e})"))?;
+
+                let data = inputs.get(&cb_channel).unwrap();
+                println!("Data: {:?}", data);
+                println!("Index: {:?}", index);
+                // query index 0 means the length
+                Ok(Some(match index {
+                    0 => (data.len() as u64).into(),
+                    index => data[index - 1],
+                }))
             }
             _ => handle_simple_queries(id, &data, query),
         }

@@ -1,5 +1,6 @@
 use std::{
     borrow::Borrow,
+    collections::HashMap,
     fmt::Display,
     fs,
     io::{self, BufReader, BufWriter},
@@ -28,7 +29,7 @@ use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldE
 use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
-    inputs_to_query_callback, serde_data_to_query_callback,
+    inputs_2d_to_query_callback, inputs_to_query_callback, serde_data_to_query_callback,
     util::{try_read_poly_set, write_or_panic, FixedPolySet, WitnessPolySet},
 };
 
@@ -235,6 +236,10 @@ impl<T: FieldElement> Pipeline<T> {
         };
         self.arguments.query_callback = Some(query_callback);
         self
+    }
+
+    pub fn add_2d_data(self, data: HashMap<u32, Vec<T>>) -> Self {
+        self.add_query_callback(Arc::new(inputs_2d_to_query_callback(data)))
     }
 
     pub fn add_data<S: serde::Serialize + Send + Sync + 'static>(

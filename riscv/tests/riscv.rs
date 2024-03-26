@@ -195,6 +195,56 @@ fn test_sum_serde() {
     );
 }
 
+#[ignore = "Too slow"]
+#[test]
+fn test_sum_data() {
+    let case = "sum_get_data";
+
+    //let data: Vec<u32> = vec![1, 2, 8, 5];
+    let data: Vec<u32> = vec![666];
+    //let answer = data.iter().sum::<u32>();
+
+    let contents = compile_riscv_crate::<GoldilocksField>(case, &CoProcessors::base());
+
+    let temp_dir = mktemp::Temp::new_dir().unwrap().release();
+    let file_name = format!("{case}.asm");
+
+    let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .add_2d_data(
+            vec![(
+                42u32,
+                data.clone()
+                    .into_iter()
+                    .map(|x| x.into())
+                    .collect::<Vec<_>>(),
+            )]
+            .into_iter()
+            .collect(),
+        )
+        .with_output(temp_dir.to_path_buf(), false)
+        .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)));
+
+    let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
+    powdr_riscv_executor::execute_ast(
+        &analyzed,
+        Default::default(),
+        pipeline.data_callback().unwrap(),
+        // Assume the RISC-V program was compiled without a bootloader, otherwise this will fail.
+        &[],
+        usize::MAX,
+        powdr_riscv_executor::ExecMode::Fast,
+    );
+
+    /*
+    verify_riscv_crate_with_data(
+        case,
+        vec![answer.into()],
+        &CoProcessors::base(),
+        vec![(42, data)],
+    );
+    */
+}
+
 #[test]
 #[ignore = "Too slow"]
 #[should_panic(expected = "Witness generation failed.")]
