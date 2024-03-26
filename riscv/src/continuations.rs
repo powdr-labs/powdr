@@ -86,7 +86,10 @@ where
                     .map(|i| (i == start_of_shutdown_routine - 1).into())
                     .collect();
                 let pipeline = pipeline.add_external_witness_values(vec![
-                    ("main.bootloader_input_value".to_string(), bootloader_inputs),
+                    (
+                        "main_bootloader_inputs.value".to_string(),
+                        bootloader_inputs,
+                    ),
                     (
                         "main.jump_to_shutdown_routine".to_string(),
                         jump_to_shutdown_routine,
