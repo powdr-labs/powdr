@@ -1,15 +1,18 @@
 //! PIL-based optimizer
 #![deny(clippy::print_stdout)]
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::iter::once;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
     Analyzed, Expression, FunctionValueDefinition, IdentityKind, PolyID, PolynomialReference,
-    Reference, SymbolKind,
+    Reference, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::types::Type;
-use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
+use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
+use powdr_ast::parsed::EnumDeclaration;
 use powdr_number::{BigUint, FieldElement};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
@@ -41,25 +44,20 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     let mut required_names = collect_required_names(pil_file, &poly_id_to_definition_name);
     let mut to_process = required_names.iter().cloned().collect::<Vec<_>>();
     while let Some(n) = to_process.pop() {
-        if let Some((_, value)) = pil_file.definitions.get(n) {
+        if let Some((_, value)) = pil_file.definitions.get(n.as_ref()) {
             let Some(value) = value else { continue };
-            value.all_children().for_each(|e| {
-                if let Expression::Reference(Reference::Poly(PolynomialReference {
-                    name, ..
-                })) = e
-                {
-                    if required_names.insert(name) {
-                        to_process.push(name);
-                    }
+            for s in value.symbols() {
+                if required_names.insert(s.clone()) {
+                    to_process.push(s);
                 }
-            });
-        } else if let Some((_, value)) = pil_file.intermediate_columns.get(n) {
+            }
+        } else if let Some((_, value)) = pil_file.intermediate_columns.get(n.as_ref()) {
             for v in value {
                 v.pre_visit_expressions(&mut |e| {
                     if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
                         let name = poly_id_to_definition_name[poly_id];
-                        if required_names.insert(name) {
-                            to_process.push(name);
+                        if required_names.insert(name.into()) {
+                            to_process.push(name.into());
                         }
                     }
                 })
@@ -73,10 +71,72 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .definitions
         .keys()
         .chain(pil_file.intermediate_columns.keys())
-        .filter(|name| !required_names.contains(*name))
+        .filter(|name| !required_names.contains(&Cow::from(*name)))
         .cloned()
         .collect();
     pil_file.remove_definitions(&definitions_to_remove);
+}
+
+trait ReferencedSymbols {
+    /// Returns an iterator over all referenced symbols in self including type names.
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_>;
+}
+
+impl ReferencedSymbols for FunctionValueDefinition {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        match self {
+            FunctionValueDefinition::TypeDeclaration(EnumDeclaration { name: _, variants }) => {
+                Box::new(
+                    variants
+                        .iter()
+                        .flat_map(|v| &v.fields)
+                        .flat_map(|t| t.iter())
+                        .flat_map(|t| t.symbols()),
+                )
+            }
+            FunctionValueDefinition::TypeConstructor(type_name, _) => {
+                // This the type constructor of an enum variant, it references the enum itself.
+                Box::new(once(type_name.into()))
+            }
+            FunctionValueDefinition::Expression(TypedExpression {
+                type_scheme: Some(type_scheme),
+                e,
+            }) => Box::new(type_scheme.ty.symbols().chain(e.symbols())),
+            _ => Box::new(self.children().flat_map(|e| e.symbols())),
+        }
+    }
+}
+
+impl ReferencedSymbols for Expression {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        Box::new(
+            self.all_children()
+                .flat_map(|e| match e {
+                    Expression::Reference(Reference::Poly(PolynomialReference {
+                        name,
+                        generic_args,
+                        poly_id: _,
+                    })) => Some(
+                        generic_args
+                            .iter()
+                            .flat_map(|t| t.iter())
+                            .flat_map(|t| t.symbols())
+                            .chain(once(name.into())),
+                    ),
+                    _ => None,
+                })
+                .flatten(),
+        )
+    }
+}
+
+impl ReferencedSymbols for Type {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        Box::new(
+            self.contained_named_types()
+                .map(|n| n.to_dotted_string().into()),
+        )
+    }
 }
 
 /// Builds a lookup-table that can be used to turn array elements
@@ -104,18 +164,18 @@ fn build_poly_id_to_definition_name_lookup(
 fn collect_required_names<'a, T: FieldElement>(
     pil_file: &Analyzed<T>,
     poly_id_to_definition_name: &BTreeMap<PolyID, &'a String>,
-) -> HashSet<&'a String> {
-    let mut required_names: HashSet<&String> = Default::default();
+) -> HashSet<Cow<'a, str>> {
+    let mut required_names: HashSet<Cow<'a, str>> = Default::default();
     required_names.extend(
         pil_file
             .public_declarations
             .values()
-            .map(|p| poly_id_to_definition_name[&p.polynomial.poly_id.unwrap()]),
+            .map(|p| poly_id_to_definition_name[&p.polynomial.poly_id.unwrap()].into()),
     );
     for id in &pil_file.identities {
         id.pre_visit_expressions(&mut |e: &AlgebraicExpression<T>| {
             if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
-                required_names.insert(poly_id_to_definition_name[poly_id]);
+                required_names.insert(poly_id_to_definition_name[poly_id].into());
             }
         });
     }
@@ -605,15 +665,33 @@ mod test {
     fn remove_unreferenced_keep_enums() {
         let input = r#"namespace N(65536);
         enum X { A, B, C }
+        enum Y { D, E, F(R[]) }
+        enum R { T }
         let t: X[] -> int = |r| 1;
-        let f: col = |i| t([]);
+        // This references Y::F but even after type checking, the type
+        // Y is not mentioned anywhere.
+        let f: col = |i| if i == 0 { t([]) } else { (|x| 1)(Y::F([])) };
         let x;
         x = f;
     "#;
         let expectation = r#"namespace N(65536);
-    col witness x[5];
-    col inter[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
-    N.x[2] = N.inter[4];
+    enum X {
+        A,
+        B,
+        C,
+    }
+    enum Y {
+        D,
+        E,
+        F(N::R[]),
+    }
+    enum R {
+        T,
+    }
+    let t: N::X[] -> int = (|r| 1);
+    col fixed f(i) { if (i == 0) { N.t([]) } else { (|x| 1)(N::Y::F([])) } };
+    col witness x;
+    N.x = N.f;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
