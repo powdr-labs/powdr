@@ -50,18 +50,18 @@ pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
     // ============== bootloader-specific instructions =======================
     // Write-once memory
-    let BOOTLOADER_INPUT_ADDRESS: col = |i| i;
-    let bootloader_input_value;
-    // Loads a value. If the cell is empty, the prover can choose a value.
-    instr load_bootloader_input X -> Y { {X, Y} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value} }
-    instr assert_bootloader_input X, Y { {X, Y} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value} }
+    std::write_once_memory::WriteOnceMemory bootloader_inputs;
+
+    instr load_bootloader_input X -> Y = bootloader_inputs.access X, Y ->;
+    instr assert_bootloader_input X, Y -> = bootloader_inputs.access X, Y ->;
 
     let tmp_bootloader_value;
 
     // Sets the PC to the bootloader input at the provided index if it is nonzero
+    // TODO: This should work, but this leads to a wrong PC update rule.
+    // instr jump_to_bootloader_input X = bootloader_inputs.access X, pc' ->;
     instr jump_to_bootloader_input X {
-        // TODO: Putting {X, pc'} on the left-hand side should work, but this leads to a wrong PC update rule.
-        {X, tmp_bootloader_value} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value},
+        {X, tmp_bootloader_value} in {main_bootloader_inputs.ADDR, main_bootloader_inputs.value},
         pc' = tmp_bootloader_value
     }
 
@@ -78,22 +78,22 @@ pub fn bootloader_preamble() -> String {
     for (i, reg) in REGISTER_NAMES.iter().enumerate() {
         let reg = reg.strip_prefix("main.").unwrap();
         preamble.push_str(&format!(
-            "    public initial_{reg} = bootloader_input_value({i});\n"
+            "    public initial_{reg} = main_bootloader_inputs.value({i});\n"
         ));
     }
     for (i, reg) in REGISTER_NAMES.iter().enumerate() {
         let reg = reg.strip_prefix("main.").unwrap();
         preamble.push_str(&format!(
-            "    public final_{reg} = bootloader_input_value({});\n",
+            "    public final_{reg} = main_bootloader_inputs.value({});\n",
             i + REGISTER_NAMES.len()
         ));
     }
     preamble.push_str(&format!(
         r#"
-    public initial_memory_hash_1 = bootloader_input_value({});
-    public initial_memory_hash_2 = bootloader_input_value({});
-    public initial_memory_hash_3 = bootloader_input_value({});
-    public initial_memory_hash_4 = bootloader_input_value({});
+    public initial_memory_hash_1 = main_bootloader_inputs.value({});
+    public initial_memory_hash_2 = main_bootloader_inputs.value({});
+    public initial_memory_hash_3 = main_bootloader_inputs.value({});
+    public initial_memory_hash_4 = main_bootloader_inputs.value({});
 "#,
         MEMORY_HASH_START_INDEX,
         MEMORY_HASH_START_INDEX + 1,
@@ -102,10 +102,10 @@ pub fn bootloader_preamble() -> String {
     ));
     preamble.push_str(&format!(
         r#"
-    public final_memory_hash_1 = bootloader_input_value({});
-    public final_memory_hash_2 = bootloader_input_value({});
-    public final_memory_hash_3 = bootloader_input_value({});
-    public final_memory_hash_4 = bootloader_input_value({});
+    public final_memory_hash_1 = main_bootloader_inputs.value({});
+    public final_memory_hash_2 = main_bootloader_inputs.value({});
+    public final_memory_hash_3 = main_bootloader_inputs.value({});
+    public final_memory_hash_4 = main_bootloader_inputs.value({});
 "#,
         MEMORY_HASH_START_INDEX + 4,
         MEMORY_HASH_START_INDEX + 5,
