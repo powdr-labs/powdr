@@ -1,5 +1,7 @@
 use crate::parsed::visitor::VisitOrder;
 
+use self::parsed::visitor::AllChildren;
+
 use super::*;
 
 impl<T> ExpressionVisitable<AlgebraicExpression<T>> for AlgebraicExpression<T> {
@@ -31,5 +33,11 @@ impl<T> ExpressionVisitable<AlgebraicExpression<T>> for AlgebraicExpression<T> {
             f(self)?;
         }
         ControlFlow::Continue(())
+    }
+}
+
+impl<T> AllChildren<AlgebraicExpression<T>> for AlgebraicExpression<T> {
+    fn all_children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(iter::once(self).chain(self.children().flat_map(|e| e.all_children())))
     }
 }

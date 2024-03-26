@@ -44,26 +44,26 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     let mut required_names = collect_required_names(pil_file, &poly_id_to_definition_name);
     let mut to_process = required_names.iter().cloned().collect::<Vec<_>>();
     while let Some(n) = to_process.pop() {
-        if let Some((_, value)) = pil_file.definitions.get(n.as_ref()) {
+        let symbols = if let Some((_, value)) = pil_file.definitions.get(n.as_ref()) {
             let Some(value) = value else { continue };
-            for s in value.symbols() {
-                if required_names.insert(s.clone()) {
-                    to_process.push(s);
-                }
-            }
+            value.symbols()
         } else if let Some((_, value)) = pil_file.intermediate_columns.get(n.as_ref()) {
-            for v in value {
-                v.pre_visit_expressions(&mut |e| {
+            Box::new(value.iter().flat_map(|v| {
+                v.all_children().flat_map(|e| {
                     if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
-                        let name = poly_id_to_definition_name[poly_id];
-                        if required_names.insert(name.into()) {
-                            to_process.push(name.into());
-                        }
+                        Some(poly_id_to_definition_name[poly_id].into())
+                    } else {
+                        None
                     }
                 })
-            }
+            }))
         } else {
             panic!("Symbol not found: {n}");
+        };
+        for s in symbols {
+            if required_names.insert(s.clone()) {
+                to_process.push(s);
+            }
         }
     }
 
