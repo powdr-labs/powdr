@@ -44,9 +44,10 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     let mut required_names = collect_required_names(pil_file, &poly_id_to_definition_name);
     let mut to_process = required_names.iter().cloned().collect::<Vec<_>>();
     while let Some(n) = to_process.pop() {
-        let symbols = if let Some((_, value)) = pil_file.definitions.get(n.as_ref()) {
-            let Some(value) = value else { continue };
-            value.symbols()
+        let symbols: Box<dyn Iterator<Item = Cow<'_, str>>> = if let Some((_, value)) =
+            pil_file.definitions.get(n.as_ref())
+        {
+            Box::new(value.iter().flat_map(|v| v.symbols()))
         } else if let Some((_, value)) = pil_file.intermediate_columns.get(n.as_ref()) {
             Box::new(value.iter().flat_map(|v| {
                 v.all_children().flat_map(|e| {
