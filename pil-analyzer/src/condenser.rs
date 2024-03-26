@@ -342,7 +342,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         constraints: Arc<Value<'a, T>>,
         source: SourceRef,
     ) -> Result<(), evaluator::EvalError> {
-        let identities = match constraints.as_ref() {
+        let identities: Box<dyn Iterator<_>> = match constraints.as_ref() {
             Value::Identity(left, right) => Box::new(iter::once((left, right))),
             Value::Array(items) => Box::new(items.iter().map(|item| match item.as_ref() {
                 Value::Identity(left, right) => (left, right),
