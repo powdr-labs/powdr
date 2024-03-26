@@ -600,9 +600,13 @@ mod test {
             let t: col = |i| std::array::len(y);
             x[0] = t;
     "#;
-        let expectation = r#"namespace N(65536);
+        let expectation = r#"namespace std::array(65536);
+    let<T> len: T[] -> int = [];
+namespace N(65536);
     col witness x[1];
     col witness y[0];
+    col fixed t(i) { std::array::len::<expr>(N.y) };
+    N.x[0] = N.t;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
