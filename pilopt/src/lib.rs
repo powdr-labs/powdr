@@ -600,4 +600,22 @@ mod test {
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
     }
+
+    #[test]
+    fn remove_unreferenced_keep_enums() {
+        let input = r#"namespace N(65536);
+        enum X { A, B, C }
+        let t: X[] -> int = |r| 1;
+        let f: col = |i| t([]);
+        let x;
+        x = f;
+    "#;
+        let expectation = r#"namespace N(65536);
+    col witness x[5];
+    col inter[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
+    N.x[2] = N.inter[4];
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        assert_eq!(optimized, expectation);
+    }
 }
