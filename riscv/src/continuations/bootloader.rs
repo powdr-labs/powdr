@@ -52,7 +52,7 @@ pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
     // ============== bootloader-specific instructions =======================
     // Write-once memory
-    std::write_once_memory::WriteOnceMemory bootloader_inputs;
+    std::machines::write_once_memory::WriteOnceMemory bootloader_inputs;
 
     instr load_bootloader_input X -> Y = bootloader_inputs.access X, Y ->;
     instr assert_bootloader_input X, Y -> = bootloader_inputs.access X, Y ->;
