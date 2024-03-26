@@ -1,4 +1,4 @@
-use std::ops::ControlFlow;
+use std::{iter, ops::ControlFlow};
 
 use super::Expression;
 
@@ -12,6 +12,12 @@ pub trait Children<O> {
     fn children(&self) -> Box<dyn Iterator<Item = &O> + '_>;
     /// Returns an iterator over all direct children of kind Q in this object.
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut O> + '_>;
+}
+
+pub trait AllChildren<O> {
+    /// Returns an iterator over all direct and indirect children of kind O in this object.
+    /// Pre-order visitor.
+    fn all_children(&self) -> Box<dyn Iterator<Item = &O> + '_>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -174,5 +180,17 @@ impl<Expr: ExpressionVisitable<Expr>, C: Children<Expr>> ExpressionVisitable<Exp
     {
         self.children()
             .try_for_each(|child| child.visit_expressions(f, o))
+    }
+}
+
+impl<Ref> AllChildren<Expression<Ref>> for Expression<Ref> {
+    fn all_children(&self) -> Box<dyn Iterator<Item = &Expression<Ref>> + '_> {
+        Box::new(iter::once(self).chain(self.children().flat_map(|e| e.all_children())))
+    }
+}
+
+impl<Expr: AllChildren<Expr>, C: Children<Expr>> AllChildren<Expr> for C {
+    fn all_children(&self) -> Box<dyn Iterator<Item = &Expr> + '_> {
+        Box::new(self.children().flat_map(|e| e.all_children()))
     }
 }
