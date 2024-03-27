@@ -1,9 +1,6 @@
 let N = 16;
 namespace FibArrays(N);
-    col fixed ISLAST(i) { match i {
-        N - 1 => 1,
-        _ => 0,
-    } };
+    col fixed ISLAST(i) { if i == N - 1 { 1 } else { 0 } };
     col witness unused;
     col witness x[2];
     col witness unused2;
