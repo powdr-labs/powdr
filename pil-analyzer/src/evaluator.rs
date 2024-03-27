@@ -251,6 +251,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
         pattern: &Pattern,
     ) -> Option<Vec<Arc<Value<'b, T>>>> {
         match pattern {
+            Pattern::Rest => unreachable!("Should be handled higher up"),
             Pattern::CatchAll => Some(vec![]),
             Pattern::Number(n) => match v.as_ref() {
                 Value::Integer(x) if x == n => Some(vec![]),
@@ -278,18 +279,38 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 }
                 _ => unreachable!(),
             },
-            Pattern::Array(items) => match v.as_ref() {
-                Value::Array(values) if values.len() == items.len() => values
-                    .iter()
-                    .zip(items)
+            Pattern::Array(items) => {
+                let Value::Array(values) = v.as_ref() else {
+                    panic!("Type error")
+                };
+                // Index of ".."
+                let rest_pos = items.iter().position(|i| *i == Pattern::Rest);
+                // Check if the value is too short.
+                let length_matches = match rest_pos {
+                    Some(_) => values.len() >= items.len() - 1,
+                    None => values.len() == items.len(),
+                };
+                if !length_matches {
+                    return None;
+                }
+                // Split value into "left" and "right" part.
+                let left_len = rest_pos.unwrap_or(values.len());
+                let right_len = rest_pos.map(|p| items.len() - p - 1).unwrap_or(0);
+                let left = values.iter().take(left_len);
+                let right = values.iter().skip(values.len() - right_len);
+                assert_eq!(
+                    left.len() + right.len(),
+                    items.len() - rest_pos.map(|_| 1).unwrap_or_default()
+                );
+                left.chain(right)
+                    .zip(items.iter().filter(|&i| *i != Pattern::Rest))
                     .try_fold(vec![], |mut vars, (e, p)| {
                         Value::matches_pattern(e, p).map(|v| {
                             vars.extend(v);
                             vars
                         })
-                    }),
-                _ => None,
-            },
+                    })
+            }
             Pattern::Variable(_) => Some(vec![v.clone()]),
         }
     }
@@ -632,6 +653,7 @@ mod internal {
                 let (vars, body) = arms
                     .iter()
                     .find_map(|MatchArm { pattern, value }| {
+                        println!("Matching {v} againsnt {pattern}");
                         Value::matches_pattern(&v, pattern).map(|vars| (vars, value))
                     })
                     .ok_or_else(EvalError::NoMatch)?;
@@ -1159,6 +1181,67 @@ mod test {
         assert_eq!(
             parse_and_evaluate_symbol(src, "t"),
             "[0, 1, 11, 5, 99]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_skip_array() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [x, .., y] => x + y,
+                [] => 19,
+                _ => 99,
+            };
+            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[19, 99, 3, 4, 5]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_skip_array_2() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [.., y] => y,
+                _ => 99,
+            };
+            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[99, 1, 2, 3, 4]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_skip_array_3() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [.., x, y] => x,
+                [..] => 99,
+            };
+            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[99, 99, 1, 2, 3]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_skip_array_4() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [x, y, ..] => y,
+                [..] => 99,
+            };
+            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[99, 99, 2, 2, 2]".to_string()
         );
     }
 }

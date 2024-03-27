@@ -680,6 +680,7 @@ impl TypeChecker {
     /// Type-checks a pattern and adds local variables.
     fn infer_type_of_pattern(&mut self, pattern: &Pattern) -> Result<Type, String> {
         Ok(match pattern {
+            Pattern::Rest => unreachable!("Should be handled higher up."),
             Pattern::CatchAll => self.new_type_var(),
             Pattern::Number(_) => {
                 let ty = self.new_type_var();
@@ -696,7 +697,9 @@ impl TypeChecker {
             Pattern::Array(items) => {
                 let item_type = self.new_type_var();
                 for item in items {
-                    self.expect_type_of_pattern(&item_type, item)?;
+                    if item != &Pattern::Rest {
+                        self.expect_type_of_pattern(&item_type, item)?;
+                    }
                 }
                 Type::Array(ArrayType {
                     base: Box::new(item_type),
