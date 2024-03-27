@@ -153,7 +153,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-powdr-riscv-runtime = {{ git = "https://github.com/powdr-labs/powdr", branch = "main" }}
+powdr-riscv-runtime = {{ path = "/home/leo/devel/powdr/riscv-runtime" }}
             "#,
             Path::new(input_file).file_stem().unwrap().to_str().unwrap()
         ),
@@ -225,7 +225,7 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
         "build",
         "--release",
         "-Z",
-        "build-std=core,alloc",
+        "build-std=core,alloc,proc_macro,panic_abort,std",
         "--target",
         "riscv32imac-unknown-none-elf",
         "--lib",

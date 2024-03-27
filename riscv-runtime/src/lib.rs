@@ -1,21 +1,22 @@
-#![no_std]
+#![feature(restricted_std, start)]
+/* #![no_std]
 #![feature(
     start,
     alloc_error_handler,
     maybe_uninit_write_slice,
     round_char_boundary
-)]
+)] */
 
 use core::arch::asm;
-use core::panic::PanicInfo;
+/* use core::panic::PanicInfo;
 
-use crate::fmt::print_str;
+use crate::fmt::print_str; */
 
-mod allocator;
+/* mod allocator;
 pub mod coprocessors;
-pub mod fmt;
+pub mod fmt; */
 
-#[panic_handler]
+/* #[panic_handler]
 unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
     static mut IS_PANICKING: bool = false;
 
@@ -29,7 +30,7 @@ unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
 
     asm!("unimp");
     loop {}
-}
+} */
 
 #[inline]
 pub fn get_prover_input(index: u32) -> u32 {

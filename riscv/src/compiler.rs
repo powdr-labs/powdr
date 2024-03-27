@@ -904,7 +904,10 @@ fn runtime(coprocessors: &CoProcessors) -> String {
     ]
     .map(|n| format!(".globl {n}@plt\n.globl {n}\n.set {n}@plt, {n}\n"))
     .join("\n\n")
-        + &[("__rust_alloc_error_handler", "__rg_oom")]
+        + &[
+            ("__rust_alloc_error_handler", "__rg_oom"),
+            ("__rust_alloc", "__rg_alloc"),
+        ]
             .map(|(n, m)| format!(".globl {n}\n.set {n}, {m}\n"))
             .join("\n\n")
         + &coprocessors.runtime()
