@@ -7,29 +7,10 @@
 )]
 
 use core::arch::asm;
-use core::panic::PanicInfo;
-
-use crate::fmt::print_str;
 
 mod allocator;
 pub mod coprocessors;
 pub mod fmt;
-
-#[panic_handler]
-unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
-    static mut IS_PANICKING: bool = false;
-
-    if !IS_PANICKING {
-        IS_PANICKING = true;
-
-        print!("{panic}\n");
-    } else {
-        print_str("Panic handler has panicked! Things are very dire indeed...\n");
-    }
-
-    asm!("unimp");
-    loop {}
-}
 
 #[inline]
 pub fn get_prover_input(index: u32) -> u32 {
