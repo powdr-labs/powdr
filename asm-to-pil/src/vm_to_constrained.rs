@@ -980,7 +980,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
                     FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression {
                         kind: FunctionKind::Query,
-                        params: vec!["__i".to_string()],
+                        params: vec![Pattern::Variable("__i".to_string())],
                         body: Box::new(Expression::MatchExpression(
                             Box::new(Expression::FunctionCall(FunctionCall {
                                 function: Box::new(absolute_reference("::std::prover::eval")),

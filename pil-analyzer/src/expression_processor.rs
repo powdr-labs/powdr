@@ -174,23 +174,20 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
 
     pub fn process_function(
         &mut self,
-        params: &[String],
+        params: &[Pattern],
         expression: ::powdr_ast::parsed::Expression,
     ) -> Expression {
-        let previous_local_vars = self.local_variables.clone();
+        let var_state = self.store_local_variables();
 
-        // Add the new local variables, potentially overwriting existing variables.
-        self.local_variables.extend(
-            params
-                .iter()
-                .zip(self.local_variable_counter..)
-                .map(|(p, i)| (p.clone(), i)),
-        );
-        self.local_variable_counter += params.len() as u64;
+        for param in params {
+            if !param.is_irrefutable() {
+                panic!("Function parameters must be irrefutable, but {param} is refutable.");
+            }
+            self.process_pattern(param);
+        }
         let processed_value = self.process_expression(expression);
-        // Reset the local variable mapping.
-        self.local_variables = previous_local_vars;
-        self.local_variable_counter -= params.len() as u64;
+
+        self.reset_local_variables(var_state);
         processed_value
     }
 
@@ -201,19 +198,19 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
     ) -> Expression {
         let vars = self.store_local_variables();
 
-        let mut local_var_count = 0;
         let processed_statements = statements
             .into_iter()
             .map(|statement| match statement {
-                StatementInsideBlock::LetStatement(LetStatementInsideBlock { name, value }) => {
-                    let value = value.map(|v| self.process_expression(v));
-                    let id = self.local_variable_counter;
-                    if self.local_variables.insert(name.clone(), id).is_some() {
-                        panic!("Variable already defined: {name}");
+                StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value }) => {
+                    if value.is_none() && !matches!(pattern, Pattern::Variable(_)) {
+                        panic!("Let statement without value requires a single variable, but got {pattern}.");
                     }
-                    self.local_variable_counter += 1;
-                    local_var_count += 1;
-                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { name, value })
+                    if !pattern.is_irrefutable() {
+                        panic!("Let statement requires an irrefutable pattern, but {pattern} is refutable.");
+                    }
+                    let value = value.map(|v| self.process_expression(v));
+                    self.process_pattern(&pattern);
+                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value })
                 }
                 StatementInsideBlock::Expression(expr) => {
                     StatementInsideBlock::Expression(self.process_expression(expr))

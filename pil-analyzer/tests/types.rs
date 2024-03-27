@@ -24,7 +24,7 @@ fn type_check(input: &str, expected: &[(&str, &str, &str)]) {
 fn type_scheme_simplify_type_vars_basic() {
     let ts = parse_type_scheme("A, B, C", "B -> (C -> (A, B))").simplify_type_vars();
     assert_eq!(
-        format_type_scheme_around_name("x", &Some(ts)),
+        format_type_scheme_around_name(&"x", &Some(ts)),
         "<T1, T2, T3> x: T2 -> (T3 -> (T1, T2))"
     );
 }
@@ -34,7 +34,7 @@ fn type_scheme_simplify_type_vars() {
     // Test conflicts between the old and new names.
     let ts = parse_type_scheme("T2: FromLiteral + Sum, T1", "T2 -> T1[]").simplify_type_vars();
     assert_eq!(
-        format_type_scheme_around_name("x", &Some(ts)),
+        format_type_scheme_around_name(&"x", &Some(ts)),
         "<T1: FromLiteral + Sum, T2> x: T1 -> T2[]"
     );
 }

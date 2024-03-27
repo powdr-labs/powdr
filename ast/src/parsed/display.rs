@@ -363,7 +363,7 @@ impl<Ref: Display> Display for StatementInsideBlock<Ref> {
 
 impl<Ref: Display> Display for LetStatementInsideBlock<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "let {}", self.name)?;
+        write!(f, "let {}", self.pattern)?;
         if let Some(v) = &self.value {
             write!(f, " = {v};")
         } else {
@@ -401,11 +401,11 @@ impl Display for PilStatement {
             PilStatement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
-            PilStatement::LetStatement(_, name, type_scheme, value) => write_indented_by(
+            PilStatement::LetStatement(_, pattern, type_scheme, value) => write_indented_by(
                 f,
                 format!(
                     "let{}{};",
-                    format_type_scheme_around_name(name, type_scheme),
+                    format_type_scheme_around_name(pattern, type_scheme),
                     value
                         .as_ref()
                         .map(|value| format!(" = {value}"))
@@ -739,8 +739,8 @@ fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
         .to_string()
 }
 
-pub fn format_type_scheme_around_name<E: Display>(
-    name: &str,
+pub fn format_type_scheme_around_name<E: Display, N: Display>(
+    name: &N,
     type_scheme: &Option<TypeScheme<E>>,
 ) -> String {
     if let Some(type_scheme) = type_scheme {

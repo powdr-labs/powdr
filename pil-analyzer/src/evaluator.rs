@@ -68,11 +68,20 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
 
                 )))?
             }
+            let matched_arguments =
+                arguments
+                    .iter()
+                    .zip(&lambda.params)
+                    .flat_map(|(arg, pattern)| {
+                        Value::try_match_pattern(arg, pattern).unwrap_or_else(|| {
+                            panic!("Irrefutable pattern did not match: {pattern} = {arg}")
+                        })
+                    });
 
             let local_vars = environment
                 .iter()
                 .cloned()
-                .chain(arguments)
+                .chain(matched_arguments)
                 .collect::<Vec<_>>();
 
             internal::evaluate(&lambda.body, &local_vars, generic_args, symbols)
@@ -246,7 +255,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
 
     /// Tries to match this value against the given pattern.
     /// Returns local variable bindings on success.
-    pub fn matches_pattern<'b>(
+    pub fn try_match_pattern<'b>(
         v: &Arc<Value<'b, T>>,
         pattern: &Pattern,
     ) -> Option<Vec<Arc<Value<'b, T>>>> {
@@ -272,7 +281,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                         .iter()
                         .zip(items)
                         .try_fold(vec![], |mut vars, (e, p)| {
-                            Value::matches_pattern(e, p).map(|v| {
+                            Value::try_match_pattern(e, p).map(|v| {
                                 vars.extend(v);
                                 vars
                             })
@@ -306,7 +315,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 left.chain(right)
                     .zip(items.iter().filter(|&i| *i != Pattern::Rest))
                     .try_fold(vec![], |mut vars, (e, p)| {
-                        Value::matches_pattern(e, p).map(|v| {
+                        Value::try_match_pattern(e, p).map(|v| {
                             vars.extend(v);
                             vars
                         })
@@ -654,8 +663,7 @@ mod internal {
                 let (vars, body) = arms
                     .iter()
                     .find_map(|MatchArm { pattern, value }| {
-                        println!("Matching {v} againsnt {pattern}");
-                        Value::matches_pattern(&v, pattern).map(|vars| (vars, value))
+                        Value::try_match_pattern(&v, pattern).map(|vars| (vars, value))
                     })
                     .ok_or_else(EvalError::NoMatch)?;
                 let mut locals = locals.to_vec();
@@ -682,15 +690,22 @@ mod internal {
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
-                            name,
+                            pattern,
                             value,
                         }) => {
                             let value = if let Some(value) = value {
                                 evaluate(value, &locals, generic_args, symbols)?
                             } else {
+                                let Pattern::Variable(name) = pattern else {
+                                    unreachable!()
+                                };
                                 symbols.new_witness_column(name, SourceRef::unknown())?
                             };
-                            locals.push(value);
+                            locals.extend(
+                                Value::try_match_pattern(&value, pattern).unwrap_or_else(|| {
+                                    panic!("Irrefutable pattern did not match: {pattern} = {value}")
+                                }),
+                            );
                         }
                         StatementInsideBlock::Expression(expr) => {
                             let result = evaluate(expr, &locals, generic_args, symbols)?;
@@ -1243,6 +1258,29 @@ mod test {
         assert_eq!(
             parse_and_evaluate_symbol(src, "t"),
             "[99, 99, 2, 2, 2]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn unpack_fun() {
+        let src = r#"
+            let t: (int, fe, int), int -> int[] = |(x, _, y), z| [x, y, z];
+            let x: int[] = t((1, 2, 3), 4);
+        "#;
+        assert_eq!(parse_and_evaluate_symbol(src, "x"), "[1, 3, 4]".to_string());
+    }
+
+    #[test]
+    pub fn unpack_let() {
+        let src = r#"
+            let x: int[] = {
+                let (a, (_, b), (c, _, _, d, _)) = (1, (2, 3), (4, 5, 6, 7, 8));
+                [a, b, c, d]
+            };
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "x"),
+            "[1, 3, 4, 7]".to_string()
         );
     }
 }
