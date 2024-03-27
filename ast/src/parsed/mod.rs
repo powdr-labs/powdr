@@ -496,7 +496,7 @@ impl NamespacedPolynomialReference {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub struct LambdaExpression<Ref = NamespacedPolynomialReference> {
     pub kind: FunctionKind,
-    pub params: Vec<String>,
+    pub params: Vec<Pattern>,
     pub body: Box<Expression<Ref>>,
 }
 
@@ -678,7 +678,7 @@ impl<R> Children<Expression<R>> for StatementInsideBlock<R> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LetStatementInsideBlock<Ref = NamespacedPolynomialReference> {
-    pub name: String,
+    pub pattern: Pattern,
     pub value: Option<Expression<Ref>>,
 }
 
@@ -840,6 +840,20 @@ impl Pattern {
         match self {
             Pattern::Variable(v) => Box::new(once(v)),
             _ => Box::new(self.children().flat_map(|p| p.variables())),
+        }
+    }
+
+    /// Return true if the pattern is irrefutable, i.e. matches all possible values of its type.
+    pub fn is_irrefutable(&self) -> bool {
+        match self {
+            Pattern::Rest => unreachable!(),
+            Pattern::CatchAll | Pattern::Variable(_) => true,
+            Pattern::Number(_) | Pattern::String(_) => false,
+            Pattern::Array(items) => {
+                // Only "[..]"" is irrefutable
+                items == &vec![Pattern::Rest]
+            }
+            Pattern::Tuple(p) => p.iter().all(|p| p.is_irrefutable()),
         }
     }
 }
