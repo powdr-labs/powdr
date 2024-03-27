@@ -192,7 +192,7 @@ pub fn extract_label_offsets<R: Register, F: FunctionOpKind>(
         })
         .fold(BTreeMap::new(), |mut acc, (n, i)| {
             if acc.insert(n, i).is_some() {
-                panic!("Duplicate label: {n}")
+                // panic!("Duplicate label: {n}")
             }
             acc
         })
