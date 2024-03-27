@@ -3,15 +3,16 @@ mod json_exporter;
 
 use std::{
     fs::File,
-    io::{BufWriter, Write},
+    io::{self, BufWriter, Write},
+    iter::{once, repeat},
     path::Path,
 };
 
 use crate::{Backend, BackendFactory, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{write_polys_file, DegreeType, FieldElement};
 use serde::Serialize;
-use starky::types::{StarkStruct, Step};
+use starky::types::{StarkStruct, Step, PIL};
 
 pub struct PilStarkCliFactory;
 
@@ -35,11 +36,52 @@ fn create_stark_struct(degree: DegreeType) -> StarkStruct {
     }
 }
 
+fn pil_hack_fix<'a, F: FieldElement>(
+    pil: &'a Analyzed<F>,
+    fixed: &'a [(String, Vec<F>)],
+) -> (PIL, Vec<(String, Vec<F>)>) {
+    let degree = pil.degree();
+
+    let mut pil: PIL = json_exporter::export(pil);
+
+    // TODO eStark provers requires a fixed column with the equivalent semantics
+    // to Polygon zkEVM's `L1` column. Powdr generated PIL will always have
+    // `main.first_step`, but directly given PIL may not have it. This is a hack
+    // to inject such column if it doesn't exist. It should be eventually
+    // improved.
+    let mut fixed = fixed.to_vec();
+    if !fixed.iter().any(|(k, _)| k == "main.first_step") {
+        use starky::types::Reference;
+        pil.nConstants += 1;
+        pil.references.insert(
+            "main.first_step".to_string(),
+            Reference {
+                polType: None,
+                type_: "constP".to_string(),
+                id: fixed.len(),
+                polDeg: degree as usize,
+                isArray: false,
+                elementType: None,
+                len: None,
+            },
+        );
+        fixed.push((
+            "main.first_step".to_string(),
+            once(F::one())
+                .chain(repeat(F::zero()))
+                .take(degree as usize)
+                .collect(),
+        ));
+    }
+
+    (pil, fixed)
+}
+
 impl<F: FieldElement> BackendFactory<F> for PilStarkCliFactory {
     fn create<'a>(
         &self,
         analyzed: &'a Analyzed<F>,
-        _fixed: &'a [(String, Vec<F>)],
+        fixed: &'a [(String, Vec<F>)],
         output_dir: Option<&'a Path>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -50,22 +92,51 @@ impl<F: FieldElement> BackendFactory<F> for PilStarkCliFactory {
         if verification_key.is_some() {
             return Err(Error::NoVerificationAvailable);
         }
+
+        // Pre-process the PIL and fixed columns.
+        let (pil, fixed) = pil_hack_fix(analyzed, fixed);
+
         Ok(Box::new(PilStarkCli {
-            analyzed,
+            degree: analyzed.degree(),
+            pil,
+            fixed,
             output_dir,
         }))
     }
 }
 
 pub struct PilStarkCli<'a, F: FieldElement> {
-    analyzed: &'a Analyzed<F>,
+    degree: DegreeType,
+    pil: PIL,
+    fixed: Vec<(String, Vec<F>)>,
     output_dir: Option<&'a Path>,
 }
 
-fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), Error> {
+fn buffered_write_file<R>(
+    path: &Path,
+    do_write: impl FnOnce(&mut BufWriter<File>) -> R,
+) -> Result<R, io::Error> {
     let mut writer = BufWriter::new(File::create(path)?);
-    serde_json::to_writer(&mut writer, data).map_err(|e| e.to_string())?;
+    let result = do_write(&mut writer);
     writer.flush()?;
+
+    Ok(result)
+}
+
+fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), Error> {
+    buffered_write_file(path, |writer| {
+        serde_json::to_writer(writer, data).map_err(|e| e.to_string())
+    })??;
+
+    Ok(())
+}
+
+fn write_constants<F: FieldElement>(
+    path: &Path,
+    constants: &[(String, Vec<F>)],
+) -> Result<(), Error> {
+    buffered_write_file(path, |writer| write_polys_file(writer, constants))??;
+
     Ok(())
 }
 
@@ -79,20 +150,22 @@ impl<'a, F: FieldElement> Backend<'a, F> for PilStarkCli<'a, F> {
             return Err(Error::NoAggregationAvailable);
         }
 
-        // Write the constraints in the format expected by the prover-cpp
+        // Write the files in the format expected by the prover-cpp
         if let Some(output_dir) = self.output_dir {
+            // Write the constants.
+            let constants_path = output_dir.join("constants.bin");
+            log::info!("Writing {}.", constants_path.to_string_lossy());
+            write_constants(&constants_path, &self.fixed)?;
+
             // Write the stark struct JSON.
             let stark_struct_path = output_dir.join("starkstruct.json");
             log::info!("Writing {}.", stark_struct_path.to_string_lossy());
-            write_json_file(
-                &stark_struct_path,
-                &create_stark_struct(self.analyzed.degree()),
-            )?;
+            write_json_file(&stark_struct_path, &create_stark_struct(self.degree))?;
 
             // Write the constraints in the json format expected by the zkvm-prover:
             let contraints_path = output_dir.join("constraints.json");
             log::info!("Writing {}.", contraints_path.to_string_lossy());
-            write_json_file(&contraints_path, &json_exporter::export(self.analyzed))?;
+            write_json_file(&contraints_path, &self.pil)?;
         } else {
             // If we were going to call the prover-cpp, we could write the
             // constraints.json to a temporary directory in case no output_dir

@@ -1,8 +1,7 @@
 use std::io;
-use std::iter::{once, repeat};
 use std::time::Instant;
 
-use crate::{pilstark, Backend, BackendFactory, Error};
+use crate::{Backend, BackendFactory, Error};
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 
@@ -17,7 +16,7 @@ use starky::{
     types::{StarkStruct, PIL},
 };
 
-use super::create_stark_struct;
+use super::{create_stark_struct, pil_hack_fix};
 
 pub struct EStarkFactory;
 
@@ -41,7 +40,7 @@ impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
 
         let params = create_stark_struct(pil.degree());
 
-        let (pil_json, fixed) = pil_json(pil, fixed);
+        let (pil_json, fixed) = pil_hack_fix(pil, fixed);
         let const_pols = to_starky_pols_array(&fixed, &pil_json, PolKind::Constant);
 
         let setup = if let Some(vkey) = verification_key {
@@ -57,49 +56,6 @@ impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
             setup,
         }))
     }
-}
-
-fn pil_json<'a, F: FieldElement>(
-    pil: &'a Analyzed<F>,
-    fixed: &'a [(String, Vec<F>)],
-) -> (PIL, Vec<(String, Vec<F>)>) {
-    let degree = pil.degree();
-
-    let mut pil: PIL = pilstark::json_exporter::export(pil);
-
-    // TODO starky requires a fixed column with the equivalent
-    // semantics to Polygon zkEVM's `L1` column.
-    // It takes the name of that column via the API.
-    // Powdr generated PIL will always have `main.first_step`,
-    // but directly given PIL may not have it.
-    // This is a hack to inject such column if it doesn't exist.
-    // It should be eventually improved.
-    let mut fixed = fixed.to_vec();
-    if !fixed.iter().any(|(k, _)| k == "main.first_step") {
-        use starky::types::Reference;
-        pil.nConstants += 1;
-        pil.references.insert(
-            "main.first_step".to_string(),
-            Reference {
-                polType: None,
-                type_: "constP".to_string(),
-                id: fixed.len(),
-                polDeg: degree as usize,
-                isArray: false,
-                elementType: None,
-                len: None,
-            },
-        );
-        fixed.push((
-            "main.first_step".to_string(),
-            once(F::one())
-                .chain(repeat(F::zero()))
-                .take(degree as usize)
-                .collect(),
-        ));
-    }
-
-    (pil, fixed)
 }
 
 fn create_stark_setup(

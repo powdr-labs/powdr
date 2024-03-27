@@ -477,14 +477,6 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
-    fn maybe_write_constants(&self, constants: &[(String, Vec<T>)]) -> Result<(), Vec<String>> {
-        if let Some(path) = self.path_if_should_write(|name| format!("{name}_constants.bin"))? {
-            let writer = BufWriter::new(fs::File::create(path).unwrap());
-            write_or_panic(writer, |writer| write_polys_file(writer, constants));
-        }
-        Ok(())
-    }
-
     fn maybe_write_witness(
         &self,
         fixed: &[(String, Vec<T>)],
@@ -492,7 +484,8 @@ impl<T: FieldElement> Pipeline<T> {
     ) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|name| format!("{name}_commits.bin"))? {
             let file = BufWriter::new(fs::File::create(path).unwrap());
-            write_or_panic(file, |file| write_polys_file(file, witness));
+            write_or_panic(file, |file| write_polys_file(file, witness))
+                .map_err(|e| vec![format!("{}", e)])?;
         }
 
         if self.arguments.export_witness_csv {
@@ -775,7 +768,6 @@ impl<T: FieldElement> Pipeline<T> {
 
         let start = Instant::now();
         let fixed_cols = constant_evaluator::generate(&pil);
-        self.maybe_write_constants(&fixed_cols)?;
         self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
         self.artifact.fixed_cols = Some(Rc::new(fixed_cols));
