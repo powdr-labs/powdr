@@ -226,6 +226,11 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
         "--release",
         "-Z",
         "build-std=core,alloc",
+        // this will override the default features from stdlib, such as backtrace, panic-unwind, etc.
+        // All features are found in std Cargo.toml:
+        // https://github.com/rust-lang/rust/blob/d5db7fb537c0352eec3855aa0331c271c48ac4f6/library/std/Cargo.toml#L60
+        "-Z",
+        "build-std-features=panic_immediate_abort",
         "--target",
         "riscv32imac-unknown-none-elf",
         "--lib",
