@@ -624,6 +624,8 @@ StatementInsideBlock: StatementInsideBlock = {
     <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
 
+// ---------------------------- Pattern -----------------------------
+
 Pattern: Pattern = {
     "_" => Pattern::CatchAll,
     Number => Pattern::Number(<>.into()),
