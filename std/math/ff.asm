@@ -8,7 +8,8 @@ let inverse = |x, modulus|
             std::check::panic("Tried to compute the inverse of a negative number or a number outside the field.")
         }
     } else {
-        reduce(extended_gcd(x, modulus)[0], modulus)
+        let (r, _) = extended_gcd(x, modulus);
+        reduce(r, modulus)
     };
 
 /// Computes `x + y` modulo the modulus.
@@ -35,16 +36,12 @@ let reduce = |x, modulus|
 let extended_gcd = |a, b|
     if b == 0 {
         if a == 1 {
-            [1, 0]
+            (1, 0)
         } else {
             // a is the gcd, but we do not really want to compute it.
             std::check::panic("Inputs are not co-prime, inverse does not exist.")
         }
     } else {
-        // TODO this is written in a complicated way
-        // because we do not have tuple destructuring assignment
-        {
-            let r = extended_gcd(b, a % b);
-            [r[1], r[0] - (a / b) * r[1]]
-        }
+        let (r1, r2) = extended_gcd(b, a % b);
+        (r2, r1 - (a / b) * r2)
     };

@@ -577,7 +577,7 @@ fn check_expression(
         }) => {
             // Add the local variables, ignore collisions.
             let mut local_variables = local_variables.clone();
-            local_variables.extend(params.iter().cloned());
+            local_variables.extend(params.iter().flat_map(|p| p.variables().cloned()));
             check_expression(location, body, state, &local_variables)
         }
         Expression::BinaryOperation(a, _, b)
@@ -616,11 +616,14 @@ fn check_expression(
             let mut local_variables = local_variables.clone();
             for statement in statements {
                 match statement {
-                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { name, value }) => {
+                    StatementInsideBlock::LetStatement(LetStatementInsideBlock {
+                        pattern,
+                        value,
+                    }) => {
                         if let Some(value) = value {
                             check_expression(location, value, state, &local_variables)?;
                         }
-                        local_variables.insert(name.clone());
+                        local_variables.extend(pattern.variables().cloned());
                     }
                     StatementInsideBlock::Expression(expr) => {
                         check_expression(location, expr, state, &local_variables)?;
