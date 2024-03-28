@@ -49,7 +49,7 @@ It has the form ``{ <statement> ; <statement> ; ... ; <expression> }``,
 i.e. a sequence of statements followed by an expression and the value of the statement block
 is the value of the final expression.
 
-The statements can either be expressions or let statements: ``let x = ...`` / ``let x;`
+The statements can either be expressions or let statements: ``let x = ...`` / ``let x;``
 
 Let statements with value can be used everywhere, they just bind an expression to a local variable
 and allow to avoid repeating the expression.
