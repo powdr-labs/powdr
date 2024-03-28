@@ -25,6 +25,26 @@ let unchanged_until: expr, expr -> constr = |c, latch| (c' - c) * (1 - latch) = 
 /// Evaluates to a constraint that forces `c` to be either 0 or 1.
 let force_bool: expr -> constr = |c| c * (1 - c) = 0;
 
+/// Creates a new witness column that is constrained to the values 0 and 1.
+let new_bool: -> expr = constr || {
+    let x;
+    force_bool(x);
+    x
+};
+
+/// Creates a new witness column which is 1 on each row where `x` is zero
+/// and 0 otherwise.
+let is_zero: expr -> expr = constr |x| {
+    let x_is_zero;
+    force_bool(x_is_zero);
+    /// This is the inverse of x in the field as long as x is not zero.
+    /// It is unconstrained if x is zero.
+    let x_inv;
+    x_is_zero = 1 - x * x_inv;
+    x_is_zero * x = 0;
+    x_is_zero
+};
+
 /// Returns an array of functions such that the range of the `i`th function is exactly the
 /// first `size[i]` numbers (i.e. `0` until `size[i] - 1`, inclusive), such that all combinations
 /// of values of these functions appear as combined outputs.

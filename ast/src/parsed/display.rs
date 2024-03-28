@@ -347,6 +347,15 @@ impl<Ref: Display> Display for IfExpression<Ref> {
     }
 }
 
+impl<Ref: Display> Display for StatementInsideBlock<Ref> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            StatementInsideBlock::LetStatement(s) => write!(f, "{s}"),
+            StatementInsideBlock::Expression(e) => write!(f, "{e};"),
+        }
+    }
+}
+
 impl<Ref: Display> Display for LetStatementInsideBlock<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "let {}", self.name)?;
@@ -475,24 +484,19 @@ impl Display for FunctionDefinition {
             FunctionDefinition::Array(array_expression) => {
                 write!(f, " = {array_expression}")
             }
-            FunctionDefinition::Query(Expression::LambdaExpression(lambda)) => write!(
-                f,
-                "({}) query {}",
-                lambda.params.iter().format(", "),
-                lambda.body,
-            ),
-            FunctionDefinition::Query(e) => {
-                write!(f, " query = {e}")
-            }
             FunctionDefinition::Expression(Expression::LambdaExpression(lambda))
                 if lambda.params.len() == 1 =>
             {
-                let body = if matches!(lambda.body.as_ref(), Expression::BlockExpression(_, _)) {
-                    format!("{}", lambda.body)
-                } else {
-                    format!("{{ {} }}", lambda.body)
-                };
-                write!(f, "({}) {body}", lambda.params.iter().format(", "),)
+                write!(
+                    f,
+                    "({}) {}{}",
+                    lambda.params.iter().format(", "),
+                    match lambda.kind {
+                        FunctionKind::Pure => "".into(),
+                        _ => format!("{} ", &lambda.kind),
+                    },
+                    lambda.body
+                )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
             FunctionDefinition::TypeDeclaration(_) => {
@@ -591,7 +595,26 @@ impl Display for NamespacedPolynomialReference {
 
 impl<Ref: Display> Display for LambdaExpression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "(|{}| {})", self.params.iter().format(", "), self.body)
+        write!(
+            f,
+            "({}|{}| {})",
+            match self.kind {
+                FunctionKind::Pure => "".into(),
+                _ => format!("{} ", &self.kind),
+            },
+            self.params.iter().format(", "),
+            self.body
+        )
+    }
+}
+
+impl Display for FunctionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FunctionKind::Pure => write!(f, "pure"),
+            FunctionKind::Constr => write!(f, "constr"),
+            FunctionKind::Query => write!(f, "query"),
+        }
     }
 }
 

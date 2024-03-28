@@ -118,8 +118,7 @@ fn generate_values<T: FieldElement>(
                     values
                 })
         }
-        FunctionValueDefinition::Query(_)
-        | FunctionValueDefinition::TypeDeclaration(_)
+        FunctionValueDefinition::TypeDeclaration(_)
         | FunctionValueDefinition::TypeConstructor(_, _) => panic!(),
     };
     match result {

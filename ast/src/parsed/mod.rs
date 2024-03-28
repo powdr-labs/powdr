@@ -302,7 +302,7 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     FreeInput(Box<Expression<Ref>>),
     MatchExpression(Box<Expression<Ref>>, Vec<MatchArm<Ref>>),
     IfExpression(IfExpression<Ref>),
-    BlockExpression(Vec<LetStatementInsideBlock<Ref>>, Box<Expression<Ref>>),
+    BlockExpression(Vec<StatementInsideBlock<Ref>>, Box<Expression<Ref>>),
 }
 
 impl<Ref> Expression<Ref> {
@@ -379,14 +379,14 @@ impl<R> Expression<R> {
     /// This specifically does not implement Children because otherwise it would
     /// have a wrong implementation of ExpressionVisitable (which is implemented
     /// generically for all types that implement Children<Expr>).
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+    pub fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         match self {
             Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
                 Box::new(empty())
             }
             Expression::Number(_, _) => Box::new(empty()),
             Expression::Tuple(v) => Box::new(v.iter()),
-            Expression::LambdaExpression(LambdaExpression { params: _, body }) => {
+            Expression::LambdaExpression(LambdaExpression { body, .. }) => {
                 Box::new(once(body.as_ref()))
             }
             Expression::ArrayLiteral(ArrayLiteral { items }) => Box::new(items.iter()),
@@ -423,14 +423,14 @@ impl<R> Expression<R> {
     /// This specifically does not implement Children because otherwise it would
     /// have a wrong implementation of ExpressionVisitable (which is implemented
     /// generically for all types that implement Children<Expr>).
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+    pub fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         match self {
             Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
                 Box::new(empty())
             }
             Expression::Number(_, _) => Box::new(empty()),
             Expression::Tuple(v) => Box::new(v.iter_mut()),
-            Expression::LambdaExpression(LambdaExpression { params: _, body }) => {
+            Expression::LambdaExpression(LambdaExpression { body, .. }) => {
                 Box::new(once(body.as_mut()))
             }
             Expression::ArrayLiteral(ArrayLiteral { items }) => Box::new(items.iter_mut()),
@@ -495,6 +495,7 @@ impl NamespacedPolynomialReference {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub struct LambdaExpression<Ref = NamespacedPolynomialReference> {
+    pub kind: FunctionKind,
     pub params: Vec<String>,
     pub body: Box<Expression<Ref>>,
 }
@@ -507,6 +508,15 @@ impl<R> Children<Expression<R>> for LambdaExpression<R> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         Box::new(once(self.body.as_mut()))
     }
+}
+
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+pub enum FunctionKind {
+    Pure,
+    Constr,
+    Query,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -673,6 +683,28 @@ impl<R> Children<Expression<R>> for IfExpression<R> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub enum StatementInsideBlock<Ref = NamespacedPolynomialReference> {
+    LetStatement(LetStatementInsideBlock<Ref>),
+    Expression(Expression<Ref>),
+}
+
+impl<R> Children<Expression<R>> for StatementInsideBlock<R> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        match self {
+            StatementInsideBlock::LetStatement(l) => Box::new(l.children()),
+            StatementInsideBlock::Expression(e) => Box::new(once(e)),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        match self {
+            StatementInsideBlock::LetStatement(l) => Box::new(l.children_mut()),
+            StatementInsideBlock::Expression(e) => Box::new(once(e)),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LetStatementInsideBlock<Ref = NamespacedPolynomialReference> {
     pub name: String,
     pub value: Option<Expression<Ref>>,
@@ -693,8 +725,6 @@ impl<R> Children<Expression<R>> for LetStatementInsideBlock<R> {
 pub enum FunctionDefinition {
     /// Array expression.
     Array(ArrayExpression),
-    /// Prover query. The Expression usually is a LambdaExpression.
-    Query(Expression),
     /// Generic expression
     Expression(Expression),
     /// A type declaration.
@@ -705,7 +735,7 @@ impl Children<Expression> for FunctionDefinition {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
             FunctionDefinition::Array(ae) => ae.children(),
-            FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => Box::new(once(e)),
+            FunctionDefinition::Expression(e) => Box::new(once(e)),
             FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
         }
     }
@@ -713,7 +743,7 @@ impl Children<Expression> for FunctionDefinition {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
             FunctionDefinition::Array(ae) => ae.children_mut(),
-            FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => Box::new(once(e)),
+            FunctionDefinition::Expression(e) => Box::new(once(e)),
             FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
         }
     }

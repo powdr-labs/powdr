@@ -4,7 +4,7 @@ use super::{
         SymbolValue,
     },
     ArrayLiteral, EnumDeclaration, Expression, FunctionCall, IfExpression, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, MatchPattern,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, MatchPattern, StatementInsideBlock,
 };
 
 pub trait Folder {
@@ -113,7 +113,7 @@ pub trait ExpressionFolder<Ref> {
             Expression::BlockExpression(statements, expr) => Expression::BlockExpression(
                 statements
                     .into_iter()
-                    .map(|s| self.fold_let_statement_inside_block(s))
+                    .map(|s| self.fold_statement_inside_block(s))
                     .collect::<Result<_, _>>()?,
                 self.fold_boxed_expression(*expr)?,
             ),
@@ -129,6 +129,7 @@ pub trait ExpressionFolder<Ref> {
         l: LambdaExpression<Ref>,
     ) -> Result<LambdaExpression<Ref>, Self::Error> {
         Ok(LambdaExpression {
+            kind: l.kind,
             params: l.params,
             body: self.fold_boxed_expression(*l.body)?,
         })
@@ -190,6 +191,20 @@ pub trait ExpressionFolder<Ref> {
             body: self.fold_boxed_expression(*body)?,
             else_body: self.fold_boxed_expression(*else_body)?,
         })
+    }
+
+    fn fold_statement_inside_block(
+        &mut self,
+        s: StatementInsideBlock<Ref>,
+    ) -> Result<StatementInsideBlock<Ref>, Self::Error> {
+        match s {
+            StatementInsideBlock::LetStatement(s) => self
+                .fold_let_statement_inside_block(s)
+                .map(StatementInsideBlock::LetStatement),
+            StatementInsideBlock::Expression(e) => self
+                .fold_expression(e)
+                .map(StatementInsideBlock::Expression),
+        }
     }
 
     fn fold_let_statement_inside_block(

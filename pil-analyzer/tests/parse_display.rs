@@ -484,7 +484,7 @@ fn let_inside_block() {
     let input = "
     namespace Main(8);
         let w;
-        let t: int -> expr = |i| match i {
+        let t: int -> expr = constr |i| match i {
             0 => { let x; x },
             1 => w,
             _ => if (i < 3) { let y; y } else { w },
@@ -497,7 +497,7 @@ fn let_inside_block() {
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     let expected = "namespace Main(8);
     col witness w;
-    let t: int -> expr = (|i| match i {
+    let t: int -> expr = (constr |i| match i {
         0 => {
             let x;
             x

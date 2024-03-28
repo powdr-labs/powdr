@@ -5,7 +5,7 @@ use powdr_ast::{
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
         LetStatementInsideBlock, MatchArm, MatchPattern, NamespacedPolynomialReference,
-        SelectedExpressions,
+        SelectedExpressions, StatementInsideBlock,
     },
 };
 use powdr_number::DegreeType;
@@ -89,9 +89,9 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
                     items: self.process_expressions(items),
                 })
             }
-            PExpression::LambdaExpression(LambdaExpression { params, body }) => {
+            PExpression::LambdaExpression(LambdaExpression { kind, params, body }) => {
                 let body = Box::new(self.process_function(&params, *body));
-                Expression::LambdaExpression(LambdaExpression { params, body })
+                Expression::LambdaExpression(LambdaExpression { kind, params, body })
             }
             PExpression::BinaryOperation(left, op, right) => Expression::BinaryOperation(
                 Box::new(self.process_expression(*left)),
@@ -175,27 +175,34 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
 
     fn process_block_expression(
         &mut self,
-        statements: Vec<LetStatementInsideBlock>,
+        statements: Vec<StatementInsideBlock>,
         expr: ::powdr_ast::parsed::Expression,
     ) -> Expression {
         let previous_local_vars = self.local_variables.clone();
 
+        let mut local_var_count = 0;
         let processed_statements = statements
             .into_iter()
-            .map(|LetStatementInsideBlock { name, value }| {
-                let value = value.map(|v| self.process_expression(v));
-                let id = self.local_variable_counter;
-                if self.local_variables.insert(name.clone(), id).is_some() {
-                    panic!("Variable already defined: {name}");
+            .map(|statement| match statement {
+                StatementInsideBlock::LetStatement(LetStatementInsideBlock { name, value }) => {
+                    let value = value.map(|v| self.process_expression(v));
+                    let id = self.local_variable_counter;
+                    if self.local_variables.insert(name.clone(), id).is_some() {
+                        panic!("Variable already defined: {name}");
+                    }
+                    self.local_variable_counter += 1;
+                    local_var_count += 1;
+                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { name, value })
                 }
-                self.local_variable_counter += 1;
-                LetStatementInsideBlock { name, value }
+                StatementInsideBlock::Expression(expr) => {
+                    StatementInsideBlock::Expression(self.process_expression(expr))
+                }
             })
             .collect::<Vec<_>>();
 
         let processed_expr = self.process_expression(expr);
         self.local_variables = previous_local_vars;
-        self.local_variable_counter -= processed_statements.len() as u64;
+        self.local_variable_counter -= local_var_count;
         Expression::BlockExpression(processed_statements, Box::new(processed_expr))
     }
 

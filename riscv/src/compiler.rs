@@ -532,11 +532,7 @@ fn preamble<T: FieldElement>(
     x0 = 0;
 
     // ============== iszero check for X =======================
-    col witness XInv;
-    col witness XIsZero;
-    XIsZero = 1 - X * XInv;
-    XIsZero * X = 0;
-    std::utils::force_bool(XIsZero);
+    let XIsZero = std::utils::is_zero(X);
 
     // ============== control-flow instructions ==============
 

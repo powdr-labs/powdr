@@ -70,41 +70,41 @@ machine Arith(CLK32_31, operation_id){
     let compute_q1 = |x1, x2, x3, s| (-(s * s - x1 - x2 - x3) / secp_modulus + (1 << 258));
     let compute_q2 = |x1, y1, x3, y3, s| (-(s * x1 - s * x3 - y1 - y3) / secp_modulus + (1 << 258));
  
-    let limbs_to_int: expr[] -> int = |limbs| array::sum(array::map_enumerated(limbs, |i, limb| int(eval(limb)) << (i * 16)));
+    let limbs_to_int: expr[] -> int = query |limbs| array::sum(array::map_enumerated(limbs, |i, limb| int(eval(limb)) << (i * 16)));
 
-    let x1_int = || limbs_to_int(x1);
-    let y1_int = || limbs_to_int(y1);
-    let x2_int = || limbs_to_int(x2);
-    let y2_int = || limbs_to_int(y2);
-    let x3_int = || limbs_to_int(x3);
-    let s_int = || limbs_to_int(s);
+    let x1_int = query || limbs_to_int(x1);
+    let y1_int = query || limbs_to_int(y1);
+    let x2_int = query || limbs_to_int(x2);
+    let y2_int = query || limbs_to_int(y2);
+    let x3_int = query || limbs_to_int(x3);
+    let s_int = query || limbs_to_int(s);
 
-    let eq1_active = || eval(selEq[1]) == 1;
-    let get_operation = || match eval(operation_id) {
+    let eq1_active = query || eval(selEq[1]) == 1;
+    let get_operation = query || match eval(operation_id) {
         1 => "affine_256",
         10 => "ec_add",
         12 => "ec_double",
         _ => panic("Unknown operation")
     };
-    let is_ec_operation: -> int = || match get_operation() {
+    let is_ec_operation: -> int = query || match get_operation() {
         "affine_256" => 0,
         "ec_add" => 1,
         "ec_double" => 1,
     };
 
-    let s_hint = || match get_operation() {
+    let s_hint = query || match get_operation() {
         "affine_256" => 0,
         "ec_add" => s_for_eq1(x1_int(), y1_int(), x2_int(), y2_int()),
         "ec_double" => s_for_eq2(x1_int(), y1_int()),
     };
 
-    let q0_hint = || match get_operation() {
+    let q0_hint = query || match get_operation() {
         "affine_256" => 0,
         "ec_add" => compute_q0_for_eq1(x1_int(), y1_int(), x2_int(), y2_int(), s_int()),
         "ec_double" => compute_q0_for_eq2(x1_int(), y1_int(), s_int()),
     };
 
-    let q1_hint = || if is_ec_operation() == 1 {
+    let q1_hint = query || if is_ec_operation() == 1 {
         let x1 = x1_int();
         let x2 = x2_int();
         let s = s_int();
@@ -113,7 +113,7 @@ machine Arith(CLK32_31, operation_id){
         0
     };
 
-    let q2_hint = || if is_ec_operation() == 1 {
+    let q2_hint = query || if is_ec_operation() == 1 {
         let x1 = x1_int();
         let x2 = x2_int();
         let y1 = y1_int();

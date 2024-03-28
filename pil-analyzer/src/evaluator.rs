@@ -15,6 +15,7 @@ use powdr_ast::{
         types::{Type, TypeScheme},
         BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern, UnaryOperator,
     },
+    SourceRef,
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
 
@@ -439,10 +440,24 @@ pub trait SymbolLookup<'a, T> {
         Err(EvalError::DataNotAvailable)
     }
 
-    fn new_witness_column(&mut self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
+    fn new_witness_column(
+        &mut self,
+        name: &str,
+        _source: SourceRef,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::Unsupported(format!(
             "Tried to create witness column outside of statement context: {name}"
         )))
+    }
+
+    fn add_constraints(
+        &mut self,
+        _constraints: Arc<Value<'a, T>>,
+        _source: SourceRef,
+    ) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to add constraints outside of statement context.".to_string(),
+        ))
     }
 }
 
@@ -450,7 +465,7 @@ mod internal {
     use num_traits::Signed;
     use powdr_ast::{
         analyzed::{AlgebraicBinaryOperator, Challenge},
-        parsed::LetStatementInsideBlock,
+        parsed::{LetStatementInsideBlock, StatementInsideBlock},
     };
     use powdr_number::BigUint;
 
@@ -611,13 +626,24 @@ mod internal {
             }
             Expression::BlockExpression(statements, expr) => {
                 let mut locals = locals.to_vec();
-                for LetStatementInsideBlock { name, value } in statements {
-                    let value = if let Some(value) = value {
-                        evaluate(value, &locals, generic_args, symbols)?
-                    } else {
-                        symbols.new_witness_column(name)?
-                    };
-                    locals.push(value);
+                for statement in statements {
+                    match statement {
+                        StatementInsideBlock::LetStatement(LetStatementInsideBlock {
+                            name,
+                            value,
+                        }) => {
+                            let value = if let Some(value) = value {
+                                evaluate(value, &locals, generic_args, symbols)?
+                            } else {
+                                symbols.new_witness_column(name, SourceRef::unknown())?
+                            };
+                            locals.push(value);
+                        }
+                        StatementInsideBlock::Expression(expr) => {
+                            let result = evaluate(expr, &locals, generic_args, symbols)?;
+                            symbols.add_constraints(result, SourceRef::unknown())?;
+                        }
+                    }
                 }
                 evaluate(expr, &locals, generic_args, symbols)?
             }
