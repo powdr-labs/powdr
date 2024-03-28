@@ -317,7 +317,7 @@ fn enum_constr_is_function() {
 }
 
 #[test]
-#[should_panic = "Expected value but got type: X"]
+#[should_panic = "Expected symbol of kind Value but got Type: X"]
 fn enum_is_not_constr() {
     let input = "
     enum X { A, B(int), C(string[], int) }
@@ -416,4 +416,18 @@ fn type_from_pattern() {
     };
     ";
     type_check(input, &[("f", "", "(int, int[]) -> int")]);
+}
+
+#[test]
+fn enum_pattern() {
+    let input = "
+    enum X { A(int[], int), B, C(int) }
+    let f = |q| match q {
+        X::A([x, ..], _) => |i| X::B,
+        X::B => |i| q,
+        X::C(_) => X::C,
+        x => |i| x,
+    };
+    ";
+    type_check(input, &[("f", "", "X -> (int -> X)")]);
 }
