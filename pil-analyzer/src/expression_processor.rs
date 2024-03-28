@@ -4,7 +4,7 @@ use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, MatchPattern, NamespacedPolynomialReference,
+        LetStatementInsideBlock, MatchArm, NamespacedPolynomialReference, Pattern,
         SelectedExpressions, StatementInsideBlock,
     },
 };
@@ -114,14 +114,12 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
             PExpression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
                 Box::new(self.process_expression(*scrutinee)),
                 arms.into_iter()
-                    .map(|MatchArm { pattern, value }| MatchArm {
-                        pattern: match pattern {
-                            MatchPattern::CatchAll => MatchPattern::CatchAll,
-                            MatchPattern::Pattern(e) => {
-                                MatchPattern::Pattern(self.process_expression(e))
-                            }
-                        },
-                        value: self.process_expression(value),
+                    .map(|MatchArm { pattern, value }| {
+                        let vars = self.store_local_variables();
+                        self.process_pattern(&pattern);
+                        let value = self.process_expression(value);
+                        self.reset_local_variables(vars);
+                        MatchArm { pattern, value }
                     })
                     .collect(),
             ),
@@ -138,6 +136,23 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
                 self.process_block_expression(statements, *expr)
             }
             PExpression::FreeInput(_) => panic!(),
+        }
+    }
+
+    /// Processes a pattern, registering all variables bound in there.
+    fn process_pattern(&mut self, pattern: &Pattern) {
+        match pattern {
+            Pattern::CatchAll | Pattern::Number(_) | Pattern::String(_) => {}
+            Pattern::Tuple(items) | Pattern::Array(items) => {
+                items.iter().for_each(|p| self.process_pattern(p));
+            }
+            Pattern::Variable(name) => {
+                let id = self.local_variable_counter;
+                if self.local_variables.insert(name.clone(), id).is_some() {
+                    panic!("Variable already defined: {name}");
+                }
+                self.local_variable_counter += 1;
+            }
         }
     }
 
@@ -178,7 +193,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
         statements: Vec<StatementInsideBlock>,
         expr: ::powdr_ast::parsed::Expression,
     ) -> Expression {
-        let previous_local_vars = self.local_variables.clone();
+        let vars = self.store_local_variables();
 
         let mut local_var_count = 0;
         let processed_statements = statements
@@ -201,8 +216,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
             .collect::<Vec<_>>();
 
         let processed_expr = self.process_expression(expr);
-        self.local_variables = previous_local_vars;
-        self.local_variable_counter -= local_var_count;
+        self.reset_local_variables(vars);
         Expression::BlockExpression(processed_statements, Box::new(processed_expr))
     }
 
@@ -219,4 +233,21 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
             generic_args: Default::default(),
         }
     }
+
+    fn store_local_variables(&self) -> LocalVariableState {
+        LocalVariableState {
+            local_variables: self.local_variables.clone(),
+            local_variable_counter: self.local_variable_counter,
+        }
+    }
+
+    fn reset_local_variables(&mut self, state: LocalVariableState) {
+        self.local_variables = state.local_variables;
+        self.local_variable_counter = state.local_variable_counter;
+    }
+}
+
+struct LocalVariableState {
+    pub local_variables: HashMap<String, u64>,
+    pub local_variable_counter: u64,
 }

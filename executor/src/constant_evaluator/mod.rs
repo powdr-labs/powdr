@@ -176,11 +176,8 @@ mod test {
         let src = r#"
             let N = 8;
             namespace F(N);
-            pol constant LAST(i) { match i {
-                N - 1 => 1,
-                _ => 0,
-            } };
-        "#;
+            col fixed LAST(i) { if i == N - 1 { 1 } else { 0 } };
+            "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
         let constants = generate(&analyzed);
