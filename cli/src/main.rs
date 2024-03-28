@@ -81,6 +81,7 @@ struct Cli {
     #[arg(long, hide = true)]
     markdown_help: bool,
 
+    /// Set log filter value [ Off, Error, Warn, Info, Debug, Trace ]
     #[arg(long)]
     #[arg(default_value_t = LevelFilter::Info)]
     log: LevelFilter,
