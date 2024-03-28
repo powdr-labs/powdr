@@ -15,7 +15,10 @@ use std::collections::HashMap;
 
 use powdr_ast::{
     analyzed::{FunctionValueDefinition, Symbol},
-    parsed::asm::{AbsoluteSymbolPath, SymbolPath},
+    parsed::{
+        asm::{AbsoluteSymbolPath, SymbolPath},
+        SymbolCategory,
+    },
 };
 
 pub use pil_analyzer::{analyze_ast, analyze_file, analyze_string};
@@ -28,18 +31,21 @@ pub trait AnalysisDriver: Clone + Copy {
     /// Turns a nested declaration into an absolute name.
     fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath;
     fn resolve_value_ref(&self, path: &SymbolPath) -> String {
-        self.resolve_ref(path, false)
+        self.resolve_ref(path, SymbolCategory::Value)
     }
     fn resolve_type_ref(&self, path: &SymbolPath) -> String {
-        self.resolve_ref(path, true)
+        self.resolve_ref(path, SymbolCategory::Type)
     }
-    fn resolve_ref(&self, path: &SymbolPath, is_type: bool) -> String {
-        self.try_resolve_ref(path, is_type)
-            .unwrap_or_else(|| panic!("Symbol not found: {path}"))
+    fn resolve_ref(&self, path: &SymbolPath, symbol_category: SymbolCategory) -> String {
+        let (path, cat) = self
+            .try_resolve_ref(path)
+            .unwrap_or_else(|| panic!("Symbol of kind {symbol_category} not found: {path}"));
+        if !cat.compatible_with_request(symbol_category) {
+            panic!("Expected smbol of kind {symbol_category}, got {cat} for {path}")
+        }
+        path
     }
     /// Turns a reference to a name with an optional namespace into an absolute name.
-    /// If `is_type` is true, expects references to type names, otherwise
-    /// only references to value names.
-    fn try_resolve_ref(&self, path: &SymbolPath, is_type: bool) -> Option<String>;
+    fn try_resolve_ref(&self, path: &SymbolPath) -> Option<(String, SymbolCategory)>;
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>;
 }

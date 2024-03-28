@@ -642,7 +642,8 @@ TuplePattern: Pattern = {
 }
 
 ArrayPattern: Pattern = {
-    "[" <PatternList> "]" => Pattern::Array(<>),
+    "[" "]" => Pattern::Array(vec![]),
+    "[" <mut items:(<PatternIncludingRest> ",")*> <last:PatternIncludingRest> "]" => Pattern::Array({items.push(last); items})
 }
 
 EnumPattern: Pattern = {

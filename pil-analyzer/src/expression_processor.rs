@@ -8,7 +8,7 @@ use powdr_ast::{
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
         LetStatementInsideBlock, MatchArm, NamespacedPolynomialReference, Pattern,
-        SelectedExpressions, StatementInsideBlock,
+        SelectedExpressions, StatementInsideBlock, SymbolCategory,
     },
 };
 use powdr_number::DegreeType;
@@ -158,12 +158,18 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
             Pattern::Variable(name) => self.process_variable_pattern(name),
             Pattern::Enum(name, None) => {
                 // The parser cannot distinguish between Enum and Variable patterns.
-                // So if "name" is a single identifier that does not resolve, it is a variable pattern.
-                if let Some(resolved_name) = self.driver.try_resolve_ref(&name, false) {
-                    self.process_enum_pattern(resolved_name, None)
-                } else if let Some(identifier) = name.try_to_identifier() {
-                    // It's a single identifier that does not resolve to a name.
-                    self.process_variable_pattern(identifier.clone())
+                // So if "name" is a single identifier that does not resolve to an enum variant,
+                // it is a variable pattern.
+
+                if let Some((resolved_name, category)) = self.driver.try_resolve_ref(&name) {
+                    if category.compatible_with_request(SymbolCategory::TypeConstructor) {
+                        self.process_enum_pattern(resolved_name, None)
+                    } else if let Some(identifier) = name.try_to_identifier() {
+                        // It's a single identifier that does not resolve to an enum variant.
+                        self.process_variable_pattern(identifier.clone())
+                    } else {
+                        panic!("Expected enum variant but got {category}: {resolved_name}");
+                    }
                 } else {
                     panic!("Symbol not found: {name}");
                 }
@@ -232,15 +238,16 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
     ) -> LambdaExpression<Reference> {
         let var_state = self.store_local_variables();
 
+        let params = params
+            .into_iter()
+            .map(|p| self.process_pattern(p))
+            .collect::<Vec<_>>();
+
         for param in &params {
             if !param.is_irrefutable() {
                 panic!("Function parameters must be irrefutable, but {param} is refutable.");
             }
         }
-        let params = params
-            .into_iter()
-            .map(|p| self.process_pattern(p))
-            .collect();
         let body = Box::new(self.process_expression(*body));
 
         self.reset_local_variables(var_state);
@@ -258,14 +265,14 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
             .into_iter()
             .map(|statement| match statement {
                 StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value }) => {
+                    let value = value.map(|v| self.process_expression(v));
+                    let pattern = self.process_pattern(pattern);
                     if value.is_none() && !matches!(pattern, Pattern::Variable(_)) {
                         panic!("Let statement without value requires a single variable, but got {pattern}.");
                     }
                     if !pattern.is_irrefutable() {
                         panic!("Let statement requires an irrefutable pattern, but {pattern} is refutable.");
                     }
-                    let value = value.map(|v| self.process_expression(v));
-                    let pattern = self.process_pattern(pattern);
                     StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value })
                 }
                 StatementInsideBlock::Expression(expr) => {

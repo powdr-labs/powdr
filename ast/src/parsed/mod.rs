@@ -11,6 +11,7 @@ use std::{
     ops,
 };
 
+use derive_more::Display;
 use powdr_number::{BigInt, BigUint, DegreeType};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -21,6 +22,26 @@ use self::{
     visitor::Children,
 };
 use crate::SourceRef;
+
+#[derive(Display, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolCategory {
+    Value,
+    Type,
+    TypeConstructor,
+}
+impl SymbolCategory {
+    /// Returns if a symbol of a given category can satisfy a request for a certain category.
+    pub fn compatible_with_request(&self, request: SymbolCategory) -> bool {
+        match self {
+            SymbolCategory::Value => request == SymbolCategory::Value,
+            SymbolCategory::Type => request == SymbolCategory::Type,
+            SymbolCategory::TypeConstructor => {
+                // Type constructors can also satisfy requests for values.
+                request == SymbolCategory::TypeConstructor || request == SymbolCategory::Value
+            }
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PILFile(pub Vec<PilStatement>);
@@ -77,22 +98,26 @@ pub enum PilStatement {
 }
 
 impl PilStatement {
-    /// If the statement is a symbol definition, returns all (local) names of defined symbols.
+    /// If the statement is a symbol definition, returns all (local) names of defined symbols
+    /// and their category.
     /// Note it does not return nested definitions (for an enum for example).
-    /// The boolean indicates if the name is a type definition or a value definition.
-    pub fn symbol_definition_names(&self) -> Box<dyn Iterator<Item = (&String, bool)> + '_> {
+    pub fn symbol_definition_names(
+        &self,
+    ) -> Box<dyn Iterator<Item = (&String, SymbolCategory)> + '_> {
         match self {
             PilStatement::PolynomialDefinition(_, name, _)
             | PilStatement::PolynomialConstantDefinition(_, name, _)
             | PilStatement::ConstantDefinition(_, name, _)
             | PilStatement::PublicDeclaration(_, name, _, _, _)
-            | PilStatement::LetStatement(_, name, _, _) => Box::new(once((name, false))),
+            | PilStatement::LetStatement(_, name, _, _) => {
+                Box::new(once((name, SymbolCategory::Value)))
+            }
             PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants: _ }) => {
-                Box::new(once((name, true)))
+                Box::new(once((name, SymbolCategory::Type)))
             }
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
             | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => {
-                Box::new(polynomials.iter().map(|p| (&p.name, false)))
+                Box::new(polynomials.iter().map(|p| (&p.name, SymbolCategory::Value)))
             }
 
             PilStatement::Include(_, _)
@@ -105,15 +130,17 @@ impl PilStatement {
     }
 
     /// If the statement defines any symbols inside a namespace, returns
-    /// the name of the namespace and defined names inside that namespace.
-    /// The boolean indicates if the name is a type definition or a value definition.
+    /// the name of the namespace and defined names inside that namespace
+    /// and their categroy.
     pub fn defined_contained_names(
         &self,
-    ) -> Box<dyn Iterator<Item = (&String, &String, bool)> + '_> {
+    ) -> Box<dyn Iterator<Item = (&String, &String, SymbolCategory)> + '_> {
         match self {
-            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants }) => {
-                Box::new(variants.iter().map(move |v| (name, &v.name, false)))
-            }
+            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants }) => Box::new(
+                variants
+                    .iter()
+                    .map(move |v| (name, &v.name, SymbolCategory::TypeConstructor)),
+            ),
             _ => Box::new(empty()),
         }
     }
