@@ -46,27 +46,33 @@ Parentheses are allowed at any point to force precedence.
 A ``{``-``}``-delimited block can be used everywhere where an expression is expected.
 
 It has the form ``{ <statement> ; <statement> ; ... ; <expression> }``,
-i.e. a sequence of statements followed by an expression and the value of the statement block
-is the value of the final expression.
-
+i.e. a sequence of statements followed by an expression.
 The statements can either be expressions or let statements: ``let x = ...`` / ``let x;``
 
-Let statements with value can be used everywhere, they just bind an expression to a local variable
-and allow to avoid repeating the expression.
-
-Let statements without value create a new witness column and are only allowed inside [``constr``-functions](#constr-and-query-functions).
-
-Similarly, an expression at statement level can be used to create new constraints that are added to the global constraint set
-and this can only be done inside a [``constr``-functions](#constr-and-query-functions).
-
-Note that you can always create constraints and return them from a function, even in [pure function](#constr-and-query-functions).
-
+The value of the statement block is the value of the final expression.
 
 Example:
 
 ```rust
 let plus_one_squared = |x| { let y = x + 1; y * y };
 ```
+
+Let statements with value can be used everywhere, they just bind an expression to a local variable
+and allow to avoid repeating the expression.
+
+Let statements without value (``let x;``) create a new witness column and are only allowed inside [``constr``-functions](#constr-and-query-functions).
+
+Similarly, an expression at statement level (e.g. ``x * (x - 1) = 0;``) can be used to create new constraints that are added to the global constraint set
+and this can only be done inside a [``constr``-functions](#constr-and-query-functions).
+
+Note that you can always create constraints and return them from a function, even in [pure function](#constr-and-query-functions).
+
+Example:
+
+```rust
+let constrain_to_bool: expr -> constr = |x| { x * (x - 1) = 0 };
+```
+
 
 ### Match Expressions
 
@@ -153,4 +159,7 @@ let new_wit = constr || { let x; x };
 let square_of = query |x| { let v = std::prover::eval(x); v * v };
 // Creates a new witness column, constrains it to be boolean and returns it.
 let new_bool = constr |x| { let x = new_wit(); x * (x - 1) = 0; x };
+// This is a pure function that only returns a constraint, but does not add it
+// to the global set of constraints.
+let constrain_to_bool: expr -> constr = |x| x * (x - 1) = 0;
 ```
