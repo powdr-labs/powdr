@@ -353,7 +353,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         for (left, right) in identities {
             self.new_constraints
                 .push(Identity::from_polynomial_identity(
-                    0, // ID will be re-assigned later.
+                    0, // All IDs will be re-assigned at the outer stage of the condenser.
                     source.clone(),
                     left.clone() - right.clone(),
                 ));
