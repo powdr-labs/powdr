@@ -1,7 +1,10 @@
-use std::collections::HashMap;
+use core::panic;
+use std::{collections::HashMap, str::FromStr};
 
 use powdr_ast::{
-    analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
+    analyzed::{
+        Expression, FunctionValueDefinition, PolynomialReference, Reference, RepeatedArray,
+    },
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
         LetStatementInsideBlock, MatchArm, NamespacedPolynomialReference, Pattern,
@@ -89,9 +92,8 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
                     items: self.process_expressions(items),
                 })
             }
-            PExpression::LambdaExpression(LambdaExpression { kind, params, body }) => {
-                let body = Box::new(self.process_function(&params, *body));
-                Expression::LambdaExpression(LambdaExpression { kind, params, body })
+            PExpression::LambdaExpression(lambda_expression) => {
+                Expression::LambdaExpression(self.process_lambda_expression(lambda_expression))
             }
             PExpression::BinaryOperation(left, op, right) => Expression::BinaryOperation(
                 Box::new(self.process_expression(*left)),
@@ -116,7 +118,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
                 arms.into_iter()
                     .map(|MatchArm { pattern, value }| {
                         let vars = self.store_local_variables();
-                        self.process_pattern(&pattern);
+                        let pattern = self.process_pattern(pattern);
                         let value = self.process_expression(value);
                         self.reset_local_variables(vars);
                         MatchArm { pattern, value }
@@ -140,26 +142,78 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
     }
 
     /// Processes a pattern, registering all variables bound in there.
-    fn process_pattern(&mut self, pattern: &Pattern) {
+    /// It also changes EnumPatterns consisting of a single identifier that does not resolve
+    /// to anything into Variable patterns.
+    fn process_pattern(&mut self, pattern: Pattern) -> Pattern {
         match pattern {
-            Pattern::CatchAll | Pattern::Rest | Pattern::Number(_) | Pattern::String(_) => {}
-            Pattern::Tuple(items) | Pattern::Array(items) => {
-                if matches!(pattern, Pattern::Array(_)) {
-                    // If there is more than one Pattern::Rest in items, it is an error
-                    if items.iter().filter(|p| *p == &Pattern::Rest).count() > 1 {
-                        panic!("Only one \"..\"-item allowed in array pattern");
-                    }
+            Pattern::CatchAll | Pattern::Rest | Pattern::Number(_) | Pattern::String(_) => pattern,
+            Pattern::Array(items) => {
+                // If there is more than one Pattern::Rest in items, it is an error
+                if items.iter().filter(|p| *p == &Pattern::Rest).count() > 1 {
+                    panic!("Only one \"..\"-item allowed in array pattern");
                 }
-                items.iter().for_each(|p| self.process_pattern(p));
+                Pattern::Array(self.process_pattern_vec(items))
             }
-            Pattern::Variable(name) => {
-                let id = self.local_variable_counter;
-                if self.local_variables.insert(name.clone(), id).is_some() {
-                    panic!("Variable already defined: {name}");
+            Pattern::Tuple(items) => Pattern::Tuple(self.process_pattern_vec(items)),
+            Pattern::Variable(name) => self.process_variable_pattern(name),
+            Pattern::Enum(name, None) => {
+                // The parser cannot distinguish between Enum and Variable patterns.
+                // So if "name" is a single identifier that does not resolve, it is a variable pattern.
+                if let Some(resolved_name) = self.driver.try_resolve_ref(&name, false) {
+                    self.process_enum_pattern(resolved_name, None)
+                } else if let Some(identifier) = name.try_to_identifier() {
+                    // It's a single identifier that does not resolve to a name.
+                    self.process_variable_pattern(identifier.clone())
+                } else {
+                    panic!("Symbol not found: {name}");
                 }
-                self.local_variable_counter += 1;
+            }
+            Pattern::Enum(name, data) => {
+                self.process_enum_pattern(self.driver.resolve_value_ref(&name), data)
             }
         }
+    }
+
+    fn process_pattern_vec(&mut self, patterns: Vec<Pattern>) -> Vec<Pattern> {
+        patterns
+            .into_iter()
+            .map(|p| self.process_pattern(p))
+            .collect()
+    }
+
+    fn process_variable_pattern(&mut self, name: String) -> Pattern {
+        let id = self.local_variable_counter;
+        if self.local_variables.insert(name.clone(), id).is_some() {
+            panic!("Variable already defined: {name}");
+        }
+        self.local_variable_counter += 1;
+        Pattern::Variable(name)
+    }
+
+    // TODO most variables I called "data" in this PR should probably be called "fields"
+    // Or maybe not?
+    fn process_enum_pattern(&mut self, name: String, fields: Option<Vec<Pattern>>) -> Pattern {
+        match &self.driver.definitions()[&name] {
+            (_, Some(FunctionValueDefinition::TypeConstructor(enum_name, variant))) => {
+                if variant.fields.as_ref().map(|items| items.len())
+                    != fields.as_ref().map(|items| items.len())
+                {
+                    panic!("Invalid pattern for enum variant {variant}");
+                }
+            }
+            _ => panic!("Expected enum variant: {name}"),
+        }
+
+        // TODO WE do have the enum name above....
+        Pattern::Enum(
+            SymbolPath::from_str(&name).unwrap(),
+            fields.map(|fields| {
+                fields
+                    .into_iter()
+                    .map(|p| self.process_pattern(p))
+                    .collect()
+            }),
+        )
     }
 
     fn process_reference(&mut self, reference: NamespacedPolynomialReference) -> Reference {
@@ -172,23 +226,25 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
         }
     }
 
-    pub fn process_function(
+    pub fn process_lambda_expression(
         &mut self,
-        params: &[Pattern],
-        expression: ::powdr_ast::parsed::Expression,
-    ) -> Expression {
+        LambdaExpression { kind, params, body }: LambdaExpression,
+    ) -> LambdaExpression<Reference> {
         let var_state = self.store_local_variables();
 
-        for param in params {
+        for param in &params {
             if !param.is_irrefutable() {
                 panic!("Function parameters must be irrefutable, but {param} is refutable.");
             }
-            self.process_pattern(param);
         }
-        let processed_value = self.process_expression(expression);
+        let params = params
+            .into_iter()
+            .map(|p| self.process_pattern(p))
+            .collect();
+        let body = Box::new(self.process_expression(*body));
 
         self.reset_local_variables(var_state);
-        processed_value
+        LambdaExpression { kind, params, body }
     }
 
     fn process_block_expression(
@@ -209,7 +265,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
                         panic!("Let statement requires an irrefutable pattern, but {pattern} is refutable.");
                     }
                     let value = value.map(|v| self.process_expression(v));
-                    self.process_pattern(&pattern);
+                    let pattern = self.process_pattern(pattern);
                     StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value })
                 }
                 StatementInsideBlock::Expression(expr) => {

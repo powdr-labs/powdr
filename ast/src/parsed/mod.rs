@@ -831,7 +831,10 @@ pub enum Pattern {
     String(String),
     Tuple(Vec<Pattern>),
     Array(Vec<Pattern>),
+    // A pattern that binds a variable. Just after parsing, local references are also
+    // mapped to Variable and will then be switched to Enum.
     Variable(String),
+    Enum(SymbolPath, Option<Vec<Pattern>>),
 }
 
 impl Pattern {
@@ -848,7 +851,7 @@ impl Pattern {
         match self {
             Pattern::Rest => unreachable!(),
             Pattern::CatchAll | Pattern::Variable(_) => true,
-            Pattern::Number(_) | Pattern::String(_) => false,
+            Pattern::Number(_) | Pattern::String(_) | Pattern::Enum(_, _) => false,
             Pattern::Array(items) => {
                 // Only "[..]"" is irrefutable
                 items == &vec![Pattern::Rest]
@@ -867,6 +870,7 @@ impl Children<Pattern> for Pattern {
             | Pattern::String(_)
             | Pattern::Variable(_) => Box::new(empty()),
             Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter()),
+            Pattern::Enum(_, data) => Box::new(data.iter().flatten()),
         }
     }
 
@@ -878,6 +882,7 @@ impl Children<Pattern> for Pattern {
             | Pattern::String(_)
             | Pattern::Variable(_) => Box::new(empty()),
             Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter_mut()),
+            Pattern::Enum(_, data) => Box::new(data.iter_mut().flatten()),
         }
     }
 }

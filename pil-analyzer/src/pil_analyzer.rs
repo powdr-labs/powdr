@@ -394,25 +394,21 @@ impl<'a> AnalysisDriver for Driver<'a> {
             })
     }
 
-    fn resolve_ref(&self, path: &SymbolPath, is_type: bool) -> String {
+    fn try_resolve_ref(&self, path: &SymbolPath, is_type: bool) -> Option<String> {
         // Try to resolve the name starting at the current namespace and then
         // go up level by level until the root.
 
-        self.0
-            .current_namespace
-            .iter_to_root()
-            .find_map(|prefix| {
-                let path = prefix.join(path.clone()).to_dotted_string();
-                self.0.known_symbols.get(&path).map(|t| {
-                    if *t && !is_type {
-                        panic!("Expected value but got type: {path}");
-                    } else if !t && is_type {
-                        panic!("Expected type but got value: {path}");
-                    }
-                    path
-                })
+        self.0.current_namespace.iter_to_root().find_map(|prefix| {
+            let path = prefix.join(path.clone()).to_dotted_string();
+            self.0.known_symbols.get(&path).map(|t| {
+                if *t && !is_type {
+                    panic!("Expected value but got type: {path}");
+                } else if !t && is_type {
+                    panic!("Expected type but got value: {path}");
+                }
+                path
             })
-            .unwrap_or_else(|| panic!("Symbol not found: {}", path.to_dotted_string()))
+        })
     }
 
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)> {

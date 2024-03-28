@@ -147,8 +147,7 @@ FunctionDefinition: FunctionDefinition = {
 }
 
 ParameterList: Vec<Pattern> = {
-    <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
-    => vec![]
+    PatternList
 }
 
 ArrayLiteralExpression: ArrayExpression = {
@@ -626,8 +625,10 @@ Pattern: Pattern = {
     StringLiteral => Pattern::String(<>),
     TuplePattern,
     ArrayPattern,
-    Identifier => Pattern::Variable(<>),
-    //EnumPattern,
+    // Identifiers are also initially parsed as Pattern::Enum.
+    // Single identifiers that do not exist in the current scope
+    // are then turned into Pattern::Variable.
+    EnumPattern,
 }
 
 PatternIncludingRest: Pattern = {
@@ -641,10 +642,17 @@ TuplePattern: Pattern = {
 }
 
 ArrayPattern: Pattern = {
-    "[" "]" => Pattern::Array(vec![]),
-    "[" <mut items:(<PatternIncludingRest> ",")*> <last:PatternIncludingRest> "]" => Pattern::Array({items.push(last); items})
+    "[" <PatternList> "]" => Pattern::Array(<>),
 }
 
+EnumPattern: Pattern = {
+    <SymbolPath> <( "(" <PatternList> ")" )?> => Pattern::Enum(<>)
+}
+
+PatternList: Vec<Pattern> = {
+    <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
+    => vec![]
+}
 
 // ---------------------------- Type Declarations -----------------------------
 

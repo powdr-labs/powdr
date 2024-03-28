@@ -168,6 +168,7 @@ pub enum Value<'a, T> {
     Array(Vec<Arc<Self>>),
     Closure(Closure<'a, T>),
     TypeConstructor(&'a str),
+    // TODO maybe call this EnumVariant?
     Enum(&'a str, Option<Vec<Arc<Self>>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
@@ -322,6 +323,19 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     })
             }
             Pattern::Variable(_) => Some(vec![v.clone()]),
+            Pattern::Enum(name, None) => {
+                let Value::Enum(n, data) = v.as_ref() else {
+                    panic!()
+                };
+                println!("Matching pattern {name} to enum value {n}");
+                todo!();
+            }
+            Pattern::Enum(name, Some(data)) => {
+                let Value::Enum(n, data) = v.as_ref() else {
+                    panic!()
+                };
+                todo!();
+            }
         }
     }
 }
@@ -1280,6 +1294,30 @@ mod test {
         "#;
         assert_eq!(
             parse_and_evaluate_symbol(src, "x"),
+            "[1, 3, 4, 7]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_enum() {
+        let src = r#"
+            enum X {
+                A,
+                B(),
+                C(int, int),
+                D(int, X)
+            }
+            let f = |x| match x {
+                X::A => 1,
+                X::B() => 2,
+                X::C(a, b) => a + b,
+                X::D(0, X::A) => 10001,
+                X::D(c, y) => c + f(y),
+            };
+            let t = [f(X::A), f(X::B()), f(X::C(3, 4)), f(X::D(0, X::A)), f(X::D(0, X::B())), f(X::D(100, X::C(4, 5)))];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
             "[1, 3, 4, 7]".to_string()
         );
     }

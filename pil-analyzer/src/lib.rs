@@ -33,9 +33,13 @@ pub trait AnalysisDriver: Clone + Copy {
     fn resolve_type_ref(&self, path: &SymbolPath) -> String {
         self.resolve_ref(path, true)
     }
+    fn resolve_ref(&self, path: &SymbolPath, is_type: bool) -> String {
+        self.try_resolve_ref(path, is_type)
+            .unwrap_or_else(|| panic!("Symbol not found: {path}"))
+    }
     /// Turns a reference to a name with an optional namespace into an absolute name.
     /// If `is_type` is true, expects references to type names, otherwise
     /// only references to value names.
-    fn resolve_ref(&self, path: &SymbolPath, is_type: bool) -> String;
+    fn try_resolve_ref(&self, path: &SymbolPath, is_type: bool) -> Option<String>;
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>;
 }
