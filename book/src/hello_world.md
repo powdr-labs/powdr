@@ -24,12 +24,12 @@ We observe that witness generation fails, and no proof is created.
 # Setup & Verification
 
 The example above omits some important steps in proof generation: Setup and
-Verification key generation.  Some proof systems, such as Halo2 (and other
+Key generation.  Some proof systems, such as Halo2 (and other
 SNARKs), require a Setup to be performed before the proof. Such Setup can be
 specific to the program or universal, where its artifact is a binary usually
 called `parameters` or `params`. STARKs do not require a previous Setup.
 
-Another step required before the proof is computed is key generation. A
+Another step required before the proof is computed is Key generation. A
 `proving key` and a `verification key` are generated taking into account the
 constraints and potentially Setup parameters. The `proving key` is used by the
 prover to generate the proof, and the verification key is used by the verifier
@@ -52,7 +52,7 @@ powdr setup 8 --backend halo2 --field bn254
 We can now compute the verification key, output in `vkey.bin`:
 
 ```console
-powdr verification-key test_data/asm/book/hello_world.asm --field bn254 --backend halo2 --params "params.bin"
+powdr verification-key hello_world.asm --field bn254 --backend halo2 --params "params.bin"
 ```
 
 The next command compiles and optimizes the given source, generating the file
@@ -77,3 +77,5 @@ powdr verify hello_world.asm --field bn254 --backend halo2 --vkey "vkey.bin" --p
 ```
 
 > Note that CLI proof verification works analogously for eSTARK, without the setup step and using the Goldilocks field instead of Bn254.
+
+> You can check https://github.com/powdr-labs/powdr-hello-world for more details
