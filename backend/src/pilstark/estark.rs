@@ -236,22 +236,22 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
             skip_main: true,
             agg_stage: false,
         };
-        let mut proofs: Vec<Proof> = vec![serde_json::to_vec(&starkproof).unwrap()];
+        let mut proofs: Vec<crate::Proof> = vec![serde_json::to_vec(&starkproof).unwrap()];
 
-        if !setup.starkinfo.qs.is_empty() {
+        if !self.setup.starkinfo.qs.is_empty() {
             let str_ver = pil2circom::pil2circom(
-                &pil,
-                &setup.const_root,
+                &pil_json,
+                &self.setup.const_root,
                 &self.params,
-                &mut setup.starkinfo,
-                &mut setup.program,
+                &mut self.setup.starkinfo,
+                &mut self.setup.program,
                 &opt,
             )
             .unwrap();
             proofs.push(str_ver.as_bytes().to_vec())
         }
 
-        (Some(proofs), Some(serde_json::to_string(&pil).unwrap()))
+        (Some(proofs), Some(serde_json::to_string(&pil_json).unwrap()))
     }
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         match serde_json::to_writer(output, &self.setup) {
