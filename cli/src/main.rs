@@ -671,17 +671,18 @@ fn run_rust<F: FieldElement>(
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let coprocessors = match coprocessors {
+    let runtime = match coprocessors {
         Some(list) => {
-            powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
         }
-        None => powdr_riscv::CoProcessors::base(),
+        None => powdr_riscv::Runtime::base(),
     };
+
     let (asm_file_path, asm_contents) = compile_rust::<F>(
         file_name,
         output_dir,
         force_overwrite,
-        &coprocessors,
+        &runtime,
         continuations,
     )
     .ok_or_else(|| vec!["could not compile rust".to_string()])?;
@@ -720,18 +721,19 @@ fn run_riscv_asm<F: FieldElement>(
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let coprocessors = match coprocessors {
+    let runtime = match coprocessors {
         Some(list) => {
-            powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
         }
-        None => powdr_riscv::CoProcessors::base(),
+        None => powdr_riscv::Runtime::base(),
     };
+
     let (asm_file_path, asm_contents) = compile_riscv_asm::<F>(
         original_file_name,
         file_names,
         output_dir,
         force_overwrite,
-        &coprocessors,
+        &runtime,
         continuations,
     )
     .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;

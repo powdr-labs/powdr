@@ -1,235 +1,353 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    convert::TryFrom,
-};
+use std::{collections::BTreeMap, convert::TryFrom};
 
-type RuntimeFunctionImpl = (&'static str, fn() -> String);
+use powdr_riscv_syscalls::{Syscall, SYSCALL_REGISTERS};
 
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
-struct CoProcessor {
-    name: &'static str,
-    ty: &'static str,
-    import: &'static str,
-    instructions: &'static str,
-    runtime_function_impl: Option<RuntimeFunctionImpl>,
+use powdr_ast::parsed::asm::{FunctionStatement, MachineStatement, SymbolPath};
+
+use itertools::Itertools;
+use powdr_parser::ParserContext;
+
+lazy_static::lazy_static! {
+    static ref INSTRUCTION_DECLARATION_PARSER: powdr_parser::powdr::InstructionDeclarationParser
+        = powdr_parser::powdr::InstructionDeclarationParser::new();
+    static ref FUNCTION_STATEMENT_PARSER: powdr_parser::powdr::FunctionStatementParser
+        = powdr_parser::powdr::FunctionStatementParser::new();
 }
 
-static POSEIDON_GL_COPROCESSOR: CoProcessor = CoProcessor {
-    name: "poseidon_gl",
-    ty: "PoseidonGL",
-    import: "use std::hash::poseidon_gl::PoseidonGL;",
-    instructions: r#"
-// ================== hashing instructions ==============
-instr poseidon_gl ~ poseidon_gl.poseidon_permutation P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11 -> P0', P1', P2', P3';
-
-"#,
-    runtime_function_impl: Some(("poseidon_gl_coprocessor", poseidon_gl_call)),
-};
-
-static INPUT_COPROCESSOR: CoProcessor = CoProcessor {
-    name: "prover_input",
-    ty: "",
-    import: "",
-    instructions: "",
-    runtime_function_impl: Some(("input_coprocessor", prover_input_call)),
-};
-
-static ALL_COPROCESSORS: [(&str, &CoProcessor); 2] = [
-    (POSEIDON_GL_COPROCESSOR.name, &POSEIDON_GL_COPROCESSOR),
-    (INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR),
-];
-
-/// Defines which coprocessors should be used by the RISCV machine.
-/// It is important to not add unused coprocessors since they may
-/// lead to many extra columns in PIL.
-#[derive(Default)]
-pub struct CoProcessors {
-    coprocessors: BTreeMap<&'static str, &'static CoProcessor>,
+pub fn parse_instruction_declaration(input: &str) -> MachineStatement {
+    let ctx = ParserContext::new(None, input);
+    INSTRUCTION_DECLARATION_PARSER
+        .parse(&ctx, input)
+        .expect("invalid instruction declaration")
 }
 
-impl TryFrom<Vec<&str>> for CoProcessors {
-    type Error = String;
+pub fn parse_function_statement(input: &str) -> FunctionStatement {
+    let ctx = ParserContext::new(None, input);
+    FUNCTION_STATEMENT_PARSER
+        .parse(&ctx, input)
+        .expect("invalid function statement")
+}
 
-    fn try_from(list: Vec<&str>) -> Result<Self, Self::Error> {
-        let items: BTreeSet<&str> = list.into_iter().collect();
+struct SubMachine {
+    /// Full path to machine (e.g, `path::to::Machine`)
+    path: SymbolPath,
+    /// Optional alias (`use path::to::Machine as TheAlias;`)
+    alias: Option<String>,
+    /// Declaration name,
+    name: String,
+    /// Instruction declarations
+    instructions: Vec<MachineStatement>,
+    /// TODO: only needed because of witgen requiring that each machine be called at least once
+    init_call: Vec<FunctionStatement>,
+}
 
-        if !items.iter().all(|co_processor| {
-            ALL_COPROCESSORS
-                .iter()
-                .any(|(name, _)| co_processor == name)
-        }) {
-            return Err("Invalid co-processor specified.".to_string());
-        }
+impl SubMachine {
+    fn import(&self) -> String {
+        format!(
+            "use {}{}{};",
+            self.path,
+            self.alias.as_deref().map(|_| " as ").unwrap_or_default(),
+            self.alias.as_deref().unwrap_or_default()
+        )
+    }
 
-        Ok(Self {
-            coprocessors: ALL_COPROCESSORS
-                .iter()
-                .filter_map(|(name, co_processor)| {
-                    if items.contains(name) {
-                        Some((*name, *co_processor))
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-        })
+    fn declaration(&self) -> String {
+        let ty = self.alias.as_deref().unwrap_or(self.path.name());
+        format!("{} {};", ty, self.name)
     }
 }
 
-impl CoProcessors {
-    /// The base version only adds the commonly used bitwise and shift operations.
-    pub fn base() -> CoProcessors {
-        let coprocessors = BTreeMap::from([(INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR)]);
-        Self { coprocessors }
+/// Sequence of asm function statements.
+/// the implementation can use registers in `SYSCALL_REGISTERS`
+struct SyscallImpl(Vec<FunctionStatement>);
+
+/// RISCV powdr assembly runtime.
+/// Determines submachines, instructions and syscalls avaiable to the main machine.
+pub struct Runtime {
+    submachines: Vec<SubMachine>, // TODO(leandro): BTreeMap by name?
+    syscalls: BTreeMap<Syscall, SyscallImpl>,
+}
+
+impl Runtime {
+    pub fn base() -> Self {
+        let mut r = Runtime {
+            submachines: Default::default(),
+            syscalls: Default::default(),
+        };
+
+        // Base submachines
+        // TODO(leandro): can memory machine be part of the runtime?
+        r.add_submachine(
+            "std::binary::Binary",
+            None,
+            "binary",
+            [
+                "instr and Y, Z -> X ~ binary.and;",
+                "instr or Y, Z -> X ~ binary.or;",
+                "instr xor Y, Z -> X ~ binary.xor;",
+            ],
+            ["x10 <== and(x10, x10);"],
+        );
+
+        r.add_submachine(
+            "std::shift::Shift",
+            None,
+            "shift",
+            [
+                "instr shl Y, Z -> X ~ shift.shl;",
+                "instr shr Y, Z -> X ~ shift.shr;",
+            ],
+            ["x10 <== shl(x10, x10);"],
+        );
+
+        r.add_submachine(
+            "std::split::split_gl::SplitGL",
+            None,
+            "split_gl",
+            ["instr split_gl Z -> X, Y ~ split_gl.split;"],
+            ["x10, x11 <== split_gl(x10);", "x10 <=X= 0;", "x11 <=X= 0;"],
+        );
+
+        // Base syscalls
+        r.add_syscall(
+            Syscall::Input,
+            ["x10 <=X= ${ std::prover::Query::Input(std::convert::int(std::prover::eval(x10))) };"],
+        );
+
+        r.add_syscall(
+            Syscall::DataIdentifier,
+            ["x10 <=X= ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(x11)), std::convert::int(std::prover::eval(x10))) };"]
+        );
+
+        r.add_syscall(
+            Syscall::PrintChar,
+            // This is using x0 on purpose, because we do not want to introduce
+            // nondeterminism with this.
+            ["x0 <=X= ${ std::prover::Query::PrintChar(std::convert::int(std::prover::eval(x10))) };"]
+        );
+
+        r
     }
 
-    /// Poseidon also uses the Split machine.
+    pub fn has_submachine(&self, name: &str) -> bool {
+        self.submachines.iter().any(|m| m.name == name)
+    }
+
+    pub fn has_syscall(&self, s: Syscall) -> bool {
+        self.syscalls.contains_key(&s)
+    }
+
     pub fn with_poseidon(mut self) -> Self {
-        self.coprocessors
-            .insert(POSEIDON_GL_COPROCESSOR.name, &POSEIDON_GL_COPROCESSOR);
+        self.add_submachine("std::hash::poseidon_gl::PoseidonGL",
+                            None,
+                            "poseidon_gl",
+                            ["instr poseidon_gl ~ poseidon_gl.poseidon_permutation x10, x11, x12, x13, x14, x15, x16, x17, x6, x7, x28, x29 -> x10', x11', x12', x13';"],
+                            // init call
+                            ["poseidon_gl;",
+                             "x10 <=X= 0;",
+                             "x11 <=X= 0;",
+                             "x12 <=X= 0;",
+                             "x13 <=X= 0;",
+                            ]);
+
+        // The poseidon syscall has a single argument passed on x10, the
+        // memory address of the 12 field element input array. Since the memory
+        // offset is chosen by LLVM, we assume it is properly aligned.
+
+        // The poseidon syscall uses x10 for input, we store it in tmp3, as x10 is
+        // also used as input for the poseidon machine instruction.
+        let setup = std::iter::once("tmp3 <=X= x10;".to_string());
+
+        // The poseidon instruction uses the first 12 SYSCALL_REGISTERS as input/output.
+        // The contents of memory are loaded into these registers before calling the instruction.
+        // These might be in used by the riscv machine, so we save the registers on the stack.
+        let save_register = |i| {
+            let reg = SYSCALL_REGISTERS[i];
+            [
+                // save register in stack
+                "x2 <=X= wrap(x2 - 4);".to_string(),
+                format!("mstore x2, {reg};"),
+            ]
+        };
+
+        // After copying the result back into memory, we restore the original register values.
+        let restore_register = |i| {
+            let reg = SYSCALL_REGISTERS[i];
+            [
+                // restore register from stack
+                format!("{reg}, tmp1 <== mload(x2);"),
+                "x2 <=X= wrap(x2 + 4);".to_string(),
+            ]
+        };
+
+        // load input from memory into register
+        let load_word = |i| {
+            let reg = SYSCALL_REGISTERS[i];
+            let lo = i * 8;
+            let hi = i * 8 + 4;
+            [
+                format!("{reg}, tmp2 <== mload({lo} + tmp3);"),
+                format!("tmp1, tmp2 <== mload({hi} + tmp3);"),
+                format!("{reg} <=X= {reg} + tmp1 * 2**32;"),
+            ]
+        };
+
+        // copy output from register into memory
+        let store_word = |i| {
+            let reg = SYSCALL_REGISTERS[i];
+            let lo = i * 8;
+            let hi = i * 8 + 4;
+            [
+                format!("tmp1, tmp2 <== split_gl({reg});"),
+                format!("mstore {lo} + tmp3, tmp1;"),
+                format!("mstore {hi} + tmp3, tmp2;"),
+            ]
+        };
+
+        let implementation = setup
+            .chain((0..12).flat_map(save_register))
+            .chain((0..12).flat_map(load_word))
+            .chain(std::iter::once("poseidon_gl;".to_string()))
+            .chain((0..4).flat_map(store_word))
+            .chain((0..12).rev().flat_map(restore_register));
+
+        self.add_syscall(Syscall::PoseidonGL, implementation);
         self
     }
 
-    pub fn has(&self, key: &str) -> bool {
-        self.coprocessors.contains_key(key)
+    pub fn add_submachine<S: AsRef<str>, I1: IntoIterator<Item = S>, I2: IntoIterator<Item = S>>(
+        &mut self,
+        path: &str,
+        alias: Option<&str>,
+        name: &str,
+        instructions: I1,
+        init_call: I2,
+    ) {
+        let subm = SubMachine {
+            path: str::parse(path).expect("invalid submachine path"),
+            alias: alias.map(|s| s.to_string()),
+            name: name.to_string(),
+            instructions: instructions
+                .into_iter()
+                .map(|s| parse_instruction_declaration(s.as_ref()))
+                .collect(),
+            init_call: init_call
+                .into_iter()
+                .map(|s| parse_function_statement(s.as_ref()))
+                .collect(),
+        };
+        self.submachines.push(subm);
     }
 
-    pub fn declarations(&self) -> Vec<(&'static str, &'static str)> {
-        self.coprocessors
-            .values()
-            .filter(|c| !c.ty.is_empty())
-            .map(|c| (c.name, c.ty))
-            .collect()
-    }
+    pub fn add_syscall<S: AsRef<str>, I: IntoIterator<Item = S>>(
+        &mut self,
+        syscall: Syscall,
+        implementation: I,
+    ) {
+        let implementation = SyscallImpl(
+            implementation
+                .into_iter()
+                .map(|s| parse_function_statement(s.as_ref()))
+                .collect(),
+        );
 
-    pub fn machine_imports(&self) -> Vec<&'static str> {
-        self.coprocessors.values().map(|c| c.import).collect()
-    }
-
-    pub fn instructions(&self) -> String {
-        self.coprocessors
-            .values()
-            .map(|c| c.instructions)
-            .collect::<Vec<&str>>()
-            .join("")
-    }
-
-    pub fn runtime_names(&self) -> Vec<&str> {
-        self.coprocessors
-            .values()
-            .filter_map(|c| c.runtime_function_impl)
-            .map(|f| f.0)
-            .collect()
-    }
-
-    pub fn runtime(&self) -> String {
-        self.runtime_names()
-            .iter()
-            .map(|f| {
-                format!(
-                    r#"
-                        .globl {} 
-                        {}:
-                            ret
-                        "#,
-                    f, f
-                )
-            })
-            .collect::<Vec<String>>()
-            .join("\n")
-    }
-
-    pub fn substitutions(&self) -> Vec<(&'static str, String)> {
-        self.coprocessors
-            .values()
-            .filter_map(|c| c.runtime_function_impl)
-            .map(|f| (f.0, f.1()))
-            .collect()
-    }
-
-    pub fn registers(&self) -> String {
-        // Poseidon has 12 inputs and 4 outputs.
-        // The base RISCV machine has 4 assignment registers.
-        // We need 12 extra general purpose registers to store the
-        // input and values directly.
-
-        if !self.coprocessors.contains_key(POSEIDON_GL_COPROCESSOR.name) {
-            return String::new();
+        if self.syscalls.insert(syscall, implementation).is_some() {
+            panic!("duplicate syscall {}", syscall);
         }
+    }
 
-        let p_regs: Vec<String> = (0..12).map(|i| format!("reg P{};", i)).collect();
+    pub fn submachines_init(&self) -> Vec<String> {
+        self.submachines
+            .iter()
+            .flat_map(|m| m.init_call.iter())
+            .map(|s| s.to_string())
+            .collect()
+    }
 
-        p_regs.join("\n")
+    pub fn submachines_import(&self) -> String {
+        self.submachines.iter().map(|m| m.import()).join("\n")
+    }
+
+    pub fn submachines_declare(&self) -> String {
+        self.submachines.iter().map(|m| m.declaration()).join("\n")
+    }
+
+    pub fn submachines_instructions(&self) -> Vec<String> {
+        self.submachines
+            .iter()
+            .flat_map(|m| m.instructions.iter())
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    pub fn global_declarations(&self) -> String {
+        [
+            "__divdi3",
+            "__udivdi3",
+            "__udivti3",
+            "__divdf3",
+            "__muldf3",
+            "__moddi3",
+            "__umoddi3",
+            "__umodti3",
+            "__eqdf2",
+            "__ltdf2",
+            "__nedf2",
+            "__unorddf2",
+            "__floatundidf",
+            "__extendsfdf2",
+            "memcpy",
+            "memmove",
+            "memset",
+            "memcmp",
+            "bcmp",
+            "strlen",
+        ]
+        .map(|n| format!(".globl {n}@plt\n.globl {n}\n.set {n}@plt, {n}\n"))
+        .join("\n\n")
+            + &[("__rust_alloc_error_handler", "__rg_oom")]
+                .map(|(n, m)| format!(".globl {n}\n.set {n}, {m}\n"))
+                .join("\n\n")
+    }
+
+    pub fn ecall_handler(&self) -> Vec<String> {
+        let ecall = [
+            "// ecall handler".to_string(),
+            "__ecall_handler:".to_string(),
+        ]
+        .into_iter();
+
+        let jump_table = self
+            .syscalls
+            .keys()
+            .map(|s| format!("branch_if_zero x5 - {}, __ecall_handler_{};", *s as u32, s));
+
+        let invalid_handler = ["__invalid_syscall:".to_string(), "fail;".to_string()].into_iter();
+
+        let handlers = self.syscalls.iter().flat_map(|(syscall, implementation)| {
+            std::iter::once(format!("__ecall_handler_{}:", syscall))
+                .chain(implementation.0.iter().map(|i| i.to_string()))
+                .chain(std::iter::once("tmp1 <== jump_dyn(x1);".to_string()))
+        });
+
+        ecall
+            .chain(jump_table)
+            .chain(invalid_handler)
+            .chain(handlers)
+            .chain(std::iter::once("// end of ecall handler".to_string()))
+            .collect()
     }
 }
 
-fn poseidon_gl_call() -> String {
-    // The x10 register is RISCV's a0 register, which has the first function argument in function
-    // calls.  The poseidon coprocessor has a single argument, the memory address of the 12 field
-    // element input array, that is, a pointer to the first element.  Since the memory offset is
-    // chosen by LLVM, we assume it is properly aligned.  The accesses to all elements are computed
-    // below, using the offset above as base.  Therefore these should also be aligned.
-    let decoding = |i| {
-        format!(
-            r#"
-        P{i}, tmp2 <== mload({} + x10);
-        tmp1, tmp2 <== mload({} + x10);
-        P{i} <=X= P{i} + tmp1 * 2**32;
-    "#,
-            i * 8,
-            i * 8 + 4
-        )
-    };
+impl TryFrom<&[&str]> for Runtime {
+    type Error = String;
 
-    let encoding = |i| {
-        format!(
-            r#"
-        tmp1, tmp2 <== split_gl(P{i});
-        mstore {} + x10, tmp1;
-        mstore {} + x10, tmp2;
-    "#,
-            i * 8,
-            i * 8 + 4
-        )
-    };
-
-    let call = "poseidon_gl;";
-
-    (0..12)
-        .map(decoding)
-        .chain(std::iter::once(call.to_string()))
-        .chain((0..4).map(encoding))
-        .collect()
-}
-
-fn prover_input_call() -> String {
-    "x10 <=X= ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(x11)), std::convert::int(std::prover::eval(x10))) };".to_string()
-}
-
-// This could also potentially go in the impl of CoProcessors,
-// but I purposefully left it outside because it should be removed eventually.
-pub fn call_every_submachine(coprocessors: &CoProcessors) -> Vec<String> {
-    // TODO This is a hacky snippet to ensure that every submachine in the RISCV machine
-    // is called at least once. This is needed for witgen until it can do default blocks
-    // automatically.
-    // https://github.com/powdr-labs/powdr/issues/548
-    let mut calls = vec![];
-    calls.push("x10 <== and(x10, x10);".to_string());
-    calls.push("x10 <== shl(x10, x10);".to_string());
-
-    if coprocessors.has(POSEIDON_GL_COPROCESSOR.name) {
-        calls.extend(vec![
-            "poseidon_gl;".to_string(),
-            "P0 <=X= 0;".to_string(),
-            "P1 <=X= 0;".to_string(),
-            "P2 <=X= 0;".to_string(),
-            "P3 <=X= 0;".to_string(),
-        ]);
+    fn try_from(names: &[&str]) -> Result<Self, Self::Error> {
+        // only poseidon_gl is an option currently
+        match names {
+            ["poseidon_gl"] => Ok(Runtime::base()),
+            [] => Ok(Runtime::base().with_poseidon()),
+            _ => Err("Invalid co-processor specified.".to_string()),
+        }
     }
-
-    calls.push("x10, x11 <== split_gl(x10);".to_string());
-
-    calls.extend(vec!["x10 <=X= 0;".to_string(), "x11 <=X= 0;".to_string()]);
-
-    calls
 }

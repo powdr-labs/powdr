@@ -14,11 +14,11 @@ use serde_json::Value as JsonValue;
 use std::fs;
 
 use crate::compiler::{FunctionKind, Register};
-pub use crate::coprocessors::CoProcessors;
+pub use crate::coprocessors::Runtime;
 
 pub mod compiler;
 pub mod continuations;
-mod coprocessors;
+pub mod coprocessors;
 mod disambiguator;
 pub mod parser;
 
@@ -33,12 +33,12 @@ pub fn compile_rust<T: FieldElement>(
     file_name: &str,
     output_dir: &Path,
     force_overwrite: bool,
-    coprocessors: &CoProcessors,
+    runtime: &Runtime,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     if with_bootloader {
         assert!(
-            coprocessors.has("poseidon_gl"),
+            runtime.has_submachine("poseidon_gl"),
             "PoseidonGL coprocessor is required for bootloader"
         );
     }
@@ -75,7 +75,7 @@ pub fn compile_rust<T: FieldElement>(
         riscv_asm,
         output_dir,
         force_overwrite,
-        coprocessors,
+        runtime,
         with_bootloader,
     )
 }
@@ -86,7 +86,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
     riscv_asm_files: BTreeMap<String, String>,
     output_dir: &Path,
     force_overwrite: bool,
-    coprocessors: &CoProcessors,
+    runtime: &Runtime,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     let powdr_asm_file_name = output_dir.join(format!(
@@ -105,7 +105,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
         return None;
     }
 
-    let powdr_asm = compiler::compile::<T>(riscv_asm_files, coprocessors, with_bootloader);
+    let powdr_asm = compiler::compile::<T>(riscv_asm_files, runtime, with_bootloader);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -120,7 +120,7 @@ pub fn compile_riscv_asm<T: FieldElement>(
     file_names: impl Iterator<Item = String>,
     output_dir: &Path,
     force_overwrite: bool,
-    coprocessors: &CoProcessors,
+    runtime: &Runtime,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     compile_riscv_asm_bundle::<T>(
@@ -133,7 +133,7 @@ pub fn compile_riscv_asm<T: FieldElement>(
             .collect(),
         output_dir,
         force_overwrite,
-        coprocessors,
+        runtime,
         with_bootloader,
     )
 }

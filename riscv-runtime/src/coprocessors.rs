@@ -1,28 +1,26 @@
-extern "C" {
-    // This is a dummy implementation of Poseidon hash,
-    // which will be replaced with a call to the Poseidon
-    // coprocessor during compilation.
-    // The function itself will be removed by the compiler
-    // during the reachability analysis.
-    fn poseidon_gl_coprocessor(data: *mut [u64; 12]);
-
-    // This will be replaced by a call to prover input.
-    fn input_coprocessor(index: u32, channel: u32) -> u32;
-}
+use core::arch::asm;
 
 extern crate alloc;
+
+use powdr_riscv_syscalls::Syscall;
 
 use alloc::vec;
 use alloc::vec::Vec;
 
 pub fn get_data(channel: u32, data: &mut [u32]) {
     for (i, d) in data.iter_mut().enumerate() {
-        *d = unsafe { input_coprocessor(channel, (i + 1) as u32) };
+        unsafe {
+            asm!("ecall", lateout("a0") *d, in("a0") channel, in("a1") (i+1) as u32, in("t0") Syscall::DataIdentifier as u32)
+        };
     }
 }
 
 pub fn get_data_len(channel: u32) -> usize {
-    unsafe { input_coprocessor(channel, 0) as usize }
+    let mut out: u32;
+    unsafe {
+        asm!("ecall", lateout("a0") out, in("a0") channel, in("a1") 0, in("t0") Syscall::DataIdentifier as u32)
+    };
+    out as usize
 }
 
 use serde::de::DeserializeOwned;
@@ -52,15 +50,15 @@ pub fn poseidon_gl(mut data: [u64; 12]) -> [u64; 4] {
     }
 
     unsafe {
-        poseidon_gl_coprocessor(&mut data as *mut [u64; 12]);
-    }
+        asm!("ecall", in("a0") &mut data as *mut [u64; 12], in("t0") Syscall::PoseidonGL as u32);
+    };
 
     [data[0], data[1], data[2], data[3]]
 }
 
 pub fn poseidon_gl_unsafe(mut data: [u64; 12]) -> [u64; 4] {
     unsafe {
-        poseidon_gl_coprocessor(&mut data as *mut [u64; 12]);
+        asm!("ecall", in("a0") &mut data as *mut [u64; 12], in("t0") Syscall::PoseidonGL as u32);
     }
 
     [data[0], data[1], data[2], data[3]]

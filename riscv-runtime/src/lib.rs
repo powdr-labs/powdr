@@ -11,6 +11,8 @@ use core::panic::PanicInfo;
 
 use crate::fmt::print_str;
 
+use powdr_riscv_syscalls::Syscall;
+
 mod allocator;
 pub mod coprocessors;
 pub mod fmt;
@@ -35,7 +37,7 @@ unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
 pub fn get_prover_input(index: u32) -> u32 {
     let mut value: u32;
     unsafe {
-        asm!("ecall", lateout("a0") value, in("a0") index);
+        asm!("ecall", lateout("a0") value, in("a0") index, in("t0") Syscall::Input as u32);
     }
     value
 }
