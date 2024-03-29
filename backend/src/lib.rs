@@ -101,52 +101,6 @@ pub trait Backend<'a, F: FieldElement> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
-<<<<<<< HEAD
-        prev_proof: Option<Vec<Proof>>,
-    ) -> (Option<Vec<Proof>>, Option<String>);
-
-    /// Write the prover setup to a file, so that it can be loaded later.
-    fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error>;
-}
-
-/// Dynamic interface for a backend factory.
-pub trait BackendFactory<F: FieldElement> {
-    /// Maybe perform the setup, and create a new backend object.
-    fn create(&self, degree: DegreeType) -> Box<dyn Backend<F>>;
-
-    /// Create a backend object from a prover setup loaded from a file.
-    fn create_from_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error>;
-}
-
-/*
-    Below are the traits implemented by the backends.
-*/
-
-/// Trait implemented by all backends.
-trait BackendImpl<F: FieldElement> {
-    fn new(degree: DegreeType) -> Self;
-
-    fn prove(
-        &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-        witness: &[(String, Vec<F>)],
-        prev_proof: Option<Vec<Proof>>,
-    ) -> (Option<Vec<Proof>>, Option<String>);
-}
-
-/// Trait implemented by backends that have a setup phase that must be saved to
-/// a file.
-trait BackendImplWithSetup<F: FieldElement>
-where
-    Self: Sized + BackendImpl<F>,
-{
-    /// Create a backend object from a setup loaded from a file.
-    fn new_from_setup(input: &mut dyn io::Read) -> Result<Self, io::Error>;
-
-    /// Write the setup to a file.
-    fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), io::Error>;
-=======
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error>;
@@ -167,5 +121,4 @@ where
     fn export_verification_key(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
         Err(Error::NoVerificationAvailable)
     }
->>>>>>> upstream/main
 }
