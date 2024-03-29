@@ -39,9 +39,9 @@ pub trait AnalysisDriver: Clone + Copy {
     fn resolve_ref(&self, path: &SymbolPath, symbol_category: SymbolCategory) -> String {
         let (path, cat) = self
             .try_resolve_ref(path)
-            .unwrap_or_else(|| panic!("Symbol of kind {symbol_category} not found: {path}"));
+            .unwrap_or_else(|| panic!("{symbol_category} symbol not found: {path}"));
         if !cat.compatible_with_request(symbol_category) {
-            panic!("Expected smbol of kind {symbol_category}, got {cat} for {path}")
+            panic!("Expected symbol of kind {symbol_category} but got {cat}: {path}")
         }
         path
     }

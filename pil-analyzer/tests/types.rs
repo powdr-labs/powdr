@@ -317,7 +317,7 @@ fn enum_constr_is_function() {
 }
 
 #[test]
-#[should_panic = "Expected value but got type: X"]
+#[should_panic = "Expected symbol of kind Value but got Type: X"]
 fn enum_is_not_constr() {
     let input = "
     enum X { A, B(int), C(string[], int) }
