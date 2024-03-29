@@ -2,11 +2,7 @@ use std::io;
 use std::iter::{once, repeat};
 use std::time::Instant;
 
-<<<<<<< HEAD
-use crate::{pilstark, BackendImpl, Proof};
-=======
 use crate::{pilstark, Backend, BackendFactory, Error};
->>>>>>> upstream/main
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, GoldilocksField, LargeInt};
@@ -232,9 +228,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
             Ok(_) => Ok(serde_json::to_string(&starkproof).unwrap().into_bytes()),
             Err(e) => Err(e),
         }
-    }
 
-<<<<<<< HEAD
         // generate circom
         let opt = pil2circom::StarkOption {
             enable_input: false,
@@ -258,7 +252,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
         }
 
         (Some(proofs), Some(serde_json::to_string(&pil).unwrap()))
-=======
+    }
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         match serde_json::to_writer(output, &self.setup) {
             Ok(_) => Ok(()),
@@ -266,7 +260,6 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
                 "Could not export verification key".to_string(),
             )),
         }
->>>>>>> upstream/main
     }
 }
 
