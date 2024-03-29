@@ -15,8 +15,8 @@ use powdr_ast::parsed::{
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, PilStatement, StatementInsideBlock,
-    TypedExpression,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, PilStatement,
+    StatementInsideBlock, TypedExpression,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -218,6 +218,8 @@ fn canonicalize_inside_expression(
     path: &AbsoluteSymbolPath,
     paths: &'_ PathMap,
 ) {
+    // TODO we need to turn all Enums in Patterns that are single
+    //  indentifiers and do not resolve to enums, into Variables
     e.pre_visit_expressions_mut(&mut |e| {
         if let Expression::Reference(reference) = e {
             // If resolving the reference fails, we assume it is a local variable that has been checked below.
@@ -307,6 +309,7 @@ fn check_path(
     // the current state
     state: &mut State<'_>,
 ) -> Result<(), String> {
+    println!("Checking {path}");
     check_path_internal(path, state, Default::default())?;
     Ok(())
 }
@@ -505,6 +508,7 @@ fn check_machine(
                 if let PilStatement::LetStatement(_, _, Some(type_scheme), _) = statement {
                     check_type_scheme(&module_location, type_scheme, state, &local_variables)?;
                 }
+                println!("Checking st {statement}");
                 statement.children().try_for_each(|e| {
                     check_expression(&module_location, e, state, &local_variables)
                 })?
@@ -564,6 +568,14 @@ fn check_expression(
                     return Ok(());
                 }
             }
+            println!(
+                "Not a local var: {reference}. local varsz:{}",
+                local_variables
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
             check_path(location.clone().join(reference.path.clone()), state)
         }
         Expression::PublicReference(_) | Expression::Number(_, _) | Expression::String(_) => Ok(()),
@@ -577,7 +589,7 @@ fn check_expression(
         }) => {
             // Add the local variables, ignore collisions.
             let mut local_variables = local_variables.clone();
-            local_variables.extend(params.iter().flat_map(|p| p.variables().cloned()));
+            local_variables.extend(check_patterns(location, params, state));
             check_expression(location, body, state, &local_variables)
         }
         Expression::BinaryOperation(a, _, b)
@@ -599,7 +611,7 @@ fn check_expression(
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
                 let mut local_variables = local_variables.clone();
-                local_variables.extend(pattern.variables().cloned());
+                local_variables.extend(check_pattern(location, pattern, state)?);
                 check_expression(location, value, state, &local_variables)
             })
         }
@@ -623,7 +635,7 @@ fn check_expression(
                         if let Some(value) = value {
                             check_expression(location, value, state, &local_variables)?;
                         }
-                        local_variables.extend(pattern.variables().cloned());
+                        local_variables.extend(check_pattern(location, pattern, state)?);
                     }
                     StatementInsideBlock::Expression(expr) => {
                         check_expression(location, expr, state, &local_variables)?;
@@ -644,6 +656,59 @@ fn check_expressions(
     expressions
         .iter()
         .try_for_each(|e| check_expression(location, e, state, local_variables))
+}
+
+/// Checks paths in a pattern and returns the newly declared variables.
+/// Does not turn "wrongly parsed" enums into variables, that will be done
+/// in canonicalize_inside_pattern.
+fn check_pattern(
+    location: &AbsoluteSymbolPath,
+    pattern: &Pattern,
+    state: &mut State<'_>,
+) -> Result<Vec<String>, String> {
+    match pattern {
+        Pattern::Variable(n) => Ok(vec![n.clone()]),
+        Pattern::Enum(name, fields) => {
+            // The parser cannot distinguish between Enum and Variable patterns.
+            // So if "name" is a single identifier that does not resolve to an enum variant,
+            // it is a variable pattern.
+            // TODO we do not fully implement that here. Anything that is an identifier
+            // is mapped to a varaible.
+            if let Some(identifier) = name.try_to_identifier() {
+                match fields {
+                    None => Ok(vec![identifier.clone()]),
+                    Some(fields) => {
+                        let fields = check_patterns(location, fields, state)?;
+                        Ok(once(identifier.clone())
+                            .chain(fields)
+                            .collect::<Vec<String>>())
+                    }
+                }
+            } else {
+                Ok(p.children()
+                    .map(|p| check_pattern(location, p, state))
+                    .collect::<Result<_, _>>()?
+                    .join())
+            }
+        }
+        p => Ok(p
+            .children()
+            .map(|p| check_pattern(location, p, state))
+            .collect::<Result<_, _>>()?
+            .join()),
+    }
+}
+
+fn check_patterns(
+    location: &AbsoluteSymbolPath,
+    patterns: &[Pattern],
+    state: &mut State<'_>,
+) -> Result<Vec<String>, String> {
+    patterns
+        .iter()
+        .map(|p| check_pattern(location, p, state))
+        .collect::<Result<_, _>>()
+        .join()
 }
 
 fn check_type_declaration(
