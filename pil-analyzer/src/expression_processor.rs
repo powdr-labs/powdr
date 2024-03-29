@@ -170,6 +170,9 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
                     } else {
                         panic!("Expected enum variant but got {category}: {resolved_name}");
                     }
+                } else if let Some(identifier) = name.try_to_identifier() {
+                    // It's a single identifier that does not resolve to an enum variant.
+                    self.process_variable_pattern(identifier.clone())
                 } else {
                     panic!("Symbol not found: {name}");
                 }
