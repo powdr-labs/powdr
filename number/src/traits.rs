@@ -149,11 +149,15 @@ pub trait FieldElement:
     fn try_into_i32(&self) -> Option<i32>;
 }
 
-// TODO: should we bother with this or just go through bignumber?
+// this assumes that the field size is at most 64 bits, which is the case for plonky3 fields
 pub trait Plonky3FieldElement: FieldElement {
-    type Plonky3Field: Into<Self>;
+    type Plonky3Field: p3_field::AbstractField;
 
-    fn into_plonky3(self) -> Self::Plonky3Field;
+    fn into_plonky3(self) -> Self::Plonky3Field {
+        <Self::Plonky3Field as p3_field::AbstractField>::from_canonical_u64(
+            self.to_integer().try_into_u64().unwrap(),
+        )
+    }
 }
 
 #[cfg(test)]

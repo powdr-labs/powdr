@@ -1,8 +1,12 @@
-use p3_field::AbstractField;
+//! Plonky3 adapter for powdr
+//! Since plonky3 does not have fixed columns, we encode them as witness columns.
+//! The encoded plonky3 columns are chosen to be the powdr witness columns followed by the powdr fixed columns
+//! TODO: refactor powdr to remove the distinction between fixed and witness columns, so that we do not have to rearrange things here
+
 use p3_matrix::{dense::RowMajorMatrix, MatrixRowSlices};
-use powdr_ast::{
-    analyzed::{AlgebraicExpression, Analyzed, IdentityKind},
-    parsed::SelectedExpressions,
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperator, Analyzed, IdentityKind,
+    PolynomialType,
 };
 
 use powdr_number::Plonky3FieldElement;
@@ -14,11 +18,72 @@ pub(crate) struct PowdrCircuit<'a, T> {
     /// The analyzed PIL
     analyzed: &'a Analyzed<T>,
     /// The value of the fixed columns
-    _fixed: &'a [(String, Vec<T>)],
-    /// The value of the witness columns, if set
-    _witness: Option<&'a [(String, Vec<T>)]>,
+    fixed: &'a [(String, Vec<T>)],
+    /// The value of the witness columns
+    witness: &'a [(String, Vec<T>)],
     /// Column name and index of the public cells
     _publics: Vec<(String, usize)>,
+}
+
+impl<'a, T: Plonky3FieldElement> PowdrCircuit<'a, T> {
+    fn to_plonky3_expr<AB: AirBuilder<F = T::Plonky3Field>>(
+        &self,
+        e: &AlgebraicExpression<T>,
+        main: &<AB as AirBuilder>::M,
+    ) -> AB::Expr {
+        let res = match e {
+            AlgebraicExpression::Reference(r) => {
+                let poly_id = r.poly_id;
+
+                let row = match r.next {
+                    true => main.row_slice(1),
+                    false => main.row_slice(0),
+                };
+
+                // witness columns indexes are unchanged, fixed ones are offset
+                let index = match poly_id.ptype {
+                    PolynomialType::Committed => self
+                        .witness
+                        .as_ref()
+                        .iter()
+                        .position(|(name, _)| *name == r.name)
+                        .unwrap(),
+                    PolynomialType::Constant => {
+                        self.witness.as_ref().len()
+                            + self
+                                .fixed
+                                .iter()
+                                .position(|(name, _)| *name == r.name)
+                                .unwrap()
+                    }
+                    PolynomialType::Intermediate => unreachable!("intermediate polynomials should have been inlined"),
+                };
+
+                row[index].into()
+            }
+            AlgebraicExpression::PublicReference(_) => todo!(),
+            AlgebraicExpression::Number(n) => AB::Expr::from((*n).into_plonky3()),
+            AlgebraicExpression::BinaryOperation(left, op, right) => {
+                let left: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(left, main);
+                let right = self.to_plonky3_expr::<AB>(right, main);
+
+                match op {
+                    AlgebraicBinaryOperator::Add => left + right,
+                    AlgebraicBinaryOperator::Sub => left - right,
+                    AlgebraicBinaryOperator::Mul => left * right,
+                    AlgebraicBinaryOperator::Pow => unimplemented!(),
+                }
+            }
+            AlgebraicExpression::UnaryOperation(op, e) => {
+                let e: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(e, main);
+
+                match op {
+                    AlgebraicUnaryOperator::Minus => -e,
+                }
+            }
+        };
+        res
+    }
 }
 
 pub struct Plonky3Prover<'a, F> {
@@ -33,7 +98,19 @@ impl<'a, T: Plonky3FieldElement> BaseAir<T::Plonky3Field> for PowdrCircuit<'a, T
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<T::Plonky3Field>> {
-        None
+        let width = self.witness.len() + self.fixed.len();
+        let joined_iter = self.witness.iter().chain(self.fixed);
+        let len = self.analyzed.degree.unwrap();
+
+        let values = (0..len)
+            .flat_map(move |i| {
+                joined_iter
+                    .clone()
+                    .map(move |(_, v)| v[i as usize].into_plonky3())
+            })
+            .collect();
+
+        Some(RowMajorMatrix::new(values, width))
     }
 }
 
@@ -41,49 +118,39 @@ impl<'a, T: Plonky3FieldElement, AB: AirBuilder<F = T::Plonky3Field>> Air<AB>
     for PowdrCircuit<'a, T>
 {
     fn eval(&self, builder: &mut AB) {
-        let degree = self.analyzed.degree.unwrap();
-
         let main = builder.main();
 
-        for i in 0..degree as usize {
-            let current = main.row_slice(i);
-            // let next = main.row_slice(i + 1);
+        for identity in &self.analyzed.identities_with_inlined_intermediate_polynomials() {
+            match identity.kind {
+                IdentityKind::Polynomial => {
+                    assert_eq!(identity.left.expressions.len(), 0);
+                    assert_eq!(identity.right.expressions.len(), 0);
+                    assert!(identity.right.selector.is_none());
 
-            for identity in &self.analyzed.identities {
-                match identity.kind {
-                    IdentityKind::Polynomial => {
-                        println!("{identity}");
+                    let left =
+                        self.to_plonky3_expr::<AB>(identity.left.selector.as_ref().unwrap(), &main);
 
-                        let _left = to_plonky3_expr::<T, AB>(&identity.left);
-                        let _right = to_plonky3_expr::<T, AB>(&identity.right);
-
-                        builder.assert_zero(current[1] - current[0] + AB::Expr::one());
-                    }
-                    IdentityKind::Plookup => unimplemented!(),
-                    IdentityKind::Permutation => unimplemented!(),
-                    IdentityKind::Connect => unimplemented!(),
+                    builder.assert_zero(left);
                 }
+                IdentityKind::Plookup => unimplemented!(),
+                IdentityKind::Permutation => unimplemented!(),
+                IdentityKind::Connect => unimplemented!(),
             }
         }
     }
 }
 
-fn to_plonky3_expr<'a, T: Plonky3FieldElement, AB: AirBuilder<F = T::Plonky3Field>>(
-    _expr: &SelectedExpressions<AlgebraicExpression<T>>,
-) -> AB::Expr {
-    <AB::Expr as AbstractField>::zero()
-}
-
 #[cfg(test)]
 mod tests {
 
+    use p3_air::BaseAir;
     use p3_challenger::DuplexChallenger;
     use p3_commit::ExtensionMmcs;
     use p3_dft::Radix2DitParallel;
-    use p3_field::{extension::BinomialExtensionField, AbstractField, Field};
+    use p3_field::{extension::BinomialExtensionField, Field};
     use p3_fri::{FriConfig, TwoAdicFriPcs};
-    use p3_goldilocks::{DiffusionMatrixGoldilocks, Goldilocks};
-    use p3_matrix::{dense::RowMajorMatrix, Matrix};
+    use p3_goldilocks::{DiffusionMatrixGoldilocks};
+    use p3_matrix::{Matrix};
     use p3_merkle_tree::FieldMerkleTreeMmcs;
     use p3_poseidon2::Poseidon2;
     use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
@@ -91,7 +158,7 @@ mod tests {
     use p3_util::log2_ceil_usize;
     use powdr_number::GoldilocksField;
     use powdr_pipeline::Pipeline;
-    use rand::{distributions::Distribution, thread_rng};
+    use rand::{thread_rng};
 
     use crate::PowdrCircuit;
 
@@ -113,20 +180,8 @@ mod tests {
     type Pcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
     type MyConfig = StarkConfig<Pcs, Challenge, Challenger>;
 
-    #[test]
-    fn test_incorrect_public_value() {
-        let content = "namespace Global(2); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
-
-        let trace: RowMajorMatrix<Goldilocks> = RowMajorMatrix::new(
-            [1, 2, 2, 3]
-                .into_iter()
-                .map(Goldilocks::from_canonical_usize)
-                .collect(),
-            2,
-        );
-
-        let mut pipeline =
-            Pipeline::<GoldilocksField>::default().from_pil_string(content.to_string());
+    fn run_test(pil: &str) {
+        let mut pipeline = Pipeline::<GoldilocksField>::default().from_pil_string(pil.to_string());
 
         let pil = pipeline.compute_optimized_pil().unwrap();
         let fixed_cols = pipeline.compute_fixed_cols().unwrap();
@@ -134,10 +189,12 @@ mod tests {
 
         let air = PowdrCircuit {
             analyzed: &pil,
-            _fixed: &fixed_cols,
-            _witness: Some(&witness),
+            fixed: &fixed_cols,
+            witness: &witness,
             _publics: vec![],
         };
+
+        let trace = air.preprocessed_trace().unwrap();
 
         let perm = Perm::new_from_rng(8, 22, DiffusionMatrixGoldilocks, &mut thread_rng());
         let hash = MyHash::new(perm.clone());
@@ -157,5 +214,37 @@ mod tests {
         let pis = vec![];
         let proof = prove(&config, &air, &mut challenger, trace, &pis);
         verify(&config, &air, &mut challenger, &proof, &pis).unwrap();
+    }
+
+    #[test]
+    #[should_panic = "assertion failed: width >= 1"]
+    fn empty() {
+        let content = "namespace Global(8);";
+        run_test(content);
+    }
+
+    #[test]
+    fn single_fixed_column() {
+        let content = "namespace Global(8); pol fixed z = [1, 2]*;";
+        run_test(content);
+    }
+
+    #[test]
+    fn single_witness_column() {
+        let content = "namespace Global(8); pol witness a;";
+        run_test(content);
+    }
+
+    #[test]
+    fn polynomial_identity() {
+        let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
+        run_test(content);
+    }
+
+    #[test]
+    #[should_panic = "not implemented"]
+    fn lookup() {
+        let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; a in z;";
+        run_test(content);
     }
 }

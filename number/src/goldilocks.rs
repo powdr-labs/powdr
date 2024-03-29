@@ -12,23 +12,14 @@ pub type GoldilocksBaseField = Fp64<MontBackend<GoldilocksBaseFieldConfig, 1>>;
 
 powdr_field!(GoldilocksField, GoldilocksBaseField);
 
-impl From<p3_goldilocks::Goldilocks> for GoldilocksField {
-    fn from(_: p3_goldilocks::Goldilocks) -> Self {
-        todo!()
-    }
-}
-
 impl Plonky3FieldElement for GoldilocksField {
     type Plonky3Field = p3_goldilocks::Goldilocks;
-
-    fn into_plonky3(self) -> Self::Plonky3Field {
-        todo!()
-    }
 }
 
 #[cfg(test)]
 mod test {
     use crate::traits::int_from_hex_str;
+    use p3_field::AbstractField;
     use test_log::test;
 
     use super::*;
@@ -75,5 +66,15 @@ mod test {
     #[should_panic]
     fn div_by_zero() {
         let _ = GoldilocksField::from(1) / GoldilocksField::from(0);
+    }
+
+    #[test]
+    fn into_plonky3() {
+        [0u64, 1, 18446744069414584321].into_iter().for_each(|n| {
+            assert_eq!(
+                GoldilocksField::from(n).into_plonky3(),
+                p3_goldilocks::Goldilocks::from_canonical_u64(n)
+            );
+        })
     }
 }
