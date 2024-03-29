@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicReference,
-    AlgebraicUnaryOperator,
+    AlgebraicUnaryOperator, Challenge,
 };
 
 use powdr_number::FieldElement;
@@ -12,6 +12,12 @@ use super::{affine_expression::AffineResult, IncompleteCause};
 pub trait SymbolicVariables<T> {
     /// Value of a polynomial (fixed or witness).
     fn value<'a>(&self, poly: &'a AlgebraicReference) -> AffineResult<&'a AlgebraicReference, T>;
+
+    /// Value of a challenge.
+    fn challenge<'a>(&self, _challenge: &'a Challenge) -> AffineResult<&'a AlgebraicReference, T> {
+        // Only needed for evaluating identities, so we leave this unimplemented by default.
+        unimplemented!()
+    }
 }
 
 pub struct ExpressionEvaluator<T, SV> {
@@ -43,9 +49,8 @@ where
                 self.evaluate_binary_operation(left, op, right)
             }
             Expression::UnaryOperation(op, expr) => self.evaluate_unary_operation(op, expr),
-            e => Err(IncompleteCause::ExpressionEvaluationUnimplemented(
-                e.to_string(),
-            )),
+            Expression::Challenge(challenge) => self.variables.challenge(challenge),
+            e => unimplemented!("Unexpected expression: {}", e),
         }
     }
 
@@ -55,47 +60,64 @@ where
         op: &AlgebraicBinaryOperator,
         right: &'a Expression<T>,
     ) -> AffineResult<&'a AlgebraicReference, T> {
-        let left = self.evaluate(left);
-
-        // Short-circuit multiplication by zero.
-        if *op == AlgebraicBinaryOperator::Mul {
-            if let Ok(zero) = &left {
-                if zero.constant_value().map(|z| z.is_zero()) == Some(true) {
-                    return Ok(zero.clone());
+        match op {
+            AlgebraicBinaryOperator::Add => {
+                let left_expr = self.evaluate(left)?;
+                if left_expr.is_zero() {
+                    return self.evaluate(right);
+                }
+                let right_expr = self.evaluate(right)?;
+                if right_expr.is_zero() {
+                    return Ok(left_expr);
+                }
+                Ok(left_expr + right_expr)
+            }
+            AlgebraicBinaryOperator::Sub => Ok(self.evaluate(left)? - self.evaluate(right)?),
+            AlgebraicBinaryOperator::Mul => {
+                // don't short circuit on err as rhs might still be 0
+                let left_res = self.evaluate(left);
+                match left_res {
+                    Ok(left_expr) if left_expr.is_zero() => Ok(left_expr),
+                    Ok(left_expr) if left_expr.is_one() => self.evaluate(right),
+                    Ok(left_expr) => {
+                        let right_expr = self.evaluate(right)?;
+                        if let Some(n) = left_expr.constant_value() {
+                            return Ok(right_expr * n);
+                        }
+                        // lhs not a constant
+                        match right_expr.constant_value() {
+                            Some(r) if r.is_zero() => Ok(right_expr),
+                            Some(r) if r.is_one() => Ok(left_expr),
+                            Some(r) => Ok(left_expr * r),
+                            None => Err(IncompleteCause::QuadraticTerm),
+                        }
+                    }
+                    // Err on lhs is ok if rhs is zero
+                    Err(left_err) => match self.evaluate(right) {
+                        Ok(right_expr) => {
+                            if let Some(n) = right_expr.constant_value() {
+                                if n.is_zero() {
+                                    return Ok(right_expr);
+                                }
+                            }
+                            Err(left_err)
+                        }
+                        Err(right_err) => Err(left_err.combine(right_err)),
+                    },
                 }
             }
-        }
-        let right = self.evaluate(right);
-
-        match (left, op, right) {
-            // Short-circuit multiplication by zero for "right".
-            (_, AlgebraicBinaryOperator::Mul, Ok(zero))
-                if zero.constant_value().map(|z| z.is_zero()) == Some(true) =>
-            {
-                Ok(zero)
+            AlgebraicBinaryOperator::Pow => {
+                if let (Some(l), r) = (
+                    self.evaluate(left)?.constant_value(),
+                    self.evaluate(right)?
+                        .constant_value()
+                        .expect("non-constant exponent should be caught earlier"),
+                ) {
+                    Ok(l.pow(r.to_integer()).into())
+                } else {
+                    Err(IncompleteCause::ExponentiationTerm)
+                }
             }
-            (Ok(left), op, Ok(right)) => match op {
-                AlgebraicBinaryOperator::Add => Ok(left + right),
-                AlgebraicBinaryOperator::Sub => Ok(left - right),
-                AlgebraicBinaryOperator::Mul => {
-                    if let Some(f) = left.constant_value() {
-                        Ok(right * f)
-                    } else if let Some(f) = right.constant_value() {
-                        Ok(left * f)
-                    } else {
-                        Err(IncompleteCause::QuadraticTerm)
-                    }
-                }
-                AlgebraicBinaryOperator::Pow => {
-                    if let (Some(l), Some(r)) = (left.constant_value(), right.constant_value()) {
-                        Ok(l.pow(r.to_integer()).into())
-                    } else {
-                        Err(IncompleteCause::ExponentiationTerm)
-                    }
-                }
-            },
-            (Ok(_), _, Err(reason)) | (Err(reason), _, Ok(_)) => Err(reason),
-            (Err(r1), _, Err(r2)) => Err(r1.combine(r2)),
         }
     }
 

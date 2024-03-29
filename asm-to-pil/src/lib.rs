@@ -8,7 +8,7 @@ mod romgen;
 mod vm_to_constrained;
 
 /// Remove all ASM from the machine tree. Takes a tree of virtual or constrained machines and returns a tree of constrained machines
-pub fn compile<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
+pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
     AnalysisASMFile {
         items: file
             .items
@@ -18,10 +18,11 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> 
                     name,
                     match m {
                         Item::Machine(m) => {
-                            let (m, rom) = generate_machine_rom(m);
-                            Item::Machine(vm_to_constrained::convert_machine(m, rom))
+                            let (m, rom) = generate_machine_rom::<T>(m);
+                            Item::Machine(vm_to_constrained::convert_machine::<T>(m, rom))
                         }
                         Item::Expression(e) => Item::Expression(e),
+                        Item::TypeDeclaration(enum_decl) => Item::TypeDeclaration(enum_decl),
                     },
                 )
             })
@@ -41,16 +42,27 @@ pub mod utils {
         },
     };
     use powdr_number::FieldElement;
-    use powdr_parser::ParserContext;
+    use powdr_parser::{
+        powdr::{
+            FunctionStatementParser, InstructionBodyParser, InstructionDeclarationParser,
+            InstructionParser, PilStatementParser, RegisterDeclarationParser,
+        },
+        ParserContext,
+    };
 
-    pub fn parse_instruction_definition<T: FieldElement>(
-        input: &str,
-    ) -> InstructionDefinitionStatement<T> {
+    lazy_static::lazy_static! {
+        static ref INSTRUCTION_DECLARATION_PARSER: InstructionDeclarationParser = InstructionDeclarationParser::new();
+        static ref INSTRUCTION_PARSER: InstructionParser = InstructionParser::new();
+        static ref INSTRUCTION_BODY_PARSER: InstructionBodyParser = InstructionBodyParser::new();
+        static ref FUNCTION_STATEMENT_PARSER: FunctionStatementParser = FunctionStatementParser::new();
+        static ref PIL_STATEMENT_PARSER: PilStatementParser = PilStatementParser::new();
+        static ref REGISTER_DECLARATION_PARSER: RegisterDeclarationParser = RegisterDeclarationParser::new();
+
+    }
+
+    pub fn parse_instruction_definition(input: &str) -> InstructionDefinitionStatement {
         let ctx = ParserContext::new(None, input);
-        match powdr_parser::powdr::InstructionDeclarationParser::new()
-            .parse(&ctx, input)
-            .unwrap()
-        {
+        match INSTRUCTION_DECLARATION_PARSER.parse(&ctx, input).unwrap() {
             MachineStatement::InstructionDeclaration(source, name, instruction) => {
                 InstructionDefinitionStatement {
                     source,
@@ -65,30 +77,23 @@ pub mod utils {
         }
     }
 
-    pub fn parse_instruction<T: FieldElement>(input: &str) -> Instruction<T> {
+    pub fn parse_instruction(input: &str) -> Instruction {
         let ctx = ParserContext::new(None, input);
-        let instr = powdr_parser::powdr::InstructionParser::new()
-            .parse(&ctx, input)
-            .unwrap();
+        let instr = INSTRUCTION_PARSER.parse(&ctx, input).unwrap();
         Instruction {
             params: instr.params,
             body: instr.body,
         }
     }
 
-    pub fn parse_instruction_body<T: FieldElement>(input: &str) -> InstructionBody<T> {
+    pub fn parse_instruction_body(input: &str) -> InstructionBody {
         let ctx = ParserContext::new(None, input);
-        powdr_parser::powdr::InstructionBodyParser::new()
-            .parse(&ctx, input)
-            .unwrap()
+        INSTRUCTION_BODY_PARSER.parse(&ctx, input).unwrap()
     }
 
-    pub fn parse_function_statement<T: FieldElement>(input: &str) -> FunctionStatement<T> {
+    pub fn parse_function_statement(input: &str) -> FunctionStatement {
         let ctx = ParserContext::new(None, input);
-        match powdr_parser::powdr::FunctionStatementParser::new()
-            .parse::<T>(&ctx, input)
-            .unwrap()
-        {
+        match FUNCTION_STATEMENT_PARSER.parse(&ctx, input).unwrap() {
             powdr_ast::parsed::asm::FunctionStatement::Assignment(source, lhs, reg, rhs) => {
                 AssignmentStatement {
                     source,
@@ -117,21 +122,16 @@ pub mod utils {
         }
     }
 
-    pub fn parse_pil_statement<T: FieldElement>(input: &str) -> PilStatement<T> {
+    pub fn parse_pil_statement(input: &str) -> PilStatement {
         let ctx = ParserContext::new(None, input);
-        powdr_parser::powdr::PilStatementParser::new()
-            .parse(&ctx, input)
-            .unwrap()
+        PIL_STATEMENT_PARSER.parse(&ctx, input).unwrap()
     }
 
     pub fn parse_register_declaration<T: FieldElement>(
         input: &str,
     ) -> RegisterDeclarationStatement {
         let ctx = ParserContext::new(None, input);
-        match powdr_parser::powdr::RegisterDeclarationParser::new()
-            .parse::<T>(&ctx, input)
-            .unwrap()
-        {
+        match REGISTER_DECLARATION_PARSER.parse(&ctx, input).unwrap() {
             MachineStatement::RegisterDeclaration(source, name, flag) => {
                 let ty = match flag {
                     Some(RegisterFlag::IsAssignment) => RegisterTy::Assignment,

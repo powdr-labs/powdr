@@ -1,16 +1,21 @@
 [package]
 name = "powdr-asm-to-pil"
-version = "0.1.0"
-edition = "2021"
+description = "Transforms dynamic machines into constrained machines"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
 powdr-parser = { path = "../parser" }
 
+lazy_static = "1.4.0"
 log = "0.4.17"
-num-bigint = "0.4.3"
 pretty_assertions = "1.4.0"
 
 [dev-dependencies]
 powdr-analysis = { path = "../analysis" }
+powdr-importer = { path = "../importer" }

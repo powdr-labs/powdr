@@ -1,5 +1,7 @@
 use crate::parsed::visitor::VisitOrder;
 
+use self::parsed::visitor::AllChildren;
+
 use super::*;
 
 impl<T> ExpressionVisitable<AlgebraicExpression<T>> for AlgebraicExpression<T> {
@@ -10,16 +12,8 @@ impl<T> ExpressionVisitable<AlgebraicExpression<T>> for AlgebraicExpression<T> {
         if o == VisitOrder::Pre {
             f(self)?;
         }
-        match self {
-            AlgebraicExpression::Reference(_)
-            | AlgebraicExpression::PublicReference(_)
-            | AlgebraicExpression::Number(_) => {}
-            AlgebraicExpression::BinaryOperation(left, _, right) => {
-                left.visit_expressions_mut(f, o)?;
-                right.visit_expressions_mut(f, o)?;
-            }
-            AlgebraicExpression::UnaryOperation(_, e) => e.visit_expressions_mut(f, o)?,
-        };
+        self.children_mut()
+            .try_for_each(|e| e.visit_expressions_mut(f, o))?;
         if o == VisitOrder::Post {
             f(self)?;
         }
@@ -33,16 +27,8 @@ impl<T> ExpressionVisitable<AlgebraicExpression<T>> for AlgebraicExpression<T> {
         if o == VisitOrder::Pre {
             f(self)?;
         }
-        match self {
-            AlgebraicExpression::Reference(_)
-            | AlgebraicExpression::PublicReference(_)
-            | AlgebraicExpression::Number(_) => {}
-            AlgebraicExpression::BinaryOperation(left, _, right) => {
-                left.visit_expressions(f, o)?;
-                right.visit_expressions(f, o)?;
-            }
-            AlgebraicExpression::UnaryOperation(_, e) => e.visit_expressions(f, o)?,
-        };
+        self.children()
+            .try_for_each(|e| e.visit_expressions(f, o))?;
         if o == VisitOrder::Post {
             f(self)?;
         }
@@ -50,64 +36,8 @@ impl<T> ExpressionVisitable<AlgebraicExpression<T>> for AlgebraicExpression<T> {
     }
 }
 
-impl<Expr: ExpressionVisitable<Expr>> ExpressionVisitable<Expr> for Identity<Expr> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expr) -> ControlFlow<B>,
-    {
-        self.left
-            .selector
-            .as_mut()
-            .into_iter()
-            .chain(self.left.expressions.iter_mut())
-            .chain(self.right.selector.as_mut())
-            .chain(self.right.expressions.iter_mut())
-            .try_for_each(move |item| item.visit_expressions_mut(f, o))
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expr) -> ControlFlow<B>,
-    {
-        self.left
-            .selector
-            .as_ref()
-            .into_iter()
-            .chain(self.left.expressions.iter())
-            .chain(self.right.selector.iter())
-            .chain(self.right.expressions.iter())
-            .try_for_each(move |item| item.visit_expressions(f, o))
-    }
-}
-
-impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
-    {
-        match self {
-            FunctionValueDefinition::Query(e) | FunctionValueDefinition::Expression(e) => {
-                e.visit_expressions_mut(f, o)
-            }
-            FunctionValueDefinition::Array(array) => array
-                .iter_mut()
-                .flat_map(|a| a.pattern.iter_mut())
-                .try_for_each(move |item| item.visit_expressions_mut(f, o)),
-        }
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expression<T>) -> ControlFlow<B>,
-    {
-        match self {
-            FunctionValueDefinition::Query(e) | FunctionValueDefinition::Expression(e) => {
-                e.visit_expressions(f, o)
-            }
-            FunctionValueDefinition::Array(array) => array
-                .iter()
-                .flat_map(|a| a.pattern().iter())
-                .try_for_each(move |item| item.visit_expressions(f, o)),
-        }
+impl<T> AllChildren<AlgebraicExpression<T>> for AlgebraicExpression<T> {
+    fn all_children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(iter::once(self).chain(self.children().flat_map(|e| e.all_children())))
     }
 }

@@ -1,0 +1,23 @@
+[package]
+name = "powdr-schemas"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+powdr-ast = { path = "../ast" }
+powdr-number = { path = "../number" }
+
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
+schemars = { version = "0.8.16", features = ["preserve_order"]}
+serde_cbor = "0.11.2"
+
+[[bin]]
+name = "powdr-schemas"
+path = "bin/main.rs"
+
+

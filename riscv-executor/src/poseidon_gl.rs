@@ -31,11 +31,11 @@ const MDS_MATRIX: [[u64; 12]; 12] = [
     [15, 41, 16, 2, 28, 13, 13, 39, 18, 34, 20, 17],
 ];
 
-/// Naive implementation of the Poseidon Hash function on the Godlilocks field.
+/// Naive implementation of the Poseidon Hash function on the Goldilocks field.
 /// Ported from:
 /// - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil
 /// - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/src/sm/sm_poseidong.js
-/// It's also equaivalent to std::hash::poseidon_gl::PoseidonGL from the Powdr standard library.
+/// It's also equivalent to std::hash::poseidon_gl::PoseidonGL from the Powdr standard library.
 pub fn poseidon_gl<F: FieldElement>(inputs: &[F]) -> [F; 4] {
     assert_eq!(inputs.len(), 12);
     let mut state = [F::zero(); 12];

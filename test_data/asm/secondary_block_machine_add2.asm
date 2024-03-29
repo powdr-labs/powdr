@@ -1,4 +1,3 @@
-
 machine Main {
     degree 16;
 
@@ -22,12 +21,12 @@ machine Main {
     // Because constraints are not cyclic, we need to explicitly constrain the first state
     _first_step * (add_two_state - add_two_input) = 0;
 
-    // Add %offset in a single step of computation
-    constant %offset = 1;
+    // Add offset in a single step of computation
+    let offset = 1;
 
     // If RESET is true, constrain the next state to be equal to the input
     // if RESET is false, increment the current state
-    add_two_state' = (1 - RESET) * (add_two_state + %offset) + RESET * add_two_input';
+    add_two_state' = (1 - RESET) * (add_two_state + offset) + RESET * add_two_input';
 
     // If RESET is true, the next input is unconstrained
     // If RESET is false, the next input is equal to the current input

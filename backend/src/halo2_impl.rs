@@ -1,62 +1,115 @@
-use std::io::{self};
+use std::{io, path::Path};
 
-use crate::{BackendImpl, BackendImplWithSetup, Proof};
+use crate::{Backend, BackendFactory, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
-use powdr_halo2::Halo2Prover;
+use powdr_executor::witgen::WitgenCallback;
+use powdr_halo2::{generate_setup, Halo2Prover, Params};
 use powdr_number::{DegreeType, FieldElement};
 
-impl<T: FieldElement> BackendImpl<T> for Halo2Prover {
-    fn new(degree: DegreeType) -> Self {
-        Halo2Prover::assert_field_is_compatible::<T>();
-        Halo2Prover::new(degree)
+pub(crate) struct Halo2ProverFactory;
+
+impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
+    fn create<'a>(
+        &self,
+        pil: &'a Analyzed<F>,
+        fixed: &'a [(String, Vec<F>)],
+        _output_dir: Option<&'a Path>,
+        setup: Option<&mut dyn io::Read>,
+        verification_key: Option<&mut dyn io::Read>,
+    ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+        let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup)?);
+        if let Some(vk) = verification_key {
+            halo2.add_verification_key(vk);
+        }
+        Ok(halo2)
+    }
+
+    fn generate_setup(
+        &self,
+        size: DegreeType,
+        mut output: &mut dyn io::Write,
+    ) -> Result<(), Error> {
+        let setup = generate_setup(size);
+        Ok(setup.write(&mut output)?)
+    }
+}
+
+impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
+    fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
+        Ok(self.verify(proof, instances)?)
     }
 
     fn prove(
         &self,
-        pil: &Analyzed<T>,
-        fixed: &[(String, Vec<T>)],
         witness: &[(String, Vec<T>)],
-        prev_proof: Option<Vec<Proof>>,
-    ) -> (Option<Vec<Proof>>, Option<String>) {
+        prev_proof: Option<Proof>,
+        witgen_callback: WitgenCallback<T>,
+    ) -> Result<Proof, Error> {
         let proof = match prev_proof {
-            Some(proof) => self.prove_aggr(pil, fixed, witness, proof[0]),
-            None => self.prove_ast(pil, fixed, witness),
+            Some(proof) => self.prove_aggr(witness, proof),
+            None => self.prove_ast(witness, witgen_callback),
         };
 
-        (Some(vec![proof]), None)
+        Ok(proof?)
+    }
+
+    fn export_setup(&self, mut output: &mut dyn io::Write) -> Result<(), Error> {
+        Ok(self.write_setup(&mut output)?)
+    }
+
+    fn export_verification_key(&self, mut output: &mut dyn io::Write) -> Result<(), Error> {
+        let vk = self.verification_key()?;
+        vk.write(&mut output, powdr_halo2::SerdeFormat::Processed)?;
+
+        Ok(())
     }
 }
 
-impl<T: FieldElement> BackendImplWithSetup<T> for powdr_halo2::Halo2Prover {
-    fn new_from_setup(mut input: &mut dyn io::Read) -> Result<Self, io::Error> {
-        Halo2Prover::assert_field_is_compatible::<T>();
-        Halo2Prover::new_from_setup(&mut input)
-    }
+pub(crate) struct Halo2MockFactory;
 
-    fn write_setup(&self, mut output: &mut dyn io::Write) -> Result<(), io::Error> {
-        self.write_setup(&mut output)
+impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
+    fn create<'a>(
+        &self,
+        pil: &'a Analyzed<F>,
+        fixed: &'a [(String, Vec<F>)],
+        _output_dir: Option<&'a Path>,
+        setup: Option<&mut dyn io::Read>,
+        verification_key: Option<&mut dyn io::Read>,
+    ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+        if setup.is_some() {
+            return Err(Error::NoSetupAvailable);
+        }
+        if verification_key.is_some() {
+            return Err(Error::NoVerificationAvailable);
+        }
+        Ok(Box::new(Halo2Mock { pil, fixed }))
     }
 }
 
-pub struct Halo2Mock;
-impl<T: FieldElement> BackendImpl<T> for Halo2Mock {
-    fn new(_degree: DegreeType) -> Self {
-        Self
-    }
+pub struct Halo2Mock<'a, F: FieldElement> {
+    pil: &'a Analyzed<F>,
+    fixed: &'a [(String, Vec<F>)],
+}
 
+impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<'a, T> {
     fn prove(
         &self,
-        pil: &Analyzed<T>,
-        fixed: &[(String, Vec<T>)],
         witness: &[(String, Vec<T>)],
+<<<<<<< HEAD
         prev_proof: Option<Vec<Proof>>,
     ) -> (Option<Vec<Proof>>, Option<String>) {
+=======
+        prev_proof: Option<Proof>,
+        witgen_callback: WitgenCallback<T>,
+    ) -> Result<Proof, Error> {
+>>>>>>> upstream/main
         if prev_proof.is_some() {
-            unimplemented!("Halo2Mock backend does not support aggregation");
+            return Err(Error::NoAggregationAvailable);
         }
 
-        powdr_halo2::mock_prove(pil, fixed, witness);
+        powdr_halo2::mock_prove(self.pil, self.fixed, witness, witgen_callback)
+            .map_err(Error::BackendError)?;
 
-        (None, None)
+        Ok(vec![])
     }
 }

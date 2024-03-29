@@ -1,4 +1,8 @@
-use std::{collections::HashSet, fmt::Debug};
+use std::{
+    collections::HashSet,
+    fmt::Debug,
+    ops::{Add, Sub},
+};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
@@ -12,9 +16,89 @@ use super::{
     expression_evaluator::ExpressionEvaluator,
     global_constraints::{GlobalConstraints, RangeConstraintSet},
     range_constraints::RangeConstraint,
-    symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
+    symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
     FixedData,
 };
+
+/// A small wrapper around a row index, which knows the total number of rows.
+/// When converted to DegreeType or usize, it will be reduced modulo the number of rows
+/// (handling negative indices as well).
+#[derive(Clone, Copy)]
+pub struct RowIndex {
+    index: i64,
+    num_rows: DegreeType,
+}
+
+impl From<RowIndex> for DegreeType {
+    fn from(row_index: RowIndex) -> Self {
+        // Ensure that 0 <= index < num_rows
+        if row_index.index >= 0 {
+            (row_index.index as DegreeType) % row_index.num_rows
+        } else {
+            assert!(row_index.index > -(row_index.num_rows as i64));
+            row_index.num_rows - (-row_index.index as DegreeType)
+        }
+    }
+}
+
+impl From<RowIndex> for usize {
+    fn from(row_index: RowIndex) -> Self {
+        DegreeType::from(row_index).try_into().unwrap()
+    }
+}
+
+impl RowIndex {
+    pub fn from_i64(index: i64, num_rows: DegreeType) -> Self {
+        Self { index, num_rows }
+    }
+
+    pub fn from_degree(index: DegreeType, num_rows: DegreeType) -> Self {
+        Self {
+            index: index.try_into().unwrap(),
+            num_rows,
+        }
+    }
+}
+
+impl<T> Add<T> for RowIndex
+where
+    i64: TryFrom<T>,
+    <i64 as TryFrom<T>>::Error: std::fmt::Debug,
+{
+    type Output = RowIndex;
+
+    fn add(self, rhs: T) -> RowIndex {
+        RowIndex {
+            index: self.index + i64::try_from(rhs).unwrap(),
+            num_rows: self.num_rows,
+        }
+    }
+}
+
+impl Sub<RowIndex> for RowIndex {
+    type Output = i64;
+
+    fn sub(self, rhs: RowIndex) -> i64 {
+        assert_eq!(self.num_rows, rhs.num_rows);
+        let num_rows = i64::try_from(self.num_rows).unwrap();
+        let lhs = i64::try_from(DegreeType::from(self)).unwrap();
+        let rhs = i64::try_from(DegreeType::from(rhs)).unwrap();
+        let diff = lhs - rhs;
+        if diff <= -num_rows / 2 {
+            diff + num_rows
+        } else if diff >= num_rows / 2 {
+            diff - num_rows
+        } else {
+            diff
+        }
+    }
+}
+
+impl std::fmt::Display for RowIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.index)
+    }
+}
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum CellValue<T: FieldElement> {
@@ -165,7 +249,7 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
         }
     }
 
-    pub fn fresh_row(&self, row: DegreeType) -> Row<'a, T> {
+    pub fn fresh_row(&self, row: RowIndex) -> Row<'a, T> {
         WitnessColumnMap::from(
             self.global_range_constraints
                 .witness_constraints
@@ -173,7 +257,7 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
                 .map(|(poly_id, range_constraint)| {
                     let name = self.fixed_data.column_name(&poly_id);
                     let value = match (
-                        self.fixed_data.external_witness(row, &poly_id),
+                        self.fixed_data.external_witness(row.into(), &poly_id),
                         range_constraint.as_ref(),
                     ) {
                         (Some(external_witness), _) => CellValue::Known(external_witness),
@@ -202,14 +286,14 @@ impl<T: FieldElement> From<Row<'_, T>> for WitnessColumnMap<T> {
 pub struct RowUpdater<'row, 'a, T: FieldElement> {
     current: &'row mut Row<'a, T>,
     next: &'row mut Row<'a, T>,
-    current_row_index: DegreeType,
+    current_row_index: RowIndex,
 }
 
 impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
     pub fn new(
         current: &'row mut Row<'a, T>,
         next: &'row mut Row<'a, T>,
-        current_row_index: DegreeType,
+        current_row_index: RowIndex,
     ) -> Self {
         Self {
             current,
@@ -247,7 +331,7 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
         }
     }
 
-    fn row_number(&self, poly: &AlgebraicReference) -> DegreeType {
+    fn row_number(&self, poly: &AlgebraicReference) -> RowIndex {
         match poly.next {
             false => self.current_row_index,
             true => self.current_row_index + 1,
@@ -268,7 +352,7 @@ pub enum UnknownStrategy {
 pub struct RowPair<'row, 'a, T: FieldElement> {
     pub current: &'row Row<'a, T>,
     pub next: Option<&'row Row<'a, T>>,
-    pub current_row_index: DegreeType,
+    pub current_row_index: RowIndex,
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
 }
@@ -277,7 +361,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn new(
         current: &'row Row<'a, T>,
         next: &'row Row<'a, T>,
-        current_row_index: DegreeType,
+        current_row_index: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
     ) -> Self {
@@ -293,7 +377,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// Creates a new row pair from a single row, setting the next row to None.
     pub fn from_single_row(
         current: &'row Row<'a, T>,
-        current_row_index: DegreeType,
+        current_row_index: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
     ) -> Self {
@@ -333,22 +417,12 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
     pub fn evaluate<'b>(&self, expr: &'b Expression<T>) -> AffineResult<&'b AlgebraicReference, T> {
-        ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
+        ExpressionEvaluator::new(SymbolicWitnessEvaluator::new(
             self.fixed_data,
-            self.current_row_index,
+            self.current_row_index.into(),
             self,
         ))
         .evaluate(expr)
-    }
-
-    /// Returns Ok(true) if the given row number references the "next" row,
-    /// Ok(false) if it references the "current" row and Err if it is out of range.
-    pub fn is_row_number_next(&self, row_number: DegreeType) -> Result<bool, ()> {
-        match row_number - self.current_row_index {
-            0 => Ok(false),
-            1 => Ok(true),
-            _ => Err(()),
-        }
     }
 }
 

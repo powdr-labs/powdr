@@ -24,42 +24,29 @@ jobs:
       uses: actions/cache/restore@v3
       with:
         path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.toml') }}
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+          Cargo.lock
+        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-pr-tests-
-    - name: ⚡ Cache nodejs
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/pilcom/node_modules
-        key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install Rust toolchain 1.72 (with clippy and rustfmt)
-      run: rustup toolchain install 1.72-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain 1.74 (with clippy and rustfmt)
+      run: rustup toolchain install 1.74-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.74-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.74-x86_64-unknown-linux-gnu
     - name: Lint
-      run: cargo clippy --all --all-features --profile pr-tests -- -D warnings
+      run: cargo clippy --all --all-targets --all-features --profile pr-tests -- -D warnings
+    - name: Lint
+      run: cargo clippy --all --all-targets --no-default-features --profile pr-tests -- -D warnings
     - name: Format
       run: cargo fmt --all --check --verbose
-    - name: Check benches compile without running them
-      run: cargo bench --all --all-features --profile pr-tests --no-run
-    - name: Check without Halo2
-      run: cargo check --all --no-default-features --profile pr-tests
     - name: Build
       run: cargo build --all-targets --all --all-features --profile pr-tests
+    - name: Check without Halo2
+      run: cargo check --all --no-default-features --profile pr-tests
     - uses: taiki-e/install-action@nextest
     - name: Create tests archive
       run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
-    - name: ⚡ Save rust cache
-      if: github.ref == 'refs/heads/main'
-      uses: actions/cache/save@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.toml') }}
     - name: Upload tests archive
       uses: actions/upload-artifact@v2
       with:
@@ -84,26 +71,28 @@ jobs:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install Rust toolchain 1.72 (with clippy and rustfmt)
-      run: rustup toolchain install 1.72-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain 1.74 (with clippy and rustfmt)
+      run: rustup toolchain install 1.74-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.74-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.74-x86_64-unknown-linux-gnu
     - name: Install nightly
-      run: rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-02-01-x86_64-unknown-linux-gnu
     - name: Install riscv target
-      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
     - name: Install stdlib
-      run: rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+      run: rustup component add rust-src --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
     - name: Run default tests
       run: PILCOM=$(pwd)/pilcom/ cargo nextest run --archive-file tests.tar.zst --verbose
+    - name: Run examples
+      run: cargo run --example hello_world
 
   test_slow:
     strategy:
       matrix:
         test:
-        - "'test(=test_keccak) | test(=test_vec_median) | test(=instruction_tests::addi)'"
-        - "'test(=test_many_chunks)'"
+        - "subset1"
+        - "subset2"
     needs: build
     runs-on: ubuntu-latest
 
@@ -121,19 +110,24 @@ jobs:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install Rust toolchain 1.72 (with clippy and rustfmt)
-      run: rustup toolchain install 1.72-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain 1.74 (with clippy and rustfmt)
+      run: rustup toolchain install 1.74-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.74-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.74-x86_64-unknown-linux-gnu
     - name: Install nightly
-      run: rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-02-01-x86_64-unknown-linux-gnu
     - name: Install riscv target
-      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
     - name: Install stdlib
-      run: rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+      run: rustup component add rust-src --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
     - name: Run slow tests
       # Number threads is set to 1 because the runner does not have enough memory for more.
-      run: >
-        PILCOM=$(pwd)/pilcom/ cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture
-        -E ${{ matrix.test }}
+      run: |
+        if [[ "${{ matrix.test }}" == "subset1" ]]; then
+          TESTS="test(=test_keccak) | test(=test_vec_median) | test(=instruction_tests::addi) | test(=arith_test) | test(=test_sum_serde)"
+        elif [[ "${{ matrix.test }}" == "subset2" ]]; then
+          TESTS="test(=test_many_chunks)"
+        fi
+        PILCOM=$(pwd)/pilcom/ cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E "$TESTS"
+      shell: bash

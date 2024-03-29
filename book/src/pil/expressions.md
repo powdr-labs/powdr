@@ -6,9 +6,9 @@ Inside values for declarations, you can use a very flexible language which inclu
 many different operators, function calls, lambda functions, tuple types, statement blocks,
 match statements and others.
 
-In statements and expressions that are required to evaluate to polynomial identities, only a much more restrictive
-language can be used. Expressions in that language are caleld Algebraic Expressions. While you can use
-the full language everywhere, in the context of a polynomial identity, the result after function evaluation
+In statements and expressions that are required to evaluate to constraints / polynomial identities, only a much more restrictive
+language can be used. Expressions in that language are called Algebraic Expressions. While you can use
+the full language everywhere, in the context of a constraint, the result after function evaluation
 and constant propagation has to be an algebraic expression.
 
 ## Generic Expressions
@@ -50,7 +50,7 @@ The "default" arm with the pattern `_` matches all values.
 
 Example:
 
-```
+```rust
 let fib = |i| match i {
     0 => 1,
     1 => 1,
@@ -62,19 +62,35 @@ let fib = |i| match i {
 
 If expressions take the form ``if <condition> { <true value> } else { <false value> }``, where the "else" part is not optional.
 
-If the condition evaluates to a non-zero number, `<true value>` is evaluated, otherwise `<false value>` is.
+If the condition evaluates to ``true``, then `<true value>` is evaluated, otherwise `<false value>` is.
 
 
 Example:
 
-```
+```rust
 let is_seven = |i| if i == 7 { 1 } else { 0 };
+```
+
+### Blocks and Let Statements
+
+A ``{``/``}``-block can be used everywhere where an expression is expected.
+
+It has the form ``{ <statement> ; <statement> ; ... ; <expression> }``, where the only valid statement is
+the let statement: ``let x = ...`` or ``let x;``.
+
+While the variant with value can be used everywhere, the form without value creates a new witness column and
+can only be used inside ``constr``-functions.
+
+Example:
+
+```rust
+let plus_on_squared = |x| { let y = x + 1; y * y };
 ```
 
 
 ## Algebraic Expressions
 
-For identities (or functions called from identities), the expression syntax is limited:
+For constraints (or functions called at a place where a constraint is expected), the expression syntax is limited:
 After evaluating function calls and performing constant propagation, the resulting expression has to
 be an "algebraic expression". These are restricted in the following way:
 
@@ -88,6 +104,6 @@ Arbitrary parentheses are allowed.
 
 The following example illustrates how you can still use the generic language:
 
-```
+```rust
 {{#include ../../../test_data/pil/book/generic_to_algebraic.pil}}
 ```

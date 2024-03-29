@@ -13,19 +13,15 @@ pub struct Witness;
 pub struct Fixed;
 
 pub trait PolynomialTypeTrait {
-    fn ptype() -> PolynomialType;
+    const P_TYPE: PolynomialType;
 }
 
 impl PolynomialTypeTrait for Witness {
-    fn ptype() -> PolynomialType {
-        PolynomialType::Committed
-    }
+    const P_TYPE: PolynomialType = PolynomialType::Committed;
 }
 
 impl PolynomialTypeTrait for Fixed {
-    fn ptype() -> PolynomialType {
-        PolynomialType::Constant
-    }
+    const P_TYPE: PolynomialType = PolynomialType::Constant;
 }
 
 pub type WitnessColumnMap<V> = ColumnMap<V, Witness>;
@@ -66,7 +62,7 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
         let mut values: Vec<V> = (0..len).map(|_| V::default()).collect();
         for (poly, value) in items {
             values[poly.id as usize] = value;
-            assert_eq!(poly.ptype, T::ptype());
+            assert_eq!(poly.ptype, T::P_TYPE);
         }
 
         ColumnMap {
@@ -78,7 +74,7 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
     pub fn keys(&self) -> impl Iterator<Item = PolyID> {
         (0..self.values.len()).map(move |i| PolyID {
             id: i as u64,
-            ptype: T::ptype(),
+            ptype: T::P_TYPE,
         })
     }
 
@@ -102,15 +98,17 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
 impl<V, T: PolynomialTypeTrait> Index<&PolyID> for ColumnMap<V, T> {
     type Output = V;
 
+    #[inline]
     fn index(&self, poly_id: &PolyID) -> &Self::Output {
-        assert!(poly_id.ptype == T::ptype());
+        assert!(poly_id.ptype == T::P_TYPE);
         &self.values[poly_id.id as usize]
     }
 }
 
 impl<V, T: PolynomialTypeTrait> IndexMut<&PolyID> for ColumnMap<V, T> {
+    #[inline]
     fn index_mut(&mut self, poly_id: &PolyID) -> &mut Self::Output {
-        assert!(poly_id.ptype == T::ptype());
+        assert!(poly_id.ptype == T::P_TYPE);
         &mut self.values[poly_id.id as usize]
     }
 }

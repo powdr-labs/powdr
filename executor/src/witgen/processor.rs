@@ -5,7 +5,6 @@ use powdr_ast::{
     parsed::SelectedExpressions,
 };
 use powdr_number::{DegreeType, FieldElement};
-use powdr_parser_util::lines::indent;
 
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 
@@ -13,8 +12,8 @@ use super::{
     affine_expression::AffineExpression,
     data_structures::{column_map::WitnessColumnMap, finalizable_data::FinalizableData},
     identity_processor::IdentityProcessor,
-    rows::{CellValue, Row, RowPair, RowUpdater, UnknownStrategy},
-    Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback,
+    rows::{CellValue, Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
+    Constraints, EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
 type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
@@ -53,7 +52,7 @@ pub struct IdentityResult {
 /// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
 pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The global index of the first row of [Processor::data].
-    row_offset: u64,
+    row_offset: RowIndex,
     /// The rows that are being processed.
     data: FinalizableData<'a, T>,
     /// The mutable state
@@ -66,13 +65,13 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     is_relevant_witness: WitnessColumnMap<bool>,
     /// The outer query, if any. If there is none, processing an outer query will fail.
     outer_query: Option<OuterQuery<'a, T>>,
-    inputs: BTreeMap<PolyID, T>,
+    inputs: Vec<(PolyID, T)>,
     previously_set_inputs: BTreeMap<PolyID, usize>,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
     pub fn new(
-        row_offset: u64,
+        row_offset: RowIndex,
         data: FinalizableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
@@ -92,19 +91,19 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             witness_cols,
             is_relevant_witness,
             outer_query: None,
-            inputs: BTreeMap::new(),
+            inputs: Vec::new(),
             previously_set_inputs: BTreeMap::new(),
         }
     }
 
     pub fn with_outer_query(self, outer_query: OuterQuery<'a, T>) -> Processor<'a, 'b, 'c, T, Q> {
         log::trace!("  Extracting inputs:");
-        let mut inputs = BTreeMap::new();
+        let mut inputs = vec![];
         for (l, r) in outer_query.left.iter().zip(&outer_query.right.expressions) {
             if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id) {
                 if let Some(l) = l.constant_value() {
                     log::trace!("    {} = {}", r, l);
-                    inputs.insert(right_poly, l);
+                    inputs.push((right_poly, l));
                 }
             }
         }
@@ -115,7 +114,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         }
     }
 
-    pub fn finshed_outer_query(&self) -> bool {
+    pub fn finished_outer_query(&self) -> bool {
         self.outer_query
             .as_ref()
             .map(|outer_query| outer_query.is_complete())
@@ -129,7 +128,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     pub fn latch_value(&self, row_index: usize) -> Option<bool> {
         let row_pair = RowPair::from_single_row(
             &self.data[row_index],
-            row_index as u64 + self.row_offset,
+            self.row_offset + row_index as u64,
             self.fixed_data,
             UnknownStrategy::Unknown,
         );
@@ -184,20 +183,23 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         let updates = identity_processor
             .process_identity(identity, &row_pair)
             .map_err(|e| -> EvalError<T> {
-                log::warn!("Error in identity: {identity}");
-                log::warn!(
-                    "Known values in current row (local: {row_index}, global {global_row_index}):\n{}",
-                    self.data[row_index].render_values(false, Some(self.witness_cols)),
+                let mut error = format!(
+                    r"Error in identity: {identity}
+Known values in current row (local: {row_index}, global {global_row_index}):
+{}
+",
+                    self.data[row_index].render_values(false, Some(self.witness_cols))
                 );
                 if identity.contains_next_ref() {
-                    log::warn!(
-                        "Known values in next row (local: {}, global {}):\n{}",
+                    error += &format!(
+                        "Known values in next row (local: {}, global {}):\n{}\n",
                         row_index + 1,
                         global_row_index + 1,
-                        self.data[row_index + 1].render_values(false, Some(self.witness_cols)),
+                        self.data[row_index + 1].render_values(false, Some(self.witness_cols))
                     );
                 }
-                format!("{identity}:\n{}", indent(&format!("{e}"), "    ")).into()
+                error += &format!("   => Error: {e}");
+                error.into()
             })?;
 
         if unknown_strategy == UnknownStrategy::Zero {
@@ -218,9 +220,18 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         &mut self,
         row_index: usize,
     ) -> Result<(bool, Constraints<&'a AlgebraicReference, T>), EvalError<T>> {
+        let mut progress = false;
+        if let Some(selector) = self.outer_query.as_ref().unwrap().right.selector.as_ref() {
+            progress |= self
+                .set_value(row_index, selector, T::one(), || {
+                    "Set selector to 1".to_string()
+                })
+                .unwrap_or(false);
+        }
+
         let OuterQuery { left, right } = self
             .outer_query
-            .as_mut()
+            .as_ref()
             .expect("Asked to process outer query, but it was not set!");
 
         let row_pair = RowPair::new(
@@ -245,13 +256,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
                 e
             })?;
 
-        let progress = self.apply_updates(row_index, &updates, || "outer query".to_string());
+        progress |= self.apply_updates(row_index, &updates, || "outer query".to_string());
 
         let outer_assignments = updates
             .constraints
             .into_iter()
             .filter(|(poly, update)| match update {
-                Constraint::Assignment(_) => !self.witness_cols.contains(&poly.poly_id),
+                Constraint::Assignment(_) => !self.is_relevant_witness[&poly.poly_id],
                 // Range constraints are currently not communicated between callee and caller.
                 Constraint::RangeConstraint(_) => false,
             })
@@ -271,7 +282,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             match &self.data[row_index][poly_id].value {
                 CellValue::Known(_) => {}
                 CellValue::RangeConstraint(_) | CellValue::Unknown => {
-                    input_updates.combine(EvalValue::complete([(
+                    input_updates.combine(EvalValue::complete(vec![(
                         &self.fixed_data.witness_cols[poly_id].poly,
                         Constraint::Assignment(*value),
                     )]));
@@ -295,6 +306,28 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             self.previously_set_inputs.insert(poly.poly_id, row_index);
         }
         self.apply_updates(row_index, &input_updates, || "inputs".to_string())
+    }
+
+    /// Sets the value of a given expression, in a given row.
+    pub fn set_value(
+        &mut self,
+        row_index: usize,
+        expression: &'a Expression<T>,
+        value: T,
+        name: impl Fn() -> String,
+    ) -> Result<bool, IncompleteCause<&'a AlgebraicReference>> {
+        let row_pair = RowPair::new(
+            &self.data[row_index],
+            &self.data[row_index + 1],
+            self.row_offset + row_index as u64,
+            self.fixed_data,
+            UnknownStrategy::Unknown,
+        );
+        let affine_expression = row_pair.evaluate(expression)?;
+        let updates = (affine_expression - value.into())
+            .solve_with_range_constraints(&row_pair)
+            .unwrap();
+        Ok(self.apply_updates(row_index, &updates, name))
     }
 
     fn apply_updates(
@@ -377,7 +410,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
                 RowPair::new(
                     &self.data[row_index - 1],
                     proposed_row,
-                    row_index as DegreeType + self.row_offset - 1,
+                    self.row_offset + (row_index - 1) as DegreeType,
                     self.fixed_data,
                     UnknownStrategy::Zero,
                 )
@@ -387,7 +420,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             // Because we never access the next row, we can use [RowPair::from_single_row] here.
             false => RowPair::from_single_row(
                 proposed_row,
-                row_index as DegreeType + self.row_offset,
+                self.row_offset + row_index as DegreeType,
                 self.fixed_data,
                 UnknownStrategy::Zero,
             ),

@@ -85,24 +85,24 @@
   # Arithmetic tests
   #-------------------------------------------------------------
 
-  test_2: li x10, 2; ebreak; li x1, 0x00000000; li x2, 0x00000000; sub x3, x1, x2;; li x29, 0x00000000; li x28, 2; bne x3, x29, fail;;
-  test_3: li x10, 3; ebreak; li x1, 0x00000001; li x2, 0x00000001; sub x3, x1, x2;; li x29, 0x00000000; li x28, 3; bne x3, x29, fail;;
-  test_4: li x10, 4; ebreak; li x1, 0x00000003; li x2, 0x00000007; sub x3, x1, x2;; li x29, 0xfffffffc; li x28, 4; bne x3, x29, fail;;
+  test_2: li x10, 2; ebreak; li x1, 0x0000000000000000; li x2, 0x0000000000000000; sub x3, x1, x2;; li x29, 0x0000000000000000; li x28, 2; bne x3, x29, fail;;
+  test_3: li x10, 3; ebreak; li x1, 0x0000000000000001; li x2, 0x0000000000000001; sub x3, x1, x2;; li x29, 0x0000000000000000; li x28, 3; bne x3, x29, fail;;
+  test_4: li x10, 4; ebreak; li x1, 0x0000000000000003; li x2, 0x0000000000000007; sub x3, x1, x2;; li x29, 0xfffffffffffffffc; li x28, 4; bne x3, x29, fail;;
 
-  test_5: li x10, 5; ebreak; li x1, 0x00000000; li x2, 0xffff8000; sub x3, x1, x2;; li x29, 0x00008000; li x28, 5; bne x3, x29, fail;;
-  test_6: li x10, 6; ebreak; li x1, 0x80000000; li x2, 0x00000000; sub x3, x1, x2;; li x29, 0x80000000; li x28, 6; bne x3, x29, fail;;
-  test_7: li x10, 7; ebreak; li x1, 0x80000000; li x2, 0xffff8000; sub x3, x1, x2;; li x29, 0x80008000; li x28, 7; bne x3, x29, fail;;
+  test_5: li x10, 5; ebreak; li x1, 0x0000000000000000; li x2, 0xffffffffffff8000; sub x3, x1, x2;; li x29, 0x0000000000008000; li x28, 5; bne x3, x29, fail;;
+  test_6: li x10, 6; ebreak; li x1, 0xffffffff80000000; li x2, 0x0000000000000000; sub x3, x1, x2;; li x29, 0xffffffff80000000; li x28, 6; bne x3, x29, fail;;
+  test_7: li x10, 7; ebreak; li x1, 0xffffffff80000000; li x2, 0xffffffffffff8000; sub x3, x1, x2;; li x29, 0xffffffff80008000; li x28, 7; bne x3, x29, fail;;
 
-  test_8: li x10, 8; ebreak; li x1, 0x00000000; li x2, 0x00007fff; sub x3, x1, x2;; li x29, 0xffff8001; li x28, 8; bne x3, x29, fail;;
-  test_9: li x10, 9; ebreak; li x1, 0x7fffffff; li x2, 0x00000000; sub x3, x1, x2;; li x29, 0x7fffffff; li x28, 9; bne x3, x29, fail;;
-  test_10: li x10, 10; ebreak; li x1, 0x7fffffff; li x2, 0x00007fff; sub x3, x1, x2;; li x29, 0x7fff8000; li x28, 10; bne x3, x29, fail;;
+  test_8: li x10, 8; ebreak; li x1, 0x0000000000000000; li x2, 0x0000000000007fff; sub x3, x1, x2;; li x29, 0xffffffffffff8001; li x28, 8; bne x3, x29, fail;;
+  test_9: li x10, 9; ebreak; li x1, 0x000000007fffffff; li x2, 0x0000000000000000; sub x3, x1, x2;; li x29, 0x000000007fffffff; li x28, 9; bne x3, x29, fail;;
+  test_10: li x10, 10; ebreak; li x1, 0x000000007fffffff; li x2, 0x0000000000007fff; sub x3, x1, x2;; li x29, 0x000000007fff8000; li x28, 10; bne x3, x29, fail;;
 
-  test_11: li x10, 11; ebreak; li x1, 0x80000000; li x2, 0x00007fff; sub x3, x1, x2;; li x29, 0x7fff8001; li x28, 11; bne x3, x29, fail;;
-  test_12: li x10, 12; ebreak; li x1, 0x7fffffff; li x2, 0xffff8000; sub x3, x1, x2;; li x29, 0x80007fff; li x28, 12; bne x3, x29, fail;;
+  test_11: li x10, 11; ebreak; li x1, 0xffffffff80000000; li x2, 0x0000000000007fff; sub x3, x1, x2;; li x29, 0xffffffff7fff8001; li x28, 11; bne x3, x29, fail;;
+  test_12: li x10, 12; ebreak; li x1, 0x000000007fffffff; li x2, 0xffffffffffff8000; sub x3, x1, x2;; li x29, 0x0000000080007fff; li x28, 12; bne x3, x29, fail;;
 
-  test_13: li x10, 13; ebreak; li x1, 0x00000000; li x2, 0xffffffff; sub x3, x1, x2;; li x29, 0x00000001; li x28, 13; bne x3, x29, fail;;
-  test_14: li x10, 14; ebreak; li x1, 0xffffffff; li x2, 0x00000001; sub x3, x1, x2;; li x29, 0xfffffffe; li x28, 14; bne x3, x29, fail;;
-  test_15: li x10, 15; ebreak; li x1, 0xffffffff; li x2, 0xffffffff; sub x3, x1, x2;; li x29, 0x00000000; li x28, 15; bne x3, x29, fail;;
+  test_13: li x10, 13; ebreak; li x1, 0x0000000000000000; li x2, 0xffffffffffffffff; sub x3, x1, x2;; li x29, 0x0000000000000001; li x28, 13; bne x3, x29, fail;;
+  test_14: li x10, 14; ebreak; li x1, 0xffffffffffffffff; li x2, 0x0000000000000001; sub x3, x1, x2;; li x29, 0xfffffffffffffffe; li x28, 14; bne x3, x29, fail;;
+  test_15: li x10, 15; ebreak; li x1, 0xffffffffffffffff; li x2, 0xffffffffffffffff; sub x3, x1, x2;; li x29, 0x0000000000000000; li x28, 15; bne x3, x29, fail;;
 
   #-------------------------------------------------------------
   # Source/Destination tests

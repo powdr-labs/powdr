@@ -1,3 +1,5 @@
+use std::utils::force_bool;
+
 // A variant of the `mem_read_write` machine which does not have the limitation that
 // gaps between accessed memory cells must not be larger than the degree.
 // This test uses two 8-bit digits to represent the diff, so the diff has to be
@@ -26,9 +28,14 @@ machine MemReadWrite {
     col witness m_value;
     // If the operation is a write operation.
     col witness m_is_write;
-    col witness m_is_read;
     col witness m_diff_lower;
     col witness m_diff_upper;
+
+    col witness m_selector1;
+    col witness m_selector2;
+    force_bool(m_selector1);
+    force_bool(m_selector2);
+    (1 - m_selector1 - m_selector2) * m_is_write = 0;
 
     col fixed FIRST = [1] + [0]*;
     col fixed LAST  = [0]* + [1];
@@ -53,8 +60,6 @@ machine MemReadWrite {
     (1 - m_change) * LAST = 0;
 
     m_is_write * (1 - m_is_write) = 0;
-    m_is_read * (1 - m_is_read) = 0;
-    m_is_read * m_is_write = 0;
 
 
     // If the next line is a read and we stay at the same address, then the
@@ -66,8 +71,8 @@ machine MemReadWrite {
     (1 - m_is_write') * m_change * m_value' = 0;
 
     instr assert_zero X { XIsZero = 1 }
-    instr mstore X { { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value } }
-    instr mload -> X { { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value } }
+    instr mload -> X { { 0, ADDR, STEP, X } is m_selector1 { m_is_write, m_addr, m_step, m_value } }
+    instr mstore X { { 1, ADDR, STEP, X } is m_selector2 { m_is_write, m_addr, m_step, m_value } }
 
     function main {
         ADDR <=X= 4;

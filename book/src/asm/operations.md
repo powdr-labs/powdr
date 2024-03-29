@@ -1,13 +1,16 @@
 # Operations
 
 Operations enable a constrained machine to expose behavior to the outside.
-
+If a machine has a single operation, it can simply be declared with its name and parameters:
 ```
-{{#include ../../../test_data/asm/book/operations_and_links.asm:operations}}
+{{#include ../../../test_data/asm/book/operations_and_links.asm:one_operation}}
+```
+The parameters of the operation (inputs and outputs) must be columns declared in the machine.
+
+If a machine exposes more than one operation, the machine itself needs an operation id column (`op_id` in the following).
+Then, each operation needs to be declared with its own unique operation id:
+```
+{{#include ../../../test_data/asm/book/operations_and_links.asm:many_operations}}
 ```
 
-They are defined by:
-- a value for the operation id. When calling this operation, the operation id of this machine is set to this value.
-- parameters in the form of columns defined in the current machine
-
-The actual behavior of the operation is defined freely as constraints.
+The actual behavior of an operation is defined by the machine constraints on the columns used as inputs and outputs.

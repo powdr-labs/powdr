@@ -1,6 +1,9 @@
 // Verfies that the input is a palindrome.
 // Input: length, x_1, x_2, ..., x_length
 
+use std::prover::Query;
+use std::convert::int;
+
 machine Palindrome {
     degree 1024;
 
@@ -38,14 +41,15 @@ machine Palindrome {
     instr mload -> X { { ADDR, X } in { m_addr, m_value } }
 
     function main {
-        CNT <=X= ${ ("input", 0) };
+        // TOOD somehow this is not properly resolved here without "std::prover::"
+        CNT <=X= ${ Query::Input(0) };
         ADDR <=X= 0;
         mstore CNT;
 
         store_values:
         jmpz CNT, check_start;
         ADDR <=X= CNT;
-        mstore ${ ("input", CNT) };
+        mstore ${ Query::Input(int(std::prover::eval(CNT))) };
         CNT <=X= CNT - 1;
         jmp store_values;
 

@@ -48,11 +48,13 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
             StatementIdentifier::Definition(name) => {
                 if let Some((poly, value)) = analyzed.intermediate_columns.get(name) {
                     assert_eq!(poly.kind, SymbolKind::Poly(PolynomialType::Intermediate));
-                    let expression_id = exporter.extract_expression(value, 1);
-                    assert_eq!(
-                        expression_id,
-                        exporter.intermediate_poly_expression_ids[&poly.id] as usize
-                    );
+                    for ((_, id), value) in poly.array_elements().zip(value) {
+                        let expression_id = exporter.extract_expression(value, 1);
+                        assert_eq!(
+                            expression_id,
+                            exporter.intermediate_poly_expression_ids[&id.id] as usize
+                        );
+                    }
                 }
             }
             StatementIdentifier::PublicDeclaration(name) => {
@@ -297,6 +299,15 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     ..DEFAULT_EXPR
                 },
             ),
+            Expression::Challenge(challenge) => (
+                0,
+                StarkyExpr {
+                    op: "challenge".to_string(),
+                    deg: 0,
+                    id: Some(challenge.id as usize),
+                    ..DEFAULT_EXPR
+                },
+            ),
             Expression::Number(value) => (
                 0,
                 StarkyExpr {
@@ -372,7 +383,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use powdr_pil_analyzer::analyze;
+    use powdr_pil_analyzer::analyze_file;
     use pretty_assertions::assert_eq;
     use serde_json::Value as JsonValue;
     use std::{fs, process::Command};
@@ -392,7 +403,7 @@ mod test {
         ))
         .join(file);
 
-        let analyzed = analyze::<GoldilocksField>(&file);
+        let analyzed = analyze_file::<GoldilocksField>(&file);
         let pil_out = export(&analyzed);
 
         let pilcom = std::env::var("PILCOM").expect(

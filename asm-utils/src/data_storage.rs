@@ -1,77 +1,156 @@
-//! Utilites for generating initialization code that stores data objects in memory.
+//! Utilities for generating initialization code that stores data objects in memory.
 
 use std::collections::BTreeMap;
 
-use crate::{data_parser::DataValue, utils::next_multiple_of_four};
+use crate::{
+    data_parser::DataValue,
+    utils::{alignment_size, next_aligned},
+};
 
 pub enum SingleDataValue<'a> {
     Value(u32),
-    LabelReference(&'a String),
-    Offset(&'a String, &'a String),
+    LabelReference(&'a str),
+    Offset(&'a str, &'a str),
 }
 
-pub fn store_data_objects<'a>(
-    objects: impl IntoIterator<Item = &'a (String, Vec<DataValue>)> + Copy,
-    memory_start: u32,
-    code_gen: &mut dyn FnMut(u32, SingleDataValue) -> Vec<String>,
-) -> (Vec<String>, BTreeMap<String, u32>) {
-    let mut current_pos = ((memory_start + 7) / 8) * 8;
-    let mut positions = BTreeMap::new();
-    for (name, data) in objects.into_iter() {
-        // TODO check if we need to use multiples of four.
-        let size: u32 = data
-            .iter()
-            .map(|d| next_multiple_of_four(d.size()) as u32)
-            .sum();
-        positions.insert(name.clone(), current_pos);
-        current_pos += size;
+struct WordWriter<'a, 'b> {
+    data_writer: &'a mut dyn FnMut(Option<&str>, u32, SingleDataValue),
+    partial: u32,
+    current_pos: u32,
+    latest_label: Option<&'b str>,
+}
+
+impl<'a, 'b> WordWriter<'a, 'b> {
+    fn new(
+        starting_pos: u32,
+        data_writer: &'a mut dyn FnMut(Option<&str>, u32, SingleDataValue),
+    ) -> Self {
+        // sanitary alignment to 8 bytes
+        let current_pos = next_aligned(starting_pos as usize, 8) as u32;
+        Self {
+            partial: 0,
+            current_pos,
+            data_writer,
+            latest_label: None,
+        }
     }
 
-    let code = objects
-        .into_iter()
-        .flat_map(|(name, data)| {
-            let mut object_code = vec![];
-            let mut pos = positions[name];
-            for item in data {
-                match &item {
-                    DataValue::Zero(_length) => {
-                        // We can assume memory to be zero-initialized,
-                        // so we do nothing.
-                    }
-                    DataValue::Direct(bytes) => {
-                        for i in (0..bytes.len()).step_by(4) {
-                            let v = (0..4)
-                                .map(|j| {
-                                    (bytes.get(i + j).cloned().unwrap_or_default() as u32)
-                                        << (j * 8)
-                                })
-                                .sum();
-                            // We can assume memory to be zero-initialized.
-                            if v != 0 {
-                                object_code
-                                    .extend(code_gen(pos + i as u32, SingleDataValue::Value(v)));
-                            }
-                        }
-                    }
-                    DataValue::Reference(sym) => {
-                        object_code.extend(if let Some(p) = positions.get(sym) {
-                            code_gen(pos, SingleDataValue::Value(*p))
-                        } else {
-                            // code reference
-                            code_gen(pos, SingleDataValue::LabelReference(sym))
-                        })
-                    }
-                    DataValue::Offset(l, r) => {
-                        object_code.extend(code_gen(pos, SingleDataValue::Offset(l, r)));
+    fn current_position(&self) -> u32 {
+        self.current_pos
+    }
+
+    fn set_label(&mut self, label: &'b str) {
+        self.latest_label = Some(label)
+    }
+
+    fn advance(&mut self, bytes: u32) {
+        let next_pos = self.current_pos + bytes;
+
+        // if changed words, flush
+        let curr_word = self.current_pos & (!0b11);
+        if (next_pos & (!0b11) != curr_word) && (self.partial != 0) {
+            (*self.data_writer)(
+                std::mem::take(&mut self.latest_label),
+                curr_word,
+                SingleDataValue::Value(self.partial),
+            );
+            self.partial = 0;
+        }
+        self.current_pos = next_pos;
+    }
+
+    fn align(&mut self, alignment: u32, pad_value: u8) {
+        let padding_size = alignment_size(self.current_pos as usize, alignment as usize);
+        if padding_size != 0 {
+            if pad_value == 0 {
+                self.advance(padding_size as u32);
+            } else {
+                self.write_bytes(std::iter::repeat(pad_value).take(padding_size));
+            }
+        }
+    }
+
+    fn write_bytes<I: IntoIterator<Item = u8>>(&mut self, bytes: I) {
+        for b in bytes {
+            self.partial |= (b as u32) << (8 * (self.current_pos % 4));
+            self.advance(1);
+        }
+    }
+
+    fn write_label_reference(&mut self, label: &str) {
+        assert_eq!(
+            self.current_pos % 4,
+            0,
+            "reference to code labels in misaligned data section is not supported"
+        );
+
+        (*self.data_writer)(
+            std::mem::take(&mut self.latest_label),
+            self.current_pos,
+            SingleDataValue::LabelReference(label),
+        );
+
+        assert_eq!(self.partial, 0);
+        self.current_pos += 4;
+    }
+
+    fn finish(mut self) {
+        // ensure the latest partial word is written
+        self.advance(4);
+    }
+}
+
+pub fn store_data_objects(
+    sections: Vec<Vec<(Option<String>, Vec<DataValue>)>>,
+    memory_start: u32,
+    code_gen: &mut dyn FnMut(Option<&str>, u32, SingleDataValue),
+) -> BTreeMap<String, u32> {
+    let mut writer = WordWriter::new(memory_start, code_gen);
+
+    let positions = {
+        let mut positions = BTreeMap::new();
+        let mut current_pos = writer.current_position();
+        for (name, data) in sections.iter().flatten() {
+            if let Some(name) = name {
+                positions.insert(name.clone(), current_pos);
+            }
+            for d in data.iter() {
+                current_pos += d.size(current_pos as usize) as u32;
+            }
+        }
+        positions
+    };
+
+    for (name, data) in sections.iter().flatten() {
+        if let Some(name) = name {
+            writer.set_label(name);
+        }
+        for item in data {
+            match &item {
+                DataValue::Zero(length) => {
+                    // We can assume memory to be zero-initialized, so we
+                    // just have to advance.
+                    writer.advance(*length as u32);
+                }
+                DataValue::Direct(bytes) => {
+                    writer.write_bytes(bytes.iter().copied());
+                }
+                DataValue::Reference(sym) => {
+                    if let Some(p) = positions.get(sym) {
+                        writer.write_bytes(p.to_le_bytes().iter().copied());
+                    } else {
+                        // code reference
+                        writer.write_label_reference(sym);
                     }
                 }
-                pos += item.size() as u32;
+                DataValue::Alignment(bytes, pad_value) => {
+                    writer.align(*bytes as u32, *pad_value);
+                }
+                DataValue::Offset(_l, _r) => unimplemented!(),
             }
-            if let Some(first_line) = object_code.first_mut() {
-                *first_line = format!("// data {name}\n") + first_line;
-            }
-            object_code
-        })
-        .collect();
-    (code, positions)
+        }
+    }
+    writer.finish();
+
+    positions
 }

@@ -1,320 +1,515 @@
-use halo2_curves::bn256::Fr;
-use halo2_curves::ff::FromUniformBytes;
-use num_bigint::BigUint;
-use polyexen::expr::{ColumnKind, ColumnQuery, Expr, PlonkVar};
-use polyexen::plaf::backends::halo2::PlafH2Circuit;
-use polyexen::plaf::{
-    ColumnFixed, ColumnPublic, ColumnWitness, Columns, CopyC, Info, Lookup, Plaf, Poly, Shuffle,
-    Witness,
+use std::{cmp::max, collections::BTreeMap, iter};
+
+use halo2_curves::ff::PrimeField;
+use halo2_proofs::{
+    circuit::{Layouter, SimpleFloorPlanner, Value},
+    plonk::{
+        Advice, Any, Challenge, Circuit, Column, ConstraintSystem, Error, Expression, FirstPhase,
+        Fixed, Instance, SecondPhase, ThirdPhase, VirtualCells,
+    },
+    poly::Rotation,
 };
-use powdr_ast::parsed::SelectedExpressions;
+use powdr_executor::witgen::WitgenCallback;
 
-use num_traits::{One, ToPrimitive};
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression as Expression, Analyzed, IdentityKind,
+use powdr_ast::{
+    analyzed::{AlgebraicBinaryOperator, AlgebraicExpression},
+    parsed::SelectedExpressions,
 };
-use powdr_number::{BigInt, FieldElement};
+use powdr_ast::{
+    analyzed::{Analyzed, IdentityKind},
+    parsed::visitor::ExpressionVisitable,
+};
+use powdr_number::FieldElement;
 
-use super::circuit_data::CircuitData;
+const ENABLE_NAME: &str = "__enable";
+const INSTANCE_NAME: &str = "__instance";
 
-/// Converts an analyzed PIL, fixed and witness columns to a PlafH2Circuit and publics for the halo2 backend.
-pub(crate) fn analyzed_to_circuit<T: FieldElement>(
-    analyzed: &Analyzed<T>,
-    fixed: &[(String, Vec<T>)],
-    witness: &[(String, Vec<T>)],
-) -> (PlafH2Circuit, Vec<Vec<Fr>>) {
-    // The structure of the table is as following
-    //
-    // | constant columns | __enable_cur | __enable_next |  witness columns | \
-    // |  c[0]            |    1         |       1       |   w[0]           |  |
-    // |  c[1]            |    1         |       1       |   w[1]           |  |>  N actual circuit rows
-    // |  ...             |   ...        |      ...      |   ...            |  |
-    // |  c[N - 2]        |    1         |       1       |   w[N - 2]       |  |
-    // |  c[N - 1]        |    1         |       0       |   w[N - 1]       | /     <- __enable_next == 0 since there's no state transition
-    // |  0               |    0         |       0       |   0              | \
-    // |  0               |    0         |       0       |   0              |  |
-    // |  ...             |   ...        |      ...      |   ...            |  |>  (2**(ceil(log2(N)) + 1) - N) padding rows to fit the halo2 unusable rows
-    // |  0               |    0         |       0       |   0              |  |
-    // |  0               |    0         |       0       |   <unusable>     |  |
-    // |  0               |    0         |       0       |   <unusable>     | /
-
-    // generate fixed and witness (witness).
-
-    let query = |column, rotation| Expr::Var(PlonkVar::Query(ColumnQuery { column, rotation }));
-
-    let mut cd = CircuitData::from(fixed.to_owned(), witness);
-
-    // append two fixed columns:
-    // - one that enables constraints that do not have rotations (__enable_cur) in the actual circuit
-    // - and another that enables constraints that have a rotation (__enable_next) in the actual circuit except in the last actual row
-
-    let num_rows = cd.len();
-
-    let q_enable_cur = query(
-        cd.insert_constant("__enable_cur", itertools::repeat_n(T::from(1), num_rows)),
-        0,
-    );
-
-    let q_enable_next = query(
-        cd.insert_constant(
-            "__enable_next",
-            itertools::repeat_n(T::from(1), num_rows - 1).chain(std::iter::once(T::from(0))),
-        ),
-        0,
-    );
-
-    let mut lookups = vec![];
-    let mut shuffles = vec![];
-    let mut polys = vec![];
-
-    // build Plaf columns -------------------------------------------------
-
-    let columns = Columns {
-        fixed: cd
-            .fixed
-            .iter()
-            .map(|(name, _)| ColumnFixed::new(name.to_string()))
-            .collect(),
-        witness: cd
-            .witness
-            .iter()
-            .map(|(name, _)| ColumnWitness::new(name.to_string(), 0))
-            .collect(),
-        public: vec![ColumnPublic::new("public".to_string())],
-    };
-
-    // build Plaf info. -------------------------------------------------------------------------
-
-    let info = Info {
-        p: T::modulus().to_arbitrary_integer(),
-        num_rows: cd.len(),
-        challenges: vec![],
-    };
-
-    // build Plaf polys. -------------------------------------------------------------------------
-
-    let apply_selectors_to_set = |set: &SelectedExpressions<Expression<T>>| {
-        let selector = set
-            .selector
-            .clone()
-            .map_or(Expr::Const(BigUint::one()), |expr| {
-                expression_2_expr(&cd, &expr)
-            });
-
-        let contains_next_ref = set.expressions.iter().any(|exp| exp.contains_next_ref());
-
-        let selector = Expr::Mul(vec![
-            selector,
-            if contains_next_ref {
-                q_enable_next.clone()
-            } else {
-                q_enable_cur.clone()
-            },
-        ]);
-
-        set.expressions
-            .iter()
-            .map(|expr| selector.clone() * expression_2_expr(&cd, expr))
-            .collect()
-    };
-
-    let identities = analyzed.identities_with_inlined_intermediate_polynomials();
-    for id in &identities {
-        match id.kind {
-            IdentityKind::Polynomial => {
-                // polynomial identities.
-
-                assert_eq!(id.right.expressions.len(), 0);
-                assert_eq!(id.right.selector, None);
-                assert_eq!(id.left.expressions.len(), 0);
-
-                let exp = id.expression_for_poly_id();
-                let contains_next_ref = exp.contains_next_ref();
-
-                let exp = expression_2_expr(&cd, exp);
-
-                // depending whether this polynomial contains a rotation,
-                // enable for all rows or all except the last one.
-
-                let exp = Expr::Mul(vec![
-                    exp,
-                    if contains_next_ref {
-                        q_enable_next.clone()
-                    } else {
-                        q_enable_cur.clone()
-                    },
-                ]);
-                polys.push(Poly {
-                    name: "".to_string(),
-                    exp,
-                });
-            }
-            IdentityKind::Plookup => {
-                let left = apply_selectors_to_set(&id.left);
-                let right = apply_selectors_to_set(&id.right);
-
-                lookups.push(Lookup {
-                    name: "".to_string(),
-                    exps: (left, right),
-                });
-            }
-            IdentityKind::Permutation => {
-                let left = apply_selectors_to_set(&id.left);
-                let right = apply_selectors_to_set(&id.right);
-
-                shuffles.push(Shuffle {
-                    name: "".to_string(),
-                    exps: (left, right),
-                });
-            }
-            _ => unimplemented!(),
-        }
-    }
-
-    assert!(
-        analyzed.public_declarations.len() <= num_rows,
-        "More publics than rows!"
-    );
-
-    // Enforce publics by copy-constraining to cells in the instance column.
-    // For example, if we have the following public declarations:
-    // - public out1 = A(2);
-    // - public out2 = B(0);
-    // This would lead to the corresponding values being copied into the public
-    // column as follows:
-    // | Row | A   | B   | public |
-    // |-----|-----|-----|--------|
-    // |  0  |  0  | *5* |  *2*   |
-    // |  1  |  1  |  6  |  *5*   |
-    // |  2  | *2* |  7  |        |
-    // |  3  |  4  |  8  |        |
-    let mut copies = vec![];
-    let mut publics = vec![];
-
-    for public_declaration in analyzed.public_declarations.values() {
-        let witness_name = public_declaration.referenced_poly_name();
-        let witness_col = cd.col(&witness_name);
-        let witness_offset = public_declaration.index as usize;
-        let public_col = cd.public_column;
-        let public_offset = copies.len();
-
-        // Add copy constraint
-        copies.push(CopyC {
-            columns: (public_col, witness_col),
-            // We could also create one copy constraint per column pair wih several offsets.
-            // I don't think there is a difference though...
-            offsets: vec![(public_offset, witness_offset)],
-        });
-
-        // Evaluate the given cell and add it to the publics.
-        let value = cd.eval_witness(&witness_name, witness_offset);
-
-        // Convert from Bn254Field to halo2_curves::bn256::Fr by converting to little endian bytes and back.
-        let mut buffer = [0u8; 64];
-        let bytes = value.to_bytes_le();
-        buffer[..bytes.len()].copy_from_slice(&bytes);
-        let value = Fr::from_uniform_bytes(&buffer);
-
-        // Add to publics.
-        publics.push(value);
-    }
-    if lookups.is_empty() {
-        // TODO something inside halo2 breaks (only in debug mode) if lookups is empty,
-        // so just add an empty lookup.
-        lookups.push(Lookup {
-            name: "".to_string(),
-            exps: (vec![], vec![]),
-        });
-    }
-
-    // build Plaf fixed. -------------------------------------------------------------------------
-
-    let fixed: Vec<Vec<_>> = cd
-        .fixed
-        .iter()
-        .map(|(_, row)| {
-            row.iter()
-                .map(|value| Some(value.to_arbitrary_integer()))
-                .collect()
-        })
-        .collect();
-
-    // build witness. -------------------------------------------------------------------------
-
-    let witness: Vec<Vec<_>> = cd
-        .witness
-        .iter()
-        .map(|(_, row)| {
-            row.iter()
-                .map(|value| Some(value.to_arbitrary_integer()))
-                .collect()
-        })
-        .collect();
-
-    let witness_cols = cd
-        .witness
-        .iter()
-        .enumerate()
-        .map(|(n, (name, _))| (name.to_string(), (ColumnKind::Fixed, n)));
-
-    let wit = Witness {
-        num_rows: cd.witness.len(),
-        columns: witness_cols
-            .map(|(name, _)| ColumnWitness::new(name, 0))
-            .collect(),
-        witness,
-    };
-
-    // build plaf. -------------------------------------------------------------------------
-
-    let plaf = Plaf {
-        info,
-        columns,
-        polys,
-        metadata: Default::default(),
-        lookups,
-        shuffles,
-        copys: copies,
-        fixed,
-    };
-
-    // return circuit description + witness. -------------
-
-    (PlafH2Circuit { plaf, wit }, vec![publics])
+#[derive(Clone)]
+pub(crate) struct PowdrCircuitConfig {
+    advice: BTreeMap<String, Column<Advice>>,
+    fixed: BTreeMap<String, Column<Fixed>>,
+    enable: Column<Fixed>,
+    instance: Column<Instance>,
+    challenges: BTreeMap<u64, Challenge>,
 }
 
-fn expression_2_expr<T: FieldElement>(cd: &CircuitData<T>, expr: &Expression<T>) -> Expr<PlonkVar> {
-    match expr {
-        Expression::Number(n) => Expr::Const(n.to_arbitrary_integer()),
-        Expression::Reference(polyref) => {
-            let plonkvar = PlonkVar::Query(ColumnQuery {
-                column: cd.col(&polyref.name),
-                rotation: polyref.next as i32,
-            });
+impl PowdrCircuitConfig {
+    fn iter_columns(&self) -> impl Iterator<Item = (&str, Column<Any>)> {
+        self.advice
+            .iter()
+            .map(|(name, column)| (name.as_str(), (*column).into()))
+            .chain(
+                self.fixed
+                    .iter()
+                    .map(|(name, column)| (name.as_str(), (*column).into())),
+            )
+            .chain(std::iter::once((ENABLE_NAME, self.enable.into())))
+            .chain(std::iter::once((INSTANCE_NAME, self.instance.into())))
+    }
+}
 
-            Expr::Var(plonkvar)
+#[derive(Clone)]
+/// Wraps an Analyzed<T>. This is used as the PowdrCircuit::Params type, which required
+/// a type that implements Default.
+pub(crate) struct AnalyzedWrapper<T: FieldElement>(Analyzed<T>);
+
+impl<T> Default for AnalyzedWrapper<T>
+where
+    T: FieldElement,
+{
+    fn default() -> Self {
+        // Halo2 calls Params::default() in the Circuit::params() default implementation,
+        // which we overwrite...
+        unreachable!()
+    }
+}
+
+impl<T: FieldElement> From<Analyzed<T>> for AnalyzedWrapper<T> {
+    fn from(analyzed: Analyzed<T>) -> Self {
+        Self(analyzed)
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct PowdrCircuit<'a, T> {
+    /// The analyzed PIL
+    analyzed: &'a Analyzed<T>,
+    /// The value of the fixed columns
+    fixed: &'a [(String, Vec<T>)],
+    /// The value of the witness columns, if set
+    witness: Option<&'a [(String, Vec<T>)]>,
+    /// Column name and index of the public cells
+    publics: Vec<(String, usize)>,
+    /// Callback to augment the witness in the later stages.
+    witgen_callback: Option<WitgenCallback<T>>,
+}
+
+impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
+    pub(crate) fn new(analyzed: &'a Analyzed<T>, fixed: &'a [(String, Vec<T>)]) -> Self {
+        let mut publics = analyzed
+            .public_declarations
+            .values()
+            .map(|public_declaration| {
+                let witness_name = public_declaration.referenced_poly_name();
+                let witness_offset = public_declaration.index as usize;
+                (witness_name, witness_offset)
+            })
+            .collect::<Vec<_>>();
+        // Sort, so that the order is deterministic
+        publics.sort();
+
+        Self {
+            analyzed,
+            fixed,
+            witness: None,
+            publics,
+            witgen_callback: None,
         }
-        Expression::BinaryOperation(lhe, op, rhe_powdr) => {
-            let lhe = expression_2_expr(cd, lhe);
-            let rhe = expression_2_expr(cd, rhe_powdr);
-            match op {
-                AlgebraicBinaryOperator::Add => Expr::Sum(vec![lhe, rhe]),
-                AlgebraicBinaryOperator::Sub => Expr::Sum(vec![lhe, Expr::Neg(Box::new(rhe))]),
-                AlgebraicBinaryOperator::Mul => Expr::Mul(vec![lhe, rhe]),
-                AlgebraicBinaryOperator::Pow => {
-                    let Expression::Number(e) = rhe_powdr.as_ref() else {
-                        panic!("Expected number in exponent.")
-                    };
-                    Expr::Pow(
-                        Box::new(lhe),
-                        e.to_arbitrary_integer()
-                            .to_u32()
-                            .unwrap_or_else(|| panic!("Exponent has to fit 32 bits.")),
-                    )
+    }
+
+    pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
+        Self {
+            witness: Some(witness),
+            ..self
+        }
+    }
+
+    pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
+        Self {
+            witgen_callback: Some(witgen_callback),
+            ..self
+        }
+    }
+
+    /// Computes the instance column from the witness
+    pub(crate) fn instance_column<F: PrimeField<Repr = [u8; 32]>>(&self) -> Vec<F> {
+        let witness = self
+            .witness
+            .as_ref()
+            .expect("Witness needs to be set")
+            .iter()
+            .map(|(name, values)| (name, values))
+            .collect::<BTreeMap<_, _>>();
+
+        self.publics
+            .iter()
+            .map(|(col_name, i)| convert_field(witness.get(col_name).unwrap()[*i]))
+            .collect()
+    }
+}
+
+impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircuit<'a, T> {
+    type Config = PowdrCircuitConfig;
+
+    type FloorPlanner = SimpleFloorPlanner;
+
+    type Params = AnalyzedWrapper<T>;
+
+    // This doesn't seem to be called in practice?
+    fn without_witnesses(&self) -> Self {
+        unimplemented!()
+    }
+
+    fn configure(_meta: &mut ConstraintSystem<F>) -> Self::Config {
+        unreachable!()
+    }
+
+    fn params(&self) -> Self::Params {
+        self.analyzed.clone().into()
+    }
+
+    fn configure_with_params(meta: &mut ConstraintSystem<F>, params: Self::Params) -> Self::Config {
+        let analyzed = params.0;
+
+        // Create columns
+
+        let advice = analyzed
+            .committed_polys_in_source_order()
+            .iter()
+            .flat_map(|(symbol, _)| {
+                symbol
+                    .array_elements()
+                    .map(|(name, _)| (name, symbol.stage))
+            })
+            .map(|(name, stage)| {
+                let stage = stage.unwrap_or(0);
+                let col = match stage {
+                    0 => meta.advice_column_in(FirstPhase),
+                    1 => meta.advice_column_in(SecondPhase),
+                    2 => meta.advice_column_in(ThirdPhase),
+                    _ => panic!("Stage too large for Halo2 backend: {}", stage),
+                };
+                (name.clone(), col)
+            })
+            .collect();
+
+        let fixed = analyzed
+            .constant_polys_in_source_order()
+            .iter()
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .map(|(name, _)| (name.clone(), meta.fixed_column()))
+            .collect();
+
+        let enable = meta.fixed_column();
+        let instance = meta.instance_column();
+
+        // Collect challenges referenced in any identity.
+        let mut challenges = BTreeMap::new();
+        for identity in analyzed.identities_with_inlined_intermediate_polynomials() {
+            identity.pre_visit_expressions(&mut |expr| {
+                if let AlgebraicExpression::Challenge(challenge) = expr {
+                    challenges
+                        .entry(challenge.id)
+                        .or_insert_with(|| match &challenge.stage {
+                            0 => meta.challenge_usable_after(FirstPhase),
+                            1 => meta.challenge_usable_after(SecondPhase),
+                            2 => meta.challenge_usable_after(ThirdPhase),
+                            _ => panic!("Stage too large for Halo2 backend: {}", challenge.stage),
+                        });
+                }
+            })
+        }
+
+        let config = PowdrCircuitConfig {
+            advice,
+            fixed,
+            enable,
+            instance,
+            challenges,
+        };
+
+        // Enable equality for all witness columns & instance
+        for &column in config.advice.values() {
+            meta.enable_equality(column);
+        }
+        meta.enable_equality(config.instance);
+
+        // Add polynomial identities
+        let identities = analyzed
+            .identities_with_inlined_intermediate_polynomials()
+            .into_iter()
+            .filter(|id| id.kind == IdentityKind::Polynomial)
+            .collect::<Vec<_>>();
+        if !identities.is_empty() {
+            meta.create_gate("main", |meta| -> Vec<(String, Expression<F>)> {
+                identities
+                    .iter()
+                    .map(|id| {
+                        let expr = id.expression_for_poly_id();
+                        let name = id.to_string();
+                        let expr = to_halo2_expression(expr, &config, meta);
+                        let expr = expr * meta.query_fixed(config.enable, Rotation::cur());
+                        (name, expr)
+                    })
+                    .collect()
+            });
+        }
+
+        // Challenge used to combine the lookup tuple with the selector
+        let beta = Expression::Challenge(meta.challenge_usable_after(FirstPhase));
+
+        let to_lookup_tuple = |expr: &SelectedExpressions<AlgebraicExpression<T>>,
+                               meta: &mut VirtualCells<'_, F>| {
+            let selector = expr
+                .selector
+                .as_ref()
+                .map_or(Expression::Constant(F::from(1)), |selector| {
+                    to_halo2_expression(selector, &config, meta)
+                });
+            let selector = selector * meta.query_fixed(config.enable, Rotation::cur());
+
+            expr.expressions
+                .iter()
+                .map(|expr| {
+                    let expr = to_halo2_expression(expr, &config, meta);
+                    // Turns a selected lookup / permutation argument into an unselected lookup / permutation argument,
+                    // see Section 3.3, equation (24) of: https://eprint.iacr.org/2023/474.pdf
+                    // Note that they use a different transformation for lookups, because this transformation would fail
+                    // if the RHS selector was 1 on all rows (and not on the LHS). This is never the case for us though,
+                    // because we multiply with the __enable column!
+                    selector.clone() * (expr - beta.clone()) + beta.clone()
+                })
+                .collect::<Vec<_>>()
+        };
+
+        for id in analyzed.identities_with_inlined_intermediate_polynomials() {
+            match id.kind {
+                // Already handled above
+                IdentityKind::Polynomial => {}
+                IdentityKind::Connect => unimplemented!(),
+                IdentityKind::Plookup => {
+                    let name = id.to_string();
+                    meta.lookup_any(&name, |meta| {
+                        to_lookup_tuple(&id.left, meta)
+                            .into_iter()
+                            .zip(to_lookup_tuple(&id.right, meta))
+                            .collect()
+                    });
+                }
+                IdentityKind::Permutation => {
+                    let name = id.to_string();
+                    meta.shuffle(&name, |meta| {
+                        to_lookup_tuple(&id.left, meta)
+                            .into_iter()
+                            .zip(to_lookup_tuple(&id.right, meta))
+                            .collect()
+                    });
                 }
             }
         }
 
+        config
+    }
+
+    fn synthesize(
+        &self,
+        config: Self::Config,
+        mut layouter: impl Layouter<F>,
+    ) -> Result<(), Error> {
+        // The structure of the table is as following
+        //
+        // | constant columns | __enable     |  witness columns | \
+        // |  c[0]            |    1         |   w[0]           |  |
+        // |  c[1]            |    1         |   w[1]           |  |>  N actual circuit rows
+        // |  ...             |   ...        |   ...            |  |
+        // |  c[N - 2]        |    1         |   w[N - 2]       |  |
+        // |  c[N - 1]        |    1         |   w[N - 1]       | /
+        // |  c[0]            |    0         |   w[0]           | \  <-- Row 0 is copy-constrained to row N
+        // |  None            |    None      |   None           |  |
+        // |  ...             |   ...        |   ...            |  |>  2**(ceil(log2(N)) padding rows to fit the halo2 unusable rows
+        // |  None            |    None      |   None           |  |
+        // |  None            |    None      |   None           |  | <-- Halo2 will put blinding factors in the last few rows
+        // |  None            |    None      |   None           | /      of the witness columns.
+
+        // If we're in a later stage, augment the original stage-0 witness by calling the witgen_callback.
+        // If we're in stage 0, we already have the full witness and don't do anything.
+        let mut new_witness = Vec::new();
+        if let Some(witness) = self.witness {
+            let mut stage = 1;
+            let challenges = config
+                .challenges
+                .iter()
+                .filter_map(|(&challenge_id, challenge)| {
+                    let mut challenge_key_value_pair = None;
+                    layouter.get_challenge(*challenge).map(|x| {
+                        // The current stage is the maximum of all available challenges + 1
+                        stage = max(stage, challenge.phase() + 1);
+                        // Set the challenge value. We don't return it here, because we'd get
+                        // a Value<T> and Halo2 doesn't let us convert it to an Option<T> easily...
+                        challenge_key_value_pair =
+                            Some((challenge_id, T::from_bytes_le(&x.to_repr())))
+                    });
+                    challenge_key_value_pair
+                })
+                .collect::<BTreeMap<u64, T>>();
+
+            // If there are no available challenges, we are in stage 0 and do nothing.
+            if !challenges.is_empty() {
+                log::info!(
+                    "Running witness generation for stage {stage} ({} challenges)!",
+                    challenges.len()
+                );
+                new_witness = self
+                    .witgen_callback
+                    .as_ref()
+                    .expect("Expected witgen callback!")
+                    .next_stage_witness(witness, challenges, stage);
+            }
+        }
+
+        let public_cells = layouter.assign_region(
+            || "main",
+            |mut region| {
+                for (name, column) in config.iter_columns() {
+                    region.name_column(|| name, column);
+                }
+
+                // Set fixed values
+                for (name, values) in self.fixed {
+                    let column = *config.fixed.get(name).unwrap();
+                    for (i, value) in values.iter().chain(iter::once(&values[0])).enumerate() {
+                        region.assign_fixed(
+                            || name,
+                            column,
+                            i,
+                            || Value::known(convert_field::<T, F>(*value)),
+                        )?;
+                    }
+                }
+                let degree = self.analyzed.degree() as usize;
+                for i in 0..(2 * degree) {
+                    let value = F::from((i < degree) as u64);
+                    region.assign_fixed(
+                        || ENABLE_NAME,
+                        config.enable,
+                        i,
+                        || Value::known(value),
+                    )?;
+                }
+
+                let publics = self
+                    .publics
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| (p, i))
+                    .collect::<BTreeMap<_, _>>();
+
+                // Set witness values
+                let mut public_cells = Vec::new();
+                let witness: Option<&[(String, Vec<T>)]> = if new_witness.is_empty() {
+                    // We're in stage 0, use the original witness
+                    self.witness
+                } else {
+                    Some(&new_witness)
+                };
+                for (name, &column) in config.advice.iter() {
+                    // Note that we can't skip this loop if we don't have a witness,
+                    // because the copy_advice() call below also adds copy constraints,
+                    // which are needed to compute the verification key.
+                    let values = witness.as_ref().and_then(|witness| {
+                        witness.iter().find_map(|(witness_name, values)| {
+                            (witness_name == name).then_some(values)
+                        })
+                    });
+                    for i in 0..degree {
+                        let value = values
+                            .map(|values| Value::known(convert_field::<T, F>(values[i])))
+                            .unwrap_or_default();
+
+                        let assigned_cell = region.assign_advice(|| name, column, i, || value)?;
+
+                        // The first row needs to be copied to row <degree>
+                        if i == 0 {
+                            assigned_cell.copy_advice(|| name, &mut region, column, degree)?;
+                        }
+
+                        // Collect public cells, which are later copy-constrained to equal
+                        // a cell in the instance column.
+                        if let Some(&instance_index) = publics.get(&(name.clone(), i)) {
+                            public_cells.push((instance_index, assigned_cell));
+                        }
+                    }
+                }
+
+                Ok(public_cells)
+            },
+        )?;
+
+        // Enforce publics by copy-constraining to cells in the instance column.
+        // For example, if we have the following public declarations:
+        // - public out1 = A(2);
+        // - public out2 = B(0);
+        // This would lead to the corresponding values being copied into the public
+        // column as follows:
+        // | Row | A   | B   | public |
+        // |-----|-----|-----|--------|
+        // |  0  |  0  | *5* |  *2*   |
+        // |  1  |  1  |  6  |  *5*   |
+        // |  2  | *2* |  7  |        |
+        // |  3  |  4  |  8  |        |
+
+        for (i, cell) in public_cells.into_iter() {
+            layouter.constrain_instance(cell.cell(), config.instance, i)?;
+        }
+
+        Ok(())
+    }
+}
+
+pub(crate) fn convert_field<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(x: T) -> F {
+    let x = x.to_arbitrary_integer();
+    let mut repr: [u8; 32] = [0; 32];
+    let f_le = x.to_le_bytes();
+    repr[..f_le.len()].clone_from_slice(&f_le);
+    F::from_repr_vartime(repr).expect("value in field")
+}
+
+fn to_halo2_expression<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(
+    expr: &AlgebraicExpression<T>,
+    config: &PowdrCircuitConfig,
+    meta: &mut VirtualCells<'_, F>,
+) -> Expression<F> {
+    match expr {
+        AlgebraicExpression::Number(n) => Expression::Constant(convert_field(*n)),
+        AlgebraicExpression::Reference(polyref) => {
+            let rotation = match polyref.next {
+                false => Rotation::cur(),
+                true => Rotation::next(),
+            };
+            if let Some(column) = config.advice.get(&polyref.name) {
+                meta.query_advice(*column, rotation)
+            } else if let Some(column) = config.fixed.get(&polyref.name) {
+                meta.query_fixed(*column, rotation)
+            } else {
+                panic!("Unknown reference: {}", polyref.name)
+            }
+        }
+        AlgebraicExpression::BinaryOperation(lhe, op, powdr_rhe) => {
+            let lhe = to_halo2_expression(lhe, config, meta);
+            let rhe = to_halo2_expression(powdr_rhe, config, meta);
+            match op {
+                AlgebraicBinaryOperator::Add => lhe + rhe,
+                AlgebraicBinaryOperator::Sub => lhe - rhe,
+                AlgebraicBinaryOperator::Mul => lhe * rhe,
+                AlgebraicBinaryOperator::Pow => {
+                    let AlgebraicExpression::Number(e) = powdr_rhe.as_ref() else {
+                        panic!("Expected number in exponent.")
+                    };
+                    let e: u32 = e
+                        .to_arbitrary_integer()
+                        .try_into()
+                        .unwrap_or_else(|_| panic!("Exponent has to fit 32 bits."));
+                    if e == 0 {
+                        Expression::Constant(F::from(1))
+                    } else {
+                        (0..e).fold(lhe.clone(), |acc, _| acc * lhe.clone())
+                    }
+                }
+            }
+        }
+        AlgebraicExpression::Challenge(challenge) => {
+            config.challenges.get(&challenge.id).unwrap().expr()
+        }
         _ => unimplemented!("{:?}", expr),
     }
 }

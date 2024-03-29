@@ -44,12 +44,14 @@ pub trait Register: Display + Debug {}
 #[derive(Clone, Copy, Debug)]
 pub enum UnaryOpKind {
     Negation,
+    BitwiseNot,
 }
 
 impl Display for UnaryOpKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UnaryOpKind::Negation => write!(f, "-"),
+            UnaryOpKind::BitwiseNot => write!(f, "~"),
         }
     }
 }

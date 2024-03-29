@@ -4,7 +4,8 @@
 
 # Getting Started
 - [Installation](./installation.md)
-- [Hello World](./hello_world.md)
+- [Hello World using the CLI](./hello_world.md)
+- [Hello World using powdr as a library](./powdr_crate.md)
 
 # Reference Guide
 <!-- markdown-link-check-disable-next-line -->
@@ -22,7 +23,9 @@
 - [pil](./pil/README.md)
     - [Declarations](./pil/declarations.md)
     - [Expressions](./pil/expressions.md)
+    - [Types](./pil/types.md)
     - [Fixed Columns](./pil/fixed_columns.md)
+    - [Built-in Functions](./pil/builtins.md)
 - [Frontends](./frontends/README.md)
     - [RISCV](./frontends/riscv.md)
     - [Valida](./frontends/valida.md)

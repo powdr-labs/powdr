@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Debug};
 
 use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::FieldElement;
@@ -13,11 +13,14 @@ pub enum IncompleteCause<K = usize> {
     BitUnconstrained(Vec<K>),
     /// Some bit constraints are overlapping. Example: `x + y == 0x3` with `x | 0x3` and `y | 0x3`
     OverlappingBitConstraints,
+    /// There are bit constraints, but they might over-flow the field.
+    /// Example: `some_field_element == 2**64 * x` with `x | 0x3` and a 64-bit field.
+    OverflowingBitConstraints,
     /// Multiple rows match a lookup query. Example: `{x, 1} in [{1, 1}, {2, 1}]`
     MultipleLookupMatches,
     /// A linear constraint does not have a unique solution. Example: `x + y == 0`
     MultipleLinearSolutions,
-    /// No progress transferring. TODO: not sure this could not be coverred by other cases
+    /// No progress transferring. TODO: not sure this could not be covered by other cases
     NoProgressTransferring,
     /// Quadratic term found trying to detect an affine expression. Example: `a*b + 2c + d`
     QuadraticTerm,
@@ -35,8 +38,6 @@ pub enum IncompleteCause<K = usize> {
     NonConstantRequiredArgument(&'static str),
     /// The left selector in a lookup is not constant. Example: `x * {1} in [{1}]` where `x` is not constant.
     NonConstantLeftSelector,
-    /// An expression cannot be evaluated.
-    ExpressionEvaluationUnimplemented(String),
     /// A value is not found on the left side of a match. Example: `match x {1 => 2, 3 => 4}` where `x == 0`
     NoMatchArmFound,
     /// A lookup into a block machine was not able to assign all variables in the query. It could be that we just need to re-run it.
@@ -53,12 +54,18 @@ pub enum IncompleteCause<K = usize> {
 impl<K> IncompleteCause<K> {
     pub fn combine(self, right: IncompleteCause<K>) -> IncompleteCause<K> {
         match (self, right) {
-            (IncompleteCause::Multiple(l), IncompleteCause::Multiple(r)) => {
-                IncompleteCause::Multiple(l.into_iter().chain(r).collect())
+            (IncompleteCause::Multiple(mut l), IncompleteCause::Multiple(r)) => {
+                if l.is_empty() {
+                    IncompleteCause::Multiple(r)
+                } else {
+                    l.extend(r);
+                    IncompleteCause::Multiple(l)
+                }
             }
-            (m @ IncompleteCause::Multiple(_), other)
-            | (other, m @ IncompleteCause::Multiple(_)) => {
-                m.combine(IncompleteCause::Multiple(vec![other]))
+            (IncompleteCause::Multiple(mut causes), other)
+            | (other, IncompleteCause::Multiple(mut causes)) => {
+                causes.push(other);
+                IncompleteCause::Multiple(causes)
             }
             (l, r) => IncompleteCause::Multiple(vec![l, r]),
         }
@@ -114,23 +121,20 @@ impl<K, T: FieldElement> EvalValue<K, T> {
     }
 
     pub fn incomplete_with_constraints(
-        constraints: impl IntoIterator<Item = (K, Constraint<T>)>,
+        constraints: Vec<(K, Constraint<T>)>,
         cause: IncompleteCause<K>,
     ) -> Self {
         Self::new(constraints, EvalStatus::Incomplete(cause))
     }
 
-    pub fn complete(constraints: impl IntoIterator<Item = (K, Constraint<T>)>) -> Self {
+    pub fn complete(constraints: Vec<(K, Constraint<T>)>) -> Self {
         Self::new(constraints, EvalStatus::Complete)
     }
 
-    fn new(
-        constraints: impl IntoIterator<Item = (K, Constraint<T>)>,
-        complete: EvalStatus<K>,
-    ) -> Self {
+    fn new(constraints: Vec<(K, Constraint<T>)>, status: EvalStatus<K>) -> Self {
         Self {
-            constraints: constraints.into_iter().collect(),
-            status: complete,
+            constraints,
+            status,
         }
     }
 }
@@ -141,8 +145,10 @@ where
     T: FieldElement,
 {
     pub fn combine(&mut self, other: Self) {
+        // reserve more space?
         self.constraints.extend(other.constraints);
-        self.status = self.status.clone().combine(other.status);
+        self.status =
+            std::mem::replace(&mut self.status, EvalStatus::Complete).combine(other.status);
     }
 }
 
@@ -150,7 +156,7 @@ where
 /// New assignments or constraints for witness columns identified by an ID.
 pub type EvalResult<'a, T, K = &'a AlgebraicReference> = Result<EvalValue<K, T>, EvalError<T>>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum EvalError<T: FieldElement> {
     /// We ran out of rows
     RowsExhausted,
@@ -166,6 +172,12 @@ pub enum EvalError<T: FieldElement> {
     ProverQueryError(String),
     Generic(String),
     Multiple(Vec<EvalError<T>>),
+}
+
+impl<T: FieldElement> Debug for EvalError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <Self as fmt::Display>::fmt(self, f)
+    }
 }
 
 impl<T: FieldElement> From<String> for EvalError<T> {
@@ -204,7 +216,7 @@ impl<T: FieldElement> fmt::Display for EvalError<T> {
                 write!(f, "Range constraints in the expression are conflicting or do not match the constant / offset.",)
             }
             EvalError::InvalidDivision => {
-                write!(f, "A division pattern was recognized but the range constrainst are conflicting with the solution.",)
+                write!(f, "A division pattern was recognized but the range constraints are conflicting with the solution.",)
             }
             EvalError::RowsExhausted => write!(f, "Table rows exhausted"),
             EvalError::FixedLookupFailed(input_assignment) => {

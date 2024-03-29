@@ -1,12 +1,18 @@
 [package]
 name = "powdr-pilopt"
-version = "0.1.0"
-edition = "2021"
+description = "powdr-PIL optimizer"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
-powdr-pil-analyzer = { path = "../pil-analyzer" }
 
 log = "0.4.17"
-pretty_assertions = "1.3.0"
+pretty_assertions = "1.4.0"
+
+[dev-dependencies]
+powdr-pil-analyzer = { path = "../pil-analyzer" }

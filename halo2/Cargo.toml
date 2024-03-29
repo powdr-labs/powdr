@@ -1,21 +1,28 @@
 [package]
 name = "powdr-halo2"
-version = "0.1.0"
-edition = "2021"
+description = "powdr Halo2 integration"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
-powdr-pil-analyzer = { path = "../pil-analyzer" }
+powdr-executor = { path = "../executor" }
 
-polyexen = { git = "https://github.com/Dhole/polyexen", branch = "feature/shuffles" }
-halo2_proofs = "0.2"
-halo2_curves = { git = "https://github.com/privacy-scaling-explorations/halo2curves", tag = "0.3.2", package = "halo2curves" }
-snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier" }
+# TODO change this once Halo2 releases 0.3.1
+#halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2", tag = "v0.3.0", features = ["circuit-params"] }
+halo2_proofs = { git = "https://github.com/powdr-labs/halo2", branch = "make-emit-public-v0.3.0", features = ["circuit-params"] }
+halo2_curves = { version = "0.6.1", package = "halo2curves" }
+# TODO change this once Halo2 releases 0.3.1 and snark-verifier uses it
+#snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier", tag = "v2024_01_31" }
+snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier", branch = "powdr-halo2" }
+
 num-traits = "0.2.15"
 num-integer = "0.1.45"
 itertools = "^0.10"
-num-bigint = "^0.4"
 log = "0.4.17"
 rand = "0.8.5"
 
@@ -30,3 +37,6 @@ powdr-pipeline = { path = "../pipeline" }
 
 test-log = "0.2.12"
 env_logger = "0.10.0"
+
+[package.metadata.cargo-udeps.ignore]
+development = ["env_logger"]

@@ -148,8 +148,9 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         log::debug!("Needed to finalize {} / {} rows.", counter, self.data.len());
 
         // Store transposed columns in vectors for performance reasons
-        let mut columns = vec![vec![]; self.column_ids.len()];
-        let mut known_cells_col = vec![BitVec::new(); self.column_ids.len()];
+        let mut columns = vec![Vec::with_capacity(self.data.len()); self.column_ids.len()];
+        let mut known_cells_col =
+            vec![BitVec::with_capacity(self.data.len()); self.column_ids.len()];
         for row in std::mem::take(&mut self.data) {
             match row {
                 Entry::InProgress(_) => unreachable!(),

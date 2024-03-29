@@ -1,11 +1,15 @@
 [package]
 name = "powdr-airgen"
-version = "0.1.0"
-edition = "2021"
+description = "powdr AIR generator for asm machines"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
+powdr-analysis = { path = "../analysis" }
 
-num-bigint = "0.4.3"
 log = "0.4.17"

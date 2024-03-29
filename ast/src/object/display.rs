@@ -1,6 +1,10 @@
 use std::fmt::{Display, Formatter, Result};
 
-use super::{Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph};
+use crate::parsed::{display::format_type_scheme_around_name, TypedExpression};
+
+use super::{
+    Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph, TypeOrExpression,
+};
 
 impl Display for Location {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -8,11 +12,22 @@ impl Display for Location {
     }
 }
 
-impl<T: Display> Display for PILGraph<T> {
+impl Display for PILGraph {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "// Utilities")?;
-        for (name, e) in &self.definitions {
-            writeln!(f, "let {name} = {e};")?;
+        for (name, utility) in &self.definitions {
+            match utility {
+                TypeOrExpression::Expression(TypedExpression { e, type_scheme }) => {
+                    writeln!(
+                        f,
+                        "let{} = {e};",
+                        format_type_scheme_around_name(&name.to_string(), type_scheme)
+                    )?;
+                }
+                TypeOrExpression::Type(enum_decl) => {
+                    writeln!(f, "{enum_decl}",)?;
+                }
+            }
         }
         for (location, object) in &self.objects {
             writeln!(f, "// Object {}", location)?;
@@ -23,9 +38,9 @@ impl<T: Display> Display for PILGraph<T> {
     }
 }
 
-impl<T: Display> Display for Object<T> {
+impl Display for Object {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if let Some(degree) = self.degree {
+        if let Some(degree) = self.degree.as_ref() {
             writeln!(f, "// Degree {}", degree)?;
         }
         for s in &self.pil {
@@ -41,19 +56,19 @@ impl<T: Display> Display for Object<T> {
     }
 }
 
-impl<T: Display> Display for Link<T> {
+impl Display for Link {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} links to {}", self.from, self.to)
     }
 }
 
-impl<T: Display> Display for LinkFrom<T> {
+impl Display for LinkFrom {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} {}", self.flag, self.params)
     }
 }
 
-impl<T: Display> Display for LinkTo<T> {
+impl Display for LinkTo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} in {}", self.operation, self.machine)
     }
@@ -69,7 +84,7 @@ impl Display for Machine {
     }
 }
 
-impl<T: Display> Display for Operation<T> {
+impl Display for Operation {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,

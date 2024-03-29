@@ -1,11 +1,10 @@
 use std::collections::{BTreeMap, HashMap};
 
-use powdr_ast::{
-    analyzed::{
-        AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-        PolynomialType,
-    },
-    parsed::SelectedExpressions,
+use itertools::{Either, Itertools};
+
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+    PolynomialType,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -30,11 +29,12 @@ use super::{FixedLookup, Machine};
 /// instr mload X -> Y { {X, Y} in {ADDR, v} }
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
+    connecting_identities: Vec<u64>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
     /// The right-hand side of the connecting identity
     /// (if there are several, they must all be the same)
-    rhs: &'a SelectedExpressions<Expression<T>>,
+    rhs_expressions: &'a [Expression<T>],
     /// The polynomials that are used as values (witness polynomials on the RHS)
     value_polys: Vec<PolyID>,
     /// A map from keys to row indices
@@ -55,17 +55,34 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             return None;
         }
 
-        let rhs = &connecting_identities[0].right;
-        if !connecting_identities.iter().all(|i| i.right == *rhs) {
+        if !connecting_identities
+            .iter()
+            .all(|i| i.kind == IdentityKind::Plookup)
+        {
             return None;
         }
 
-        if rhs.selector.is_some() {
+        // All connecting identities should have no selector or a selector of 1
+        if connecting_identities.iter().any(|i| {
+            i.right
+                .selector
+                .as_ref()
+                .map(|s| s != &T::one().into())
+                .unwrap_or(false)
+        }) {
             return None;
         }
 
-        let rhs_polys = rhs
-            .expressions
+        // All RHS expressions should be the same
+        let rhs_expressions = &connecting_identities[0].right.expressions;
+        if connecting_identities
+            .iter()
+            .any(|i| i.right.expressions != *rhs_expressions)
+        {
+            return None;
+        }
+
+        let rhs_polys = rhs_expressions
             .iter()
             .map(|e| try_to_simple_poly(e))
             .collect::<Option<Vec<_>>>();
@@ -74,23 +91,14 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         let rhs_polys = rhs_polys?;
 
         // Build a Vec<PolyID> for the key and value polynomials
-        let (key_polys, value_polys): (Vec<_>, Vec<_>) = rhs_polys
-            .into_iter()
-            .partition(|p| p.poly_id.ptype == PolynomialType::Constant);
-        let key_polys = key_polys
-            .into_iter()
-            .map(|p| {
-                assert!(!p.next);
-                p.poly_id
-            })
-            .collect::<Vec<_>>();
-        let value_polys = value_polys
-            .into_iter()
-            .map(|p| {
-                assert!(!p.next);
-                p.poly_id
-            })
-            .collect::<Vec<_>>();
+        let (key_polys, value_polys): (Vec<_>, Vec<_>) = rhs_polys.into_iter().partition_map(|p| {
+            assert!(!p.next);
+            if p.poly_id.ptype == PolynomialType::Constant {
+                Either::Left(p.poly_id)
+            } else {
+                Either::Right(p.poly_id)
+            }
+        });
 
         let mut key_to_index = BTreeMap::new();
         for row in 0..fixed_data.degree {
@@ -105,9 +113,10 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         Some(Self {
+            connecting_identities: connecting_identities.iter().map(|&i| i.id).collect(),
             name,
             fixed_data,
-            rhs,
+            rhs_expressions,
             value_polys,
             key_to_index,
             data: BTreeMap::new(),
@@ -116,12 +125,11 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
     fn process_plookup_internal(
         &mut self,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
-        let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = left
+        let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = args
             .iter()
-            .zip(right.expressions.iter())
+            .zip(self.rhs_expressions.iter())
             .partition(|(_, r)| {
                 try_to_simple_poly(r).unwrap().poly_id.ptype == PolynomialType::Constant
             });
@@ -200,6 +208,10 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
+    fn identity_ids(&self) -> Vec<u64> {
+        self.connecting_identities.clone()
+    }
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -207,12 +219,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
-        kind: IdentityKind,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
-    ) -> Option<EvalResult<'a, T>> {
-        (right == self.rhs && kind == IdentityKind::Plookup)
-            .then(|| self.process_plookup_internal(left, right))
+        _identity_id: u64,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
+    ) -> EvalResult<'a, T> {
+        self.process_plookup_internal(args)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -226,7 +236,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
             .map(|(value_index, poly)| {
                 let column = self.fixed_data.witness_cols[poly]
                     .external_values
-                    .clone()
+                    .cloned()
                     .map(|mut external_values| {
                         // External witness values might only be provided partially.
                         external_values.resize(self.fixed_data.degree as usize, T::zero());

@@ -14,52 +14,13 @@ struct CoProcessor {
     runtime_function_impl: Option<RuntimeFunctionImpl>,
 }
 
-static BINARY_COPROCESSOR: CoProcessor = CoProcessor {
-    name: "binary",
-    ty: "Binary",
-    import: "use std::binary::Binary;",
-    instructions: r#"
-    // ================= binary/bitwise instructions =================
-    instr and Y, Z -> X = binary.and
-    instr or Y, Z -> X = binary.or
-    instr xor Y, Z -> X = binary.xor
-
-            "#,
-    runtime_function_impl: None,
-};
-
-static SHIFT_COPROCESSOR: CoProcessor = CoProcessor {
-    name: "shift",
-    ty: "Shift",
-    import: "use std::shift::Shift;",
-    instructions: r#"
-    // ================= shift instructions =================
-    instr shl Y, Z -> X = shift.shl
-    instr shr Y, Z -> X = shift.shr
-
-            "#,
-    runtime_function_impl: None,
-};
-
-static SPLIT_GL_COPROCESSOR: CoProcessor = CoProcessor {
-    name: "split_gl",
-    ty: "SplitGL",
-    import: "use std::split::split_gl::SplitGL;",
-    instructions: r#"
-// ================== wrapping instructions ==============
-instr split_gl Z -> X, Y = split_gl.split
-
-    "#,
-    runtime_function_impl: None,
-};
-
 static POSEIDON_GL_COPROCESSOR: CoProcessor = CoProcessor {
     name: "poseidon_gl",
     ty: "PoseidonGL",
     import: "use std::hash::poseidon_gl::PoseidonGL;",
     instructions: r#"
 // ================== hashing instructions ==============
-instr poseidon_gl A0, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11 -> X, Y, Z, W = poseidon_gl.poseidon_permutation
+instr poseidon_gl ~ poseidon_gl.poseidon_permutation P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11 -> P0', P1', P2', P3';
 
 "#,
     runtime_function_impl: Some(("poseidon_gl_coprocessor", poseidon_gl_call)),
@@ -73,10 +34,7 @@ static INPUT_COPROCESSOR: CoProcessor = CoProcessor {
     runtime_function_impl: Some(("input_coprocessor", prover_input_call)),
 };
 
-static ALL_COPROCESSORS: [(&str, &CoProcessor); 5] = [
-    (BINARY_COPROCESSOR.name, &BINARY_COPROCESSOR),
-    (SHIFT_COPROCESSOR.name, &SHIFT_COPROCESSOR),
-    (SPLIT_GL_COPROCESSOR.name, &SPLIT_GL_COPROCESSOR),
+static ALL_COPROCESSORS: [(&str, &CoProcessor); 2] = [
     (POSEIDON_GL_COPROCESSOR.name, &POSEIDON_GL_COPROCESSOR),
     (INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR),
 ];
@@ -121,19 +79,12 @@ impl TryFrom<Vec<&str>> for CoProcessors {
 impl CoProcessors {
     /// The base version only adds the commonly used bitwise and shift operations.
     pub fn base() -> CoProcessors {
-        Self {
-            coprocessors: BTreeMap::from([
-                (BINARY_COPROCESSOR.name, &BINARY_COPROCESSOR),
-                (SHIFT_COPROCESSOR.name, &SHIFT_COPROCESSOR),
-                (INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR),
-            ]),
-        }
+        let coprocessors = BTreeMap::from([(INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR)]);
+        Self { coprocessors }
     }
 
     /// Poseidon also uses the Split machine.
     pub fn with_poseidon(mut self) -> Self {
-        self.coprocessors
-            .insert(SPLIT_GL_COPROCESSOR.name, &SPLIT_GL_COPROCESSOR);
         self.coprocessors
             .insert(POSEIDON_GL_COPROCESSOR.name, &POSEIDON_GL_COPROCESSOR);
         self
@@ -199,18 +150,16 @@ impl CoProcessors {
     pub fn registers(&self) -> String {
         // Poseidon has 12 inputs and 4 outputs.
         // The base RISCV machine has 4 assignment registers.
-        // Therefore we need to add 12 assignment registers when using Poseidon.
-        // Moreover, we also need 12 extra general purpose registers to store the
-        // input values.
+        // We need 12 extra general purpose registers to store the
+        // input and values directly.
 
         if !self.coprocessors.contains_key(POSEIDON_GL_COPROCESSOR.name) {
             return String::new();
         }
 
-        let a_regs: Vec<String> = (0..12).map(|i| format!("reg A{}[<=];", i)).collect();
         let p_regs: Vec<String> = (0..12).map(|i| format!("reg P{};", i)).collect();
 
-        [a_regs, p_regs].concat().join("\n")
+        p_regs.join("\n")
     }
 }
 
@@ -244,7 +193,7 @@ fn poseidon_gl_call() -> String {
         )
     };
 
-    let call = "P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);";
+    let call = "poseidon_gl;";
 
     (0..12)
         .map(decoding)
@@ -254,7 +203,7 @@ fn poseidon_gl_call() -> String {
 }
 
 fn prover_input_call() -> String {
-    "x10 <=X= ${ (\"data_identifier\", x11, x10) };".to_string()
+    "x10 <=X= ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(x11)), std::convert::int(std::prover::eval(x10))) };".to_string()
 }
 
 // This could also potentially go in the impl of CoProcessors,
@@ -265,25 +214,20 @@ pub fn call_every_submachine(coprocessors: &CoProcessors) -> Vec<String> {
     // automatically.
     // https://github.com/powdr-labs/powdr/issues/548
     let mut calls = vec![];
-    if coprocessors.has(BINARY_COPROCESSOR.name) {
-        calls.push("x10 <== and(x10, x10);".to_string());
-    }
-    if coprocessors.has(SHIFT_COPROCESSOR.name) {
-        calls.push("x10 <== shl(x10, x10);".to_string());
-    }
-    if coprocessors.has(SPLIT_GL_COPROCESSOR.name) {
-        calls.push("x10, x11 <== split_gl(x10);".to_string());
-    }
+    calls.push("x10 <== and(x10, x10);".to_string());
+    calls.push("x10 <== shl(x10, x10);".to_string());
+
     if coprocessors.has(POSEIDON_GL_COPROCESSOR.name) {
         calls.extend(vec![
-            "P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);"
-                .to_string(),
+            "poseidon_gl;".to_string(),
             "P0 <=X= 0;".to_string(),
             "P1 <=X= 0;".to_string(),
             "P2 <=X= 0;".to_string(),
             "P3 <=X= 0;".to_string(),
         ]);
     }
+
+    calls.push("x10, x11 <== split_gl(x10);".to_string());
 
     calls.extend(vec!["x10 <=X= 0;".to_string(), "x11 <=X= 0;".to_string()]);
 

@@ -4,15 +4,10 @@ use powdr_ast::parsed::{
     asm::{ASMProgram, Module},
     folder::Folder,
 };
-use powdr_number::FieldElement;
-
 static ASM_EXTENSION: &str = "asm";
 static FOLDER_MODULE_NAME: &str = "mod";
 
-pub fn load_module_files<T: FieldElement>(
-    path: Option<PathBuf>,
-    program: ASMProgram<T>,
-) -> Result<ASMProgram<T>, String> {
+pub fn load_module_files(path: Option<PathBuf>, program: ASMProgram) -> Result<ASMProgram, String> {
     Loader { path }.fold_program(program)
 }
 
@@ -22,10 +17,10 @@ struct Loader {
 
 type Error = String;
 
-impl<T: FieldElement> Folder<T> for Loader {
+impl Folder for Loader {
     type Error = Error;
 
-    fn fold_module(&mut self, m: Module<T>) -> Result<Module<T>, Self::Error> {
+    fn fold_module(&mut self, m: Module) -> Result<Module, Self::Error> {
         match m {
             Module::External(name) => self
                 .path
@@ -87,7 +82,6 @@ impl<T: FieldElement> Folder<T> for Loader {
 mod tests {
     use std::path::Path;
 
-    use powdr_number::Bn254Field;
     use powdr_parser::parse_asm;
 
     use super::*;
@@ -96,13 +90,13 @@ mod tests {
         let dir = Path::new(dir);
         let main_path = dir.join("main.asm").to_owned();
         let main_str = std::fs::read_to_string(&main_path).unwrap();
-        let main = parse_asm::<Bn254Field>(None, &main_str).unwrap();
+        let main = parse_asm(None, &main_str).unwrap();
         let main = load_module_files(Some(main_path), main);
 
         let expected = expected
             .map(|_| {
                 let expected_str = std::fs::read_to_string(dir.join("expected.asm")).unwrap();
-                parse_asm::<Bn254Field>(None, &expected_str).unwrap()
+                parse_asm(None, &expected_str).unwrap()
             })
             .map_err(|e| e.to_string());
 

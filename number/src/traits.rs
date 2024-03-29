@@ -1,11 +1,13 @@
 use std::{fmt, hash::Hash, ops::*, str::FromStr};
 
-use num_traits::{One, Zero};
+use num_traits::{ConstOne, ConstZero, One, Zero};
+use schemars::JsonSchema;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::{AbstractNumberType, DegreeType};
+use crate::{BigUint, DegreeType};
 
 /// A fixed-width integer type
-pub trait BigInt:
+pub trait LargeInt:
     Copy
     + Send
     + Sync
@@ -24,19 +26,20 @@ pub trait BigInt:
     + fmt::Debug
     + Copy
     + Not<Output = Self>
-    + Shl<u64, Output = Self>
-    + Shr<u64, Output = Self>
+    + Shl<usize, Output = Self>
+    + Shr<usize, Output = Self>
     + BitXor<Output = Self>
     + Zero
+    + ConstZero
     + fmt::LowerHex
-    + TryFrom<num_bigint::BigUint, Error = ()>
+    + TryFrom<crate::BigUint, Error = ()>
 {
     /// Number of bits of this base type. Not to be confused with the number of bits
     /// of the field elements!
     const NUM_BITS: usize;
-    fn to_arbitrary_integer(self) -> AbstractNumberType;
+    fn to_arbitrary_integer(self) -> BigUint;
     /// Number of bits required to encode this particular number.
-    fn num_bits(&self) -> u32;
+    fn num_bits(&self) -> usize;
 
     /// Returns the constant one.
     /// We are not implementing num_traits::One because it also requires multiplication.
@@ -44,8 +47,19 @@ pub trait BigInt:
 
     /// Checks if the number is one.
     fn is_one(&self) -> bool;
+
+    /// Tries to convert to u64.
+    ///
+    /// Returns None if value is out of u64 range.
+    fn try_into_u64(&self) -> Option<u64>;
+
+    /// Tries to convert to u32.
+    ///
+    /// Returns None if value is out of u32 range.
+    fn try_into_u32(&self) -> Option<u32>;
 }
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnownField {
     GoldilocksField,
     Bn254Field,
@@ -73,11 +87,13 @@ pub trait FieldElement:
     + Div<Output = Self>
     + Neg<Output = Self>
     + Zero
+    + ConstZero
+    + ConstOne
     + One
     + fmt::Display
     + fmt::Debug
     + From<Self::Integer>
-    + From<num_bigint::BigUint>
+    + From<crate::BigUint>
     + FromStr<Err = String>
     + From<u32>
     + From<u64>
@@ -85,9 +101,12 @@ pub trait FieldElement:
     + From<i64>
     + From<bool>
     + fmt::LowerHex
+    + Serialize
+    + DeserializeOwned
+    + JsonSchema
 {
     /// The underlying fixed-width integer type
-    type Integer: BigInt;
+    type Integer: LargeInt;
     /// Number of bits required to represent elements of this field.
     const BITS: u32;
 
@@ -95,7 +114,7 @@ pub trait FieldElement:
 
     fn to_integer(&self) -> Self::Integer;
 
-    fn to_arbitrary_integer(&self) -> AbstractNumberType {
+    fn to_arbitrary_integer(&self) -> BigUint {
         self.to_integer().to_arbitrary_integer()
     }
 
@@ -113,16 +132,24 @@ pub trait FieldElement:
 
     fn from_str_radix(s: &str, radix: u32) -> Result<Self, String>;
 
+    /// Only converts the value to a field element if it is less than the modulus.
+    fn checked_from(value: BigUint) -> Option<Self>;
+
     /// Returns true if the value is in the "lower half" of the field,
     /// i.e. the value <= (modulus() - 1) / 2
     fn is_in_lower_half(&self) -> bool;
 
     /// If the field is a known field (as listed in the `KnownField` enum), returns the field variant.
     fn known_field() -> Option<KnownField>;
+
+    /// Tries to convert to i32.
+    ///
+    /// As conventional, negative values are in relation to 0 in the field.
+    /// Returns None if out of the range [0 - 2^31, 2^31).
+    fn try_into_i32(&self) -> Option<i32>;
 }
 
 #[cfg(test)]
 pub fn int_from_hex_str<T: FieldElement>(s: &str) -> T::Integer {
-    use num_traits::Num;
-    T::Integer::try_from(AbstractNumberType::from_str_radix(s, 16).unwrap()).unwrap()
+    T::Integer::try_from(BigUint::from_str_radix(s, 16).unwrap()).unwrap()
 }

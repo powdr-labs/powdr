@@ -1,14 +1,18 @@
 [package]
 name = "powdr-linker"
-version = "0.1.0"
-edition = "2021"
+description = "powdr submachine linking system"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 powdr-analysis = { path = "../analysis" }
 powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
 
-pretty_assertions = "1.3.0"
+pretty_assertions = "1.4.0"
 itertools = "^0.10"
 
 [dev-dependencies]

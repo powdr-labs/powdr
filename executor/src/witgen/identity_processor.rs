@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Mutex,
+};
 
 use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
@@ -8,15 +11,18 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::machines::Machine;
+use crate::witgen::{machines::Machine, EvalError};
 
 use super::{
-    affine_expression::AffineExpression, machines::KnownMachine, rows::RowPair, EvalResult,
-    EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
+    affine_expression::AffineExpression,
+    machines::{FixedLookup, KnownMachine},
+    rows::RowPair,
+    EvalResult, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A list of mutable references to machines.
 pub struct Machines<'a, 'b, T: FieldElement> {
+    identity_to_machine_index: BTreeMap<u64, usize>,
     machines: Vec<&'b mut KnownMachine<'a, T>>,
 }
 
@@ -33,7 +39,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
         let (current, after) = after.split_at_mut(1);
         let current: &'c mut KnownMachine<'a, T> = current.first_mut().unwrap();
 
-        // Reborrow machines to convert from `&'c mut &'b mut KnownMachine<'a, T>` to
+        // Re-borrow machines to convert from `&'c mut &'b mut KnownMachine<'a, T>` to
         // `&'c mut KnownMachine<'a, T>`.
         let others: Vec<&'c mut KnownMachine<'a, T>> = before
             .iter_mut()
@@ -51,6 +57,28 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
     pub fn iter_mut(&'b mut self) -> impl Iterator<Item = &'b mut KnownMachine<'a, T>> {
         self.machines.iter_mut().map(|m| &mut **m)
     }
+
+    pub fn call<Q: QueryCallback<T>>(
+        &mut self,
+        identity_id: u64,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        fixed_lookup: &mut FixedLookup<T>,
+        query_callback: &mut Q,
+    ) -> EvalResult<'a, T> {
+        let machine_index = *self
+            .identity_to_machine_index
+            .get(&identity_id)
+            .expect("No executor machine matched identity `{identity}`");
+
+        let (current, others) = self.split(machine_index);
+        let mut mutable_state = MutableState {
+            fixed_lookup,
+            machines: others,
+            query_callback,
+        };
+
+        current.process_plookup_timed(&mut mutable_state, identity_id, args)
+    }
 }
 
 impl<'a, 'b, T, I> From<I> for Machines<'a, 'b, T>
@@ -59,8 +87,15 @@ where
     I: Iterator<Item = &'b mut KnownMachine<'a, T>>,
 {
     fn from(machines: I) -> Self {
+        let machines = machines.collect::<Vec<_>>();
+        let identity_to_machine_index = machines
+            .iter()
+            .enumerate()
+            .flat_map(|(index, m)| m.identity_ids().into_iter().map(move |id| (id, index)))
+            .collect();
         Self {
-            machines: machines.collect(),
+            machines,
+            identity_to_machine_index,
         }
     }
 }
@@ -116,7 +151,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
         match rows.evaluate(identity.expression_for_poly_id()) {
-            Err(inclomplete_cause) => Ok(EvalValue::incomplete(inclomplete_cause)),
+            Err(incomplete_cause) => Ok(EvalValue::incomplete(incomplete_cause)),
             Ok(evaluated) => evaluated.solve_with_range_constraints(rows),
         }
     }
@@ -166,25 +201,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             return result;
         }
 
-        for i in 0..self.mutable_state.machines.len() {
-            let (current, others) = self.mutable_state.machines.split(i);
-            let mut mutable_state = MutableState {
-                fixed_lookup: self.mutable_state.fixed_lookup,
-                machines: others,
-                query_callback: self.mutable_state.query_callback,
-            };
-
-            if let Some(result) = current.process_plookup_timed(
-                &mut mutable_state,
-                identity.kind,
-                &left,
-                &identity.right,
-            ) {
-                return result;
-            }
-        }
-
-        unimplemented!("No executor machine matched identity `{identity}`")
+        self.mutable_state.machines.call(
+            identity.id,
+            &left,
+            self.mutable_state.fixed_lookup,
+            self.mutable_state.query_callback,
+        )
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.
@@ -205,8 +227,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         let selector_value = right
             .selector
             .as_ref()
-            .map(|s| current_rows.evaluate(s).unwrap().constant_value().unwrap())
-            .unwrap_or(T::one());
+            .map(|s| {
+                current_rows
+                    .evaluate(s)
+                    .ok()
+                    .and_then(|affine_expression| affine_expression.constant_value())
+                    .ok_or(EvalError::Generic("Selector is not 1!".to_string()))
+            })
+            .unwrap_or(Ok(T::one()))?;
         assert_eq!(selector_value, T::one());
 
         let mut updates = EvalValue::complete(vec![]);
@@ -232,7 +260,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         rows: &RowPair<T>,
     ) -> Option<EvalValue<&'a AlgebraicReference, T>> {
         let value = match rows.evaluate(left_selector) {
-            Err(inclomplete_cause) => return Some(EvalValue::incomplete(inclomplete_cause)),
+            Err(incomplete_cause) => return Some(EvalValue::incomplete(incomplete_cause)),
             Ok(value) => value,
         };
         match value.constant_value() {
@@ -250,7 +278,7 @@ pub struct IdentityData {
     pub success: u64,
 }
 
-type IdentityID = (u64, IdentityKind);
+type IdentityID = u64;
 
 lazy_static! {
     static ref STATISTICS: Mutex<HashMap<IdentityID, IdentityData>> =
@@ -263,7 +291,7 @@ fn report_identity_solving<T: FieldElement, K>(
 ) {
     let success = result.as_ref().map(|r| r.is_complete()).unwrap_or_default() as u64;
     let mut stat = STATISTICS.lock().unwrap();
-    stat.entry((identity.id, identity.kind))
+    stat.entry(identity.id)
         .and_modify(|s| {
             s.invocations += 1;
             s.success += success;

@@ -1,9 +1,9 @@
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
 };
 use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::{DegreeType, FieldElement};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::machines::profiling::{record_end, record_start};
@@ -16,7 +16,7 @@ use super::block_processor::BlockProcessor;
 use super::data_structures::column_map::WitnessColumnMap;
 use super::global_constraints::GlobalConstraints;
 use super::machines::{FixedLookup, Machine};
-use super::rows::{Row, RowFactory};
+use super::rows::{Row, RowFactory, RowIndex};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
@@ -27,6 +27,7 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
+    connecting_rhs: BTreeMap<u64, &'a SelectedExpressions<Expression<T>>>,
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<Expression<T>>>,
     witnesses: HashSet<PolyID>,
@@ -37,6 +38,10 @@ pub struct Generator<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
+    fn identity_ids(&self) -> Vec<u64> {
+        self.connecting_rhs.keys().cloned().collect()
+    }
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -44,43 +49,39 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
-        _kind: IdentityKind,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
-    ) -> Option<EvalResult<'a, T>> {
-        if right.selector != self.latch {
-            None
-        } else {
-            log::trace!("Start processing secondary VM '{}'", self.name());
-            log::trace!("Arguments:");
-            for (r, l) in right.expressions.iter().zip(left) {
-                log::trace!("  {r} = {l}");
-            }
-
-            let first_row = self
-                .data
-                .last()
-                .cloned()
-                .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
-
-            let outer_query = OuterQuery {
-                left: left.to_vec(),
-                right,
-            };
-            let ProcessResult { eval_value, block } =
-                self.process(first_row, 0, mutable_state, Some(outer_query), false);
-
-            if eval_value.is_complete() {
-                log::trace!("End processing VM '{}' (successfully)", self.name());
-                // Remove the last row of the previous block, as it is the first row of the current
-                // block.
-                self.data.pop();
-                self.data.extend(block);
-            } else {
-                log::trace!("End processing VM '{}' (incomplete)", self.name());
-            }
-            Some(Ok(eval_value))
+        identity_id: u64,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
+    ) -> EvalResult<'a, T> {
+        log::trace!("Start processing secondary VM '{}'", self.name());
+        log::trace!("Arguments:");
+        let right = &self.connecting_rhs.get(&identity_id).unwrap();
+        for (r, l) in right.expressions.iter().zip(args) {
+            log::trace!("  {r} = {l}");
         }
+
+        let first_row = self
+            .data
+            .last()
+            .cloned()
+            .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
+
+        let outer_query = OuterQuery {
+            left: args.to_vec(),
+            right,
+        };
+        let ProcessResult { eval_value, block } =
+            self.process(first_row, 0, mutable_state, Some(outer_query), false);
+
+        if eval_value.is_complete() {
+            log::trace!("End processing VM '{}' (successfully)", self.name());
+            // Remove the last row of the previous block, as it is the first row of the current
+            // block.
+            self.data.pop();
+            self.data.extend(block);
+        } else {
+            log::trace!("End processing VM '{}' (incomplete)", self.name());
+        }
+        Ok(eval_value)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -111,18 +112,23 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        identities: &[&'a Identity<Expression<T>>],
+        connecting_identities: &[&'a Identity<Expression<T>>],
+        identities: Vec<&'a Identity<Expression<T>>>,
         witnesses: HashSet<PolyID>,
-        global_range_constraints: &GlobalConstraints<T>,
+        global_range_constraints: GlobalConstraints<T>,
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&witnesses);
         Self {
+            connecting_rhs: connecting_identities
+                .iter()
+                .map(|&identity| (identity.id, &identity.right))
+                .collect(),
             name,
             fixed_data,
-            identities: identities.to_vec(),
+            identities,
             witnesses,
-            global_range_constraints: global_range_constraints.clone(),
+            global_range_constraints,
             data,
             latch,
         }
@@ -174,21 +180,31 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.witnesses,
             [
-                row_factory.fresh_row(self.fixed_data.degree - 1),
-                row_factory.fresh_row(0),
+                row_factory.fresh_row(RowIndex::from_i64(-1, self.fixed_data.degree)),
+                row_factory.fresh_row(RowIndex::from_i64(0, self.fixed_data.degree)),
             ]
             .into_iter(),
         );
+
+        // We're only interested in the first row anyway, so identities without a next reference
+        // are irrelevant.
+        // Also, they can lead to problems in the case where some witness columns are provided
+        // externally, e.g. if the last row happens to call into a stateful machine like memory.
+        let identities_with_next_reference = self
+            .identities
+            .iter()
+            .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
+            .collect::<Vec<_>>();
         let mut processor = BlockProcessor::new(
-            self.fixed_data.degree - 1,
+            RowIndex::from_i64(-1, self.fixed_data.degree),
             data,
             mutable_state,
-            &self.identities,
+            &identities_with_next_reference,
             self.fixed_data,
             &self.witnesses,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(0, self.identities.len(), None),
+            DefaultSequenceIterator::new(0, identities_with_next_reference.len(), None),
         );
         processor.solve(&mut sequence_iterator).unwrap();
         let first_row = processor.finish().remove(1);
@@ -213,7 +229,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             [first_row].into_iter(),
         );
         let mut processor = VmProcessor::new(
-            row_offset,
+            RowIndex::from_degree(row_offset, self.fixed_data.degree),
             self.fixed_data,
             &self.identities,
             &self.witnesses,

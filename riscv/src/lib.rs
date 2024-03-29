@@ -9,6 +9,7 @@ use std::{
 };
 
 use mktemp::Temp;
+use powdr_number::FieldElement;
 use serde_json::Value as JsonValue;
 use std::fs;
 
@@ -28,7 +29,7 @@ type Expression = powdr_asm_utils::ast::Expression<FunctionKind>;
 /// Compiles a rust file all the way down to PIL and generates
 /// fixed and witness columns.
 #[allow(clippy::print_stderr)]
-pub fn compile_rust(
+pub fn compile_rust<T: FieldElement>(
     file_name: &str,
     output_dir: &Path,
     force_overwrite: bool,
@@ -69,7 +70,7 @@ pub fn compile_rust(
         log::info!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
     }
 
-    compile_riscv_asm_bundle(
+    compile_riscv_asm_bundle::<T>(
         file_name,
         riscv_asm,
         output_dir,
@@ -80,7 +81,7 @@ pub fn compile_rust(
 }
 
 #[allow(clippy::print_stderr)]
-pub fn compile_riscv_asm_bundle(
+pub fn compile_riscv_asm_bundle<T: FieldElement>(
     original_file_name: &str,
     riscv_asm_files: BTreeMap<String, String>,
     output_dir: &Path,
@@ -104,7 +105,7 @@ pub fn compile_riscv_asm_bundle(
         return None;
     }
 
-    let powdr_asm = compiler::compile(riscv_asm_files, coprocessors, with_bootloader);
+    let powdr_asm = compiler::compile::<T>(riscv_asm_files, coprocessors, with_bootloader);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -114,7 +115,7 @@ pub fn compile_riscv_asm_bundle(
 
 /// Compiles a riscv asm file all the way down to PIL and generates
 /// fixed and witness columns.
-pub fn compile_riscv_asm(
+pub fn compile_riscv_asm<T: FieldElement>(
     original_file_name: &str,
     file_names: impl Iterator<Item = String>,
     output_dir: &Path,
@@ -122,7 +123,7 @@ pub fn compile_riscv_asm(
     coprocessors: &CoProcessors,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
-    compile_riscv_asm_bundle(
+    compile_riscv_asm_bundle::<T>(
         original_file_name,
         file_names
             .map(|name| {
@@ -220,7 +221,7 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
 
     let args = as_ref![
         OsStr;
-        "+nightly-2023-01-03",
+        "+nightly-2024-02-01",
         "build",
         "--release",
         "-Z",

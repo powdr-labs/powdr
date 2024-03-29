@@ -9,12 +9,13 @@ use powdr_ast::asm_analysis::{
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::NamespacedPolynomialReference;
 use powdr_ast::parsed::{
-    asm::{OperationId, Param, ParamList, Params},
+    asm::{OperationId, Param, Params},
     Expression,
 };
 use powdr_ast::SourceRef;
-use powdr_number::FieldElement;
+use powdr_number::{BigUint, FieldElement};
 
+use crate::common::{instruction_flag, RETURN_NAME};
 use crate::{
     common::{input_at, output_at, RESET_NAME},
     utils::{
@@ -26,11 +27,11 @@ use crate::{
 /// Substitute all visited columns inside expressions of `s`
 /// This *only* applies to expressions, so for example identifiers in the left hand side of statements are not substituted
 /// This is fine in this case since inputs are only present in expressions
-fn substitute_name_in_statement_expressions<T>(
-    s: &mut FunctionStatement<T>,
+fn substitute_name_in_statement_expressions(
+    s: &mut FunctionStatement,
     substitution: &HashMap<String, String>,
 ) {
-    fn substitute<T>(e: &mut Expression<T>, substitution: &HashMap<String, String>) {
+    fn substitute(e: &mut Expression, substitution: &HashMap<String, String>) {
         if let Expression::Reference(r) = e {
             if let Some(n) = r.try_to_identifier() {
                 if let Some(v) = substitution.get(n).cloned() {
@@ -44,19 +45,17 @@ fn substitute_name_in_statement_expressions<T>(
 }
 
 /// Pad the arguments in the `return` statements with zeroes to match the maximum number of outputs
-fn pad_return_arguments<T: FieldElement>(s: &mut FunctionStatement<T>, output_count: usize) {
+fn pad_return_arguments(s: &mut FunctionStatement, output_count: usize) {
     if let FunctionStatement::Return(ret) = s {
         ret.values = std::mem::take(&mut ret.values)
             .into_iter()
-            .chain(repeat(Expression::Number(T::from(0))))
+            .chain(repeat(Expression::Number(0u32.into(), None)))
             .take(output_count)
             .collect();
     };
 }
 
-pub fn generate_machine_rom<T: FieldElement>(
-    mut machine: Machine<T>,
-) -> (Machine<T>, Option<Rom<T>>) {
+pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, Option<Rom>) {
     if !machine.has_pc() {
         // do nothing, there is no rom to be generated
         (machine, None)
@@ -89,7 +88,7 @@ pub fn generate_machine_rom<T: FieldElement>(
         // generate the rom
         // the functions are already batched, we just batch the dispatcher manually here
 
-        let mut rom: Vec<Batch<T>> = vec![];
+        let mut rom: Vec<Batch> = vec![];
 
         // add the beginning of the dispatcher
         rom.extend(vec![
@@ -105,18 +104,12 @@ pub fn generate_machine_rom<T: FieldElement>(
         // the number of inputs is the max of the number of inputs needed in each function
         let input_count = machine
             .functions()
-            .map(|f| f.params.inputs.params.len())
+            .map(|f| f.params.inputs.len())
             .max()
             .unwrap_or(0);
         let output_count = machine
             .functions()
-            .map(|f| {
-                f.params
-                    .outputs
-                    .as_ref()
-                    .map(|o| o.params.len())
-                    .unwrap_or(0)
-            })
+            .map(|f| f.params.outputs.len())
             .max()
             .unwrap_or(0);
         // create one read-only register for each input
@@ -133,11 +126,11 @@ pub fn generate_machine_rom<T: FieldElement>(
 
         // turn each function into an operation, setting the operation_id to the current position in the ROM
         for callable in machine.callable.iter_mut() {
-            let operation_id = T::from(rom.len() as u64);
+            let operation_id = BigUint::from(rom.len() as u64);
 
             let name = callable.name;
 
-            let function: &mut FunctionSymbol<T> = match callable.symbol {
+            let function: &mut FunctionSymbol = match callable.symbol {
                 CallableSymbol::Function(f) => f,
                 CallableSymbol::Operation(_) => unreachable!(),
             };
@@ -146,38 +139,33 @@ pub fn generate_machine_rom<T: FieldElement>(
             let input_substitution = function
                 .params
                 .inputs
-                .params
                 .iter()
                 .enumerate()
                 .map(|(index, param)| (param.name.clone(), input_at(index)))
                 .collect();
 
-            let operation_inputs = ParamList {
-                params: function
-                    .params
-                    .inputs
-                    .params
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| Param {
-                        name: input_at(i),
-                        index: None,
-                        ty: None,
-                    })
-                    .collect(),
-            };
-            let operation_outputs = function.params.outputs.clone().map(|outputs| ParamList {
-                params: outputs
-                    .params
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, _)| Param {
-                        name: output_at(i),
-                        index: None,
-                        ty: None,
-                    })
-                    .collect(),
-            });
+            let operation_inputs = function
+                .params
+                .inputs
+                .iter()
+                .enumerate()
+                .map(|(i, _)| Param {
+                    name: input_at(i),
+                    index: None,
+                    ty: None,
+                })
+                .collect();
+            let operation_outputs = function
+                .params
+                .outputs
+                .iter()
+                .enumerate()
+                .map(|(i, _)| Param {
+                    name: output_at(i),
+                    index: None,
+                    ty: None,
+                })
+                .collect();
 
             // substitute the names in the operation body and extend the return arguments
             for s in function.body.statements.iter_mut() {
@@ -225,10 +213,23 @@ pub fn generate_machine_rom<T: FieldElement>(
             parse_function_statement("_loop;"),
         ])]);
 
+        let latch = instruction_flag(RETURN_NAME);
+        let last_step = "_block_enforcer_last_step";
+        let operation_id_no_change = "_operation_id_no_change";
+
         machine.pil.extend([
             // inject the operation_id
             parse_pil_statement(&format!(
-                "col witness {operation_id}(i) query (\"hint\", {sink_id})"
+                "col witness {operation_id}(i) query std::prover::Query::Hint({sink_id});"
+            )),
+            // inject last step
+            parse_pil_statement(&format!("col constant {last_step} = [0]* + [1];")),
+            // the operation id must be constant within a block.
+            parse_pil_statement(&format!(
+                "let {operation_id_no_change} = (1 - {last_step}) * (1 - {latch});"
+            )),
+            parse_pil_statement(&format!(
+                "{operation_id_no_change} * ({operation_id}' - {operation_id}) = 0;"
             )),
         ]);
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -258,15 +259,15 @@ mod tests {
     // generate the rom from source. Note that only type checking is applied before this.
     fn generate_rom_str<T: FieldElement>(
         src: &str,
-    ) -> BTreeMap<AbsoluteSymbolPath, (Machine<T>, Option<Rom<T>>)> {
+    ) -> BTreeMap<AbsoluteSymbolPath, (Machine, Option<Rom>)> {
         let parsed = powdr_parser::parse_asm(None, src).unwrap();
         let checked = powdr_analysis::machine_check::check(parsed).unwrap();
         checked
             .items
             .into_iter()
             .filter_map(|(name, m)| match m {
-                Item::Machine(m) => Some((name, generate_machine_rom(m))),
-                Item::Expression(_) => None,
+                Item::Machine(m) => Some((name, generate_machine_rom::<T>(m))),
+                Item::Expression(_) | Item::TypeDeclaration(_) => None,
             })
             .collect()
     }

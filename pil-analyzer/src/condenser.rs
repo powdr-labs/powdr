@@ -1,87 +1,128 @@
 //! Component that turns data from the PILAnalyzer into Analyzed,
 //! i.e. it turns more complex expressions in identities to simpler expressions.
 
-use std::{collections::HashMap, fmt::Display, rc::Rc};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    iter::once,
+    str::FromStr,
+    sync::Arc,
+};
 
-use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-        Identity, IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
-        StatementIdentifier, Symbol, SymbolKind,
+        Identity, IdentityKind, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol,
+        SymbolKind,
     },
-    parsed::{visitor::ExpressionVisitable, BinaryOperator, SelectedExpressions, UnaryOperator},
+    parsed::{
+        asm::{AbsoluteSymbolPath, SymbolPath},
+        display::format_type_scheme_around_name,
+        types::{ArrayType, Type},
+        SelectedExpressions,
+    },
+    SourceRef,
 };
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::evaluator::{
-    self, evaluate, evaluate_function_call, Custom, EvalError, SymbolLookup, Value,
-};
+use crate::evaluator::{self, Definitions, SymbolLookup, Value};
 
 pub fn condense<T: FieldElement>(
     degree: Option<DegreeType>,
-    mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+    mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
-    identities: &[Identity<Expression<T>>],
+    identities: &[Identity<Expression>],
     source_order: Vec<StatementIdentifier>,
 ) -> Analyzed<T> {
-    let condenser = Condenser {
-        symbols: definitions.clone(),
-    };
+    let mut condenser = Condenser::new(&definitions);
 
     let mut condensed_identities = vec![];
-    // Condense identities and update the source order.
+    let mut intermediate_columns = HashMap::new();
+    let mut new_witness_columns = vec![];
+    // Condense identities and intermediate columns and update the source order.
     let source_order = source_order
         .into_iter()
-        .flat_map(|s| match s {
-            StatementIdentifier::Identity(index) => {
-                let identity = &identities[index];
-                condenser
-                    .condense_identity(identity)
-                    .into_iter()
-                    .map(|identity| {
-                        let id = condensed_identities.len();
-                        condensed_identities.push(identity);
-                        StatementIdentifier::Identity(id)
-                    })
-                    .collect()
+        .flat_map(|s| {
+            if let StatementIdentifier::Definition(name) = &s {
+                let mut namespace =
+                    AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
+                namespace.pop();
+                condenser.set_namespace(namespace);
             }
-            s => vec![s],
-        })
-        .collect();
-
-    // Extract intermediate columns
-    let intermediate_columns: HashMap<_, _> = definitions
-        .iter()
-        .filter_map(|(name, (symbol, definition))| {
-            if matches!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate)) {
-                let Some(FunctionValueDefinition::Expression(e)) = definition else {
-                    panic!("Expected expression")
-                };
-                Some((
-                    name.clone(),
-                    (symbol.clone(), condenser.condense_expression(e)),
-                ))
-            } else {
-                None
-            }
-        })
-        .collect();
-    definitions.retain(|name, _| !intermediate_columns.contains_key(name));
-
-    definitions.values_mut().for_each(|(_, definition)| {
-        if let Some(def) = definition {
-            def.post_visit_expressions_mut(&mut |e| {
-                if let Expression::Reference(Reference::Poly(poly)) = e {
-                    condenser.assign_id(poly)
+            let statements = match s {
+                StatementIdentifier::Identity(index) => {
+                    let identities = condenser.condense_identity(&identities[index]);
+                    identities
+                        .into_iter()
+                        .map(|identity| {
+                            let id = condensed_identities.len();
+                            condensed_identities.push(identity);
+                            StatementIdentifier::Identity(id)
+                        })
+                        .collect()
                 }
-            })
-        }
-    });
-    // TODO at some point, merge public declarations with definitions as well.
-    public_declarations
-        .values_mut()
-        .for_each(|public_decl| condenser.assign_id(&mut public_decl.polynomial));
+                StatementIdentifier::Definition(name)
+                    if matches!(
+                        definitions[&name].0.kind,
+                        SymbolKind::Poly(PolynomialType::Intermediate)
+                    ) =>
+                {
+                    let (symbol, definition) = &definitions[&name];
+                    let Some(FunctionValueDefinition::Expression(e)) = definition else {
+                        panic!("Expected expression")
+                    };
+                    let value = if let Some(length) = symbol.length {
+                        let scheme = e.type_scheme.as_ref();
+                        assert!(
+                            scheme.unwrap().vars.is_empty()
+                                && matches!(
+                                &scheme.unwrap().ty,
+                                Type::Array(ArrayType { base, length: _ })
+                                if base.as_ref() == &Type::Expr),
+                            "Intermediate column type has to be expr[], but got: {}",
+                            format_type_scheme_around_name(&name, &e.type_scheme)
+                        );
+                        let result = condenser.condense_to_array_of_algebraic_expressions(&e.e);
+                        assert_eq!(result.len() as u64, length);
+                        result
+                    } else {
+                        assert_eq!(
+                            e.type_scheme,
+                            Some(Type::Expr.into()),
+                            "Intermediate column type has to be expr, but got: {}",
+                            format_type_scheme_around_name(&name, &e.type_scheme)
+                        );
+                        vec![condenser.condense_to_algebraic_expression(&e.e)]
+                    };
+                    intermediate_columns.insert(name.clone(), (symbol.clone(), value));
+                    vec![StatementIdentifier::Definition(name)]
+                }
+                s => vec![s],
+            };
+            // Extract and prepend the new witness columns.
+            let new_wits = condenser.extract_new_witness_columns();
+            new_witness_columns.extend(new_wits.clone());
+            new_wits
+                .into_iter()
+                .map(|s| StatementIdentifier::Definition(s.absolute_name))
+                .chain(statements)
+        })
+        .collect();
+
+    definitions.retain(|name, _| !intermediate_columns.contains_key(name));
+    for wit in new_witness_columns {
+        definitions.insert(wit.absolute_name.clone(), (wit, None));
+    }
+
+    for decl in public_declarations.values_mut() {
+        let symbol = &definitions
+            .get(&decl.polynomial.name)
+            .unwrap_or_else(|| panic!("Symbol {} not found.", decl.polynomial))
+            .0;
+        let reference = &mut decl.polynomial;
+        // TODO this is the only point we still assign poly_id,
+        // maybe move it into PublicDeclaration.
+        reference.poly_id = Some(symbol.into());
+    }
     Analyzed {
         degree,
         definitions,
@@ -92,44 +133,72 @@ pub fn condense<T: FieldElement>(
     }
 }
 
-pub struct Condenser<T> {
+type SymbolCacheKey = (String, Option<Vec<Type>>);
+
+pub struct Condenser<'a, T> {
     /// All the definitions from the PIL file.
-    pub symbols: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+    symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    /// Evaluation cache.
+    symbol_values: BTreeMap<SymbolCacheKey, Arc<Value<'a, T>>>,
+    /// Current namespace (for names of generated witnesses).
+    namespace: AbsoluteSymbolPath,
+    next_identity_id: u64,
+    next_witness_id: u64,
+    /// The generated witness columns since the last extraction.
+    new_witnesses: Vec<Symbol>,
+    /// The names of all new witness columns ever generated, to avoid duplicates.
+    all_new_witness_names: HashSet<String>,
+    _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: FieldElement> Condenser<T> {
-    // TODO this is only used externally now
-    pub fn assign_id(&self, reference: &mut PolynomialReference) {
-        let (poly, _) = self
-            .symbols
-            .get(&reference.name)
-            .unwrap_or_else(|| panic!("Symbol {} not found.", reference.name));
-        if let SymbolKind::Poly(_) = &poly.kind {
-            reference.poly_id = Some(poly.into());
+impl<'a, T: FieldElement> Condenser<'a, T> {
+    pub fn new(symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
+        let next_witness_id = symbols
+            .values()
+            .filter_map(|(sym, _)| match sym.kind {
+                SymbolKind::Poly(PolynomialType::Committed) => {
+                    Some(sym.id + sym.length.unwrap_or(1))
+                }
+                _ => None,
+            })
+            .max()
+            .unwrap_or_default();
+        Self {
+            symbols,
+            symbol_values: Default::default(),
+            namespace: Default::default(),
+            next_witness_id,
+            next_identity_id: 0,
+            new_witnesses: vec![],
+            all_new_witness_names: HashSet::new(),
+            _phantom: Default::default(),
         }
     }
 
+    fn dispense_identity_id(&mut self) -> u64 {
+        let id = self.next_identity_id;
+        self.next_identity_id += 1;
+        id
+    }
+
     pub fn condense_identity(
-        &self,
-        identity: &Identity<Expression<T>>,
+        &mut self,
+        identity: &'a Identity<Expression>,
     ) -> Vec<Identity<AlgebraicExpression<T>>> {
         if identity.kind == IdentityKind::Polynomial {
-            self.condense_expression_to_constraints(identity.expression_for_poly_id())
+            self.condense_to_constraint_or_array(identity.expression_for_poly_id())
                 .into_iter()
-                .map(|constraint| Identity {
-                    id: identity.id,
-                    kind: identity.kind,
-                    source: identity.source.clone(),
-                    left: SelectedExpressions {
-                        selector: Some(constraint),
-                        expressions: vec![],
-                    },
-                    right: Default::default(),
+                .map(|constraint| {
+                    Identity::from_polynomial_identity(
+                        self.dispense_identity_id(),
+                        identity.source.clone(),
+                        constraint,
+                    )
                 })
                 .collect()
         } else {
             vec![Identity {
-                id: identity.id,
+                id: self.dispense_identity_id(),
                 kind: identity.kind,
                 source: identity.source.clone(),
                 left: self.condense_selected_expressions(&identity.left),
@@ -138,281 +207,154 @@ impl<T: FieldElement> Condenser<T> {
         }
     }
 
+    /// Sets the current namespace which will be used for newly generated witness columns.
+    pub fn set_namespace(&mut self, namespace: AbsoluteSymbolPath) {
+        self.namespace = namespace;
+    }
+
+    /// Returns the witness columns generated since the last call to this function.
+    pub fn extract_new_witness_columns(&mut self) -> Vec<Symbol> {
+        let mut new_witnesses = vec![];
+        std::mem::swap(&mut self.new_witnesses, &mut new_witnesses);
+        new_witnesses
+    }
+
     fn condense_selected_expressions(
-        &self,
-        sel_expr: &SelectedExpressions<Expression<T>>,
+        &mut self,
+        sel_expr: &'a SelectedExpressions<Expression>,
     ) -> SelectedExpressions<AlgebraicExpression<T>> {
         SelectedExpressions {
             selector: sel_expr
                 .selector
                 .as_ref()
-                .map(|expr| self.condense_expression(expr)),
+                .map(|expr| self.condense_to_algebraic_expression(expr)),
             expressions: sel_expr
                 .expressions
                 .iter()
-                .map(|expr| self.condense_expression(expr))
+                .map(|expr| self.condense_to_algebraic_expression(expr))
                 .collect(),
         }
     }
 
-    fn condense_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
-        evaluator::evaluate(e, &self)
-            .and_then(|result| match result {
-                Value::Custom(Condensate::Expression(expr)) => Ok(expr),
-                x => Ok(x.try_to_field_element()?.into()),
-            })
-            .unwrap_or_else(|err| {
-                panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
-            })
+    /// Evaluates the expression and expects it to result in an algebraic expression.
+    fn condense_to_algebraic_expression(&mut self, e: &'a Expression) -> AlgebraicExpression<T> {
+        let result = evaluator::evaluate(e, self).unwrap_or_else(|err| {
+            panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
+        });
+        match result.as_ref() {
+            Value::Expression(expr) => expr.clone(),
+            _ => panic!("Expected expression but got {result}"),
+        }
+    }
+
+    /// Evaluates the expression and expects it to result in an array of algebraic expressions.
+    fn condense_to_array_of_algebraic_expressions(
+        &mut self,
+        e: &'a Expression,
+    ) -> Vec<AlgebraicExpression<T>> {
+        let result = evaluator::evaluate(e, self).unwrap_or_else(|err| {
+            panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
+        });
+        match result.as_ref() {
+            Value::Array(items) => items
+                .iter()
+                .map(|item| match item.as_ref() {
+                    Value::Expression(expr) => expr.clone(),
+                    _ => panic!("Expected expression but got {item}"),
+                })
+                .collect(),
+            _ => panic!("Expected array of algebraic expressions, but got {result}"),
+        }
     }
 
     /// Evaluates an expression and expects a single constraint or an array of constraints.
-    fn condense_expression_to_constraints(&self, e: &Expression<T>) -> Vec<AlgebraicExpression<T>> {
-        evaluator::evaluate(e, &self)
-            .and_then(|result| match result {
-                // TODO We have to allow expressions here because the parser
-                // turns polynomial constraints "a = b" into expressions "a - b".
-                // If we change the parser, we need to distinguish between constraints
-                // like "a = b" and expressions like "f()".
-                Value::Custom(Condensate::Expression(e)) => Ok(vec![e]),
-                Value::Custom(Condensate::Identity(left, right)) => Ok(vec![left - right]),
-                Value::Array(items) => items
-                    .into_iter()
-                    .map(|item| {
-                        if let Value::Custom(c) = item {
-                            c.try_to_constraint()
-                        } else {
-                            Err(EvalError::TypeError(format!(
-                                "Expected constraint, but got {item}"
-                            )))
-                        }
-                    })
-                    .collect::<Result<_, _>>(),
-                _ => Err(EvalError::TypeError(format!(
-                    "Expected constraint or array of constraints, but got {result}"
-                ))),
-            })
-            .unwrap_or_else(|err| {
-                panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
-            })
+    fn condense_to_constraint_or_array(
+        &mut self,
+        e: &'a Expression,
+    ) -> Vec<AlgebraicExpression<T>> {
+        let result = evaluator::evaluate(e, self).unwrap_or_else(|err| {
+            panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
+        });
+        match result.as_ref() {
+            Value::Identity(left, right) => vec![left.clone() - right.clone()],
+            Value::Array(items) => items
+                .iter()
+                .map(|item| {
+                    if let Value::Identity(left, right) = item.as_ref() {
+                        left.clone() - right.clone()
+                    } else {
+                        panic!("Expected constraint, but got {item}")
+                    }
+                })
+                .collect::<Vec<_>>(),
+            _ => panic!("Expected constraint or array of constraints, but got {result}"),
+        }
     }
 }
 
-impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T> {
-    fn lookup(&self, name: &str) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
-        let name = name.to_string();
-        let (symbol, value) = &self
-            .symbols
-            .get(&name)
-            .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))?;
-
-        Ok(if matches!(symbol.kind, SymbolKind::Poly(_)) {
-            if symbol.is_array() {
-                Value::Array(
-                    symbol
-                        .array_elements()
-                        .map(|(name, poly_id)| {
-                            AlgebraicExpression::Reference(AlgebraicReference {
-                                name,
-                                poly_id,
-                                next: false,
-                            })
-                            .into()
-                        })
-                        .collect(),
-                )
-            } else {
-                AlgebraicExpression::Reference(AlgebraicReference {
-                    name,
-                    poly_id: symbol.into(),
-                    next: false,
-                })
-                .into()
-            }
-        } else {
-            match value {
-                Some(FunctionValueDefinition::Expression(value)) => {
-                    evaluator::evaluate(value, self)?
-                }
-                _ => Err(EvalError::Unsupported(
-                    "Cannot evaluate arrays and queries.".to_string(),
-                ))?,
-            }
-        })
+impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
+    fn lookup(
+        &mut self,
+        name: &'a str,
+        generic_args: Option<Vec<Type>>,
+    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+        // Cache already computed values.
+        // Note that the cache is essential because otherwise
+        // we re-evaluate simple values, which users would not expect.
+        let cache_key = (name.to_string(), generic_args.clone());
+        if let Some(v) = self.symbol_values.get(&cache_key) {
+            return Ok(v.clone());
+        }
+        let value = Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)?;
+        self.symbol_values
+            .entry(cache_key)
+            .or_insert_with(|| value.clone());
+        Ok(value)
     }
 
     fn lookup_public_reference(
         &self,
         name: &str,
-    ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
-        Ok(AlgebraicExpression::PublicReference(name.to_string()).into())
+    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+        Definitions(self.symbols).lookup_public_reference(name)
     }
 
-    fn eval_function_application(
-        &self,
-        function: Condensate<T>,
-        arguments: &[Rc<Value<'a, T, Condensate<T>>>],
-    ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
-        let Condensate::Expression(expr) = function else {
-            Err(EvalError::TypeError(format!(
-                "Expected function, but got: {function}"
-            )))?
+    fn new_witness_column(
+        &mut self,
+        name: &str,
+    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+        let name = self.find_unused_name(name);
+        let symbol = Symbol {
+            id: self.next_witness_id,
+            source: SourceRef::unknown(),
+            absolute_name: name.clone(),
+            stage: None,
+            kind: SymbolKind::Poly(PolynomialType::Committed),
+            length: None,
         };
-        match expr {
-            AlgebraicExpression::Reference(AlgebraicReference {
+        self.next_witness_id += 1;
+        self.all_new_witness_names.insert(name.clone());
+        self.new_witnesses.push(symbol.clone());
+        Ok(
+            Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
                 name,
-                poly_id,
-                next,
-            }) if poly_id.ptype == PolynomialType::Constant => {
-                let arguments = if next {
-                    assert_eq!(arguments.len(), 1);
-                    let Value::Integer(ref arg) = *arguments[0] else {
-                        return Err(EvalError::TypeError(
-                            "Expected integer argument when evaluating function with next ref."
-                                .to_string(),
-                        ));
-                    };
-                    vec![Rc::new(Value::Integer(arg + num_bigint::BigInt::from(1)))]
-                } else {
-                    arguments.to_vec()
-                };
-
-                match self.symbols[&name].1.as_ref() {
-                    Some(FunctionValueDefinition::Expression(v)) => {
-                        let function = evaluate(v, self)?;
-                        evaluate_function_call(function, arguments, self)
-                    }
-                    None => Err(EvalError::SymbolNotFound(format!(
-                        "Symbol not found in function call: {name}"
-                    ))),
-                    _ => Err(EvalError::Unsupported(format!(
-                        "Cannot evaluate arrays or queries: {name}"
-                    ))),
-                }
-            }
-            _ => Err(EvalError::TypeError(format!(
-                "Function application not supported: {expr}({})",
-                arguments.iter().format(", ")
-            ))),
-        }
+                poly_id: (&symbol).into(),
+                next: false,
+            }))
+            .into(),
+        )
     }
+}
 
-    fn eval_binary_operation(
-        &self,
-        left: Value<'a, T, Condensate<T>>,
-        op: powdr_ast::parsed::BinaryOperator,
-        right: Value<'a, T, Condensate<T>>,
-    ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
-        let left: Condensate<T> = left.try_into()?;
-        let right: Condensate<T> = right.try_into()?;
-        let left_expr = left.try_to_expression()?;
-        let right_expr = right.try_to_expression()?;
-        Ok(if op == BinaryOperator::Equal {
-            Value::Custom(Condensate::Identity(left_expr, right_expr))
-        } else {
-            AlgebraicExpression::BinaryOperation(
-                Box::new(left_expr),
-                op.try_into().map_err(EvalError::TypeError)?,
-                Box::new(right_expr),
-            )
-            .into()
-        })
-    }
-
-    fn eval_unary_operation(
-        &self,
-        op: UnaryOperator,
-        inner: Condensate<T>,
-    ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
-        let inner = inner.try_to_expression()?;
-        if op == UnaryOperator::Next {
-            let AlgebraicExpression::Reference(reference) = inner else {
-                return Err(EvalError::TypeError(format!(
-                    "Expected column for \"'\" operator, but got: {inner}"
-                )));
-            };
-
-            if reference.next {
-                return Err(EvalError::TypeError(format!(
-                    "Double application of \"'\" on: {reference}"
-                )));
-            }
-            Ok(AlgebraicExpression::Reference(AlgebraicReference {
-                next: true,
-                ..reference
+impl<'a, T> Condenser<'a, T> {
+    fn find_unused_name(&self, name: &str) -> String {
+        once(None)
+            .chain((1..).map(Some))
+            .map(|cnt| format!("{name}{}", cnt.map(|c| format!("_{c}")).unwrap_or_default()))
+            .map(|name| self.namespace.with_part(&name).to_dotted_string())
+            .find(|name| {
+                !self.symbols.contains_key(name) && !self.all_new_witness_names.contains(name)
             })
-            .into())
-        } else {
-            Ok(AlgebraicExpression::UnaryOperation(
-                op.try_into().map_err(EvalError::TypeError)?,
-                Box::new(inner),
-            )
-            .into())
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Debug)]
-enum Condensate<T> {
-    Expression(AlgebraicExpression<T>),
-    Identity(AlgebraicExpression<T>, AlgebraicExpression<T>),
-}
-
-impl<T: FieldElement> Condensate<T> {
-    pub fn try_to_expression(self) -> Result<AlgebraicExpression<T>, EvalError> {
-        match self {
-            Condensate::Expression(e) => Ok(e),
-            Condensate::Identity(left, right) => Err(EvalError::TypeError(format!(
-                "Expected expression, got identity: {left} = {right}."
-            ))),
-        }
-    }
-    pub fn try_to_constraint(self) -> Result<AlgebraicExpression<T>, EvalError> {
-        match self {
-            Condensate::Expression(e) => Err(EvalError::TypeError(format!(
-                "Expected constraint but got expression: {e}"
-            ))),
-            Condensate::Identity(left, right) => Ok(left - right),
-        }
-    }
-}
-
-impl<T: Display> Display for Condensate<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Condensate::Expression(expr) => write!(f, "{expr}"),
-            Condensate::Identity(left, right) => write!(f, "{left} = {right}"),
-        }
-    }
-}
-
-impl<T: FieldElement> Custom for Condensate<T> {
-    fn type_name(&self) -> String {
-        match self {
-            Condensate::Expression(_) => "expr".to_string(),
-            Condensate::Identity(_, _) => "identity".to_string(),
-        }
-    }
-}
-
-impl<'a, T: FieldElement> TryFrom<Value<'a, T, Self>> for Condensate<T> {
-    type Error = EvalError;
-
-    fn try_from(value: Value<'a, T, Self>) -> Result<Self, Self::Error> {
-        match value {
-            Value::FieldElement(_) | Value::Integer(_) => {
-                Ok(Condensate::Expression(value.try_to_field_element()?.into()))
-            }
-            Value::Custom(v) => Ok(v),
-            value => Err(EvalError::TypeError(format!(
-                "Expected algebraic expression, got {value}"
-            ))),
-        }
-    }
-}
-
-impl<'a, T: FieldElement> From<AlgebraicExpression<T>> for Value<'a, T, Condensate<T>> {
-    fn from(expr: AlgebraicExpression<T>) -> Self {
-        Value::Custom(Condensate::Expression(expr))
+            .unwrap()
     }
 }

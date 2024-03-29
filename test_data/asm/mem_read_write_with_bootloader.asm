@@ -1,3 +1,5 @@
+use std::utils::force_bool;
+
 machine MemReadWrite {
     reg pc[@pc];
     reg X[<=];
@@ -24,7 +26,15 @@ machine MemReadWrite {
     // Memory operation flags
     col witness m_is_write;
     col witness m_is_bootloader_write;
-    col witness m_is_read;
+
+    col witness m_selector1;
+    col witness m_selector2;
+    col witness m_selector3;
+    force_bool(m_selector1);
+    force_bool(m_selector2);
+    force_bool(m_selector3);
+    (1 - m_selector1 - m_selector2 - m_selector3) * m_is_write = 0;
+    (1 - m_selector1 - m_selector2 - m_selector3) * m_is_bootloader_write = 0;
 
     // positive numbers (assumed to be much smaller than the field order)
     col fixed POSITIVE(i) { i + 1 };
@@ -50,11 +60,7 @@ machine MemReadWrite {
 
     // All operation flags are boolean and either all 0 or exactly 1 is set.
     m_is_write * (1 - m_is_write) = 0;
-    m_is_read * (1 - m_is_read) = 0;
     m_is_bootloader_write * (1 - m_is_bootloader_write) = 0;
-    m_is_read * m_is_write = 0;
-    m_is_read * m_is_bootloader_write = 0;
-    m_is_bootloader_write * m_is_write = 0;
 
     // If the next line is a read and we stay at the same address, then the
     // value cannot change.
@@ -64,9 +70,10 @@ machine MemReadWrite {
     m_change * (1 - m_is_bootloader_write') = 0;
 
     instr assert_zero X { XIsZero = 1 }
-    instr mstore X { { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value } }
-    instr mstore_bootloader X { { ADDR, STEP, X } is m_is_bootloader_write { m_addr, m_step, m_value } }
-    instr mload -> X { { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value } }
+    let operation_id = m_is_write + 2 * m_is_bootloader_write;
+    instr mload -> X { { 0, ADDR, STEP, X } is m_selector1 { operation_id, m_addr, m_step, m_value } }
+    instr mstore X { { 1, ADDR, STEP, X } is m_selector2 { operation_id, m_addr, m_step, m_value } }
+    instr mstore_bootloader X { { 2, ADDR, STEP, X } is m_selector3 { operation_id, m_addr, m_step, m_value } }
 
     function main {
         ADDR <=X= 4;

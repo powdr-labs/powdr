@@ -1,12 +1,12 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     fmt,
 };
 
 use itertools::Itertools;
 use powdr_asm_utils::{
     ast::{BinaryOpKind, UnaryOpKind},
-    data_parser::{self, DataValue},
+    data_parser,
     data_storage::{store_data_objects, SingleDataValue},
     parser::parse_asm,
     reachability::{self, symbols_in_args},
@@ -15,8 +15,9 @@ use powdr_asm_utils::{
     },
     Architecture,
 };
+use powdr_number::{FieldElement, KnownField};
 
-use crate::continuations::bootloader::{bootloader, bootloader_preamble};
+use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
 use crate::coprocessors::*;
 use crate::disambiguator;
 use crate::parser::RiscParser;
@@ -102,7 +103,7 @@ impl Architecture for RiscvArchitecture {
 }
 
 /// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
-pub fn compile(
+pub fn compile<T: FieldElement>(
     mut assemblies: BTreeMap<String, String>,
     coprocessors: &CoProcessors,
     with_bootloader: bool,
@@ -116,6 +117,10 @@ pub fn compile(
         .insert("__runtime".to_string(), runtime(coprocessors))
         .is_none());
 
+    assert!(assemblies
+        .insert("__extra_symbols".to_string(), EXTRA_SYMBOLS.to_string())
+        .is_none());
+
     // TODO remove unreferenced files.
     let (mut statements, file_ids) = disambiguator::disambiguate(
         assemblies
@@ -123,70 +128,84 @@ pub fn compile(
             .map(|(name, contents)| (name, parse_asm(RiscParser::default(), &contents)))
             .collect(),
     );
-    let (mut objects, object_order) = data_parser::extract_data_objects(&statements);
-    assert_eq!(objects.keys().len(), object_order.len());
+    let mut data_sections = data_parser::extract_data_objects(&statements);
 
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)
-    reachability::filter_reachable_from::<_, _, RiscvArchitecture>(
+    let data_labels = reachability::filter_reachable_from::<_, _, RiscvArchitecture>(
         "__runtime_start",
         &mut statements,
-        &mut objects,
+        &mut data_sections,
     );
 
     // Replace dynamic references to code labels
-    replace_dynamic_label_references(&mut statements, &objects);
+    replace_dynamic_label_references(&mut statements, &data_labels);
 
     // Remove the riscv asm stub function, which is used
     // for compilation, and will not be called.
     statements = replace_coprocessor_stubs(statements, coprocessors).collect::<Vec<_>>();
 
-    let sorted_objects = object_order
-        .into_iter()
-        .filter_map(|n| {
-            let value = objects.get_mut(&n).map(std::mem::take);
-            value.map(|v| (n, v))
-        })
-        .collect::<Vec<_>>();
-    let (data_code, data_positions) = store_data_objects(
-        &sorted_objects,
-        data_start,
-        &mut |addr, value| match value {
-            SingleDataValue::Value(v) => {
-                vec![format!("mstore 0x{addr:x}, 0x{v:x};")]
+    let mut initial_mem = Vec::new();
+    let mut data_code = Vec::new();
+    let data_positions =
+        store_data_objects(data_sections, data_start, &mut |label, addr, value| {
+            if let Some(label) = label {
+                let comment = format!(" // data {label}");
+                if with_bootloader && !matches!(value, SingleDataValue::LabelReference(_)) {
+                    &mut initial_mem
+                } else {
+                    &mut data_code
+                }
+                .push(comment);
             }
-            SingleDataValue::LabelReference(sym) => {
-                // TODO should be possible without temporary
-                vec![
-                    format!("tmp1 <== load_label({});", escape_label(sym)),
-                    format!("mstore 0x{addr:x}, tmp1;"),
-                ]
-            }
-            SingleDataValue::Offset(_, _) => {
-                unimplemented!();
-                /*
-                object_code.push(format!("addr <=X= 0x{pos:x};"));
+            match value {
+                SingleDataValue::Value(v) => {
+                    if with_bootloader {
+                        // Instead of generating the data loading code, we store it
+                        // in the variable that will be used as the initial memory
+                        // snapshot, committed by the bootloader.
+                        initial_mem.push(format!("(0x{addr:x}, 0x{v:x})"));
+                    } else {
+                        // There is no bootloader to commit to memory, so we have to
+                        // load it explicitly.
+                        data_code.push(format!("mstore 0x{addr:x}, 0x{v:x};"));
+                    }
+                }
+                SingleDataValue::LabelReference(sym) => {
+                    // The label value is not known at this point, so we have to
+                    // load it via code, irrespectively of bootloader availability.
+                    //
+                    // TODO should be possible without temporary
+                    data_code.extend([
+                        format!("tmp1 <== load_label({});", escape_label(sym)),
+                        format!("mstore 0x{addr:x}, tmp1;"),
+                    ]);
+                }
+                SingleDataValue::Offset(_, _) => {
+                    unimplemented!();
+                    /*
+                    object_code.push(format!("addr <=X= 0x{pos:x};"));
 
-                I think this solution should be fine but hard to say without
-                an actual code snippet that uses it.
+                    I think this solution should be fine but hard to say without
+                    an actual code snippet that uses it.
 
-                // TODO should be possible without temporary
-                object_code.extend([
-                    format!("tmp1 <== load_label({});", escape_label(a)),
-                    format!("tmp2 <== load_label({});", escape_label(b)),
-                    // TODO check if registers match
-                    "mstore wrap(tmp1 - tmp2);".to_string(),
-                ]);
-                */
+                    // TODO should be possible without temporary
+                    object_code.extend([
+                        format!("tmp1 <== load_label({});", escape_label(a)),
+                        format!("tmp2 <== load_label({});", escape_label(b)),
+                        // TODO check if registers match
+                        "mstore wrap(tmp1 - tmp2);".to_string(),
+                    ]);
+                    */
+                }
             }
-        },
-    );
+        });
 
     let submachine_init = call_every_submachine(coprocessors);
-    let bootloader_lines = if with_bootloader {
-        let bootloader = bootloader(&submachine_init);
-        log::debug!("Adding Bootloader:\n{}", bootloader);
-        bootloader
+    let bootloader_and_shutdown_routine_lines = if with_bootloader {
+        let bootloader_and_shutdown_routine = bootloader_and_shutdown_routine(&submachine_init);
+        log::debug!("Adding Bootloader:\n{}", bootloader_and_shutdown_routine);
+        bootloader_and_shutdown_routine
             .split('\n')
             .map(|l| l.to_string())
             .collect::<Vec<_>>()
@@ -194,25 +213,33 @@ pub fn compile(
         submachine_init
     };
 
-    let program: Vec<String> = file_ids
+    let mut program: Vec<String> = file_ids
         .into_iter()
         .map(|(id, dir, file)| format!(".debug file {id} {} {};", quote(&dir), quote(&file)))
-        .chain(bootloader_lines)
-        .chain(["call __data_init;".to_string()])
-        .chain([
-            format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-            "call __runtime_start;".to_string(),
-            "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
-        ])
-        .chain(
-            substitute_symbols_with_values(statements, &data_positions)
-                .into_iter()
-                .flat_map(|v| process_statement(v, coprocessors)),
-        )
-        .chain(["// This is the data initialization routine.\n__data_init:".to_string()])
-        .chain(data_code)
-        .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
+        .chain(bootloader_and_shutdown_routine_lines)
         .collect();
+    if !data_code.is_empty() {
+        program.push("x1 <== jump(__data_init);".to_string());
+    }
+    program.extend([
+        format!("// Set stack pointer\nx2 <=X= {stack_start};"),
+        "x1 <== jump(__runtime_start);".to_string(),
+        "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
+    ]);
+    program.extend(
+        substitute_symbols_with_values(statements, &data_positions)
+            .into_iter()
+            .flat_map(|v| process_statement(v, coprocessors)),
+    );
+    if !data_code.is_empty() {
+        program.extend(
+        ["// This is the data initialization routine.\n__data_init:".to_string()].into_iter()
+        .chain(data_code)
+        .chain([
+            "// This is the end of the data initialization routine.\ntmp1 <== jump_dyn(x1);"
+                .to_string(),
+        ]));
+    }
 
     // The program ROM needs to fit the degree, so we use the next power of 2.
     let degree = program.len().ilog2() + 1;
@@ -230,10 +257,25 @@ pub fn compile(
     assert!((18..=20).contains(&degree));
     let degree = 1 << degree;
 
+    let mut imports = vec![
+        "use std::binary::Binary;",
+        "use std::shift::Shift;",
+        "use std::split::split_gl::SplitGL;",
+    ];
+    imports.extend(coprocessors.machine_imports());
+
+    let mut declarations = vec![
+        ("binary", "Binary"),
+        ("shift", "Shift"),
+        ("split_gl", "SplitGL"),
+    ];
+    declarations.extend(coprocessors.declarations());
+
     riscv_machine(
-        &coprocessors.machine_imports(),
-        &preamble(degree, coprocessors, with_bootloader),
-        &coprocessors.declarations(),
+        &imports,
+        &preamble::<T>(degree, coprocessors, with_bootloader),
+        initial_mem,
+        &declarations,
         program,
     )
 }
@@ -241,22 +283,19 @@ pub fn compile(
 /// Replace certain patterns of references to code labels by
 /// special instructions. We ignore any references to data objects
 /// because they will be handled differently.
-fn replace_dynamic_label_references(
-    statements: &mut Vec<Statement>,
-    data_objects: &BTreeMap<String, Vec<DataValue>>,
-) {
+fn replace_dynamic_label_references(statements: &mut Vec<Statement>, data_labels: &HashSet<&str>) {
     /*
     Find patterns of the form
     lui	a0, %hi(LABEL)
     addi	s10, a0, %lo(LABEL)
     -
-    turn this into the pseudo-riscv-instruction
-    load_dynamic s10, LABEL
+    turn this into the pseudoinstruction
+    li s10, LABEL
     which is then turned into
 
     s10 <== load_label(LABEL)
 
-    It gets more complicated by the fact that sometimes, labels
+    It gets complicated by the fact that sometimes, labels
     and debugging directives occur between the two statements
     matching that pattern...
     */
@@ -272,7 +311,7 @@ fn replace_dynamic_label_references(
     let mut to_delete = BTreeSet::default();
     for (i1, i2) in instruction_indices.into_iter().tuple_windows() {
         if let Some(r) =
-            replace_dynamic_label_reference(&statements[i1], &statements[i2], data_objects)
+            replace_dynamic_label_reference(&statements[i1], &statements[i2], data_labels)
         {
             to_delete.insert(i1);
             statements[i2] = r;
@@ -286,7 +325,7 @@ fn replace_dynamic_label_references(
 fn replace_dynamic_label_reference(
     s1: &Statement,
     s2: &Statement,
-    data_objects: &BTreeMap<String, Vec<DataValue>>,
+    data_labels: &HashSet<&str>,
 ) -> Option<Statement> {
     let Statement::Instruction(instr1, args1) = s1 else {
         return None;
@@ -314,11 +353,11 @@ fn replace_dynamic_label_reference(
     let Expression::Symbol(label2) = expr2.as_ref() else {
         return None;
     };
-    if r1 != r3 || label1 != label2 || data_objects.contains_key(label1) {
+    if r1 != r3 || label1 != label2 || data_labels.contains(label1.as_str()) {
         return None;
     }
     Some(Statement::Instruction(
-        "load_dynamic".to_string(),
+        "li".to_string(),
         vec![
             Argument::Register(*r2),
             Argument::Expression(Expression::Symbol(label1.clone())),
@@ -371,6 +410,7 @@ fn substitute_symbols_with_values(
                 Expression::UnaryOp(op, subexpr) => {
                     if let Expression::Number(num) = subexpr.as_ref() {
                         let result = match op {
+                            UnaryOpKind::BitwiseNot => !num,
                             UnaryOpKind::Negation => -num,
                         };
                         *expression = Expression::Number(result);
@@ -413,6 +453,7 @@ fn substitute_symbols_with_values(
 fn riscv_machine(
     machines: &[&str],
     preamble: &str,
+    initial_memory: Vec<String>,
     submachines: &[(&str, &str)],
     program: Vec<String>,
 ) -> String {
@@ -424,6 +465,10 @@ machine Main {{
 
 {}
 
+let initial_memory: (fe, fe)[] = [
+{}
+];
+
     function main {{
 {}
     }}
@@ -432,24 +477,31 @@ machine Main {{
         machines.join("\n"),
         submachines
             .iter()
-            .map(|(instance, ty)| format!("\t\t{} {};", ty, instance))
-            .collect::<Vec<_>>()
-            .join("\n"),
+            .format_with("\n", |(instance, ty), f| f(&format_args!(
+                "\t\t{ty} {instance};"
+            ))),
         preamble,
+        initial_memory
+            .into_iter()
+            .format_with(",\n", |line, f| f(&format_args!("\t\t{line}"))),
         program
             .into_iter()
-            .map(|line| format!("\t\t{line}"))
-            .collect::<Vec<_>>()
-            .join("\n")
+            .format_with("\n", |line, f| f(&format_args!("\t\t{line}"))),
     )
 }
 
-fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> String {
+fn preamble<T: FieldElement>(
+    degree: u64,
+    coprocessors: &CoProcessors,
+    with_bootloader: bool,
+) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
         bootloader_preamble()
     } else {
         "".to_string()
     };
+
+    let mul_instruction = mul_instruction::<T>();
 
     format!("degree {degree};")
         + r#"
@@ -488,12 +540,10 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
 
     // ============== control-flow instructions ==============
 
-    instr jump l: label { pc' = l }
     instr load_label l: label -> X { X = l }
-    instr jump_dyn X { pc' = X }
-    instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
-    instr call l: label { pc' = l, x1' = pc + 1 }
-    instr ret { pc' = x1 }
+
+    instr jump l: label -> Y { pc' = l, Y = pc + 1}
+    instr jump_dyn X -> Y { pc' = X, Y = pc + 1}
 
     instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
     instr branch_if_zero X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
@@ -518,6 +568,18 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
 
     instr is_equal_zero X -> Y { Y = XIsZero }
     instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
+
+    // ================= binary/bitwise instructions =================
+    instr and Y, Z -> X ~ binary.and;
+    instr or Y, Z -> X ~ binary.or;
+    instr xor Y, Z -> X ~ binary.xor;
+
+    // ================= shift instructions =================
+    instr shl Y, Z -> X ~ shift.shl;
+    instr shr Y, Z -> X ~ shift.shr;
+
+    // ================== wrapping instructions ==============
+    instr split_gl Z -> X, Y ~ split_gl.split;
 
     // ================= coprocessor substitution instructions =================
 "# + &coprocessors.instructions()
@@ -614,7 +676,15 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
         // quotient is 32 bits:
         Z = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
+"# + mul_instruction
+}
 
+fn mul_instruction<T: FieldElement>() -> &'static str {
+    match T::known_field().expect("Unknown field!") {
+        KnownField::Bn254Field => {
+            // The BN254 field can fit any 64-bit number, so we can naively de-compose
+            // Z * W into 8 bytes and put them together to get the upper and lower word.
+            r#"
     // Multiply two 32-bits unsigned, return the upper and lower unsigned 32-bit
     // halves of the result.
     // X is the lower half (least significant bits)
@@ -625,6 +695,19 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
         Y = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
     }
 "#
+        }
+        KnownField::GoldilocksField => {
+            // The Goldilocks field cannot fit some 64-bit numbers, so we have to use
+            // the split machine. Note that it can fit a product of two 32-bit numbers.
+            r#"
+    // Multiply two 32-bits unsigned, return the upper and lower unsigned 32-bit
+    // halves of the result.
+    // X is the lower half (least significant bits)
+    // Y is the higher half (most significant bits)
+    instr mul Z, W -> X, Y ~ split_gl.split Z * W -> X, Y;
+"#
+        }
+    }
 }
 
 fn memory(with_bootloader: bool) -> String {
@@ -641,18 +724,23 @@ fn memory(with_bootloader: bool) -> String {
     //   associated with it). In that case, `m_change` can be 0 everywhere.
     let bootloader_specific_parts = if with_bootloader {
         r#"
-    // Memory operation flags
+    // Memory operation flags: If none is active, it's a read.
     col witness m_is_write;
     col witness m_is_bootloader_write;
-    col witness m_is_read;
-
-    // All operation flags are boolean and either all 0 or exactly 1 is set.
     std::utils::force_bool(m_is_write);
-    std::utils::force_bool(m_is_read);
     std::utils::force_bool(m_is_bootloader_write);
-    m_is_read * m_is_write = 0;
-    m_is_read * m_is_bootloader_write = 0;
-    m_is_bootloader_write * m_is_write = 0;
+
+    // Selectors
+    col witness m_selector_read;
+    col witness m_selector_write;
+    col witness m_selector_bootloader_write;
+    std::utils::force_bool(m_selector_read);
+    std::utils::force_bool(m_selector_write);
+    std::utils::force_bool(m_selector_bootloader_write);
+
+    // No selector active -> no write
+    (1 - m_selector_read - m_selector_write - m_selector_bootloader_write) * m_is_write = 0;
+    (1 - m_selector_read - m_selector_write - m_selector_bootloader_write) * m_is_bootloader_write = 0;
 
     // The first operation of a new address has to be a bootloader write
     m_change * (1 - m_is_bootloader_write') = 0;
@@ -668,23 +756,31 @@ fn memory(with_bootloader: bool) -> String {
     // value cannot change.
     (1 - m_is_write' - m_is_bootloader_write') * (1 - m_change) * (m_value' - m_value) = 0;
 
+    col operation_id = m_is_write + 2 * m_is_bootloader_write;
+
     /// Like mstore, but setting the m_is_bootloader_write flag.
     instr mstore_bootloader Y, Z {
-        { X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_is_bootloader_write { m_addr, m_step, m_value },
+        { 2, X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_selector_bootloader_write { operation_id, m_addr, m_step, m_value },
         // Wrap the addr value
         Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
 "#
     } else {
         r#"
-    // Memory operation flags
+    // Memory operation flags: If none is active, it's a read.
     col witness m_is_write;
-    col witness m_is_read;
-
-    // All operation flags are boolean and either all 0 or exactly 1 is set.
     std::utils::force_bool(m_is_write);
-    std::utils::force_bool(m_is_read);
-    m_is_read * m_is_write = 0;
+
+    // Selectors
+    col witness m_selector_read;
+    col witness m_selector_write;
+    std::utils::force_bool(m_selector_read);
+    std::utils::force_bool(m_selector_write);
+
+    // No selector active -> no write
+    (1 - m_selector_read - m_selector_write) * m_is_write = 0;
+    
+    col operation_id = m_is_write;
 
     // If the next line is a not a write and we have an address change,
     // then the value is zero.
@@ -717,7 +813,7 @@ fn memory(with_bootloader: bool) -> String {
     col witness m_diff_upper;
 
     col fixed FIRST = [1] + [0]*;
-    col fixed LAST(i) { FIRST(i + 1) };
+    let LAST = FIRST';
     col fixed STEP(i) { i };
     col fixed BIT16(i) { i & 0xffff };
 
@@ -739,8 +835,8 @@ fn memory(with_bootloader: bool) -> String {
 
     // ============== memory instructions ==============
 
-    let up_to_three = |i| i % 4;
-    let six_bits = |i| i % 2**6;
+    let up_to_three: col = |i| i % 4;
+    let six_bits: col = |i| i % 2**6;
     /// Loads one word from an address Y, where Y can be between 0 and 2**33 (sic!),
     /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
     /// Returns the loaded word and the remainder of the division by 4.
@@ -750,10 +846,11 @@ fn memory(with_bootloader: bool) -> String {
         Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z,
         { X_b1 } in { six_bits },
         {
+            0,
             X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4,
             STEP,
             X
-        } is m_is_read { m_addr, m_step, m_value }
+        } is m_selector_read { operation_id, m_addr, m_step, m_value }
         // If we could access the shift machine here, we
         // could even do the following to complete the mload:
         // { W, X, Z} in { shr.value, shr.amount, shr.amount}
@@ -762,12 +859,25 @@ fn memory(with_bootloader: bool) -> String {
     /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
     /// Y should be a multiple of 4, but this instruction does not enforce it.
     instr mstore Y, Z {
-        { X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_is_write { m_addr, m_step, m_value },
+        { 1, X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_selector_write { operation_id, m_addr, m_step, m_value },
         // Wrap the addr value
         Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
     "#
 }
+
+/// some extra symbols expected by rust code:
+/// - __rust_no_alloc_shim_is_unstable: compilation time acknowledgment that this feature is unstable.
+/// - __rust_alloc_error_handler_should_panic: needed by the default alloc error handler,
+///  not sure why it's not present in the asm.
+///  https://github.com/rust-lang/rust/blob/ae9d7b0c6434b27e4e2effe8f05b16d37e7ef33f/library/alloc/src/alloc.rs#L415
+static EXTRA_SYMBOLS: &str = r".data
+.globl __rust_alloc_error_handler_should_panic
+__rust_alloc_error_handler_should_panic: .byte 0
+.globl __rust_no_alloc_shim_is_unstable
+__rust_no_alloc_shim_is_unstable: .byte 0
+.text
+";
 
 fn runtime(coprocessors: &CoProcessors) -> String {
     [
@@ -794,15 +904,9 @@ fn runtime(coprocessors: &CoProcessors) -> String {
     ]
     .map(|n| format!(".globl {n}@plt\n.globl {n}\n.set {n}@plt, {n}\n"))
     .join("\n\n")
-        + &[
-            ("__rust_alloc", "__rg_alloc"),
-            ("__rust_dealloc", "__rg_dealloc"),
-            ("__rust_realloc", "__rg_realloc"),
-            ("__rust_alloc_zeroed", "__rg_alloc_zeroed"),
-            ("__rust_alloc_error_handler", "__rg_oom"),
-        ]
-        .map(|(n, m)| format!(".globl {n}\n.set {n}, {m}\n"))
-        .join("\n\n")
+        + &[("__rust_alloc_error_handler", "__rg_oom")]
+            .map(|(n, m)| format!(".globl {n}\n.set {n}, {m}\n"))
+            .join("\n\n")
         + &coprocessors.runtime()
 }
 
@@ -818,6 +922,10 @@ fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
             }
             (".file", _) => {
                 // We ignore ".file" directives because they have been extracted to the top.
+                vec![]
+            }
+            (".size", _) => {
+                // We ignore ".size" directives
                 vec![]
             }
             _ if directive.starts_with(".cfi_") => vec![],
@@ -899,6 +1007,10 @@ fn rro(args: &[Argument]) -> (Register, Register, u32) {
             *r2,
             expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0))),
         ),
+        [Argument::Register(r1), Argument::Expression(off)] => {
+            // If the register is not specified, it defaults to x0
+            (*r1, Register::new(0), expression_to_number(off))
+        }
         _ => panic!(),
     }
 }
@@ -911,6 +1023,10 @@ fn rrro(args: &[Argument]) -> (Register, Register, Register, u32) {
             *r3,
             expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0))),
         ),
+        [Argument::Register(r1), Argument::Register(r2), Argument::Expression(off)] => {
+            // If the register is not specified, it defaults to x0
+            (*r1, *r2, Register::new(0), expression_to_number(off))
+        }
         _ => panic!(),
     }
 }
@@ -938,18 +1054,23 @@ fn try_coprocessor_substitution(label: &str, coprocessors: &CoProcessors) -> Opt
 fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcessors) -> Vec<String> {
     match instr {
         // load/store registers
-        "li" => {
-            let (rd, imm) = ri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= {imm};"), rd)
+        "li" | "la" => {
+            // The difference between "li" and "la" in RISC-V is that the former
+            // is for loading values as is, and the later is for loading PC
+            // relative values. But since we work on a higher abstraction level,
+            // for us they are the same thing.
+            if let [_, Argument::Expression(Expression::Symbol(_))] = args {
+                let (rd, label) = rl(args);
+                only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
+            } else {
+                let (rd, imm) = ri(args);
+                only_if_no_write_to_zero(format!("{rd} <=X= {imm};"), rd)
+            }
         }
         // TODO check if it is OK to clear the lower order bits
         "lui" => {
             let (rd, imm) = ri(args);
             only_if_no_write_to_zero(format!("{rd} <=X= {};", imm << 12), rd)
-        }
-        "la" => {
-            let (rd, addr) = ri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= {};", addr), rd)
         }
         "mv" => {
             let (rd, rs) = rr(args);
@@ -1154,11 +1275,14 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         }
         "slt" => {
             let (rd, r1, r2) = rrr(args);
-            vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("tmp2 <== to_signed({r2});"),
-                format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
-            ]
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== to_signed({r1});"),
+                    format!("tmp2 <== to_signed({r2});"),
+                    format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
+                ],
+                rd,
+            )
         }
         "sltiu" => {
             let (rd, rs, imm) = rri(args);
@@ -1170,10 +1294,13 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         }
         "sgtz" => {
             let (rd, rs) = rr(args);
-            vec![
-                format!("tmp1 <== to_signed({rs});"),
-                format!("{rd} <=Y= is_positive(tmp1);"),
-            ]
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== to_signed({rs});"),
+                    format!("{rd} <=Y= is_positive(tmp1);"),
+                ],
+                rd,
+            )
         }
 
         // branching
@@ -1255,23 +1382,38 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         // jump and call
         "j" => {
             if let [label] = args {
-                vec![format!("jump {};", argument_to_escaped_symbol(label))]
+                vec![format!(
+                    "tmp1 <== jump({});",
+                    argument_to_escaped_symbol(label)
+                )]
             } else {
                 panic!()
             }
         }
         "jr" => {
             let rs = r(args);
-            vec![format!("jump_dyn {rs};")]
+            vec![format!("tmp1 <== jump_dyn({rs});")]
         }
         "jal" => {
-            let (_rd, _label) = rl(args);
-            todo!();
+            if let [label] = args {
+                vec![format!(
+                    "x1 <== jump({});",
+                    argument_to_escaped_symbol(label)
+                )]
+            } else {
+                let (rd, label) = rl(args);
+                let statement = if rd.is_zero() {
+                    format!("tmp1 <== jump({label});")
+                } else {
+                    format!("{rd} <== jump({label});")
+                };
+                vec![statement]
+            }
         }
         "jalr" => {
             // TODO there is also a form that takes more arguments
             let rs = r(args);
-            vec![format!("jump_and_link_dyn {rs};")]
+            vec![format!("x1 <== jump_dyn({rs});")]
         }
         "call" | "tail" => {
             // Depending on what symbol is called, the call is replaced by a
@@ -1287,33 +1429,35 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             };
             match (replacement, instr) {
                 (None, instr) => {
-                    let instr = if instr == "tail" { "jump" } else { instr };
                     let arg = argument_to_escaped_symbol(label);
-                    vec![format!("{instr} {arg};")]
+                    let dest = if instr == "tail" { "tmp1" } else { "x1" };
+                    vec![format!("{dest} <== jump({arg});")]
                 }
-                // Both "call" and "tail" are pseudoinstructions that are
+                // Both "call" and "tail" are pseudo-instructions that are
                 // supposed to use x6 to calculate the high bits of the
                 // destination address. Our implementation does not touch x6,
                 // but no sane program would rely on this behavior, so we are
                 // probably fine.
                 (Some(replacement), "call") => vec![replacement],
-                (Some(replacement), "tail") => vec![replacement, "ret;".to_string()],
+                (Some(replacement), "tail") => {
+                    vec![replacement, "tmp1 <== jump_dyn(x1);".to_string()]
+                }
                 (Some(_), _) => unreachable!(),
             }
         }
         "ecall" => {
             assert!(args.is_empty());
-            vec!["x10 <=X= ${ (\"input\", x10) };".to_string()]
+            vec!["x10 <=X= ${ std::prover::Query::Input(std::convert::int(std::prover::eval(x10))) };".to_string()]
         }
         "ebreak" => {
             assert!(args.is_empty());
             // This is using x0 on purpose, because we do not want to introduce
             // nondeterminism with this.
-            vec!["x0 <=X= ${ (\"print_char\", x10) };\n".to_string()]
+            vec!["x0 <=X= ${ std::prover::Query::PrintChar(std::convert::int(std::prover::eval(x10))) };\n".to_string()]
         }
         "ret" => {
             assert!(args.is_empty());
-            vec!["ret;".to_string()]
+            vec!["tmp1 <== jump_dyn(x1);".to_string()]
         }
 
         // memory access
@@ -1407,18 +1551,10 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 format!("mstore {rd} + {off} - tmp2, tmp1;"),
             ]
         }
-        "nop" => vec![],
+        "fence" | "fence.i" | "nop" => vec![],
         "unimp" => vec!["fail;".to_string()],
 
-        // Special instruction that is inserted to allow dynamic label references
-        "load_dynamic" => {
-            let (rd, label) = rl(args);
-            only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
-        }
-
-        // atomic and synchronization
-        "fence" | "fence.i" => vec![],
-
+        // atomic instructions
         insn if insn.starts_with("amoadd.w") => {
             let (rd, rs2, rs1, off) = rrro(args);
             assert_eq!(off, 0);
@@ -1439,10 +1575,10 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             let (rd, rs, off) = rro(args);
             assert_eq!(off, 0);
             // TODO misaligned access should raise misaligned address exceptions
-            let mut statments =
+            let mut statements =
                 only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs});")], rd);
-            statments.push("lr_sc_reservation <=X= 1;".into());
-            statments
+            statements.push("lr_sc_reservation <=X= 1;".into());
+            statements
         }
 
         insn if insn.starts_with("sc.w") => {

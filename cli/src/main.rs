@@ -6,36 +6,37 @@ use clap::{CommandFactory, Parser, Subcommand};
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
-use powdr_backend::{Backend, BackendType};
+use powdr_backend::BackendType;
 use powdr_number::{read_polys_csv_file, CsvRenderMode};
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
-use powdr_pipeline::{Pipeline, Stage};
+use powdr_pipeline::util::write_or_panic;
+use powdr_pipeline::Pipeline;
 use powdr_riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use powdr_riscv::{compile_riscv_asm, compile_rust};
-use std::io::{self, BufReader, BufWriter};
+use std::io::{self, BufWriter};
 use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
-/// Transforms a pipeline factory into a pipeline factory that binds CLI arguments like
+/// Transforms a pipeline into a pipeline that binds CLI arguments like
 /// the output directory and the CSV export settings to the pipeline.
 #[allow(clippy::too_many_arguments)]
 fn bind_cli_args<F: FieldElement>(
-    pipeline_factory: impl Fn() -> Pipeline<F>,
+    pipeline: Pipeline<F>,
     inputs: Vec<F>,
     output_dir: PathBuf,
     force_overwrite: bool,
+    pilo: bool,
     witness_values: Option<String>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
-) -> impl Fn() -> Pipeline<F> {
+) -> Pipeline<F> {
     let witness_values = witness_values
         .map(|csv_path| {
             let csv_file = fs::File::open(csv_path).unwrap();
-            let mut csv_writer = BufReader::new(&csv_file);
-            read_polys_csv_file::<F>(&mut csv_writer)
+            read_polys_csv_file::<F>(csv_file)
         })
-        .unwrap_or(vec![]);
+        .unwrap_or_default();
 
     let csv_mode = match csv_mode {
         CsvRenderModeCLI::SignedBase10 => CsvRenderMode::SignedBase10,
@@ -43,15 +44,16 @@ fn bind_cli_args<F: FieldElement>(
         CsvRenderModeCLI::Hex => CsvRenderMode::Hex,
     };
 
-    move || {
-        // Note that we can't just take an existing pipeline here instead of
-        // a factory, as Pipeline doesn't currently implement Clone, so we need to
-        // create a new one each time.
-        pipeline_factory()
-            .with_output(output_dir.clone(), force_overwrite)
-            .add_external_witness_values(witness_values.clone())
-            .with_witness_csv_settings(export_csv, csv_mode)
-            .with_prover_inputs(inputs.clone())
+    let pipeline = pipeline
+        .with_output(output_dir.clone(), force_overwrite)
+        .add_external_witness_values(witness_values.clone())
+        .with_witness_csv_settings(export_csv, csv_mode)
+        .with_prover_inputs(inputs.clone());
+
+    if pilo {
+        pipeline.with_pil_object()
+    } else {
+        pipeline
     }
 }
 
@@ -107,8 +109,7 @@ enum Commands {
         #[arg(short, long)]
         witness_values: Option<String>,
 
-        /// Comma-separated list of free inputs (numbers). Assumes queries to have the form
-        /// ("input", <index>).
+        /// Comma-separated list of free inputs (numbers).
         #[arg(short, long)]
         #[arg(default_value_t = String::new())]
         inputs: String,
@@ -117,6 +118,11 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
+
+        /// Whether to output the pilo PIL object.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        pilo: bool,
 
         /// Generate a proof with a given backend.
         #[arg(short, long)]
@@ -134,7 +140,7 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(CsvRenderModeCLI))]
         csv_mode: CsvRenderModeCLI,
 
-        /// Just execute in the RISCV/Powdr executor
+        /// Just execute in the RISC-V/Powdr executor
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         just_execute: bool,
@@ -172,6 +178,11 @@ enum Commands {
         #[arg(default_value_t = false)]
         force: bool,
 
+        /// Whether to output the pilo PIL object.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        pilo: bool,
+
         /// Generate a proof with a given backend
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(BackendType))]
@@ -192,7 +203,7 @@ enum Commands {
         #[arg(long)]
         coprocessors: Option<String>,
 
-        /// Just execute in the RISCV/Powdr executor
+        /// Just execute in the RISC-V/Powdr executor
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         just_execute: bool,
@@ -231,6 +242,11 @@ enum Commands {
         #[arg(default_value_t = false)]
         force: bool,
 
+        /// Whether to output the pilo PIL object.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        pilo: bool,
+
         /// Generate a proof with a given backend.
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(BackendType))]
@@ -251,7 +267,7 @@ enum Commands {
         #[arg(long)]
         coprocessors: Option<String>,
 
-        /// Just execute in the RISCV/Powdr executor
+        /// Just execute in the RISC-V/Powdr executor
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         just_execute: bool,
@@ -286,7 +302,70 @@ enum Commands {
         #[arg(long)]
         proof: Option<String>,
 
+        /// File containing previously generated verification key.
+        #[arg(long)]
+        vkey: Option<String>,
+
         /// File containing previously generated setup parameters.
+        #[arg(long)]
+        params: Option<String>,
+    },
+
+    Verify {
+        /// Input PIL file
+        file: String,
+
+        /// Directory to find the fixed values
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        dir: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Generate a proof with a given backend.
+        #[arg(short, long)]
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        backend: BackendType,
+
+        /// File containing the proof.
+        #[arg(long)]
+        proof: String,
+
+        /// File containing the verification ley.
+        #[arg(long)]
+        vkey: String,
+
+        /// File containing the params.
+        #[arg(long)]
+        params: Option<String>,
+    },
+
+    VerificationKey {
+        /// Input PIL file
+        file: String,
+
+        /// Directory to find the fixed values
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        dir: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Chosen backend.
+        #[arg(short, long)]
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        backend: BackendType,
+
+        /// File containing previously generated setup parameters.
+        /// This will be needed for SNARK verification keys but not for STARK.
         #[arg(long)]
         params: Option<String>,
     },
@@ -389,6 +468,7 @@ fn run_command(command: Commands) {
             inputs,
             output_directory,
             force,
+            pilo,
             prove_with,
             export_csv,
             csv_mode,
@@ -396,18 +476,12 @@ fn run_command(command: Commands) {
             just_execute,
             continuations,
         } => {
-            let coprocessors = match coprocessors {
-                Some(list) => {
-                    powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>())
-                        .unwrap()
-                }
-                None => powdr_riscv::CoProcessors::base(),
-            };
             call_with_field!(run_rust::<field>(
                 &file,
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
+                pilo,
                 prove_with,
                 export_csv,
                 csv_mode,
@@ -422,6 +496,7 @@ fn run_command(command: Commands) {
             inputs,
             output_directory,
             force,
+            pilo,
             prove_with,
             export_csv,
             csv_mode,
@@ -436,19 +511,13 @@ fn run_command(command: Commands) {
                 Cow::Borrowed("output")
             };
 
-            let coprocessors = match coprocessors {
-                Some(list) => {
-                    powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>())
-                        .unwrap()
-                }
-                None => powdr_riscv::CoProcessors::base(),
-            };
             call_with_field!(run_riscv_asm::<field>(
                 &name,
                 files.into_iter(),
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
+                pilo,
                 prove_with,
                 export_csv,
                 csv_mode,
@@ -459,7 +528,7 @@ fn run_command(command: Commands) {
         }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
-            match powdr_parser::parse::<GoldilocksField>(Some(&file), &contents) {
+            match powdr_parser::parse(Some(&file), &contents) {
                 Ok(ast) => println!("{ast}"),
                 Err(err) => err.output_to_stderr(),
             };
@@ -476,6 +545,7 @@ fn run_command(command: Commands) {
             witness_values,
             inputs,
             force,
+            pilo,
             prove_with,
             export_csv,
             csv_mode,
@@ -488,6 +558,7 @@ fn run_command(command: Commands) {
                 witness_values,
                 inputs,
                 force,
+                pilo,
                 prove_with,
                 export_csv,
                 csv_mode,
@@ -501,11 +572,40 @@ fn run_command(command: Commands) {
             field,
             backend,
             proof,
+            vkey,
             params,
         } => {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
-            call_with_field!(read_and_prove::<field>(pil, dir, &backend, proof, params))
+            call_with_field!(read_and_prove::<field>(
+                pil, dir, &backend, proof, vkey, params
+            ))
+        }
+        Commands::Verify {
+            file,
+            dir,
+            field,
+            backend,
+            proof,
+            params,
+            vkey,
+        } => {
+            let pil = Path::new(&file);
+            let dir = Path::new(&dir);
+            call_with_field!(read_and_verify::<field>(
+                pil, dir, &backend, proof, params, vkey
+            ))
+        }
+        Commands::VerificationKey {
+            file,
+            dir,
+            field,
+            backend,
+            params,
+        } => {
+            let pil = Path::new(&file);
+            let dir = Path::new(&dir);
+            call_with_field!(verification_key::<field>(pil, dir, &backend, params))
         }
         Commands::Setup {
             size,
@@ -525,18 +625,35 @@ fn run_command(command: Commands) {
     }
 }
 
+fn verification_key<T: FieldElement>(
+    file: &Path,
+    dir: &Path,
+    backend_type: &BackendType,
+    params: Option<String>,
+) -> Result<(), Vec<String>> {
+    let mut pipeline = Pipeline::<T>::default()
+        .from_file(file.to_path_buf())
+        .read_constants(dir)
+        .with_setup_file(params.map(PathBuf::from))
+        .with_backend(*backend_type);
+
+    let vkey_file = BufWriter::new(fs::File::create(dir.join("vkey.bin")).unwrap());
+    write_or_panic(vkey_file, |w| pipeline.export_verification_key(w))?;
+    log::info!("Wrote vkey.bin.");
+
+    Ok(())
+}
+
 fn setup<F: FieldElement>(size: u64, dir: String, backend_type: BackendType) {
     let dir = Path::new(&dir);
 
-    let backend = backend_type.factory::<F>().create(size);
-    write_backend_to_fs(backend.as_ref(), dir);
-}
-
-fn write_backend_to_fs<F: FieldElement>(be: &dyn Backend<F>, output_dir: &Path) {
-    let mut params_file = fs::File::create(output_dir.join("params.bin")).unwrap();
-    let mut params_writer = BufWriter::new(&mut params_file);
-    be.write_setup(&mut params_writer).unwrap();
-    params_writer.flush().unwrap();
+    let params_file = BufWriter::new(fs::File::create(dir.join("params.bin")).unwrap());
+    write_or_panic(params_file, |writer| {
+        backend_type
+            .factory::<F>()
+            .generate_setup(size, writer)
+            .unwrap()
+    });
     log::info!("Wrote params.bin.");
 }
 
@@ -546,14 +663,21 @@ fn run_rust<F: FieldElement>(
     inputs: Vec<F>,
     output_dir: &Path,
     force_overwrite: bool,
+    pilo: bool,
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
-    coprocessors: powdr_riscv::CoProcessors,
+    coprocessors: Option<String>,
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let (asm_file_path, asm_contents) = compile_rust(
+    let coprocessors = match coprocessors {
+        Some(list) => {
+            powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+        }
+        None => powdr_riscv::CoProcessors::base(),
+    };
+    let (asm_file_path, asm_contents) = compile_rust::<F>(
         file_name,
         output_dir,
         force_overwrite,
@@ -562,29 +686,22 @@ fn run_rust<F: FieldElement>(
     )
     .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
-    let pipeline_factory = || {
-        Pipeline::<F>::default().from_asm_string(
-            asm_contents.clone(),
-            Some(PathBuf::from(asm_file_path.to_str().unwrap())),
-        )
-    };
+    let pipeline = Pipeline::<F>::default().from_asm_string(
+        asm_contents.clone(),
+        Some(PathBuf::from(asm_file_path.to_str().unwrap())),
+    );
 
-    let pipeline_factory = bind_cli_args(
-        pipeline_factory,
+    let pipeline = bind_cli_args(
+        pipeline,
         inputs.clone(),
         output_dir.to_path_buf(),
         force_overwrite,
+        pilo,
         None,
         export_csv,
         csv_mode,
     );
-    run(
-        pipeline_factory,
-        inputs,
-        prove_with,
-        just_execute,
-        continuations,
-    )?;
+    run(pipeline, inputs, prove_with, just_execute, continuations)?;
     Ok(())
 }
 
@@ -595,14 +712,21 @@ fn run_riscv_asm<F: FieldElement>(
     inputs: Vec<F>,
     output_dir: &Path,
     force_overwrite: bool,
+    pilo: bool,
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
-    coprocessors: powdr_riscv::CoProcessors,
+    coprocessors: Option<String>,
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let (asm_file_path, asm_contents) = compile_riscv_asm(
+    let coprocessors = match coprocessors {
+        Some(list) => {
+            powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+        }
+        None => powdr_riscv::CoProcessors::base(),
+    };
+    let (asm_file_path, asm_contents) = compile_riscv_asm::<F>(
         original_file_name,
         file_names,
         output_dir,
@@ -612,29 +736,22 @@ fn run_riscv_asm<F: FieldElement>(
     )
     .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
 
-    let pipeline_factory = || {
-        Pipeline::<F>::default().from_asm_string(
-            asm_contents.clone(),
-            Some(PathBuf::from(asm_file_path.to_str().unwrap())),
-        )
-    };
+    let pipeline = Pipeline::<F>::default().from_asm_string(
+        asm_contents.clone(),
+        Some(PathBuf::from(asm_file_path.to_str().unwrap())),
+    );
 
-    let pipeline_factory = bind_cli_args(
-        pipeline_factory,
+    let pipeline = bind_cli_args(
+        pipeline,
         inputs.clone(),
         output_dir.to_path_buf(),
         force_overwrite,
+        pilo,
         None,
         export_csv,
         csv_mode,
     );
-    run(
-        pipeline_factory,
-        inputs,
-        prove_with,
-        just_execute,
-        continuations,
-    )?;
+    run(pipeline, inputs, prove_with, just_execute, continuations)?;
     Ok(())
 }
 
@@ -645,6 +762,7 @@ fn run_pil<F: FieldElement>(
     witness_values: Option<String>,
     inputs: String,
     force: bool,
+    pilo: bool,
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
@@ -653,42 +771,39 @@ fn run_pil<F: FieldElement>(
 ) -> Result<(), Vec<String>> {
     let inputs = split_inputs::<F>(&inputs);
 
-    let pipeline_factory = bind_cli_args(
-        || Pipeline::<F>::default().from_file(PathBuf::from(&file)),
+    let pipeline = bind_cli_args(
+        Pipeline::<F>::default().from_file(PathBuf::from(&file)),
         inputs.clone(),
         PathBuf::from(output_directory),
         force,
+        pilo,
         witness_values,
         export_csv,
         csv_mode,
     );
-    run(
-        pipeline_factory,
-        inputs,
-        prove_with,
-        just_execute,
-        continuations,
-    )?;
+    run(pipeline, inputs, prove_with, just_execute, continuations)?;
     Ok(())
 }
 
 fn run<F: FieldElement>(
-    pipeline_factory: impl Fn() -> Pipeline<F>,
+    mut pipeline: Pipeline<F>,
     inputs: Vec<F>,
     prove_with: Option<BackendType>,
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
     let bootloader_inputs = if continuations {
-        let pipeline = pipeline_factory().with_prover_inputs(inputs.clone());
-        rust_continuations_dry_run(pipeline)
+        pipeline = pipeline.with_prover_inputs(inputs.clone());
+        rust_continuations_dry_run(&mut pipeline)
     } else {
         vec![]
     };
 
     let generate_witness_and_prove_maybe = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
-        pipeline.advance_to(Stage::GeneratedWitness)?;
-        prove_with.map(|backend| pipeline.with_backend(backend).proof().unwrap());
+        pipeline.compute_witness().unwrap();
+        if let Some(backend) = prove_with {
+            pipeline.with_backend(backend).compute_proof().unwrap();
+        }
         Ok(())
     };
 
@@ -697,11 +812,11 @@ fn run<F: FieldElement>(
             // Already ran when computing bootloader inputs, nothing else to do.
         }
         (true, false) => {
-            let mut pipeline = pipeline_factory().with_prover_inputs(inputs);
-            pipeline.advance_to(Stage::AsmString).unwrap();
-            let program = pipeline.artifact().unwrap().to_asm_string().unwrap();
+            let mut pipeline = pipeline.with_prover_inputs(inputs);
+            let program = pipeline.compute_asm_string().unwrap().clone();
             powdr_riscv_executor::execute::<F>(
-                program,
+                &program.1,
+                powdr_riscv_executor::MemoryState::new(),
                 pipeline.data_callback().unwrap(),
                 &[],
                 powdr_riscv_executor::ExecMode::Fast,
@@ -709,13 +824,13 @@ fn run<F: FieldElement>(
         }
         (false, true) => {
             rust_continuations(
-                pipeline_factory,
+                pipeline,
                 generate_witness_and_prove_maybe,
                 bootloader_inputs,
             )?;
         }
         (false, false) => {
-            generate_witness_and_prove_maybe(pipeline_factory())?;
+            generate_witness_and_prove_maybe(pipeline)?;
         }
     }
     Ok(())
@@ -726,15 +841,45 @@ fn read_and_prove<T: FieldElement>(
     dir: &Path,
     backend_type: &BackendType,
     proof_path: Option<String>,
+    vkey: Option<String>,
     params: Option<String>,
 ) -> Result<(), Vec<String>> {
     Pipeline::<T>::default()
-        .from_file(file.to_path_buf())
-        .read_generated_witness(dir)
+        .from_maybe_pil_object(file.to_path_buf())?
+        .with_output(dir.to_path_buf(), true)
+        .read_witness(dir)
         .with_setup_file(params.map(PathBuf::from))
+        .with_vkey_file(vkey.map(PathBuf::from))
         .with_existing_proof_file(proof_path.map(PathBuf::from))
         .with_backend(*backend_type)
-        .proof()?;
+        .compute_proof()?;
+    Ok(())
+}
+
+fn read_and_verify<T: FieldElement>(
+    file: &Path,
+    dir: &Path,
+    backend_type: &BackendType,
+    proof: String,
+    params: Option<String>,
+    vkey: String,
+) -> Result<(), Vec<String>> {
+    let proof = Path::new(&proof);
+    let vkey = Path::new(&vkey).to_path_buf();
+
+    let proof = fs::read(proof).unwrap();
+
+    let mut pipeline = Pipeline::<T>::default()
+        .from_file(file.to_path_buf())
+        .read_constants(dir)
+        .with_setup_file(params.map(PathBuf::from))
+        .with_vkey_file(Some(vkey))
+        .with_backend(*backend_type);
+
+    // TODO add support for publics
+    pipeline.verify(&proof, &[vec![]])?;
+    println!("Proof is valid!");
+
     Ok(())
 }
 
@@ -744,7 +889,7 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
         "{}",
         Pipeline::<T>::default()
             .from_file(PathBuf::from(file))
-            .optimized_pil()
+            .compute_optimized_pil()
             .unwrap()
     );
 }
@@ -770,6 +915,7 @@ mod test {
             witness_values: None,
             inputs: "3,2,1,2".into(),
             force: false,
+            pilo: false,
             prove_with: Some(BackendType::PilStarkCli),
             export_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,
@@ -791,6 +937,7 @@ mod test {
                 field: FieldArgument::Bn254,
                 backend: BackendType::Halo2Mock,
                 proof: None,
+                vkey: None,
                 params: None,
             };
             run_command(prove_command);

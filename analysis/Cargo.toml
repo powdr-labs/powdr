@@ -1,7 +1,11 @@
 [package]
 name = "powdr-analysis"
-version = "0.1.0"
-edition = "2021"
+description = "powdr compiler for high level asm machines to a fully analyzed asm machine"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 powdr-asm-to-pil = { path = "../asm-to-pil" }
@@ -10,10 +14,14 @@ powdr-number = { path = "../number" }
 powdr-parser = { path = "../parser" }
 
 itertools = "^0.10"
+lazy_static = "1.4.0"
 log = "0.4.18"
 
 [dev-dependencies]
 powdr-importer = { path = "../importer" }
-pretty_assertions = "1.3.0"
+pretty_assertions = "1.4.0"
 test-log = "0.2.12"
 env_logger = "0.10.0"
+
+[package.metadata.cargo-udeps.ignore]
+development = ["env_logger"]

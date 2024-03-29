@@ -1,6 +1,6 @@
 use std::env;
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use walkdir::WalkDir;
@@ -14,7 +14,7 @@ fn main() {
 fn build_book_tests(kind: &str) {
     let out_dir = env::var("OUT_DIR").unwrap();
     let destination = Path::new(&out_dir).join(format!("{kind}_book_tests.rs"));
-    let mut test_file = File::create(&destination).unwrap();
+    let mut test_file = BufWriter::new(File::create(destination).unwrap());
 
     let dir = format!("../test_data/{kind}/book/");
     for file in WalkDir::new(&dir) {
@@ -43,4 +43,5 @@ fn {test_name}() {{
             .unwrap();
         }
     }
+    test_file.flush().unwrap();
 }

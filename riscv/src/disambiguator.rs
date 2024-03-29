@@ -44,7 +44,7 @@ fn extract_globals(statements: &[Statement]) -> HashSet<String> {
                                 panic!("Invalid .globl directive: {s}");
                             }
                         })
-                        // TODO possible wihtout collect?
+                        // TODO possible without collect?
                         .collect();
                 }
             }

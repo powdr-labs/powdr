@@ -4,6 +4,7 @@ resolver = "2"
 
 members = [
     "powdr",
+    "powdr-test",
     "number",
     "parser",
     "cli",
@@ -22,19 +23,17 @@ members = [
     "asm-utils",
     "airgen",
     "riscv-executor",
+    "schemas",
 ]
 
 exclude = [ "riscv-runtime" ]
 
-[patch."https://github.com/privacy-scaling-explorations/halo2.git"]
-# TODO change back to this once the PR is merged
-#halo2_proofs = { git = "https://github.com/appliedzkp/halo2.git", rev = "d3746109d7d38be53afc8ddae8fdfaf1f02ad1d7" }
-halo2_proofs = { git = "https://github.com/powdr-org/halo2", branch = "kilic/shuffle" }
-
-[patch.crates-io]
-# TODO change back to this once the PR is merged
-#halo2_proofs = { git = "https://github.com/appliedzkp/halo2.git", rev = "d3746109d7d38be53afc8ddae8fdfaf1f02ad1d7" }
-halo2_proofs = { git = "https://github.com/powdr-org/halo2", branch = "kilic/shuffle" }
+[workspace.package]
+version = "0.1.0-alpha.1"
+edition = "2021"
+license = "MIT"
+homepage = "https://powdr.org"
+repository = "https://github.com/powdr-labs/powdr"
 
 [profile.pr-tests]
 inherits = "dev"

@@ -1,27 +1,31 @@
 //! PIL-based optimizer
 #![deny(clippy::print_stdout)]
 
-use std::collections::{BTreeMap, HashSet};
+use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::iter::once;
 
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperator, Reference,
+    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
+    Analyzed, Expression, FunctionValueDefinition, IdentityKind, PolyID, PolynomialReference,
+    Reference, SymbolKind, TypedExpression,
 };
-use powdr_ast::analyzed::{
-    AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, IdentityKind, PolyID,
-    PolynomialReference,
-};
-use powdr_ast::parsed::visitor::ExpressionVisitable;
-
-use powdr_number::FieldElement;
+use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
+use powdr_ast::parsed::EnumDeclaration;
+use powdr_number::{BigUint, FieldElement};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
+    remove_unreferenced_definitions(&mut pil_file);
     remove_constant_fixed_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
     extract_constant_lookups(&mut pil_file);
     remove_constant_witness_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
+    remove_duplicate_identities(&mut pil_file);
+    remove_unreferenced_definitions(&mut pil_file);
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
     log::info!(
         "Removed {} witness and {} fixed columns. Total count now: {} witness and {} fixed columns.",
@@ -33,12 +37,159 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     pil_file
 }
 
+/// Removes all definitions that are not referenced by an identity, public declaration
+/// or witness column hint.
+fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    let poly_id_to_definition_name = build_poly_id_to_definition_name_lookup(pil_file);
+    let mut required_names = collect_required_names(pil_file, &poly_id_to_definition_name);
+    let mut to_process = required_names.iter().cloned().collect::<Vec<_>>();
+    while let Some(n) = to_process.pop() {
+        let symbols: Box<dyn Iterator<Item = Cow<'_, str>>> = if let Some((_, value)) =
+            pil_file.definitions.get(n.as_ref())
+        {
+            Box::new(value.iter().flat_map(|v| v.symbols()))
+        } else if let Some((_, value)) = pil_file.intermediate_columns.get(n.as_ref()) {
+            Box::new(value.iter().flat_map(|v| {
+                v.all_children().flat_map(|e| {
+                    if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
+                        Some(poly_id_to_definition_name[poly_id].into())
+                    } else {
+                        None
+                    }
+                })
+            }))
+        } else {
+            panic!("Symbol not found: {n}");
+        };
+        for s in symbols {
+            if required_names.insert(s.clone()) {
+                to_process.push(s);
+            }
+        }
+    }
+
+    let definitions_to_remove: BTreeSet<_> = pil_file
+        .definitions
+        .keys()
+        .chain(pil_file.intermediate_columns.keys())
+        .filter(|name| !required_names.contains(&Cow::from(*name)))
+        .cloned()
+        .collect();
+    pil_file.remove_definitions(&definitions_to_remove);
+}
+
+trait ReferencedSymbols {
+    /// Returns an iterator over all referenced symbols in self including type names.
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_>;
+}
+
+impl ReferencedSymbols for FunctionValueDefinition {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        match self {
+            FunctionValueDefinition::TypeDeclaration(EnumDeclaration { name: _, variants }) => {
+                Box::new(
+                    variants
+                        .iter()
+                        .flat_map(|v| &v.fields)
+                        .flat_map(|t| t.iter())
+                        .flat_map(|t| t.symbols()),
+                )
+            }
+            FunctionValueDefinition::TypeConstructor(type_name, _) => {
+                // This the type constructor of an enum variant, it references the enum itself.
+                Box::new(once(type_name.into()))
+            }
+            FunctionValueDefinition::Expression(TypedExpression {
+                type_scheme: Some(type_scheme),
+                e,
+            }) => Box::new(type_scheme.ty.symbols().chain(e.symbols())),
+            _ => Box::new(self.children().flat_map(|e| e.symbols())),
+        }
+    }
+}
+
+impl ReferencedSymbols for Expression {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        Box::new(
+            self.all_children()
+                .flat_map(|e| match e {
+                    Expression::Reference(Reference::Poly(PolynomialReference {
+                        name,
+                        generic_args,
+                        poly_id: _,
+                    })) => Some(
+                        generic_args
+                            .iter()
+                            .flat_map(|t| t.iter())
+                            .flat_map(|t| t.symbols())
+                            .chain(once(name.into())),
+                    ),
+                    _ => None,
+                })
+                .flatten(),
+        )
+    }
+}
+
+impl ReferencedSymbols for Type {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        Box::new(
+            self.contained_named_types()
+                .map(|n| n.to_dotted_string().into()),
+        )
+    }
+}
+
+/// Builds a lookup-table that can be used to turn array elements
+/// (in form of their poly ids) into the names of the arrays.
+fn build_poly_id_to_definition_name_lookup(
+    pil_file: &Analyzed<impl FieldElement>,
+) -> BTreeMap<PolyID, &String> {
+    let mut poly_id_to_definition_name = BTreeMap::new();
+    for (name, (symbol, _)) in &pil_file.definitions {
+        if matches!(symbol.kind, SymbolKind::Poly(_)) {
+            symbol.array_elements().for_each(|(_, id)| {
+                poly_id_to_definition_name.insert(id, name);
+            });
+        }
+    }
+    for (name, (symbol, _)) in &pil_file.intermediate_columns {
+        symbol.array_elements().for_each(|(_, id)| {
+            poly_id_to_definition_name.insert(id, name);
+        });
+    }
+    poly_id_to_definition_name
+}
+
+/// Collect all names that are referenced in identities and public declarations.
+fn collect_required_names<'a, T: FieldElement>(
+    pil_file: &Analyzed<T>,
+    poly_id_to_definition_name: &BTreeMap<PolyID, &'a String>,
+) -> HashSet<Cow<'a, str>> {
+    let mut required_names: HashSet<Cow<'a, str>> = Default::default();
+    required_names.extend(
+        pil_file
+            .public_declarations
+            .values()
+            .map(|p| poly_id_to_definition_name[&p.polynomial.poly_id.unwrap()].into()),
+    );
+    for id in &pil_file.identities {
+        id.pre_visit_expressions(&mut |e: &AlgebraicExpression<T>| {
+            if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
+                required_names.insert(poly_id_to_definition_name[poly_id].into());
+            }
+        });
+    }
+    required_names
+}
+
 /// Identifies fixed columns that only have a single value, replaces every
 /// reference to this column by the value and deletes the column.
 fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let constant_polys = pil_file
         .constant_polys_in_source_order()
         .iter()
+        .filter(|(p, _)| !p.is_array())
         .filter_map(|(poly, definition)| {
             let Some(definition) = definition else {
                 return None;
@@ -53,33 +204,34 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .collect::<BTreeMap<PolyID, _>>();
 
     substitute_polynomial_references(pil_file, &constant_polys);
-    pil_file.remove_polynomials(&constant_polys.keys().cloned().collect());
 }
 
 /// Checks if a fixed column defined through a function has a constant
 /// value and returns it in that case.
-fn constant_value<T: FieldElement>(function: &FunctionValueDefinition<T>) -> Option<T> {
+fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
     match function {
         FunctionValueDefinition::Array(expressions) => {
             // TODO use a proper evaluator at some point,
-            // combine with constant_evalutaor
+            // combine with constant_evaluator
             let mut values = expressions
                 .iter()
                 .filter(|e| !e.is_empty())
                 .flat_map(|e| e.pattern().iter())
                 .map(|e| match e {
-                    Expression::Number(n) => Some(n),
+                    Expression::Number(n, _) => Some(n),
                     _ => None,
                 });
             let first = values.next()??;
             if values.all(|x| x == Some(first)) {
-                Some(*first)
+                Some(first.clone())
             } else {
                 None
             }
         }
-        FunctionValueDefinition::Query(_) => None,
-        FunctionValueDefinition::Expression(_) => None,
+        FunctionValueDefinition::Query(_)
+        | FunctionValueDefinition::Expression(_)
+        | FunctionValueDefinition::TypeDeclaration(_)
+        | FunctionValueDefinition::TypeConstructor(_, _) => None,
     }
 }
 
@@ -227,6 +379,7 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         let mut c = 0usize;
         identity.right.expressions.retain(|_i| {
             c += 1;
+
             !extracted.contains(&(c - 1))
         });
     }
@@ -241,47 +394,51 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     let mut constant_polys = pil_file
         .identities
         .iter()
-        .filter_map(|id| (id.kind == IdentityKind::Polynomial).then(|| id.expression_for_poly_id()))
+        .filter(|&id| (id.kind == IdentityKind::Polynomial))
+        .map(|id| id.expression_for_poly_id())
         .filter_map(constrained_to_constant)
         .collect::<BTreeMap<PolyID, _>>();
     // We cannot remove arrays or array elements, so filter them out.
     let columns = pil_file
         .committed_polys_in_source_order()
         .iter()
-        .filter_map(|(s, _)| (!s.is_array()).then(|| s.into()))
+        .filter(|&(s, _)| (!s.is_array()))
+        .map(|(s, _)| s.into())
         .collect::<HashSet<PolyID>>();
     constant_polys.retain(|id, _| columns.contains(id));
 
     substitute_polynomial_references(pil_file, &constant_polys);
-    pil_file.remove_polynomials(&constant_polys.keys().cloned().collect());
 }
 
 /// Substitutes all references to certain polynomials by the given field elements.
 fn substitute_polynomial_references<T: FieldElement>(
     pil_file: &mut Analyzed<T>,
-    substitutions: &BTreeMap<PolyID, T>,
+    substitutions: &BTreeMap<PolyID, BigUint>,
 ) {
-    pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression<_>| {
+    pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression| {
         if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             poly_id: Some(poly_id),
+            generic_args: _,
         })) = e
         {
             if let Some(value) = substitutions.get(poly_id) {
-                *e = Expression::Number(*value);
+                *e = Expression::Number(value.clone(), Some(Type::Fe));
             }
         }
     });
     pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
         if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
             if let Some(value) = substitutions.get(poly_id) {
-                *e = AlgebraicExpression::Number(*value);
+                *e = AlgebraicExpression::Number(T::checked_from(value.clone()).unwrap());
             }
         }
     });
 }
 
-fn constrained_to_constant<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Option<(PolyID, T)> {
+fn constrained_to_constant<T: FieldElement>(
+    expr: &AlgebraicExpression<T>,
+) -> Option<(PolyID, BigUint)> {
     match expr {
         AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) => {
             match (left.as_ref(), right.as_ref()) {
@@ -289,7 +446,7 @@ fn constrained_to_constant<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Op
                 | (AlgebraicExpression::Reference(poly), AlgebraicExpression::Number(n)) => {
                     if poly.is_witness() {
                         // This also works if "next" is true.
-                        return Some((poly.poly_id, *n));
+                        return Some((poly.poly_id, n.to_arbitrary_integer()));
                     }
                 }
                 _ => {}
@@ -297,7 +454,7 @@ fn constrained_to_constant<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Op
         }
         AlgebraicExpression::Reference(poly) => {
             if poly.is_witness() {
-                return Some((poly.poly_id, 0.into()));
+                return Some((poly.poly_id, 0u32.into()));
             }
         }
         _ => {}
@@ -336,10 +493,27 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     pil_file.remove_identities(&to_remove);
 }
 
+fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    // Set of (left, right) tuples.
+    let mut identity_expressions = BTreeSet::new();
+    let to_remove = pil_file
+        .identities
+        .iter()
+        .enumerate()
+        .filter_map(|(index, identity)| {
+            match identity_expressions.insert((&identity.left, &identity.right)) {
+                false => Some(index),
+                true => None,
+            }
+        })
+        .collect();
+    pil_file.remove_identities(&to_remove);
+}
+
 #[cfg(test)]
 mod test {
     use powdr_number::GoldilocksField;
-    use powdr_pil_analyzer::pil_analyzer::process_pil_file_contents;
+    use powdr_pil_analyzer::analyze_string;
 
     use crate::optimize;
 
@@ -361,7 +535,7 @@ mod test {
     N.X = N.Y;
     N.Y = (7 * N.X);
 "#;
-        let optimized = optimize(process_pil_file_contents::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -395,7 +569,7 @@ mod test {
     N.A = (1 + N.A);
     N.Z = (1 + N.A);
 "#;
-        let optimized = optimize(process_pil_file_contents::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -411,7 +585,139 @@ mod test {
     col intermediate = N.x;
     N.intermediate = N.intermediate;
 "#;
-        let optimized = optimize(process_pil_file_contents::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
+    fn zero_sized_array() {
+        let input = r#"
+        namespace std::array(65536);
+            let<T> len: T[] -> int = [];
+        namespace N(65536);
+            col witness x[1];
+            col witness y[0];
+            let t: col = |i| std::array::len(y);
+            x[0] = t;
+    "#;
+        let expectation = r#"namespace std::array(65536);
+    let<T> len: T[] -> int = [];
+namespace N(65536);
+    col witness x[1];
+    col witness y[0];
+    col fixed t(i) { std::array::len::<expr>(N.y) };
+    N.x[0] = N.t;
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
+    fn remove_duplicates() {
+        let input = r#"namespace N(65536);
+        col witness x;
+        col fixed cnt(i) { i };
+
+        x * (x - 1) = 0;
+        x * (x - 1) = 0;
+        x * (x - 1) = 0;
+
+        { x } in { cnt };
+        { x } in { cnt };
+        { x } in { cnt };
+
+        { x + 1 } in { cnt };
+        { x } in { cnt + 1 };
+    "#;
+        let expectation = r#"namespace N(65536);
+    col witness x;
+    col fixed cnt(i) { i };
+    (N.x * (N.x - 1)) = 0;
+    { N.x } in { N.cnt };
+    { (N.x + 1) } in { N.cnt };
+    { N.x } in { (N.cnt + 1) };
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
+    fn remove_unreferenced() {
+        let input = r#"namespace N(65536);
+        col witness x;
+        col fixed cnt(i) { inc(i) };
+        let inc = |x| x + 1;
+        // these are removed
+        col witness k;
+        col k2 = k;
+        let rec: -> int = || rec();
+        let a: int -> int = |i| b(i + 1);
+        let b: int -> int = |j| 8;
+        // identity
+        { x } in { cnt };
+
+    "#;
+        let expectation = r#"namespace N(65536);
+    col witness x;
+    col fixed cnt(i) { N.inc(i) };
+    let inc: int -> int = (|x| (x + 1));
+    { N.x } in { N.cnt };
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
+    fn remove_unreferenced_parts_of_arrays() {
+        let input = r#"namespace N(65536);
+        col witness x[5];
+        let inter: expr[5] = x;
+        x[2] = inter[4];
+    "#;
+        // If we change the handling of intermediate columns,
+        // make sure that "inter" is still an array of intermediate columns.
+        let expectation = r#"namespace N(65536);
+    col witness x[5];
+    col inter[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
+    N.x[2] = N.inter[4];
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
+    fn remove_unreferenced_keep_enums() {
+        let input = r#"namespace N(65536);
+        enum X { A, B, C }
+        enum Y { D, E, F(R[]) }
+        enum R { T }
+        let t: X[] -> int = |r| 1;
+        // This references Y::F but even after type checking, the type
+        // Y is not mentioned anywhere.
+        let f: col = |i| if i == 0 { t([]) } else { (|x| 1)(Y::F([])) };
+        let x;
+        x = f;
+    "#;
+        let expectation = r#"namespace N(65536);
+    enum X {
+        A,
+        B,
+        C,
+    }
+    enum Y {
+        D,
+        E,
+        F(N::R[]),
+    }
+    enum R {
+        T,
+    }
+    let t: N::X[] -> int = (|r| 1);
+    col fixed f(i) { if (i == 0) { N.t([]) } else { (|x| 1)(N::Y::F([])) } };
+    col witness x;
+    N.x = N.f;
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
     }
 }

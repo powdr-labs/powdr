@@ -1,7 +1,11 @@
 [package]
 name = "powdr-parser-util"
-version = "0.1.0"
-edition = "2021"
+description = "powdr parser utilities"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 lalrpop-util = {version = "^0.19", features = ["lexer"]}
@@ -10,3 +14,6 @@ codespan-reporting = "^0.11"
 [dev-dependencies]
 test-log = "0.2.12"
 env_logger = "0.10.0"
+
+[package.metadata.cargo-udeps.ignore]
+development = ["env_logger"]

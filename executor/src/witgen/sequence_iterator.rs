@@ -78,7 +78,7 @@ impl DefaultSequenceIterator {
             // In the last row, we want to do one more action, processing the outer query.
             self.identities_count as i32 + 1
         } else {
-            // Otherwise, we want to process all identites + 1 action processing the prover queries
+            // Otherwise, we want to process all identities + 1 action processing the prover queries
             self.identities_count as i32
         };
 
@@ -167,8 +167,12 @@ where
 }
 
 pub enum ProcessingSequenceIterator {
+    /// The default strategy
     Default(DefaultSequenceIterator),
+    /// The machine has been run successfully before and the sequence is cached.
     Cached(<Vec<SequenceStep> as IntoIterator>::IntoIter),
+    /// The machine has been run before, but did not succeed. There is no point in trying again.
+    Incomplete,
 }
 
 impl ProcessingSequenceIterator {
@@ -176,20 +180,21 @@ impl ProcessingSequenceIterator {
         match self {
             Self::Default(it) => it.report_progress(progress_in_last_step),
             Self::Cached(_) => {} // Progress is ignored
+            Self::Incomplete => unreachable!(),
         }
     }
 
     pub fn has_steps(&self) -> bool {
         match self {
-            Self::Default(_) => true,
-            Self::Cached(it) => it.len() > 0,
+            Self::Default(_) | Self::Cached(_) => true,
+            Self::Incomplete => false,
         }
     }
 
     pub fn is_cached(&self) -> bool {
         match self {
             Self::Default(_) => false,
-            Self::Cached(_) => true,
+            Self::Cached(_) | Self::Incomplete => true,
         }
     }
 }
@@ -201,20 +206,30 @@ impl Iterator for ProcessingSequenceIterator {
         match self {
             Self::Default(it) => it.next(),
             Self::Cached(it) => it.next(),
+            Self::Incomplete => unreachable!(),
         }
     }
 }
 
+enum CacheEntry {
+    /// The machine has been run successfully before and the sequence is cached.
+    Complete(Vec<SequenceStep>),
+    /// The machine has been run before, but did not succeed. There is no point in trying again.
+    Incomplete,
+}
+
 pub struct ProcessingSequenceCache {
     block_size: usize,
+    outer_query_row: usize,
     identities_count: usize,
-    cache: BTreeMap<SequenceCacheKey, Vec<SequenceStep>>,
+    cache: BTreeMap<SequenceCacheKey, CacheEntry>,
 }
 
 impl ProcessingSequenceCache {
-    pub fn new(block_size: usize, identities_count: usize) -> Self {
+    pub fn new(block_size: usize, outer_query_row: usize, identities_count: usize) -> Self {
         ProcessingSequenceCache {
             block_size,
+            outer_query_row,
             identities_count,
             cache: Default::default(),
         }
@@ -229,10 +244,11 @@ impl ProcessingSequenceCache {
         T: FieldElement,
     {
         match self.cache.get(&left.into()) {
-            Some(cached_sequence) => {
+            Some(CacheEntry::Complete(cached_sequence)) => {
                 log::trace!("Using cached sequence");
                 ProcessingSequenceIterator::Cached(cached_sequence.clone().into_iter())
             }
+            Some(CacheEntry::Incomplete) => ProcessingSequenceIterator::Incomplete,
             None => {
                 log::trace!("Using default sequence");
                 self.get_default_sequence_iterator()
@@ -244,8 +260,7 @@ impl ProcessingSequenceCache {
         ProcessingSequenceIterator::Default(DefaultSequenceIterator::new(
             self.block_size,
             self.identities_count,
-            // Run the outer query on the last row of the block.
-            Some(self.block_size as i64 - 1),
+            Some(self.outer_query_row as i64),
         ))
     }
 
@@ -254,7 +269,10 @@ impl ProcessingSequenceCache {
         K: Copy + Ord,
         T: FieldElement,
     {
-        self.cache.entry(left.into()).or_insert(vec![]);
+        assert!(self
+            .cache
+            .insert(left.into(), CacheEntry::Incomplete)
+            .is_none());
     }
 
     pub fn report_processing_sequence<K, T>(
@@ -267,8 +285,12 @@ impl ProcessingSequenceCache {
     {
         match sequence_iterator {
             ProcessingSequenceIterator::Default(it) => {
-                self.cache.entry(left.into()).or_insert(it.progress_steps);
+                assert!(self
+                    .cache
+                    .insert(left.into(), CacheEntry::Complete(it.progress_steps))
+                    .is_none());
             }
+            ProcessingSequenceIterator::Incomplete => unreachable!(),
             ProcessingSequenceIterator::Cached(_) => {} // Already cached, do nothing
         }
     }

@@ -1,7 +1,13 @@
+use std::utils::cross_product;
+use std::prover::Query;
+
 // Splits an arbitrary field element into 8 u32s (in little endian order), on the BN254 field.
 machine SplitBN254(RESET, _) {
 
     operation split in_acc -> o1, o2, o3, o4, o5, o6, o7, o8;
+
+    // Allow this machine to be connected via a permutation
+    call_selectors sel;
 
     // Latch and operation ID
     col fixed RESET(i) { if i % 32 == 31 { 1 } else { 0 } };
@@ -13,7 +19,8 @@ machine SplitBN254(RESET, _) {
     // previous block)
     // A hint is provided because automatic witness generation does not
     // understand step 3 to figure out that the byte decomposition is unique.
-    col witness bytes(i) query ("hint", (std::convert::int(in_acc(i + 1)) >> (((i + 1) % 32) * 8)) % 0xff);
+    let select_byte: fe, int -> fe = |input, byte| std::convert::fe((std::convert::int(input) >> (byte * 8)) & 0xff);
+    col witness bytes(i) query Query::Hint(select_byte(std::prover::eval(in_acc'), (i + 1) % 32));
     // Puts the bytes together to form the input
     col witness in_acc;
     // Factors to multiply the bytes by
@@ -60,10 +67,13 @@ machine SplitBN254(RESET, _) {
     col fixed BYTES_MAX = [0x00, 0x00, 0xf0, 0x93, 0xf5, 0xe1, 0x43, 0x91, 0x70, 0xb9, 0x79, 0x48, 0xe8, 0x33, 0x28, 0x5d, 0x58, 0x81, 0x81, 0xb6, 0x45, 0x50, 0xb8, 0x29, 0xa0, 0x31, 0xe1, 0x72, 0x4e, 0x64, 0x30, 0x00]*;
 
     // Byte comparison block machine
-    col fixed P_A(i) { i % 256 };
-    col fixed P_B(i) { (i >> 8) % 256 };
-    col fixed P_LT(i) { if std::convert::int(P_A(i)) < std::convert::int(P_B(i)) { 1 } else { 0 } };
-    col fixed P_GT(i) { if std::convert::int(P_A(i)) > std::convert::int(P_B(i)) { 1 } else { 0 } };
+    let compare_inputs = cross_product([256, 256]);
+    let a = compare_inputs[1];
+    let b = compare_inputs[0];
+    let P_A: col = a;
+    let P_B: col = b;
+    col fixed P_LT(i) { if a(i) < b(i) { 1 } else { 0 } };
+    col fixed P_GT(i) { if a(i) > b(i) { 1 } else { 0 } };
 
     // Compare the current byte with the corresponding byte of the maximum value.
     col witness lt;

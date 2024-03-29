@@ -30,5 +30,3 @@ A column can be seen as a mapping from integers to field elements. In this conte
 ```
 {{#include ../../../test_data/pil/fixed_columns.pil:mapping}}
 ```
-
-> Note that conversion from integer to field element is currently implicit, as seen in the first example above.

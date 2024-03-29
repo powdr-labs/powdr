@@ -28,8 +28,8 @@ machine Main {
     reg Z[<=];
     reg A;
 
-    instr add X, Y -> Z = arith.add
-    instr sub X, Y -> Z = arith.sub
+    instr add X, Y -> Z = arith.add;
+    instr sub X, Y -> Z = arith.sub;
     instr assert_eq X, Y { X = Y }
 
     function main {

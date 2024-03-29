@@ -1,6 +1,6 @@
 use std::{path::Path, process::Command};
 
-pub fn verify(temp_dir: &Path, name: &str, constants_name: Option<&str>) {
+pub fn verify(temp_dir: &Path, name: &str, constants_name: Option<&str>) -> Result<(), String> {
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
 
@@ -11,7 +11,7 @@ pub fn verify(temp_dir: &Path, name: &str, constants_name: Option<&str>) {
         temp_dir.to_str().unwrap()
     );
     let commits_file = format!("{}/{name}_commits.bin", temp_dir.to_str().unwrap());
-    let constraints_file = format!("{}/{name}_constraints.json", temp_dir.to_str().unwrap());
+    let constraints_file = format!("{}/constraints.json", temp_dir.to_str().unwrap());
 
     let verifier_output = Command::new("node")
         .args([
@@ -25,18 +25,23 @@ pub fn verify(temp_dir: &Path, name: &str, constants_name: Option<&str>) {
         ])
         .output()
         .expect("failed to run pil verifier");
-    if !verifier_output.status.success() {
+
+    let output = String::from_utf8_lossy(&verifier_output.stdout);
+    let result = if !verifier_output.status.success() {
+        Err("Pil verifier run was unsuccessful.".to_string())
+    } else if !output.trim().ends_with("PIL OK!!") {
+        Err("Verified did not say 'PIL OK' for {name}.".to_string())
+    } else {
+        Ok(())
+    };
+
+    if result.is_err() {
         log::error!(
             "Pil verifier run was unsuccessful.\nStdout: {}\nStderr: {}\n",
-            String::from_utf8_lossy(&verifier_output.stdout),
+            output,
             String::from_utf8_lossy(&verifier_output.stderr)
         );
-        panic!("Pil verifier run was unsuccessful.");
-    } else {
-        let output = String::from_utf8(verifier_output.stdout).unwrap();
-        log::error!("PIL verifier output: {}", output);
-        if !output.trim().ends_with("PIL OK!!") {
-            panic!("Verified did not say 'PIL OK' for {name}.");
-        }
     }
+
+    result
 }

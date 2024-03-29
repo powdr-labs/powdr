@@ -9,7 +9,7 @@ mod submodule_in_folder;
 use submodule::Other as SubmoduleOther;
 use submodule_in_folder::Other as FolderSubmoduleOther;
 
-let zero = 0;
+let zero: int = 0;
 
 // we can also define modules inline
 mod utils {
@@ -35,9 +35,9 @@ machine Main {
 
     reg pc[@pc];
 
-    instr nothing = a.nothing
-    instr also_nothing = b.nothing
-    instr still_nothing = c.nothing
+    instr nothing = a.nothing;
+    instr also_nothing = b.nothing;
+    instr still_nothing = c.nothing;
 
     function main {
         nothing;

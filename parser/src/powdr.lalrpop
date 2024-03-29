@@ -1,10 +1,10 @@
 use std::str::FromStr;
-use powdr_ast::parsed::{*, asm::*};
-use powdr_number::{AbstractNumberType, FieldElement};
-use num_traits::Num;
+use std::collections::BTreeSet;
+use powdr_ast::parsed::{*, asm::*, types::*};
+use powdr_number::BigUint;
 use crate::{ParserContext, unescape_string};
 
-grammar<T>(ctx: &ParserContext) where T: FieldElement;
+grammar(ctx: &ParserContext);
 
 match {
     r"\s*" => { },
@@ -13,27 +13,31 @@ match {
     _,
 }
 
-pub PILFile: PILFile<T> = {
-    (<PilStatement> ";")* => PILFile(<>)
+pub PILFile: PILFile = {
+    <PilStatement*> => PILFile(<>)
 };
 
-pub ASMModule: ASMModule<T> = {
+pub ASMModule: ASMModule = {
     (<ModuleStatement>)* => ASMModule { statements: <> }
 };
 
-ModuleStatement: ModuleStatement<T> = {
+ModuleStatement: ModuleStatement = {
     <MachineDefinition> => ModuleStatement::SymbolDefinition(<>),
     <LetStatementAtModuleLevel> => ModuleStatement::SymbolDefinition(<>),
+    <EnumDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
+            name: <>.name.clone(),
+            value: SymbolValue::TypeDeclaration(<>),
+        }),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
 
-ModuleDefinition: SymbolDefinition<T> = {
+ModuleDefinition: SymbolDefinition = {
     "mod" <name:Identifier> ";" => SymbolDefinition { name: name.clone(), value: Module::External(name).into() }, 
     "mod" <name:Identifier> "{" <module:ASMModule> "}" => SymbolDefinition { name, value: Module::Local(module).into() }
 }
 
-Import: SymbolDefinition<T> = {
+Import: SymbolDefinition = {
     "use" <path:SymbolPath> <name:( "as" <Identifier> )?> ";" =>
         SymbolDefinition {
             name: name.unwrap_or(path.name().clone().try_into().unwrap()),
@@ -56,8 +60,28 @@ Part: Part = {
     <name:Identifier> => Part::Named(name),
 }
 
-LetStatementAtModuleLevel: SymbolDefinition<T> = {
-    "let" <name:Identifier> "=" <value:Expression> ";" => SymbolDefinition { name, value: SymbolValue::Expression(value) }
+/// Same as SymbolPath except that we do not allow 'int' and 'fe' to be parsed as identifiers.
+TypeSymbolPath: SymbolPath = {
+    <abs:"::"?> <parts:( <TypeSymbolPathPart> "::" )*> <end:TypeSymbolPathPart>  => {
+        SymbolPath::from_parts([
+            abs.map(|_| vec![Part::Named(String::new())]).unwrap_or_default(),
+            parts,
+            vec![end],
+        ].concat())
+    },
+}
+
+TypeSymbolPathPart: Part = {
+    "super" => Part::Super,
+    <name:NonSpecialIdentifier> => Part::Named(name),
+}
+
+LetStatementAtModuleLevel: SymbolDefinition = {
+    "let" <name:GenericTypedName>  "=" <value:Expression> ";" =>
+        SymbolDefinition {
+            name: name.0,
+            value: SymbolValue::Expression(TypedExpression{ e: value, type_scheme: name.1 })
+        }
 }
 
 // ---------------------------- PIL part -----------------------------
@@ -72,51 +96,52 @@ pub PilStatement = {
     PolynomialConstantDeclaration,
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
-    PolynomialIdentity,
-    PlookupIdentity,
-    PermutationIdentity,
-    ConnectIdentity,
+    <start:@L> <decl:EnumDeclaration> => PilStatement::EnumDeclaration(ctx.source_ref(start), decl),
+    PlookupIdentityStatement,
+    PermutationIdentityStatement,
+    ConnectIdentityStatement,
     ExpressionStatement,
 };
 
-Include: PilStatement<T> = {
-    <start:@L> "include" <file:StringLiteral> => PilStatement::Include(ctx.source_ref(start), file)
+Include: PilStatement = {
+    <start:@L> "include" <file:StringLiteral> ";" => PilStatement::Include(ctx.source_ref(start), file)
 };
 
-Namespace: PilStatement<T> = {
-    <start:@L> "namespace" <name:SymbolPath> "(" <pol_degree:Expression> ")" => PilStatement::Namespace(ctx.source_ref(start), name, pol_degree)
+Namespace: PilStatement = {
+    <start:@L> "namespace" <name:SymbolPath> "(" <pol_degree:Expression> ")" ";" => PilStatement::Namespace(ctx.source_ref(start), name, pol_degree)
 }
 
-LetStatement: PilStatement<T> = {
-    <start:@L> "let" <id:Identifier> <expr:( "=" <Expression> )?> => PilStatement::LetStatement(ctx.source_ref(start), id, expr)
+LetStatement: PilStatement = {
+    <start:@L> "let" <name:GenericTypedName> <expr:( "=" <Expression> )?> ";" =>
+        PilStatement::LetStatement(ctx.source_ref(start), name.0, name.1, expr)
 }
 
-ConstantDefinition: PilStatement<T> = {
-    <start:@L> "constant" <id:ConstantIdentifier> "=" <expr:Expression> => PilStatement::ConstantDefinition(ctx.source_ref(start), id, expr)
+ConstantDefinition: PilStatement = {
+    <start:@L> "constant" <id:ConstantIdentifier> "=" <expr:Expression> ";" => PilStatement::ConstantDefinition(ctx.source_ref(start), id, expr)
 }
 
-PolynomialDefinition: PilStatement<T> = {
-    <start:@L> PolCol <id:Identifier> "=" <expr:Expression> => PilStatement::PolynomialDefinition(ctx.source_ref(start), id, expr)
+PolynomialDefinition: PilStatement = {
+    <start:@L> PolCol <id:Identifier> "=" <expr:Expression> ";" => PilStatement::PolynomialDefinition(ctx.source_ref(start), id, expr)
 }
 
-PublicDeclaration: PilStatement<T> = {
+PublicDeclaration: PilStatement = {
     <start:@L> "public" <id:Identifier> "="
         <poly:NamespacedPolynomialReference>
         <expr1:("[" <Expression> "]")?>
-        "(" <expr2:Expression> ")" => PilStatement::PublicDeclaration(ctx.source_ref(start), id, poly, expr1, expr2)
+        "(" <expr2:Expression> ")" ";" => PilStatement::PublicDeclaration(ctx.source_ref(start), id, poly, expr1, expr2)
 }
 
-PolynomialConstantDeclaration: PilStatement<T> = {
-    <start:@L> PolCol ConstantFixed <list:PolynomialNameList> => PilStatement::PolynomialConstantDeclaration(ctx.source_ref(start), list)
+PolynomialConstantDeclaration: PilStatement = {
+    <start:@L> PolCol ConstantFixed <list:PolynomialNameList> ";" => PilStatement::PolynomialConstantDeclaration(ctx.source_ref(start), list)
 }
 
-PolynomialConstantDefinition: PilStatement<T> = {
-    <start:@L> PolCol ConstantFixed <id:Identifier> <def:FunctionDefinition>
+PolynomialConstantDefinition: PilStatement = {
+    <start:@L> PolCol ConstantFixed <id:Identifier> <def:FunctionDefinition> ";"
         => PilStatement::PolynomialConstantDefinition(ctx.source_ref(start), id, def)
 }
 
-FunctionDefinition: FunctionDefinition<T> = {
-    "(" <params:ParameterList> ")" "{" <body:BoxedExpression> "}" => FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{params, body})),
+FunctionDefinition: FunctionDefinition = {
+    "(" <params:ParameterList> ")" <body:BracedExpression> => FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{params, body})),
     "=" <ArrayLiteralExpression> => FunctionDefinition::Array(<>),
 }
 
@@ -125,56 +150,73 @@ ParameterList: Vec<String> = {
     => vec![]
 }
 
-ArrayLiteralExpression: ArrayExpression<T> = {
+ArrayLiteralExpression: ArrayExpression = {
     <ArrayLiteralExpression> "+" <ArrayLiteralTerm> => ArrayExpression::concat(<>),
     ArrayLiteralTerm,
 }
 
-ArrayLiteralTerm: ArrayExpression<T> = {
+ArrayLiteralTerm: ArrayExpression = {
     "[" <ExpressionList> "]" => ArrayExpression::value(<>),
     "[" <ExpressionList> "]" "*" => ArrayExpression::repeated_value(<>),
 }
 
-PolynomialCommitDeclaration: PilStatement<T> = {
-    <start:@L> PolCol CommitWitness <list:PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start), list, None),
-    <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression>
+PolynomialCommitDeclaration: PilStatement = {
+    <start:@L> PolCol CommitWitness <stage:Stage?> <list:PolynomialNameList> ";" => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start), stage, list, None),
+    <start:@L> PolCol CommitWitness <stage:Stage?> <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression> ";"
      => PilStatement::PolynomialCommitDeclaration(
         ctx.source_ref(start),
+        stage,
         vec![name],
         Some(FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression{params, body})))
     )
 }
 
-PolynomialIdentity: PilStatement<T> = {
-    <start:@L> <l:BoxedExpression> "=" <r:BoxedExpression> => PilStatement::PolynomialIdentity(ctx.source_ref(start), Expression::BinaryOperation(l, BinaryOperator::Sub, r))
+Stage: u32 = {
+    "stage" "(" <Number> ")" => u32::try_from(<>).unwrap()
 }
 
-PolynomialNameList: Vec<PolynomialName<T>> = {
+PolynomialNameList: Vec<PolynomialName> = {
     <mut list:( <PolynomialName> "," )*> <end:PolynomialName>  => { list.push(end); list }
 }
 
-PolynomialName: PolynomialName<T> = {
+PolynomialName: PolynomialName = {
     <name:Identifier> <array_size:( "[" <Expression> "]" )?> => PolynomialName{<>}
 }
 
-PlookupIdentity: PilStatement<T> = {
+PlookupIdentityStatement: PilStatement = {
+    <PlookupIdentity> ";"
+}
+
+PlookupIdentity: PilStatement = {
     <start:@L> <se1:SelectedExpressions> "in" <se2:SelectedExpressions> => PilStatement::PlookupIdentity(ctx.source_ref(start), se1, se2)
 }
 
-SelectedExpressions: SelectedExpressions<Expression<T>> = {
+SelectedExpressions: SelectedExpressions<Expression> = {
     <selector:Expression?> "{" <expressions:ExpressionList> "}" => SelectedExpressions{<>},
     Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
 }
 
-PermutationIdentity: PilStatement<T> = {
+PermutationIdentityStatement: PilStatement = {
+    <PermutationIdentity> ";"
+}
+
+PermutationIdentity: PilStatement = {
     <start:@L> <se1:SelectedExpressions> "is" <se2:SelectedExpressions> => PilStatement::PermutationIdentity(ctx.source_ref(start), se1, se2)
 }
 
-ConnectIdentity: PilStatement<T> = {
+ConnectIdentityStatement: PilStatement = {
+    <ConnectIdentity> ";"
+}
+
+ConnectIdentity: PilStatement = {
     <start:@L> "{" <list1:ExpressionList> "}" "connect" "{" <list2:ExpressionList> "}" => PilStatement::ConnectIdentity(ctx.source_ref(start), list1, list2)
 }
 
-ExpressionStatement: PilStatement<T> = {
+ExpressionStatement: PilStatement = {
+    <ExpressionStatementWithoutSemicolon> ";"
+}
+
+ExpressionStatementWithoutSemicolon: PilStatement = {
     <start:@L> <expr:Expression> => PilStatement::Expression(ctx.source_ref(start), expr)
 }
 
@@ -188,11 +230,18 @@ CommitWitness = {
 
 ConstantFixed = {
     "constant", "fixed"
-} 
+}
+
+GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
+    <name:Identifier> => (name, None),
+    <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <ty:(":" <Type>)> =>
+        (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), ty }))
+}
+
 
 // ---------------------------- ASM part -----------------------------
 
-MachineDefinition: SymbolDefinition<T> = {
+MachineDefinition: SymbolDefinition = {
     "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, statements}.into() }
 }
 
@@ -204,30 +253,35 @@ MachineArguments: MachineArguments = {
     => MachineArguments::default(),
 }
 
-MachineStatement: MachineStatement<T> = {
+MachineStatement: MachineStatement = {
     Degree,
+    CallSelectors,
     Submachine,
     RegisterDeclaration,
     InstructionDeclaration,
     LinkDeclaration,
-    PilStatementWithSemiColon,
+    PilStatementInMachine,
     FunctionDeclaration,
     OperationDeclaration,
 }
 
-PilStatementWithSemiColon: MachineStatement<T> = {
-    <start:@L> <stmt:PilStatement> ";" => MachineStatement::Pil(ctx.source_ref(start), stmt)
+PilStatementInMachine: MachineStatement = {
+    <start:@L> <stmt:PilStatement> => MachineStatement::Pil(ctx.source_ref(start), stmt)
 }
 
-Degree: MachineStatement<T> = {
-    <start:@L> "degree" <deg:Integer> ";" => MachineStatement::Degree(ctx.source_ref(start), deg)
+Degree: MachineStatement = {
+    <start:@L> "degree" <deg:Expression> ";" => MachineStatement::Degree(ctx.source_ref(start), deg)
 }
 
-Submachine: MachineStatement<T> = {
+CallSelectors: MachineStatement = {
+    <start:@L> "call_selectors" <id:Identifier> ";" => MachineStatement::CallSelectors(ctx.source_ref(start), id)
+}
+
+Submachine: MachineStatement = {
     <start:@L> <path:SymbolPath> <id:Identifier> ";" => MachineStatement::Submachine(ctx.source_ref(start), path, id)
 }
 
-pub RegisterDeclaration: MachineStatement<T> = {
+pub RegisterDeclaration: MachineStatement = {
     // TODO default update
     <start:@L> "reg" <id:Identifier> <flag:( "[" <RegisterFlag> "]" )?> ";" => MachineStatement::RegisterDeclaration(ctx.source_ref(start), id, flag)
 
@@ -239,70 +293,76 @@ RegisterFlag: RegisterFlag = {
     "@r" => RegisterFlag::IsReadOnly,
 }
 
-pub InstructionDeclaration: MachineStatement<T> = {
+pub InstructionDeclaration: MachineStatement = {
     <start:@L> "instr" <id:Identifier> <instr:Instruction> => MachineStatement::InstructionDeclaration(ctx.source_ref(start), id, instr)
 }
 
-pub Instruction: Instruction<T> = {
+pub Instruction: Instruction = {
     <params:Params> <body:InstructionBody> => Instruction { params, body }
 }
 
-pub LinkDeclaration: MachineStatement<T> = {
-    <start:@L> "link" <flag:Expression> <params:Params> "=" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(LinkDeclaration { source: ctx.source_ref(start), flag, params, to })
+pub LinkDeclaration: MachineStatement = {
+    <start:@L> "link" <flag:Expression> "=>" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start), LinkDeclaration { flag, to, is_permutation: false, }),
+    <start:@L> "link" <flag:Expression> "~>" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start), LinkDeclaration { flag, to, is_permutation: true, }),
 }
 
-pub InstructionBody: InstructionBody<T> = {
+pub InstructionBody: InstructionBody = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
-    "=" <f_ref:CallableRef> => InstructionBody::CallableRef(f_ref),
+    "=" <f_ref:CallableRef> ";" => InstructionBody::CallablePlookup(f_ref),
+    "~" <f_ref:CallableRef> ";" => InstructionBody::CallablePermutation(f_ref),
 }
 
 pub CallableRef: CallableRef = {
-    <instance:Identifier> "." <callable:Identifier> => CallableRef { instance, callable }
+    <instance:Identifier> "." <callable:Identifier> <params:CallableParams> => CallableRef { instance, callable, params },
 }
 
-InstructionBodyElements: Vec<PilStatement<T>> = {
+CallableParams: CallableParams = {
+    <inputs: ExpressionList> "->" <output: ExpressionList> => CallableParams::new(inputs, output),
+    // we can ommit the arrow if there are no outputs
+    <inputs: ExpressionList> => CallableParams::new(inputs, vec![])
+}
+
+InstructionBodyElements: Vec<PilStatement> = {
     <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement>  => { list.push(end); list },
     => vec![]
 }
 
-InstructionBodyElement: PilStatement<T> = {
-    PolynomialIdentity,
+InstructionBodyElement: PilStatement = {
     PlookupIdentity,
     PermutationIdentity,
-    ExpressionStatement,
+    ExpressionStatementWithoutSemicolon,
 }
 
-Params: Params<T> = {
-    <_input: ParamList> "->" <output: ParamList> => Params::new(_input, Some(output)),
+Params: Params<Param> = {
+    <_input: ParamList> "->" <output: ParamList> => Params::new(_input, output),
     // we can ommit the arrow if there are no outputs
-    <_input: ParamList> => Params::new(_input, None)
-
+    <_input: ParamList> => Params::new(_input, vec![])
 }
 
-ParamList: ParamList<T> = {
-    => ParamList::new(vec![]),
-    <mut list:( <Param> "," )*> <end:Param>  => { list.push(end); ParamList::new(list) }
+ParamList: Vec<Param> = {
+    => vec![],
+    <mut list:( <Param> "," )*> <end:Param>  => { list.push(end); list }
 }
 
-Param: Param<T> = {
-    <name: Identifier> <index:("[" <FieldElement> "]")?> <ty:(":" <Identifier>)?> => Param{<>}
+Param: Param = {
+    <name: Identifier> <index:("[" <Number> "]")?> <ty:(":" <Identifier>)?> => Param{<>}
 }
 
-FunctionDeclaration: MachineStatement<T> = {
+FunctionDeclaration: MachineStatement = {
     <start:@L> "function" <id:Identifier> <params:Params> "{" <stmt:(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(ctx.source_ref(start), id, params, stmt)
 }
 
-OperationDeclaration: MachineStatement<T> = {
+OperationDeclaration: MachineStatement = {
     <start:@L> "operation" <id:Identifier> <op:OperationId> <params:Params> ";" => MachineStatement::OperationDeclaration(ctx.source_ref(start), id, op, params)
 }
 
-OperationId: OperationId<T> = {
-    "<" <id:FieldElement> ">" => OperationId { id: Some(id) },
+OperationId: OperationId = {
+    "<" <id:Number> ">" => OperationId { id: Some(id.into()) },
     => OperationId { id: None }
 }
 
-pub FunctionStatement: FunctionStatement<T> = {
+pub FunctionStatement: FunctionStatement = {
     AssignmentStatement,
     LabelStatement,
     DebugDirectiveStatement,
@@ -310,7 +370,7 @@ pub FunctionStatement: FunctionStatement<T> = {
     InstructionStatement,
 }
 
-AssignmentStatement: FunctionStatement<T> = {
+AssignmentStatement: FunctionStatement = {
     <start:@L> <ids:IdentifierList> <op:AssignOperator> <expr:BoxedExpression> ";" => FunctionStatement::Assignment(ctx.source_ref(start), ids, op, expr)
 }
 
@@ -334,59 +394,59 @@ AssignmentRegister: AssignmentRegister = {
     "_" => AssignmentRegister::Wildcard,
 }
 
-ReturnStatement: FunctionStatement<T> = {
+ReturnStatement: FunctionStatement = {
     <start:@L> "return" <list:ExpressionList> ";" => FunctionStatement::Return(ctx.source_ref(start), list)
 }
 
-InstructionStatement: FunctionStatement<T> = {
+InstructionStatement: FunctionStatement = {
     <start:@L> <id:Identifier> <list:ExpressionList> ";" => FunctionStatement::Instruction(ctx.source_ref(start), id, list)
 }
 
-DebugDirectiveStatement: FunctionStatement<T> = {
-    <start:@L> ".debug" "file" <n:Integer> <d:StringLiteral> <f:StringLiteral> ";"
+DebugDirectiveStatement: FunctionStatement = {
+    <start:@L> ".debug" "file" <n:UnsignedInteger> <d:StringLiteral> <f:StringLiteral> ";"
         => FunctionStatement::DebugDirective(ctx.source_ref(start), DebugDirective::File(n.try_into().unwrap(), d, f)),
-    <start:@L> ".debug" "loc" <f:Integer> <line:Integer> <col:Integer> ";"
+    <start:@L> ".debug" "loc" <f:UnsignedInteger> <line:UnsignedInteger> <col:UnsignedInteger> ";"
         => FunctionStatement::DebugDirective(ctx.source_ref(start), DebugDirective::Loc(f.try_into().unwrap(), line.try_into().unwrap(), col.try_into().unwrap())),
     <start:@L> ".debug" "insn" <insn:StringLiteral> ";"
         => FunctionStatement::DebugDirective(ctx.source_ref(start), DebugDirective::OriginalInstruction(insn)),
 }
 
-LabelStatement: FunctionStatement<T> = {
+LabelStatement: FunctionStatement = {
     <start:@L> <id:Identifier> ":" => FunctionStatement::Label(ctx.source_ref(start), id)
 }
 
 // ---------------------------- Expressions -----------------------------
 
-ExpressionList: Vec<Expression<T>> = {
+ExpressionList: Vec<Expression> = {
     => vec![],
     <mut list:( <Expression> "," )*> <end:Expression>  => { list.push(end); list }
 }
 
-Expression: Expression<T> = {
+Expression: Expression = {
     BoxedExpression => *<>,
 }
 
-BoxedExpression: Box<Expression<T>> = {
+BoxedExpression: Box<Expression> = {
     LambdaExpression,
 }
 
-LambdaExpression: Box<Expression<T>> = {
+LambdaExpression: Box<Expression> = {
     "||" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{params: vec![], body})),
     "|" <params:ParameterList> "|" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{params, body})),
     LogicalOr
 }
 
-LogicalOr: Box<Expression<T>> = {
+LogicalOr: Box<Expression> = {
     <l:LogicalOr> "||" <r:LogicalAnd> => Box::new(Expression::BinaryOperation(l, BinaryOperator::LogicalOr, r)),
     LogicalAnd,
 }
 
-LogicalAnd: Box<Expression<T>> = {
+LogicalAnd: Box<Expression> = {
     <l:LogicalAnd> "&&" <r:Comparison> => Box::new(Expression::BinaryOperation(l, BinaryOperator::LogicalAnd, r)),
     Comparison,
 }
 
-Comparison: Box<Expression<T>> = {
+Comparison: Box<Expression> = {
     <BinaryOr> <ComparisonOp> <BinaryOr> => Box::new(Expression::BinaryOperation(<>)),
     BinaryOr
 }
@@ -395,12 +455,13 @@ ComparisonOp: BinaryOperator = {
     "<" => BinaryOperator::Less,
     "<=" => BinaryOperator::LessEqual,
     "==" => BinaryOperator::Equal,
+    "=" => BinaryOperator::Identity,
     "!=" => BinaryOperator::NotEqual,
     ">=" => BinaryOperator::GreaterEqual,
     ">" => BinaryOperator::Greater,
 }
 
-BinaryOr: Box<Expression<T>> = {
+BinaryOr: Box<Expression> = {
     BinaryOr BinaryOrOp BinaryXor => Box::new(Expression::BinaryOperation(<>)),
     BinaryXor,
 }
@@ -409,7 +470,7 @@ BinaryOrOp: BinaryOperator = {
     "|" => BinaryOperator::BinaryOr,
 }
 
-BinaryXor: Box<Expression<T>> = {
+BinaryXor: Box<Expression> = {
     BinaryXor BinaryXorOp BinaryAnd => Box::new(Expression::BinaryOperation(<>)),
     BinaryAnd,
 }
@@ -418,7 +479,7 @@ BinaryXorOp: BinaryOperator = {
     "^" => BinaryOperator::BinaryXor,
 }
 
-BinaryAnd: Box<Expression<T>> = {
+BinaryAnd: Box<Expression> = {
     BinaryAnd BinaryAndOp BitShift => Box::new(Expression::BinaryOperation(<>)),
     BitShift,
 }
@@ -427,7 +488,7 @@ BinaryAndOp: BinaryOperator = {
     "&" => BinaryOperator::BinaryAnd,
 }
 
-BitShift: Box<Expression<T>> = {
+BitShift: Box<Expression> = {
     BitShift BitShiftOp Sum => Box::new(Expression::BinaryOperation(<>)),
     Sum,
 }
@@ -437,7 +498,7 @@ BitShiftOp: BinaryOperator = {
     ">>" => BinaryOperator::ShiftRight,
 }
 
-Sum: Box<Expression<T>> = {
+Sum: Box<Expression> = {
     Sum SumOp Product => Box::new(Expression::BinaryOperation(<>)),
     Product,
 }
@@ -447,7 +508,7 @@ SumOp: BinaryOperator = {
     "-" => BinaryOperator::Sub,
 }
 
-Product: Box<Expression<T>> = {
+Product: Box<Expression> = {
     Product ProductOp Power => Box::new(Expression::BinaryOperation(<>)),
     Power,
 }
@@ -458,7 +519,7 @@ ProductOp: BinaryOperator = {
     "%" => BinaryOperator::Mod,
 }
 
-Power: Box<Expression<T>> = {
+Power: Box<Expression> = {
     <Power> <PowOp> <Term> => Box::new(Expression::BinaryOperation(<>)),
     Unary,
 }
@@ -467,7 +528,7 @@ PowOp: BinaryOperator = {
     "**" => BinaryOperator::Pow,
 }
 
-Unary: Box<Expression<T>> = {
+Unary: Box<Expression> = {
     PrefixUnaryOp PostfixUnary => Box::new(Expression::UnaryOperation(<>)),
     PostfixUnary,
 }
@@ -477,7 +538,7 @@ PrefixUnaryOp: UnaryOperator = {
     "!" => UnaryOperator::LogicalNot,
 }
 
-PostfixUnary: Box<Expression<T>> = {
+PostfixUnary: Box<Expression> = {
     <t:Term> <o:PostfixUnaryOp> => Box::new(Expression::UnaryOperation(o, t)),
     Term,
 }
@@ -486,27 +547,28 @@ PostfixUnaryOp: UnaryOperator = {
     "'" => UnaryOperator::Next,
 }
 
-Term: Box<Expression<T>> = {
+Term: Box<Expression> = {
     IndexAccess => Box::new(Expression::IndexAccess(<>)),
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
     ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference::from_identifier(<>))),
     NamespacedPolynomialReference => Box::new(Expression::Reference(<>)),
     PublicIdentifier => Box::new(Expression::PublicReference(<>)),
-    FieldElement => Box::new(Expression::Number(<>)),
+    Number => Box::new(Expression::Number(<>.into(), None)),
     StringLiteral => Box::new(Expression::String(<>)),
     MatchExpression,
     IfExpression,
+    BlockExpression,
     "[" <items:ExpressionList> "]" => Box::new(Expression::ArrayLiteral(ArrayLiteral{items})),
     "(" <head:Expression> "," <tail:ExpressionList> ")" => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(list)) },
     "(" <BoxedExpression> ")",
     "${" <BoxedExpression> "}" => Box::new(Expression::FreeInput(<>))
 }
 
-IndexAccess: IndexAccess<T> = {
+IndexAccess: IndexAccess = {
     <array:Term> "[" <index:BoxedExpression> "]" => IndexAccess{<>},
 }
 
-FunctionCall: FunctionCall<T> = {
+FunctionCall: FunctionCall = {
     <function:Term> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
 }
 
@@ -515,32 +577,116 @@ NamespacedPolynomialReference: NamespacedPolynomialReference = {
     <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
 }
 
-MatchExpression: Box<Expression<T>> = {
+MatchExpression: Box<Expression> = {
     "match" <BoxedExpression> "{" <MatchArms> "}" => Box::new(Expression::MatchExpression(<>))
 }
 
-MatchArms: Vec<MatchArm<T>> = {
+MatchArms: Vec<MatchArm> = {
     => vec![],
     <mut list:( <MatchArm> "," )*> <end:MatchArm> ","?  => { list.push(end); list }
 }
 
-MatchArm: MatchArm<T> = {
+MatchArm: MatchArm = {
     <pattern: MatchPattern> "=>" <value: Expression> => MatchArm{pattern, value},
 }
 
-MatchPattern: MatchPattern<T> = {
+MatchPattern: MatchPattern = {
     "_" => MatchPattern::CatchAll,
     Expression => MatchPattern::Pattern(<>),
 }
 
-IfExpression: Box<Expression<T>> = {
+IfExpression: Box<Expression> = {
     "if" <condition:BoxedExpression>
-        "{" <body:BoxedExpression> "}"
+        <body:BracedExpression>
         "else"
-        "{" <else_body:BoxedExpression> "}" => Box::new(Expression::IfExpression(IfExpression{<>}))
+        <else_body:BracedExpression> => Box::new(Expression::IfExpression(IfExpression{<>}))
 }
 
+BlockExpression: Box<Expression> = {
+    "{" <LetStatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>))
+}
+
+BracedExpression: Box<Expression> = {
+    "{" <LetStatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>)),
+    "{" <BoxedExpression> "}" => Box::new(Expression::BlockExpression(vec![], <>))
+}
+
+LetStatementInsideBlock: LetStatementInsideBlock = {
+    "let" <name:Identifier> <value:("=" <Expression>)?> ";" => LetStatementInsideBlock{<>}
+}
+
+// ---------------------------- Type Declarations -----------------------------
+
+EnumDeclaration: EnumDeclaration<Expression> = {
+    "enum" <name:Identifier> "{" <variants:EnumVariants> "}" => EnumDeclaration{<>}
+}
+
+EnumVariants: Vec<EnumVariant<Expression>> = {
+    => vec![],
+    <mut list:( <EnumVariant> "," )*> <end:EnumVariant> ","?  => { list.push(end); list }
+}
+
+EnumVariant: EnumVariant<Expression> = {
+    <name:Identifier> <fields:("(" <TypeTermList> ")")?> => EnumVariant{<>}
+}
+
+// ---------------------------- Type Names -----------------------------
+
+pub Type: Type<Expression> = {
+    <params:TypeTermList> "->" <value:TypeTermBox> => Type::Function(FunctionType{<>}),
+    TypeTerm
+}
+
+TypeTermList: Vec<Type<Expression>> = {
+    => vec![],
+    <mut list:( <TypeTerm> "," )*> <end:TypeTerm>  => { list.push(end); list }
+}
+
+TypeTermBox: Box<Type<Expression>> = {
+    TypeTerm => Box::new(<>)
+}
+
+TypeTerm: Type<Expression> = {
+    // The parser parses all identifiers as NamedTypes, some are translated
+    // to TypeVars later.
+    TypeSymbolPath => Type::NamedType(<>),
+    "!" => Type::Bottom,
+    "bool" => Type::Bool,
+    "int" => Type::Int,
+    "fe" => Type::Fe,
+    "string" => Type::String,
+    "col" => Type::Col,
+    "expr" => Type::Expr,
+    "constr" => Type::Constr,
+    <base:TypeTerm> "[" <length:Expression?> "]" => Type::Array(ArrayType{base: Box::new(base), length}),
+    "(" <mut items:( <TypeTerm> "," )+> <end:TypeTerm> ")" => { items.push(end); Type::Tuple(TupleType{items}) },
+    "(" ")" => Type::Tuple(TupleType{items: vec![]}),
+    "(" <Type> ")",
+}
+
+TypeVar: String = {
+    UppercaseIdentifier => <>,
+}
+
+
+// bounds should be SymbolPaths in the future.
+pub TypeVarBounds: TypeBounds = {
+    => Default::default(),
+    <list:( <TypeVarWithBounds> "," )*> <end:TypeVarWithBounds> => TypeBounds::new(list.into_iter().chain(std::iter::once(end)))
+}
+
+TypeVarWithBounds: (String, BTreeSet<String>) = {
+    <TypeVar> <TypeBoundsList> => (<>)
+}
+
+TypeBoundsList: BTreeSet<String> = {
+    => Default::default(),
+    ":" <list:( <Identifier> "+" )*> <end:Identifier>  => list.into_iter().chain(std::iter::once(end)).collect(),
+}
+
+
 // ---------------------------- Terminals -----------------------------
+
 
 
 StringLiteral: String = {
@@ -548,8 +694,18 @@ StringLiteral: String = {
 }
 
 Identifier: String = {
-    r"[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.to_string(),
+    r"[a-z_][a-zA-Z$_0-9@]*" => <>.to_string(),
+    UppercaseIdentifier,
     SpecialIdentifier => <>.to_string(),
+}
+
+NonSpecialIdentifier: String = {
+    r"[a-z_][a-zA-Z$_0-9@]*" => <>.to_string(),
+    UppercaseIdentifier => <>.to_string(),
+}
+
+UppercaseIdentifier: String = {
+    r"[A-Z][a-zA-Z$_0-9@]*" => <>.to_string(),
 }
 
 // These identifier are special in the way that the lexer would treat them as keywords,
@@ -561,12 +717,12 @@ SpecialIdentifier: &'input str = {
     "insn",
     "int",
     "fe",
+    "expr",
+    "constr",
     "bool",
 }
 
 ConstantIdentifier: String = {
-    // TODO it seems the lexer splits the token after %
-    "%N" => <>.to_string(),
     r"%[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.to_string(),
 }
 
@@ -575,12 +731,12 @@ PublicIdentifier: String = {
 
 }
 
-FieldElement: T = {
-    r"[0-9][0-9_]*" => T::from_str(&<>.replace('_', "")).unwrap(),
-    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => T::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap(),
+Number: BigUint = {
+    r"[0-9][0-9_]*" => BigUint::from_str(&<>.replace('_', "")).unwrap().into(),
+    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => BigUint::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap().into(),
 }
 
-Integer: AbstractNumberType = {
-    r"[0-9][0-9_]*" => AbstractNumberType::from_str(&<>.replace('_', "")).unwrap(),
-    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => AbstractNumberType::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap(),
+UnsignedInteger: BigUint = {
+    r"[0-9][0-9_]*" => BigUint::from_str(&<>.replace('_', "")).unwrap(),
+    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => BigUint::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap(),
 }

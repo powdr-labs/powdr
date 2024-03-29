@@ -7,9 +7,7 @@ Instructions are declared as part of a powdr virtual machine. Their inputs and o
 A local instruction is the simplest type of instruction. It is called local because its behavior is defined using constraints over registers and columns of the machine it is defined in.
 
 ```
-instr add X, Y -> Z {
-    X + Y = Z
-}
+{{#include ../../../test_data/asm/book/instructions.asm:local}}
 ```
 
 Instructions feature:
@@ -20,10 +18,27 @@ Instructions feature:
 
 # External instructions
 
-An external instruction delegates calls to a function inside a submachine of this machine. When it is called, a call is made to the submachine function. An example of an external instruction is the following:
+An external instruction delegates its implementation to a function/operation from a submachine.
+When called, the inputs and outputs of the declared instruction are mapped into a call to the submachine function.
 
+Assume we have a submachine with a single operation `add`:
 ```
-instr assert_zero X = my_submachine.assert_zero // where `assert_zero` is a function defined in `my_submachine`
+{{#include ../../../test_data/asm/book/instructions.asm:submachine}}
+```
+
+An external instruction calling into this operation can be declared as follows:
+```
+{{#include ../../../test_data/asm/book/instructions.asm:trivial}}
+```
+The left-hand side of the definition declares the local instruction and which assignment registers are used in its inputs and outputs.
+It describes how the instruction is used.
+The right-hand side of the definition specifies the call to the external operation, with its inputs and outputs.
+All assignment registers on the left-hand side must be used in the call to the external operation.
+
+In the previous example, parameters of the instruction match exactly with how the target operation should be called, and the right-hand parameters can thus be omitted.
+The following example shows more complex usages of external instructions:
+```
+{{#include ../../../test_data/asm/book/instructions.asm:main}}
 ```
 
 > Note that external instructions cannot currently link to functions of the same machine: they delegate computation to a submachine.

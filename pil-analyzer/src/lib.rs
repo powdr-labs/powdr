@@ -1,35 +1,40 @@
 #![deny(clippy::print_stdout)]
 
+mod call_graph;
 mod condenser;
 pub mod evaluator;
 pub mod expression_processor;
-pub mod pil_analyzer;
-pub mod statement_processor;
+mod pil_analyzer;
+mod statement_processor;
+mod type_builtins;
+mod type_inference;
+mod type_unifier;
 
-use std::{collections::HashMap, path::Path};
+use std::collections::HashMap;
 
 use powdr_ast::{
-    analyzed::{Analyzed, FunctionValueDefinition, Symbol},
-    parsed::{asm::SymbolPath, PILFile},
+    analyzed::{FunctionValueDefinition, Symbol},
+    parsed::asm::{AbsoluteSymbolPath, SymbolPath},
 };
-use powdr_number::FieldElement;
 
-pub fn analyze<T: FieldElement>(path: &Path) -> Analyzed<T> {
-    pil_analyzer::process_pil_file(path)
-}
+pub use pil_analyzer::{analyze_ast, analyze_file, analyze_string};
 
-pub fn analyze_ast<T: FieldElement>(pil_file: PILFile<T>) -> Analyzed<T> {
-    pil_analyzer::process_pil_ast(pil_file)
-}
-
-pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
-    pil_analyzer::process_pil_file_contents(contents)
-}
-
-pub trait AnalysisDriver<T>: Clone + Copy {
+pub trait AnalysisDriver: Clone + Copy {
     /// Turns a declaration into an absolute name.
-    fn resolve_decl(&self, name: &str) -> String;
+    fn resolve_decl(&self, name: &String) -> String {
+        self.resolve_namespaced_decl(&[name]).to_dotted_string()
+    }
+    /// Turns a nested declaration into an absolute name.
+    fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath;
+    fn resolve_value_ref(&self, path: &SymbolPath) -> String {
+        self.resolve_ref(path, false)
+    }
+    fn resolve_type_ref(&self, path: &SymbolPath) -> String {
+        self.resolve_ref(path, true)
+    }
     /// Turns a reference to a name with an optional namespace into an absolute name.
-    fn resolve_ref(&self, path: &SymbolPath) -> String;
-    fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>;
+    /// If `is_type` is true, expects references to type names, otherwise
+    /// only references to value names.
+    fn resolve_ref(&self, path: &SymbolPath, is_type: bool) -> String;
+    fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>;
 }

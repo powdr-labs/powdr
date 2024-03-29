@@ -1,13 +1,24 @@
-constant %N = 4;
+let N: int = 4;
 
-namespace Sum(%N);
-    constant %last_row = %N - 1;
+namespace std::prover(N);
+    enum Query {
+        Input(int)
+    }
 
-    pol fixed ISLAST(i) { if i == %last_row { 1 } else { 0 } };
-    pol fixed ISALMOSTLAST(i) { if i == %last_row - 1 { 1 } else { 0 } };
+namespace Sum(N);
+    let last_row = N - 1;
+
+    pol fixed ISLAST(i) { if i == last_row { 1 } else { 0 } };
+    pol fixed ISALMOSTLAST(i) { if i == last_row - 1 { 1 } else { 0 } };
     pol fixed ISFIRST = [ 1, 0 ] + [0]*;
 
-    col witness input(i) query ("input", i);
+    col witness input(i) query match i {
+        // A non-exhaustive match statement is the only way to return "None"
+        0 => std::prover::Query::Input(0),
+        1 => std::prover::Query::Input(1),
+        2 => std::prover::Query::Input(2),
+        // No response in the case of i == 3
+    };
     col witness sum;
 
     ISLAST * sum' = 0;
@@ -15,4 +26,4 @@ namespace Sum(%N);
     // This is just to see that a query is optional or can also
     // return "try to figure it out on your own"
     ISLAST * input = 0;
-    public out = sum(%N-1);
+    public out = sum(N-1);

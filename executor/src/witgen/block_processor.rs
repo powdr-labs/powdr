@@ -8,7 +8,7 @@ use powdr_number::FieldElement;
 use super::{
     data_structures::finalizable_data::FinalizableData,
     processor::{OuterQuery, Processor},
-    rows::UnknownStrategy,
+    rows::{RowIndex, UnknownStrategy},
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
     EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
@@ -27,7 +27,7 @@ pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
     pub fn new(
-        row_offset: u64,
+        row_offset: RowIndex,
         data: FinalizableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         identities: &'c [&'a Identity<Expression<T>>],
@@ -35,6 +35,16 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
         let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witness_cols);
+        Self {
+            processor,
+            identities,
+        }
+    }
+
+    pub fn from_processor(
+        processor: Processor<'a, 'b, 'c, T, Q>,
+        identities: &'c [&'a Identity<Expression<T>>],
+    ) -> Self {
         Self {
             processor,
             identities,
@@ -80,7 +90,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
             sequence_iterator.report_progress(progress);
         }
 
-        match self.processor.finshed_outer_query() {
+        match self.processor.finished_outer_query() {
             true => Ok(EvalValue::complete(outer_assignments)),
             false => Ok(EvalValue::incomplete_with_constraints(
                 outer_assignments,
@@ -105,12 +115,11 @@ mod tests {
     use crate::{
         constant_evaluator::generate,
         witgen::{
-            data_structures::column_map::FixedColumnMap,
-            data_structures::finalizable_data::FinalizableData,
+            data_structures::{column_map::FixedColumnMap, finalizable_data::FinalizableData},
             global_constraints::GlobalConstraints,
             identity_processor::Machines,
             machines::FixedLookup,
-            rows::RowFactory,
+            rows::{RowFactory, RowIndex},
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
             unused_query_callback, FixedData, MutableState, QueryCallback,
         },
@@ -140,7 +149,7 @@ mod tests {
             .into_iter()
             .map(|(n, c)| (n.to_string(), c))
             .collect::<Vec<_>>();
-        let fixed_data = FixedData::new(&analyzed, &constants, vec![]);
+        let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default());
 
         // No global range constraints
         let global_range_constraints = GlobalConstraints {
@@ -161,7 +170,8 @@ mod tests {
             .collect();
         let data = FinalizableData::with_initial_rows_in_progress(
             &columns,
-            (0..fixed_data.degree).map(|i| row_factory.fresh_row(i)),
+            (0..fixed_data.degree)
+                .map(|i| row_factory.fresh_row(RowIndex::from_degree(i, fixed_data.degree))),
         );
 
         let mut mutable_state = MutableState {
@@ -169,7 +179,7 @@ mod tests {
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
-        let row_offset = 0;
+        let row_offset = RowIndex::from_degree(0, fixed_data.degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let witness_cols = fixed_data.witness_cols.keys().collect();
 

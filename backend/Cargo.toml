@@ -1,7 +1,11 @@
 [package]
 name = "powdr-backend"
-version = "0.1.0"
-edition = "2021"
+description = "powdr backend types and API"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [features]
 halo2 = ["dep:powdr-halo2"]
@@ -11,6 +15,7 @@ powdr-ast = { path = "../ast" }
 powdr-halo2 = { path = "../halo2", optional = true }
 powdr-number = { path = "../number" }
 powdr-pil-analyzer = { path = "../pil-analyzer" }
+powdr-executor = { path = "../executor" }
 
 strum = { version = "0.24.1", features = ["derive"] }
 log = "0.4.17"
@@ -23,3 +28,6 @@ mktemp = "0.5.0"
 test-log = "0.2.12"
 env_logger = "0.10.0"
 pretty_assertions = "1.4.0"
+
+[package.metadata.cargo-udeps.ignore]
+development = ["env_logger"]

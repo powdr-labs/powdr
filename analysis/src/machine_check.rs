@@ -1,6 +1,6 @@
 #![deny(clippy::print_stdout)]
 
-use std::{collections::BTreeMap, marker::PhantomData};
+use std::collections::BTreeMap;
 
 use powdr_ast::{
     asm_analysis::{
@@ -19,11 +19,10 @@ use powdr_ast::{
         },
     },
 };
-use powdr_number::FieldElement;
 
 /// Verifies certain properties of each machine and constructs the Machine objects.
 /// Also transfers generic PIL definitions but does not verify anything about them.
-pub fn check<T: FieldElement>(file: ASMProgram<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
+pub fn check(file: ASMProgram) -> Result<AnalysisASMFile, Vec<String>> {
     let ctx = AbsoluteSymbolPath::default();
     let machines = TypeChecker::default().check_module(file.main, &ctx)?;
     Ok(AnalysisASMFile {
@@ -32,19 +31,18 @@ pub fn check<T: FieldElement>(file: ASMProgram<T>) -> Result<AnalysisASMFile<T>,
 }
 
 #[derive(Default)]
-struct TypeChecker<T> {
-    marker: PhantomData<T>,
-}
+struct TypeChecker {}
 
-impl<T: FieldElement> TypeChecker<T> {
+impl TypeChecker {
     fn check_machine_type(
         &mut self,
-        machine: asm::Machine<T>,
+        machine: asm::Machine,
         ctx: &AbsoluteSymbolPath,
-    ) -> Result<Machine<T>, Vec<String>> {
+    ) -> Result<Machine, Vec<String>> {
         let mut errors = vec![];
 
         let mut degree = None;
+        let mut call_selectors = None;
         let mut registers = vec![];
         let mut pil = vec![];
         let mut instructions = vec![];
@@ -58,6 +56,15 @@ impl<T: FieldElement> TypeChecker<T> {
                     degree = Some(DegreeStatement {
                         degree: degree_value,
                     });
+                }
+                MachineStatement::CallSelectors(_, sel) => {
+                    if let Some(other_sel) = &call_selectors {
+                        errors.push(format!(
+                            "Machine {ctx} already has call_selectors ({other_sel})"
+                        ));
+                    } else {
+                        call_selectors = Some(sel);
+                    }
                 }
                 MachineStatement::RegisterDeclaration(source, name, flag) => {
                     let ty = match flag {
@@ -78,17 +85,19 @@ impl<T: FieldElement> TypeChecker<T> {
                         Err(e) => errors.extend(e),
                     }
                 }
-                MachineStatement::LinkDeclaration(LinkDeclaration {
+                MachineStatement::LinkDeclaration(
                     source,
-                    flag,
-                    params,
-                    to,
-                }) => {
+                    LinkDeclaration {
+                        flag,
+                        to,
+                        is_permutation,
+                    },
+                ) => {
                     links.push(LinkDefinitionStatement {
                         source,
                         flag,
-                        params,
                         to,
+                        is_permutation,
                     });
                 }
                 MachineStatement::Pil(_source, statement) => {
@@ -184,18 +193,48 @@ impl<T: FieldElement> TypeChecker<T> {
                     ctx
                 ));
             }
-            if operation_count > 1 && operation_id.is_none() {
+
+            if operation_id.is_some() {
+                for o in callable.operation_definitions() {
+                    if o.operation.id.id.is_none() {
+                        errors.push(format!(
+                            "Operation `{}` in machine {} needs an operation id because the machine has an operation id column",
+                            o.name, ctx
+                        ))
+                    }
+                }
+            } else {
+                // no operation id column
+                if operation_count > 1 {
+                    errors.push(format!(
+                        "Machine {} should have an operation id column as it does not have a pc and has more than one operation",
+                        ctx
+                    ));
+                }
+                if let Some(o) = callable.operation_definitions().next() {
+                    if o.operation.id.id.is_some() {
+                        errors.push(format!(
+                            "Operation `{}` in machine {} can't have an operation id because the machine does not have an operation id column",
+                            o.name, ctx
+                        ))
+                    }
+                }
+            }
+
+            for r in &registers {
                 errors.push(format!(
-                    "Machine {} should have an operation id column as it does not have a pc and has more than one operation",
-                    ctx
+                    "Machine {} should not have registers as it does not have a pc, found `{}`",
+                    ctx, r.name
                 ));
             }
+
             for f in callable.function_definitions() {
                 errors.push(format!(
                     "Machine {} should not have functions as it does not have a pc, found `{}`",
                     ctx, f.name
                 ))
             }
+
             for i in &instructions {
                 errors.push(format!(
                     "Machine {} should not have instructions as it does not have a pc, found `{}`",
@@ -215,6 +254,18 @@ impl<T: FieldElement> TypeChecker<T> {
                     ctx
                 ));
             }
+            if call_selectors.is_some() {
+                errors.push(format!(
+                    "Machine {} should not have call_selectors as it has a pc",
+                    ctx
+                ));
+            }
+            for l in &links {
+                errors.push(format!(
+                    "Machine {} should not have links as it has a pc, found `{}`. Use an external instruction instead",
+                    ctx, l.flag
+                ));
+            }
             for o in callable.operation_definitions() {
                 errors.push(format!(
                     "Machine {} should not have operations as it has a pc, found `{}`",
@@ -231,11 +282,11 @@ impl<T: FieldElement> TypeChecker<T> {
             degree,
             latch,
             operation_id,
+            call_selectors,
             pc: registers
                 .iter()
                 .enumerate()
-                .filter_map(|(i, r)| (r.ty.is_pc()).then_some(i))
-                .next(),
+                .find_map(|(i, r)| (r.ty.is_pc()).then_some(i)),
             registers,
             links,
             instructions,
@@ -253,19 +304,19 @@ impl<T: FieldElement> TypeChecker<T> {
 
     fn check_module(
         &mut self,
-        module: ASMModule<T>,
+        module: ASMModule,
         ctx: &AbsoluteSymbolPath,
-    ) -> Result<BTreeMap<AbsoluteSymbolPath, Item<T>>, Vec<String>> {
+    ) -> Result<BTreeMap<AbsoluteSymbolPath, Item>, Vec<String>> {
         let mut errors = vec![];
 
-        let mut res: BTreeMap<AbsoluteSymbolPath, Item<T>> = BTreeMap::default();
+        let mut res: BTreeMap<AbsoluteSymbolPath, Item> = BTreeMap::default();
 
         for m in module.statements {
             match m {
                 ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
                     match value {
                         asm::SymbolValue::Machine(m) => {
-                            match self.check_machine_type(m, ctx) {
+                            match self.check_machine_type(m, &ctx.with_part(&name)) {
                                 Err(e) => {
                                     errors.extend(e);
                                 }
@@ -298,6 +349,12 @@ impl<T: FieldElement> TypeChecker<T> {
                         asm::SymbolValue::Expression(e) => {
                             res.insert(ctx.clone().with_part(&name), Item::Expression(e));
                         }
+                        asm::SymbolValue::TypeDeclaration(enum_decl) => {
+                            res.insert(
+                                ctx.clone().with_part(&name),
+                                Item::TypeDeclaration(enum_decl),
+                            );
+                        }
                     }
                 }
             }
@@ -311,10 +368,10 @@ impl<T: FieldElement> TypeChecker<T> {
     }
 
     fn check_instruction(
-        &mut self,
+        &self,
         name: &str,
-        instruction: parsed::asm::Instruction<T>,
-    ) -> Result<Instruction<T>, Vec<String>> {
+        instruction: parsed::asm::Instruction,
+    ) -> Result<Instruction, Vec<String>> {
         if name == "return" {
             return Err(vec!["Instruction cannot use reserved name `return`".into()]);
         }
@@ -323,7 +380,8 @@ impl<T: FieldElement> TypeChecker<T> {
             let errors: Vec<_> = statements
                 .iter()
                 .filter_map(|s| match s {
-                    powdr_ast::parsed::PilStatement::PolynomialIdentity(_, _) => None,
+                    // TODO this could be a function call that returns an identity including a selector in the future.
+                    powdr_ast::parsed::PilStatement::Expression(_, _) => None,
                     powdr_ast::parsed::PilStatement::PermutationIdentity(_, l, _)
                     | powdr_ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
                         .selector
@@ -346,14 +404,13 @@ impl<T: FieldElement> TypeChecker<T> {
 #[cfg(test)]
 mod tests {
     use powdr_importer::load_dependencies_and_resolve_str;
-    use powdr_number::Bn254Field;
 
     use super::check;
 
     // A utility to test behavior of the type checker on source inputs
     // TODO: test returned values, not just success
     fn expect_check_str(src: &str, expected: Result<(), Vec<&str>>) {
-        let resolved = load_dependencies_and_resolve_str::<Bn254Field>(src);
+        let resolved = load_dependencies_and_resolve_str(src);
         let checked = check(resolved);
         assert_eq!(
             checked.map(|_| ()),
@@ -375,6 +432,90 @@ mod tests {
             src,
             Err(vec![
                 "Expected A to be of type Machine, but found type module",
+            ]),
+        );
+    }
+
+    #[test]
+    fn constrained_machine_has_no_registers() {
+        let src = r#"
+machine Main(latch, id) {
+   reg A;
+}
+"#;
+        expect_check_str(
+            src,
+            Err(vec![
+                "Machine ::Main should not have registers as it does not have a pc, found `A`",
+            ]),
+        );
+    }
+
+    #[test]
+    fn virtual_machine_has_no_links() {
+        let src = r#"
+machine Main {
+   reg pc[@pc];
+   reg A;
+   reg B;
+
+   link foo => submachine.foo A -> B;
+}
+"#;
+        expect_check_str(
+            src,
+            Err(vec![
+                "Machine ::Main should not have links as it has a pc, found `foo`. Use an external instruction instead",
+            ]),
+        );
+    }
+
+    #[test]
+    fn multiple_ops_need_op_id() {
+        let src = r#"
+machine Arith(latch, _) {
+   operation add a, b -> c;
+   operation sub a, b -> c;
+}
+"#;
+        expect_check_str(src, Err(vec!["Machine ::Arith should have an operation id column as it does not have a pc and has more than one operation"]));
+    }
+
+    #[test]
+    fn id_column_requires_op_id() {
+        let src = r#"
+machine Arith(latch, id) {
+   operation add a, b -> c;
+   operation sub a, b -> c;
+}
+"#;
+        expect_check_str(src, Err(vec!["Operation `add` in machine ::Arith needs an operation id because the machine has an operation id column",
+                                       "Operation `sub` in machine ::Arith needs an operation id because the machine has an operation id column"]));
+    }
+
+    #[test]
+    fn id_op_id_requires_id_column() {
+        let src = r#"
+machine Arith(latch, _) {
+   operation add<0> a, b -> c;
+}
+"#;
+        expect_check_str(src, Err(vec!["Operation `add` in machine ::Arith can't have an operation id because the machine does not have an operation id column"]));
+    }
+
+    #[test]
+    fn virtual_machine_has_no_call_selectors() {
+        let src = r#"
+machine Main {
+   reg pc[@pc];
+
+   call_selectors sel;
+}
+"#;
+        expect_check_str(
+            src,
+            Err(vec![
+                "Machine ::Main should not have call_selectors as it has a pc",
             ]),
         );
     }

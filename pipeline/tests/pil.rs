@@ -1,25 +1,124 @@
+#[cfg(feature = "halo2")]
+use powdr_number::Bn254Field;
 use powdr_number::GoldilocksField;
-use powdr_pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
-use std::path::Path;
+use powdr_pipeline::{
+    test_util::{
+        assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
+        assert_proofs_fail_for_invalid_witnesses_halo2,
+        assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, resolve_test_file,
+        test_halo2, verify_test_file,
+    },
+    Pipeline,
+};
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
-    verify_test_file(file_name, inputs, vec![]);
+    verify_test_file(file_name, inputs, vec![]).unwrap();
+}
+
+#[test]
+fn test_invalid_witness() {
+    let f = "pil/trivial.pil";
+    let witness = vec![("main.w".to_string(), vec![0; 4])];
+    assert_proofs_fail_for_invalid_witnesses(f, &witness);
+}
+
+#[test]
+#[should_panic = "Number not included: F3G { cube: [Fr(0x0000000000000000), Fr(0x0000000000000000), Fr(0x0000000000000000)], dim: 3 }"]
+fn test_lookup_with_selector() {
+    // witness[0] and witness[2] have to be in {2, 4}
+
+    // Valid witness
+    let f = "pil/lookup_with_selector.pil";
+    let witness = [2, 42, 4, 17];
+    Pipeline::default()
+        .from_file(resolve_test_file(f))
+        .set_witness(vec![(
+            "main.w".to_string(),
+            witness.iter().cloned().map(Bn254Field::from).collect(),
+        )])
+        .with_backend(powdr_backend::BackendType::Halo2Mock)
+        .compute_proof()
+        .unwrap();
+
+    // Invalid witness: 0 is not in the set {2, 4}
+    let witness = vec![("main.w".to_string(), vec![0, 42, 4, 17])];
+    assert_proofs_fail_for_invalid_witnesses_halo2(f, &witness);
+    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
+    // Unfortunately, eStark panics in this case. That's why the test is marked
+    // as should_panic, with the error message that would be coming from eStark...
+    assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
+}
+
+#[test]
+#[should_panic = "assertion failed: check_val._eq(&F::one())"]
+fn test_permutation_with_selector() {
+    // witness[0] and witness[2] have to be in {2, 4}
+
+    // Valid witness
+    let f = "pil/permutation_with_selector.pil";
+    let witness = [2, 42, 4, 17];
+    Pipeline::default()
+        .from_file(resolve_test_file(f))
+        .set_witness(vec![(
+            "main.w".to_string(),
+            witness.iter().cloned().map(Bn254Field::from).collect(),
+        )])
+        .with_backend(powdr_backend::BackendType::Halo2Mock)
+        .compute_proof()
+        .unwrap();
+
+    // Invalid witness: 0 is not in the set {2, 4}
+    let witness = vec![("main.w".to_string(), vec![0, 42, 4, 17])];
+    assert_proofs_fail_for_invalid_witnesses_halo2(f, &witness);
+    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
+    // Unfortunately, eStark panics in this case. That's why the test is marked
+    // as should_panic, with the error message that would be coming from eStark...
+    assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
 }
 
 #[test]
 fn test_fibonacci() {
     let f = "pil/fibonacci.pil";
     verify_pil(f, Default::default());
-    gen_halo2_proof(f, Default::default());
+    test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn test_permutation_via_challenges() {
+    let f = "pil/permutation_via_challenges.pil";
+    test_halo2(f, Default::default());
+}
+
+#[test]
+fn test_fibonacci_invalid_witness() {
+    let f = "pil/fibonacci.pil";
+
+    // Changed one value and then continued.
+    // The following constraint should fail in row 1:
+    //     (1-ISLAST) * (x' - y) = 0;
+    let witness = vec![
+        ("Fibonacci.x".to_string(), vec![1, 1, 10, 3]),
+        ("Fibonacci.y".to_string(), vec![1, 2, 3, 13]),
+    ];
+    assert_proofs_fail_for_invalid_witnesses(f, &witness);
+
+    // All constraints are valid, except the initial row.
+    // The following constraint should fail in row 3:
+    //     ISLAST * (y' - 1) = 0;
+    let witness = vec![
+        ("Fibonacci.x".to_string(), vec![1, 2, 3, 5]),
+        ("Fibonacci.y".to_string(), vec![2, 3, 5, 8]),
+    ];
+    assert_proofs_fail_for_invalid_witnesses(f, &witness);
 }
 
 #[test]
 fn test_constant_in_identity() {
     let f = "pil/constant_in_identity.pil";
     verify_pil(f, Default::default());
-    gen_halo2_proof(f, Default::default());
+    test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
@@ -27,7 +126,7 @@ fn test_constant_in_identity() {
 fn fib_arrays() {
     let f = "pil/fib_arrays.pil";
     verify_pil(f, Default::default());
-    gen_halo2_proof(f, Default::default());
+    test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
@@ -42,14 +141,14 @@ fn test_external_witgen_fails_if_none_provided() {
 fn test_external_witgen_a_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.a".to_string(), vec![GoldilocksField::from(3); 16])];
-    verify_test_file(f, Default::default(), external_witness);
+    verify_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
 fn test_external_witgen_b_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.b".to_string(), vec![GoldilocksField::from(4); 16])];
-    verify_test_file(f, Default::default(), external_witness);
+    verify_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
@@ -59,11 +158,11 @@ fn test_external_witgen_both_provided() {
         ("main.a".to_string(), vec![GoldilocksField::from(3); 16]),
         ("main.b".to_string(), vec![GoldilocksField::from(4); 16]),
     ];
-    verify_test_file(f, Default::default(), external_witness);
+    verify_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
-#[should_panic = "called `Result::unwrap()` on an `Err` value: Generic(\"main.b = (main.a + 1);:\\n    Linear constraint is not satisfiable: -1 != 0\")"]
+#[should_panic = "Witness generation failed."]
 fn test_external_witgen_fails_on_conflicting_external_witness() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![
@@ -71,14 +170,7 @@ fn test_external_witgen_fails_on_conflicting_external_witness() {
         // Does not satisfy b = a + 1
         ("main.b".to_string(), vec![GoldilocksField::from(3); 16]),
     ];
-    verify_test_file(f, Default::default(), external_witness);
-}
-
-#[test]
-fn test_global() {
-    verify_pil("pil/global.pil", Default::default());
-    // Halo2 would take too long for this.
-    // Starky requires at least one witness column, this test has none.
+    verify_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
@@ -130,10 +222,18 @@ fn test_block_lookup_or() {
 }
 
 #[test]
+fn test_block_lookup_or_permutation() {
+    let f = "pil/block_lookup_or_permutation.pil";
+    verify_pil(f, Default::default());
+    test_halo2(f, Default::default());
+    // starky would take too long for this in debug mode
+}
+
+#[test]
 fn test_halo_without_lookup() {
     let f = "pil/halo_without_lookup.pil";
     verify_pil(f, Default::default());
-    gen_halo2_proof(f, Default::default());
+    test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
@@ -176,13 +276,46 @@ fn conditional_fixed_constraints() {
 }
 
 #[test]
-fn arith_improved() {
-    let f = "pil/arith_improved.pil";
-    powdr_pil_analyzer::analyze::<GoldilocksField>(
-        &Path::new(&format!("{}/../test_data/{f}", env!("CARGO_MANIFEST_DIR")))
-            .canonicalize()
-            .unwrap(),
-    );
+fn referencing_arrays() {
+    let f = "pil/referencing_array.pil";
+    verify_pil(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn naive_byte_decomposition_bn254() {
+    // This should pass, because BN254 is a field that can fit all 64-Bit integers.
+    let f = "pil/naive_byte_decomposition.pil";
+    test_halo2(f, Default::default());
+}
+
+#[test]
+#[should_panic = "Witness generation failed."]
+fn naive_byte_decomposition_gl() {
+    // This should fail, because GoldilocksField is a field that cannot fit all 64-Bit integers.
+    let f = "pil/naive_byte_decomposition.pil";
+    verify_pil(f, Default::default());
+}
+
+#[test]
+fn serialize_deserialize_optimized_pil() {
+    let f = "pil/fibonacci.pil";
+    let path = powdr_pipeline::test_util::resolve_test_file(f);
+
+    let optimized = powdr_pipeline::Pipeline::<powdr_number::Bn254Field>::default()
+        .from_file(path)
+        .compute_optimized_pil()
+        .unwrap();
+
+    let optimized_serialized = serde_cbor::to_vec(&optimized).unwrap();
+    let optimized_deserialized: powdr_ast::analyzed::Analyzed<powdr_number::Bn254Field> =
+        serde_cbor::from_slice(&optimized_serialized[..]).unwrap();
+
+    let input_pil_file = format!("{}", optimized);
+    let output_pil_file = format!("{}", optimized_deserialized);
+
+    assert_eq!(input_pil_file, output_pil_file);
 }
 
 mod book {
@@ -191,7 +324,7 @@ mod book {
 
     fn run_book_test(file: &str) {
         verify_pil(file, Default::default());
-        gen_halo2_proof(file, Default::default());
+        test_halo2(file, Default::default());
         gen_estark_proof(file, Default::default());
     }
 

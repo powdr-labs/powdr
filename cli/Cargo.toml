@@ -1,15 +1,19 @@
 [package]
 name = "powdr-cli"
-version = "0.1.0"
-edition = "2021"
+description = "powdr CLI"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+default-run = "powdr"
 
 [features]
 default = [] # halo2 is disabled by default
-halo2 = ["dep:powdr-halo2", "powdr-backend/halo2", "powdr-pipeline/halo2"]
+halo2 = ["powdr-backend/halo2", "powdr-pipeline/halo2"]
 
 [dependencies]
 powdr-backend = { path = "../backend" }
-powdr-halo2 = { path = "../halo2", optional = true }
 powdr-number = { path = "../number" }
 powdr-parser = { path = "../parser" }
 powdr-pilopt = { path = "../pilopt" }

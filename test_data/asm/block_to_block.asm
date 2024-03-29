@@ -22,7 +22,7 @@ machine Main(latch, operation_id) {
     // return `3*x + 3*y`, adding twice locally and twice externally
     operation main<0>;
 
-    link instr_add x, y -> z = arith.add;
+    link instr_add => arith.add x, y -> z;
 
     col fixed operation_id = [0]*;
     col fixed x(i) { i / 4 };

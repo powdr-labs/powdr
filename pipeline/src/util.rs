@@ -1,12 +1,16 @@
 use powdr_ast::analyzed::{Analyzed, FunctionValueDefinition, Symbol};
 use powdr_number::{read_polys_file, DegreeType, FieldElement};
-use std::{fs::File, io::BufReader, path::Path};
+use std::{
+    fs::File,
+    io::{self, BufReader},
+    path::Path,
+};
 
 pub trait PolySet {
     const FILE_NAME: &'static str;
     fn get_polys<T: FieldElement>(
         pil: &Analyzed<T>,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)>;
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)>;
 }
 
 pub struct FixedPolySet;
@@ -15,7 +19,7 @@ impl PolySet for FixedPolySet {
 
     fn get_polys<T: FieldElement>(
         pil: &Analyzed<T>,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
         pil.constant_polys_in_source_order()
     }
 }
@@ -26,26 +30,39 @@ impl PolySet for WitnessPolySet {
 
     fn get_polys<T: FieldElement>(
         pil: &Analyzed<T>,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
         pil.committed_polys_in_source_order()
     }
 }
 
-pub fn read_poly_set<P: PolySet, T: FieldElement>(
+#[allow(clippy::type_complexity)]
+pub fn try_read_poly_set<P: PolySet, T: FieldElement>(
     pil: &Analyzed<T>,
     dir: &Path,
     name: &str,
-) -> (Vec<(String, Vec<T>)>, DegreeType) {
+) -> Option<(Vec<(String, Vec<T>)>, DegreeType)> {
     let column_names: Vec<String> = P::get_polys(pil)
         .iter()
         .flat_map(|(poly, _)| poly.array_elements())
         .map(|(name, _id)| name)
         .collect();
 
-    let fname = format!("{name}_{}", P::FILE_NAME);
+    (!column_names.is_empty()).then(|| {
+        let fname = format!("{name}_{}", P::FILE_NAME);
+        read_polys_file(
+            &mut BufReader::new(File::open(dir.join(fname)).unwrap()),
+            &column_names,
+        )
+    })
+}
 
-    read_polys_file(
-        &mut BufReader::new(File::open(dir.join(fname)).unwrap()),
-        &column_names,
-    )
+/// Calls a function with the given writer, flushes it, and panics on error.
+pub fn write_or_panic<W, F, T>(mut writer: W, f: F) -> T
+where
+    W: io::Write,
+    F: FnOnce(&mut W) -> T,
+{
+    let result = f(&mut writer);
+    writer.flush().unwrap();
+    result
 }

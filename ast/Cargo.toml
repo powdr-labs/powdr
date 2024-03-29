@@ -1,19 +1,22 @@
 [package]
 name = "powdr-ast"
-version = "0.1.0"
-edition = "2021"
+description = "powdr AST definitions"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 powdr-number = { path = "../number" }
 
 itertools = "0.11.0"
-num-bigint = "0.4.3"
 num-traits = "0.2.15"
-diff = "0.1"
-log = "0.4.18"
 derive_more = "0.99.17"
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
+schemars = { version = "0.8.16", features = ["preserve_order"]}
+serde_cbor = "0.11.2"
 
 [dev-dependencies]
-pretty_assertions = "1.3.0"
-
+pretty_assertions = "1.4.0"
 

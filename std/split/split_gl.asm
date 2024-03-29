@@ -1,7 +1,13 @@
+use std::utils::cross_product;
+use std::prover::Query;
+
 // Splits an arbitrary field element into two u32s, on the Goldilocks field.
 machine SplitGL(RESET, _) {
 
     operation split in_acc -> output_low, output_high;
+
+    // Allow this machine to be connected via a permutation
+    call_selectors sel;
 
     // Latch and operation ID
     col fixed RESET(i) { if i % 8 == 7 { 1 } else { 0 } };
@@ -13,7 +19,8 @@ machine SplitGL(RESET, _) {
     // previous block)
     // A hint is provided because automatic witness generation does not
     // understand step 3 to figure out that the byte decomposition is unique.
-    col witness bytes(i) query ("hint", (std::convert::int(in_acc(i + 1)) >> (((i + 1) % 8) * 8)) % 0xff);
+    let select_byte: fe, int -> fe = |input, byte| std::convert::fe((std::convert::int(input) >> (byte * 8)) & 0xff);
+    col witness bytes(i) query Query::Hint(select_byte(std::prover::eval(in_acc'), (i + 1) % 8));
     // Puts the bytes together to form the input
     col witness in_acc;
     // Factors to multiply the bytes by
@@ -56,10 +63,13 @@ machine SplitGL(RESET, _) {
     col fixed BYTES_MAX = [0, 0, 0, 0xff, 0xff, 0xff, 0xff, 0]*;
 
     // Byte comparison block machine
-    col fixed P_A(i) { i % 256 };
-    col fixed P_B(i) { (i >> 8) % 256 };
-    col fixed P_LT(i) { if std::convert::int(P_A(i)) < std::convert::int(P_B(i)) { 1 } else { 0 } };
-    col fixed P_GT(i) { if std::convert::int(P_A(i)) > std::convert::int(P_B(i)) { 1 } else { 0 } };
+    let inputs = cross_product([256, 256]);
+    let a: int -> int = inputs[0];
+    let b: int -> int = inputs[1];
+    let P_A: col = a;
+    let P_B: col = b;
+    col fixed P_LT(i) { if a(i) < b(i) { 1 } else { 0 } };
+    col fixed P_GT(i) { if a(i) > b(i) { 1 } else { 0 } };
 
     // Compare the current byte with the corresponding byte of the maximum value.
     col witness lt;

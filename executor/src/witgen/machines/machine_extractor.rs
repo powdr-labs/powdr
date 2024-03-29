@@ -115,6 +115,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         if let Some(machine) = SortedWitnesses::try_new(
             name_with_type("SortedWitness"),
             fixed,
+            &connecting_identities,
             &machine_identities,
             &machine_witnesses,
         ) {
@@ -123,7 +124,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         } else if let Some(machine) = DoubleSortedWitnesses::try_new(
             name_with_type("DoubleSortedWitnesses"),
             fixed,
-            &machine_identities,
+            &connecting_identities,
             &machine_witnesses,
             global_range_constraints,
         ) {
@@ -171,9 +172,10 @@ pub fn split_out_machines<'a, T: FieldElement>(
             machines.push(KnownMachine::Vm(Generator::new(
                 name_with_type("Vm"),
                 fixed,
-                &machine_identities,
+                &connecting_identities,
+                machine_identities,
                 machine_witnesses,
-                global_range_constraints,
+                global_range_constraints.clone(),
                 Some(latch),
             )));
         }
@@ -235,10 +237,10 @@ pub fn refs_in_identity<T>(identity: &Identity<Expression<T>>) -> HashSet<PolyID
 
 /// Extracts all references to names from selected expressions.
 pub fn refs_in_selected_expressions<T>(
-    selexpr: &SelectedExpressions<Expression<T>>,
+    sel_expr: &SelectedExpressions<Expression<T>>,
 ) -> HashSet<PolyID> {
     let mut refs: HashSet<PolyID> = Default::default();
-    selexpr.pre_visit_expressions(&mut |expr| {
+    sel_expr.pre_visit_expressions(&mut |expr| {
         ref_of_expression(expr).map(|id| refs.insert(id));
     });
     refs

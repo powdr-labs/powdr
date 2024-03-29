@@ -13,13 +13,11 @@ machine Main {
 
     SplitGL split_machine;
 
-    instr split X0 -> X1, X2 = split_machine.split
+    instr split X0 -> X1, X2 ~ split_machine.split;
 
     instr assert_eq X0, X1 {
         X0 = X1
     }
-
-    instr loop { pc' = pc }
 
     function main {
 

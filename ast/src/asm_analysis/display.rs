@@ -7,7 +7,11 @@ use itertools::Itertools;
 
 use crate::{
     indent,
-    parsed::asm::{AbsoluteSymbolPath, Part},
+    parsed::{
+        asm::{AbsoluteSymbolPath, Part},
+        display::format_type_scheme_around_name,
+        TypedExpression,
+    },
     write_indented_by, write_items_indented,
 };
 
@@ -19,7 +23,7 @@ use super::{
     RegisterDeclarationStatement, RegisterTy, Return, Rom, SubmachineDeclaration,
 };
 
-impl<T: Display> Display for AnalysisASMFile<T> {
+impl Display for AnalysisASMFile {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let mut current_path = AbsoluteSymbolPath::default();
 
@@ -44,11 +48,17 @@ impl<T: Display> Display for AnalysisASMFile<T> {
                 Item::Machine(machine) => {
                     write_indented_by(f, format!("machine {name}{machine}"), current_path.len())?;
                 }
-                Item::Expression(expression) => write_indented_by(
+                Item::Expression(TypedExpression { e, type_scheme }) => write_indented_by(
                     f,
-                    format!("let {name} = {expression};\n"),
+                    format!(
+                        "let{} = {e};\n",
+                        format_type_scheme_around_name(name, type_scheme)
+                    ),
                     current_path.len(),
                 )?,
+                Item::TypeDeclaration(enum_decl) => {
+                    write_indented_by(f, enum_decl, current_path.len())?
+                }
             }
         }
         for i in (0..current_path.len()).rev() {
@@ -59,7 +69,7 @@ impl<T: Display> Display for AnalysisASMFile<T> {
     }
 }
 
-impl<T: Display> Display for Machine<T> {
+impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match (&self.latch, &self.operation_id) {
             (Some(latch), Some(operation_id)) => write!(f, "({latch}, {operation_id})"),
@@ -82,13 +92,13 @@ impl<T: Display> Display for Machine<T> {
     }
 }
 
-impl<T: Display> Display for LinkDefinitionStatement<T> {
+impl Display for LinkDefinitionStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "link {}{} = {};",
+            "link {} {} {};",
             self.flag,
-            self.params.prepend_space_if_non_empty(),
+            if self.is_permutation { "~>" } else { "=>" },
             self.to
         )
     }
@@ -100,7 +110,7 @@ impl Display for SubmachineDeclaration {
     }
 }
 
-impl<T: Display> Display for Rom<T> {
+impl Display for Rom {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "rom {{")?;
         writeln!(f, "{}", indent(&self.statements, 1))?;
@@ -114,7 +124,7 @@ impl Display for DegreeStatement {
     }
 }
 
-impl<T: Display> Display for FunctionStatement<T> {
+impl Display for FunctionStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             FunctionStatement::Assignment(s) => write!(f, "{s}"),
@@ -126,7 +136,7 @@ impl<T: Display> Display for FunctionStatement<T> {
     }
 }
 
-impl<T: Display> Display for AssignmentStatement<T> {
+impl Display for AssignmentStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -144,7 +154,7 @@ impl Display for DebugDirective {
     }
 }
 
-impl<T: Display> Display for InstructionStatement<T> {
+impl Display for InstructionStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -159,7 +169,7 @@ impl<T: Display> Display for InstructionStatement<T> {
     }
 }
 
-impl<T: Display> Display for Return<T> {
+impl Display for Return {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -196,13 +206,13 @@ impl Display for RegisterTy {
     }
 }
 
-impl<T: Display> Display for InstructionDefinitionStatement<T> {
+impl Display for InstructionDefinitionStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "instr {}{}", self.name, self.instruction)
     }
 }
 
-impl<T: Display> Display for Instruction<T> {
+impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -213,7 +223,7 @@ impl<T: Display> Display for Instruction<T> {
     }
 }
 
-impl<'a, T: Display> Display for CallableSymbolDefinitionRef<'a, T> {
+impl<'a> Display for CallableSymbolDefinitionRef<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match &self.symbol {
             CallableSymbol::Function(s) => {
@@ -239,7 +249,7 @@ impl<'a, T: Display> Display for CallableSymbolDefinitionRef<'a, T> {
     }
 }
 
-impl<T: Display> Display for FunctionStatements<T> {
+impl Display for FunctionStatements {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let res = match self.batches.is_some() {
             true => self
@@ -265,7 +275,7 @@ impl<T: Display> Display for FunctionStatements<T> {
     }
 }
 
-impl<T: Display> Display for FunctionBody<T> {
+impl Display for FunctionBody {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.statements)
     }
@@ -287,12 +297,11 @@ impl Display for IncompatibleSet {
 mod test {
     use super::*;
     use crate::parsed::asm::parse_absolute_path;
-    use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
 
     #[test]
     fn display_asm_analysis_file() {
-        let file = AnalysisASMFile::<GoldilocksField> {
+        let file = AnalysisASMFile {
             items: [
                 "::x::Y",
                 "::x::r::T",
