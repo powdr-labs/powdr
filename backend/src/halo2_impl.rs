@@ -95,14 +95,9 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<'a, T> {
     fn prove(
         &self,
         witness: &[(String, Vec<T>)],
-<<<<<<< HEAD
-        prev_proof: Option<Vec<Proof>>,
-    ) -> (Option<Vec<Proof>>, Option<String>) {
-=======
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Proof, Error> {
->>>>>>> upstream/main
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
