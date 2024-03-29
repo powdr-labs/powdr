@@ -7,8 +7,10 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, GoldilocksField, LargeInt};
 
+
 use starky::{
     merklehash::MerkleTreeGL,
+    pil2circom,
     polsarray::{PolKind, PolsArray},
     stark_gen::StarkProof,
     stark_setup::StarkSetup,
@@ -225,9 +227,32 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
         match self.verify_stark(&starkproof) {
             Ok(_) => Ok(serde_json::to_string(&starkproof).unwrap().into_bytes()),
             Err(e) => Err(e),
-        }
-    }
+        };
 
+        // generate circom
+        let opt = pil2circom::StarkOption {
+            enable_input: false,
+            verkey_input: false,
+            skip_main: true,
+            agg_stage: false,
+        };
+        let mut proofs: Vec<crate::Proof> = vec![serde_json::to_vec(&starkproof).unwrap()];
+
+        if !self.setup.starkinfo.qs.is_empty() {
+            let str_ver = pil2circom::pil2circom(
+                &self.pil_json,
+                &self.setup.const_root,
+                &self.params,
+                &mut self.setup.starkinfo,
+                &mut self.setup.program,
+                &opt,
+            )
+            .unwrap();
+            proofs.push(str_ver.as_bytes().to_vec())
+        }
+
+        (Some(proofs), Some(serde_json::to_string(&self.pil_json).unwrap()))
+    }
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         match serde_json::to_writer(output, &self.setup) {
             Ok(_) => Ok(()),
