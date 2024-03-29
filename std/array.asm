@@ -6,6 +6,9 @@ let<T> len: T[] -> int = [];
 /// Evaluates to the array [f(0), f(1), ..., f(length - 1)].
 let<T> new: int, (int -> T) -> T[] = |length, f| std::utils::fold(length, f, [], |acc, e| (acc + [e]));
 
+/// Returns a copy of an array truncated to a certain length. Fails if the array is shorter than `len`.
+let<T> truncated: T[], int -> T[] = |arr, l| new(l, |i| arr[i]);
+
 /// Evaluates to the array [f(arr[0]), f(arr[1]), ..., f(arr[len(arr) - 1])].
 let<T1, T2> map: T1[], (T1 -> T2) -> T2[] = |arr, f| new(len(arr), |i| f(arr[i]));
 

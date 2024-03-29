@@ -1,8 +1,13 @@
+use powdr_ast::analyzed::{Expression, PolynomialReference, Reference};
 use powdr_number::{BigInt, GoldilocksField};
 
-use powdr_pipeline::test_util::{
-    evaluate_integer_function, gen_estark_proof, gen_halo2_proof, std_analyzed, test_halo2,
-    verify_test_file,
+use powdr_pil_analyzer::evaluator::evaluate_expression;
+use powdr_pipeline::{
+    test_util::{
+        evaluate_integer_function, gen_estark_proof, gen_halo2_proof, std_analyzed, test_halo2,
+        verify_test_file,
+    },
+    Pipeline,
 };
 use test_log::test;
 
@@ -190,4 +195,20 @@ fn ff_inv_big() {
         vec![x.clone(), modulus.clone()],
     );
     assert_eq!((result * x) % modulus, 1.into());
+}
+
+#[test]
+fn sort() {
+    let code =
+        "let sorted: int[] = std::utils::sort([1,6,8,5,4,8,5,7,3], |x, y| x < y); machine Main { }"
+            .to_string();
+    let mut pipeline = Pipeline::<GoldilocksField>::default().from_asm_string(code, None);
+    let analyzed = pipeline.compute_analyzed_pil().unwrap().clone();
+    let expr = Expression::Reference(Reference::Poly(PolynomialReference {
+        name: "sorted".into(),
+        poly_id: None,
+        generic_args: None,
+    }));
+    let result = evaluate_expression::<GoldilocksField>(&expr, &analyzed.definitions).unwrap();
+    assert_eq!(result.to_string(), "[1, 3, 4, 5, 5, 6, 7, 8, 8]");
 }

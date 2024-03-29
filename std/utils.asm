@@ -65,16 +65,41 @@ let cross_product_internal: int, int, int[] -> (int -> int)[] = |cycle_len, pos,
     };
 
 
-let<T> sort: T[], (T, T -> bool) -> T[] = |arr, cmp| {
-    let sort_inner = |arr, start, len| match len {
+let<T> sort: T[], (T, T -> bool) -> T[] = |arr, lt|
+    internal::sort(arr, 0, std::array::len(arr), lt);
+
+// TOOD create a slice type `struct slice<T>{ data: T[], start: int, len: int}`.
+
+// TODO I think we cannot yet declare local variables
+// of generic type. Otherwise, these could be local functions inside sort.
+mod internal {
+    let<T> sort: T[], int, int, (T, T -> bool) -> T[] = |arr, start, len, lt| match len {
         0 => [],
-        1 => arr[start],
+        1 => [arr[start]],
         _ => {
             let mid = len / 2;
-            let left = sort_inner(arr, start, mid);
-            let right = sort_inner(arr, start + mid, len - mid);
-            merge(left, right)
+            let left = sort(arr, start, mid, lt);
+            let right = sort(arr, start + mid, len - mid, lt);
+            merge(left, std::array::len(left), right, std::array::len(right), lt)
         }
     };
-    sort_inner(arr, 0, std::array::len(arr));
-};
+
+    /// Merge part of merge sort. We merge right-to-left because this is
+    /// more efficient to concatenate arrays.
+    let<T> merge: T[], int, T[], int, (T, T -> bool) -> T[] = |left, llen, right, rlen, lt|
+        if llen == 0 {
+            std::array::truncated(right, rlen)
+        } else {
+            if rlen == 0 {
+                std::array::truncated(left, llen)
+            } else {
+                let l = left[llen - 1];
+                let r = right[rlen - 1];
+                if lt(l, r) {
+                    merge(left, llen, right, rlen - 1, lt) + [r]
+                } else {
+                    merge(left, llen - 1, right, rlen, lt) + [l]
+                }
+            }
+        };
+}
