@@ -227,7 +227,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
         match self.verify_stark(&starkproof) {
             Ok(_) => Ok(serde_json::to_string(&starkproof).unwrap().into_bytes()),
             Err(e) => Err(e),
-        }
+        };
 
         // generate circom
         let opt = pil2circom::StarkOption {
@@ -240,7 +240,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
 
         if !self.setup.starkinfo.qs.is_empty() {
             let str_ver = pil2circom::pil2circom(
-                &pil_json,
+                &self.pil_json,
                 &self.setup.const_root,
                 &self.params,
                 &mut self.setup.starkinfo,
@@ -251,7 +251,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
             proofs.push(str_ver.as_bytes().to_vec())
         }
 
-        (Some(proofs), Some(serde_json::to_string(&pil_json).unwrap()))
+        (Some(proofs), Some(serde_json::to_string(&self.pil_json).unwrap()))
     }
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         match serde_json::to_writer(output, &self.setup) {
