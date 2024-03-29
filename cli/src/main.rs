@@ -81,10 +81,10 @@ struct Cli {
     #[arg(long, hide = true)]
     markdown_help: bool,
 
-    /// Set log filter value [ Off, Error, Warn, Info, Debug, Trace ]
+    /// Set log filter value [ off, error, warn, info, debug, trace ]
     #[arg(long)]
     #[arg(default_value_t = LevelFilter::Info)]
-    log: LevelFilter,
+    log_level: LevelFilter,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -429,7 +429,7 @@ fn main() -> Result<(), io::Error> {
 
     let mut builder = Builder::new();
     builder
-        .filter_level(args.log)
+        .filter_level(args.log_level)
         .parse_default_env()
         .target(Target::Stdout)
         .format(|buf, record| {
