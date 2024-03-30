@@ -492,6 +492,15 @@ impl<T: FieldElement> Pipeline<T> {
             let writer = BufWriter::new(fs::File::create(path).unwrap());
             write_or_panic(writer, |writer| write_polys_file(writer, constants));
         }
+        // TODO write the columns and the update with witnesses.
+        // This means we should force-overwrite by default for the witnesses.
+        if self.arguments.export_witness_csv {
+            if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
+                let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
+                let columns = constants.iter().collect::<Vec<_>>();
+                write_polys_csv_file(csv_file, self.arguments.csv_render_mode, &columns);
+            }
+        }
         Ok(())
     }
 
