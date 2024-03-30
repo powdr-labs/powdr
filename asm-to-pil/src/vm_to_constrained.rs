@@ -13,7 +13,7 @@ use powdr_ast::{
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
-        FunctionKind, LambdaExpression, MatchArm, MatchPattern, PilStatement, PolynomialName,
+        FunctionKind, LambdaExpression, MatchArm, Pattern, PilStatement, PolynomialName,
         SelectedExpressions, UnaryOperator,
     },
     SourceRef,
@@ -933,7 +933,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 .get_mut(assign_reg)
                                 .unwrap()
                                 .push(MatchArm {
-                                    pattern: MatchPattern::Pattern(BigUint::from(i as u64).into()),
+                                    pattern: Pattern::Number(i.into()),
                                     value: expr.clone(),
                                 });
                         }
@@ -980,7 +980,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
                     FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression {
                         kind: FunctionKind::Query,
-                        params: vec!["__i".to_string()],
+                        params: vec![Pattern::Variable("__i".to_string())],
                         body: Box::new(Expression::MatchExpression(
                             Box::new(Expression::FunctionCall(FunctionCall {
                                 function: Box::new(absolute_reference("::std::prover::eval")),

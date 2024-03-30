@@ -11,7 +11,7 @@ use std::{
     ops,
 };
 
-use powdr_number::{BigUint, DegreeType};
+use powdr_number::{BigInt, BigUint, DegreeType};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -496,7 +496,7 @@ impl NamespacedPolynomialReference {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub struct LambdaExpression<Ref = NamespacedPolynomialReference> {
     pub kind: FunctionKind,
-    pub params: Vec<String>,
+    pub params: Vec<Pattern>,
     pub body: Box<Expression<Ref>>,
 }
 
@@ -613,45 +613,17 @@ impl<R> Children<Expression<R>> for FunctionCall<R> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MatchArm<Ref = NamespacedPolynomialReference> {
-    pub pattern: MatchPattern<Ref>,
+    pub pattern: Pattern,
     pub value: Expression<Ref>,
 }
 
 impl<Ref> Children<Expression<Ref>> for MatchArm<Ref> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<Ref>> + '_> {
-        Box::new(self.pattern.children().chain(once(&self.value)))
+        Box::new(once(&self.value))
     }
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<Ref>> + '_> {
-        Box::new(self.pattern.children_mut().chain(once(&mut self.value)))
-    }
-}
-
-/// A pattern for a match arm. We could extend this in the future.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub enum MatchPattern<Ref = NamespacedPolynomialReference> {
-    CatchAll,
-    Pattern(Expression<Ref>),
-}
-
-impl<Ref> Children<Expression<Ref>> for MatchPattern<Ref> {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression<Ref>> + '_> {
-        Box::new(
-            match self {
-                MatchPattern::CatchAll => None,
-                MatchPattern::Pattern(e) => Some(e),
-            }
-            .into_iter(),
-        )
-    }
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<Ref>> + '_> {
-        Box::new(
-            match self {
-                MatchPattern::CatchAll => None,
-                MatchPattern::Pattern(e) => Some(e),
-            }
-            .into_iter(),
-        )
+        Box::new(once(&mut self.value))
     }
 }
 
@@ -706,7 +678,7 @@ impl<R> Children<Expression<R>> for StatementInsideBlock<R> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LetStatementInsideBlock<Ref = NamespacedPolynomialReference> {
-    pub name: String,
+    pub pattern: Pattern,
     pub value: Option<Expression<Ref>>,
 }
 
@@ -846,6 +818,66 @@ impl Children<Expression> for ArrayExpression {
             ArrayExpression::Concat(left, right) => {
                 Box::new(left.children_mut().chain(right.children_mut()))
             }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub enum Pattern {
+    CatchAll, // "_", matches a single value
+    Rest,     // "..", matches a series of values, only valid inside array patterns
+    #[schemars(skip)]
+    Number(BigInt),
+    String(String),
+    Tuple(Vec<Pattern>),
+    Array(Vec<Pattern>),
+    Variable(String),
+}
+
+impl Pattern {
+    /// Returns an iterator over all variables in this pattern.
+    pub fn variables(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+        match self {
+            Pattern::Variable(v) => Box::new(once(v)),
+            _ => Box::new(self.children().flat_map(|p| p.variables())),
+        }
+    }
+
+    /// Return true if the pattern is irrefutable, i.e. matches all possible values of its type.
+    pub fn is_irrefutable(&self) -> bool {
+        match self {
+            Pattern::Rest => unreachable!(),
+            Pattern::CatchAll | Pattern::Variable(_) => true,
+            Pattern::Number(_) | Pattern::String(_) => false,
+            Pattern::Array(items) => {
+                // Only "[..]"" is irrefutable
+                items == &vec![Pattern::Rest]
+            }
+            Pattern::Tuple(p) => p.iter().all(|p| p.is_irrefutable()),
+        }
+    }
+}
+
+impl Children<Pattern> for Pattern {
+    fn children(&self) -> Box<dyn Iterator<Item = &Pattern> + '_> {
+        match self {
+            Pattern::CatchAll
+            | Pattern::Rest
+            | Pattern::Number(_)
+            | Pattern::String(_)
+            | Pattern::Variable(_) => Box::new(empty()),
+            Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter()),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Pattern> + '_> {
+        match self {
+            Pattern::CatchAll
+            | Pattern::Rest
+            | Pattern::Number(_)
+            | Pattern::String(_)
+            | Pattern::Variable(_) => Box::new(empty()),
+            Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter_mut()),
         }
     }
 }

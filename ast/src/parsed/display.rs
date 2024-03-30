@@ -328,11 +328,16 @@ impl<Ref: Display> Display for MatchArm<Ref> {
     }
 }
 
-impl<Ref: Display> Display for MatchPattern<Ref> {
+impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            MatchPattern::CatchAll => write!(f, "_"),
-            MatchPattern::Pattern(p) => write!(f, "{p}"),
+            Pattern::CatchAll => write!(f, "_"),
+            Pattern::Rest => write!(f, ".."),
+            Pattern::Number(n) => write!(f, "{n}"),
+            Pattern::String(s) => write!(f, "{}", quote(s)),
+            Pattern::Tuple(t) => write!(f, "({})", t.iter().format(", ")),
+            Pattern::Array(a) => write!(f, "[{}]", a.iter().format(", ")),
+            Pattern::Variable(v) => write!(f, "{v}"),
         }
     }
 }
@@ -358,7 +363,7 @@ impl<Ref: Display> Display for StatementInsideBlock<Ref> {
 
 impl<Ref: Display> Display for LetStatementInsideBlock<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "let {}", self.name)?;
+        write!(f, "let {}", self.pattern)?;
         if let Some(v) = &self.value {
             write!(f, " = {v};")
         } else {
@@ -396,11 +401,11 @@ impl Display for PilStatement {
             PilStatement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
-            PilStatement::LetStatement(_, name, type_scheme, value) => write_indented_by(
+            PilStatement::LetStatement(_, pattern, type_scheme, value) => write_indented_by(
                 f,
                 format!(
                     "let{}{};",
-                    format_type_scheme_around_name(name, type_scheme),
+                    format_type_scheme_around_name(pattern, type_scheme),
                     value
                         .as_ref()
                         .map(|value| format!(" = {value}"))
@@ -734,8 +739,8 @@ fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
         .to_string()
 }
 
-pub fn format_type_scheme_around_name<E: Display>(
-    name: &str,
+pub fn format_type_scheme_around_name<E: Display, N: Display>(
+    name: &N,
     type_scheme: &Option<TypeScheme<E>>,
 ) -> String {
     if let Some(type_scheme) = type_scheme {

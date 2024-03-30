@@ -13,7 +13,7 @@ use powdr_ast::{
     parsed::{
         display::quote,
         types::{Type, TypeScheme},
-        BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern, UnaryOperator,
+        BinaryOperator, FunctionCall, LambdaExpression, MatchArm, Pattern, UnaryOperator,
     },
     SourceRef,
 };
@@ -68,11 +68,20 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
 
                 )))?
             }
+            let matched_arguments =
+                arguments
+                    .iter()
+                    .zip(&lambda.params)
+                    .flat_map(|(arg, pattern)| {
+                        Value::try_match_pattern(arg, pattern).unwrap_or_else(|| {
+                            panic!("Irrefutable pattern did not match: {pattern} = {arg}")
+                        })
+                    });
 
             let local_vars = environment
                 .iter()
                 .cloned()
-                .chain(arguments)
+                .chain(matched_arguments)
                 .collect::<Vec<_>>();
 
             internal::evaluate(&lambda.body, &local_vars, generic_args, symbols)
@@ -149,7 +158,7 @@ impl Display for EvalError {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub enum Value<'a, T> {
     Bool(bool),
     Integer(BigInt),
@@ -243,6 +252,78 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::Identity(_, _) => "constr".to_string(),
         }
     }
+
+    /// Tries to match this value against the given pattern.
+    /// Returns local variable bindings on success.
+    pub fn try_match_pattern<'b>(
+        v: &Arc<Value<'b, T>>,
+        pattern: &Pattern,
+    ) -> Option<Vec<Arc<Value<'b, T>>>> {
+        match pattern {
+            Pattern::Rest => unreachable!("Should be handled higher up"),
+            Pattern::CatchAll => Some(vec![]),
+            Pattern::Number(n) => match v.as_ref() {
+                Value::Integer(x) if x == n => Some(vec![]),
+                Value::FieldElement(x) if BigInt::from(x.to_arbitrary_integer()) == *n => {
+                    Some(vec![])
+                }
+                // TODO Expr?
+                _ => None,
+            },
+            Pattern::String(s) => match v.as_ref() {
+                Value::String(x) if x == s => Some(vec![]),
+                _ => None,
+            },
+            Pattern::Tuple(items) => match v.as_ref() {
+                Value::Tuple(values) => {
+                    assert_eq!(values.len(), items.len());
+                    values
+                        .iter()
+                        .zip(items)
+                        .try_fold(vec![], |mut vars, (e, p)| {
+                            Value::try_match_pattern(e, p).map(|v| {
+                                vars.extend(v);
+                                vars
+                            })
+                        })
+                }
+                _ => unreachable!(),
+            },
+            Pattern::Array(items) => {
+                let Value::Array(values) = v.as_ref() else {
+                    panic!("Type error")
+                };
+                // Index of ".."
+                let rest_pos = items.iter().position(|i| *i == Pattern::Rest);
+                // Check if the value is too short.
+                let length_matches = match rest_pos {
+                    Some(_) => values.len() >= items.len() - 1,
+                    None => values.len() == items.len(),
+                };
+                if !length_matches {
+                    return None;
+                }
+                // Split value into "left" and "right" part.
+                let left_len = rest_pos.unwrap_or(values.len());
+                let right_len = rest_pos.map(|p| items.len() - p - 1).unwrap_or(0);
+                let left = values.iter().take(left_len);
+                let right = values.iter().skip(values.len() - right_len);
+                assert_eq!(
+                    left.len() + right.len(),
+                    items.len() - rest_pos.map(|_| 1).unwrap_or_default()
+                );
+                left.chain(right)
+                    .zip(items.iter().filter(|&i| *i != Pattern::Rest))
+                    .try_fold(vec![], |mut vars, (e, p)| {
+                        Value::try_match_pattern(e, p).map(|v| {
+                            vars.extend(v);
+                            vars
+                        })
+                    })
+            }
+            Pattern::Variable(_) => Some(vec![v.clone()]),
+        }
+    }
 }
 
 const BUILTINS: [(&str, BuiltinFunction); 9] = [
@@ -257,7 +338,7 @@ const BUILTINS: [(&str, BuiltinFunction); 9] = [
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum BuiltinFunction {
     /// std::array::len: _[] -> int, returns the length of an array
     ArrayLen,
@@ -311,14 +392,6 @@ pub struct Closure<'a, T> {
     pub lambda: &'a LambdaExpression<Reference>,
     pub environment: Vec<Arc<Value<'a, T>>>,
     pub generic_args: HashMap<String, Type>,
-}
-
-impl<'a, T> PartialEq for Closure<'a, T> {
-    fn eq(&self, _other: &Self) -> bool {
-        // Eq is used for pattern matching.
-        // In the future, we should introduce a proper pattern type.
-        panic!("Tried to compare closures.");
-    }
 }
 
 impl<'a, T: Display> Display for Closure<'a, T> {
@@ -587,27 +660,15 @@ mod internal {
             }
             Expression::MatchExpression(scrutinee, arms) => {
                 let v = evaluate(scrutinee, locals, generic_args, symbols)?;
-                let body = arms
+                let (vars, body) = arms
                     .iter()
-                    .find_map(|MatchArm { pattern, value }| match pattern {
-                        MatchPattern::Pattern(p) => {
-                            // TODO this uses PartialEq. As soon as we have proper match patterns
-                            // instead of value, we can remove the PartialEq requirement on Value.
-                            let p = evaluate(p, locals, generic_args, symbols).unwrap();
-                            if p == v {
-                                Some(value)
-                            } else {
-                                // TODO I don't think this part is needed now that we have the type checker.
-                                match (p.try_to_integer(), v.try_to_integer()) {
-                                    (Ok(p), Ok(v)) if p == v => Some(value),
-                                    _ => None,
-                                }
-                            }
-                        }
-                        MatchPattern::CatchAll => Some(value),
+                    .find_map(|MatchArm { pattern, value }| {
+                        Value::try_match_pattern(&v, pattern).map(|vars| (vars, value))
                     })
                     .ok_or_else(EvalError::NoMatch)?;
-                evaluate(body, locals, generic_args, symbols)?
+                let mut locals = locals.to_vec();
+                locals.extend(vars);
+                evaluate(body, &locals, generic_args, symbols)?
             }
             Expression::IfExpression(if_expr) => {
                 let cond = evaluate(&if_expr.condition, locals, generic_args, symbols)?;
@@ -629,15 +690,22 @@ mod internal {
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
-                            name,
+                            pattern,
                             value,
                         }) => {
                             let value = if let Some(value) = value {
                                 evaluate(value, &locals, generic_args, symbols)?
                             } else {
+                                let Pattern::Variable(name) = pattern else {
+                                    unreachable!()
+                                };
                                 symbols.new_witness_column(name, SourceRef::unknown())?
                             };
-                            locals.push(value);
+                            locals.extend(
+                                Value::try_match_pattern(&value, pattern).unwrap_or_else(|| {
+                                    panic!("Irrefutable pattern did not match: {pattern} = {value}")
+                                }),
+                            );
                         }
                         StatementInsideBlock::Expression(expr) => {
                             let result = evaluate(expr, &locals, generic_args, symbols)?;
@@ -1110,5 +1178,109 @@ mod test {
             let t = f(8);
         "#;
         assert_eq!(parse_and_evaluate_symbol(src, "t"), "0".to_string());
+    }
+
+    #[test]
+    pub fn match_pattern() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [] => 0,
+                [x] => x,
+                [_, x] => x + 9,
+                [_, x, y] => x + y,
+                _ => 99,
+            };
+            let t = [
+                f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])
+            ];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[0, 1, 11, 5, 99]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_skip_array() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [x, .., y] => x + y,
+                [] => 19,
+                _ => 99,
+            };
+            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[19, 99, 3, 4, 5]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_skip_array_2() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [.., y] => y,
+                _ => 99,
+            };
+            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[99, 1, 2, 3, 4]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_skip_array_3() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [.., x, y] => x,
+                [..] => 99,
+            };
+            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[99, 99, 1, 2, 3]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_skip_array_4() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [x, y, ..] => y,
+                [..] => 99,
+            };
+            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[99, 99, 2, 2, 2]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn unpack_fun() {
+        let src = r#"
+            let t: (int, fe, int), int -> int[] = |(x, _, y), z| [x, y, z];
+            let x: int[] = t((1, 2, 3), 4);
+        "#;
+        assert_eq!(parse_and_evaluate_symbol(src, "x"), "[1, 3, 4]".to_string());
+    }
+
+    #[test]
+    pub fn unpack_let() {
+        let src = r#"
+            let x: int[] = {
+                let (a, (_, b), (c, _, _, d, _)) = (1, ((), 3), (4, (), (), 7, ()));
+                [a, b, c, d]
+            };
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "x"),
+            "[1, 3, 4, 7]".to_string()
+        );
     }
 }

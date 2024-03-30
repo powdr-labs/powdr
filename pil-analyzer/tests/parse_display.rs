@@ -195,7 +195,7 @@ fn if_expr() {
 fn symbolic_functions() {
     let input = r#"namespace N(16);
     let last_row: int = 15;
-    let ISLAST: col = |i| match i { last_row => 1, _ => 0 };
+    let ISLAST: col = |i| if i == last_row { 1 } else { 0 };
     let x;
     let y;
     let constrain_equal_expr = |A, B| A - B;
@@ -205,10 +205,7 @@ fn symbolic_functions() {
     "#;
     let expected = r#"namespace N(16);
     let last_row: int = 15;
-    col fixed ISLAST(i) { match i {
-        N.last_row => 1,
-        _ => 0,
-    } };
+    col fixed ISLAST(i) { if (i == N.last_row) { 1 } else { 0 } };
     col witness x;
     col witness y;
     let constrain_equal_expr: expr, expr -> expr = (|A, B| (A - B));
@@ -242,7 +239,7 @@ fn next_op_on_param() {
 fn fixed_symbolic() {
     let input = r#"namespace N(16);
     let last_row = 15;
-    let islast = |i| match i { N.last_row => 1, _ => 0, };
+    let islast = |i| if i == N.last_row { 1 } else { 0 };
     let ISLAST: col = |i| islast(i);
     let x;
     let y;
@@ -250,10 +247,7 @@ fn fixed_symbolic() {
     "#;
     let expected = r#"namespace N(16);
     let last_row: int = 15;
-    let islast: int -> fe = (|i| match i {
-        N.last_row => 1,
-        _ => 0,
-    });
+    let islast: int -> fe = (|i| if (i == N.last_row) { 1 } else { 0 });
     col fixed ISLAST(i) { N.islast(i) };
     col witness x;
     col witness y;
@@ -560,6 +554,29 @@ fn let_inside_block_scoping_limited() {
             };
             // w is not available here any more.
             w
+        };
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+#[should_panic = "Function parameters must be irrefutable, but [x, y] is refutable."]
+fn refutable_function_param() {
+    let input = "
+    namespace Main(8);
+        let t = |[x, y], z| x;
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+#[should_panic = "Let statement requires an irrefutable pattern, but [x, y] is refutable."]
+fn refutable_let() {
+    let input = "
+    namespace Main(8);
+        let t = {
+            let [x, y] = [1, 2];
+            x
         };
     ";
     analyze_string::<GoldilocksField>(input).to_string();

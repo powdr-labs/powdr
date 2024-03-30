@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use std::collections::BTreeSet;
 use powdr_ast::parsed::{*, asm::*, types::*};
-use powdr_number::BigUint;
+use powdr_number::{BigInt, BigUint};
 use crate::{ParserContext, unescape_string};
 
 grammar(ctx: &ParserContext);
@@ -146,8 +146,8 @@ FunctionDefinition: FunctionDefinition = {
     "=" <ArrayLiteralExpression> => FunctionDefinition::Array(<>),
 }
 
-ParameterList: Vec<String> = {
-    <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list },
+ParameterList: Vec<Pattern> = {
+    <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
     => vec![]
 }
 
@@ -234,7 +234,7 @@ ConstantFixed = {
 }
 
 GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
-    <name:Identifier> => (name, None),
+    <Identifier> => (<>, None),
     <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <ty:(":" <Type>)> =>
         (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), ty }))
 }
@@ -567,6 +567,7 @@ Term: Box<Expression> = {
     BlockExpression,
     "[" <items:ExpressionList> "]" => Box::new(Expression::ArrayLiteral(ArrayLiteral{items})),
     "(" <head:Expression> "," <tail:ExpressionList> ")" => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(list)) },
+    "(" ")" => Box::new(Expression::Tuple(vec![])),
     "(" <BoxedExpression> ")",
     "${" <BoxedExpression> "}" => Box::new(Expression::FreeInput(<>))
 }
@@ -594,12 +595,7 @@ MatchArms: Vec<MatchArm> = {
 }
 
 MatchArm: MatchArm = {
-    <pattern: MatchPattern> "=>" <value: Expression> => MatchArm{pattern, value},
-}
-
-MatchPattern: MatchPattern = {
-    "_" => MatchPattern::CatchAll,
-    Expression => MatchPattern::Pattern(<>),
+    <pattern:Pattern> "=>" <value: Expression> => MatchArm{pattern, value},
 }
 
 IfExpression: Box<Expression> = {
@@ -619,9 +615,36 @@ BracedExpression: Box<Expression> = {
 }
 
 StatementInsideBlock: StatementInsideBlock = {
-    "let" <name:Identifier> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
+    "let" <pattern:Pattern> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
     <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
+
+Pattern: Pattern = {
+    "_" => Pattern::CatchAll,
+    Number => Pattern::Number(<>.into()),
+    "-" <Number> => Pattern::Number(-BigInt::from(<>)),
+    StringLiteral => Pattern::String(<>),
+    TuplePattern,
+    ArrayPattern,
+    Identifier => Pattern::Variable(<>),
+    //EnumPattern,
+}
+
+PatternIncludingRest: Pattern = {
+    Pattern => <>,
+    ".." => Pattern::Rest,
+}
+
+TuplePattern: Pattern = {
+    "(" ")" => Pattern::Tuple(vec![]),
+    "(" <mut items:(<Pattern> ",")+> <last:Pattern> ")" => Pattern::Tuple({items.push(last); items})
+}
+
+ArrayPattern: Pattern = {
+    "[" "]" => Pattern::Array(vec![]),
+    "[" <mut items:(<PatternIncludingRest> ",")*> <last:PatternIncludingRest> "]" => Pattern::Array({items.push(last); items})
+}
+
 
 // ---------------------------- Type Declarations -----------------------------
 
@@ -735,7 +758,6 @@ ConstantIdentifier: String = {
 
 PublicIdentifier: String = {
     r":[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.strip_prefix(":").unwrap().to_string()
-
 }
 
 Number: BigUint = {
