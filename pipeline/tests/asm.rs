@@ -449,3 +449,10 @@ fn test_failing_assertion() {
     let i = [];
     verify_asm(f, slice_to_vec(&i));
 }
+
+#[test]
+fn test_circuit() {
+    let f = "asm/circuit.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
+}
