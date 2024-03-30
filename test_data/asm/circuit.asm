@@ -25,7 +25,7 @@ enum Gate {
 
 // flattens an Op-structure into an array of (gate_type, input_id1, input_id2)
 let flatten_circuit = |routine| {
-    let input_count = internal::count_inputs(routine);
+    let input_count = internal::largest_input(routine) + 1;
     let state = std::array::new(input_count, |i| (Gate::Input, i, i));
     let (flattened, _) = internal::flatten_circuit(state, routine);
     flattened
@@ -36,12 +36,12 @@ mod internal {
     use super::Op;
     use super::Gate;
 
-    let count_inputs = |routine|
+    let largest_input = |routine|
         match routine {
             Op::Input(n) => n,
-            Op::Xor(a, b) => max(count_inputs(a), count_inputs(b)),
-            Op::And(a, b) => max(count_inputs(a), count_inputs(b)),
-            Op::Rotl(a, b) => max(count_inputs(a), count_inputs(b)),
+            Op::Xor(a, b) => max(largest_input(a), largest_input(b)),
+            Op::And(a, b) => max(largest_input(a), largest_input(b)),
+            Op::Rotl(a, b) => max(largest_input(a), largest_input(b)),
         };
 
     let flatten_circuit = |state, routine|
