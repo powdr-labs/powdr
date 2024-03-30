@@ -185,6 +185,15 @@ pub trait ExpressionFolder<Ref> {
                     .map(|p| self.fold_pattern(p))
                     .collect::<Result<_, _>>()?,
             ),
+            Pattern::Enum(name, data) => Pattern::Enum(
+                name,
+                data.map(|data| {
+                    data.into_iter()
+                        .map(|item| self.fold_pattern(item))
+                        .collect::<Result<_, _>>()
+                })
+                .transpose()?,
+            ),
         })
     }
 

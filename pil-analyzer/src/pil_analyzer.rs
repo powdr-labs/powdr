@@ -8,7 +8,7 @@ use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
 
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
-use powdr_ast::parsed::{FunctionKind, LambdaExpression, PILFile, PilStatement};
+use powdr_ast::parsed::{FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory};
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
@@ -51,10 +51,11 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
 
 #[derive(Default)]
 struct PILAnalyzer {
-    /// The set of all known symbols. If the flag is true, the symbol is a type name.
-    known_symbols: HashMap<String, bool>,
+    /// Known symbols by name and category, determined in the first step.
+    known_symbols: HashMap<String, SymbolCategory>,
     current_namespace: AbsoluteSymbolPath,
     polynomial_degree: Option<DegreeType>,
+    /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
     identities: Vec<Identity<Expression>>,
@@ -301,8 +302,12 @@ impl PILAnalyzer {
                             }),
                     )
                     .collect::<Vec<_>>();
-                for (name, is_type) in names {
-                    if self.known_symbols.insert(name.clone(), is_type).is_some() {
+                for (name, symbol_kind) in names {
+                    if self
+                        .known_symbols
+                        .insert(name.clone(), symbol_kind)
+                        .is_some()
+                    {
                         panic!("Duplicate symbol definition: {name}");
                     }
                 }
@@ -394,25 +399,14 @@ impl<'a> AnalysisDriver for Driver<'a> {
             })
     }
 
-    fn resolve_ref(&self, path: &SymbolPath, is_type: bool) -> String {
+    fn try_resolve_ref(&self, path: &SymbolPath) -> Option<(String, SymbolCategory)> {
         // Try to resolve the name starting at the current namespace and then
         // go up level by level until the root.
 
-        self.0
-            .current_namespace
-            .iter_to_root()
-            .find_map(|prefix| {
-                let path = prefix.join(path.clone()).to_dotted_string();
-                self.0.known_symbols.get(&path).map(|t| {
-                    if *t && !is_type {
-                        panic!("Expected value but got type: {path}");
-                    } else if !t && is_type {
-                        panic!("Expected type but got value: {path}");
-                    }
-                    path
-                })
-            })
-            .unwrap_or_else(|| panic!("Symbol not found: {}", path.to_dotted_string()))
+        self.0.current_namespace.iter_to_root().find_map(|prefix| {
+            let path = prefix.join(path.clone()).to_dotted_string();
+            self.0.known_symbols.get(&path).map(|cat| (path, *cat))
+        })
     }
 
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)> {

@@ -357,7 +357,7 @@ fn constraint_but_expected_expression() {
 }
 
 #[test]
-#[should_panic = "Symbol not found: T"]
+#[should_panic = "Type symbol not found: T"]
 fn used_undeclared_type_var() {
     let input = r#"let x: T = 8;"#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
@@ -373,7 +373,7 @@ fn declared_unused_type_var() {
 }
 
 #[test]
-#[should_panic = "Symbol not found: T"]
+#[should_panic = "Type symbol not found: T"]
 fn double_used_undeclared_type_var() {
     let input = r#"let<K> x: T = 8;"#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
@@ -543,7 +543,7 @@ fn let_inside_block_scoping_separate() {
 }
 
 #[test]
-#[should_panic = "Symbol not found: w"]
+#[should_panic = "Value symbol not found: w"]
 fn let_inside_block_scoping_limited() {
     let input = "
     namespace Main(8);

@@ -674,7 +674,7 @@ impl TypeChecker {
             .unify_types(inferred_type.clone(), expected_type.clone())
             .map_err(|err| {
                 format!(
-                    "Error checking pattrn {pattern}:\nExpected type: {}\nInferred type: {}\n{err}",
+                    "Error checking pattern {pattern}:\nExpected type: {}\nInferred type: {}\n{err}",
                     self.type_into_substituted(expected_type.clone()),
                     self.type_into_substituted(inferred_type)
                 )
@@ -714,6 +714,30 @@ impl TypeChecker {
                 let ty = self.new_type_var();
                 self.local_var_types.push(ty.clone());
                 ty
+            }
+            Pattern::Enum(name, data) => {
+                // TODO to do this properly, the name should not be a SymbolPath at this point.
+                let (ty, gen_args) =
+                    self.instantiate_scheme(self.declared_types[&name.to_dotted_string()].clone());
+                if !gen_args.is_empty() {
+                    unimplemented!("Generic enums are not yet supported.");
+                }
+                let ty = type_for_reference(&ty);
+
+                match data {
+                    Some(data) => {
+                        // TODO we could also go the proper route and call unify.
+                        let Type::Function(FunctionType { params, value }) = ty else {
+                            panic!()
+                        };
+                        params
+                            .iter()
+                            .zip(data)
+                            .try_for_each(|(ty, pat)| self.expect_type_of_pattern(ty, pat))?;
+                        (*value).clone()
+                    }
+                    None => ty,
+                }
             }
         })
     }

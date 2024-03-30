@@ -2,7 +2,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     convert::Infallible,
-    iter::once,
+    iter::{empty, once},
 };
 
 use powdr_ast::parsed::{
@@ -15,8 +15,8 @@ use powdr_ast::parsed::{
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, PilStatement, StatementInsideBlock,
-    TypedExpression,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, PilStatement,
+    StatementInsideBlock, TypedExpression,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -219,15 +219,52 @@ fn canonicalize_inside_expression(
     paths: &'_ PathMap,
 ) {
     e.pre_visit_expressions_mut(&mut |e| {
-        if let Expression::Reference(reference) = e {
-            // If resolving the reference fails, we assume it is a local variable that has been checked below.
-            if let Some(n) = paths.get(&path.clone().join(reference.path.clone())) {
-                *reference = n.relative_to(&Default::default()).into();
-            } else {
-                assert!(reference.path.try_to_identifier().is_some());
+        match e {
+            Expression::Reference(reference) => {
+                // If resolving the reference fails, we assume it is a local variable that has been checked below.
+                if let Some(n) = paths.get(&path.clone().join(reference.path.clone())) {
+                    *reference = n.relative_to(&Default::default()).into();
+                } else {
+                    assert!(reference.path.try_to_identifier().is_some());
+                }
             }
+            Expression::BlockExpression(statements, _expr) => {
+                for statement in statements {
+                    if let StatementInsideBlock::LetStatement(let_statement) = statement {
+                        canonicalize_inside_pattern(&mut let_statement.pattern, path, paths);
+                    }
+                }
+            }
+            Expression::LambdaExpression(_lambda) => {}
+            Expression::MatchExpression(_, _) => {}
+            _ => {}
         }
     });
+}
+
+fn canonicalize_inside_pattern(
+    pattern: &mut Pattern,
+    path: &AbsoluteSymbolPath,
+    paths: &'_ PathMap,
+) {
+    match pattern {
+        Pattern::Enum(name, None) => {
+            if let Some(name) = name.try_to_identifier() {
+                *pattern = Pattern::Variable(name.clone())
+            } else {
+                let abs = paths.get(&path.clone().join(name.clone())).unwrap();
+                *name = abs.relative_to(&Default::default()).clone();
+            }
+        }
+        Pattern::Enum(name, _fields) => {
+            let abs = paths.get(&path.clone().join(name.clone())).unwrap();
+            *name = abs.relative_to(&Default::default()).clone();
+        }
+        _ => {}
+    }
+    for p in pattern.children_mut() {
+        canonicalize_inside_pattern(p, path, paths)
+    }
 }
 
 fn canonicalize_inside_type_scheme(
@@ -577,7 +614,7 @@ fn check_expression(
         }) => {
             // Add the local variables, ignore collisions.
             let mut local_variables = local_variables.clone();
-            local_variables.extend(params.iter().flat_map(|p| p.variables().cloned()));
+            local_variables.extend(check_patterns(location, params, state)?);
             check_expression(location, body, state, &local_variables)
         }
         Expression::BinaryOperation(a, _, b)
@@ -599,7 +636,7 @@ fn check_expression(
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
                 let mut local_variables = local_variables.clone();
-                local_variables.extend(pattern.variables().cloned());
+                local_variables.extend(check_pattern(location, pattern, state)?);
                 check_expression(location, value, state, &local_variables)
             })
         }
@@ -623,7 +660,7 @@ fn check_expression(
                         if let Some(value) = value {
                             check_expression(location, value, state, &local_variables)?;
                         }
-                        local_variables.extend(pattern.variables().cloned());
+                        local_variables.extend(check_pattern(location, pattern, state)?);
                     }
                     StatementInsideBlock::Expression(expr) => {
                         check_expression(location, expr, state, &local_variables)?;
@@ -644,6 +681,54 @@ fn check_expressions(
     expressions
         .iter()
         .try_for_each(|e| check_expression(location, e, state, local_variables))
+}
+
+/// Checks paths in a pattern and returns the newly declared variables.
+/// Does not turn "wrongly parsed" enums into variables, that will be done
+/// in canonicalize_inside_pattern.
+fn check_pattern(
+    location: &AbsoluteSymbolPath,
+    pattern: &Pattern,
+    state: &mut State<'_>,
+) -> Result<Box<dyn Iterator<Item = String>>, String> {
+    match pattern {
+        Pattern::Variable(n) => return Ok(Box::new(once(n.clone()))),
+        Pattern::Enum(name, fields) => {
+            // The parser cannot distinguish between Enum and Variable patterns.
+            // So if "name" is a single identifier that does not resolve to an enum variant,
+            // it is a variable pattern.
+            // TODO we do not fully implement that here. Anything that is an identifier
+            // is mapped to a varaible.
+            if fields.is_none() {
+                if let Some(identifier) = name.try_to_identifier() {
+                    return Ok(Box::new(once(identifier.clone())));
+                }
+            }
+            check_path(location.clone().join(name.clone()), state)?
+        }
+        _ => {}
+    }
+    // TODO why does this need full annotations?
+    Ok(Box::new(pattern.children().try_fold(
+        Box::new(empty()) as Box<dyn Iterator<Item = String>>,
+        |acc, p| -> Result<Box<dyn Iterator<Item = String>>, String> {
+            Ok(Box::new(acc.chain(check_pattern(location, p, state)?)))
+        },
+    )?))
+}
+
+fn check_patterns(
+    location: &AbsoluteSymbolPath,
+    patterns: &[Pattern],
+    state: &mut State<'_>,
+) -> Result<Box<dyn Iterator<Item = String>>, String> {
+    // TODO why does this need full annotations?
+    Ok(Box::new(patterns.iter().try_fold(
+        Box::new(empty()) as Box<dyn Iterator<Item = String>>,
+        |acc, p| -> Result<Box<dyn Iterator<Item = String>>, String> {
+            Ok(Box::new(acc.chain(check_pattern(location, p, state)?)))
+        },
+    )?))
 }
 
 fn check_type_declaration(
