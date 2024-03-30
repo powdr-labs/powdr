@@ -1,3 +1,5 @@
+use std::utils::max;
+
 enum Op {
     Input(int),
     Xor(Op, Op),
@@ -22,14 +24,14 @@ let concrete: int, int -> (int, int, (int, int -> int), (int, int -> int), (int,
     |x, y| ((x << 1) | (x >> 31)) & 0xffffffff
 );
 
-machine Main {
-    let w;
- }
-
 // This is the main input, the description of the circuit:
-let routine = |(a, b, xor, and)| and(xor(a, b), and(a, xor(b, a)));
+let<T1, T2> routine: (T1, T1, (T1, T1 -> T1), (T1, T1 -> T1), (T1, T1 -> T2)) -> T2 =
+    |(a, b, xor, and, rotl)| rotl(and(xor(a, b), and(a, xor(b, a))), a);
 
-/*
+let symbolic_routine = routine(symbolic());
+let concrete_routine = |a, b| routine(concrete(a, b));
+
+
 // TODO How to efficiently reference repeated ops?
 // Through a "ref" Op that has an ID?
 // Or should we deduplicate automatically?
@@ -37,21 +39,60 @@ let routine = |(a, b, xor, and)| and(xor(a, b), and(a, xor(b, a)));
 
 // mk_circuit flattens an Op-structure into an
 // array of (gate_type, input_id1, input_id2)
-let mk_circuit = |routine| {
-    mk_routine_inner(routine, []);
+let flatten_circuit = |routine| {
+    let input_count = internal::count_inputs(routine);
+    let state = std::array::new(input_count, |i| (Operation::Input, 0, 0));
+    let (flattened, _) = internal::flatten_circuit(state, routine);
+    flattened
 };
 
-let mk_routine_inner = |routine, state| {
-    match routine {
-        Op::xor(a, b) => {
-            let (s2, a_out) = mk_routine_inner(state, a);
-            let (s3, b_out) = mk_routine_inner(s2, b);
-            add_gate(s3, Gate::xor, a_out, b_out);
+enum Gate {
+    Input,
+    Xor,
+    And,
+    Rotl
+}
+
+mod internal {
+    let count_inputs = |routine| {
+        match routine {
+            Op::Input(n) => n,
+            Op::Xor(a, b) => max(count_inputs(a), count_inputs(b)),
+            Op::And(Op, Op) => max(count_inputs(a), count_inputs(b)),
+            Op::Rotl(Op, Op) => max(count_inputs(a), count_inputs(b)),
         }
-        ...
-    }
-};
+    };
+    let flatten_circuit = |state, routine| {
+        match routine {
+            Op::Input(n) => (state, n),
+            Op::xor(a, b) => {
+                let (s2, a_out) = flatten_circuit(state, a);
+                let (s3, b_out) = flatten_circuit(s2, b);
+                append_gate(s3, Gate::Xor, a_out, b_out);
+            }
+            Op::And(a, b) => {
+                let (s2, a_out) = flatten_circuit(state, a);
+                let (s3, b_out) = flatten_circuit(s2, b);
+                append_gate(s3, Gate::And, a_out, b_out);
+            }
+            Op::Rotl(a, b) => {
+                let (s2, a_out) = flatten_circuit(state, a);
+                let (s3, b_out) = flatten_circuit(s2, b);
+                append_gate(s3, Gate::Rotl, a_out, b_out);
+            }
+        }
+    };
+    let append_gate = |state, gate, in1, in2|
+        (state + [(gate, in1, in2)], std::array::len(state));
+}
 
+machine Main {
+    let w;
+    std::debug::print(concrete_routine(1, 2));
+
+}
+
+/*
 // add_gate could actually de-duplicate.
 let add_gate = |state, gate, in1, in2| {
     let id = std::array::len(state);
