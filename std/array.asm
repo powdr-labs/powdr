@@ -26,3 +26,24 @@ let<T: Add + FromLiteral> sum: T[] -> T = |arr| fold(arr, 0, |a, b| a + b);
 /// Zips two arrays
 /// TODO: Assert that lengths are equal when expressions are supported.
 let<T1, T2, T3> zip: T1[], T2[], (T1, T2 -> T3) -> T3[] = |array1, array2, fn| new(len(array1), |i| fn(array1[i], array2[i]));
+
+/// Takes an array of arrays and flattens it to a simple array by concatenating the arrays.
+// TODO this could just call sum above if we had a Default trait.
+let<T> flatten: T[][] -> T[] = |arr| fold(arr, [], |acc, a| acc + a);
+
+/// Returns the index of the first items that compares equal to the requested item.
+/// Returns -1 if it is not found.
+let<T: Eq> index_of: T[], T -> int = |arr, x| internal::index_of(arr, x, std::array::len(arr) - 1);
+
+mod internal {
+    let<T: Eq> index_of: T[], T, int -> int = |arr, x, p|
+        if p < 0 {
+            -1
+        } else {
+            if arr[p] == x {
+                p
+            } else {
+                index_of(arr, x, p - 1)
+            }
+        };
+}
