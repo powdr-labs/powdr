@@ -203,7 +203,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
     // Or maybe not?
     fn process_enum_pattern(&mut self, name: String, fields: Option<Vec<Pattern>>) -> Pattern {
         match &self.driver.definitions()[&name] {
-            (_, Some(FunctionValueDefinition::TypeConstructor(enum_name, variant))) => {
+            (_, Some(FunctionValueDefinition::TypeConstructor(_enum_name, variant))) => {
                 if variant.fields.as_ref().map(|items| items.len())
                     != fields.as_ref().map(|items| items.len())
                 {
