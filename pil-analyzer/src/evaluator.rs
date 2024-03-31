@@ -918,14 +918,12 @@ mod internal {
                 Err(EvalError::FailedAssertion(msg))?
             }
             BuiltinFunction::Print => {
-                let msg = match arguments.pop().unwrap().as_ref() {
-                    Value::String(msg) => msg.clone(),
-                    v => panic!(
-                        "Expected string for std::debug::print, but got {v}: {}",
-                        v.type_formatted()
-                    ),
-                };
-                print!("{msg}");
+                let arg = arguments.pop().unwrap();
+                if let Value::String(s) = arg.as_ref() {
+                    print!("{s}");
+                } else {
+                    print!("{arg}");
+                }
                 Value::Array(Default::default()).into()
             }
             BuiltinFunction::ToExpr => {

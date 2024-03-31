@@ -75,6 +75,12 @@ enum Vertex {
     Output
 }
 
+let vertex_to_str = |v| match v {
+    Vertex::Input1 => "i1",
+    Vertex::Input2 => "i2",
+    Vertex::Output => "o",
+};
+
 let vertex_id = |row, vertex| match vertex {
     Vertex::Input1 => 3 * row + 0,
     Vertex::Input2 => 3 * row + 1,
@@ -100,51 +106,52 @@ let ops_to_permutation: (Gate, int, int)[] -> (int -> int) = |ops| {
 
     let edges_unsorted = std::array::flatten(std::array::map_enumerated(
         ops,
-        |i, (gate, l, r)| match gate {
-            Gate::Input => [], // no incoming edges for inputs
-            _ => [(l, vertex_id(i, Vertex::Input1)), (r, vertex_id(i, Vertex::Input2))]
-        }
+        |i, (gate, l, r)| [(l, vertex_id(i, Vertex::Input1)), (r, vertex_id(i, Vertex::Input2))]
     ));
     let edges = std::utils::sort(edges_unsorted, |(i, _), (j, _)| i < j);
 
-    // Now we compute a successor list by grouping the edges by the first component.
-    // This is an array where the index is the row number and the values are vertex ids.
-    // The successor list also includes the output vertex, i.e. the "from" vertex.
-    let successors = {
-        // Helper: Take the current list and current tentative successor list
-        // and add it to the final list. Also adds empty lists until the length
-        // is equal to "next". Also adds the output vertex to the tentative successor lists.
-        let finalize = |list, succ, next| {
+    // Now we compute an array such that its `i`th element contains all the
+    // vertices connected to the output vertex of gate `i`.
+    // The values of this array is a partition of all the vertices.
+    let partition = {
+        // Helper: Take the current list and current tentative vertex list
+        // and add it to the final list. Also adds empty lists only containing output
+        // vertices until the length is equal to "next".
+        let finalize = |list, vertices, next| {
             let row_id = std::array::len(list);
-            list + [succ] + std::array::new(next - row_id - 1, |i| [vertex_id(i, Vertex::Output)])
+            list
+                + [vertices + [vertex_id(row_id, Vertex::Output)]]
+                + std::array::new(next - row_id - 1, |i| [vertex_id(row_id + i + 1, Vertex::Output)])
         };
-        let (list, succ) = std::array::fold(edges, ([], [vertex_id(0, Vertex::Output)]), |(list, succ), (from, to)|
+        let (list, vertices) = std::array::fold(edges, ([], []), |(list, vertices), (from, to)|
             if from == std::array::len(list) {
-                // we are still operating on the same output vertex,
+                // we are still operating on the same gate,
                 // add "to" as a new vertex to the current list.
-                (list, succ + [to])
+                (list, vertices + [to])
             } else {
-                // this is a new output vertex, finalize the old one
+                // this is a new gate, finalize the old one
                 // and then create a new group
-                (finalize(list, succ, from), [to])
+                (finalize(list, vertices, from), [to])
             }
         );
-        finalize(list, succ, std::array::len(ops))
+        finalize(list, vertices, std::array::len(ops))
     };
 
-
-    // This is the permutation in row-first order, although we need column-first order,
-    // but it is probably easy to transpose.
+    // Now compute a permutation from the partition list.
+    // The permutation is in row-first order, although we need column-first order,
+    // but it is easy to transpose.
     |i| {
-        let (row, vertex_kind) = vertex_id_to_row(i);
+        let vertex = i % (3 * std::array::len(ops));
+        let (row, vertex_kind) = vertex_id_to_row(vertex);
         let source = match vertex_kind {
             Vertex::Output => row,
             Vertex::Input1 => { let (_, s, _) = ops[row]; s },
             Vertex::Input2 => { let (_, _, s) = ops[row]; s },
         };
-        let succ = successors[source];
-        let self_index = std::array::index_of(succ, i);
-        succ[(self_index + 1) % std::array::len(succ)]
+        let vertices = partition[source];
+        let self_index = std::array::index_of(vertices, vertex);
+        let _ = std::check::assert(self_index >= 0, || "");
+        (i - vertex) + vertices[(self_index + 1) % std::array::len(vertices)]
     }
 };
 
@@ -202,11 +209,16 @@ let int_to_gate = |i| match i {
 let permutation = ops_to_permutation(flattened);
 // TODO I don't think this is correct, it shuold add namespace len.
 // TODO Are they really stacked on top of each other?
-let transposed = |i| match i % 3 {
-    0 => i / 3,
-    1 => i / 3 + circuit_len,
-    2 => i / 3 + 2 * circuit_len,
-};
+let transposed = |i| i / 3 + (i % 3) * circuit_len;
+
+/*
+trat ToString<T> {
+    to_string: |T| -> String,
+}
+impl<T: ToString> ToString<T[]> {
+    let to_string = |a| "[" + std::array::fold("", std::array::map(a, ToString::to_string), |acc, x| acc + ", " + x) + "]";
+}
+*/
 
 machine Main {
     // A, B are gate inputs, C is the gate output
@@ -226,14 +238,14 @@ machine Main {
     let P_B: col = |i| b(i);
     let P_GATE: col = |i| op(i);
     let P_C: col = |i| match int_to_gate(op(i)) {
-        Gate::Input => a(i), // there should be no copy-constraints on an input gate, so this should fully unconstrain it
+        Gate::Input => a(i),
         Gate::Xor => a(i) ^ b(i),
         Gate::And => a(i) & b(i),
         Gate::Rotl => ((a(i) << 1) | (a(i) >> 8)) & 0xff
     };
 
     { GATE, A, B, C } in { P_GATE, P_A, P_B, P_C };
-    { A, B, C } connect { Conn_A, Conn_B, Conn_C };
+    //{ A, B, C } connect { Conn_A, Conn_B, Conn_C };
 
     // TODO What is the purpose of these constrainst in the polygon file?
     // Global.L1 * a44 = 0;
