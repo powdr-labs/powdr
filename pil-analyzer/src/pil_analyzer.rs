@@ -356,7 +356,8 @@ impl PILAnalyzer {
     }
 
     fn handle_namespace(&mut self, name: SymbolPath, degree: ::powdr_ast::parsed::Expression) {
-        let degree = ExpressionProcessor::new(self.driver()).process_expression(degree);
+        let degree =
+            ExpressionProcessor::new(self.driver(), &Default::default()).process_expression(degree);
         // TODO we should maybe implement a separate evaluator that is able to run before type checking
         // and is field-independent (only uses integers)?
         let namespace_degree: u64 = u64::try_from(

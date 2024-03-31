@@ -520,7 +520,11 @@ impl NamespacedPolynomialReference {
     }
 
     pub fn try_to_identifier(&self) -> Option<&String> {
-        self.path.try_to_identifier()
+        if &self.generic_args == &None {
+            self.path.try_to_identifier()
+        } else {
+            None
+        }
     }
 }
 

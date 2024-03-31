@@ -1,5 +1,8 @@
 use core::panic;
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 use powdr_ast::{
     analyzed::{
@@ -13,21 +16,23 @@ use powdr_ast::{
 };
 use powdr_number::DegreeType;
 
-use crate::AnalysisDriver;
+use crate::{type_processor::TypeProcessor, AnalysisDriver};
 
 /// The ExpressionProcessor turns parsed expressions into analyzed expressions.
 /// Its main job is to resolve references:
 /// It turns simple references into fully namespaced references and resolves local function variables.
-pub struct ExpressionProcessor<D: AnalysisDriver> {
+pub struct ExpressionProcessor<'a, D: AnalysisDriver> {
     driver: D,
+    type_vars: &'a HashSet<&'a String>,
     local_variables: HashMap<String, u64>,
     local_variable_counter: u64,
 }
 
-impl<D: AnalysisDriver> ExpressionProcessor<D> {
-    pub fn new(driver: D) -> Self {
+impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
+    pub fn new(driver: D, type_vars: &'a HashSet<&'a String>) -> Self {
         Self {
             driver,
+            type_vars,
             local_variables: Default::default(),
             local_variable_counter: 0,
         }
@@ -231,7 +236,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
                 let id = self.local_variables[name];
                 Reference::LocalVar(id, name.to_string())
             }
-            _ => Reference::Poly(self.process_namespaced_polynomial_reference(&reference.path)),
+            _ => Reference::Poly(self.process_namespaced_polynomial_reference(reference)),
         }
     }
 
@@ -291,15 +296,18 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
 
     pub fn process_namespaced_polynomial_reference(
         &mut self,
-        path: &SymbolPath,
+        reference: NamespacedPolynomialReference,
     ) -> PolynomialReference {
+        let type_processor = TypeProcessor::new(self.driver, self.type_vars);
+        let generic_args = reference.generic_args.map(|args| {
+            args.into_iter()
+                .map(|t| type_processor.process_type(t))
+                .collect()
+        });
         PolynomialReference {
-            name: self.driver.resolve_value_ref(path),
+            name: self.driver.resolve_value_ref(&reference.path),
             poly_id: None,
-            // These will be filled by the type checker.
-            // TODO at some point we should support the turbofish operator
-            // in the parser.
-            generic_args: Default::default(),
+            generic_args,
         }
     }
 

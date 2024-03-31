@@ -54,7 +54,7 @@ impl<'a, D: AnalysisDriver> TypeProcessor<'a, D> {
         // TODO we should maybe implement a separate evaluator that is able to run before type checking
         // and is field-independent (only uses integers)?
         evaluator::evaluate_expression::<GoldilocksField>(
-            &ExpressionProcessor::new(self.driver).process_expression(expr),
+            &ExpressionProcessor::new(self.driver, self.type_vars).process_expression(expr),
             self.driver.definitions(),
         )?
         .try_to_integer()

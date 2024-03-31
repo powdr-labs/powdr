@@ -314,7 +314,7 @@ where
                 source,
                 IdentityKind::Polynomial,
                 SelectedExpressions {
-                    selector: Some(self.process_expression(expression)),
+                    selector: Some(self.process_expression(expression, &Default::default())),
                     expressions: vec![],
                 },
                 SelectedExpressions::default(),
@@ -336,11 +336,15 @@ where
                 IdentityKind::Connect,
                 SelectedExpressions {
                     selector: None,
-                    expressions: self.expression_processor().process_expressions(left),
+                    expressions: self
+                        .expression_processor(&Default::default())
+                        .process_expressions(left),
                 },
                 SelectedExpressions {
                     selector: None,
-                    expressions: self.expression_processor().process_expressions(right),
+                    expressions: self
+                        .expression_processor(&Default::default())
+                        .process_expressions(right),
                 },
             ),
             // TODO at some point, these should all be caught by the type checker.
@@ -459,15 +463,19 @@ where
                     ));
                     assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
                 }
+                let type_vars = type_scheme
+                    .as_ref()
+                    .map(|ts| ts.vars.vars().collect())
+                    .unwrap_or_default();
                 FunctionValueDefinition::Expression(TypedExpression {
-                    e: self.process_expression(expr),
+                    e: self.process_expression(expr, &type_vars),
                     type_scheme,
                 })
             }
             FunctionDefinition::Array(value) => {
                 let size = value.solve(self.degree.unwrap());
                 let expression = self
-                    .expression_processor()
+                    .expression_processor(&Default::default())
                     .process_array_expression(value, size);
                 assert_eq!(
                     expression.iter().map(|e| e.size()).sum::<DegreeType>(),
@@ -491,8 +499,8 @@ where
     ) -> Vec<PILItem> {
         let id = self.counters.dispense_public_id();
         let polynomial = self
-            .expression_processor()
-            .process_namespaced_polynomial_reference(&poly.path);
+            .expression_processor(&Default::default())
+            .process_namespaced_polynomial_reference(poly);
         let array_index = array_index.map(|i| {
             let index: u64 = self
                 .evaluate_expression_to_int(i)
@@ -520,25 +528,33 @@ where
         // TODO we should maybe implement a separate evaluator that is able to run before type checking
         // and is field-independent (only uses integers)?
         evaluator::evaluate_expression::<GoldilocksField>(
-            &ExpressionProcessor::new(self.driver).process_expression(expr),
+            &ExpressionProcessor::new(self.driver, &Default::default()).process_expression(expr),
             self.driver.definitions(),
         )?
         .try_to_integer()
     }
 
-    fn expression_processor(&self) -> ExpressionProcessor<D> {
-        ExpressionProcessor::new(self.driver)
+    fn expression_processor<'b>(
+        &'b self,
+        type_vars: &'b HashSet<&'b String>,
+    ) -> ExpressionProcessor<'b, D> {
+        ExpressionProcessor::new(self.driver, type_vars)
     }
 
-    fn process_expression(&self, expr: parsed::Expression) -> Expression {
-        self.expression_processor().process_expression(expr)
+    fn process_expression(
+        &self,
+        expr: parsed::Expression,
+        type_vars: &HashSet<&String>,
+    ) -> Expression {
+        self.expression_processor(type_vars)
+            .process_expression(expr)
     }
 
     fn process_selected_expressions(
         &self,
         expr: parsed::SelectedExpressions<parsed::Expression>,
     ) -> SelectedExpressions<Expression> {
-        self.expression_processor()
+        self.expression_processor(&Default::default())
             .process_selected_expressions(expr)
     }
 

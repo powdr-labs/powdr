@@ -54,6 +54,8 @@ struct TypeChecker {
     /// Declared types for all symbols. Contains the unmodified type scheme for symbols
     /// with generic types and newly created type variables for symbols without declared type.
     declared_types: HashMap<String, TypeScheme>,
+    /// Current mapping of declared type vars to type. Reset before checking each definition.
+    declared_type_vars: HashMap<String, Type>,
     unifier: Unifier,
     /// Last used type variable index.
     last_type_var: usize,
@@ -120,8 +122,14 @@ impl TypeChecker {
 
             let declared_type = self.declared_types[&name].clone();
             let result = if declared_type.vars.is_empty() {
+                self.declared_type_vars = Default::default();
                 self.process_concrete_symbol(&name, declared_type.ty.clone(), value)
             } else {
+                self.declared_type_vars = declared_type
+                    .vars
+                    .vars()
+                    .map(|v| (v.clone(), self.new_type_var()))
+                    .collect();
                 self.infer_type_of_expression(value).map(|ty| {
                     inferred_types.insert(name.to_string(), ty);
                 })
@@ -132,6 +140,7 @@ impl TypeChecker {
                 ));
             }
         }
+        self.declared_type_vars = Default::default();
 
         self.check_expressions(expressions)?;
 
@@ -443,9 +452,22 @@ impl TypeChecker {
                 poly_id: _,
                 generic_args,
             })) => {
-                // The generic args (some of them) could be pre-filled by the parser, but we do not yet support that.
-                assert!(generic_args.is_none());
                 let (ty, gen_args) = self.instantiate_scheme(self.declared_types[name].clone());
+                if let Some(requested_gen_args) = generic_args {
+                    if requested_gen_args.len() != gen_args.len() {
+                        return Err(format!(
+                            "Expected {} generic arguments for symbol {name}, but got {}: {}",
+                            gen_args.len(),
+                            requested_gen_args.len(),
+                            requested_gen_args.iter().join(", ")
+                        ));
+                    }
+                    for (requested, inferred) in requested_gen_args.iter_mut().zip(&gen_args) {
+                        requested.substitute_type_vars(&self.declared_type_vars);
+                        self.unifier
+                            .unify_types(requested.clone(), inferred.clone())?;
+                    }
+                }
                 *generic_args = Some(gen_args);
                 type_for_reference(&ty)
             }
