@@ -60,6 +60,19 @@ Part: Part = {
     <name:Identifier> => Part::Named(name),
 }
 
+// Same as SymbolPath plus we allow "::<...>" at the end.
+GenericSymbolPath: (SymbolPath, Option<Vec<Type<Expression>>>) = {
+    // If we "inline" SymbolPath here, we get an ambiguity error.
+    <abs:"::"?> <parts:( <Part> "::" )*> <end:Part> <types:("::" "<" <TypeTermList> ">")?>  => (
+        SymbolPath::from_parts([
+            abs.map(|_| vec![Part::Named(String::new())]).unwrap_or_default(),
+            parts,
+            vec![end],
+        ].concat()),
+        types
+    ),
+}
+
 /// Same as SymbolPath except that we do not allow 'int' and 'fe' to be parsed as identifiers.
 TypeSymbolPath: SymbolPath = {
     <abs:"::"?> <parts:( <TypeSymbolPathPart> "::" )*> <end:TypeSymbolPathPart>  => {
@@ -558,7 +571,7 @@ Term: Box<Expression> = {
     IndexAccess => Box::new(Expression::IndexAccess(<>)),
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
     ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference::from_identifier(<>))),
-    NamespacedPolynomialReference => Box::new(Expression::Reference(<>)),
+    GenericReference => Box::new(Expression::Reference(<>)),
     PublicIdentifier => Box::new(Expression::PublicReference(<>)),
     Number => Box::new(Expression::Number(<>.into(), None)),
     StringLiteral => Box::new(Expression::String(<>)),
@@ -583,6 +596,11 @@ FunctionCall: FunctionCall = {
 NamespacedPolynomialReference: NamespacedPolynomialReference = {
     <SymbolPath> => <>.into(),
     <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
+}
+
+GenericReference: NamespacedPolynomialReference = {
+    <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
+    <path:GenericSymbolPath> => NamespacedPolynomialReference{path: path.0, generic_args: path.1},
 }
 
 MatchExpression: Box<Expression> = {
