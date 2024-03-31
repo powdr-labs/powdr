@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashSet},
-    str::FromStr,
-};
+use std::{collections::HashSet, str::FromStr};
 
 use powdr_ast::parsed::{asm::SymbolPath, types::Type, visitor::Children, Expression};
 use powdr_number::{BigInt, GoldilocksField};

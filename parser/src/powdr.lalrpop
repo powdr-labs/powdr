@@ -557,7 +557,7 @@ Term: Box<Expression> = {
     IndexAccess => Box::new(Expression::IndexAccess(<>)),
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
     ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference::from_identifier(<>))),
-    NamespacedPolynomialReference => Box::new(Expression::Reference(<>)),
+    GenericReference => Box::new(Expression::Reference(<>)),
     PublicIdentifier => Box::new(Expression::PublicReference(<>)),
     Number => Box::new(Expression::Number(<>.into(), None)),
     StringLiteral => Box::new(Expression::String(<>)),
@@ -580,8 +580,17 @@ FunctionCall: FunctionCall = {
 }
 
 NamespacedPolynomialReference: NamespacedPolynomialReference = {
-    <SymbolPath> => <>.into(),
     <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
+}
+
+GenericReference: NamespacedPolynomialReference = {
+    NamespacedPolynomialReference,
+    <path:SymbolPath> <generic_args:GenericArgs?> => NamespacedPolynomialReference{<>},
+}
+
+GenericArgs: Vec<Type<Expression>> = {
+    // TODO somehow the parser detects a conflict if we split this into "::" ","
+    "::<" <TypeTermList> ">" => <>
 }
 
 MatchExpression: Box<Expression> = {

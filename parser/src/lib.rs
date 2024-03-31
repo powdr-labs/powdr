@@ -508,4 +508,18 @@ namespace N(2);
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(input.trim(), printed.trim());
     }
+
+    #[test]
+    fn generic_args() {
+        let input = r#"
+namespace N(2);
+    let<T: Ord> max: T, T -> T = (|a, b| if (a < b) { b } else { a });
+    let<T1, T2> left: T1, T2 -> T1 = (|a, b| a);
+    let seven = max::<int>(3, 7);
+    let five = left::<int, fe[]>(5, [7]);
+    let also_five = five::<>;
+"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(input.trim(), printed.trim());
+    }
 }
