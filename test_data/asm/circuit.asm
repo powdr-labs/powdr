@@ -209,6 +209,11 @@ let int_to_gate = |i| match i {
 let permutation = ops_to_permutation(flattened);
 // TODO I don't think this is correct, it shuold add namespace len.
 // TODO Are they really stacked on top of each other?
+// TODO OK it turns out that row i in the first column is identified via `w^i`,
+// and in the second colum via `k1 * w^i` and in the third row via `k2 * w^i`,
+// where k1 and k2 are quadratic non-residues.
+// So I wonder where it might be better to just use `(int, fe)` or even `(int, int)`
+// as the type of the value of a RHS in a connect constraint.
 let transposed = |i| i / 3 + (i % 3) * circuit_len;
 
 /*
