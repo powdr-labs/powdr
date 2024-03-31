@@ -1,15 +1,12 @@
 use std::collections::{BTreeMap, HashSet};
 use std::iter;
-use std::str::FromStr;
 
 use itertools::Itertools;
 
 use powdr_ast::analyzed::TypedExpression;
 use powdr_ast::parsed::{
     self,
-    asm::SymbolPath,
     types::{ArrayType, Type, TypeScheme},
-    visitor::Children,
     EnumDeclaration, EnumVariant, FunctionDefinition, PilStatement, PolynomialName,
     SelectedExpressions,
 };
@@ -23,6 +20,7 @@ use powdr_ast::analyzed::{
 };
 
 use crate::evaluator::EvalError;
+use crate::type_processor::TypeProcessor;
 use crate::AnalysisDriver;
 
 use crate::{evaluator, expression_processor::ExpressionProcessor};
@@ -229,7 +227,7 @@ where
                 );
             }
             let declared_type_vars = vars.vars().collect::<HashSet<_>>();
-            let ty = self.handle_type(&declared_type_vars, &ts.ty);
+            let ty = self.type_processor(&declared_type_vars).process_type(ts.ty);
             let contained_type_vars = ty.contained_type_vars().collect::<HashSet<_>>();
             if contained_type_vars != declared_type_vars {
                 assert!(contained_type_vars.is_subset(&declared_type_vars));
@@ -288,19 +286,6 @@ where
                 )
             }
         }
-    }
-
-    /// Handles a type occurring in a context that has the given type variables declared.
-    fn handle_type(&self, type_vars: &HashSet<&String>, ty: &Type<parsed::Expression>) -> Type {
-        let mut ty = self.evaluate_array_lengths(ty.clone())
-            .map_err(|e| panic!("Error evaluating expressions in type name \"{}\" to reduce it to a type:\n{e})", ty))
-            .unwrap();
-        ty.map_to_type_vars(type_vars);
-        ty.contained_named_types_mut().for_each(|n| {
-            let name = self.driver.resolve_type_ref(n);
-            *n = SymbolPath::from_str(&name).unwrap();
-        });
-        ty
     }
 
     fn symbol_kind_from_type(ts: &TypeScheme) -> SymbolKind {
@@ -531,23 +516,6 @@ where
         })]
     }
 
-    /// Turns a Type<Expression> to a Type<u64> by evaluating the array length expressions.
-    fn evaluate_array_lengths(&self, mut n: Type<parsed::Expression>) -> Result<Type, EvalError> {
-        // Replace all expressions by number literals.
-        // Any expression inside a type name has to be an array length,
-        // so we expect an integer that fits u64.
-        n.children_mut()
-            .try_for_each(|e: &mut parsed::Expression| {
-                let v = self.evaluate_expression_to_int(e.clone())?;
-                let v_u64: u64 = v.clone().try_into().map_err(|_| {
-                    EvalError::TypeError(format!("Number too large, expected u64, but got {v}"))
-                })?;
-                *e = parsed::Expression::Number(v_u64.into(), None);
-                Ok(())
-            })?;
-        Ok(n.into())
-    }
-
     fn evaluate_expression_to_int(&self, expr: parsed::Expression) -> Result<BigInt, EvalError> {
         // TODO we should maybe implement a separate evaluator that is able to run before type checking
         // and is field-independent (only uses integers)?
@@ -574,6 +542,10 @@ where
             .process_selected_expressions(expr)
     }
 
+    fn type_processor<'b>(&'b self, type_vars: &'b HashSet<&'b String>) -> TypeProcessor<'b, D> {
+        TypeProcessor::new(self.driver, type_vars)
+    }
+
     fn process_enum_declaration(
         &self,
         enum_decl: EnumDeclaration<parsed::Expression>,
@@ -593,7 +565,7 @@ where
             name: enum_variant.name,
             fields: enum_variant.fields.map(|f| {
                 f.into_iter()
-                    .map(|ty| self.handle_type(&Default::default(), &ty))
+                    .map(|ty| self.type_processor(&Default::default()).process_type(ty))
                     .collect()
             }),
         }
