@@ -18,9 +18,9 @@ use powdr_asm_utils::{
 use powdr_number::{FieldElement, KnownField};
 
 use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
-use crate::coprocessors::*;
 use crate::disambiguator;
 use crate::parser::RiscParser;
+use crate::runtime::Runtime;
 use crate::{Argument, Expression, Statement};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

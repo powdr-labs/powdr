@@ -14,13 +14,13 @@ use serde_json::Value as JsonValue;
 use std::fs;
 
 use crate::compiler::{FunctionKind, Register};
-pub use crate::coprocessors::Runtime;
+pub use crate::runtime::Runtime;
 
 pub mod compiler;
 pub mod continuations;
-pub mod coprocessors;
 mod disambiguator;
 pub mod parser;
+pub mod runtime;
 
 type Statement = powdr_asm_utils::ast::Statement<Register, FunctionKind>;
 type Argument = powdr_asm_utils::ast::Argument<Register, FunctionKind>;

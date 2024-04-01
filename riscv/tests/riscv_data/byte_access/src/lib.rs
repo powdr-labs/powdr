@@ -1,6 +1,6 @@
 #![no_std]
 
-use powdr_riscv_runtime::get_prover_input;
+use powdr_riscv_runtime::input::get_prover_input;
 
 const X: &'static str = "abcdefg";
 
