@@ -28,6 +28,11 @@ ModuleStatement: ModuleStatement = {
             name: <>.name.clone(),
             value: SymbolValue::TypeDeclaration(<>),
         }),
+//    <TraitDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
+//            name: <>.name.clone(),
+//            // TODO we need a new enum value here.
+//            value: SymbolValue::TypeDeclaration(<>),
+//        }),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
@@ -97,6 +102,8 @@ pub PilStatement = {
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> => PilStatement::EnumDeclaration(ctx.source_ref(start), decl),
+    <start:@L> <decl:Trait> => PilStatement::Trait(ctx.source_ref(start), decl),
+    <start:@L> <impl:TraitImpl> => PilStatement::TraitImpl(ctx.source_ref(start), impl),
     PlookupIdentityStatement,
     PermutationIdentityStatement,
     ConnectIdentityStatement,
@@ -628,6 +635,8 @@ StatementInsideBlock: StatementInsideBlock = {
     <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
 
+// ---------------------------- Pattern -----------------------------
+
 Pattern: Pattern = {
     "_" => Pattern::CatchAll,
     Number => Pattern::Number(<>.into()),
@@ -664,6 +673,19 @@ PatternList: Vec<Pattern> = {
     <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
     => vec![]
 }
+
+// ---------------------------- Traits -----------------------------
+
+Trait: Trait<Expression> = {
+    "trait" <name:Identifier> "<" <type_vars:TypeVarBounds> ">" "{" <members:(<Identifier> ":" <Type> ",")*> "}"
+        => Trait{<>}
+}
+
+TraitImpl: TraitImpl<Expression, Expression> = {
+    "impl" <vars:("<" <TypeVarBounds> ">")?> <trait_name:TypeSymbolPath> "<" <generic_args:TypeTermList> ">" "{"<members:(<Identifier> ":" <Expression> ",")*> "}"
+        => Type::NamedType(<>),
+}
+
 
 // ---------------------------- Type Declarations -----------------------------
 

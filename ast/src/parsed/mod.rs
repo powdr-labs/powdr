@@ -297,6 +297,21 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct Trait<E = u64> {
+    pub name: String,
+    pub type_vars: TypeBounds,
+    pub members: Vec<(String, Type<E>)>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TraitImpl<Expr, E = u64> {
+    pub type_vars: Option<TypeBounds>,
+    pub trait_name: SymbolPath,
+    pub generic_args: Vec<Type<E>>,
+    pub members: Vec<(String, Expr)>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SelectedExpressions<Expr> {
     pub selector: Option<Expr>,
     pub expressions: Vec<Expr>,
