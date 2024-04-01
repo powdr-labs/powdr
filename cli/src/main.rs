@@ -154,7 +154,7 @@ enum Commands {
     /// and finally to PIL and generates fixed and witness columns.
     /// Needs `rustup target add riscv32imac-unknown-none-elf`.
     Rust {
-        /// Input file (rust source file) or directory (containing a crate).
+        /// input rust code, points to a crate dir or its Cargo.toml file
         file: String,
 
         /// The field to use

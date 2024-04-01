@@ -48,7 +48,7 @@ pub fn compile_rust<T: FieldElement>(
     } else if fs::metadata(file_name).unwrap().is_dir() {
         compile_rust_crate_to_riscv_asm(&format!("{file_name}/Cargo.toml"), output_dir)
     } else {
-        compile_rust_to_riscv_asm(file_name, output_dir)
+        panic!("input must be a crate directory or `Cargo.toml` file");
     };
     if !output_dir.exists() {
         fs::create_dir_all(output_dir).unwrap()
@@ -136,37 +136,6 @@ pub fn compile_riscv_asm<T: FieldElement>(
         coprocessors,
         with_bootloader,
     )
-}
-
-pub fn compile_rust_to_riscv_asm(input_file: &str, output_dir: &Path) -> BTreeMap<String, String> {
-    let crate_dir = Temp::new_dir().unwrap();
-    // TODO is there no easier way?
-    let mut cargo_file = crate_dir.clone();
-    cargo_file.push("Cargo.toml");
-
-    fs::write(
-        &cargo_file,
-        format!(
-            r#"[package]
-name = "{}"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-powdr-riscv-runtime = {{ git = "https://github.com/powdr-labs/powdr", branch = "main" }}
-            "#,
-            Path::new(input_file).file_stem().unwrap().to_str().unwrap()
-        ),
-    )
-    .unwrap();
-
-    let mut src_file = crate_dir.clone();
-    src_file.push("src");
-    fs::create_dir(&src_file).unwrap();
-    src_file.push("lib.rs");
-    fs::write(src_file, fs::read_to_string(input_file).unwrap()).unwrap();
-
-    compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap(), output_dir)
 }
 
 macro_rules! as_ref [
