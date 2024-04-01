@@ -13,7 +13,7 @@ use powdr_riscv::{
     CoProcessors,
 };
 
-/// Compiles and runs a rust file with continuations, runs the full
+/// Compiles and runs a rust program with continuations, runs the full
 /// witness generation & verifies it using Pilcom.
 pub fn test_continuations(case: &str) {
     let coprocessors = CoProcessors::base().with_poseidon();
