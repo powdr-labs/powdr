@@ -19,6 +19,8 @@ pub enum BackendType {
     Halo2Mock,
     #[strum(serialize = "estark")]
     EStark,
+    #[strum(serialize = "estark-polygon")]
+    EStarkPolygon,
     #[strum(serialize = "pil-stark-cli")]
     PilStarkCli,
 }
@@ -30,6 +32,8 @@ impl BackendType {
         #[cfg(feature = "halo2")]
         const HALO2_MOCK_FACTORY: halo2_impl::Halo2MockFactory = halo2_impl::Halo2MockFactory;
         const ESTARK_FACTORY: pilstark::estark::EStarkFactory = pilstark::estark::EStarkFactory;
+        const ESTARK_POLYGON_FACTORY: pilstark::EStarkPolygonFactory =
+            pilstark::EStarkPolygonFactory;
         const PIL_STARK_CLI_FACTORY: pilstark::PilStarkCliFactory = pilstark::PilStarkCliFactory;
 
         match self {
@@ -38,6 +42,7 @@ impl BackendType {
             #[cfg(feature = "halo2")]
             BackendType::Halo2Mock => &HALO2_MOCK_FACTORY,
             BackendType::EStark => &ESTARK_FACTORY,
+            BackendType::EStarkPolygon => &ESTARK_POLYGON_FACTORY,
             BackendType::PilStarkCli => &PIL_STARK_CLI_FACTORY,
         }
     }

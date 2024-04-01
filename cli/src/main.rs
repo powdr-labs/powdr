@@ -900,6 +900,7 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 mod test {
     use crate::{run_command, Commands, CsvRenderModeCLI, FieldArgument};
     use powdr_backend::BackendType;
+    use test_log::test;
 
     #[test]
     fn test_simple_sum() {

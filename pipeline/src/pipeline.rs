@@ -2,7 +2,7 @@ use std::{
     borrow::Borrow,
     fmt::Display,
     fs,
-    io::{self, BufReader, BufWriter},
+    io::{self, BufReader},
     marker::Send,
     path::{Path, PathBuf},
     rc::Rc,
@@ -22,12 +22,12 @@ use powdr_executor::{
     constant_evaluator,
     witgen::{chain_callbacks, QueryCallback},
 };
-use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
+use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement};
 use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
     inputs_to_query_callback, serde_data_to_query_callback,
-    util::{try_read_poly_set, write_or_panic, FixedPolySet, WitnessPolySet},
+    util::{try_read_poly_set, FixedPolySet, WitnessPolySet},
 };
 
 type Columns<T> = Vec<(String, Vec<T>)>;
@@ -482,12 +482,6 @@ impl<T: FieldElement> Pipeline<T> {
         fixed: &[(String, Vec<T>)],
         witness: &[(String, Vec<T>)],
     ) -> Result<(), Vec<String>> {
-        if let Some(path) = self.path_if_should_write(|name| format!("{name}_commits.bin"))? {
-            let file = BufWriter::new(fs::File::create(path).unwrap());
-            write_or_panic(file, |file| write_polys_file(file, witness))
-                .map_err(|e| vec![format!("{}", e)])?;
-        }
-
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
                 let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();

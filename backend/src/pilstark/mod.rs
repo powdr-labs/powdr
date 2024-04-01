@@ -2,7 +2,7 @@ pub mod estark;
 mod json_exporter;
 
 use std::{
-    fs::File,
+    fs::{self, File},
     io::{self, BufWriter, Write},
     iter::{once, repeat},
     path::Path,
@@ -13,8 +13,6 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_number::{write_polys_file, DegreeType, FieldElement};
 use serde::Serialize;
 use starky::types::{StarkStruct, Step, PIL};
-
-pub struct PilStarkCliFactory;
 
 fn create_stark_struct(degree: DegreeType) -> StarkStruct {
     assert!(degree > 1);
@@ -77,6 +75,8 @@ fn pil_hack_fix<'a, F: FieldElement>(
     (pil, fixed)
 }
 
+pub struct PilStarkCliFactory;
+
 impl<F: FieldElement> BackendFactory<F> for PilStarkCliFactory {
     fn create<'a>(
         &self,
@@ -86,30 +86,31 @@ impl<F: FieldElement> BackendFactory<F> for PilStarkCliFactory {
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
-        if setup.is_some() {
-            return Err(Error::NoSetupAvailable);
-        }
-        if verification_key.is_some() {
-            return Err(Error::NoVerificationAvailable);
-        }
-
-        // Pre-process the PIL and fixed columns.
-        let (pil, fixed) = pil_hack_fix(analyzed, fixed);
-
-        Ok(Box::new(PilStarkCli {
-            degree: analyzed.degree(),
-            pil,
-            fixed,
-            output_dir,
-        }))
+        EStarkPolygon::create(analyzed, fixed, output_dir, setup, verification_key, true)
     }
 }
 
-pub struct PilStarkCli<'a, F: FieldElement> {
+pub struct EStarkPolygonFactory;
+
+impl<F: FieldElement> BackendFactory<F> for EStarkPolygonFactory {
+    fn create<'a>(
+        &self,
+        analyzed: &'a Analyzed<F>,
+        fixed: &'a [(String, Vec<F>)],
+        output_dir: Option<&'a Path>,
+        setup: Option<&mut dyn std::io::Read>,
+        verification_key: Option<&mut dyn std::io::Read>,
+    ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+        EStarkPolygon::create(analyzed, fixed, output_dir, setup, verification_key, false)
+    }
+}
+
+pub struct EStarkPolygon<'a, F: FieldElement> {
     degree: DegreeType,
     pil: PIL,
     fixed: Vec<(String, Vec<F>)>,
     output_dir: Option<&'a Path>,
+    just_dump: bool,
 }
 
 fn buffered_write_file<R>(
@@ -131,7 +132,7 @@ fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), E
     Ok(())
 }
 
-fn write_constants<F: FieldElement>(
+fn write_polys_bin<F: FieldElement>(
     path: &Path,
     constants: &[(String, Vec<F>)],
 ) -> Result<(), Error> {
@@ -140,39 +141,102 @@ fn write_constants<F: FieldElement>(
     Ok(())
 }
 
-impl<'a, F: FieldElement> Backend<'a, F> for PilStarkCli<'a, F> {
+impl<'a, F: FieldElement> EStarkPolygon<'a, F> {
+    fn create(
+        analyzed: &'a Analyzed<F>,
+        fixed: &'a [(String, Vec<F>)],
+        output_dir: Option<&'a Path>,
+        setup: Option<&mut dyn std::io::Read>,
+        verification_key: Option<&mut dyn std::io::Read>,
+        just_dump: bool,
+    ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+        if setup.is_some() {
+            return Err(Error::NoSetupAvailable);
+        }
+        if verification_key.is_some() {
+            return Err(Error::NoVerificationAvailable);
+        }
+
+        // Pre-process the PIL and fixed columns.
+        let (pil, fixed) = pil_hack_fix(analyzed, fixed);
+
+        Ok(Box::new(EStarkPolygon {
+            degree: analyzed.degree(),
+            pil,
+            fixed,
+            output_dir,
+            just_dump,
+        }))
+    }
+}
+
+impl<'a, F: FieldElement> Backend<'a, F> for EStarkPolygon<'a, F> {
     fn prove(
         &self,
-        _witness: &[(String, Vec<F>)],
+        witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
     ) -> Result<Proof, Error> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
 
-        // Write the files in the format expected by the prover-cpp
+        // Write the files in the format expected by the zkvm-prover.
         if let Some(output_dir) = self.output_dir {
             // Write the constants.
             let constants_path = output_dir.join("constants.bin");
             log::info!("Writing {}.", constants_path.to_string_lossy());
-            write_constants(&constants_path, &self.fixed)?;
+            write_polys_bin(&constants_path, &self.fixed)?;
+
+            // Write the commits.
+            let commits_path = output_dir.join("commits.bin");
+            log::info!("Writing {}.", commits_path.to_string_lossy());
+            write_polys_bin(&commits_path, witness)?;
 
             // Write the stark struct JSON.
             let stark_struct_path = output_dir.join("starkstruct.json");
             log::info!("Writing {}.", stark_struct_path.to_string_lossy());
             write_json_file(&stark_struct_path, &create_stark_struct(self.degree))?;
 
-            // Write the constraints in the json format expected by the zkvm-prover:
+            // Write the constraints in JSON.
             let contraints_path = output_dir.join("constraints.json");
             log::info!("Writing {}.", contraints_path.to_string_lossy());
             write_json_file(&contraints_path, &self.pil)?;
+
+            if self.just_dump {
+                return Ok(Vec::new());
+            }
+
+            // Generate the proof.
+            let proof = pil_stark_prover::generate_proof(
+                &contraints_path,
+                &stark_struct_path,
+                &constants_path,
+                &commits_path,
+                output_dir,
+            )
+            .map_err(|e| Error::BackendError(e.to_string()))?;
+
+            // Sanity check: verify the proof.
+            // TODO: properly handle publics
+            let publics_path = output_dir.join("publics.json");
+            fs::write(&publics_path, "[]")?;
+            pil_stark_prover::verify_proof(
+                &proof.verification_key_json,
+                &proof.starkinfo_json,
+                &proof.proof_json,
+                &publics_path,
+            )
+            .map_err(|e| Error::BackendError(e.to_string()))?;
         } else {
-            // If we were going to call the prover-cpp, we could write the
-            // constraints.json to a temporary directory in case no output_dir
-            // is provided.
+            // TODO: use a temporary directory to generate the proof.
+            //
+            // TODO: there is no point in using a temporary dir unless we find a
+            // way to return a meaningful proof to the caller. Preferably a
+            // unified one, compatible with starky.
+            //
+            // TODO: make both eStark backends interchangeable, from results perspective.
         }
 
-        // TODO: actually use prover-cpp to generate the proof
         Ok(Vec::new())
     }
 }
