@@ -542,7 +542,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         if let Expression::Reference(poly) = e.as_ref() {
                             poly.try_to_identifier()
                                 .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
-                                .filter(|(_, reg)| reg.ty == RegisterTy::Write)
+                                .filter(|(_, reg)| {
+                                    [RegisterTy::Write, RegisterTy::Pc].contains(&reg.ty)
+                                })
                                 .map(|(name, _)| rhs_next_write_registers.insert(name.clone()));
                         }
                     }
