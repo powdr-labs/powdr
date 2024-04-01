@@ -403,3 +403,37 @@ fn partial_specialization2() {
     ";
     type_check(input, &[("y", "", "int")]);
 }
+
+#[test]
+fn generic_enum() {
+    let input = "
+        enum Option<T> {
+            Some(T),
+            None
+        }
+        let<T1, T2> map: Option<T1>, (T1 -> T2) -> Option<T2> = |o, f| match o {
+            Option::Some(x) => Option::Some(f(x)),
+            Option::None => Option::None
+        };
+        let<T> unwrap_or_else: Option<T>, (-> T) -> T = |o, default| match o {
+            Option::Some(x) => x,
+            Option::None => default()
+        };
+        let t = Option::Some(3);
+        let u = map(t, |x| x + 1);
+        let k: int = unwrap_or_else(u, || 7);
+    ";
+    type_check(input, &[("t", "", "Option<int>")]);
+}
+
+#[test]
+fn simple_none() {
+    let input = "
+        enum Option<T> {
+            Some(T),
+            None
+        }
+        let x = Option::None;
+    ";
+    type_check(input, &[("x", "", "Option<int>")]);
+}

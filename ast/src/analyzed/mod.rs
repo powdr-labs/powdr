@@ -6,13 +6,12 @@ use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::iter;
 use std::ops::{self, ControlFlow};
-use std::str::FromStr;
+use std::sync::Arc;
 
 use powdr_number::{DegreeType, FieldElement};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::parsed::asm::SymbolPath;
 use crate::parsed::types::{ArrayType, Type, TypeScheme};
 use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
@@ -442,11 +441,9 @@ pub fn type_from_definition(
             FunctionValueDefinition::TypeDeclaration(_) => {
                 panic!("Requested type of type declaration.")
             }
-            FunctionValueDefinition::TypeConstructor(type_name, variant) => Some(
-                variant
-                    .constructor_type(SymbolPath::from_str(type_name).unwrap())
-                    .into(),
-            ),
+            FunctionValueDefinition::TypeConstructor(enum_decl, variant) => {
+                Some(variant.constructor_type(&enum_decl))
+            }
         }
     } else {
         assert!(
@@ -543,7 +540,7 @@ pub enum FunctionValueDefinition {
     Array(Vec<RepeatedArray>),
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration),
-    TypeConstructor(String, EnumVariant),
+    TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
 }
 
 impl Children<Expression> for FunctionValueDefinition {

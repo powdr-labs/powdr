@@ -33,9 +33,10 @@ pub enum Type<E = u64> {
     Tuple(TupleType<E>),
     Function(FunctionType<E>),
     TypeVar(String),
-    /// A named type like an enum. Directly after parsing, type variables are also
+    /// A named type like an enum, including generic arguments.
+    /// Directly after parsing, type variables are also
     /// represented as NamedTypes, because the parser cannot distinguish.
-    NamedType(SymbolPath),
+    NamedType(SymbolPath, Option<Vec<Type<E>>>),
 }
 
 impl<E> Type<E> {
@@ -55,7 +56,7 @@ impl<E> Type<E> {
             | Type::Tuple(_)
             | Type::Function(_)
             | Type::TypeVar(_)
-            | Type::NamedType(_) => false,
+            | Type::NamedType(_, _) => false,
         }
     }
     /// Returns true if the type name needs parentheses during formatting
@@ -63,22 +64,25 @@ impl<E> Type<E> {
     pub fn needs_parentheses(&self) -> bool {
         match self {
             _ if self.is_elementary() => false,
-            Type::Array(_) | Type::Tuple(_) | Type::TypeVar(_) | Type::NamedType(_) => false,
+            Type::Array(_) | Type::Tuple(_) | Type::TypeVar(_) | Type::NamedType(_, _) => false,
             Type::Function(_) => true,
             _ => unreachable!(),
         }
     }
 
     /// Turns all NamedTypes that are single identifiers in the given set
-    /// to TypeVars.
+    /// to TypeVars. Also removes empty lists of generic args.
     pub fn map_to_type_vars(&mut self, type_vars: &HashSet<&String>) {
         match self {
-            Type::NamedType(n) => {
+            Type::NamedType(n, None) => {
                 if let Some(identifier) = n.try_to_identifier() {
                     if type_vars.contains(identifier) {
                         *self = Type::TypeVar(identifier.clone());
                     }
                 }
+            }
+            Type::NamedType(n, Some(tv)) if tv.is_empty() => {
+                *self = Type::NamedType(std::mem::take(n), None)
             }
             _ => self
                 .children_mut()
@@ -87,15 +91,24 @@ impl<E> Type<E> {
     }
 
     pub fn contained_named_types(&self) -> Box<dyn Iterator<Item = &SymbolPath> + '_> {
-        match self {
-            Type::NamedType(n) => Box::new(std::iter::once(n)),
-            _ => Box::new(self.children().flat_map(|t| t.contained_named_types())),
-        }
+        let names = match self {
+            Type::NamedType(n, _) => Some(n),
+            _ => None,
+        };
+        Box::new(
+            names
+                .into_iter()
+                .chain(self.children().flat_map(|t| t.contained_named_types())),
+        )
     }
 
     pub fn contained_named_types_mut(&mut self) -> Box<dyn Iterator<Item = &mut SymbolPath> + '_> {
         match self {
-            Type::NamedType(n) => Box::new(std::iter::once(n)),
+            Type::NamedType(n, Some(args)) => Box::new(
+                std::iter::once(n)
+                    .chain(args.iter_mut().flat_map(|t| t.contained_named_types_mut())),
+            ),
+            Type::NamedType(n, None) => Box::new(std::iter::once(n)),
             _ => Box::new(
                 self.children_mut()
                     .flat_map(|t| t.contained_named_types_mut()),
@@ -158,7 +171,8 @@ impl<E> Children<Type<E>> for Type<E> {
             Type::Array(ar) => Box::new(std::iter::once(&*ar.base)),
             Type::Tuple(tu) => Box::new(tu.items.iter()),
             Type::Function(fun) => Box::new(fun.params.iter().chain(std::iter::once(&*fun.value))),
-            Type::NamedType(_) => Box::new(std::iter::empty()),
+            Type::TypeVar(_) | Type::NamedType(_, None) => Box::new(std::iter::empty()),
+            Type::NamedType(_, Some(args)) => Box::new(args.iter()),
             _ => {
                 assert!(self.is_elementary());
                 Box::new(std::iter::empty())
@@ -175,7 +189,8 @@ impl<E> Children<Type<E>> for Type<E> {
                     .iter_mut()
                     .chain(std::iter::once(&mut *fun.value)),
             ),
-            Type::NamedType(_) | Type::TypeVar(_) => Box::new(std::iter::empty()),
+            Type::TypeVar(_) | Type::NamedType(_, None) => Box::new(std::iter::empty()),
+            Type::NamedType(_, Some(args)) => Box::new(args.iter_mut()),
             _ => {
                 assert!(self.is_elementary());
                 Box::new(std::iter::empty())
@@ -189,10 +204,11 @@ impl<R> Children<Expression<R>> for Type<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         match self {
             _ if self.is_elementary() => Box::new(empty()),
-            Type::TypeVar(_) | Type::NamedType(_) => Box::new(empty()),
+            Type::TypeVar(_) | Type::NamedType(_, None) => Box::new(empty()),
             Type::Array(a) => a.children(),
             Type::Tuple(t) => t.children(),
             Type::Function(f) => f.children(),
+            Type::NamedType(_, Some(args)) => Box::new(args.iter().flat_map(|arg| arg.children())),
             _ => unreachable!(),
         }
     }
@@ -200,10 +216,13 @@ impl<R> Children<Expression<R>> for Type<Expression<R>> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         match self {
             _ if self.is_elementary() => Box::new(empty()),
-            Type::TypeVar(_) | Type::NamedType(_) => Box::new(empty()),
+            Type::TypeVar(_) | Type::NamedType(_, None) => Box::new(empty()),
             Type::Array(a) => a.children_mut(),
             Type::Tuple(t) => t.children_mut(),
             Type::Function(f) => f.children_mut(),
+            Type::NamedType(_, Some(args)) => {
+                Box::new(args.iter_mut().flat_map(|arg| arg.children_mut()))
+            }
             _ => unreachable!(),
         }
     }
@@ -224,7 +243,10 @@ impl<R: Display> From<Type<Expression<R>>> for Type<u64> {
             Type::Tuple(t) => Type::Tuple(t.into()),
             Type::Function(f) => Type::Function(f.into()),
             Type::TypeVar(n) => Type::TypeVar(n),
-            Type::NamedType(n) => Type::NamedType(n),
+            Type::NamedType(n, None) => Type::NamedType(n, None),
+            Type::NamedType(n, Some(args)) => {
+                Type::NamedType(n, Some(args.into_iter().map(|a| a.into()).collect()))
+            }
         }
     }
 }

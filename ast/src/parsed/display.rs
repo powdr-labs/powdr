@@ -520,7 +520,11 @@ impl Display for FunctionDefinition {
 
 impl<E: Display> Display for EnumDeclaration<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "enum {} {{", self.name)?;
+        write!(f, "enum {}", self.name)?;
+        if !self.type_vars.is_empty() {
+            write!(f, "<{}>", self.type_vars)?
+        }
+        writeln!(f, " {{")?;
         write_items_indented(f, self.variants.iter())?;
         write!(f, "}}")
     }
@@ -700,7 +704,10 @@ impl<E: Display> Display for Type<E> {
             Type::Tuple(tuple) => write!(f, "{tuple}"),
             Type::Function(fun) => write!(f, "{fun}"),
             Type::TypeVar(name) => write!(f, "{name}"),
-            Type::NamedType(name) => write!(f, "{name}"),
+            Type::NamedType(name, Some(args)) => {
+                write!(f, "{name}<{}>", args.iter().format(", "))
+            }
+            Type::NamedType(name, None) => write!(f, "{name}"),
         }
     }
 }

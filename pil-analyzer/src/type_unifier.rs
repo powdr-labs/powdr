@@ -41,18 +41,22 @@ impl Unifier {
         })
         .unwrap_or(ty);
 
-        if let Type::TypeVar(n) = ty {
-            self.add_type_var_bound(n.clone(), bound);
-            Ok(())
-        } else if let Type::NamedType(n) = ty {
-            // Change this as soon as we support user-implemented traits.
-            Err(format!("Type {n} does not satisfy trait {bound}."))
-        } else {
-            let bounds = elementary_type_bounds(ty);
-            if bounds.contains(&bound.as_str()) {
+        match ty {
+            Type::TypeVar(n) => {
+                self.add_type_var_bound(n.clone(), bound);
                 Ok(())
-            } else {
-                Err(format!("Type {ty} does not satisfy trait {bound}."))
+            }
+            Type::NamedType(n, _) => {
+                // Change this as soon as we support user-implemented traits.
+                Err(format!("Type {n} does not satisfy trait {bound}."))
+            }
+            _ => {
+                let bounds = elementary_type_bounds(ty);
+                if bounds.contains(&bound.as_str()) {
+                    Ok(())
+                } else {
+                    Err(format!("Type {ty} does not satisfy trait {bound}."))
+                }
             }
         }
     }
@@ -99,6 +103,14 @@ impl Unifier {
                     .into_iter()
                     .zip(t2.items)
                     .try_for_each(|(i1, i2)| self.unify_types(i1, i2))
+            }
+            (Type::NamedType(n1, Some(args1)), Type::NamedType(n2, Some(args2))) if n1 == n2 => {
+                // The "None"-part is already handled with the equality comparison.
+                assert!(!args1.is_empty() && !args2.is_empty());
+                args1
+                    .into_iter()
+                    .zip(args2)
+                    .try_for_each(|(a1, a2)| self.unify_types(a1, a2))
             }
 
             (ty1, ty2) => Err(format!("Cannot unify types {ty1} and {ty2}")),

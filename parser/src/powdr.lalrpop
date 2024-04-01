@@ -668,7 +668,8 @@ PatternList: Vec<Pattern> = {
 // ---------------------------- Type Declarations -----------------------------
 
 EnumDeclaration: EnumDeclaration<Expression> = {
-    "enum" <name:Identifier> "{" <variants:EnumVariants> "}" => EnumDeclaration{<>}
+    "enum" <name:Identifier> <type_vars:("<" <TypeVarBounds> ">")?> "{" <variants:EnumVariants> "}"
+        => EnumDeclaration{name, type_vars: type_vars.unwrap_or_default(), variants}
 }
 
 EnumVariants: Vec<EnumVariant<Expression>> = {
@@ -699,7 +700,7 @@ TypeTermBox: Box<Type<Expression>> = {
 TypeTerm: Type<Expression> = {
     // The parser parses all identifiers as NamedTypes, some are translated
     // to TypeVars later.
-    TypeSymbolPath => Type::NamedType(<>),
+    TypeSymbolPath ("<" <TypeTermList> ">")? => Type::NamedType(<>),
     "!" => Type::Bottom,
     "bool" => Type::Bool,
     "int" => Type::Int,
