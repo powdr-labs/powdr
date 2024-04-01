@@ -742,11 +742,10 @@ impl<'a> TypeChecker<'a> {
                 ty
             }
             Pattern::Enum(name, data) => {
-                let (ty, gen_args) =
+                // We just ignore the generic args here, storing them in the pattern
+                // is not helpful because the type is obvious from the value.
+                let (ty, _generic_args) =
                     self.instantiate_scheme(self.declared_types[&name.to_dotted_string()].clone());
-                if !gen_args.is_empty() {
-                    unimplemented!("Generic enums are not yet supported.");
-                }
                 let ty = type_for_reference(&ty);
 
                 match data {
