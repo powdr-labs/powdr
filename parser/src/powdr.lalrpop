@@ -103,7 +103,7 @@ pub PilStatement = {
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> => PilStatement::EnumDeclaration(ctx.source_ref(start), decl),
     <start:@L> <decl:Trait> => PilStatement::Trait(ctx.source_ref(start), decl),
-    <start:@L> <impl:TraitImpl> => PilStatement::TraitImpl(ctx.source_ref(start), impl),
+    <start:@L> <trait_impl:TraitImpl> => PilStatement::TraitImpl(ctx.source_ref(start), trait_impl),
     PlookupIdentityStatement,
     PermutationIdentityStatement,
     ConnectIdentityStatement,
@@ -677,7 +677,9 @@ PatternList: Vec<Pattern> = {
 // ---------------------------- Traits -----------------------------
 
 Trait: Trait<Expression> = {
-    "trait" <name:Identifier> "<" <type_vars:TypeVarBounds> ">" "{" <members:(<Identifier> ":" <Type> ",")*> "}"
+    // TODO if we use "," as separator, it is ambiguous to parse...
+    // Can we get around that?
+    "trait" <name:Identifier> "<" <type_vars:TypeVarBounds> ">" "{" <members:(<Identifier> ":" <Type> ";")*> "}"
         => Trait{<>}
 }
 
