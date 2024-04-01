@@ -64,7 +64,7 @@ struct SyscallImpl(Vec<FunctionStatement>);
 /// RISCV powdr assembly runtime.
 /// Determines submachines, instructions and syscalls avaiable to the main machine.
 pub struct Runtime {
-    submachines: Vec<SubMachine>, // TODO(leandro): BTreeMap by name?
+    submachines: BTreeMap<String, SubMachine>,
     syscalls: BTreeMap<Syscall, SyscallImpl>,
 }
 
@@ -76,7 +76,7 @@ impl Runtime {
         };
 
         // Base submachines
-        // TODO(leandro): can memory machine be part of the runtime?
+        // TODO: can/should the memory machine be part be here also?
         r.add_submachine(
             "std::binary::Binary",
             None,
@@ -130,7 +130,7 @@ impl Runtime {
     }
 
     pub fn has_submachine(&self, name: &str) -> bool {
-        self.submachines.iter().any(|m| m.name == name)
+        self.submachines.contains_key(name)
     }
 
     pub fn has_syscall(&self, s: Syscall) -> bool {
@@ -236,7 +236,10 @@ impl Runtime {
                 .map(|s| parse_function_statement(s.as_ref()))
                 .collect(),
         };
-        self.submachines.push(subm);
+        assert!(
+            self.submachines.insert(name.to_string(), subm).is_none(),
+            "submachine {name} already present"
+        );
     }
 
     pub fn add_syscall<S: AsRef<str>, I: IntoIterator<Item = S>>(
@@ -258,23 +261,26 @@ impl Runtime {
 
     pub fn submachines_init(&self) -> Vec<String> {
         self.submachines
-            .iter()
+            .values()
             .flat_map(|m| m.init_call.iter())
             .map(|s| s.to_string())
             .collect()
     }
 
     pub fn submachines_import(&self) -> String {
-        self.submachines.iter().map(|m| m.import()).join("\n")
+        self.submachines.values().map(|m| m.import()).join("\n")
     }
 
     pub fn submachines_declare(&self) -> String {
-        self.submachines.iter().map(|m| m.declaration()).join("\n")
+        self.submachines
+            .values()
+            .map(|m| m.declaration())
+            .join("\n")
     }
 
     pub fn submachines_instructions(&self) -> Vec<String> {
         self.submachines
-            .iter()
+            .values()
             .flat_map(|m| m.instructions.iter())
             .map(|s| s.to_string())
             .collect()
@@ -308,6 +314,19 @@ impl Runtime {
             + &[("__rust_alloc_error_handler", "__rg_oom")]
                 .map(|(n, m)| format!(".globl {n}\n.set {n}, {m}\n"))
                 .join("\n\n")
+            +
+            // some extra symbols expected by rust code:
+            // - __rust_no_alloc_shim_is_unstable: compilation time acknowledgment that this feature is unstable.
+            // - __rust_alloc_error_handler_should_panic: needed by the default alloc error handler,
+            //   not sure why it's not present in the asm.
+            //   https://github.com/rust-lang/rust/blob/ae9d7b0c6434b27e4e2effe8f05b16d37e7ef33f/library/alloc/src/alloc.rs#L415
+            r".data
+.globl __rust_alloc_error_handler_should_panic
+__rust_alloc_error_handler_should_panic: .byte 0
+.globl __rust_no_alloc_shim_is_unstable
+__rust_no_alloc_shim_is_unstable: .byte 0
+.text
+"
     }
 
     pub fn ecall_handler(&self) -> Vec<String> {
@@ -337,17 +356,26 @@ impl Runtime {
             .chain(std::iter::once("// end of ecall handler".to_string()))
             .collect()
     }
+
+    pub fn submachine_names(&self) -> String {
+        self.submachines.keys().join("\n")
+    }
 }
 
 impl TryFrom<&[&str]> for Runtime {
     type Error = String;
 
     fn try_from(names: &[&str]) -> Result<Self, Self::Error> {
-        // only poseidon_gl is an option currently
-        match names {
-            ["poseidon_gl"] => Ok(Runtime::base()),
-            [] => Ok(Runtime::base().with_poseidon()),
-            _ => Err("Invalid co-processor specified.".to_string()),
+        let mut runtime = Runtime::base();
+        for name in names {
+            if runtime.has_submachine(name) {
+                continue;
+            }
+            match *name {
+                "poseidon_gl" => runtime = runtime.with_poseidon(),
+                _ => return Err(format!("Invalid co-processor specified: {name}")),
+            }
         }
+        Ok(runtime)
     }
 }
