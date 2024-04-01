@@ -580,16 +580,17 @@ FunctionCall: FunctionCall = {
 }
 
 NamespacedPolynomialReference: NamespacedPolynomialReference = {
+    <SymbolPath> => <>.into(),
     <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
 }
 
 GenericReference: NamespacedPolynomialReference = {
-    NamespacedPolynomialReference,
+    <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
     <path:SymbolPath> <generic_args:GenericArgs?> => NamespacedPolynomialReference{<>},
 }
 
 GenericArgs: Vec<Type<Expression>> = {
-    // TODO somehow the parser detects a conflict if we split this into "::" ","
+    // TODO somehow the parser detects a conflict if we split this into "::" "<"
     "::<" <TypeTermList> ">" => <>
 }
 
