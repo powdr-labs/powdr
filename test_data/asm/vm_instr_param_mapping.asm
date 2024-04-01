@@ -54,6 +54,7 @@ machine Main {
     instr add42 X -> Z = addvm.add X, NUM -> Z;
     let arr = [1,2,3,4,5];
     instr add_arr_sum X -> Z = addvm.add X, std::array::sum(arr) -> Z;
+    instr jump X = addvm.add pc, X -> pc';
 
     instr sub X, Y -> Z = subvm.sub;
     instr sub_to_C X, Y = subvm.sub X, Y -> C';
@@ -96,6 +97,12 @@ machine Main {
 
         sub_to_C 6, 3;
         assert_eq C, 3;
+
+        jump 3;
+        assert_eq 0,1; // asserts will be jumped over
+        assert_eq 0,1;
+        A <=X= 42;
+        assert_eq A, 42;
 
         return;
     }
