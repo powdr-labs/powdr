@@ -427,6 +427,7 @@ fn generic_enum() {
 }
 
 #[test]
+#[should_panic = "Inferred type scheme: <T> x: Option<T>"]
 fn simple_none() {
     let input = "
         enum Option<T> {
