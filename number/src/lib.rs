@@ -6,6 +6,8 @@
 mod macros;
 mod bn254;
 mod goldilocks;
+mod mersenne_31;
+mod baby_bear;
 mod serialize;
 mod traits;
 
@@ -15,6 +17,8 @@ pub use serialize::{
 
 pub use bn254::Bn254Field;
 pub use goldilocks::GoldilocksField;
+pub use mersenne_31::Mersenne31Field;
+pub use baby_bear::BabyBearField;
 pub use traits::KnownField;
 
 pub use ibig::{IBig as BigInt, UBig as BigUint};
