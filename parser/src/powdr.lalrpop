@@ -77,7 +77,6 @@ TypeSymbolPathPart: Part = {
 }
 
 LetStatementAtModuleLevel: SymbolDefinition = {
-    // TODO
     "let" <name:GenericTypedName>  "=" <value:Expression> ";" =>
         SymbolDefinition {
             name: name.0,
@@ -113,7 +112,6 @@ Namespace: PilStatement = {
 }
 
 LetStatement: PilStatement = {
-    // TODO
     <start:@L> "let" <name:GenericTypedName> <expr:( "=" <Expression> )?> ";" =>
         PilStatement::LetStatement(ctx.source_ref(start), name.0, name.1, expr)
 }
@@ -149,7 +147,6 @@ FunctionDefinition: FunctionDefinition = {
 }
 
 ParameterList: Vec<String> = {
-    // TODO
     <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list },
     => vec![]
 }
@@ -237,7 +234,6 @@ ConstantFixed = {
 }
 
 GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
-    // TODO
     <name:Identifier> => (name, None),
     <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <ty:(":" <Type>)> =>
         (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), ty }))
@@ -437,7 +433,6 @@ BoxedExpression: Box<Expression> = {
 
 LambdaExpression: Box<Expression> = {
     <kind:FunctionKind> "||" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{kind, params: vec![], body})),
-    // TODO
     <kind:FunctionKind> "|" <params:ParameterList> "|" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{kind, params, body})),
     LogicalOr
 }
@@ -620,7 +615,6 @@ BracedExpression: Box<Expression> = {
 }
 
 StatementInsideBlock: StatementInsideBlock = {
-    // TODO
     "let" <name:Identifier> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
     <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
@@ -644,7 +638,6 @@ TuplePattern: Pattern = {
 }
 
 ArrayPattern: Pattern = {
-    // TODO allow ".." - at end, at start, in middle?
     "[" "]" => Pattern::Array(vec![]),
     "[" <mut items:(<Pattern> ",")*> <last:Pattern> "]" => Pattern::Array({items.push(last); items})
 }

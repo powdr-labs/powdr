@@ -257,7 +257,6 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 Value::FieldElement(x) if BigInt::from(x.to_arbitrary_integer()) == *n => {
                     Some(vec![])
                 }
-                // TODO Expr?
                 _ => None,
             },
             Pattern::String(s) => match v.as_ref() {
