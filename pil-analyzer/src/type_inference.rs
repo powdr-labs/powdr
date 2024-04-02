@@ -547,8 +547,9 @@ impl TypeChecker {
                 for MatchArm { pattern, value } in arms {
                     let local_var_count = self.local_var_types.len();
                     self.expect_type_of_pattern(&scrutinee_type, pattern)?;
-                    self.expect_type(&result, value)?;
-                    self.local_var_types.truncate(local_var_count)
+                    let result = self.expect_type(&result, value);
+                    self.local_var_types.truncate(local_var_count);
+                    result?;
                 }
                 result
             }
@@ -669,7 +670,7 @@ impl TypeChecker {
             .unify_types(inferred_type.clone(), expected_type.clone())
             .map_err(|err| {
                 format!(
-                    "Error checking pattrn {pattern}:\nExpected type: {}\nInferred type: {}\n{err}",
+                    "Error checking pattern {pattern}:\nExpected type: {}\nInferred type: {}\n{err}",
                     self.type_into_substituted(expected_type.clone()),
                     self.type_into_substituted(inferred_type)
                 )
