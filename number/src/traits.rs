@@ -63,8 +63,6 @@ pub trait LargeInt:
 pub enum KnownField {
     GoldilocksField,
     Bn254Field,
-    Mersenne31Field,
-    BabyBearField,
 }
 
 /// A field element

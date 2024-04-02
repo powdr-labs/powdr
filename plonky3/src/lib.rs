@@ -149,99 +149,26 @@ impl<'a, T: Plonky3FieldElement, AB: AirBuilder<F = T::Plonky3Field>> Air<AB>
 mod tests {
 
     use p3_air::BaseAir;
-    use p3_baby_bear::{BabyBear, DiffusionMatrixBabybear};
     use p3_challenger::DuplexChallenger;
-    use p3_commit::{testing::TrivialPcs, ExtensionMmcs};
+    use p3_commit::testing::TrivialPcs;
     use p3_dft::Radix2DitParallel;
-    use p3_field::{extension::BinomialExtensionField, Field};
-    use p3_fri::{FriConfig, TwoAdicFriPcs};
+    use p3_field::extension::BinomialExtensionField;
     use p3_goldilocks::DiffusionMatrixGoldilocks;
     use p3_matrix::Matrix;
-    use p3_merkle_tree::FieldMerkleTreeMmcs;
     use p3_poseidon2::Poseidon2;
-    use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
     use p3_uni_stark::{prove, verify, StarkConfig};
     use p3_util::log2_ceil_usize;
-    use powdr_number::{BabyBearField, GoldilocksField};
+    use powdr_number::GoldilocksField;
     use powdr_pipeline::Pipeline;
     use rand::thread_rng;
 
     use crate::PowdrCircuit;
 
-    fn run_test_baby_bear(pil: &str) {
-
-        type Val = p3_baby_bear::BabyBear;
-        type Perm = Poseidon2<Val, DiffusionMatrixBabybear, 16, 7>;
-        type MyHash = PaddingFreeSponge<Perm, 16, 8, 8>;
-        type MyCompress = TruncatedPermutation<Perm, 2, 8, 16>;
-        type ValMmcs = FieldMerkleTreeMmcs<
-            <Val as Field>::Packing,
-            <Val as Field>::Packing,
-            MyHash,
-            MyCompress,
-            8,
-        >;
-        type Challenge = BinomialExtensionField<Val, 4>;
-        type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
-        type Challenger = DuplexChallenger<Val, Perm, 16>;
-        type Dft = Radix2DitParallel;
-        type Pcs = TrivialPcs<Val, Radix2DitParallel>;
-        type MyConfig = StarkConfig<Pcs, Challenge, Challenger>;
-
-        let mut pipeline = Pipeline::<BabyBearField>::default().from_pil_string(pil.to_string());
-
-        let pil = pipeline.compute_optimized_pil().unwrap();
-        let fixed_cols = pipeline.compute_fixed_cols().unwrap();
-        let witness = pipeline.compute_witness().unwrap();
-
-        let air = PowdrCircuit {
-            analyzed: &pil,
-            fixed: &fixed_cols,
-            witness: &witness,
-            _publics: vec![],
-        };
-
-        let trace = air.preprocessed_trace().unwrap();
-
-        let perm = Perm::new_from_rng(8, 22, DiffusionMatrixBabybear, &mut thread_rng());
-        let hash = MyHash::new(perm.clone());
-        let compress = MyCompress::new(perm.clone());
-        let val_mmcs = ValMmcs::new(hash, compress);
-        let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
-        let dft = Dft {};
-        let fri_config = FriConfig {
-            log_blowup: 2,
-            num_queries: 28,
-            proof_of_work_bits: 8,
-            mmcs: challenge_mmcs,
-        };
-        let pcs = p3_commit::testing::TrivialPcs {
-            dft,
-            log_n: log2_ceil_usize(trace.height()),
-            _phantom: std::marker::PhantomData,
-        };
-        let config = MyConfig::new(pcs);
-        let mut challenger = Challenger::new(perm.clone());
-        let pis = vec![];
-        let proof = prove(&config, &air, &mut challenger, trace, &pis);
-        verify(&config, &air, &mut challenger, &proof, &pis).unwrap();
-    }
-
-    fn run_test_goldilocks(pil: &str) {
-
+    /// Prove and verify execution using a trivial PCS (coefficients of the polynomials)
+    fn run_test_goldilocks_trivial_pcs(pil: &str) {
         type Val = p3_goldilocks::Goldilocks;
         type Perm = Poseidon2<Val, DiffusionMatrixGoldilocks, 16, 7>;
-        type MyHash = PaddingFreeSponge<Perm, 16, 8, 8>;
-        type MyCompress = TruncatedPermutation<Perm, 2, 8, 16>;
-        type ValMmcs = FieldMerkleTreeMmcs<
-            <Val as Field>::Packing,
-            <Val as Field>::Packing,
-            MyHash,
-            MyCompress,
-            8,
-        >;
         type Challenge = BinomialExtensionField<Val, 2>;
-        type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
         type Challenger = DuplexChallenger<Val, Perm, 16>;
         type Dft = Radix2DitParallel;
         type Pcs = TrivialPcs<Val, Radix2DitParallel>;
@@ -263,17 +190,7 @@ mod tests {
         let trace = air.preprocessed_trace().unwrap();
 
         let perm = Perm::new_from_rng(8, 22, DiffusionMatrixGoldilocks, &mut thread_rng());
-        let hash = MyHash::new(perm.clone());
-        let compress = MyCompress::new(perm.clone());
-        let val_mmcs = ValMmcs::new(hash, compress);
-        let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
         let dft = Dft {};
-        let fri_config = FriConfig {
-            log_blowup: 2,
-            num_queries: 28,
-            proof_of_work_bits: 8,
-            mmcs: challenge_mmcs,
-        };
         let pcs = p3_commit::testing::TrivialPcs {
             dft,
             log_n: log2_ceil_usize(trace.height()),
@@ -290,36 +207,31 @@ mod tests {
     #[should_panic = "assertion failed: width >= 1"]
     fn empty() {
         let content = "namespace Global(8);";
-        run_test_baby_bear(content);
-        run_test_goldilocks(content);
+        run_test_goldilocks_trivial_pcs(content);
     }
 
     #[test]
     fn single_fixed_column() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*;";
-        run_test_baby_bear(content);
-        run_test_goldilocks(content);
+        run_test_goldilocks_trivial_pcs(content);
     }
 
     #[test]
     fn single_witness_column() {
         let content = "namespace Global(8); pol witness a;";
-        run_test_baby_bear(content);
-        run_test_goldilocks(content);
+        run_test_goldilocks_trivial_pcs(content);
     }
 
     #[test]
     fn polynomial_identity() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
-        run_test_baby_bear(content);
-        run_test_goldilocks(content);
+        run_test_goldilocks_trivial_pcs(content);
     }
 
     #[test]
     #[should_panic = "not implemented"]
     fn lookup() {
         let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; a in z;";
-        run_test_baby_bear(content);
-        run_test_goldilocks(content);
+        run_test_goldilocks_trivial_pcs(content);
     }
 }
