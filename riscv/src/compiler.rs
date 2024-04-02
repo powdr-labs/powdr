@@ -943,6 +943,22 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
     }
 }
 
+/// Push register into the stack
+pub fn push_register(name: &str) -> [String; 2] {
+    [
+        "x2 <=X= wrap(x2 - 4);".to_string(),
+        format!("mstore x2, {name};"),
+    ]
+}
+
+/// Pop register from the stack
+pub fn pop_register(name: &str) -> [String; 2] {
+    [
+        format!("{name}, tmp1 <== mload(x2);"),
+        "x2 <=X= wrap(x2 + 4);".to_string(),
+    ]
+}
+
 fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
     match instr {
         // load/store registers
@@ -1316,16 +1332,14 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "ecall" => {
             assert!(args.is_empty());
-            vec![
-                // push ra/x1 into stack
-                "x2 <=X= wrap(x2 - 4);".to_string(),
-                "mstore x2, x1;".to_string(),
+            // save ra/x1
+            push_register("x1")
+                .into_iter()
                 // jump to to handler
-                "x1 <== jump(__ecall_handler);".to_string(),
-                // pop ra/x1
-                "x1, tmp1 <== mload(x2);".to_string(), // restore ra
-                "x2 <=X= wrap(x2 + 4);".to_string(),
-            ]
+                .chain(std::iter::once("x1 <== jump(__ecall_handler);".to_string()))
+                // restore ra/x1
+                .chain(pop_register("x1"))
+                .collect()
         }
         "ebreak" => {
             assert!(args.is_empty());

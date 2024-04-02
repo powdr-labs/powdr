@@ -7,6 +7,8 @@ use powdr_ast::parsed::asm::{FunctionStatement, MachineStatement, SymbolPath};
 use itertools::Itertools;
 use powdr_parser::ParserContext;
 
+use crate::compiler::{pop_register, push_register};
+
 lazy_static::lazy_static! {
     static ref INSTRUCTION_DECLARATION_PARSER: powdr_parser::powdr::InstructionDeclarationParser
         = powdr_parser::powdr::InstructionDeclarationParser::new();
@@ -138,17 +140,19 @@ impl Runtime {
     }
 
     pub fn with_poseidon(mut self) -> Self {
-        self.add_submachine("std::hash::poseidon_gl::PoseidonGL",
-                            None,
-                            "poseidon_gl",
-                            ["instr poseidon_gl ~ poseidon_gl.poseidon_permutation x10, x11, x12, x13, x14, x15, x16, x17, x6, x7, x28, x29 -> x10', x11', x12', x13';"],
-                            // init call
-                            ["poseidon_gl;",
-                             "x10 <=X= 0;",
-                             "x11 <=X= 0;",
-                             "x12 <=X= 0;",
-                             "x13 <=X= 0;",
-                            ]);
+        self.add_submachine(
+            "std::hash::poseidon_gl::PoseidonGL",
+            None,
+            "poseidon_gl",
+            ["instr poseidon_gl ~ poseidon_gl.poseidon_permutation x10, x11, x12, x13, x14, x15, x16, x17, x6, x7, x28, x29 -> x10', x11', x12', x13';"],
+            // init call
+            [
+                "poseidon_gl;",
+                "x10 <=X= 0;",
+                "x11 <=X= 0;",
+                "x12 <=X= 0;",
+                "x13 <=X= 0;",
+            ]);
 
         // The poseidon syscall has a single argument passed on x10, the
         // memory address of the 12 field element input array. Since the memory
@@ -157,28 +161,6 @@ impl Runtime {
         // The poseidon syscall uses x10 for input, we store it in tmp3, as x10 is
         // also used as input to the poseidon machine instruction.
         let setup = std::iter::once("tmp3 <=X= x10;".to_string());
-
-        // The poseidon instruction uses the first 12 SYSCALL_REGISTERS as input/output.
-        // The contents of memory are loaded into these registers before calling the instruction.
-        // These might be in use by the riscv machine, so we save the registers on the stack.
-        let save_register = |i| {
-            let reg = SYSCALL_REGISTERS[i];
-            [
-                // save register in stack
-                "x2 <=X= wrap(x2 - 4);".to_string(),
-                format!("mstore x2, {reg};"),
-            ]
-        };
-
-        // After copying the result back into memory, we restore the original register values.
-        let restore_register = |i| {
-            let reg = SYSCALL_REGISTERS[i];
-            [
-                // restore register from stack
-                format!("{reg}, tmp1 <== mload(x2);"),
-                "x2 <=X= wrap(x2 + 4);".to_string(),
-            ]
-        };
 
         // load input from memory into register
         let load_word = |i| {
@@ -205,11 +187,19 @@ impl Runtime {
         };
 
         let implementation = setup
-            .chain((0..12).flat_map(save_register))
+            // The poseidon instruction uses the first 12 SYSCALL_REGISTERS as input/output.
+            // The contents of memory are loaded into these registers before calling the instruction.
+            // These might be in use by the riscv machine, so we save the registers on the stack.
+            .chain((0..12).flat_map(|i| push_register(SYSCALL_REGISTERS[i])))
             .chain((0..12).flat_map(load_word))
             .chain(std::iter::once("poseidon_gl;".to_string()))
             .chain((0..4).flat_map(store_word))
-            .chain((0..12).rev().flat_map(restore_register));
+            // After copying the result back into memory, we restore the original register values.
+            .chain(
+                (0..12)
+                    .rev()
+                    .flat_map(|i| pop_register(SYSCALL_REGISTERS[i])),
+            );
 
         self.add_syscall(Syscall::PoseidonGL, implementation);
         self
