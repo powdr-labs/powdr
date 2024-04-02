@@ -76,7 +76,7 @@ impl Runtime {
         };
 
         // Base submachines
-        // TODO: can/should the memory machine be part be here also?
+        // TODO: can/should the memory machine be part of the runtime also?
         r.add_submachine(
             "std::binary::Binary",
             None,
@@ -155,7 +155,7 @@ impl Runtime {
         // offset is chosen by LLVM, we assume it is properly aligned.
 
         // The poseidon syscall uses x10 for input, we store it in tmp3, as x10 is
-        // also used as input for the poseidon machine instruction.
+        // also used as input to the poseidon machine instruction.
         let setup = std::iter::once("tmp3 <=X= x10;".to_string());
 
         // The poseidon instruction uses the first 12 SYSCALL_REGISTERS as input/output.
