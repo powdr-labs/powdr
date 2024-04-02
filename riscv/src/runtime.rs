@@ -160,7 +160,7 @@ impl Runtime {
 
         // The poseidon instruction uses the first 12 SYSCALL_REGISTERS as input/output.
         // The contents of memory are loaded into these registers before calling the instruction.
-        // These might be in used by the riscv machine, so we save the registers on the stack.
+        // These might be in use by the riscv machine, so we save the registers on the stack.
         let save_register = |i| {
             let reg = SYSCALL_REGISTERS[i];
             [

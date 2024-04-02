@@ -1,12 +1,10 @@
 [package]
 name = "powdr-riscv-syscalls"
-description = "powdr RISCV syscalls"
+description = "powdr RISC-V syscalls"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 homepage = { workspace = true }
 repository = { workspace = true }
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

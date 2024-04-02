@@ -181,7 +181,7 @@ submachine_init:
 // START OF BOOTLOADER
 
 // During the execution of the bootloader, registers are used as follows:
-// (NB. `SYSCALL_REGISTERS` are mapped into the `P*` registers)
+// (NB. `SYSCALL_REGISTERS` are mapped into the `P*` variables)
 // - x1: Number of pages (constant throughout the execution)
 // - x2: Current page index
 // - x3: Current page number
