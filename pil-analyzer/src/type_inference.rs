@@ -477,18 +477,15 @@ impl TypeChecker {
                 body,
             }) => {
                 let old_len = self.local_var_types.len();
-                let param_types = params
+                let (param_types, body_type) = params
                     .iter()
                     .map(|p| self.infer_type_of_pattern(p))
                     .collect::<Result<Vec<_>, _>>()
+                    .and_then(|param_types| Ok((param_types, self.infer_type_of_expression(body)?)))
                     .map_err(|e| {
                         self.local_var_types.truncate(old_len);
                         e
                     })?;
-                let body_type_result = self.infer_type_of_expression(body);
-                // TODO avoid the duplication with the error above.
-                self.local_var_types.truncate(old_len);
-                let body_type = body_type_result?;
                 Type::Function(FunctionType {
                     params: param_types,
                     value: Box::new(body_type),
