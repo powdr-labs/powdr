@@ -246,7 +246,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
 
     /// Tries to match this value against the given pattern.
     /// Returns local variable bindings on success.
-    pub fn matches_pattern<'b>(
+    pub fn try_match_pattern<'b>(
         v: &Arc<Value<'b, T>>,
         pattern: &Pattern,
     ) -> Option<Vec<Arc<Value<'b, T>>>> {
@@ -271,7 +271,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                         .iter()
                         .zip(items)
                         .try_fold(vec![], |mut vars, (e, p)| {
-                            Value::matches_pattern(e, p).map(|v| {
+                            Value::try_match_pattern(e, p).map(|v| {
                                 vars.extend(v);
                                 vars
                             })
@@ -305,7 +305,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 left.chain(right)
                     .zip(items.iter().filter(|&i| *i != Pattern::Rest))
                     .try_fold(vec![], |mut vars, (e, p)| {
-                        Value::matches_pattern(e, p).map(|v| {
+                        Value::try_match_pattern(e, p).map(|v| {
                             vars.extend(v);
                             vars
                         })
@@ -653,7 +653,7 @@ mod internal {
                 let (vars, body) = arms
                     .iter()
                     .find_map(|MatchArm { pattern, value }| {
-                        Value::matches_pattern(&v, pattern).map(|vars| (vars, value))
+                        Value::try_match_pattern(&v, pattern).map(|vars| (vars, value))
                     })
                     .ok_or_else(EvalError::NoMatch)?;
                 let mut locals = locals.to_vec();
