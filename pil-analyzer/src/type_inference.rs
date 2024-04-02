@@ -328,35 +328,33 @@ impl TypeChecker {
         type_var_mapping: &HashMap<String, Type>,
     ) -> Result<(), String> {
         match e {
-            Expression::Number(n, annotated_type) => {
-                match annotated_type {
-                    Some(Type::Int) | Some(Type::Fe) | Some(Type::Expr) => {}
-                    Some(Type::TypeVar(tv)) => {
-                        let mut ty = Type::TypeVar(tv.clone());
-                        // Apply regular substitution obtained from unification.
-                        self.substitute(&mut ty);
-                        if !ty
-                            .contained_type_vars()
-                            .all(|tv| type_var_mapping.contains_key(tv))
-                        {
-                            return Err(format!("Unable to derive concrete type for literal {n}."));
-                        }
-                        // Rename type vars (hopefully just a single one) to match the declaration scheme.
-                        ty.substitute_type_vars(type_var_mapping);
-                        if let Type::TypeVar(tv) = ty {
-                            *annotated_type = Some(Type::TypeVar(tv.clone()));
-                        } else {
-                            match ty {
-                                Type::Int => *annotated_type = Some(Type::Int),
-                                Type::Fe => *annotated_type = Some(Type::Fe),
-                                Type::Expr => *annotated_type = Some(Type::Expr),
-                                t => panic!("Invalid resolved type literal number: {t}"),
-                            }
+            Expression::Number(n, annotated_type) => match annotated_type {
+                Some(Type::Int) | Some(Type::Fe) | Some(Type::Expr) => {}
+                Some(Type::TypeVar(tv)) => {
+                    let mut ty = Type::TypeVar(tv.clone());
+                    // Apply regular substitution obtained from unification.
+                    self.substitute(&mut ty);
+                    if !ty
+                        .contained_type_vars()
+                        .all(|tv| type_var_mapping.contains_key(tv))
+                    {
+                        return Err(format!("Unable to derive concrete type for literal {n}."));
+                    }
+                    // Rename type vars (hopefully just a single one) to match the declaration scheme.
+                    ty.substitute_type_vars(type_var_mapping);
+                    if let Type::TypeVar(tv) = ty {
+                        *annotated_type = Some(Type::TypeVar(tv.clone()));
+                    } else {
+                        match ty {
+                            Type::Int => *annotated_type = Some(Type::Int),
+                            Type::Fe => *annotated_type = Some(Type::Fe),
+                            Type::Expr => *annotated_type = Some(Type::Expr),
+                            t => panic!("Invalid resolved type literal number: {t}"),
                         }
                     }
-                    _ => panic!("Invalid annotation for literal number."),
                 }
-            }
+                _ => panic!("Invalid annotation for literal number."),
+            },
             Expression::Reference(Reference::Poly(PolynomialReference {
                 name,
                 poly_id: _,
