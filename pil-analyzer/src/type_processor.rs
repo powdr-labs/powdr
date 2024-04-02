@@ -6,12 +6,12 @@ use powdr_number::{BigInt, GoldilocksField};
 use crate::{
     evaluator::{self, EvalError},
     expression_processor::ExpressionProcessor,
-    AnalysisDriver,
+    untyped_evaluator, AnalysisDriver,
 };
 
 /// The TypeProcessor turns parsed types into analyzed types, which means that
 /// it resolves local type name references, replaces named types that actually
-/// refer to type variables by actual type varibales and evaluates array lengths.
+/// refer to type variables by actual type variables and evaluates array lengths.
 /// It is is unrelated to type inference, which is done later.
 pub struct TypeProcessor<'a, D: AnalysisDriver> {
     driver: D,
@@ -41,7 +41,7 @@ impl<'a, D: AnalysisDriver> TypeProcessor<'a, D> {
         // Any expression inside a type name has to be an array length,
         // so we expect an integer that fits u64.
         t.children_mut().try_for_each(|e: &mut Expression| {
-            let v = self.evaluate_expression_to_int(e.clone())?;
+            let v = untyped_evaluator::evaluate_expression_to_int(self.driver, e.clone())?;
             let v_u64: u64 = v.clone().try_into().map_err(|_| {
                 EvalError::TypeError(format!("Number too large, expected u64, but got {v}"))
             })?;
@@ -49,15 +49,5 @@ impl<'a, D: AnalysisDriver> TypeProcessor<'a, D> {
             Ok(())
         })?;
         Ok(t.into())
-    }
-
-    fn evaluate_expression_to_int(&self, expr: Expression) -> Result<BigInt, EvalError> {
-        // TODO we should maybe implement a separate evaluator that is able to run before type checking
-        // and is field-independent (only uses integers)?
-        evaluator::evaluate_expression::<GoldilocksField>(
-            &ExpressionProcessor::new(self.driver).process_expression(expr),
-            self.driver.definitions(),
-        )?
-        .try_to_integer()
     }
 }

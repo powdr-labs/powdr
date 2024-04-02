@@ -12,18 +12,17 @@ use powdr_ast::parsed::{
 };
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_ast::SourceRef;
-use powdr_number::{BigInt, DegreeType, GoldilocksField};
+use powdr_number::DegreeType;
 
 use powdr_ast::analyzed::{
     Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
     Symbol, SymbolKind,
 };
 
-use crate::evaluator::EvalError;
 use crate::type_processor::TypeProcessor;
-use crate::AnalysisDriver;
+use crate::{untyped_evaluator, AnalysisDriver};
 
-use crate::{evaluator, expression_processor::ExpressionProcessor};
+use crate::expression_processor::ExpressionProcessor;
 
 pub enum PILItem {
     Definition(Symbol, Option<FunctionValueDefinition>),
@@ -190,8 +189,7 @@ where
         let ty = Some(match array_size {
             None => Type::Col,
             Some(len) => {
-                let length = self
-                    .evaluate_expression_to_int(len)
+                let length = untyped_evaluator::evaluate_expression_to_int(self.driver, len)
                     .map(|length| {
                         length
                             .try_into()
@@ -494,8 +492,7 @@ where
             .expression_processor()
             .process_namespaced_polynomial_reference(&poly.path);
         let array_index = array_index.map(|i| {
-            let index: u64 = self
-                .evaluate_expression_to_int(i)
+            let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
                 .unwrap()
                 .try_into()
                 .unwrap();
@@ -508,22 +505,11 @@ where
             name: name.to_string(),
             polynomial,
             array_index,
-            index: self
-                .evaluate_expression_to_int(index)
+            index: untyped_evaluator::evaluate_expression_to_int(self.driver, index)
                 .unwrap()
                 .try_into()
                 .unwrap(),
         })]
-    }
-
-    fn evaluate_expression_to_int(&self, expr: parsed::Expression) -> Result<BigInt, EvalError> {
-        // TODO we should maybe implement a separate evaluator that is able to run before type checking
-        // and is field-independent (only uses integers)?
-        evaluator::evaluate_expression::<GoldilocksField>(
-            &ExpressionProcessor::new(self.driver).process_expression(expr),
-            self.driver.definitions(),
-        )?
-        .try_to_integer()
     }
 
     fn expression_processor(&self) -> ExpressionProcessor<D> {

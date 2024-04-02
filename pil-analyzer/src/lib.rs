@@ -11,6 +11,7 @@ mod type_builtins;
 mod type_inference;
 mod type_processor;
 mod type_unifier;
+mod untyped_evaluator;
 
 use std::collections::HashMap;
 
