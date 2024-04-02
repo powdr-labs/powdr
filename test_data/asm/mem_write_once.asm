@@ -1,4 +1,19 @@
-machine MemReadWrite {
+// Write-once memory with key (ADDR1, ADDR2) and value (v1, v2)
+// This is similar to std::write_once_memory::WriteOnceMemory, but has
+// two address and value columns.
+machine WriteOnceMemory(LATCH, _) {
+
+    operation access ADDR1, ADDR2, v1, v2 ->;
+
+    let LATCH = 1;
+
+    let ADDR1: col = |i| i;
+    let ADDR2: col = |i| i + 1;
+    let v1;
+    let v2;
+}
+
+machine Main {
 
     degree 256;
 
@@ -10,15 +25,9 @@ machine MemReadWrite {
     reg A;
     reg B;
 
-    // Write-once memory with key (ADDR1, ADDR2) and value (v1, v2)
-    let ADDR1: col = |i| i;
-    let ADDR2: col = |i| i + 1;
-    let v1;
-    let v2;
-    // Stores a value, fails if the cell already has a value that's different
-    instr mstore X1, X2, Y1, Y2 -> { {X1, X2, Y1, Y2} in {ADDR1, ADDR2, v1, v2} }
-    // Loads a value. If the cell is empty, the prover can choose a value.
-    instr mload X1, X2 -> Y1, Y2 { {X1, X2, Y1, Y2} in {ADDR1, ADDR2, v1, v2} }
+    WriteOnceMemory memory;
+    instr mstore X1, X2, Y1, Y2 -> = memory.access X1, X2, Y1, Y2 ->;
+    instr mload X1, X2 -> Y1, Y2 = memory.access X1, X2, Y1, Y2 ->;
 
     instr assert_eq X1, Y1 { X1 = Y1 }
 

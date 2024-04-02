@@ -572,6 +572,7 @@ Term: Box<Expression> = {
     BlockExpression,
     "[" <items:ExpressionList> "]" => Box::new(Expression::ArrayLiteral(ArrayLiteral{items})),
     "(" <head:Expression> "," <tail:ExpressionList> ")" => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(list)) },
+    "(" ")" => Box::new(Expression::Tuple(vec![])),
     "(" <BoxedExpression> ")",
     "${" <BoxedExpression> "}" => Box::new(Expression::FreeInput(<>))
 }

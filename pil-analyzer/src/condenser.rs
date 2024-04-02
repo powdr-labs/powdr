@@ -112,10 +112,10 @@ pub fn condense<T: FieldElement>(
             let identity_statements = condenser
                 .extract_new_constraints()
                 .into_iter()
-                .map(|mut identity| {
+                .map(|identity| {
                     let index = condensed_identities.len();
-                    identity.id = counters.dispense_identity_id();
-                    condensed_identities.push(identity);
+                    let id = counters.dispense_identity_id();
+                    condensed_identities.push(identity.into_identity(id));
                     StatementIdentifier::Identity(index)
                 })
                 .collect::<Vec<_>>();
@@ -166,7 +166,42 @@ pub struct Condenser<'a, T> {
     new_witnesses: Vec<Symbol>,
     /// The names of all new witness columns ever generated, to avoid duplicates.
     all_new_witness_names: HashSet<String>,
-    new_constraints: Vec<Identity<AlgebraicExpression<T>>>,
+    new_constraints: Vec<IdentityWithoutID<AlgebraicExpression<T>>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct IdentityWithoutID<Expr> {
+    pub kind: IdentityKind,
+    pub source: SourceRef,
+    /// For a simple polynomial identity, the selector contains
+    /// the actual expression (see expression_for_poly_id).
+    pub left: SelectedExpressions<Expr>,
+    pub right: SelectedExpressions<Expr>,
+}
+
+impl<Expr> IdentityWithoutID<Expr> {
+    /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
+    pub fn from_polynomial_identity(source: SourceRef, identity: Expr) -> Self {
+        Self {
+            kind: IdentityKind::Polynomial,
+            source,
+            left: SelectedExpressions {
+                selector: Some(identity),
+                expressions: vec![],
+            },
+            right: Default::default(),
+        }
+    }
+
+    pub fn into_identity(self, id: u64) -> Identity<Expr> {
+        Identity {
+            id,
+            kind: self.kind,
+            source: self.source,
+            left: self.left,
+            right: self.right,
+        }
+    }
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
@@ -205,8 +240,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         } else {
             let left = self.condense_selected_expressions(&identity.left);
             let right = self.condense_selected_expressions(&identity.right);
-            self.new_constraints.push(Identity {
-                id: identity.id,
+            self.new_constraints.push(IdentityWithoutID {
                 kind: identity.kind,
                 source: identity.source.clone(),
                 left,
@@ -228,7 +262,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Returns the new constraints generated since the last call to this function.
-    pub fn extract_new_constraints(&mut self) -> Vec<Identity<AlgebraicExpression<T>>> {
+    pub fn extract_new_constraints(&mut self) -> Vec<IdentityWithoutID<AlgebraicExpression<T>>> {
         let mut new_constraints = vec![];
         std::mem::swap(&mut self.new_constraints, &mut new_constraints);
         new_constraints
@@ -352,8 +386,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         };
         for (left, right) in identities {
             self.new_constraints
-                .push(Identity::from_polynomial_identity(
-                    0, // ID will be re-assigned later.
+                .push(IdentityWithoutID::from_polynomial_identity(
                     source.clone(),
                     left.clone() - right.clone(),
                 ));

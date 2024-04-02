@@ -158,7 +158,7 @@ impl<E> Children<Type<E>> for Type<E> {
             Type::Array(ar) => Box::new(std::iter::once(&*ar.base)),
             Type::Tuple(tu) => Box::new(tu.items.iter()),
             Type::Function(fun) => Box::new(fun.params.iter().chain(std::iter::once(&*fun.value))),
-            Type::NamedType(_) => Box::new(std::iter::empty()),
+            Type::NamedType(_) | Type::TypeVar(_) => Box::new(std::iter::empty()),
             _ => {
                 assert!(self.is_elementary());
                 Box::new(std::iter::empty())
