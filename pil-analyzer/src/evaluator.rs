@@ -653,7 +653,6 @@ mod internal {
                 let (vars, body) = arms
                     .iter()
                     .find_map(|MatchArm { pattern, value }| {
-                        println!("Matching {v} againsnt {pattern}");
                         Value::matches_pattern(&v, pattern).map(|vars| (vars, value))
                     })
                     .ok_or_else(EvalError::NoMatch)?;
