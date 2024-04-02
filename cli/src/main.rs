@@ -81,6 +81,11 @@ struct Cli {
     #[arg(long, hide = true)]
     markdown_help: bool,
 
+    /// Set log filter value [ off, error, warn, info, debug, trace ]
+    #[arg(long)]
+    #[arg(default_value_t = LevelFilter::Info)]
+    log_level: LevelFilter,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -420,9 +425,11 @@ fn split_inputs<T: FieldElement>(inputs: &str) -> Vec<T> {
 }
 
 fn main() -> Result<(), io::Error> {
+    let args = Cli::parse();
+
     let mut builder = Builder::new();
     builder
-        .filter_level(LevelFilter::Info)
+        .filter_level(args.log_level)
         .parse_default_env()
         .target(Target::Stdout)
         .format(|buf, record| {
@@ -445,8 +452,6 @@ fn main() -> Result<(), io::Error> {
             writeln!(buf, "{}", style.value(msg))
         })
         .init();
-
-    let args = Cli::parse();
 
     if args.markdown_help {
         clap_markdown::print_help_markdown::<Cli>();
