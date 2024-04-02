@@ -444,7 +444,14 @@ fn preamble<T: FieldElement>(degree: u64, runtime: &Runtime, with_bootloader: bo
         "".to_string()
     };
 
-    let mul_instruction = mul_instruction::<T>();
+    for machine in ["binary", "shift"] {
+        assert!(
+            runtime.has_submachine(machine),
+            "RISC-V machine requires the `{machine}` submachine"
+        );
+    }
+
+    let mul_instruction = mul_instruction::<T>(runtime);
 
     format!("degree {degree};")
         + &r#"
@@ -612,7 +619,7 @@ fn preamble<T: FieldElement>(degree: u64, runtime: &Runtime, with_bootloader: bo
 "# + mul_instruction
 }
 
-fn mul_instruction<T: FieldElement>() -> &'static str {
+fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
     match T::known_field().expect("Unknown field!") {
         KnownField::Bn254Field => {
             // The BN254 field can fit any 64-bit number, so we can naively de-compose
@@ -630,6 +637,10 @@ fn mul_instruction<T: FieldElement>() -> &'static str {
 "#
         }
         KnownField::GoldilocksField => {
+            assert!(
+                runtime.has_submachine("split_gl"),
+                "RISC-V machine with the goldilocks field requires the `split_gl` submachine"
+            );
             // The Goldilocks field cannot fit some 64-bit numbers, so we have to use
             // the split machine. Note that it can fit a product of two 32-bit numbers.
             r#"
