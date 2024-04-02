@@ -1,13 +1,8 @@
 use std::{collections::HashSet, str::FromStr};
 
 use powdr_ast::parsed::{asm::SymbolPath, types::Type, visitor::Children, Expression};
-use powdr_number::{BigInt, GoldilocksField};
 
-use crate::{
-    evaluator::{self, EvalError},
-    expression_processor::ExpressionProcessor,
-    untyped_evaluator, AnalysisDriver,
-};
+use crate::{evaluator::EvalError, untyped_evaluator, AnalysisDriver};
 
 /// The TypeProcessor turns parsed types into analyzed types, which means that
 /// it resolves local type name references, replaces named types that actually
