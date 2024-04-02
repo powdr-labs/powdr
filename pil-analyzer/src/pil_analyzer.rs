@@ -7,17 +7,18 @@ use std::path::{Path, PathBuf};
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
 
 use powdr_ast::parsed::types::Type;
-use powdr_ast::parsed::{PILFile, PilStatement};
+use powdr_ast::parsed::visitor::Children;
+use powdr_ast::parsed::{FunctionKind, LambdaExpression, PILFile, PilStatement};
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PublicDeclaration, StatementIdentifier, Symbol, TypedExpression,
+    PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
 };
 use powdr_parser::parse_type;
 
 use crate::type_inference::{infer_types, ExpectedType};
-use crate::AnalysisDriver;
+use crate::{side_effect_checker, AnalysisDriver};
 
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
 use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
@@ -43,6 +44,7 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
 fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
+    analyzer.side_effect_check();
     analyzer.type_check();
     analyzer.condense::<T>()
 }
@@ -129,6 +131,47 @@ impl PILAnalyzer {
         }
     }
 
+    /// Check that query and constr functions are used in the correct contexts.
+    pub fn side_effect_check(&self) {
+        for (name, (symbol, value)) in &self.definitions {
+            let Some(value) = value else { continue };
+            let context = match symbol.kind {
+                // Witness column value is query function
+                SymbolKind::Poly(PolynomialType::Committed) => FunctionKind::Query,
+                // Fixed column value must be pure.
+                SymbolKind::Poly(PolynomialType::Constant) => FunctionKind::Pure,
+                SymbolKind::Other() => match value {
+                    // Otherwise, just take the kind of the lambda expression.
+                    FunctionValueDefinition::Expression(TypedExpression { type_scheme: _, e }) => {
+                        if let Expression::LambdaExpression(LambdaExpression { kind, .. }) = e {
+                            *kind
+                        } else {
+                            FunctionKind::Constr
+                        }
+                    }
+                    _ => FunctionKind::Constr,
+                },
+                // Default is constr.
+                _ => FunctionKind::Constr,
+            };
+            value
+                .children()
+                .try_for_each(|e| side_effect_checker::check(&self.definitions, context, e))
+                .unwrap_or_else(|err| {
+                    panic!("Error checking side-effects of {name} {value}: {err}")
+                })
+        }
+
+        // for all identities, check that they call pure or constr functions
+        for id in &self.identities {
+            id.children()
+                .try_for_each(|e| {
+                    side_effect_checker::check(&self.definitions, FunctionKind::Constr, e)
+                })
+                .unwrap_or_else(|err| panic!("Error checking side-effects of identity {id}: {err}"))
+        }
+    }
+
     pub fn type_check(&mut self) {
         let query_type: Type = parse_type("int -> std::prover::Query").unwrap().into();
         let mut expressions = vec![];
@@ -143,40 +186,43 @@ impl PILAnalyzer {
                 !matches!(value, Some(FunctionValueDefinition::TypeDeclaration(_)))
             })
             .flat_map(|(name, (symbol, value))| {
-                let (type_scheme, expr) =
-                    if let Some(FunctionValueDefinition::Expression(TypedExpression {
-                        type_scheme,
-                        e,
-                    })) = value
-                    {
-                        (type_scheme.clone(), Some(e))
-                    } else {
-                        let type_scheme = type_from_definition(symbol, value);
+                let (type_scheme, expr) = match (symbol.kind, value) {
+                    (SymbolKind::Poly(PolynomialType::Committed), Some(value)) => {
+                        // Witness column, move its value (query function) into the expressions to be checked separately.
+                        let type_scheme = type_from_definition(symbol, &None);
 
-                        match value {
-                            Some(FunctionValueDefinition::Array(items)) => {
-                                // Expect all items in the arrays to be field elements.
-                                expressions.extend(
-                                    items
-                                        .iter_mut()
-                                        .flat_map(|item| item.pattern_mut())
-                                        .map(|e| (e, Type::Fe.into())),
-                                );
-                            }
-                            Some(FunctionValueDefinition::Query(query)) => {
-                                expressions.push((
-                                    query,
-                                    ExpectedType {
-                                        ty: query_type.clone(),
-                                        allow_array: false,
-                                    },
-                                ));
-                            }
-                            _ => {}
+                        let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = value
+                        else {
+                            panic!("Invalid value for query funciton")
                         };
 
+                        expressions.push((e, query_type.clone().into()));
+
                         (type_scheme, None)
-                    };
+                    }
+                    (
+                        _,
+                        Some(FunctionValueDefinition::Expression(TypedExpression {
+                            type_scheme,
+                            e,
+                        })),
+                    ) => (type_scheme.clone(), Some(e)),
+                    (_, value) => {
+                        let type_scheme = type_from_definition(symbol, value);
+
+                        if let Some(FunctionValueDefinition::Array(items)) = value {
+                            // Expect all items in the arrays to be field elements.
+                            expressions.extend(
+                                items
+                                    .iter_mut()
+                                    .flat_map(|item| item.pattern_mut())
+                                    .map(|e| (e, Type::Fe.into())),
+                            );
+                        }
+
+                        (type_scheme, None)
+                    }
+                };
                 Some((name.clone(), (type_scheme, expr)))
             })
             .collect();

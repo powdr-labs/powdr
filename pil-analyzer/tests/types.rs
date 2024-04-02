@@ -325,3 +325,10 @@ fn enum_is_not_constr() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+#[should_panic = "Expected type: int -> std::prover::Query"]
+fn query_with_wrong_type() {
+    let input = "col witness w(i) query i;";
+    type_check(input, &[]);
+}

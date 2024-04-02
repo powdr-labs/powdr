@@ -35,10 +35,44 @@ Elementary expressions are
 - string literals, written in double quotes, e.g. ``"hello"``
 - array literals written in square brackets, e.g. ``[1, 2, 3]``
 - tuples, having at least two elements, e.g. `(1, "abc")`
+- statement blocks (see below)
 - match expressions (see below).
 - if expressions (see below).
 
 Parentheses are allowed at any point to force precedence.
+
+### Statement Blocks
+
+A ``{``-``}``-delimited block can be used everywhere where an expression is expected.
+
+It has the form ``{ <statement> ; <statement> ; ... ; <expression> }``,
+i.e. a sequence of statements followed by an expression.
+The statements can either be expressions or let statements: ``let x = ...`` / ``let x;``
+
+The value of the statement block is the value of the final expression.
+
+Example:
+
+```rust
+let plus_one_squared = |x| { let y = x + 1; y * y };
+```
+
+Let statements with value can be used everywhere, they just bind an expression to a local variable
+and allow to avoid repeating the expression.
+
+Let statements without value (``let x;``) create a new witness column and are only allowed inside [``constr``-functions](#constr-and-query-functions).
+
+Similarly, an expression at statement level (e.g. ``x * (x - 1) = 0;``) can be used to create new constraints that are added to the global constraint set
+and this can only be done inside a [``constr``-functions](#constr-and-query-functions).
+
+Note that you can always create constraints and return them from a function, even in [pure function](#constr-and-query-functions).
+
+Example:
+
+```rust
+let constrain_to_bool: expr -> constr = |x| { x * (x - 1) = 0 };
+```
+
 
 ### Match Expressions
 
@@ -58,6 +92,7 @@ let fib = |i| match i {
 };
 ```
 
+
 ### If Expressions
 
 If expressions take the form ``if <condition> { <true value> } else { <false value> }``, where the "else" part is not optional.
@@ -70,23 +105,6 @@ Example:
 ```rust
 let is_seven = |i| if i == 7 { 1 } else { 0 };
 ```
-
-### Blocks and Let Statements
-
-A ``{``/``}``-block can be used everywhere where an expression is expected.
-
-It has the form ``{ <statement> ; <statement> ; ... ; <expression> }``, where the only valid statement is
-the let statement: ``let x = ...`` or ``let x;``.
-
-While the variant with value can be used everywhere, the form without value creates a new witness column and
-can only be used inside ``constr``-functions.
-
-Example:
-
-```rust
-let plus_on_squared = |x| { let y = x + 1; y * y };
-```
-
 
 ## Algebraic Expressions
 
@@ -106,4 +124,42 @@ The following example illustrates how you can still use the generic language:
 
 ```rust
 {{#include ../../../test_data/pil/book/generic_to_algebraic.pil}}
+```
+
+## Constr and Query Functions
+
+Every function in PIL is either a pure, a `constr` or a `query` function. They are denoted by
+
+- `|...| ...`
+- `constr |...| ...`
+- `query |...| ...`
+
+Inside `constr` functions, it is possible to create new witness columns
+and add constraints to the set of constraints (see the [Statement Blocks](#statement-blocks) section for details).
+
+Inside `query` functions, it is possible to evaluate the value of a column on the "current" row
+using the `std::prover::eval` function.
+
+Both actions require a certain context to be available, which is not the case for example when
+the values of a fixed column are computed.
+
+A `query` function can only be used in the query or hint part of a witness column while `constr` functions
+can only be evaluated in the constraint part of a namespace or machine.
+
+You can define and call new `constr` functions inside a `constr` function and you can call and define
+new `query` functions inside `query` functions, but as soon as you enter a pure function, this is not possible any more.
+
+Examples:
+    
+
+```rust
+// This function creates and returns a new witness column.
+let new_wit = constr || { let x; x };
+// Queries the current value of a column and returns its square.
+let square_of = query |x| { let v = std::prover::eval(x); v * v };
+// Creates a new witness column, constrains it to be boolean and returns it.
+let new_bool = constr |x| { let x = new_wit(); x * (x - 1) = 0; x };
+// This is a pure function that only returns a constraint, but does not add it
+// to the global set of constraints.
+let constrain_to_bool: expr -> constr = |x| x * (x - 1) = 0;
 ```

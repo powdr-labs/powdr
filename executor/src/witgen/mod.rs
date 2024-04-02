@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
-    PolynomialType, SymbolKind,
+    PolynomialType, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
@@ -404,7 +405,15 @@ impl<'a, T> WitnessColumn<'a, T> {
         value: &'a Option<FunctionValueDefinition>,
         external_values: Option<&'a Vec<T>>,
     ) -> WitnessColumn<'a, T> {
-        let query = if let Some(FunctionValueDefinition::Query(query)) = value {
+        let query = if let Some(FunctionValueDefinition::Expression(TypedExpression {
+            e:
+                query @ Expression::LambdaExpression(LambdaExpression {
+                    kind: FunctionKind::Query,
+                    ..
+                }),
+            ..
+        })) = value
+        {
             Some(query)
         } else {
             None
