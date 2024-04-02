@@ -154,9 +154,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
             }
             Pattern::Variable(name) => {
                 let id = self.local_variable_counter;
-                if self.local_variables.insert(name.clone(), id).is_some() {
-                    panic!("Variable already defined: {name}");
-                }
+                self.local_variables.insert(name.clone(), id);
                 self.local_variable_counter += 1;
             }
         }
