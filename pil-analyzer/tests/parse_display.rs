@@ -558,3 +558,28 @@ fn let_inside_block_scoping_limited() {
     ";
     analyze_string::<GoldilocksField>(input).to_string();
 }
+
+#[test]
+fn patterns() {
+    let input = "
+    let t: ((int, int), int[]) -> int = |i| match i {
+        ((_, 6), []) => 2,
+        ((2, _), [3, 4]) => 3,
+        ((_, 6), x) => x[0],
+        ((_, y), _) => y,
+        (_, [2]) => 7,
+    };
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn patterns_shadowing() {
+    let input = "
+    let t: int, int -> expr = |i, j| match (i, j) {
+        (x, x) => x,
+    };
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
