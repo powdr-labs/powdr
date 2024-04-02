@@ -63,18 +63,3 @@ let cross_product_internal: int, int, int[] -> (int -> int)[] = |cycle_len, pos,
         [|i| (i / cycle_len) % sizes[pos]] +
             cross_product_internal(cycle_len * sizes[pos], pos + 1, sizes)
     };
-
-
-let<T> sort: T[], (T, T -> bool) -> T[] = |arr, cmp| {
-    let sort_inner = |arr, start, len| match len {
-        0 => [],
-        1 => arr[start],
-        _ => {
-            let mid = len / 2;
-            let left = sort_inner(arr, start, mid);
-            let right = sort_inner(arr, start + mid, len - mid);
-            merge(left, right)
-        }
-    };
-    sort_inner(arr, 0, std::array::len(arr));
-};
