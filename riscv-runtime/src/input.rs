@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 pub fn get_prover_input(index: u32) -> u32 {
     let mut value: u32;
     unsafe {
-        asm!("ecall", lateout("a0") value, in("a0") index, in("t0") Syscall::Input as u32);
+        asm!("ecall", lateout("a0") value, in("a0") index, in("t0") Syscall::Input);
     }
     value
 }
@@ -18,7 +18,7 @@ pub fn get_prover_input(index: u32) -> u32 {
 pub fn get_data(channel: u32, data: &mut [u32]) {
     for (i, d) in data.iter_mut().enumerate() {
         unsafe {
-            asm!("ecall", lateout("a0") *d, in("a0") channel, in("a1") (i+1) as u32, in("t0") Syscall::DataIdentifier as u32)
+            asm!("ecall", lateout("a0") *d, in("a0") channel, in("a1") (i+1) as u32, in("t0") Syscall::DataIdentifier)
         };
     }
 }
@@ -26,7 +26,7 @@ pub fn get_data(channel: u32, data: &mut [u32]) {
 pub fn get_data_len(channel: u32) -> usize {
     let mut out: u32;
     unsafe {
-        asm!("ecall", lateout("a0") out, in("a0") channel, in("a1") 0, in("t0") Syscall::DataIdentifier as u32)
+        asm!("ecall", lateout("a0") out, in("a0") channel, in("a1") 0, in("t0") Syscall::DataIdentifier)
     };
     out as usize
 }

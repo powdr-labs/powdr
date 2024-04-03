@@ -16,6 +16,7 @@ pub static SYSCALL_REGISTERS: [&str; 14] = [
 // NB. Must be kept in sync with conversion trait implementations
 /// Powdr RISCV syscalls
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[repr(u32)]
 pub enum Syscall {
     Input = 0,
     DataIdentifier = 1,
@@ -45,6 +46,12 @@ impl core::str::FromStr for Syscall {
             "poseidon_gl" => Ok(Syscall::PoseidonGL),
             _ => Err(()),
         }
+    }
+}
+
+impl From<Syscall> for u32 {
+    fn from(val: Syscall) -> Self {
+        val as u32
     }
 }
 
