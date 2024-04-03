@@ -1,8 +1,10 @@
-pub mod estark;
 mod json_exporter;
+#[cfg(feature = "estark-polygon")]
+pub mod polygon_wrapper;
+pub mod starky_wrapper;
 
 use std::{
-    fs::{self, File},
+    fs::File,
     io::{self, BufWriter, Write},
     iter::{once, repeat},
     path::Path,
@@ -77,9 +79,9 @@ fn pil_hack_fix<'a, F: FieldElement>(
     (pil, fixed)
 }
 
-pub struct PilStarkCliFactory;
+pub struct DumpFactory;
 
-impl<F: FieldElement> BackendFactory<F> for PilStarkCliFactory {
+impl<F: FieldElement> BackendFactory<F> for DumpFactory {
     fn create<'a>(
         &self,
         analyzed: &'a Analyzed<F>,
@@ -88,26 +90,11 @@ impl<F: FieldElement> BackendFactory<F> for PilStarkCliFactory {
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
-        EStarkPolygon::create(analyzed, fixed, output_dir, setup, verification_key, true)
+        EStarkFileDumper::create(analyzed, fixed, output_dir, setup, verification_key, true)
     }
 }
 
-pub struct EStarkPolygonFactory;
-
-impl<F: FieldElement> BackendFactory<F> for EStarkPolygonFactory {
-    fn create<'a>(
-        &self,
-        analyzed: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
-        output_dir: Option<&'a Path>,
-        setup: Option<&mut dyn std::io::Read>,
-        verification_key: Option<&mut dyn std::io::Read>,
-    ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
-        EStarkPolygon::create(analyzed, fixed, output_dir, setup, verification_key, false)
-    }
-}
-
-pub struct EStarkPolygon<'a, F: FieldElement> {
+pub struct EStarkFileDumper<'a, F: FieldElement> {
     degree: DegreeType,
     pil: PIL,
     fixed: Vec<(String, Vec<F>)>,
@@ -143,7 +130,7 @@ fn write_polys_bin<F: FieldElement>(
     Ok(())
 }
 
-impl<'a, F: FieldElement> EStarkPolygon<'a, F> {
+impl<'a, F: FieldElement> EStarkFileDumper<'a, F> {
     fn create(
         analyzed: &'a Analyzed<F>,
         fixed: &'a [(String, Vec<F>)],
@@ -162,7 +149,7 @@ impl<'a, F: FieldElement> EStarkPolygon<'a, F> {
         // Pre-process the PIL and fixed columns.
         let (pil, fixed) = pil_hack_fix(analyzed, fixed);
 
-        Ok(Box::new(EStarkPolygon {
+        Ok(Box::new(EStarkFileDumper {
             degree: analyzed.degree(),
             pil,
             fixed,
@@ -172,7 +159,7 @@ impl<'a, F: FieldElement> EStarkPolygon<'a, F> {
     }
 }
 
-impl<'a, F: FieldElement> Backend<'a, F> for EStarkPolygon<'a, F> {
+impl<'a, F: FieldElement> Backend<'a, F> for EStarkFileDumper<'a, F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
@@ -207,30 +194,21 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStarkPolygon<'a, F> {
             write_json_file(&contraints_path, &self.pil)?;
 
             if self.just_dump {
-                return Ok(Vec::new());
+                Ok(Vec::new())
+            } else {
+                // Generate the proof.
+                #[cfg(feature = "estark-polygon")]
+                return polygon_wrapper::prove_and_verify(
+                    &contraints_path,
+                    &stark_struct_path,
+                    &constants_path,
+                    &commits_path,
+                    output_dir,
+                );
+
+                #[cfg(not(feature = "estark-polygon"))]
+                Ok(Vec::new())
             }
-
-            // Generate the proof.
-            let proof = pil_stark_prover::generate_proof(
-                &contraints_path,
-                &stark_struct_path,
-                &constants_path,
-                &commits_path,
-                output_dir,
-            )
-            .map_err(|e| Error::BackendError(e.to_string()))?;
-
-            // Sanity check: verify the proof.
-            // TODO: properly handle publics
-            let publics_path = output_dir.join("publics.json");
-            fs::write(&publics_path, "[]")?;
-            pil_stark_prover::verify_proof(
-                &proof.verification_key_json,
-                &proof.starkinfo_json,
-                &proof.proof_json,
-                &publics_path,
-            )
-            .map_err(|e| Error::BackendError(e.to_string()))?;
         } else {
             // TODO: use a temporary directory to generate the proof.
             //
@@ -239,8 +217,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStarkPolygon<'a, F> {
             // unified one, compatible with starky.
             //
             // TODO: make both eStark backends interchangeable, from results perspective.
+            Ok(Vec::new())
         }
-
-        Ok(Vec::new())
     }
 }

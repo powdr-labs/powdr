@@ -51,7 +51,7 @@ pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
 }
 
 pub fn verify_pipeline(pipeline: Pipeline<GoldilocksField>) -> Result<(), String> {
-    let mut pipeline = pipeline.with_backend(BackendType::PilStarkCli);
+    let mut pipeline = pipeline.with_backend(BackendType::EStarkDump);
 
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
     if pipeline.output_dir().is_none() {
@@ -69,7 +69,7 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         .with_tmp_output(&tmp_dir)
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(powdr_backend::BackendType::EStark);
+        .with_backend(powdr_backend::BackendType::EStarkStarky);
 
     pipeline.clone().compute_proof().unwrap();
 
@@ -241,7 +241,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_estark(
 
     assert!(pipeline
         .clone()
-        .with_backend(powdr_backend::BackendType::EStark)
+        .with_backend(powdr_backend::BackendType::EStarkStarky)
         .compute_proof()
         .is_err());
 }

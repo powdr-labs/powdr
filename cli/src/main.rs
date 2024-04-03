@@ -922,7 +922,7 @@ mod test {
             inputs: "3,2,1,2".into(),
             force: false,
             pilo: false,
-            prove_with: Some(BackendType::PilStarkCli),
+            prove_with: Some(BackendType::EStarkDump),
             export_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,
             just_execute: false,

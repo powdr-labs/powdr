@@ -19,9 +19,9 @@ use starky::{
 
 use super::{create_stark_struct, pil_hack_fix};
 
-pub struct EStarkFactory;
+pub struct Factory;
 
-impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
+impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
         pil: &'a Analyzed<F>,
