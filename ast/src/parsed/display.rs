@@ -328,11 +328,15 @@ impl<Ref: Display> Display for MatchArm<Ref> {
     }
 }
 
-impl<Ref: Display> Display for MatchPattern<Ref> {
+impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            MatchPattern::CatchAll => write!(f, "_"),
-            MatchPattern::Pattern(p) => write!(f, "{p}"),
+            Pattern::CatchAll => write!(f, "_"),
+            Pattern::Number(n) => write!(f, "{n}"),
+            Pattern::String(s) => write!(f, "{}", quote(s)),
+            Pattern::Tuple(t) => write!(f, "({})", t.iter().format(", ")),
+            Pattern::Array(a) => write!(f, "[{}]", a.iter().format(", ")),
+            Pattern::Variable(v) => write!(f, "{v}"),
         }
     }
 }

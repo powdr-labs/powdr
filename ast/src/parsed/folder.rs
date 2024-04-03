@@ -4,7 +4,7 @@ use super::{
         SymbolValue,
     },
     ArrayLiteral, EnumDeclaration, Expression, FunctionCall, IfExpression, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, MatchPattern, StatementInsideBlock,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock,
 };
 
 pub trait Folder {
@@ -163,18 +163,26 @@ pub trait ExpressionFolder<Ref> {
         MatchArm { pattern, value }: MatchArm<Ref>,
     ) -> Result<MatchArm<Ref>, Self::Error> {
         Ok(MatchArm {
-            pattern: self.fold_match_pattern(pattern)?,
+            pattern: self.fold_pattern(pattern)?,
             value: self.fold_expression(value)?,
         })
     }
 
-    fn fold_match_pattern(
-        &mut self,
-        pattern: MatchPattern<Ref>,
-    ) -> Result<MatchPattern<Ref>, Self::Error> {
+    fn fold_pattern(&mut self, pattern: Pattern) -> Result<Pattern, Self::Error> {
         Ok(match pattern {
-            MatchPattern::CatchAll => MatchPattern::CatchAll,
-            MatchPattern::Pattern(p) => MatchPattern::Pattern(self.fold_expression(p)?),
+            Pattern::CatchAll | Pattern::Number(_) | Pattern::String(_) | Pattern::Variable(_) => {
+                pattern
+            }
+            Pattern::Tuple(t) => Pattern::Tuple(
+                t.into_iter()
+                    .map(|p| self.fold_pattern(p))
+                    .collect::<Result<_, _>>()?,
+            ),
+            Pattern::Array(a) => Pattern::Array(
+                a.into_iter()
+                    .map(|p| self.fold_pattern(p))
+                    .collect::<Result<_, _>>()?,
+            ),
         })
     }
 

@@ -332,3 +332,16 @@ fn query_with_wrong_type() {
     let input = "col witness w(i) query i;";
     type_check(input, &[]);
 }
+
+#[test]
+fn type_from_pattern() {
+    let input = "
+    let r: int -> int = |i| i;
+    let f = |q| match q {
+        (x, []) => r(x),
+        (x, [a]) => r(a),
+        _ => 8
+    };
+    ";
+    type_check(input, &[("f", "", "(int, int[]) -> int")]);
+}

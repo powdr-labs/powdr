@@ -8,7 +8,7 @@ use powdr_ast::{
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
         ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock,
-        MatchArm, MatchPattern, StatementInsideBlock,
+        MatchArm, Pattern, StatementInsideBlock,
     },
 };
 
@@ -545,10 +545,11 @@ impl TypeChecker {
                 let scrutinee_type = self.infer_type_of_expression(scrutinee)?;
                 let result = self.new_type_var();
                 for MatchArm { pattern, value } in arms {
-                    if let MatchPattern::Pattern(pattern) = pattern {
-                        self.expect_type(&scrutinee_type, pattern)?;
-                    }
-                    self.expect_type(&result, value)?;
+                    let local_var_count = self.local_var_types.len();
+                    self.expect_type_of_pattern(&scrutinee_type, pattern)?;
+                    let result = self.expect_type(&result, value);
+                    self.local_var_types.truncate(local_var_count);
+                    result?;
                 }
                 result
             }
@@ -656,6 +657,58 @@ impl TypeChecker {
                     self.type_into_substituted(inferred_type)
                 )
             })
+    }
+
+    /// Type-checks a pattern and adds local variables.
+    fn expect_type_of_pattern(
+        &mut self,
+        expected_type: &Type,
+        pattern: &Pattern,
+    ) -> Result<(), String> {
+        let inferred_type = self.infer_type_of_pattern(pattern)?;
+        self.unifier
+            .unify_types(inferred_type.clone(), expected_type.clone())
+            .map_err(|err| {
+                format!(
+                    "Error checking pattern {pattern}:\nExpected type: {}\nInferred type: {}\n{err}",
+                    self.type_into_substituted(expected_type.clone()),
+                    self.type_into_substituted(inferred_type)
+                )
+            })
+    }
+
+    /// Type-checks a pattern and adds local variables.
+    fn infer_type_of_pattern(&mut self, pattern: &Pattern) -> Result<Type, String> {
+        Ok(match pattern {
+            Pattern::CatchAll => self.new_type_var(),
+            Pattern::Number(_) => {
+                let ty = self.new_type_var();
+                self.unifier.ensure_bound(&ty, "FromLiteral".to_string())?;
+                ty
+            }
+            Pattern::String(_) => Type::String,
+            Pattern::Tuple(items) => Type::Tuple(TupleType {
+                items: items
+                    .iter()
+                    .map(|p| self.infer_type_of_pattern(p))
+                    .collect::<Result<_, _>>()?,
+            }),
+            Pattern::Array(items) => {
+                let item_type = self.new_type_var();
+                for item in items {
+                    self.expect_type_of_pattern(&item_type, item)?;
+                }
+                Type::Array(ArrayType {
+                    base: Box::new(item_type),
+                    length: None,
+                })
+            }
+            Pattern::Variable(_) => {
+                let ty = self.new_type_var();
+                self.local_var_types.push(ty.clone());
+                ty
+            }
+        })
     }
 
     /// Returns, for each name declared with a type scheme, a mapping from

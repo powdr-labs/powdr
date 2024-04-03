@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use std::collections::BTreeSet;
 use powdr_ast::parsed::{*, asm::*, types::*};
-use powdr_number::BigUint;
+use powdr_number::{BigInt, BigUint};
 use crate::{ParserContext, unescape_string};
 
 grammar(ctx: &ParserContext);
@@ -595,12 +595,7 @@ MatchArms: Vec<MatchArm> = {
 }
 
 MatchArm: MatchArm = {
-    <pattern: MatchPattern> "=>" <value: Expression> => MatchArm{pattern, value},
-}
-
-MatchPattern: MatchPattern = {
-    "_" => MatchPattern::CatchAll,
-    Expression => MatchPattern::Pattern(<>),
+    <pattern:Pattern> "=>" <value: Expression> => MatchArm{pattern, value},
 }
 
 IfExpression: Box<Expression> = {
@@ -623,6 +618,34 @@ StatementInsideBlock: StatementInsideBlock = {
     "let" <name:Identifier> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
     <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
+
+// ---------------------------- Pattern -----------------------------
+
+Pattern: Pattern = {
+    "_" => Pattern::CatchAll,
+    Number => Pattern::Number(<>.into()),
+    "-" <Number> => Pattern::Number(-BigInt::from(<>)),
+    StringLiteral => Pattern::String(<>),
+    TuplePattern,
+    ArrayPattern,
+    VariablePattern,
+    //EnumPattern,
+}
+
+TuplePattern: Pattern = {
+    "(" ")" => Pattern::Tuple(vec![]),
+    "(" <mut items:(<Pattern> ",")+> <last:Pattern> ")" => Pattern::Tuple({items.push(last); items})
+}
+
+ArrayPattern: Pattern = {
+    "[" "]" => Pattern::Array(vec![]),
+    "[" <mut items:(<Pattern> ",")*> <last:Pattern> "]" => Pattern::Array({items.push(last); items})
+}
+
+VariablePattern: Pattern = {
+    <Identifier> => Pattern::Variable(<>),
+}
+
 
 // ---------------------------- Type Declarations -----------------------------
 
@@ -736,7 +759,6 @@ ConstantIdentifier: String = {
 
 PublicIdentifier: String = {
     r":[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.strip_prefix(":").unwrap().to_string()
-
 }
 
 Number: BigUint = {

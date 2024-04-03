@@ -11,7 +11,7 @@ use std::{
     ops,
 };
 
-use powdr_number::{BigUint, DegreeType};
+use powdr_number::{BigInt, BigUint, DegreeType};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -613,45 +613,17 @@ impl<R> Children<Expression<R>> for FunctionCall<R> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MatchArm<Ref = NamespacedPolynomialReference> {
-    pub pattern: MatchPattern<Ref>,
+    pub pattern: Pattern,
     pub value: Expression<Ref>,
 }
 
 impl<Ref> Children<Expression<Ref>> for MatchArm<Ref> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<Ref>> + '_> {
-        Box::new(self.pattern.children().chain(once(&self.value)))
+        Box::new(once(&self.value))
     }
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<Ref>> + '_> {
-        Box::new(self.pattern.children_mut().chain(once(&mut self.value)))
-    }
-}
-
-/// A pattern for a match arm. We could extend this in the future.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub enum MatchPattern<Ref = NamespacedPolynomialReference> {
-    CatchAll,
-    Pattern(Expression<Ref>),
-}
-
-impl<Ref> Children<Expression<Ref>> for MatchPattern<Ref> {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression<Ref>> + '_> {
-        Box::new(
-            match self {
-                MatchPattern::CatchAll => None,
-                MatchPattern::Pattern(e) => Some(e),
-            }
-            .into_iter(),
-        )
-    }
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<Ref>> + '_> {
-        Box::new(
-            match self {
-                MatchPattern::CatchAll => None,
-                MatchPattern::Pattern(e) => Some(e),
-            }
-            .into_iter(),
-        )
+        Box::new(once(&mut self.value))
     }
 }
 
@@ -846,6 +818,47 @@ impl Children<Expression> for ArrayExpression {
             ArrayExpression::Concat(left, right) => {
                 Box::new(left.children_mut().chain(right.children_mut()))
             }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub enum Pattern {
+    CatchAll,
+    #[schemars(skip)]
+    Number(BigInt),
+    String(String),
+    Tuple(Vec<Pattern>),
+    Array(Vec<Pattern>),
+    Variable(String),
+}
+
+impl Pattern {
+    /// Returns an iterator over all variables in this pattern.
+    pub fn variables(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+        match self {
+            Pattern::Variable(v) => Box::new(once(v)),
+            _ => Box::new(self.children().flat_map(|p| p.variables())),
+        }
+    }
+}
+
+impl Children<Pattern> for Pattern {
+    fn children(&self) -> Box<dyn Iterator<Item = &Pattern> + '_> {
+        match self {
+            Pattern::CatchAll | Pattern::Number(_) | Pattern::String(_) | Pattern::Variable(_) => {
+                Box::new(empty())
+            }
+            Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter()),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Pattern> + '_> {
+        match self {
+            Pattern::CatchAll | Pattern::Number(_) | Pattern::String(_) | Pattern::Variable(_) => {
+                Box::new(empty())
+            }
+            Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter_mut()),
         }
     }
 }

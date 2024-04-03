@@ -195,7 +195,7 @@ fn if_expr() {
 fn symbolic_functions() {
     let input = r#"namespace N(16);
     let last_row: int = 15;
-    let ISLAST: col = |i| match i { last_row => 1, _ => 0 };
+    let ISLAST: col = |i| if i == last_row { 1 } else { 0 };
     let x;
     let y;
     let constrain_equal_expr = |A, B| A - B;
@@ -205,10 +205,7 @@ fn symbolic_functions() {
     "#;
     let expected = r#"namespace N(16);
     let last_row: int = 15;
-    col fixed ISLAST(i) { match i {
-        N.last_row => 1,
-        _ => 0,
-    } };
+    col fixed ISLAST(i) { if (i == N.last_row) { 1 } else { 0 } };
     col witness x;
     col witness y;
     let constrain_equal_expr: expr, expr -> expr = (|A, B| (A - B));
@@ -242,7 +239,7 @@ fn next_op_on_param() {
 fn fixed_symbolic() {
     let input = r#"namespace N(16);
     let last_row = 15;
-    let islast = |i| match i { N.last_row => 1, _ => 0, };
+    let islast = |i| if i == N.last_row { 1 } else { 0 };
     let ISLAST: col = |i| islast(i);
     let x;
     let y;
@@ -250,10 +247,7 @@ fn fixed_symbolic() {
     "#;
     let expected = r#"namespace N(16);
     let last_row: int = 15;
-    let islast: int -> fe = (|i| match i {
-        N.last_row => 1,
-        _ => 0,
-    });
+    let islast: int -> fe = (|i| if (i == N.last_row) { 1 } else { 0 });
     col fixed ISLAST(i) { N.islast(i) };
     col witness x;
     col witness y;
@@ -563,4 +557,88 @@ fn let_inside_block_scoping_limited() {
         };
     ";
     analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+fn patterns() {
+    let input = "    let t: ((int, int), int[]) -> int = (|i| match i {
+        ((_, 6), []) => 2,
+        ((2, _), [3, 4]) => 3,
+        ((_, 6), x) => x[0],
+        ((_, y), _) => y,
+        (_, [2]) => 7,
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn patterns_shadowing() {
+    let input = "
+    let t: int, int -> expr = |i, j| match (i, j) {
+        (x, x) => x,
+    };
+    ";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn block_shadowing() {
+    let input = "
+    let t = {
+        let x = 2;
+        let x = 3;
+        x
+    };
+    ";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn sub_block_shadowing() {
+    let input = "    let t = ({
+        let x = 2;
+        {
+            let x = 3;
+            x
+        }
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+fn disjoint_block_shadowing() {
+    let input = "    let t: int = {
+        let b = {
+            let x = 2;
+            x
+        };
+        {
+            let x = 3;
+            (x + b)
+        }
+    };
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+fn sub_function_shadowing() {
+    let input = "    let t: int -> int = (|x| (|x| x)(2));
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+fn match_shadowing() {
+    let input = "    let t: (int, int) -> int = (|i| match i {
+        (_, x) => 2,
+        (x, _) => 3,
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
 }

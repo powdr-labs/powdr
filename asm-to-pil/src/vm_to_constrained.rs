@@ -13,7 +13,7 @@ use powdr_ast::{
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
-        FunctionKind, LambdaExpression, MatchArm, MatchPattern, PilStatement, PolynomialName,
+        FunctionKind, LambdaExpression, MatchArm, Pattern, PilStatement, PolynomialName,
         SelectedExpressions, UnaryOperator,
     },
     SourceRef,
@@ -935,7 +935,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 .get_mut(assign_reg)
                                 .unwrap()
                                 .push(MatchArm {
-                                    pattern: MatchPattern::Pattern(BigUint::from(i as u64).into()),
+                                    pattern: Pattern::Number(i.into()),
                                     value: expr.clone(),
                                 });
                         }
