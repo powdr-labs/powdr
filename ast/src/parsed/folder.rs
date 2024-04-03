@@ -3,8 +3,8 @@ use super::{
         ASMModule, ASMProgram, Import, Machine, Module, ModuleStatement, SymbolDefinition,
         SymbolValue,
     },
-    ArrayLiteral, Expression, FunctionCall, IfExpression, IndexAccess, LambdaExpression, MatchArm,
-    MatchPattern,
+    ArrayLiteral, EnumDeclaration, Expression, FunctionCall, IfExpression, IndexAccess,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock,
 };
 
 pub trait Folder {
@@ -30,6 +30,9 @@ pub trait Folder {
                         // is a different trait.
                         Ok(SymbolValue::Expression(e))
                     }
+                    SymbolValue::TypeDeclaration(ty) => {
+                        self.fold_type_declaration(ty).map(From::from)
+                    }
                 }
                 .map(|value| ModuleStatement::SymbolDefinition(SymbolDefinition { value, ..d })),
             })
@@ -51,6 +54,13 @@ pub trait Folder {
 
     fn fold_import(&mut self, import: Import) -> Result<Import, Self::Error> {
         Ok(import)
+    }
+
+    fn fold_type_declaration(
+        &mut self,
+        ty: EnumDeclaration<Expression>,
+    ) -> Result<EnumDeclaration<Expression>, Self::Error> {
+        Ok(ty)
     }
 }
 
@@ -100,6 +110,13 @@ pub trait ExpressionFolder<Ref> {
             Expression::IfExpression(if_expr) => {
                 Expression::IfExpression(self.fold_if_expression(if_expr)?)
             }
+            Expression::BlockExpression(statements, expr) => Expression::BlockExpression(
+                statements
+                    .into_iter()
+                    .map(|s| self.fold_statement_inside_block(s))
+                    .collect::<Result<_, _>>()?,
+                self.fold_boxed_expression(*expr)?,
+            ),
         })
     }
 
@@ -112,6 +129,7 @@ pub trait ExpressionFolder<Ref> {
         l: LambdaExpression<Ref>,
     ) -> Result<LambdaExpression<Ref>, Self::Error> {
         Ok(LambdaExpression {
+            kind: l.kind,
             params: l.params,
             body: self.fold_boxed_expression(*l.body)?,
         })
@@ -145,18 +163,28 @@ pub trait ExpressionFolder<Ref> {
         MatchArm { pattern, value }: MatchArm<Ref>,
     ) -> Result<MatchArm<Ref>, Self::Error> {
         Ok(MatchArm {
-            pattern: self.fold_match_pattern(pattern)?,
+            pattern: self.fold_pattern(pattern)?,
             value: self.fold_expression(value)?,
         })
     }
 
-    fn fold_match_pattern(
-        &mut self,
-        pattern: MatchPattern<Ref>,
-    ) -> Result<MatchPattern<Ref>, Self::Error> {
+    fn fold_pattern(&mut self, pattern: Pattern) -> Result<Pattern, Self::Error> {
         Ok(match pattern {
-            MatchPattern::CatchAll => MatchPattern::CatchAll,
-            MatchPattern::Pattern(p) => MatchPattern::Pattern(self.fold_expression(p)?),
+            Pattern::CatchAll
+            | Pattern::Ellipsis
+            | Pattern::Number(_)
+            | Pattern::String(_)
+            | Pattern::Variable(_) => pattern,
+            Pattern::Tuple(t) => Pattern::Tuple(
+                t.into_iter()
+                    .map(|p| self.fold_pattern(p))
+                    .collect::<Result<_, _>>()?,
+            ),
+            Pattern::Array(a) => Pattern::Array(
+                a.into_iter()
+                    .map(|p| self.fold_pattern(p))
+                    .collect::<Result<_, _>>()?,
+            ),
         })
     }
 
@@ -172,6 +200,30 @@ pub trait ExpressionFolder<Ref> {
             condition: self.fold_boxed_expression(*condition)?,
             body: self.fold_boxed_expression(*body)?,
             else_body: self.fold_boxed_expression(*else_body)?,
+        })
+    }
+
+    fn fold_statement_inside_block(
+        &mut self,
+        s: StatementInsideBlock<Ref>,
+    ) -> Result<StatementInsideBlock<Ref>, Self::Error> {
+        match s {
+            StatementInsideBlock::LetStatement(s) => self
+                .fold_let_statement_inside_block(s)
+                .map(StatementInsideBlock::LetStatement),
+            StatementInsideBlock::Expression(e) => self
+                .fold_expression(e)
+                .map(StatementInsideBlock::Expression),
+        }
+    }
+
+    fn fold_let_statement_inside_block(
+        &mut self,
+        LetStatementInsideBlock { name, value }: LetStatementInsideBlock<Ref>,
+    ) -> Result<LetStatementInsideBlock<Ref>, Self::Error> {
+        Ok(LetStatementInsideBlock {
+            name,
+            value: value.map(|v| self.fold_expression(v)).transpose()?,
         })
     }
 

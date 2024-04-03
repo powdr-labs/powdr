@@ -1,11 +1,24 @@
-use std::{iter::once, ops::ControlFlow};
+use std::{iter, ops::ControlFlow};
 
-use super::{
-    types::{ArrayType, FunctionType, TupleType, Type},
-    ArrayExpression, ArrayLiteral, Expression, FunctionCall, FunctionDefinition, IfExpression,
-    IndexAccess, LambdaExpression, MatchArm, MatchPattern, NamespacedPolynomialReference,
-    PilStatement, SelectedExpressions,
-};
+use super::Expression;
+
+/// Generic trait that allows to iterate over sub-structures.
+/// It is only meant to iterate non-recursively over the direct children.
+/// Self and O do not have to be the same type and we can also have
+/// Children<O1> and Children<O2> implemented for the same type,
+/// if the goal is to iterate over sub-structures of different kinds.
+pub trait Children<O> {
+    /// Returns an iterator over all direct children of kind O in this object.
+    fn children(&self) -> Box<dyn Iterator<Item = &O> + '_>;
+    /// Returns an iterator over all direct children of kind Q in this object.
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut O> + '_>;
+}
+
+pub trait AllChildren<O> {
+    /// Returns an iterator over all direct and indirect children of kind O in this object.
+    /// Pre-order visitor.
+    fn all_children(&self) -> Box<dyn Iterator<Item = &O> + '_>;
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VisitOrder {
@@ -16,6 +29,9 @@ pub enum VisitOrder {
 /// A trait to be implemented by an AST node.
 /// The idea is that it calls a callback function on each of the sub-nodes
 /// that are expressions.
+/// The difference to the Children<Expr> trait is that ExpressionVisitable
+/// visits recursively.
+/// If a node implements Children<Expr>, it also implements ExpressionVisitable<Expr>.
 pub trait ExpressionVisitable<Expr> {
     /// Traverses the AST and calls `f` on each Expression in pre-order,
     /// potentially break early and return a value.
@@ -104,6 +120,17 @@ pub trait ExpressionVisitable<Expr> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, order: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expr) -> ControlFlow<B>;
+
+    fn expr_any(&self, mut f: impl FnMut(&Expr) -> bool) -> bool {
+        self.pre_visit_expressions_return(&mut |e| {
+            if f(e) {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .is_break()
+    }
 }
 
 impl<Ref> ExpressionVisitable<Expression<Ref>> for Expression<Ref> {
@@ -114,32 +141,8 @@ impl<Ref> ExpressionVisitable<Expression<Ref>> for Expression<Ref> {
         if o == VisitOrder::Pre {
             f(self)?;
         }
-        match self {
-            Expression::Reference(_)
-            | Expression::PublicReference(_)
-            | Expression::Number(_, _)
-            | Expression::String(_) => {}
-            Expression::BinaryOperation(left, _, right) => {
-                left.visit_expressions_mut(f, o)?;
-                right.visit_expressions_mut(f, o)?;
-            }
-            Expression::FreeInput(e) | Expression::UnaryOperation(_, e) => {
-                e.visit_expressions_mut(f, o)?
-            }
-            Expression::LambdaExpression(lambda) => lambda.visit_expressions_mut(f, o)?,
-            Expression::ArrayLiteral(array_literal) => array_literal.visit_expressions_mut(f, o)?,
-            Expression::IndexAccess(index_access) => index_access.visit_expressions_mut(f, o)?,
-            Expression::FunctionCall(function) => function.visit_expressions_mut(f, o)?,
-            Expression::Tuple(items) => items
-                .iter_mut()
-                .try_for_each(|item| item.visit_expressions_mut(f, o))?,
-            Expression::MatchExpression(scrutinee, arms) => {
-                scrutinee.visit_expressions_mut(f, o)?;
-                arms.iter_mut()
-                    .try_for_each(|arm| arm.visit_expressions_mut(f, o))?;
-            }
-            Expression::IfExpression(if_expr) => if_expr.visit_expressions_mut(f, o)?,
-        };
+        self.children_mut()
+            .try_for_each(|child| child.visit_expressions_mut(f, o))?;
         if o == VisitOrder::Post {
             f(self)?;
         }
@@ -153,32 +156,8 @@ impl<Ref> ExpressionVisitable<Expression<Ref>> for Expression<Ref> {
         if o == VisitOrder::Pre {
             f(self)?;
         }
-        match self {
-            Expression::Reference(_)
-            | Expression::PublicReference(_)
-            | Expression::Number(_, _)
-            | Expression::String(_) => {}
-            Expression::BinaryOperation(left, _, right) => {
-                left.visit_expressions(f, o)?;
-                right.visit_expressions(f, o)?;
-            }
-            Expression::FreeInput(e) | Expression::UnaryOperation(_, e) => {
-                e.visit_expressions(f, o)?
-            }
-            Expression::LambdaExpression(lambda) => lambda.visit_expressions(f, o)?,
-            Expression::ArrayLiteral(array_literal) => array_literal.visit_expressions(f, o)?,
-            Expression::IndexAccess(index_access) => index_access.visit_expressions(f, o)?,
-            Expression::FunctionCall(function) => function.visit_expressions(f, o)?,
-            Expression::Tuple(items) => items
-                .iter()
-                .try_for_each(|item| item.visit_expressions(f, o))?,
-            Expression::MatchExpression(scrutinee, arms) => {
-                scrutinee.visit_expressions(f, o)?;
-                arms.iter()
-                    .try_for_each(|arm| arm.visit_expressions(f, o))?;
-            }
-            Expression::IfExpression(if_expr) => if_expr.visit_expressions(f, o)?,
-        };
+        self.children()
+            .try_for_each(|child| child.visit_expressions(f, o))?;
         if o == VisitOrder::Post {
             f(self)?;
         }
@@ -186,404 +165,32 @@ impl<Ref> ExpressionVisitable<Expression<Ref>> for Expression<Ref> {
     }
 }
 
-impl ExpressionVisitable<Expression<NamespacedPolynomialReference>> for PilStatement {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expression<NamespacedPolynomialReference>) -> ControlFlow<B>,
-    {
-        match self {
-            PilStatement::Expression(_, e) => e.visit_expressions_mut(f, o),
-            PilStatement::PlookupIdentity(_, left, right)
-            | PilStatement::PermutationIdentity(_, left, right) => [left, right]
-                .into_iter()
-                .try_for_each(|e| e.visit_expressions_mut(f, o)),
-            PilStatement::ConnectIdentity(_start, left, right) => left
-                .iter_mut()
-                .chain(right.iter_mut())
-                .try_for_each(|e| e.visit_expressions_mut(f, o)),
-
-            PilStatement::Namespace(_, _, e)
-            | PilStatement::PolynomialDefinition(_, _, e)
-            | PilStatement::PublicDeclaration(_, _, _, None, e)
-            | PilStatement::ConstantDefinition(_, _, e) => e.visit_expressions_mut(f, o),
-
-            PilStatement::LetStatement(_, _, type_scheme, value) => {
-                if let Some(t) = type_scheme {
-                    t.ty.visit_expressions_mut(f, o)?;
-                };
-                if let Some(v) = value {
-                    v.visit_expressions_mut(f, o)?;
-                };
-                ControlFlow::Continue(())
-            }
-
-            PilStatement::PublicDeclaration(_, _, _, Some(i), e) => [i, e]
-                .into_iter()
-                .try_for_each(|e| e.visit_expressions_mut(f, o)),
-
-            PilStatement::PolynomialConstantDefinition(_, _, fundef)
-            | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => {
-                fundef.visit_expressions_mut(f, o)
-            }
-            PilStatement::PolynomialCommitDeclaration(_, _, None)
-            | PilStatement::Include(_, _)
-            | PilStatement::PolynomialConstantDeclaration(_, _) => ControlFlow::Continue(()),
-        }
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expression) -> ControlFlow<B>,
-    {
-        match self {
-            PilStatement::Expression(_, e) => e.visit_expressions(f, o),
-            PilStatement::PlookupIdentity(_, left, right)
-            | PilStatement::PermutationIdentity(_, left, right) => [left, right]
-                .into_iter()
-                .try_for_each(|e| e.visit_expressions(f, o)),
-            PilStatement::ConnectIdentity(_start, left, right) => left
-                .iter()
-                .chain(right.iter())
-                .try_for_each(|e| e.visit_expressions(f, o)),
-
-            PilStatement::Namespace(_, _, e)
-            | PilStatement::PolynomialDefinition(_, _, e)
-            | PilStatement::PublicDeclaration(_, _, _, None, e)
-            | PilStatement::ConstantDefinition(_, _, e) => e.visit_expressions(f, o),
-
-            PilStatement::LetStatement(_, _, type_scheme, value) => {
-                if let Some(t) = type_scheme {
-                    t.ty.visit_expressions(f, o)?;
-                };
-                if let Some(v) = value {
-                    v.visit_expressions(f, o)?;
-                };
-                ControlFlow::Continue(())
-            }
-
-            PilStatement::PublicDeclaration(_, _, _, Some(i), e) => [i, e]
-                .into_iter()
-                .try_for_each(|e| e.visit_expressions(f, o)),
-
-            PilStatement::PolynomialConstantDefinition(_, _, fundef)
-            | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => {
-                fundef.visit_expressions(f, o)
-            }
-            PilStatement::PolynomialCommitDeclaration(_, _, None)
-            | PilStatement::Include(_, _)
-            | PilStatement::PolynomialConstantDeclaration(_, _) => ControlFlow::Continue(()),
-        }
-    }
-}
-
-impl<Expr: ExpressionVisitable<Expr>> ExpressionVisitable<Expr> for SelectedExpressions<Expr> {
+impl<Expr: ExpressionVisitable<Expr>, C: Children<Expr>> ExpressionVisitable<Expr> for C {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expr) -> ControlFlow<B>,
     {
-        self.selector
-            .as_mut()
-            .into_iter()
-            .chain(self.expressions.iter_mut())
-            .try_for_each(move |item| item.visit_expressions_mut(f, o))
+        self.children_mut()
+            .try_for_each(|child| child.visit_expressions_mut(f, o))
     }
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&Expr) -> ControlFlow<B>,
     {
-        self.selector
-            .as_ref()
-            .into_iter()
-            .chain(self.expressions.iter())
-            .try_for_each(move |item| item.visit_expressions(f, o))
+        self.children()
+            .try_for_each(|child| child.visit_expressions(f, o))
     }
 }
 
-impl ExpressionVisitable<Expression> for FunctionDefinition {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expression) -> ControlFlow<B>,
-    {
-        match self {
-            FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => {
-                e.visit_expressions_mut(f, o)
-            }
-            FunctionDefinition::Array(ae) => ae.visit_expressions_mut(f, o),
-        }
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expression) -> ControlFlow<B>,
-    {
-        match self {
-            FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => {
-                e.visit_expressions(f, o)
-            }
-            FunctionDefinition::Array(ae) => ae.visit_expressions(f, o),
-        }
+impl<Ref> AllChildren<Expression<Ref>> for Expression<Ref> {
+    fn all_children(&self) -> Box<dyn Iterator<Item = &Expression<Ref>> + '_> {
+        Box::new(iter::once(self).chain(self.children().flat_map(|e| e.all_children())))
     }
 }
 
-impl ExpressionVisitable<Expression> for ArrayExpression {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expression) -> ControlFlow<B>,
-    {
-        match self {
-            ArrayExpression::Value(expressions) | ArrayExpression::RepeatedValue(expressions) => {
-                expressions
-                    .iter_mut()
-                    .try_for_each(|e| e.visit_expressions_mut(f, o))
-            }
-            ArrayExpression::Concat(a1, a2) => [a1, a2]
-                .iter_mut()
-                .try_for_each(|e| e.visit_expressions_mut(f, o)),
-        }
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expression) -> ControlFlow<B>,
-    {
-        match self {
-            ArrayExpression::Value(expressions) | ArrayExpression::RepeatedValue(expressions) => {
-                expressions
-                    .iter()
-                    .try_for_each(|e| e.visit_expressions(f, o))
-            }
-            ArrayExpression::Concat(a1, a2) => {
-                [a1, a2].iter().try_for_each(|e| e.visit_expressions(f, o))
-            }
-        }
-    }
-}
-
-impl<Ref> ExpressionVisitable<Expression<Ref>> for LambdaExpression<Ref> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
-    {
-        self.body.visit_expressions_mut(f, o)
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
-    {
-        self.body.visit_expressions(f, o)
-    }
-}
-
-impl<Ref> ExpressionVisitable<Expression<Ref>> for ArrayLiteral<Ref> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
-    {
-        self.items
-            .iter_mut()
-            .try_for_each(|item| item.visit_expressions_mut(f, o))
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
-    {
-        self.items
-            .iter()
-            .try_for_each(|item| item.visit_expressions(f, o))
-    }
-}
-
-impl<Ref> ExpressionVisitable<Expression<Ref>> for IndexAccess<Ref> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
-    {
-        self.array.visit_expressions_mut(f, o)?;
-        self.index.visit_expressions_mut(f, o)
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
-    {
-        self.array.visit_expressions(f, o)?;
-        self.index.visit_expressions(f, o)
-    }
-}
-
-impl<Ref> ExpressionVisitable<Expression<Ref>> for FunctionCall<Ref> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
-    {
-        once(self.function.as_mut())
-            .chain(&mut self.arguments)
-            .try_for_each(|item| item.visit_expressions_mut(f, o))
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
-    {
-        once(self.function.as_ref())
-            .chain(&self.arguments)
-            .try_for_each(|item| item.visit_expressions(f, o))
-    }
-}
-
-impl<Ref> ExpressionVisitable<Expression<Ref>> for MatchArm<Ref> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
-    {
-        self.pattern.visit_expressions_mut(f, o)?;
-        self.value.visit_expressions_mut(f, o)
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
-    {
-        self.pattern.visit_expressions(f, o)?;
-        self.value.visit_expressions(f, o)
-    }
-}
-
-impl<Ref> ExpressionVisitable<Expression<Ref>> for MatchPattern<Ref> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
-    {
-        match self {
-            MatchPattern::CatchAll => ControlFlow::Continue(()),
-            MatchPattern::Pattern(e) => e.visit_expressions_mut(f, o),
-        }
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
-    {
-        match self {
-            MatchPattern::CatchAll => ControlFlow::Continue(()),
-            MatchPattern::Pattern(e) => e.visit_expressions(f, o),
-        }
-    }
-}
-
-impl<Ref> ExpressionVisitable<Expression<Ref>> for IfExpression<Ref> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
-    {
-        [&mut self.condition, &mut self.body, &mut self.else_body]
-            .into_iter()
-            .try_for_each(|e| e.visit_expressions_mut(f, o))
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
-    {
-        [&self.condition, &self.body, &self.else_body]
-            .into_iter()
-            .try_for_each(|e| e.visit_expressions(f, o))
-    }
-}
-
-impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for Type<E> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut E) -> ControlFlow<B>,
-    {
-        match self {
-            _ if self.is_elementary() => ControlFlow::Continue(()),
-            Type::TypeVar(_) => ControlFlow::Continue(()),
-            Type::Array(a) => a.visit_expressions_mut(f, o),
-            Type::Tuple(t) => t.visit_expressions_mut(f, o),
-            Type::Function(fun) => fun.visit_expressions_mut(f, o),
-            _ => unreachable!(),
-        }
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&E) -> ControlFlow<B>,
-    {
-        match self {
-            _ if self.is_elementary() => ControlFlow::Continue(()),
-            Type::TypeVar(_) => ControlFlow::Continue(()),
-            Type::Array(a) => a.visit_expressions(f, o),
-            Type::Tuple(t) => t.visit_expressions(f, o),
-            Type::Function(fun) => fun.visit_expressions(f, o),
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for ArrayType<E> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut E) -> ControlFlow<B>,
-    {
-        self.base.visit_expressions_mut(f, o)?;
-        self.length
-            .iter_mut()
-            .try_for_each(|e| e.visit_expressions_mut(f, o))
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&E) -> ControlFlow<B>,
-    {
-        self.base.visit_expressions(f, o)?;
-        self.length
-            .iter()
-            .try_for_each(|e| e.visit_expressions(f, o))
-    }
-}
-
-impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for TupleType<E> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut E) -> ControlFlow<B>,
-    {
-        self.items
-            .iter_mut()
-            .try_for_each(|i| i.visit_expressions_mut(f, o))
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&E) -> ControlFlow<B>,
-    {
-        self.items
-            .iter()
-            .try_for_each(|i| i.visit_expressions(f, o))
-    }
-}
-
-impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for FunctionType<E> {
-    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&mut E) -> ControlFlow<B>,
-    {
-        self.params
-            .iter_mut()
-            .chain(once(self.value.as_mut()))
-            .try_for_each(|i| i.visit_expressions_mut(f, o))
-    }
-
-    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
-    where
-        F: FnMut(&E) -> ControlFlow<B>,
-    {
-        self.params
-            .iter()
-            .chain(once(self.value.as_ref()))
-            .try_for_each(|i| i.visit_expressions(f, o))
+impl<Expr: AllChildren<Expr>, C: Children<Expr>> AllChildren<Expr> for C {
+    fn all_children(&self) -> Box<dyn Iterator<Item = &Expr> + '_> {
+        Box::new(self.children().flat_map(|e| e.all_children()))
     }
 }

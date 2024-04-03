@@ -23,7 +23,7 @@ machine HelloWorld {
 
     // the main function assigns the first prover input to A, increments it, decrements it, and loops forever
     function main {
-        A <=X= ${ ("input", 0) };
+        A <=X= ${ std::prover::Query::Input(0) };
         A <== incr(A);
         A <== decr(A);
         assert_zero A;

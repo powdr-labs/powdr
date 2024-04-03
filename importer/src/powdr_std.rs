@@ -89,6 +89,9 @@ impl Folder for StdAdder {
                     }
                     SymbolValue::Module(module) => self.fold_module(module).map(From::from),
                     SymbolValue::Expression(e) => Ok(SymbolValue::Expression(e)),
+                    SymbolValue::TypeDeclaration(ty) => {
+                        self.fold_type_declaration(ty).map(From::from)
+                    }
                 }
                 .map(|value| ModuleStatement::SymbolDefinition(SymbolDefinition { value, ..d })),
             })

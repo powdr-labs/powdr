@@ -1,9 +1,13 @@
 use std::utils::cross_product;
+use std::prover::Query;
 
 // Splits an arbitrary field element into 8 u32s (in little endian order), on the BN254 field.
 machine SplitBN254(RESET, _) {
 
     operation split in_acc -> o1, o2, o3, o4, o5, o6, o7, o8;
+
+    // Allow this machine to be connected via a permutation
+    call_selectors sel;
 
     // Latch and operation ID
     col fixed RESET(i) { if i % 32 == 31 { 1 } else { 0 } };
@@ -15,8 +19,8 @@ machine SplitBN254(RESET, _) {
     // previous block)
     // A hint is provided because automatic witness generation does not
     // understand step 3 to figure out that the byte decomposition is unique.
-    let select_byte: fe, int -> fe = |input, byte| std::convert::fe((std::convert::int(input) >> (byte * 8)) % 0xff);
-    col witness bytes(i) query ("hint", select_byte(std::prover::eval(in_acc'), (i + 1) % 32));
+    let select_byte: fe, int -> fe = |input, byte| std::convert::fe((std::convert::int(input) >> (byte * 8)) & 0xff);
+    col witness bytes(i) query Query::Hint(select_byte(std::prover::eval(in_acc'), (i + 1) % 32));
     // Puts the bytes together to form the input
     col witness in_acc;
     // Factors to multiply the bytes by

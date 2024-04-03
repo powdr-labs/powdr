@@ -9,6 +9,7 @@ use std::{
 };
 
 use mktemp::Temp;
+use powdr_number::FieldElement;
 use serde_json::Value as JsonValue;
 use std::fs;
 
@@ -28,7 +29,7 @@ type Expression = powdr_asm_utils::ast::Expression<FunctionKind>;
 /// Compiles a rust file all the way down to PIL and generates
 /// fixed and witness columns.
 #[allow(clippy::print_stderr)]
-pub fn compile_rust(
+pub fn compile_rust<T: FieldElement>(
     file_name: &str,
     output_dir: &Path,
     force_overwrite: bool,
@@ -47,7 +48,7 @@ pub fn compile_rust(
     } else if fs::metadata(file_name).unwrap().is_dir() {
         compile_rust_crate_to_riscv_asm(&format!("{file_name}/Cargo.toml"), output_dir)
     } else {
-        compile_rust_to_riscv_asm(file_name, output_dir)
+        panic!("input must be a crate directory or `Cargo.toml` file");
     };
     if !output_dir.exists() {
         fs::create_dir_all(output_dir).unwrap()
@@ -69,7 +70,7 @@ pub fn compile_rust(
         log::info!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
     }
 
-    compile_riscv_asm_bundle(
+    compile_riscv_asm_bundle::<T>(
         file_name,
         riscv_asm,
         output_dir,
@@ -80,7 +81,7 @@ pub fn compile_rust(
 }
 
 #[allow(clippy::print_stderr)]
-pub fn compile_riscv_asm_bundle(
+pub fn compile_riscv_asm_bundle<T: FieldElement>(
     original_file_name: &str,
     riscv_asm_files: BTreeMap<String, String>,
     output_dir: &Path,
@@ -104,7 +105,7 @@ pub fn compile_riscv_asm_bundle(
         return None;
     }
 
-    let powdr_asm = compiler::compile(riscv_asm_files, coprocessors, with_bootloader);
+    let powdr_asm = compiler::compile::<T>(riscv_asm_files, coprocessors, with_bootloader);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -114,7 +115,7 @@ pub fn compile_riscv_asm_bundle(
 
 /// Compiles a riscv asm file all the way down to PIL and generates
 /// fixed and witness columns.
-pub fn compile_riscv_asm(
+pub fn compile_riscv_asm<T: FieldElement>(
     original_file_name: &str,
     file_names: impl Iterator<Item = String>,
     output_dir: &Path,
@@ -122,7 +123,7 @@ pub fn compile_riscv_asm(
     coprocessors: &CoProcessors,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
-    compile_riscv_asm_bundle(
+    compile_riscv_asm_bundle::<T>(
         original_file_name,
         file_names
             .map(|name| {
@@ -135,37 +136,6 @@ pub fn compile_riscv_asm(
         coprocessors,
         with_bootloader,
     )
-}
-
-pub fn compile_rust_to_riscv_asm(input_file: &str, output_dir: &Path) -> BTreeMap<String, String> {
-    let crate_dir = Temp::new_dir().unwrap();
-    // TODO is there no easier way?
-    let mut cargo_file = crate_dir.clone();
-    cargo_file.push("Cargo.toml");
-
-    fs::write(
-        &cargo_file,
-        format!(
-            r#"[package]
-name = "{}"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-powdr-riscv-runtime = {{ git = "https://github.com/powdr-labs/powdr", branch = "main" }}
-            "#,
-            Path::new(input_file).file_stem().unwrap().to_str().unwrap()
-        ),
-    )
-    .unwrap();
-
-    let mut src_file = crate_dir.clone();
-    src_file.push("src");
-    fs::create_dir(&src_file).unwrap();
-    src_file.push("lib.rs");
-    fs::write(src_file, fs::read_to_string(input_file).unwrap()).unwrap();
-
-    compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap(), output_dir)
 }
 
 macro_rules! as_ref [

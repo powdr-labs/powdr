@@ -134,7 +134,7 @@ fn sanity_check(program: &AnalysisASMFile) {
     assert_eq!(machine_registers, expected_registers);
 }
 
-fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
+pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
     let machine = get_main_machine(program);
     let Some(expr) = machine.pil.iter().find_map(|v| match v {
         PilStatement::LetStatement(_, n, _, expr) if n == "initial_memory" => expr.as_ref(),
@@ -226,7 +226,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // The number of rows of the full trace that we consider proven.
     // Initialized with `first_real_execution_row`, because the bootloader
     // execution in the first chunk will be different from the full trace
-    // execution (because of paged-in memeory).
+    // execution (because of paged-in memory).
     let mut proven_trace = first_real_execution_row;
     let mut chunk_index = 0;
 
@@ -235,7 +235,13 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         .fold(None, |acc, (_, m)| acc.or(m.degree.clone()))
         .unwrap()
         .degree;
-    let length = F::from(length).to_degree() as usize;
+
+    let length: usize = match length {
+        Expression::Number(length, None) => length.try_into().unwrap(),
+        e => unimplemented!(
+            "degree {e} is not supported in continuations as we don't have an evaluator yet"
+        ),
+    };
 
     loop {
         log::info!("\nRunning chunk {}...", chunk_index);

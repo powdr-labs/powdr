@@ -90,7 +90,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
             sequence_iterator.report_progress(progress);
         }
 
-        match self.processor.finshed_outer_query() {
+        match self.processor.finished_outer_query() {
             true => Ok(EvalValue::complete(outer_assignments)),
             false => Ok(EvalValue::incomplete_with_constraints(
                 outer_assignments,
@@ -149,7 +149,7 @@ mod tests {
             .into_iter()
             .map(|(n, c)| (n.to_string(), c))
             .collect::<Vec<_>>();
-        let fixed_data = FixedData::new(&analyzed, &constants, vec![]);
+        let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default());
 
         // No global range constraints
         let global_range_constraints = GlobalConstraints {

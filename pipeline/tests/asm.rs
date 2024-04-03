@@ -46,7 +46,12 @@ fn mem_write_once_external_write() {
     mem[17] = GoldilocksField::from(42);
     mem[62] = GoldilocksField::from(123);
     mem[255] = GoldilocksField::from(-1);
-    verify_test_file(f, Default::default(), vec![("main.v".to_string(), mem)]).unwrap();
+    verify_test_file(
+        f,
+        Default::default(),
+        vec![("main_memory.value".to_string(), mem)],
+    )
+    .unwrap();
 }
 
 #[test]
@@ -355,6 +360,67 @@ fn read_poly_files() {
         assert_eq!(pil.degree(), degree);
         assert_eq!(pil.degree(), witness[0].1.len() as u64);
     }
+}
+
+#[test]
+fn enum_in_asm() {
+    let f = "asm/enum_in_asm.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn permutation_simple() {
+    let f = "asm/permutations/simple.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn permutation_to_block() {
+    let f = "asm/permutations/vm_to_block.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+#[should_panic = "Witness generation failed"]
+fn permutation_to_vm() {
+    // TODO: witgen issue
+    let f = "asm/permutations/vm_to_vm.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+#[should_panic = "Witness generation failed"]
+fn permutation_to_block_to_block() {
+    // TODO: witgen issue
+    let f = "asm/permutations/block_to_block.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+#[should_panic = "has incoming permutations but doesn't declare call_selectors"]
+fn permutation_incoming_needs_selector() {
+    let f = "asm/permutations/incoming_needs_selector.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn call_selectors_with_no_permutation() {
+    let f = "asm/permutations/call_selectors_with_no_permutation.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
 }
 
 mod book {

@@ -6,12 +6,14 @@ use std::collections::BTreeMap;
 
 use powdr_ast::{
     asm_analysis::{AnalysisASMFile, Item, LinkDefinitionStatement, SubmachineDeclaration},
-    object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph},
+    object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph, TypeOrExpression},
     parsed::{
         asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef},
         PilStatement,
     },
 };
+
+use powdr_analysis::utils::parse_pil_statement;
 
 const MAIN_MACHINE: &str = "::Main";
 const MAIN_FUNCTION: &str = "main";
@@ -56,14 +58,46 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         instances.push((location, ty));
     }
 
+    // count incoming permutations for each machine.
+    let mut incoming_permutations = instances
+        .iter()
+        .map(|(location, _)| (location.clone(), 0))
+        .collect();
+
     // visit the tree compiling the machines
-    let objects = instances
+    let mut objects: BTreeMap<_, _> = instances
         .into_iter()
         .map(|(location, ty)| {
-            let object = ASMPILConverter::convert_machine(&location, &ty, &input);
+            let object = ASMPILConverter::convert_machine(
+                &location,
+                &ty,
+                &input,
+                &mut incoming_permutations,
+            );
             (location, object)
         })
         .collect();
+
+    // add pil code for the selector array and related constraints
+    for (location, count) in incoming_permutations {
+        let obj = objects.get_mut(&location).unwrap();
+        if obj.has_pc {
+            // VMs don't have call_selectors
+            continue;
+        }
+        assert!(
+            count == 0 || obj.call_selectors.is_some(),
+            "block machine {location} has incoming permutations but doesn't declare call_selectors"
+        );
+        if let Some(call_selectors) = obj.call_selectors.as_deref() {
+            obj.pil.extend([
+                parse_pil_statement(&format!("col witness {call_selectors}[{count}];")),
+                parse_pil_statement(&format!(
+                    "std::array::map({call_selectors}, std::utils::force_bool);"
+                )),
+            ]);
+        }
+    }
 
     let Item::Machine(main_ty) = input.items.get(&main_ty).unwrap() else {
         panic!()
@@ -73,6 +107,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         location: main_location,
         latch: main_ty.latch.clone(),
         operation_id: main_ty.operation_id.clone(),
+        call_selectors: main_ty.call_selectors.clone(),
     };
     let entry_points = main_ty
         .operations()
@@ -87,12 +122,10 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     let definitions = input
         .items
         .into_iter()
-        .filter_map(|(n, v)| {
-            if let Item::Expression(e) = v {
-                Some((n, e))
-            } else {
-                None
-            }
+        .filter_map(|(n, v)| match v {
+            Item::Expression(e) => Some((n, TypeOrExpression::Expression(e))),
+            Item::TypeDeclaration(type_decl) => Some((n, TypeOrExpression::Type(type_decl))),
+            _ => None,
         })
         .collect();
 
@@ -111,15 +144,22 @@ struct ASMPILConverter<'a> {
     items: &'a BTreeMap<AbsoluteSymbolPath, Item>,
     pil: Vec<PilStatement>,
     submachines: Vec<SubmachineDeclaration>,
+    /// keeps track of the total count of incoming permutations for a given machine.
+    incoming_permutations: &'a mut BTreeMap<Location, u64>,
 }
 
 impl<'a> ASMPILConverter<'a> {
-    fn new(location: &'a Location, input: &'a AnalysisASMFile) -> Self {
+    fn new(
+        location: &'a Location,
+        input: &'a AnalysisASMFile,
+        incoming_permutations: &'a mut BTreeMap<Location, u64>,
+    ) -> Self {
         Self {
             location,
             items: &input.items,
             pil: Default::default(),
             submachines: Default::default(),
+            incoming_permutations,
         }
     }
 
@@ -131,8 +171,9 @@ impl<'a> ASMPILConverter<'a> {
         location: &'a Location,
         ty: &'a AbsoluteSymbolPath,
         input: &'a AnalysisASMFile,
+        incoming_permutations: &'a mut BTreeMap<Location, u64>,
     ) -> Object {
-        Self::new(location, input).convert_machine_inner(ty)
+        Self::new(location, input, incoming_permutations).convert_machine_inner(ty)
     }
 
     fn convert_machine_inner(mut self, ty: &AbsoluteSymbolPath) -> Object {
@@ -141,7 +182,7 @@ impl<'a> ASMPILConverter<'a> {
             panic!();
         };
 
-        let degree = input.degree.map(|s| s.degree.try_into().unwrap());
+        let degree = input.degree.map(|s| s.degree);
 
         self.submachines = input.submachines;
 
@@ -154,6 +195,8 @@ impl<'a> ASMPILConverter<'a> {
             self.handle_pil_statement(block);
         }
 
+        let call_selectors = input.call_selectors;
+        let has_pc = input.pc.is_some();
         let links = input
             .links
             .into_iter()
@@ -164,6 +207,9 @@ impl<'a> ASMPILConverter<'a> {
             degree,
             pil: self.pil,
             links,
+            latch: input.latch,
+            call_selectors,
+            has_pc,
         }
     }
 
@@ -178,6 +224,7 @@ impl<'a> ASMPILConverter<'a> {
                     callable,
                     params,
                 },
+            is_permutation,
         }: LinkDefinitionStatement,
     ) -> Link {
         let from = LinkFrom {
@@ -185,7 +232,7 @@ impl<'a> ASMPILConverter<'a> {
             flag: flag.clone(),
         };
 
-        // get the machine type name for this submachine from the submachine delcarations
+        // get the machine type name for this submachine from the submachine declarations
         let instance_ty_name = self
             .submachines
             .iter()
@@ -200,6 +247,18 @@ impl<'a> ASMPILConverter<'a> {
         // get the instance location from the current location joined with the instance name
         let instance_location = self.location.clone().join(instance);
 
+        let mut selector_idx = None;
+
+        if is_permutation {
+            // increase the permutation count into the destination machine
+            let count = self
+                .incoming_permutations
+                .get_mut(&instance_location)
+                .unwrap();
+            selector_idx = Some(*count);
+            *count += 1;
+        }
+
         Link {
             from,
             to: instance_ty
@@ -209,6 +268,7 @@ impl<'a> ASMPILConverter<'a> {
                     machine: powdr_ast::object::Machine {
                         location: instance_location,
                         latch: instance_ty.latch.clone(),
+                        call_selectors: instance_ty.call_selectors.clone(),
                         operation_id: instance_ty.operation_id.clone(),
                     },
                     operation: Operation {
@@ -216,9 +276,11 @@ impl<'a> ASMPILConverter<'a> {
                         id: d.operation.id.id.clone(),
                         params: d.operation.params.clone(),
                     },
+                    selector_idx,
                 })
                 .unwrap()
                 .clone(),
+            is_permutation,
         }
     }
 }

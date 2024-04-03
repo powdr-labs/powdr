@@ -81,6 +81,11 @@ struct Cli {
     #[arg(long, hide = true)]
     markdown_help: bool,
 
+    /// Set log filter value [ off, error, warn, info, debug, trace ]
+    #[arg(long)]
+    #[arg(default_value_t = LevelFilter::Info)]
+    log_level: LevelFilter,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -109,8 +114,7 @@ enum Commands {
         #[arg(short, long)]
         witness_values: Option<String>,
 
-        /// Comma-separated list of free inputs (numbers). Assumes queries to have the form
-        /// ("input", <index>).
+        /// Comma-separated list of free inputs (numbers).
         #[arg(short, long)]
         #[arg(default_value_t = String::new())]
         inputs: String,
@@ -141,7 +145,7 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(CsvRenderModeCLI))]
         csv_mode: CsvRenderModeCLI,
 
-        /// Just execute in the RISCV/Powdr executor
+        /// Just execute in the RISC-V/Powdr executor
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         just_execute: bool,
@@ -155,7 +159,7 @@ enum Commands {
     /// and finally to PIL and generates fixed and witness columns.
     /// Needs `rustup target add riscv32imac-unknown-none-elf`.
     Rust {
-        /// Input file (rust source file) or directory (containing a crate).
+        /// input rust code, points to a crate dir or its Cargo.toml file
         file: String,
 
         /// The field to use
@@ -204,7 +208,7 @@ enum Commands {
         #[arg(long)]
         coprocessors: Option<String>,
 
-        /// Just execute in the RISCV/Powdr executor
+        /// Just execute in the RISC-V/Powdr executor
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         just_execute: bool,
@@ -268,7 +272,7 @@ enum Commands {
         #[arg(long)]
         coprocessors: Option<String>,
 
-        /// Just execute in the RISCV/Powdr executor
+        /// Just execute in the RISC-V/Powdr executor
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         just_execute: bool,
@@ -421,9 +425,11 @@ fn split_inputs<T: FieldElement>(inputs: &str) -> Vec<T> {
 }
 
 fn main() -> Result<(), io::Error> {
+    let args = Cli::parse();
+
     let mut builder = Builder::new();
     builder
-        .filter_level(LevelFilter::Info)
+        .filter_level(args.log_level)
         .parse_default_env()
         .target(Target::Stdout)
         .format(|buf, record| {
@@ -446,8 +452,6 @@ fn main() -> Result<(), io::Error> {
             writeln!(buf, "{}", style.value(msg))
         })
         .init();
-
-    let args = Cli::parse();
 
     if args.markdown_help {
         clap_markdown::print_help_markdown::<Cli>();
@@ -477,13 +481,6 @@ fn run_command(command: Commands) {
             just_execute,
             continuations,
         } => {
-            let coprocessors = match coprocessors {
-                Some(list) => {
-                    powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>())
-                        .unwrap()
-                }
-                None => powdr_riscv::CoProcessors::base(),
-            };
             call_with_field!(run_rust::<field>(
                 &file,
                 split_inputs(&inputs),
@@ -519,13 +516,6 @@ fn run_command(command: Commands) {
                 Cow::Borrowed("output")
             };
 
-            let coprocessors = match coprocessors {
-                Some(list) => {
-                    powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>())
-                        .unwrap()
-                }
-                None => powdr_riscv::CoProcessors::base(),
-            };
             call_with_field!(run_riscv_asm::<field>(
                 &name,
                 files.into_iter(),
@@ -682,11 +672,17 @@ fn run_rust<F: FieldElement>(
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
-    coprocessors: powdr_riscv::CoProcessors,
+    coprocessors: Option<String>,
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let (asm_file_path, asm_contents) = compile_rust(
+    let coprocessors = match coprocessors {
+        Some(list) => {
+            powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+        }
+        None => powdr_riscv::CoProcessors::base(),
+    };
+    let (asm_file_path, asm_contents) = compile_rust::<F>(
         file_name,
         output_dir,
         force_overwrite,
@@ -725,11 +721,17 @@ fn run_riscv_asm<F: FieldElement>(
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
-    coprocessors: powdr_riscv::CoProcessors,
+    coprocessors: Option<String>,
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let (asm_file_path, asm_contents) = compile_riscv_asm(
+    let coprocessors = match coprocessors {
+        Some(list) => {
+            powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+        }
+        None => powdr_riscv::CoProcessors::base(),
+    };
+    let (asm_file_path, asm_contents) = compile_riscv_asm::<F>(
         original_file_name,
         file_names,
         output_dir,
@@ -819,6 +821,7 @@ fn run<F: FieldElement>(
             let program = pipeline.compute_asm_string().unwrap().clone();
             powdr_riscv_executor::execute::<F>(
                 &program.1,
+                powdr_riscv_executor::MemoryState::new(),
                 pipeline.data_callback().unwrap(),
                 &[],
                 powdr_riscv_executor::ExecMode::Fast,

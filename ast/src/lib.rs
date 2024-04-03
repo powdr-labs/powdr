@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 /// Analyzed PIL
 pub mod analyzed;
-/// A typed-checked ASM + PIL AST optimised for analysis
+/// A typed-checked ASM + PIL AST optimized for analysis
 pub mod asm_analysis;
 /// An AST for PIL objects
 pub mod object;
@@ -49,6 +49,22 @@ where
     W: Write,
 {
     write!(f, "{}", indent(s, indentation))
+}
+
+pub fn writeln_indented_by<S, W>(f: &mut W, s: S, indentation: usize) -> Result
+where
+    S: Display,
+    W: Write,
+{
+    writeln!(f, "{}", indent(s, indentation))
+}
+
+pub fn writeln_indented<S, W>(f: &mut W, s: S) -> Result
+where
+    S: Display,
+    W: Write,
+{
+    writeln_indented_by(f, s, 1)
 }
 
 fn write_items<S, I, W>(f: &mut W, items: I) -> Result

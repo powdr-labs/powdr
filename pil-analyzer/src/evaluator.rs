@@ -13,8 +13,9 @@ use powdr_ast::{
     parsed::{
         display::quote,
         types::{Type, TypeScheme},
-        BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern, UnaryOperator,
+        BinaryOperator, FunctionCall, LambdaExpression, MatchArm, Pattern, UnaryOperator,
     },
+    SourceRef,
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
 
@@ -23,13 +24,13 @@ pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    evaluate(expr, &Definitions(definitions))
+    evaluate(expr, &mut Definitions(definitions))
 }
 
 /// Evaluates an expression given a symbol lookup implementation
 pub fn evaluate<'a, T: FieldElement>(
     expr: &'a Expression,
-    symbols: &impl SymbolLookup<'a, T>,
+    symbols: &mut impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     evaluate_generic(expr, &Default::default(), symbols)
 }
@@ -38,24 +39,25 @@ pub fn evaluate<'a, T: FieldElement>(
 /// and values for the generic type parameters.
 pub fn evaluate_generic<'a, 'b, T: FieldElement>(
     expr: &'a Expression,
-    generic_args: &'b HashMap<String, Type>,
-    symbols: &impl SymbolLookup<'a, T>,
+    type_args: &'b HashMap<String, Type>,
+    symbols: &mut impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    internal::evaluate(expr, &[], generic_args, symbols)
+    internal::evaluate(expr, &[], type_args, symbols)
 }
 
 /// Evaluates a function call.
 pub fn evaluate_function_call<'a, T: FieldElement>(
     function: Arc<Value<'a, T>>,
     arguments: Vec<Arc<Value<'a, T>>>,
-    symbols: &impl SymbolLookup<'a, T>,
+    symbols: &mut impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     match function.as_ref() {
         Value::BuiltinFunction(b) => internal::evaluate_builtin_function(*b, arguments, symbols),
+        Value::TypeConstructor(name) => Ok(Value::Enum(name, Some(arguments)).into()),
         Value::Closure(Closure {
             lambda,
             environment,
-            generic_args,
+            type_args,
         }) => {
             if lambda.params.len() != arguments.len() {
                 Err(EvalError::TypeError(format!(
@@ -73,7 +75,7 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
                 .chain(arguments)
                 .collect::<Vec<_>>();
 
-            internal::evaluate(&lambda.body, &local_vars, generic_args, symbols)
+            internal::evaluate(&lambda.body, &local_vars, type_args, symbols)
         }
         e => Err(EvalError::TypeError(format!(
             "Expected function but got {e}"
@@ -83,7 +85,7 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
 
 /// Turns an optional type scheme and a list of generic type arguments into a mapping
 /// from type name to type.
-pub fn generic_arg_mapping(
+pub fn type_arg_mapping(
     type_scheme: &Option<TypeScheme>,
     args: Option<Vec<Type>>,
 ) -> HashMap<String, Type> {
@@ -147,7 +149,7 @@ impl Display for EvalError {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub enum Value<'a, T> {
     Bool(bool),
     Integer(BigInt),
@@ -156,6 +158,8 @@ pub enum Value<'a, T> {
     Tuple(Vec<Arc<Self>>),
     Array(Vec<Arc<Self>>),
     Closure(Closure<'a, T>),
+    TypeConstructor(&'a str),
+    Enum(&'a str, Option<Vec<Arc<Self>>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
     Identity(AlgebraicExpression<T>, AlgebraicExpression<T>),
@@ -232,14 +236,87 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 )
             }
             Value::Closure(c) => c.type_formatted(),
+            Value::TypeConstructor(name) => format!("{name}_constructor"),
+            Value::Enum(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
             Value::Identity(_, _) => "constr".to_string(),
         }
     }
+
+    /// Tries to match this value against the given pattern.
+    /// Returns local variable bindings on success.
+    pub fn try_match_pattern<'b>(
+        v: &Arc<Value<'b, T>>,
+        pattern: &Pattern,
+    ) -> Option<Vec<Arc<Value<'b, T>>>> {
+        match pattern {
+            Pattern::Ellipsis => unreachable!("Should be handled higher up"),
+            Pattern::CatchAll => Some(vec![]),
+            Pattern::Number(n) => match v.as_ref() {
+                Value::Integer(x) if x == n => Some(vec![]),
+                Value::FieldElement(x) if BigInt::from(x.to_arbitrary_integer()) == *n => {
+                    Some(vec![])
+                }
+                _ => None,
+            },
+            Pattern::String(s) => match v.as_ref() {
+                Value::String(x) if x == s => Some(vec![]),
+                _ => None,
+            },
+            Pattern::Tuple(items) => match v.as_ref() {
+                Value::Tuple(values) => {
+                    assert_eq!(values.len(), items.len());
+                    values
+                        .iter()
+                        .zip(items)
+                        .try_fold(vec![], |mut vars, (e, p)| {
+                            Value::try_match_pattern(e, p).map(|v| {
+                                vars.extend(v);
+                                vars
+                            })
+                        })
+                }
+                _ => unreachable!(),
+            },
+            Pattern::Array(items) => {
+                let Value::Array(values) = v.as_ref() else {
+                    panic!("Type error")
+                };
+                // Index of ".."
+                let ellipsis_pos = items.iter().position(|i| *i == Pattern::Ellipsis);
+                // Check if the value is too short.
+                let length_matches = match ellipsis_pos {
+                    Some(_) => values.len() >= items.len() - 1,
+                    None => values.len() == items.len(),
+                };
+                if !length_matches {
+                    return None;
+                }
+                // Split value into "left" and "right" part.
+                let left_len = ellipsis_pos.unwrap_or(values.len());
+                let right_len = ellipsis_pos.map(|p| items.len() - p - 1).unwrap_or(0);
+                let left = values.iter().take(left_len);
+                let right = values.iter().skip(values.len() - right_len);
+                assert_eq!(
+                    left.len() + right.len(),
+                    items.len() - ellipsis_pos.map(|_| 1).unwrap_or_default()
+                );
+                left.chain(right)
+                    .zip(items.iter().filter(|&i| *i != Pattern::Ellipsis))
+                    .try_fold(vec![], |mut vars, (e, p)| {
+                        Value::try_match_pattern(e, p).map(|v| {
+                            vars.extend(v);
+                            vars
+                        })
+                    })
+            }
+            Pattern::Variable(_) => Some(vec![v.clone()]),
+        }
+    }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 8] = [
+const BUILTINS: [(&str, BuiltinFunction); 9] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -247,10 +324,11 @@ const BUILTINS: [(&str, BuiltinFunction); 8] = [
     ("std::convert::int", BuiltinFunction::ToInt),
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
+    ("std::prover::challenge", BuiltinFunction::Challenge),
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum BuiltinFunction {
     /// std::array::len: _[] -> int, returns the length of an array
     ArrayLen,
@@ -268,6 +346,8 @@ pub enum BuiltinFunction {
     ToInt,
     /// std::convert::fe: int/fe -> fe, converts int to fe
     ToFe,
+    /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
+    Challenge,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
     Eval,
 }
@@ -282,6 +362,14 @@ impl<'a, T: Display> Display for Value<'a, T> {
             Value::Tuple(items) => write!(f, "({})", items.iter().format(", ")),
             Value::Array(elements) => write!(f, "[{}]", elements.iter().format(", ")),
             Value::Closure(closure) => write!(f, "{closure}"),
+            Value::TypeConstructor(name) => write!(f, "{name}_constructor"),
+            Value::Enum(name, data) => {
+                write!(f, "{name}")?;
+                if let Some(data) = data {
+                    write!(f, "({})", data.iter().format(", "))?;
+                }
+                Ok(())
+            }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
             Value::Identity(left, right) => write!(f, "{left} = {right}"),
@@ -293,15 +381,7 @@ impl<'a, T: Display> Display for Value<'a, T> {
 pub struct Closure<'a, T> {
     pub lambda: &'a LambdaExpression<Reference>,
     pub environment: Vec<Arc<Value<'a, T>>>,
-    pub generic_args: HashMap<String, Type>,
-}
-
-impl<'a, T> PartialEq for Closure<'a, T> {
-    fn eq(&self, _other: &Self) -> bool {
-        // Eq is used for pattern matching.
-        // In the future, we should introduce a proper pattern type.
-        panic!("Tried to compare closures.");
-    }
+    pub type_args: HashMap<String, Type>,
 }
 
 impl<'a, T: Display> Display for Closure<'a, T> {
@@ -329,14 +409,14 @@ impl<'a> Definitions<'a> {
     /// Implementation of `lookup` that allows to provide a different implementation
     /// of SymbolLookup for the recursive call.
     pub fn lookup_with_symbols<T: FieldElement>(
-        &self,
+        definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
         name: &str,
-        generic_args: Option<Vec<Type>>,
-        symbols: &impl SymbolLookup<'a, T>,
+        type_args: Option<Vec<Type>>,
+        symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = name.to_string();
-        let (symbol, value) = &self
-            .0
+
+        let (symbol, value) = definitions
             .get(&name)
             .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))?;
 
@@ -368,8 +448,15 @@ impl<'a> Definitions<'a> {
                     e: value,
                     type_scheme,
                 })) => {
-                    let generic_args = generic_arg_mapping(type_scheme, generic_args);
-                    evaluate_generic(value, &generic_args, symbols)?
+                    let type_args = type_arg_mapping(type_scheme, type_args);
+                    evaluate_generic(value, &type_args, symbols)?
+                }
+                Some(FunctionValueDefinition::TypeConstructor(_type_name, variant)) => {
+                    if variant.fields.is_none() {
+                        Value::Enum(&variant.name, None).into()
+                    } else {
+                        Value::TypeConstructor(&variant.name).into()
+                    }
                 }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
@@ -381,11 +468,11 @@ impl<'a> Definitions<'a> {
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     fn lookup(
-        &self,
+        &mut self,
         name: &str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        self.lookup_with_symbols::<T>(name, generic_args, self)
+        Self::lookup_with_symbols(self.0, name, type_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -401,12 +488,12 @@ impl<'a> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>> fo
 
 pub trait SymbolLookup<'a, T> {
     fn lookup(
-        &self,
+        &mut self,
         name: &'a str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError>;
 
-    fn lookup_public_reference(&self, name: &'a str) -> Result<Arc<Value<'a, T>>, EvalError> {
+    fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::Unsupported(format!(
             "Cannot evaluate public reference: {name}"
         )))
@@ -415,11 +502,34 @@ pub trait SymbolLookup<'a, T> {
     fn eval_expr(&self, _expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::DataNotAvailable)
     }
+
+    fn new_witness_column(
+        &mut self,
+        name: &str,
+        _source: SourceRef,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(format!(
+            "Tried to create witness column outside of statement context: {name}"
+        )))
+    }
+
+    fn add_constraints(
+        &mut self,
+        _constraints: Arc<Value<'a, T>>,
+        _source: SourceRef,
+    ) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to add constraints outside of statement context.".to_string(),
+        ))
+    }
 }
 
 mod internal {
     use num_traits::Signed;
-    use powdr_ast::analyzed::AlgebraicBinaryOperator;
+    use powdr_ast::{
+        analyzed::{AlgebraicBinaryOperator, Challenge},
+        parsed::{LetStatementInsideBlock, StatementInsideBlock},
+    };
     use powdr_number::BigUint;
 
     use super::*;
@@ -427,20 +537,20 @@ mod internal {
     pub fn evaluate<'a, 'b, T: FieldElement>(
         expr: &'a Expression,
         locals: &[Arc<Value<'a, T>>],
-        generic_args: &'b HashMap<String, Type>,
-        symbols: &impl SymbolLookup<'a, T>,
+        type_args: &'b HashMap<String, Type>,
+        symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(match expr {
             Expression::Reference(reference) => {
-                evaluate_reference(reference, locals, generic_args, symbols)?
+                evaluate_reference(reference, locals, type_args, symbols)?
             }
             Expression::PublicReference(name) => symbols.lookup_public_reference(name)?,
-            Expression::Number(n, ty) => evaluate_literal(n.clone(), ty, generic_args)?,
+            Expression::Number(n, ty) => evaluate_literal(n.clone(), ty, type_args)?,
             Expression::String(s) => Value::String(s.clone()).into(),
             Expression::Tuple(items) => Value::Tuple(
                 items
                     .iter()
-                    .map(|e| evaluate(e, locals, generic_args, symbols))
+                    .map(|e| evaluate(e, locals, type_args, symbols))
                     .collect::<Result<_, _>>()?,
             )
             .into(),
@@ -448,17 +558,17 @@ mod internal {
                 elements
                     .items
                     .iter()
-                    .map(|e| evaluate(e, locals, generic_args, symbols))
+                    .map(|e| evaluate(e, locals, type_args, symbols))
                     .collect::<Result<_, _>>()?,
             ))
             .into(),
             Expression::BinaryOperation(left, op, right) => {
-                let left = evaluate(left, locals, generic_args, symbols)?;
-                let right = evaluate(right, locals, generic_args, symbols)?;
+                let left = evaluate(left, locals, type_args, symbols)?;
+                let right = evaluate(right, locals, type_args, symbols)?;
                 evaluate_binary_operation(&left, *op, &right)?
             }
             Expression::UnaryOperation(op, expr) => {
-                match (op, evaluate(expr, locals, generic_args, symbols)?.as_ref()) {
+                match (op, evaluate(expr, locals, type_args, symbols)?.as_ref()) {
                     (UnaryOperator::Minus, Value::FieldElement(e)) => {
                         Value::FieldElement(-*e).into()
                     }
@@ -498,14 +608,14 @@ mod internal {
                 Value::from(Closure {
                     lambda,
                     environment: locals.to_vec(),
-                    generic_args: generic_args.clone(),
+                    type_args: type_args.clone(),
                 })
                 .into()
             }
             Expression::IndexAccess(index_access) => {
-                match evaluate(&index_access.array, locals, generic_args, symbols)?.as_ref() {
+                match evaluate(&index_access.array, locals, type_args, symbols)?.as_ref() {
                     Value::Array(elements) => {
-                        match evaluate(&index_access.index, locals, generic_args,symbols)?.as_ref() {
+                        match evaluate(&index_access.index, locals, type_args,symbols)?.as_ref() {
                             Value::Integer(index)
                                 if index.is_negative()
                                     || *index >= (elements.len() as u64).into() =>
@@ -531,39 +641,27 @@ mod internal {
                 function,
                 arguments,
             }) => {
-                let function = evaluate(function, locals, generic_args, symbols)?;
+                let function = evaluate(function, locals, type_args, symbols)?;
                 let arguments = arguments
                     .iter()
-                    .map(|a| evaluate(a, locals, generic_args, symbols))
+                    .map(|a| evaluate(a, locals, type_args, symbols))
                     .collect::<Result<Vec<_>, _>>()?;
                 evaluate_function_call(function, arguments, symbols)?
             }
             Expression::MatchExpression(scrutinee, arms) => {
-                let v = evaluate(scrutinee, locals, generic_args, symbols)?;
-                let body = arms
+                let v = evaluate(scrutinee, locals, type_args, symbols)?;
+                let (vars, body) = arms
                     .iter()
-                    .find_map(|MatchArm { pattern, value }| match pattern {
-                        MatchPattern::Pattern(p) => {
-                            // TODO this uses PartialEq. As soon as we have proper match patterns
-                            // instead of value, we can remove the PartialEq requirement on Value.
-                            let p = evaluate(p, locals, generic_args, symbols).unwrap();
-                            if p == v {
-                                Some(value)
-                            } else {
-                                // TODO I don't think this part is needed now that we have the type checker.
-                                match (p.try_to_integer(), v.try_to_integer()) {
-                                    (Ok(p), Ok(v)) if p == v => Some(value),
-                                    _ => None,
-                                }
-                            }
-                        }
-                        MatchPattern::CatchAll => Some(value),
+                    .find_map(|MatchArm { pattern, value }| {
+                        Value::try_match_pattern(&v, pattern).map(|vars| (vars, value))
                     })
                     .ok_or_else(EvalError::NoMatch)?;
-                evaluate(body, locals, generic_args, symbols)?
+                let mut locals = locals.to_vec();
+                locals.extend(vars);
+                evaluate(body, &locals, type_args, symbols)?
             }
             Expression::IfExpression(if_expr) => {
-                let cond = evaluate(&if_expr.condition, locals, generic_args, symbols)?;
+                let cond = evaluate(&if_expr.condition, locals, type_args, symbols)?;
                 let condition = match cond.as_ref() {
                     Value::Bool(b) => Ok(b),
                     x => Err(EvalError::TypeError(format!(
@@ -575,7 +673,30 @@ mod internal {
                 } else {
                     &if_expr.else_body
                 };
-                evaluate(body.as_ref(), locals, generic_args, symbols)?
+                evaluate(body.as_ref(), locals, type_args, symbols)?
+            }
+            Expression::BlockExpression(statements, expr) => {
+                let mut locals = locals.to_vec();
+                for statement in statements {
+                    match statement {
+                        StatementInsideBlock::LetStatement(LetStatementInsideBlock {
+                            name,
+                            value,
+                        }) => {
+                            let value = if let Some(value) = value {
+                                evaluate(value, &locals, type_args, symbols)?
+                            } else {
+                                symbols.new_witness_column(name, SourceRef::unknown())?
+                            };
+                            locals.push(value);
+                        }
+                        StatementInsideBlock::Expression(expr) => {
+                            let result = evaluate(expr, &locals, type_args, symbols)?;
+                            symbols.add_constraints(result, SourceRef::unknown())?;
+                        }
+                    }
+                }
+                evaluate(expr, &locals, type_args, symbols)?
             }
             Expression::FreeInput(_) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
@@ -586,10 +707,10 @@ mod internal {
     fn evaluate_literal<'a, T: FieldElement>(
         n: BigUint,
         ty: &Option<Type<u64>>,
-        generic_args: &HashMap<String, Type>,
+        type_args: &HashMap<String, Type>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let ty = if let Some(Type::TypeVar(tv)) = ty {
-            match &generic_args[tv] {
+            match &type_args[tv] {
                 Type::Fe => Type::Fe,
                 Type::Int => Type::Int,
                 Type::Expr => Type::Expr,
@@ -621,8 +742,8 @@ mod internal {
     fn evaluate_reference<'a, T: FieldElement>(
         reference: &'a Reference,
         locals: &[Arc<Value<'a, T>>],
-        generic_args: &HashMap<String, Type>,
-        symbols: &impl SymbolLookup<'a, T>,
+        type_args: &HashMap<String, Type>,
+        symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(match reference {
             Reference::LocalVar(i, _name) => locals[*i as usize].clone(),
@@ -631,13 +752,13 @@ mod internal {
                 if let Some((_, b)) = BUILTINS.iter().find(|(n, _)| (n == &poly.name)) {
                     Value::BuiltinFunction(*b).into()
                 } else {
-                    let generic_args = poly.generic_args.clone().map(|mut ga| {
+                    let type_args = poly.type_args.clone().map(|mut ga| {
                         for ty in &mut ga {
-                            ty.substitute_type_vars(generic_args);
+                            ty.substitute_type_vars(type_args);
                         }
                         ga
                     });
-                    symbols.lookup(&poly.name, generic_args)?
+                    symbols.lookup(&poly.name, type_args)?
                 }
             }
         })
@@ -725,7 +846,7 @@ mod internal {
     pub fn evaluate_builtin_function<'a, T: FieldElement>(
         b: BuiltinFunction,
         mut arguments: Vec<Arc<Value<'a, T>>>,
-        symbols: &impl SymbolLookup<'a, T>,
+        symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let params = match b {
             BuiltinFunction::ArrayLen => 1,
@@ -735,6 +856,7 @@ mod internal {
             BuiltinFunction::ToExpr => 1,
             BuiltinFunction::ToFe => 1,
             BuiltinFunction::ToInt => 1,
+            BuiltinFunction::Challenge => 2,
             BuiltinFunction::Eval => 1,
         };
 
@@ -787,6 +909,22 @@ mod internal {
             }
             BuiltinFunction::Modulus => {
                 Value::Integer(T::modulus().to_arbitrary_integer().into()).into()
+            }
+            BuiltinFunction::Challenge => {
+                let [stage, index] = &arguments[..] else {
+                    panic!()
+                };
+                let Value::Integer(stage) = (**stage).clone() else {
+                    panic!()
+                };
+                let Value::Integer(id) = (**index).clone() else {
+                    panic!()
+                };
+                Value::Expression(AlgebraicExpression::Challenge(Challenge {
+                    id: u64::try_from(id).unwrap(),
+                    stage: u32::try_from(stage).unwrap(),
+                }))
+                .into()
             }
             BuiltinFunction::Eval => {
                 let arg = arguments.pop().unwrap();
@@ -868,7 +1006,7 @@ mod test {
         else {
             panic!()
         };
-        evaluate::<GoldilocksField>(symbol, &Definitions(&analyzed.definitions))
+        evaluate::<GoldilocksField>(symbol, &mut Definitions(&analyzed.definitions))
             .unwrap()
             .to_string()
     }
@@ -1009,5 +1147,127 @@ mod test {
             let N = std::debug::print("test output\n");
         "#;
         parse_and_evaluate_symbol(src, "std::debug::N");
+    }
+
+    #[test]
+    pub fn local_vars() {
+        let src = r#"
+            let f: int -> int = |i| {
+                let x = i + 1;
+                let y = x - 1;
+                let z = y - i;
+                z
+            };
+            let t = f(8);
+        "#;
+        assert_eq!(parse_and_evaluate_symbol(src, "t"), "0".to_string());
+    }
+
+    #[test]
+    pub fn match_pattern() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [] => 0,
+                [x] => x,
+                [_, x] => x + 9,
+                [_, x, y] => x + y,
+                _ => 99,
+            };
+            let t = [
+                f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])
+            ];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[0, 1, 11, 5, 99]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_pattern_complex() {
+        let src = r#"
+            let f: ((int, int), int[]) -> int = |q| match q {
+                ((1, _), [x, 4]) => 1 + x,
+                ((1, 2), [y]) => 2 + y,
+                ((_, 2), [y, z]) => 3 + y + z,
+                ((x, 3), _) => x,
+                ((x, -1), _) => x,
+                (t, [_, r]) => r
+            };
+            let res = [
+                f(((1, 9), [20, 4])),
+                f(((1, 2), [3])),
+                f(((9, 2), [300, 4])),
+                f(((9, 3), [900, 8])),
+                f(((90, 3), [900, 8, 7])),
+                f(((99, -1), [900, 8, 7])),
+                f(((1, 1), [-3, -1]))
+            ];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "res"),
+            "[21, 5, 307, 9, 90, 99, -1]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_skip_array() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [x, .., y] => x + y,
+                [] => 19,
+                _ => 99,
+            };
+            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[19, 99, 3, 4, 5]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_skip_array_2() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [.., y] => y,
+                _ => 99,
+            };
+            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[99, 1, 2, 3, 4]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_skip_array_3() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [.., x, y] => x,
+                [..] => 99,
+            };
+            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[99, 99, 1, 2, 3]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_skip_array_4() {
+        let src = r#"
+            let f: int[] -> int = |arr| match arr {
+                [x, y, ..] => y,
+                [..] => 99,
+            };
+            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[99, 99, 2, 2, 2]".to_string()
+        );
     }
 }

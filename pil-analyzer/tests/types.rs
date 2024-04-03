@@ -1,18 +1,9 @@
-use powdr_ast::parsed::{display::format_type_scheme_around_name, types::TypeScheme};
+use powdr_ast::parsed::display::format_type_scheme_around_name;
 use powdr_number::GoldilocksField;
-use powdr_parser::{parse_type, parse_type_var_bounds};
+use powdr_parser::parse_type_scheme;
 use powdr_pil_analyzer::analyze_string;
 
 use pretty_assertions::assert_eq;
-
-fn parse_type_scheme(vars: &str, ty: &str) -> TypeScheme {
-    let vars = parse_type_var_bounds(vars).unwrap();
-    let ty = parse_type(ty).unwrap();
-    TypeScheme {
-        vars,
-        ty: ty.into(),
-    }
-}
 
 fn type_check(input: &str, expected: &[(&str, &str, &str)]) {
     let analyzed = analyze_string::<GoldilocksField>(input);
@@ -281,4 +272,76 @@ fn col_array_is_array() {
         let r: int = std::array::len(x2);
     ";
     type_check(input, &[]);
+}
+
+#[test]
+fn enum_simple() {
+    let input = "
+    enum X { A, B(int), C(string[], int) }
+    let v: X -> (X, int) = |x| (x, 2);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn enum_constr() {
+    let input = "
+    enum X { A, B(int), C(string[], int) }
+    let v: int -> X = |i| match i {
+        0 => X::A,
+        1 => X::B(7),
+        2 => X::C([\"abc\"], 9),
+        _ => X::A
+    };
+
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn enum_constr_is_function() {
+    let input = "
+    enum X { A, B(int), C(string[], int) }
+    let a = || X::A;
+    let b = || X::B;
+    let c = || X::C;
+    ";
+    type_check(
+        input,
+        &[
+            ("a", "", "-> X"),
+            ("b", "", "-> (int -> X)"),
+            ("c", "", "-> (string[], int -> X)"),
+        ],
+    );
+}
+
+#[test]
+#[should_panic = "Expected value but got type: X"]
+fn enum_is_not_constr() {
+    let input = "
+    enum X { A, B(int), C(string[], int) }
+    let v: int -> X = |i| X;
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Expected type: int -> std::prover::Query"]
+fn query_with_wrong_type() {
+    let input = "col witness w(i) query i;";
+    type_check(input, &[]);
+}
+
+#[test]
+fn type_from_pattern() {
+    let input = "
+    let r: int -> int = |i| i;
+    let f = |q| match q {
+        (x, []) => r(x),
+        (x, [a]) => r(a),
+        _ => 8
+    };
+    ";
+    type_check(input, &[("f", "", "(int, int[]) -> int")]);
 }

@@ -1,21 +1,24 @@
 mod display;
 pub mod visitor;
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::cmp::max;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
+use std::iter;
 use std::ops::{self, ControlFlow};
+use std::str::FromStr;
 
 use powdr_number::{DegreeType, FieldElement};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::parsed::asm::SymbolPath;
 use crate::parsed::types::{ArrayType, Type, TypeScheme};
-use crate::parsed::utils::expr_any;
-use crate::parsed::visitor::ExpressionVisitable;
+use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
-use crate::parsed::{self, SelectedExpressions};
+use crate::parsed::{self, EnumDeclaration, EnumVariant, SelectedExpressions};
 use crate::SourceRef;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -147,112 +150,6 @@ impl<T> Analyzed<T> {
         type_from_definition(sym, value).unwrap()
     }
 
-    /// Removes the specified polynomials and updates the IDs of the other polynomials
-    /// so that they are contiguous again.
-    /// There must not be any reference to the removed polynomials left.
-    /// Does not support arrays or array elements.
-    pub fn remove_polynomials(&mut self, to_remove: &BTreeSet<PolyID>) {
-        let mut replacements: BTreeMap<PolyID, PolyID> = [
-            // We have to do it separately because we need to re-start the counter
-            // for each kind.
-            self.committed_polys_in_source_order(),
-            self.constant_polys_in_source_order(),
-        ]
-        .map(|polys| {
-            polys
-                .iter()
-                .fold(
-                    (0, BTreeMap::new()),
-                    |(shift, mut replacements), (poly, _def)| {
-                        let poly_id = poly.into();
-                        let length = poly.length.unwrap_or(1);
-                        if to_remove.contains(&poly_id) {
-                            (shift + length, replacements)
-                        } else {
-                            for (_name, id) in poly.array_elements() {
-                                replacements.insert(
-                                    id,
-                                    PolyID {
-                                        id: id.id - shift,
-                                        ..id
-                                    },
-                                );
-                            }
-                            // we still need a replacement for zero sized array,
-                            // but array_elements() won't return any items in this case
-                            // TODO: handle this differently? https://github.com/powdr-labs/powdr/issues/1142
-                            if let Some(0) = poly.length {
-                                let poly_id = poly.into();
-                                replacements.insert(
-                                    poly_id,
-                                    PolyID {
-                                        id: poly.id - shift,
-                                        ..poly_id
-                                    },
-                                );
-                            }
-                            (shift, replacements)
-                        }
-                    },
-                )
-                .1
-        })
-        .into_iter()
-        .flatten()
-        .collect();
-
-        // We assume for now that intermediate columns are not removed.
-        for (poly, _) in self.intermediate_columns.values() {
-            poly.array_elements().for_each(|(_name, id)| {
-                assert!(!to_remove.contains(&id));
-                replacements.insert(id, id);
-            });
-        }
-
-        let mut names_to_remove: HashSet<String> = Default::default();
-        self.definitions.retain(|name, (poly, _def)| {
-            if matches!(poly.kind, SymbolKind::Poly(_))
-                && to_remove.contains(&(poly as &Symbol).into())
-            {
-                names_to_remove.insert(name.clone());
-                false
-            } else {
-                true
-            }
-        });
-        self.source_order.retain(|s| {
-            if let StatementIdentifier::Definition(name) = s {
-                if names_to_remove.contains(name) {
-                    return false;
-                }
-            }
-            true
-        });
-        self.definitions.values_mut().for_each(|(poly, _def)| {
-            if matches!(poly.kind, SymbolKind::Poly(_)) {
-                let poly_id = PolyID::from(poly as &Symbol);
-                assert!(!to_remove.contains(&poly_id));
-                poly.id = replacements[&poly_id].id;
-            }
-        });
-        let visitor = &mut |expr: &mut Expression| {
-            if let Expression::Reference(Reference::Poly(poly)) = expr {
-                poly.poly_id = poly.poly_id.map(|poly_id| {
-                    assert!(!to_remove.contains(&poly_id));
-                    replacements[&poly_id]
-                });
-            }
-        };
-        self.post_visit_expressions_in_definitions_mut(visitor);
-        let algebraic_visitor = &mut |expr: &mut AlgebraicExpression<_>| {
-            if let AlgebraicExpression::Reference(poly) = expr {
-                assert!(!to_remove.contains(&poly.poly_id));
-                poly.poly_id = replacements[&poly.poly_id];
-            }
-        };
-        self.post_visit_expressions_in_identities_mut(algebraic_visitor);
-    }
-
     /// Adds a polynomial identity and returns the ID.
     pub fn append_polynomial_identity(
         &mut self,
@@ -295,6 +192,77 @@ impl<T> Analyzed<T> {
         })
     }
 
+    /// Removes the given definitions and itermediate columns by name. Those must not be referenced
+    /// by any remaining definitions, identities or public declarations.
+    pub fn remove_definitions(&mut self, to_remove: &BTreeSet<String>) {
+        self.definitions.retain(|name, _| !to_remove.contains(name));
+        self.intermediate_columns
+            .retain(|name, _| !to_remove.contains(name));
+        self.source_order.retain_mut(|s| {
+            if let StatementIdentifier::Definition(name) = s {
+                !to_remove.contains(name)
+            } else {
+                true
+            }
+        });
+
+        // Now re-assign the IDs to be contiguous and in source order again.
+        let mut replacements: BTreeMap<PolyID, PolyID> = Default::default();
+
+        let mut handle_symbol = |new_id: u64, symbol: &Symbol| -> u64 {
+            let length = symbol.length.unwrap_or(1);
+            // Empty arrays still need ID replacement
+            for i in 0..max(length, 1) {
+                let old_poly_id = PolyID {
+                    id: symbol.id + i,
+                    ..PolyID::from(symbol)
+                };
+                let new_poly_id = PolyID {
+                    id: new_id + i,
+                    ..PolyID::from(symbol)
+                };
+                replacements.insert(old_poly_id, new_poly_id);
+            }
+            new_id + length
+        };
+
+        // Create and update the replacement map for all polys.
+        self.committed_polys_in_source_order()
+            .iter()
+            .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
+        self.constant_polys_in_source_order()
+            .iter()
+            .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
+        self.intermediate_polys_in_source_order()
+            .iter()
+            .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
+
+        self.definitions.values_mut().for_each(|(poly, _def)| {
+            if matches!(poly.kind, SymbolKind::Poly(_)) {
+                let poly_id = PolyID::from(poly as &Symbol);
+                poly.id = replacements[&poly_id].id;
+            }
+        });
+        self.intermediate_columns
+            .values_mut()
+            .for_each(|(poly, _def)| {
+                let poly_id = PolyID::from(poly as &Symbol);
+                poly.id = replacements[&poly_id].id;
+            });
+        let visitor = &mut |expr: &mut Expression| {
+            if let Expression::Reference(Reference::Poly(poly)) = expr {
+                poly.poly_id = poly.poly_id.map(|poly_id| replacements[&poly_id]);
+            }
+        };
+        self.post_visit_expressions_in_definitions_mut(visitor);
+        let algebraic_visitor = &mut |expr: &mut AlgebraicExpression<_>| {
+            if let AlgebraicExpression::Reference(poly) = expr {
+                poly.poly_id = replacements[&poly.poly_id];
+            }
+        };
+        self.post_visit_expressions_in_identities_mut(algebraic_visitor);
+    }
+
     pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
     where
         F: FnMut(&mut AlgebraicExpression<T>),
@@ -318,18 +286,8 @@ impl<T> Analyzed<T> {
         // TODO add public inputs if we change them to expressions at some point.
         self.definitions
             .values_mut()
-            .for_each(|(_poly, definition)| match definition {
-                Some(FunctionValueDefinition::Query(e)) => e.post_visit_expressions_mut(f),
-                Some(FunctionValueDefinition::Array(elements)) => elements
-                    .iter_mut()
-                    .flat_map(|e| e.pattern.iter_mut())
-                    .for_each(|e| e.post_visit_expressions_mut(f)),
-                Some(FunctionValueDefinition::Expression(TypedExpression {
-                    e,
-                    type_scheme: _,
-                })) => e.post_visit_expressions_mut(f),
-                None => {}
-            });
+            .filter_map(|(_poly, definition)| definition.as_mut())
+            .for_each(|definition| definition.post_visit_expressions_mut(f))
     }
 }
 
@@ -443,12 +401,18 @@ pub fn type_from_definition(
 ) -> Option<TypeScheme> {
     if let Some(value) = value {
         match value {
-            FunctionValueDefinition::Array(_) | FunctionValueDefinition::Query(_) => {
-                Some(Type::Col.into())
-            }
+            FunctionValueDefinition::Array(_) => Some(Type::Col.into()),
             FunctionValueDefinition::Expression(TypedExpression { e: _, type_scheme }) => {
                 type_scheme.clone()
             }
+            FunctionValueDefinition::TypeDeclaration(_) => {
+                panic!("Requested type of type declaration.")
+            }
+            FunctionValueDefinition::TypeConstructor(type_name, variant) => Some(
+                variant
+                    .constructor_type(SymbolPath::from_str(type_name).unwrap())
+                    .into(),
+            ),
         }
     } else {
         assert!(
@@ -474,6 +438,7 @@ pub struct Symbol {
     pub id: u64,
     pub source: SourceRef,
     pub absolute_name: String,
+    pub stage: Option<u32>,
     pub kind: SymbolKind,
     pub length: Option<DegreeType>,
 }
@@ -542,8 +507,41 @@ pub enum SymbolKind {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum FunctionValueDefinition {
     Array(Vec<RepeatedArray>),
-    Query(Expression),
     Expression(TypedExpression),
+    TypeDeclaration(EnumDeclaration),
+    TypeConstructor(String, EnumVariant),
+}
+
+impl Children<Expression> for FunctionValueDefinition {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        match self {
+            FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
+                Box::new(iter::once(e))
+            }
+            FunctionValueDefinition::Array(array) => {
+                Box::new(array.iter().flat_map(|i| i.children()))
+            }
+            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
+                enum_declaration.children()
+            }
+            FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        match self {
+            FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
+                Box::new(iter::once(e))
+            }
+            FunctionValueDefinition::Array(array) => {
+                Box::new(array.iter_mut().flat_map(|i| i.children_mut()))
+            }
+            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
+                enum_declaration.children_mut()
+            }
+            FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
+        }
+    }
 }
 
 /// An array of elements that might be repeated.
@@ -592,6 +590,16 @@ impl RepeatedArray {
     }
 }
 
+impl Children<Expression> for RepeatedArray {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(self.pattern.iter())
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(self.pattern.iter_mut())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PublicDeclaration {
     pub id: u64,
@@ -614,7 +622,7 @@ impl PublicDeclaration {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Identity<Expr> {
-    /// The ID is specific to the identity kind.
+    /// The ID is globally unique among identities.
     pub id: u64,
     pub kind: IdentityKind,
     pub source: SourceRef,
@@ -654,6 +662,16 @@ impl<Expr> Identity<Expr> {
 impl<T> Identity<AlgebraicExpression<T>> {
     pub fn contains_next_ref(&self) -> bool {
         self.left.contains_next_ref() || self.right.contains_next_ref()
+    }
+}
+
+impl<Expr> Children<Expr> for Identity<Expr> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expr> + '_> {
+        Box::new(self.left.children_mut().chain(self.right.children_mut()))
+    }
+
+    fn children(&self) -> Box<dyn Iterator<Item = &Expr> + '_> {
+        Box::new(self.left.children().chain(self.right.children()))
     }
 }
 
@@ -734,10 +752,12 @@ impl Hash for AlgebraicReference {
         self.next.hash(state);
     }
 }
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum AlgebraicExpression<T> {
     Reference(AlgebraicReference),
     PublicReference(String),
+    Challenge(Challenge),
     Number(T),
     BinaryOperation(
         Box<AlgebraicExpression<T>>,
@@ -746,6 +766,48 @@ pub enum AlgebraicExpression<T> {
     ),
 
     UnaryOperation(AlgebraicUnaryOperator, Box<AlgebraicExpression<T>>),
+}
+
+impl<T> AlgebraicExpression<T> {
+    /// Returns an iterator over all (top-level) expressions in this expression.
+    /// This specifically does not implement Children because otherwise it would
+    /// have a wrong implementation of ExpressionVisitable (which is implemented
+    /// generically for all types that implement Children<Expr>).
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        match self {
+            AlgebraicExpression::Reference(_)
+            | AlgebraicExpression::PublicReference(_)
+            | AlgebraicExpression::Challenge(_)
+            | AlgebraicExpression::Number(_) => Box::new(iter::empty()),
+            AlgebraicExpression::BinaryOperation(left, _, right) => {
+                Box::new([left.as_ref(), right.as_ref()].into_iter())
+            }
+            AlgebraicExpression::UnaryOperation(_, e) => Box::new([e.as_ref()].into_iter()),
+        }
+    }
+    /// Returns an iterator over all (top-level) expressions in this expression.
+    /// This specifically does not implement Children because otherwise it would
+    /// have a wrong implementation of ExpressionVisitable (which is implemented
+    /// generically for all types that implement Children<Expr>).
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        match self {
+            AlgebraicExpression::Reference(_)
+            | AlgebraicExpression::PublicReference(_)
+            | AlgebraicExpression::Challenge(_)
+            | AlgebraicExpression::Number(_) => Box::new(iter::empty()),
+            AlgebraicExpression::BinaryOperation(left, _, right) => {
+                Box::new([left.as_mut(), right.as_mut()].into_iter())
+            }
+            AlgebraicExpression::UnaryOperation(_, e) => Box::new([e.as_mut()].into_iter()),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct Challenge {
+    /// Challenge ID
+    pub id: u64,
+    pub stage: u32,
 }
 
 #[derive(
@@ -822,7 +884,7 @@ impl<T> AlgebraicExpression<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {
-        expr_any(self, |e| match e {
+        self.expr_any(|e| match e {
             AlgebraicExpression::Reference(poly) => poly.next,
             _ => false,
         })
@@ -830,7 +892,7 @@ impl<T> AlgebraicExpression<T> {
 
     /// @returns true if the expression contains a reference to a next value of a witness column.
     pub fn contains_next_witness_ref(&self) -> bool {
-        expr_any(self, |e| match e {
+        self.expr_any(|e| match e {
             AlgebraicExpression::Reference(poly) => poly.next && poly.is_witness(),
             _ => false,
         })
@@ -838,7 +900,7 @@ impl<T> AlgebraicExpression<T> {
 
     /// @returns true if the expression contains a reference to a witness column.
     pub fn contains_witness_ref(&self) -> bool {
-        expr_any(self, |e| match e {
+        self.expr_any(|e| match e {
             AlgebraicExpression::Reference(poly) => poly.is_witness(),
             _ => false,
         })
@@ -885,8 +947,8 @@ pub struct PolynomialReference {
     /// TODO make this non-optional
     pub poly_id: Option<PolyID>,
     /// The type arguments if the symbol is generic.
-    /// Guarenteed to be Some(_) after type checking is completed.
-    pub generic_args: Option<Vec<Type>>,
+    /// Guaranteed to be Some(_) after type checking is completed.
+    pub type_args: Option<Vec<Type>>,
 }
 
 #[derive(

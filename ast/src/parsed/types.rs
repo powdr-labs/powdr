@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, HashSet},
     fmt::Display,
     iter::empty,
 };
@@ -8,7 +8,7 @@ use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::Expression;
+use super::{asm::SymbolPath, visitor::Children, Expression};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Type<E = u64> {
@@ -33,6 +33,9 @@ pub enum Type<E = u64> {
     Tuple(TupleType<E>),
     Function(FunctionType<E>),
     TypeVar(String),
+    /// A named type like an enum. Directly after parsing, type variables are also
+    /// represented as NamedTypes, because the parser cannot distinguish.
+    NamedType(SymbolPath),
 }
 
 impl<E> Type<E> {
@@ -48,7 +51,11 @@ impl<E> Type<E> {
             | Type::Col
             | Type::Expr
             | Type::Constr => true,
-            Type::Array(_) | Type::Tuple(_) | Type::Function(_) | Type::TypeVar(_) => false,
+            Type::Array(_)
+            | Type::Tuple(_)
+            | Type::Function(_)
+            | Type::TypeVar(_)
+            | Type::NamedType(_) => false,
         }
     }
     /// Returns true if the type name needs parentheses during formatting
@@ -56,33 +63,43 @@ impl<E> Type<E> {
     pub fn needs_parentheses(&self) -> bool {
         match self {
             _ if self.is_elementary() => false,
-            Type::Array(_) | Type::Tuple(_) | Type::TypeVar(_) => false,
+            Type::Array(_) | Type::Tuple(_) | Type::TypeVar(_) | Type::NamedType(_) => false,
             Type::Function(_) => true,
             _ => unreachable!(),
         }
     }
 
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+    /// Turns all NamedTypes that are single identifiers in the given set
+    /// to TypeVars.
+    pub fn map_to_type_vars(&mut self, type_vars: &HashSet<&String>) {
         match self {
-            _ if self.is_elementary() => Box::new(empty()),
-            Type::TypeVar(_) => Box::new(empty()),
-            Type::Array(a) => a.expressions(),
-            Type::Tuple(t) => t.expressions(),
-            Type::Function(f) => f.expressions(),
-            _ => unreachable!(),
+            Type::NamedType(n) => {
+                if let Some(identifier) = n.try_to_identifier() {
+                    if type_vars.contains(identifier) {
+                        *self = Type::TypeVar(identifier.clone());
+                    }
+                }
+            }
+            _ => self
+                .children_mut()
+                .for_each(|t| t.map_to_type_vars(type_vars)),
         }
     }
 
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
+    pub fn contained_named_types(&self) -> Box<dyn Iterator<Item = &SymbolPath> + '_> {
         match self {
-            _ if self.is_elementary() => Box::new(empty()),
-            Type::TypeVar(_) => Box::new(empty()),
-            Type::Array(a) => a.expressions_mut(),
-            Type::Tuple(t) => t.expressions_mut(),
-            Type::Function(f) => f.expressions_mut(),
-            _ => unreachable!(),
+            Type::NamedType(n) => Box::new(std::iter::once(n)),
+            _ => Box::new(self.children().flat_map(|t| t.contained_named_types())),
+        }
+    }
+
+    pub fn contained_named_types_mut(&mut self) -> Box<dyn Iterator<Item = &mut SymbolPath> + '_> {
+        match self {
+            Type::NamedType(n) => Box::new(std::iter::once(n)),
+            _ => Box::new(
+                self.children_mut()
+                    .flat_map(|t| t.contained_named_types_mut()),
+            ),
         }
     }
 
@@ -110,23 +127,9 @@ impl<E: Clone> Type<E> {
                     *self = t.clone();
                 }
             }
-            Type::Array(ArrayType { base, length: _ }) => {
-                base.substitute_type_vars(substitutions);
-            }
-            Type::Tuple(TupleType { items }) => {
-                items
-                    .iter_mut()
-                    .for_each(|t| t.substitute_type_vars(substitutions));
-            }
-            Type::Function(FunctionType { params, value }) => {
-                params
-                    .iter_mut()
-                    .for_each(|t| t.substitute_type_vars(substitutions));
-                value.substitute_type_vars(substitutions);
-            }
-            _ => {
-                assert!(self.is_elementary());
-            }
+            _ => self
+                .children_mut()
+                .for_each(|t| t.substitute_type_vars(substitutions)),
         }
     }
 
@@ -140,22 +143,68 @@ impl<E> Type<E> {
     fn contained_type_vars_with_repetitions(&self) -> Box<dyn Iterator<Item = &String> + '_> {
         match self {
             Type::TypeVar(n) => Box::new(std::iter::once(n)),
-            Type::Array(ar) => ar.base.contained_type_vars_with_repetitions(),
-            Type::Tuple(tu) => Box::new(
-                tu.items
-                    .iter()
+            _ => Box::new(
+                self.children()
                     .flat_map(|t| t.contained_type_vars_with_repetitions()),
             ),
-            Type::Function(fun) => Box::new(
-                fun.params
-                    .iter()
-                    .flat_map(|t| t.contained_type_vars_with_repetitions())
-                    .chain(fun.value.contained_type_vars_with_repetitions()),
-            ),
+        }
+    }
+}
+
+/// Returns iterators over all direct sub-types for this type.
+impl<E> Children<Type<E>> for Type<E> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Type<E>> + '_> {
+        match self {
+            Type::Array(ar) => Box::new(std::iter::once(&*ar.base)),
+            Type::Tuple(tu) => Box::new(tu.items.iter()),
+            Type::Function(fun) => Box::new(fun.params.iter().chain(std::iter::once(&*fun.value))),
+            Type::NamedType(_) | Type::TypeVar(_) => Box::new(std::iter::empty()),
             _ => {
                 assert!(self.is_elementary());
                 Box::new(std::iter::empty())
             }
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Type<E>> + '_> {
+        match self {
+            Type::Array(ar) => Box::new(std::iter::once(&mut *ar.base)),
+            Type::Tuple(tu) => Box::new(tu.items.iter_mut()),
+            Type::Function(fun) => Box::new(
+                fun.params
+                    .iter_mut()
+                    .chain(std::iter::once(&mut *fun.value)),
+            ),
+            Type::NamedType(_) | Type::TypeVar(_) => Box::new(std::iter::empty()),
+            _ => {
+                assert!(self.is_elementary());
+                Box::new(std::iter::empty())
+            }
+        }
+    }
+}
+
+/// Returns iterators over all direct expressions inside this type.
+impl<R> Children<Expression<R>> for Type<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        match self {
+            _ if self.is_elementary() => Box::new(empty()),
+            Type::TypeVar(_) | Type::NamedType(_) => Box::new(empty()),
+            Type::Array(a) => a.children(),
+            Type::Tuple(t) => t.children(),
+            Type::Function(f) => f.children(),
+            _ => unreachable!(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        match self {
+            _ if self.is_elementary() => Box::new(empty()),
+            Type::TypeVar(_) | Type::NamedType(_) => Box::new(empty()),
+            Type::Array(a) => a.children_mut(),
+            Type::Tuple(t) => t.children_mut(),
+            Type::Function(f) => f.children_mut(),
+            _ => unreachable!(),
         }
     }
 }
@@ -175,6 +224,7 @@ impl<R: Display> From<Type<Expression<R>>> for Type<u64> {
             Type::Tuple(t) => Type::Tuple(t.into()),
             Type::Function(f) => Type::Function(f.into()),
             Type::TypeVar(n) => Type::TypeVar(n),
+            Type::NamedType(n) => Type::NamedType(n),
         }
     }
 }
@@ -183,17 +233,6 @@ impl<R: Display> From<Type<Expression<R>>> for Type<u64> {
 pub struct ArrayType<E = u64> {
     pub base: Box<Type<E>>,
     pub length: Option<E>,
-}
-
-impl<E> ArrayType<E> {
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
-        Box::new(self.base.expressions().chain(self.length.iter()))
-    }
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
-        Box::new(self.base.expressions_mut().chain(self.length.iter_mut()))
-    }
 }
 
 impl<R: Display> From<ArrayType<Expression<R>>> for ArrayType<u64> {
@@ -215,19 +254,27 @@ impl<R: Display> From<ArrayType<Expression<R>>> for ArrayType<u64> {
     }
 }
 
+impl<R> Children<Expression<R>> for ArrayType<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(self.base.children().chain(self.length.as_ref()))
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(self.base.children_mut().chain(self.length.as_mut()))
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TupleType<E = u64> {
     pub items: Vec<Type<E>>,
 }
 
-impl<E> TupleType<E> {
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
-        Box::new(self.items.iter().flat_map(|t| t.expressions()))
+impl<R> Children<Expression<R>> for TupleType<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(self.items.iter().flat_map(|t| t.children()))
     }
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
-        Box::new(self.items.iter_mut().flat_map(|t| t.expressions_mut()))
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(self.items.iter_mut().flat_map(|t| t.children_mut()))
     }
 }
 
@@ -245,23 +292,22 @@ pub struct FunctionType<E = u64> {
     pub value: Box<Type<E>>,
 }
 
-impl<E> FunctionType<E> {
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+impl<R> Children<Expression<R>> for FunctionType<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(
             self.params
                 .iter()
-                .flat_map(|t| t.expressions())
-                .chain(self.value.expressions()),
+                .flat_map(|t| t.children())
+                .chain(self.value.children()),
         )
     }
-    /// Returns an iterator over all (top-level) expressions in this type name.
-    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         Box::new(
             self.params
                 .iter_mut()
-                .flat_map(|t| t.expressions_mut())
-                .chain(self.value.expressions_mut()),
+                .flat_map(|t| t.children_mut())
+                .chain(self.value.children_mut()),
         )
     }
 }

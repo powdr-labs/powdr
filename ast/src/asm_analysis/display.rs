@@ -56,6 +56,9 @@ impl Display for AnalysisASMFile {
                     ),
                     current_path.len(),
                 )?,
+                Item::TypeDeclaration(enum_decl) => {
+                    write_indented_by(f, enum_decl, current_path.len())?
+                }
             }
         }
         for i in (0..current_path.len()).rev() {
@@ -91,7 +94,13 @@ impl Display for Machine {
 
 impl Display for LinkDefinitionStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "link {} => {};", self.flag, self.to)
+        write!(
+            f,
+            "link {} {} {};",
+            self.flag,
+            if self.is_permutation { "~>" } else { "=>" },
+            self.to
+        )
     }
 }
 

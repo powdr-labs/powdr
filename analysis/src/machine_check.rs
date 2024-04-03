@@ -13,13 +13,11 @@ use powdr_ast::{
     parsed::{
         self,
         asm::{
-            self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, CallableRef,
-            FunctionStatement, InstructionBody, LinkDeclaration, MachineStatement, ModuleStatement,
-            RegisterFlag, SymbolDefinition,
+            self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
+            InstructionBody, LinkDeclaration, MachineStatement, ModuleStatement, RegisterFlag,
+            SymbolDefinition,
         },
-        Expression,
     },
-    SourceRef,
 };
 
 /// Verifies certain properties of each machine and constructs the Machine objects.
@@ -44,6 +42,7 @@ impl TypeChecker {
         let mut errors = vec![];
 
         let mut degree = None;
+        let mut call_selectors = None;
         let mut registers = vec![];
         let mut pil = vec![];
         let mut instructions = vec![];
@@ -57,6 +56,15 @@ impl TypeChecker {
                     degree = Some(DegreeStatement {
                         degree: degree_value,
                     });
+                }
+                MachineStatement::CallSelectors(_, sel) => {
+                    if let Some(other_sel) = &call_selectors {
+                        errors.push(format!(
+                            "Machine {ctx} already has call_selectors ({other_sel})"
+                        ));
+                    } else {
+                        call_selectors = Some(sel);
+                    }
                 }
                 MachineStatement::RegisterDeclaration(source, name, flag) => {
                     let ty = match flag {
@@ -77,11 +85,20 @@ impl TypeChecker {
                         Err(e) => errors.extend(e),
                     }
                 }
-                MachineStatement::LinkDeclaration(source, LinkDeclaration { flag, to }) => {
-                    match self.check_link_declaration(source, flag, to) {
-                        Ok(link_definition) => links.push(link_definition),
-                        Err(e) => errors.extend(e),
-                    }
+                MachineStatement::LinkDeclaration(
+                    source,
+                    LinkDeclaration {
+                        flag,
+                        to,
+                        is_permutation,
+                    },
+                ) => {
+                    links.push(LinkDefinitionStatement {
+                        source,
+                        flag,
+                        to,
+                        is_permutation,
+                    });
                 }
                 MachineStatement::Pil(_source, statement) => {
                     pil.push(statement);
@@ -237,9 +254,15 @@ impl TypeChecker {
                     ctx
                 ));
             }
+            if call_selectors.is_some() {
+                errors.push(format!(
+                    "Machine {} should not have call_selectors as it has a pc",
+                    ctx
+                ));
+            }
             for l in &links {
                 errors.push(format!(
-                    "Machine {} should not have links as it has a pc, found `{}`. Use an external instruction instead.",
+                    "Machine {} should not have links as it has a pc, found `{}`. Use an external instruction instead",
                     ctx, l.flag
                 ));
             }
@@ -259,6 +282,7 @@ impl TypeChecker {
             degree,
             latch,
             operation_id,
+            call_selectors,
             pc: registers
                 .iter()
                 .enumerate()
@@ -325,6 +349,12 @@ impl TypeChecker {
                         asm::SymbolValue::Expression(e) => {
                             res.insert(ctx.clone().with_part(&name), Item::Expression(e));
                         }
+                        asm::SymbolValue::TypeDeclaration(enum_decl) => {
+                            res.insert(
+                                ctx.clone().with_part(&name),
+                                Item::TypeDeclaration(enum_decl),
+                            );
+                        }
                     }
                 }
             }
@@ -368,30 +398,6 @@ impl TypeChecker {
             params: instruction.params,
             body: instruction.body,
         })
-    }
-
-    fn check_link_declaration(
-        &self,
-        source: SourceRef,
-        flag: Expression,
-        to: CallableRef,
-    ) -> Result<LinkDefinitionStatement, Vec<String>> {
-        let mut err = vec![];
-
-        to.params.inputs_and_outputs().for_each(|p| {
-            if let Some(ty) = &p.ty {
-                err.push(format!(
-                    "Invalid type '{}: {}' in link declaration",
-                    p.name, ty
-                ));
-            }
-        });
-
-        if err.is_empty() {
-            Ok(LinkDefinitionStatement { source, flag, to })
-        } else {
-            Err(err)
-        }
     }
 }
 
@@ -459,7 +465,7 @@ machine Main {
         expect_check_str(
             src,
             Err(vec![
-                "Machine ::Main should not have links as it has a pc, found `foo`. Use an external instruction instead.",
+                "Machine ::Main should not have links as it has a pc, found `foo`. Use an external instruction instead",
             ]),
         );
     }
@@ -495,5 +501,22 @@ machine Arith(latch, _) {
 }
 "#;
         expect_check_str(src, Err(vec!["Operation `add` in machine ::Arith can't have an operation id because the machine does not have an operation id column"]));
+    }
+
+    #[test]
+    fn virtual_machine_has_no_call_selectors() {
+        let src = r#"
+machine Main {
+   reg pc[@pc];
+
+   call_selectors sel;
+}
+"#;
+        expect_check_str(
+            src,
+            Err(vec![
+                "Machine ::Main should not have call_selectors as it has a pc",
+            ]),
+        );
     }
 }

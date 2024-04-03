@@ -12,7 +12,7 @@ machine Main {
 
     PoseidonBN254 poseidon;
 
-    instr poseidon X0, X1, X2 -> X3 = poseidon.poseidon_permutation;
+    instr poseidon X0, X1, X2 -> X3 ~ poseidon.poseidon_permutation;
 
     instr assert_eq X0, X1 {
         X0 = X1

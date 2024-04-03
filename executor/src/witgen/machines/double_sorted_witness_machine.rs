@@ -1,9 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::once;
 
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_ast::parsed::SelectedExpressions;
 
 use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineExpression;
@@ -65,7 +64,7 @@ pub struct DoubleSortedWitnesses<'a, T> {
     /// Whether this machine has a `m_is_bootloader_write` column.
     has_bootloader_write_column: bool,
     /// All selector IDs that are used on the right-hand side connecting identities.
-    selector_ids: BTreeSet<PolyID>,
+    selector_ids: BTreeMap<u64, PolyID>,
 }
 
 struct Operation<T> {
@@ -82,7 +81,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 
     pub fn try_new(
         name: String,
-        fixed_data: &'a FixedData<'a, T>,
+        fixed_data: &'a FixedData<T>,
         connecting_identities: &[&Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
         global_range_constraints: &GlobalConstraints<T>,
@@ -98,6 +97,13 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             return None;
         }
 
+        if !connecting_identities
+            .iter()
+            .all(|i| i.kind == IdentityKind::Permutation)
+        {
+            return None;
+        }
+
         let selector_ids = connecting_identities
             .iter()
             .map(|i| {
@@ -105,15 +111,15 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                     .selector
                     .as_ref()
                     .and_then(|r| try_to_simple_poly(r))
-                    .map(|p| p.poly_id)
+                    .map(|p| (i.id, p.poly_id))
             })
-            .collect::<Option<BTreeSet<_>>>()?;
+            .collect::<Option<BTreeMap<_, _>>>()?;
 
         let namespace = namespaces.drain().next().unwrap().into();
 
         // TODO check the identities.
         let selector_names = selector_ids
-            .iter()
+            .values()
             .map(|s| split_column_name(fixed_data.column_name(s)).1);
         let allowed_witnesses: HashSet<_> = ALLOWED_WITNESSES
             .into_iter()
@@ -174,6 +180,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
+    fn identity_ids(&self) -> Vec<u64> {
+        self.selector_ids.keys().cloned().collect()
+    }
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -181,15 +191,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,
-        kind: IdentityKind,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
-    ) -> Option<EvalResult<'a, T>> {
-        if kind != IdentityKind::Permutation {
-            return None;
-        }
-
-        Some(self.process_plookup_internal(left, right))
+        identity_id: u64,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
+    ) -> EvalResult<'a, T> {
+        self.process_plookup_internal(identity_id, args)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -205,7 +210,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
         let mut diff = vec![];
         let mut selectors = self
             .selector_ids
-            .iter()
+            .values()
             .map(|id| (id, Vec::new()))
             .collect::<BTreeMap<_, _>>();
         let mut set_selector = |selector_id: Option<PolyID>| {
@@ -331,8 +336,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
 impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
     fn process_plookup_internal(
         &mut self,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &SelectedExpressions<Expression<T>>,
+        identity_id: u64,
+        args: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
         // OP { operation_id, ADDR, STEP, X } is <selector> { operation_id, m_addr, m_step, m_value }
@@ -341,7 +346,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         // - operation_id == 1: Write
         // - operation_id == 2: Bootloader write
 
-        let operation_id = match left[0].constant_value() {
+        let operation_id = match args[0].constant_value() {
             Some(v) => v,
             None => {
                 return Ok(EvalValue::incomplete(
@@ -350,13 +355,12 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             }
         };
 
-        let right_selector = right.selector.as_ref().unwrap();
-        let selector_id = try_to_simple_poly(right_selector).unwrap().poly_id;
+        let selector_id = *self.selector_ids.get(&identity_id).unwrap();
 
         let is_normal_write = operation_id == T::from(OPERATION_ID_WRITE);
         let is_bootloader_write = operation_id == T::from(OPERATION_ID_BOOTLOADER_WRITE);
         let is_write = is_bootloader_write || is_normal_write;
-        let addr = match left[1].constant_value() {
+        let addr = match args[1].constant_value() {
             Some(v) => v,
             None => {
                 return Ok(EvalValue::incomplete(
@@ -365,11 +369,11 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             }
         };
 
-        let step = left[2]
+        let step = args[2]
             .constant_value()
-            .ok_or_else(|| format!("Step must be known: {} = {}", left[2], right.expressions[1]))?;
+            .ok_or_else(|| format!("Step must be known but is: {}", args[2]))?;
 
-        let value_expr = &left[3];
+        let value_expr = &args[3];
 
         log::trace!(
             "Query addr={:x}, step={step}, write: {is_write}, value: {}",

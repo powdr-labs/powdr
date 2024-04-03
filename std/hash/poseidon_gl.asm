@@ -11,6 +11,9 @@ machine PoseidonGL(FIRSTBLOCK, operation_id) {
     // hash functions.
     operation poseidon_permutation<0> state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7], state[8], state[9], state[10], state[11] -> output[0], output[1], output[2], output[3];
 
+    // Allow this machine to be connected via a permutation
+    call_selectors sel;
+
     col witness operation_id;
 
     // Ported from:
@@ -28,14 +31,8 @@ machine PoseidonGL(FIRSTBLOCK, operation_id) {
     let ROWS_PER_HASH = FULL_ROUNDS + PARTIAL_ROUNDS + 1;
 
     pol constant L0 = [1] + [0]*;
-    pol constant FIRSTBLOCK(i) { match i % ROWS_PER_HASH {
-        0 => 1,
-        _ => 0
-    }};
-    pol constant LASTBLOCK(i) { match i % ROWS_PER_HASH {
-        ROWS_PER_HASH - 1 => 1,
-        _ => 0
-    }};
+    pol constant FIRSTBLOCK(i) { if i % ROWS_PER_HASH == 0 { 1 } else { 0 } };
+    pol constant LASTBLOCK(i) { if i % ROWS_PER_HASH == ROWS_PER_HASH - 1 { 1 } else { 0 } };
     // Like LASTBLOCK, but also 1 in the last row of the table
     // Specified this way because we can't access the degree in the match statement
     pol constant LAST = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]* + [1];

@@ -30,7 +30,7 @@ machine BitAccess {
     instr assert_zero X { XIsZero = 1 }
 
     function main {
-        B <=X= ${ ("input", 0) };
+        B <=X= ${ std::prover::Query::Input(0) };
         wrap B + 0xffffffec, A;
         assert_zero A;
         return;

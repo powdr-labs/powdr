@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use powdr_number::BigUint;
 
 use crate::parsed::{
-    asm::{AbsoluteSymbolPath, Params},
-    Expression, PilStatement, TypedExpression,
+    asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
+    EnumDeclaration, Expression, PilStatement, TypedExpression,
 };
 
 mod display;
@@ -32,21 +32,33 @@ pub struct PILGraph {
     pub main: Machine,
     pub entry_points: Vec<Operation>,
     pub objects: BTreeMap<Location, Object>,
-    pub definitions: BTreeMap<AbsoluteSymbolPath, TypedExpression>,
+    pub definitions: BTreeMap<AbsoluteSymbolPath, TypeOrExpression>,
+}
+
+#[derive(Clone)]
+pub enum TypeOrExpression {
+    Type(EnumDeclaration<Expression>),
+    Expression(TypedExpression),
 }
 
 #[derive(Default, Clone)]
 pub struct Object {
-    pub degree: Option<u64>,
+    pub degree: Option<Expression>,
     /// the pil identities for this machine
     pub pil: Vec<PilStatement>,
     /// the links from this machine to its children
     pub links: Vec<Link>,
+    /// name of the latch column
+    pub latch: Option<String>,
+    /// call selector array
+    pub call_selectors: Option<String>,
+    /// true if this machine has a PC
+    pub has_pc: bool,
 }
 
 impl Object {
-    pub fn with_degree(mut self, degree: Option<u64>) -> Self {
-        self.degree = degree;
+    pub fn with_degree<D: Into<Expression>>(mut self, degree: Option<D>) -> Self {
+        self.degree = degree.map(Into::into);
         self
     }
 }
@@ -58,12 +70,14 @@ pub struct Link {
     pub from: LinkFrom,
     /// the link target, i.e. a callable in some machine
     pub to: LinkTo,
+    /// true if this is a permutation link
+    pub is_permutation: bool,
 }
 
 #[derive(Clone)]
 pub struct LinkFrom {
     pub flag: Expression,
-    pub params: Params,
+    pub params: CallableParams,
 }
 
 #[derive(Clone)]
@@ -72,6 +86,8 @@ pub struct LinkTo {
     pub machine: Machine,
     /// the operation we link to
     pub operation: Operation,
+    /// index into the permutation selector (None if lookup)
+    pub selector_idx: Option<u64>,
 }
 
 #[derive(Clone)]
@@ -80,6 +96,8 @@ pub struct Machine {
     pub location: Location,
     /// its latch
     pub latch: Option<String>,
+    /// call selector array
+    pub call_selectors: Option<String>,
     /// its operation id
     pub operation_id: Option<String>,
 }
@@ -91,5 +109,5 @@ pub struct Operation {
     /// the value of the operation id of this machine which activates this operation
     pub id: Option<BigUint>,
     /// the parameters
-    pub params: Params,
+    pub params: OperationParams,
 }

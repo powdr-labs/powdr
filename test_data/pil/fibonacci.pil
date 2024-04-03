@@ -3,10 +3,7 @@ let N = 4;
 // This uses the alternative nomenclature as well.
 
 namespace Fibonacci(N);
-    col fixed ISLAST(i) { match i {
-        N - 1 => 1,
-        _ => 0,
-    } };
+    col fixed ISLAST(i) { if i == N - 1 { 1 } else { 0 } };
     col witness x, y;
 
     ISLAST * (y' - 1) = 0;

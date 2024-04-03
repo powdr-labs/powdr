@@ -7,17 +7,18 @@ use std::path::{Path, PathBuf};
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
 
 use powdr_ast::parsed::types::Type;
-use powdr_ast::parsed::{PILFile, PilStatement};
+use powdr_ast::parsed::visitor::Children;
+use powdr_ast::parsed::{FunctionKind, LambdaExpression, PILFile, PilStatement};
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PublicDeclaration, StatementIdentifier, Symbol, TypedExpression,
+    PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
 };
 use powdr_parser::parse_type;
 
 use crate::type_inference::{infer_types, ExpectedType};
-use crate::AnalysisDriver;
+use crate::{side_effect_checker, AnalysisDriver};
 
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
 use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
@@ -43,13 +44,15 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
 fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
+    analyzer.side_effect_check();
     analyzer.type_check();
     analyzer.condense::<T>()
 }
 
 #[derive(Default)]
 struct PILAnalyzer {
-    known_symbols: HashSet<String>,
+    /// The set of all known symbols. If the flag is true, the symbol is a type name.
+    known_symbols: HashMap<String, bool>,
     current_namespace: AbsoluteSymbolPath,
     polynomial_degree: Option<DegreeType>,
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
@@ -128,52 +131,99 @@ impl PILAnalyzer {
         }
     }
 
+    /// Check that query and constr functions are used in the correct contexts.
+    pub fn side_effect_check(&self) {
+        for (name, (symbol, value)) in &self.definitions {
+            let Some(value) = value else { continue };
+            let context = match symbol.kind {
+                // Witness column value is query function
+                SymbolKind::Poly(PolynomialType::Committed) => FunctionKind::Query,
+                // Fixed column value must be pure.
+                SymbolKind::Poly(PolynomialType::Constant) => FunctionKind::Pure,
+                SymbolKind::Other() => match value {
+                    // Otherwise, just take the kind of the lambda expression.
+                    FunctionValueDefinition::Expression(TypedExpression { type_scheme: _, e }) => {
+                        if let Expression::LambdaExpression(LambdaExpression { kind, .. }) = e {
+                            *kind
+                        } else {
+                            FunctionKind::Constr
+                        }
+                    }
+                    _ => FunctionKind::Constr,
+                },
+                // Default is constr.
+                _ => FunctionKind::Constr,
+            };
+            value
+                .children()
+                .try_for_each(|e| side_effect_checker::check(&self.definitions, context, e))
+                .unwrap_or_else(|err| {
+                    panic!("Error checking side-effects of {name} {value}: {err}")
+                })
+        }
+
+        // for all identities, check that they call pure or constr functions
+        for id in &self.identities {
+            id.children()
+                .try_for_each(|e| {
+                    side_effect_checker::check(&self.definitions, FunctionKind::Constr, e)
+                })
+                .unwrap_or_else(|err| panic!("Error checking side-effects of identity {id}: {err}"))
+        }
+    }
+
     pub fn type_check(&mut self) {
-        let query_type: Type = parse_type("int -> (string, fe)").unwrap().into();
+        let query_type: Type = parse_type("int -> std::prover::Query").unwrap().into();
         let mut expressions = vec![];
         // Collect all definitions with their types and expressions.
+        // We filter out enum type declarations (the constructor functions have been added
+        // by the statement processor already).
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
         let definitions = self
             .definitions
             .iter_mut()
-            .map(|(name, (symbol, value))| {
-                let (type_scheme, expr) =
-                    if let Some(FunctionValueDefinition::Expression(TypedExpression {
-                        type_scheme,
-                        e,
-                    })) = value
-                    {
-                        (type_scheme.clone(), Some(e))
-                    } else {
-                        let type_scheme = type_from_definition(symbol, value);
+            .filter(|(_name, (_symbol, value))| {
+                !matches!(value, Some(FunctionValueDefinition::TypeDeclaration(_)))
+            })
+            .flat_map(|(name, (symbol, value))| {
+                let (type_scheme, expr) = match (symbol.kind, value) {
+                    (SymbolKind::Poly(PolynomialType::Committed), Some(value)) => {
+                        // Witness column, move its value (query function) into the expressions to be checked separately.
+                        let type_scheme = type_from_definition(symbol, &None);
 
-                        match value {
-                            Some(FunctionValueDefinition::Array(items)) => {
-                                // Expect all items in the arrays to be field elements.
-                                expressions.extend(
-                                    items
-                                        .iter_mut()
-                                        .flat_map(|item| item.pattern_mut())
-                                        .map(|e| (e, Type::Fe.into())),
-                                );
-                            }
-                            Some(FunctionValueDefinition::Query(query)) => {
-                                // Query functions are int -> (string, fe).
-                                // TODO replace this by an enum.
-                                expressions.push((
-                                    query,
-                                    ExpectedType {
-                                        ty: query_type.clone(),
-                                        allow_array: false,
-                                    },
-                                ));
-                            }
-                            _ => {}
+                        let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = value
+                        else {
+                            panic!("Invalid value for query funciton")
                         };
 
+                        expressions.push((e, query_type.clone().into()));
+
                         (type_scheme, None)
-                    };
-                (name.clone(), (type_scheme, expr))
+                    }
+                    (
+                        _,
+                        Some(FunctionValueDefinition::Expression(TypedExpression {
+                            type_scheme,
+                            e,
+                        })),
+                    ) => (type_scheme.clone(), Some(e)),
+                    (_, value) => {
+                        let type_scheme = type_from_definition(symbol, value);
+
+                        if let Some(FunctionValueDefinition::Array(items)) = value {
+                            // Expect all items in the arrays to be field elements.
+                            expressions.extend(
+                                items
+                                    .iter_mut()
+                                    .flat_map(|item| item.pattern_mut())
+                                    .map(|e| (e, Type::Fe.into())),
+                            );
+                        }
+
+                        (type_scheme, None)
+                    }
+                };
+                Some((name.clone(), (type_scheme, expr)))
             })
             .collect();
         // Collect all expressions in identities.
@@ -198,7 +248,6 @@ impl PILAnalyzer {
                 }
             }
         }
-
         let inferred_types = infer_types(definitions, &mut expressions)
             .map_err(|e| {
                 eprintln!("\nError during type inference:\n{e}");
@@ -236,10 +285,25 @@ impl PILAnalyzer {
             }
             PilStatement::Include(_, _) => unreachable!(),
             _ => {
-                for name in statement.symbol_definition_names() {
-                    let absolute_name = self.driver().resolve_decl(name);
-                    if !self.known_symbols.insert(absolute_name.clone()) {
-                        panic!("Duplicate symbol definition: {absolute_name}");
+                let names = statement
+                    .symbol_definition_names()
+                    .map(|(name, is_type)| (self.driver().resolve_decl(name), is_type))
+                    .chain(
+                        statement
+                            .defined_contained_names()
+                            .map(|(name, inner, is_type)| {
+                                (
+                                    self.driver()
+                                        .resolve_namespaced_decl(&[name, inner])
+                                        .to_dotted_string(),
+                                    is_type,
+                                )
+                            }),
+                    )
+                    .collect::<Vec<_>>();
+                for (name, is_type) in names {
+                    if self.known_symbols.insert(name.clone(), is_type).is_some() {
+                        panic!("Duplicate symbol definition: {name}");
                     }
                 }
             }
@@ -317,18 +381,20 @@ impl PILAnalyzer {
 struct Driver<'a>(&'a PILAnalyzer);
 
 impl<'a> AnalysisDriver for Driver<'a> {
-    fn resolve_decl(&self, name: &str) -> String {
-        (if name.starts_with('%') {
-            // Constants are not namespaced
-            AbsoluteSymbolPath::default()
-        } else {
-            self.0.current_namespace.clone()
-        })
-        .with_part(name)
-        .to_dotted_string()
+    fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath {
+        path.iter()
+            .fold(self.0.current_namespace.clone(), |path, part| {
+                if part.starts_with('%') {
+                    // Constants are not namespaced
+                    AbsoluteSymbolPath::default()
+                } else {
+                    path
+                }
+                .with_part(part)
+            })
     }
 
-    fn resolve_ref(&self, path: &SymbolPath) -> String {
+    fn resolve_ref(&self, path: &SymbolPath, is_type: bool) -> String {
         // Try to resolve the name starting at the current namespace and then
         // go up level by level until the root.
 
@@ -337,7 +403,14 @@ impl<'a> AnalysisDriver for Driver<'a> {
             .iter_to_root()
             .find_map(|prefix| {
                 let path = prefix.join(path.clone()).to_dotted_string();
-                self.0.known_symbols.contains(&path).then_some(path)
+                self.0.known_symbols.get(&path).map(|t| {
+                    if *t && !is_type {
+                        panic!("Expected value but got type: {path}");
+                    } else if !t && is_type {
+                        panic!("Expected type but got value: {path}");
+                    }
+                    path
+                })
             })
             .unwrap_or_else(|| panic!("Symbol not found: {}", path.to_dotted_string()))
     }

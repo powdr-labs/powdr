@@ -15,6 +15,7 @@ use powdr_asm_utils::{
     },
     Architecture,
 };
+use powdr_number::{FieldElement, KnownField};
 
 use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
 use crate::coprocessors::*;
@@ -102,7 +103,7 @@ impl Architecture for RiscvArchitecture {
 }
 
 /// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
-pub fn compile(
+pub fn compile<T: FieldElement>(
     mut assemblies: BTreeMap<String, String>,
     coprocessors: &CoProcessors,
     with_bootloader: bool,
@@ -256,11 +257,25 @@ pub fn compile(
     assert!((18..=20).contains(&degree));
     let degree = 1 << degree;
 
+    let mut imports = vec![
+        "use std::binary::Binary;",
+        "use std::shift::Shift;",
+        "use std::split::split_gl::SplitGL;",
+    ];
+    imports.extend(coprocessors.machine_imports());
+
+    let mut declarations = vec![
+        ("binary", "Binary"),
+        ("shift", "Shift"),
+        ("split_gl", "SplitGL"),
+    ];
+    declarations.extend(coprocessors.declarations());
+
     riscv_machine(
-        &coprocessors.machine_imports(),
-        &preamble(degree, coprocessors, with_bootloader),
+        &imports,
+        &preamble::<T>(degree, coprocessors, with_bootloader),
         initial_mem,
-        &coprocessors.declarations(),
+        &declarations,
         program,
     )
 }
@@ -475,12 +490,18 @@ let initial_memory: (fe, fe)[] = [
     )
 }
 
-fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> String {
+fn preamble<T: FieldElement>(
+    degree: u64,
+    coprocessors: &CoProcessors,
+    with_bootloader: bool,
+) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
         bootloader_preamble()
     } else {
         "".to_string()
     };
+
+    let mul_instruction = mul_instruction::<T>();
 
     format!("degree {degree};")
         + r#"
@@ -511,11 +532,7 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
     x0 = 0;
 
     // ============== iszero check for X =======================
-    col witness XInv;
-    col witness XIsZero;
-    XIsZero = 1 - X * XInv;
-    XIsZero * X = 0;
-    std::utils::force_bool(XIsZero);
+    let XIsZero = std::utils::is_zero(X);
 
     // ============== control-flow instructions ==============
 
@@ -547,6 +564,18 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
 
     instr is_equal_zero X -> Y { Y = XIsZero }
     instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
+
+    // ================= binary/bitwise instructions =================
+    instr and Y, Z -> X ~ binary.and;
+    instr or Y, Z -> X ~ binary.or;
+    instr xor Y, Z -> X ~ binary.xor;
+
+    // ================= shift instructions =================
+    instr shl Y, Z -> X ~ shift.shl;
+    instr shr Y, Z -> X ~ shift.shr;
+
+    // ================== wrapping instructions ==============
+    instr split_gl Z -> X, Y ~ split_gl.split;
 
     // ================= coprocessor substitution instructions =================
 "# + &coprocessors.instructions()
@@ -643,7 +672,15 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
         // quotient is 32 bits:
         Z = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
+"# + mul_instruction
+}
 
+fn mul_instruction<T: FieldElement>() -> &'static str {
+    match T::known_field().expect("Unknown field!") {
+        KnownField::Bn254Field => {
+            // The BN254 field can fit any 64-bit number, so we can naively de-compose
+            // Z * W into 8 bytes and put them together to get the upper and lower word.
+            r#"
     // Multiply two 32-bits unsigned, return the upper and lower unsigned 32-bit
     // halves of the result.
     // X is the lower half (least significant bits)
@@ -654,6 +691,19 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
         Y = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
     }
 "#
+        }
+        KnownField::GoldilocksField => {
+            // The Goldilocks field cannot fit some 64-bit numbers, so we have to use
+            // the split machine. Note that it can fit a product of two 32-bit numbers.
+            r#"
+    // Multiply two 32-bits unsigned, return the upper and lower unsigned 32-bit
+    // halves of the result.
+    // X is the lower half (least significant bits)
+    // Y is the higher half (most significant bits)
+    instr mul Z, W -> X, Y ~ split_gl.split Z * W -> X, Y;
+"#
+        }
+    }
 }
 
 fn memory(with_bootloader: bool) -> String {
@@ -1379,7 +1429,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                     let dest = if instr == "tail" { "tmp1" } else { "x1" };
                     vec![format!("{dest} <== jump({arg});")]
                 }
-                // Both "call" and "tail" are pseudoinstructions that are
+                // Both "call" and "tail" are pseudo-instructions that are
                 // supposed to use x6 to calculate the high bits of the
                 // destination address. Our implementation does not touch x6,
                 // but no sane program would rely on this behavior, so we are
@@ -1393,13 +1443,13 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         }
         "ecall" => {
             assert!(args.is_empty());
-            vec!["x10 <=X= ${ (\"input\", std::prover::eval(x10)) };".to_string()]
+            vec!["x10 <=X= ${ std::prover::Query::Input(std::convert::int(std::prover::eval(x10))) };".to_string()]
         }
         "ebreak" => {
             assert!(args.is_empty());
             // This is using x0 on purpose, because we do not want to introduce
             // nondeterminism with this.
-            vec!["x0 <=X= ${ (\"print_char\", std::prover::eval(x10)) };\n".to_string()]
+            vec!["x0 <=X= ${ std::prover::Query::PrintChar(std::convert::int(std::prover::eval(x10))) };\n".to_string()]
         }
         "ret" => {
             assert!(args.is_empty());
@@ -1521,10 +1571,10 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             let (rd, rs, off) = rro(args);
             assert_eq!(off, 0);
             // TODO misaligned access should raise misaligned address exceptions
-            let mut statments =
+            let mut statements =
                 only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs});")], rd);
-            statments.push("lr_sc_reservation <=X= 1;".into());
-            statments
+            statements.push("lr_sc_reservation <=X= 1;".into());
+            statements
         }
 
         insn if insn.starts_with("sc.w") => {

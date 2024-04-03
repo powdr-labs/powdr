@@ -17,6 +17,7 @@ use std::{
 
 use builder::TraceBuilder;
 
+use itertools::Itertools;
 use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
@@ -234,9 +235,9 @@ mod builder {
     fn register_names(main: &Machine) -> Vec<&str> {
         main.registers
             .iter()
-            .filter_map(|stmnt| {
-                if stmnt.ty != RegisterTy::Assignment {
-                    Some(&stmnt.name[..])
+            .filter_map(|statement| {
+                if statement.ty != RegisterTy::Assignment {
+                    Some(&statement.name[..])
                 } else {
                     None
                 }
@@ -780,7 +781,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                         powdr_ast::parsed::BinaryOperator::Sub => Elem::Binary(l - r),
                         powdr_ast::parsed::BinaryOperator::Mul => match l.checked_mul(*r) {
                             // Multiplication is a special case as the input for
-                            // posseidon_gl requires field multiplication. So,
+                            // poseidon_gl requires field multiplication. So,
                             // if native multiplication overflows, we use field
                             // multiplication.
                             //
@@ -839,35 +840,51 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Expression::Reference(f) if f.to_string() == "std::prover::eval" => {
                     self.eval_expression(&arguments[0])
                 }
+                Expression::Reference(f) if f.to_string() == "std::convert::int" => {
+                    // whatever. we don't need to convert anything
+                    self.eval_expression(&arguments[0])
+                }
                 Expression::Reference(f) => {
                     self.exec_instruction(f.try_to_identifier().unwrap(), arguments)
                 }
-                _ => panic!(),
+                _ => {
+                    unimplemented!(
+                        "Function call not implemented: {function}{}",
+                        arguments.iter().format(", ")
+                    )
+                }
             },
             Expression::FreeInput(expr) => {
-                if let Expression::Tuple(t) = &**expr {
-                    let mut all_strings: Vec<String> = Vec::new();
-                    for expr in t {
-                        if let Expression::String(_) = expr {
-                            all_strings.push(expr.to_string());
-                        } else {
-                            let val = self.eval_expression(expr)[0];
-                            all_strings.push(val.to_string());
-                        }
+                let Expression::FunctionCall(FunctionCall {
+                    function,
+                    arguments,
+                }) = expr.as_ref()
+                else {
+                    panic!("Free input does not match pattern: {expr}");
+                };
+                let Expression::Reference(f) = function.as_ref() else {
+                    panic!("Free input does not match pattern: {expr}");
+                };
+                let variant = f
+                    .to_string()
+                    .strip_prefix("std::prover::Query::")
+                    .unwrap_or_else(|| panic!("Free input does not match pattern: {expr}"))
+                    .to_string();
+                let values = arguments
+                    .iter()
+                    .map(|arg| self.eval_expression(arg)[0].to_string())
+                    .collect::<Vec<_>>();
+                let query = format!("{variant}({})", values.join(","));
+                match (self.inputs)(&query).unwrap() {
+                    Some(val) => vec![Elem::new_from_fe_as_bin(&val)],
+                    None => {
+                        panic!("unknown query command: {query}");
                     }
-                    let query = format!("({})", all_strings.join(","));
-                    match (self.inputs)(&query).unwrap() {
-                        Some(val) => vec![Elem::new_from_fe_as_bin(&val)],
-                        None => {
-                            panic!("unknown query command: {query}");
-                        }
-                    }
-                } else {
-                    panic!("does not match IO pattern")
                 }
             }
             Expression::MatchExpression(_, _) => todo!(),
             Expression::IfExpression(_) => panic!(),
+            Expression::BlockExpression(_, _) => panic!(),
             Expression::IndexAccess(_) => todo!(),
         }
     }
@@ -963,6 +980,7 @@ pub enum ExecMode {
 /// converted to i64, so it is important to the execution itself.
 pub fn execute<F: FieldElement>(
     asm_source: &str,
+    initial_memory: MemoryState,
     inputs: &Callback<F>,
     bootloader_inputs: &[Elem<F>],
     mode: ExecMode,
@@ -977,7 +995,7 @@ pub fn execute<F: FieldElement>(
     log::info!("Executing...");
     execute_ast(
         &analyzed,
-        MemoryState::new(),
+        initial_memory,
         inputs,
         bootloader_inputs,
         usize::MAX,

@@ -1,5 +1,10 @@
 let N: int = 4;
 
+namespace std::prover(N);
+    enum Query {
+        Input(int)
+    }
+
 namespace Sum(N);
     let last_row = N - 1;
 
@@ -9,9 +14,9 @@ namespace Sum(N);
 
     col witness input(i) query match i {
         // A non-exhaustive match statement is the only way to return "None"
-        0 => ("input", 0),
-        1 => ("input", 1),
-        2 => ("input", 2),
+        0 => std::prover::Query::Input(0),
+        1 => std::prover::Query::Input(1),
+        2 => std::prover::Query::Input(2),
         // No response in the case of i == 3
     };
     col witness sum;

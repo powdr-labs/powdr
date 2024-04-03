@@ -72,7 +72,7 @@ Type checking takes a parse tree and returns a tree of machines. The output type
 
 ### Virtual machine reduction
 
-Virtual machine reduction turns virtual machines into constrained machines. It has no effect on contrained machines.
+Virtual machine reduction turns virtual machines into constrained machines. It has no effect on constrained machines.
 
 #### Inference
 

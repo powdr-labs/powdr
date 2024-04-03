@@ -2,19 +2,21 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     convert::Infallible,
+    iter::once,
 };
 
-use powdr_ast::{
-    parsed::Expression,
-    parsed::{
-        asm::{
-            ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Machine, MachineStatement, Module,
-            ModuleRef, ModuleStatement, SymbolDefinition, SymbolValue, SymbolValueRef,
-        },
-        folder::Folder,
-        visitor::ExpressionVisitable,
-        ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, MatchArm, TypedExpression,
+use powdr_ast::parsed::{
+    asm::{
+        ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Instruction, InstructionBody,
+        LinkDeclaration, Machine, MachineStatement, Module, ModuleRef, ModuleStatement,
+        SymbolDefinition, SymbolValue, SymbolValueRef,
     },
+    folder::Folder,
+    types::{Type, TypeScheme},
+    visitor::{Children, ExpressionVisitable},
+    ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall, IndexAccess,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, PilStatement, StatementInsideBlock,
+    TypedExpression,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -76,15 +78,28 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 .transpose(),
                             },
                             SymbolValue::Expression(mut exp) => {
-                                for tne in exp
-                                    .type_scheme
-                                    .iter_mut()
-                                    .flat_map(|ts| ts.ty.expressions_mut())
-                                {
-                                    canonicalize_inside_expression(tne, &self.path, self.paths);
+                                if let Some(type_scheme) = &mut exp.type_scheme {
+                                    type_scheme
+                                        .ty
+                                        .map_to_type_vars(&type_scheme.vars.vars().collect());
+                                    canonicalize_inside_type(
+                                        &mut type_scheme.ty,
+                                        &self.path,
+                                        self.paths,
+                                    );
                                 }
                                 canonicalize_inside_expression(&mut exp.e, &self.path, self.paths);
                                 Some(Ok(SymbolValue::Expression(exp)))
+                            }
+                            SymbolValue::TypeDeclaration(mut enum_decl) => {
+                                for variant in &mut enum_decl.variants {
+                                    if let Some(fields) = &mut variant.fields {
+                                        for field in fields {
+                                            canonicalize_inside_type(field, &self.path, self.paths);
+                                        }
+                                    }
+                                }
+                                Some(Ok(SymbolValue::TypeDeclaration(enum_decl)))
                             }
                         }
                         .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
@@ -102,7 +117,24 @@ impl<'a> Folder for Canonicalizer<'a> {
                     *path = self.paths.get(&p).cloned().unwrap().into();
                 }
                 MachineStatement::Pil(_start, statement) => {
-                    for e in statement.expressions_mut() {
+                    if let PilStatement::LetStatement(_, _, Some(type_scheme), expr) = statement {
+                        canonicalize_inside_type_scheme(type_scheme, &self.path, self.paths);
+                        if let Some(expr) = expr {
+                            canonicalize_inside_expression(expr, &self.path, self.paths);
+                        }
+                    } else {
+                        for e in statement.children_mut() {
+                            canonicalize_inside_expression(e, &self.path, self.paths);
+                        }
+                    }
+                }
+                MachineStatement::FunctionDeclaration(_, _, _, statements) => {
+                    // Only check free inputs inside statements for now.
+                    for e in statements
+                        .iter_mut()
+                        .flat_map(|s| s.children_mut())
+                        .flat_map(free_inputs_in_expression_mut)
+                    {
                         canonicalize_inside_expression(e, &self.path, self.paths);
                     }
                 }
@@ -111,6 +143,73 @@ impl<'a> Folder for Canonicalizer<'a> {
         }
 
         Ok(machine)
+    }
+}
+
+/// Takes an expression and returns an iterator over the (non-nested) free inputs contained in those.
+fn free_inputs_in_expression<'a>(
+    expr: &'a Expression,
+) -> Box<dyn Iterator<Item = &'a Expression> + 'a> {
+    match expr {
+        Expression::FreeInput(e) => Box::new(once(e.as_ref())),
+        Expression::Reference(_)
+        | Expression::PublicReference(_)
+        | Expression::Number(_, _)
+        | Expression::String(_) => Box::new(None.into_iter()),
+        Expression::BinaryOperation(left, _, right) => {
+            Box::new(free_inputs_in_expression(left).chain(free_inputs_in_expression(right)))
+        }
+        Expression::UnaryOperation(_, expr) => free_inputs_in_expression(expr),
+        Expression::FunctionCall(FunctionCall {
+            function,
+            arguments,
+        }) => Box::new(
+            free_inputs_in_expression(function)
+                .chain(arguments.iter().flat_map(|e| free_inputs_in_expression(e))),
+        ),
+        // These should really not appear in assembly statements.
+        Expression::Tuple(_) => todo!(),
+        Expression::LambdaExpression(_) => todo!(),
+        Expression::ArrayLiteral(_) => todo!(),
+        Expression::IndexAccess(_) => todo!(),
+        Expression::MatchExpression(_, _) => todo!(),
+        Expression::IfExpression(_) => todo!(),
+        Expression::BlockExpression(_, _) => todo!(),
+    }
+}
+
+/// Takes an expression and returns an iterator over the (non-nested) free inputs contained in those.
+fn free_inputs_in_expression_mut<'a>(
+    expr: &'a mut Expression,
+) -> Box<dyn Iterator<Item = &'a mut Expression> + 'a> {
+    match expr {
+        Expression::FreeInput(e) => Box::new(once(e.as_mut())),
+        Expression::Reference(_)
+        | Expression::PublicReference(_)
+        | Expression::Number(_, _)
+        | Expression::String(_) => Box::new(None.into_iter()),
+        Expression::BinaryOperation(left, _, right) => Box::new(
+            free_inputs_in_expression_mut(left).chain(free_inputs_in_expression_mut(right)),
+        ),
+        Expression::UnaryOperation(_, expr) => free_inputs_in_expression_mut(expr),
+        Expression::FunctionCall(FunctionCall {
+            function,
+            arguments,
+        }) => Box::new(
+            free_inputs_in_expression_mut(function).chain(
+                arguments
+                    .iter_mut()
+                    .flat_map(|e| free_inputs_in_expression_mut(e)),
+            ),
+        ),
+        // These should really not appear in assembly statements.
+        Expression::Tuple(_) => todo!(),
+        Expression::LambdaExpression(_) => todo!(),
+        Expression::ArrayLiteral(_) => todo!(),
+        Expression::IndexAccess(_) => todo!(),
+        Expression::MatchExpression(_, _) => todo!(),
+        Expression::IfExpression(_) => todo!(),
+        Expression::BlockExpression(_, _) => todo!(),
     }
 }
 
@@ -129,6 +228,32 @@ fn canonicalize_inside_expression(
             }
         }
     });
+}
+
+fn canonicalize_inside_type_scheme(
+    type_scheme: &mut TypeScheme<Expression>,
+    path: &AbsoluteSymbolPath,
+    paths: &'_ PathMap,
+) {
+    type_scheme
+        .ty
+        .map_to_type_vars(&type_scheme.vars.vars().collect());
+    canonicalize_inside_type(&mut type_scheme.ty, path, paths);
+}
+
+fn canonicalize_inside_type(
+    ty: &mut Type<Expression>,
+    path: &AbsoluteSymbolPath,
+    paths: &'_ PathMap,
+) {
+    for p in ty.contained_named_types_mut() {
+        let abs = paths.get(&path.clone().join(p.clone())).unwrap();
+        *p = abs.relative_to(&Default::default()).clone();
+    }
+
+    for tne in ty.children_mut() {
+        canonicalize_inside_expression(tne, path, paths);
+    }
 }
 
 /// The state of the checking process. We visit the module tree collecting each relative path and pointing it to the absolute path it resolves to in the state.
@@ -208,8 +333,10 @@ fn check_path_internal<'a>(
             ),
             |(mut location, value, chain), member| {
                 match value {
-                    // machines and expressions do not expose symbols
-                    SymbolValueRef::Machine(_) | SymbolValueRef::Expression(_) => {
+                    // machines, expressions and enum variants do not expose symbols
+                    SymbolValueRef::Machine(_)
+                    | SymbolValueRef::Expression(_)
+                    | SymbolValueRef::TypeConstructor(_) => {
                         Err(format!("symbol not found in `{location}`: `{member}`"))
                     }
                     // modules expose symbols
@@ -243,6 +370,19 @@ fn check_path_internal<'a>(
                             chain,
                         )
                     }
+                    // enums expose symbols
+                    SymbolValueRef::TypeDeclaration(enum_decl) => enum_decl
+                        .variants
+                        .iter()
+                        .find(|variant| variant.name == member)
+                        .ok_or_else(|| format!("symbol not found in `{location}`: `{member}`"))
+                        .map(|variant| {
+                            (
+                                location.with_part(member),
+                                SymbolValueRef::TypeConstructor(variant),
+                                chain,
+                            )
+                        }),
                 }
             },
         )
@@ -318,10 +458,13 @@ fn check_module(
             }
             SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)?,
             SymbolValue::Expression(TypedExpression { e, type_scheme }) => {
-                for tne in type_scheme.iter().flat_map(|tn| tn.ty.expressions()) {
-                    check_expression(&location, tne, state, &HashSet::default())?
+                if let Some(type_scheme) = type_scheme {
+                    check_type_scheme(&location, type_scheme, state, &Default::default())?;
                 }
                 check_expression(&location, e, state, &HashSet::default())?
+            }
+            SymbolValue::TypeDeclaration(enum_decl) => {
+                check_type_declaration(&location, enum_decl, state)?
             }
         }
     }
@@ -353,9 +496,46 @@ fn check_machine(
             MachineStatement::Submachine(_, path, _) => {
                 check_path(module_location.clone().join(path.clone()), state)?
             }
-            MachineStatement::Pil(_, statement) => statement
-                .expressions()
+            MachineStatement::FunctionDeclaration(_, _, _, statements) => statements
+                .iter()
+                .flat_map(|s| s.children())
+                .flat_map(free_inputs_in_expression)
                 .try_for_each(|e| check_expression(&module_location, e, state, &local_variables))?,
+            MachineStatement::Pil(_, statement) => {
+                if let PilStatement::LetStatement(_, _, Some(type_scheme), _) = statement {
+                    check_type_scheme(&module_location, type_scheme, state, &local_variables)?;
+                }
+                statement.children().try_for_each(|e| {
+                    check_expression(&module_location, e, state, &local_variables)
+                })?
+            }
+            // check rhs input expressions for `instr` and `link` declarations
+            MachineStatement::LinkDeclaration(
+                _,
+                LinkDeclaration {
+                    to: callable_ref, ..
+                },
+            )
+            | MachineStatement::InstructionDeclaration(
+                _,
+                _,
+                Instruction {
+                    body: InstructionBody::CallablePlookup(callable_ref),
+                    ..
+                },
+            )
+            | MachineStatement::InstructionDeclaration(
+                _,
+                _,
+                Instruction {
+                    body: InstructionBody::CallablePermutation(callable_ref),
+                    ..
+                },
+            ) => {
+                callable_ref.params.inputs.iter().try_for_each(|e| {
+                    check_expression(&module_location, e, state, &local_variables)
+                })?;
+            }
             _ => {}
         }
     }
@@ -390,7 +570,11 @@ fn check_expression(
         Expression::Tuple(items) | Expression::ArrayLiteral(ArrayLiteral { items }) => {
             check_expressions(location, items, state, local_variables)
         }
-        Expression::LambdaExpression(LambdaExpression { params, body }) => {
+        Expression::LambdaExpression(LambdaExpression {
+            kind: _,
+            params,
+            body,
+        }) => {
             // Add the local variables, ignore collisions.
             let mut local_variables = local_variables.clone();
             local_variables.extend(params.iter().cloned());
@@ -414,13 +598,9 @@ fn check_expression(
         Expression::MatchExpression(scrutinee, arms) => {
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
-                match pattern {
-                    powdr_ast::parsed::MatchPattern::CatchAll => Ok(()),
-                    powdr_ast::parsed::MatchPattern::Pattern(e) => {
-                        check_expression(location, e, state, local_variables)
-                    }
-                }?;
-                check_expression(location, value, state, local_variables)
+                let mut local_variables = local_variables.clone();
+                local_variables.extend(pattern.variables().cloned());
+                check_expression(location, value, state, &local_variables)
             })
         }
         Expression::IfExpression(powdr_ast::parsed::IfExpression {
@@ -431,6 +611,23 @@ fn check_expression(
             check_expression(location, condition, state, local_variables)?;
             check_expression(location, body, state, local_variables)?;
             check_expression(location, else_body, state, local_variables)
+        }
+        Expression::BlockExpression(statements, expr) => {
+            let mut local_variables = local_variables.clone();
+            for statement in statements {
+                match statement {
+                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { name, value }) => {
+                        if let Some(value) = value {
+                            check_expression(location, value, state, &local_variables)?;
+                        }
+                        local_variables.insert(name.clone());
+                    }
+                    StatementInsideBlock::Expression(expr) => {
+                        check_expression(location, expr, state, &local_variables)?;
+                    }
+                }
+            }
+            check_expression(location, expr, state, &local_variables)
         }
     }
 }
@@ -443,6 +640,74 @@ fn check_expressions(
 ) -> Result<(), String> {
     expressions
         .iter()
+        .try_for_each(|e| check_expression(location, e, state, local_variables))
+}
+
+fn check_type_declaration(
+    location: &AbsoluteSymbolPath,
+    enum_decl: &EnumDeclaration<Expression>,
+    state: &mut State<'_>,
+) -> Result<(), String> {
+    // If we add generic types, the type variables need to be added
+    // in a way similar to local variables in expressions.
+
+    enum_decl.variants.iter().try_fold(
+        BTreeSet::default(),
+        |mut acc, EnumVariant { name, .. }| {
+            acc.insert(name.clone())
+                .then_some(acc)
+                .ok_or(format!("Duplicate variant `{name}` in enum `{location}`"))
+        },
+    )?;
+
+    enum_decl
+        .variants
+        .iter()
+        .flat_map(|v| v.fields.iter())
+        .flat_map(|v| v.iter())
+        .try_for_each(|ty| {
+            check_type(
+                location,
+                ty,
+                state,
+                &Default::default(),
+                &Default::default(),
+            )
+        })
+}
+
+fn check_type_scheme(
+    location: &AbsoluteSymbolPath,
+    type_scheme: &TypeScheme<Expression>,
+    state: &mut State<'_>,
+    local_variables: &HashSet<String>,
+) -> Result<(), String> {
+    let type_vars = type_scheme.vars.vars().collect::<HashSet<_>>();
+    check_type(
+        location,
+        &type_scheme.ty,
+        state,
+        &type_vars,
+        local_variables,
+    )
+}
+
+fn check_type(
+    location: &AbsoluteSymbolPath,
+    ty: &Type<Expression>,
+    state: &mut State<'_>,
+    type_vars: &HashSet<&String>,
+    local_variables: &HashSet<String>,
+) -> Result<(), String> {
+    for p in ty.contained_named_types() {
+        if let Some(id) = p.try_to_identifier() {
+            if type_vars.contains(id) {
+                continue;
+            }
+        }
+        check_path(location.clone().join(p.clone()), state)?
+    }
+    ty.children()
         .try_for_each(|e| check_expression(location, e, state, local_variables))
 }
 

@@ -42,8 +42,8 @@ pub fn escape_label(l: &str) -> String {
 }
 
 pub fn argument_to_escaped_symbol<R: Register, F: FunctionOpKind>(x: &Argument<R, F>) -> String {
-    if let Argument::Expression(Expression::Symbol(symb)) = x {
-        escape_label(symb)
+    if let Argument::Expression(Expression::Symbol(symbol)) = x {
+        escape_label(symbol)
     } else {
         panic!("Expected a symbol, got {x}");
     }

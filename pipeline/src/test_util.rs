@@ -31,16 +31,22 @@ pub fn verify_test_file(
     verify_pipeline(pipeline)
 }
 
-pub fn verify_asm_string(
+pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     file_name: &str,
     contents: &str,
     inputs: Vec<GoldilocksField>,
     external_witness_values: Vec<(String, Vec<GoldilocksField>)>,
+    data: Option<Vec<(u32, S)>>,
 ) {
-    let pipeline = Pipeline::default()
+    let mut pipeline = Pipeline::default()
         .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)))
         .with_prover_inputs(inputs)
         .add_external_witness_values(external_witness_values);
+
+    if let Some(data) = data {
+        pipeline = pipeline.add_data_vec(&data);
+    }
+
     verify_pipeline(pipeline).unwrap();
 }
 
@@ -180,9 +186,9 @@ pub fn evaluate_function<'a, T: FieldElement>(
     function: &'a str,
     arguments: Vec<Arc<evaluator::Value<'a, T>>>,
 ) -> evaluator::Value<'a, T> {
-    let symbols = evaluator::Definitions(&analyzed.definitions);
+    let mut symbols = evaluator::Definitions(&analyzed.definitions);
     let function = symbols.lookup(function, None).unwrap();
-    evaluator::evaluate_function_call(function, arguments, &symbols)
+    evaluator::evaluate_function_call(function, arguments, &mut symbols)
         .unwrap()
         .as_ref()
         .clone()

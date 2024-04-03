@@ -4,14 +4,12 @@ use itertools::Itertools;
 
 use crate::{
     parsed::{BinaryOperator, UnaryOperator},
-    write_items, write_items_indented,
+    write_indented_by, write_items, write_items_indented,
 };
 
 use self::types::{ArrayType, FunctionType, TupleType, TypeBounds};
 
 use super::{asm::*, *};
-
-// TODO indentation
 
 impl Display for PILFile {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -44,12 +42,18 @@ impl Display for ModuleStatement {
                             },
                         ..
                     },
-                ) => match (latch, operation_id) {
-                    (None, None) => write!(f, "machine {name} {m}"),
-                    (Some(latch), None) => write!(f, "machine {name}({latch}, _) {m}"),
-                    (None, Some(op_id)) => write!(f, "machine {name}(_, {op_id}) {m}"),
-                    (Some(latch), Some(op_id)) => write!(f, "machine {name}({latch}, {op_id}) {m}"),
-                },
+                ) => {
+                    if let (None, None) = (latch, operation_id) {
+                        write!(f, "machine {name} {m}")
+                    } else {
+                        write!(
+                            f,
+                            "machine {name}({}, {}) {m}",
+                            latch.as_deref().unwrap_or("_"),
+                            operation_id.as_deref().unwrap_or("_"),
+                        )
+                    }
+                }
                 SymbolValue::Import(i) => {
                     write!(f, "{i} as {name};")
                 }
@@ -66,6 +70,7 @@ impl Display for ModuleStatement {
                         format_type_scheme_around_name(name, type_scheme)
                     )
                 }
+                SymbolValue::TypeDeclaration(ty) => write!(f, "{ty}"),
             },
         }
     }
@@ -109,7 +114,8 @@ impl Display for InstructionBody {
                     .map(format_instruction_statement)
                     .format(", ")
             ),
-            InstructionBody::CallableRef(r) => write!(f, " = {r};"),
+            InstructionBody::CallablePlookup(r) => write!(f, " = {r};"),
+            InstructionBody::CallablePermutation(r) => write!(f, " ~ {r};"),
         }
     }
 }
@@ -142,7 +148,13 @@ impl Display for Instruction {
 
 impl Display for LinkDeclaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "link {} => {};", self.flag, self.to)
+        write!(
+            f,
+            "link {} {} {};",
+            self.flag,
+            if self.is_permutation { "~>" } else { "=>" },
+            self.to,
+        )
     }
 }
 
@@ -156,6 +168,7 @@ impl Display for MachineStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             MachineStatement::Degree(_, degree) => write!(f, "degree {};", degree),
+            MachineStatement::CallSelectors(_, sel) => write!(f, "call_selectors {};", sel),
             MachineStatement::Pil(_, statement) => write!(f, "{statement}"),
             MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),
             MachineStatement::RegisterDeclaration(_, name, flag) => write!(
@@ -274,7 +287,7 @@ impl Display for RegisterFlag {
     }
 }
 
-impl Display for Params {
+impl<T: Display> Display for Params<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -315,11 +328,16 @@ impl<Ref: Display> Display for MatchArm<Ref> {
     }
 }
 
-impl<Ref: Display> Display for MatchPattern<Ref> {
+impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            MatchPattern::CatchAll => write!(f, "_"),
-            MatchPattern::Pattern(p) => write!(f, "{p}"),
+            Pattern::CatchAll => write!(f, "_"),
+            Pattern::Ellipsis => write!(f, ".."),
+            Pattern::Number(n) => write!(f, "{n}"),
+            Pattern::String(s) => write!(f, "{}", quote(s)),
+            Pattern::Tuple(t) => write!(f, "({})", t.iter().format(", ")),
+            Pattern::Array(a) => write!(f, "[{}]", a.iter().format(", ")),
+            Pattern::Variable(v) => write!(f, "{v}"),
         }
     }
 }
@@ -328,9 +346,29 @@ impl<Ref: Display> Display for IfExpression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "if {} {{ {} }} else {{ {} }}",
+            "if {} {} else {}",
             self.condition, self.body, self.else_body
         )
+    }
+}
+
+impl<Ref: Display> Display for StatementInsideBlock<Ref> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            StatementInsideBlock::LetStatement(s) => write!(f, "{s}"),
+            StatementInsideBlock::Expression(e) => write!(f, "{e};"),
+        }
+    }
+}
+
+impl<Ref: Display> Display for LetStatementInsideBlock<Ref> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "let {}", self.name)?;
+        if let Some(v) = &self.value {
+            write!(f, " = {v};")
+        } else {
+            write!(f, ";")
+        }
     }
 }
 
@@ -363,60 +401,70 @@ impl Display for PilStatement {
             PilStatement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
-            PilStatement::LetStatement(_, name, type_scheme, value) => {
-                write!(
-                    f,
-                    "    let{}",
-                    format_type_scheme_around_name(name, type_scheme)
-                )?;
-                if let Some(value) = &value {
-                    write!(f, " = {value}")?;
-                }
-                write!(f, ";")
-            }
+            PilStatement::LetStatement(_, name, type_scheme, value) => write_indented_by(
+                f,
+                format!(
+                    "let{}{};",
+                    format_type_scheme_around_name(name, type_scheme),
+                    value
+                        .as_ref()
+                        .map(|value| format!(" = {value}"))
+                        .unwrap_or_default()
+                ),
+                1,
+            ),
             PilStatement::PolynomialDefinition(_, name, value) => {
-                write!(f, "    pol {name} = {value};")
+                write_indented_by(f, format!("pol {name} = {value};"), 1)
             }
             PilStatement::PublicDeclaration(_, name, poly, array_index, index) => {
-                write!(
+                write_indented_by(
                     f,
-                    "    public {name} = {poly}{}({index});",
-                    array_index
-                        .as_ref()
-                        .map(|i| format!("[{i}]"))
-                        .unwrap_or_default()
+                    format!(
+                        "public {name} = {poly}{}({index});",
+                        array_index
+                            .as_ref()
+                            .map(|i| format!("[{i}]"))
+                            .unwrap_or_default()
+                    ),
+                    1,
                 )
             }
             PilStatement::PolynomialConstantDeclaration(_, names) => {
-                write!(f, "    pol constant {};", names.iter().format(", "))
+                write_indented_by(f, format!("pol constant {};", names.iter().format(", ")), 1)
             }
             PilStatement::PolynomialConstantDefinition(_, name, definition) => {
-                write!(f, "    pol constant {name}{definition};")
+                write_indented_by(f, format!("pol constant {name}{definition};"), 1)
             }
-            PilStatement::PolynomialCommitDeclaration(_, names, value) => {
-                write!(
-                    f,
-                    "    pol commit {}{};",
+            PilStatement::PolynomialCommitDeclaration(_, stage, names, value) => write_indented_by(
+                f,
+                format!(
+                    "pol commit {}{}{};",
+                    stage.map(|s| format!("stage({s}) ")).unwrap_or_default(),
                     names.iter().format(", "),
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
-                )
+                ),
+                1,
+            ),
+            PilStatement::PlookupIdentity(_, left, right) => {
+                write_indented_by(f, format!("{left} in {right};"), 1)
             }
-            PilStatement::PlookupIdentity(_, left, right) => write!(f, "    {left} in {right};"),
             PilStatement::PermutationIdentity(_, left, right) => {
-                write!(f, "    {left} is {right};")
+                write_indented_by(f, format!("{left} is {right};"), 1)
             }
-            PilStatement::ConnectIdentity(_, left, right) => write!(
+            PilStatement::ConnectIdentity(_, left, right) => write_indented_by(
                 f,
-                "    {{ {} }} connect {{ {} }};",
-                format_expressions(left),
-                format_expressions(right)
+                format!(
+                    "{{ {} }} connect {{ {} }};",
+                    format_expressions(left),
+                    format_expressions(right)
+                ),
+                1,
             ),
             PilStatement::ConstantDefinition(_, name, value) => {
-                write!(f, "    constant {name} = {value};")
+                write_indented_by(f, format!("constant {name} = {value};"), 1)
             }
-            PilStatement::Expression(_, e) => {
-                write!(f, "    {e};")
-            }
+            PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
+            PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
         }
     }
 }
@@ -441,27 +489,47 @@ impl Display for FunctionDefinition {
             FunctionDefinition::Array(array_expression) => {
                 write!(f, " = {array_expression}")
             }
-            FunctionDefinition::Query(Expression::LambdaExpression(lambda)) => write!(
-                f,
-                "({}) query {}",
-                lambda.params.iter().format(", "),
-                lambda.body,
-            ),
-            FunctionDefinition::Query(e) => {
-                write!(f, " query = {e}")
-            }
             FunctionDefinition::Expression(Expression::LambdaExpression(lambda))
                 if lambda.params.len() == 1 =>
             {
                 write!(
                     f,
-                    "({}) {{ {} }}",
+                    "({}) {}{}",
                     lambda.params.iter().format(", "),
-                    lambda.body,
+                    match lambda.kind {
+                        FunctionKind::Pure => "".into(),
+                        _ => format!("{} ", &lambda.kind),
+                    },
+                    lambda.body
                 )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
+            FunctionDefinition::TypeDeclaration(_) => {
+                panic!("Should not use this formatting function.")
+            }
         }
+    }
+}
+
+impl<E: Display> Display for EnumDeclaration<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "enum {} {{", self.name)?;
+        write_items_indented(f, self.variants.iter())?;
+        write!(f, "}}")
+    }
+}
+
+impl<E: Display> Display for EnumVariant<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.name)?;
+        if let Some(fields) = &self.fields {
+            write!(
+                f,
+                "({})",
+                fields.iter().map(format_type_with_parentheses).format(", ")
+            )?;
+        }
+        write!(f, ",")
     }
 }
 
@@ -491,9 +559,21 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
             Expression::MatchExpression(scrutinee, arms) => {
-                write!(f, "match {scrutinee} {{ {} }}", arms.iter().format(" "))
+                writeln!(f, "match {scrutinee} {{")?;
+                write_items_indented(f, arms)?;
+                write!(f, "}}")
             }
             Expression::IfExpression(e) => write!(f, "{e}"),
+            Expression::BlockExpression(statements, expr) => {
+                if statements.is_empty() {
+                    write!(f, "{{ {expr} }}")
+                } else {
+                    writeln!(f, "{{")?;
+                    write_items_indented(f, statements)?;
+                    write_indented_by(f, expr, 1)?;
+                    write!(f, "\n}}")
+                }
+            }
         }
     }
 }
@@ -520,7 +600,26 @@ impl Display for NamespacedPolynomialReference {
 
 impl<Ref: Display> Display for LambdaExpression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "(|{}| {})", self.params.iter().format(", "), self.body)
+        write!(
+            f,
+            "({}|{}| {})",
+            match self.kind {
+                FunctionKind::Pure => "".into(),
+                _ => format!("{} ", &self.kind),
+            },
+            self.params.iter().format(", "),
+            self.body
+        )
+    }
+}
+
+impl Display for FunctionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FunctionKind::Pure => write!(f, "pure"),
+            FunctionKind::Constr => write!(f, "constr"),
+            FunctionKind::Query => write!(f, "query"),
+        }
     }
 }
 
@@ -590,6 +689,7 @@ impl<E: Display> Display for Type<E> {
             Type::Tuple(tuple) => write!(f, "{tuple}"),
             Type::Function(fun) => write!(f, "{fun}"),
             Type::TypeVar(name) => write!(f, "{name}"),
+            Type::NamedType(name) => write!(f, "{name}"),
         }
     }
 }
@@ -683,7 +783,7 @@ mod tests {
             ty: Some("ty".into()),
         };
         assert_eq!(p.to_string(), "abc: ty");
-        let empty = Params::default();
+        let empty = Params::<Param>::default();
         assert_eq!(empty.to_string(), "");
         assert_eq!(empty.prepend_space_if_non_empty(), "");
         let in_out = Params {

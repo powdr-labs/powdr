@@ -3,7 +3,10 @@
 #![deny(clippy::print_stdout)]
 
 use lalrpop_util::*;
-use powdr_ast::parsed::{asm::ASMProgram, types::Type, types::TypeBounds};
+use powdr_ast::parsed::{
+    asm::ASMProgram,
+    types::{Type, TypeBounds, TypeScheme},
+};
 use powdr_ast::SourceRef;
 
 use powdr_parser_util::{handle_parse_error, ParseError};
@@ -89,6 +92,16 @@ pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, ParseError<'_>> 
         .map_err(|err| handle_parse_error(err, None, input))
 }
 
+pub fn parse_type_scheme(vars: &str, ty: &str) -> TypeScheme {
+    let vars = parse_type_var_bounds(vars).unwrap();
+    let mut ty = parse_type(ty).unwrap();
+    ty.map_to_type_vars(&vars.vars().collect());
+    TypeScheme {
+        vars,
+        ty: ty.into(),
+    }
+}
+
 /// Parse an escaped string - used in the grammar.
 pub fn unescape_string(s: &str) -> String {
     assert!(s.len() >= 2);
@@ -171,6 +184,7 @@ mod test {
                         line: 1,
                         col: 13,
                     },
+                    None,
                     vec![PolynomialName {
                         name: "t".to_string(),
                         array_size: None
@@ -241,12 +255,13 @@ mod test {
             | PilStatement::PublicDeclaration(s, _, _, _, _)
             | PilStatement::PolynomialConstantDeclaration(s, _)
             | PilStatement::PolynomialConstantDefinition(s, _, _)
-            | PilStatement::PolynomialCommitDeclaration(s, _, _)
+            | PilStatement::PolynomialCommitDeclaration(s, _, _, _)
             | PilStatement::PlookupIdentity(s, _, _)
             | PilStatement::PermutationIdentity(s, _, _)
             | PilStatement::ConnectIdentity(s, _, _)
             | PilStatement::ConstantDefinition(s, _, _)
-            | PilStatement::Expression(s, _) => *s = SourceRef::unknown(),
+            | PilStatement::Expression(s, _)
+            | PilStatement::EnumDeclaration(s, _) => *s = SourceRef::unknown(),
         }
     }
 
@@ -260,6 +275,7 @@ mod test {
         fn clear_machine_stmt(stmt: &mut MachineStatement) {
             match stmt {
                 MachineStatement::Degree(s, _)
+                | MachineStatement::CallSelectors(s, _)
                 | MachineStatement::Submachine(s, _, _)
                 | MachineStatement::RegisterDeclaration(s, _, _)
                 | MachineStatement::OperationDeclaration(s, _, _, _)
@@ -280,8 +296,8 @@ mod test {
                 }
                 MachineStatement::FunctionDeclaration(s, _, _, statements) => {
                     *s = SourceRef::unknown();
-                    for fstmt in statements {
-                        match fstmt {
+                    for statement in statements {
+                        match statement {
                             FunctionStatement::Assignment(s, _, _, _)
                             | FunctionStatement::Instruction(s, _, _)
                             | FunctionStatement::Label(s, _)
@@ -304,7 +320,8 @@ mod test {
                 }
                 SymbolValue::Module(Module::External(_))
                 | SymbolValue::Import(_)
-                | SymbolValue::Expression(_) => (),
+                | SymbolValue::Expression(_)
+                | SymbolValue::TypeDeclaration(_) => (),
             }
         }
 
@@ -393,7 +410,10 @@ mod test {
 namespace Fibonacci(%N);
     constant %last_row = (%N - 1);
     let bool: expr -> expr = (|X| (X * (1 - X)));
-    let one_hot = (|i, which| match i { which => 1, _ => 0, });
+    let one_hot = (|i, which| match i {
+        which => 1,
+        _ => 0,
+    });
     pol constant ISLAST(i) { one_hot(i, %last_row) };
     pol commit arr[8];
     pol commit x, y;
@@ -460,5 +480,22 @@ namespace Fibonacci(%N);
             let printed = format!("{}", parse(Some("input"), input).unwrap());
             assert_eq!(input.trim(), printed.trim());
         }
+    }
+
+    #[test]
+    fn enum_decls() {
+        let input = r#"
+namespace N(2);
+    enum X {
+    }
+    enum Y {
+        A,
+        B(),
+        C(int),
+        D(int, (int -> fe)),
+    }
+"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        assert_eq!(input.trim(), printed.trim());
     }
 }

@@ -11,7 +11,7 @@ use crate::type_builtins::elementary_type_bounds;
 // that smaller map during the recursive substitutions.
 // 2) We could have a wrapper around type that stores which type variables are contained in it.
 // This way we can exit early if we know that all contained type vars are substituted.
-// This migt be especially useful inside add_substitution.
+// This might be especially useful inside add_substitution.
 
 #[derive(Default, Clone)]
 pub struct Unifier {
@@ -44,6 +44,9 @@ impl Unifier {
         if let Type::TypeVar(n) = ty {
             self.add_type_var_bound(n.clone(), bound);
             Ok(())
+        } else if let Type::NamedType(n) = ty {
+            // Change this as soon as we support user-implemented traits.
+            Err(format!("Type {n} does not satisfy trait {bound}."))
         } else {
             let bounds = elementary_type_bounds(ty);
             if bounds.contains(&bound.as_str()) {

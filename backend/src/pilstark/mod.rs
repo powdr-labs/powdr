@@ -10,6 +10,8 @@ use std::{
 
 use crate::{Backend, BackendFactory, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
+
+use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{write_polys_file, DegreeType, FieldElement};
 use serde::Serialize;
 use starky::types::{StarkStruct, Step, PIL};
@@ -175,6 +177,8 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStarkPolygon<'a, F> {
         &self,
         witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
+        // TODO: Implement challenges
+        _witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);

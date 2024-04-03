@@ -205,7 +205,7 @@ x3 <== and(x3, {PAGE_NUMBER_MASK});
 //
 // At the end of the loop, we'll have a linear hash of the page in P0-P3, using a Merkle-Damgård
 // construction. The initial P0-P3 values are 0, and the capacity (P8-P11) is 0 throughout the
-// booloader execution.
+// bootloader execution.
 
 P0 <=X= 0;
 P1 <=X= 0;
