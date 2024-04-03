@@ -122,7 +122,7 @@ impl TypeChecker {
 
             let declared_type = self.declared_types[&name].clone();
             let result = if declared_type.vars.is_empty() {
-                self.declared_type_vars = Default::default();
+                self.declared_type_vars.clear();
                 self.process_concrete_symbol(&name, declared_type.ty.clone(), value)
             } else {
                 self.declared_type_vars = declared_type
@@ -140,7 +140,7 @@ impl TypeChecker {
                 ));
             }
         }
-        self.declared_type_vars = Default::default();
+        self.declared_type_vars.clear();
 
         self.check_expressions(expressions)?;
 
