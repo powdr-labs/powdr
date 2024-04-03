@@ -354,7 +354,7 @@ fn specialization_non_declared_type_var() {
 }
 
 #[test]
-#[should_panic = "Expected 0 generic arguments for symbol x, but got 1: int[]"]
+#[should_panic = "Expected 0 type arguments for symbol x, but got 1: int[]"]
 fn specialization_of_non_generic_symbol() {
     let input = "
         let x: int = 1;

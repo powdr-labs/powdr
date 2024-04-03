@@ -450,12 +450,11 @@ impl TypeChecker {
                 poly_id: _,
                 type_args,
             })) => {
-                assert!(type_args.is_none());
                 let (ty, args) = self.instantiate_scheme(self.declared_types[name].clone());
                 if let Some(requested_type_args) = type_args {
                     if requested_type_args.len() != args.len() {
                         return Err(format!(
-                            "Expected {} generic arguments for symbol {name}, but got {}: {}",
+                            "Expected {} type arguments for symbol {name}, but got {}: {}",
                             args.len(),
                             requested_type_args.len(),
                             requested_type_args.iter().join(", ")
