@@ -61,7 +61,7 @@ let x: int -> int = |i| i + 1;
 It is possible to use [patterns](./patterns.md) in the function parameters:
 
 ```rust
-let y: int -> int = |(i, j), _| i + j;
+let y: (int, int), int -> int = |(i, j), _| i + j;
 ```
 
 If you use patterns, they have to be irrefutable, which means that the pattern has to
@@ -92,7 +92,7 @@ Example:
 
 ```rust
 let f = |i| (i / 2, i % 2);
-let (x, y) = f(7);
+let (quot, rem) = f(7);
 ```
 
 The second let statement will create two local variables `x` and `y`. You can also ignore values using
