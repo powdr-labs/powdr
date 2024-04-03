@@ -101,12 +101,12 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     fn lookup<'b>(
         &mut self,
         name: &'a str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Definitions::lookup_with_symbols(
             &self.fixed_data.analyzed.definitions,
             name,
-            generic_args,
+            type_args,
             self,
         )
     }

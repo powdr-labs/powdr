@@ -142,13 +142,13 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
     fn lookup(
         &mut self,
         name: &'a str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        let cache_key = (name.to_string(), generic_args.clone());
+        let cache_key = (name.to_string(), type_args.clone());
         if let Some(v) = self.cache.read().unwrap().get(&cache_key) {
             return Ok(v.clone());
         }
-        let result = Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)?;
+        let result = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
         self.cache
             .write()
             .unwrap()

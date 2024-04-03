@@ -230,7 +230,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
             // These will be filled by the type checker.
             // TODO at some point we should support the turbofish operator
             // in the parser.
-            generic_args: Default::default(),
+            type_args: Default::default(),
         }
     }
 

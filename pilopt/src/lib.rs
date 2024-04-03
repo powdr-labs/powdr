@@ -115,10 +115,10 @@ impl ReferencedSymbols for Expression {
                 .flat_map(|e| match e {
                     Expression::Reference(Reference::Poly(PolynomialReference {
                         name,
-                        generic_args,
+                        type_args,
                         poly_id: _,
                     })) => Some(
-                        generic_args
+                        type_args
                             .iter()
                             .flat_map(|t| t.iter())
                             .flat_map(|t| t.symbols())
@@ -418,7 +418,7 @@ fn substitute_polynomial_references<T: FieldElement>(
         if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             poly_id: Some(poly_id),
-            generic_args: _,
+            type_args: _,
         })) = e
         {
             if let Some(value) = substitutions.get(poly_id) {
