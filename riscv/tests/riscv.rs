@@ -37,7 +37,7 @@ pub fn test_continuations(case: &str) {
         // computing the constants file.
         let mut pipeline = pipeline.with_backend(BackendType::PilStarkCli);
         pipeline.compute_proof().unwrap();
-        verify(pipeline.output_dir().unwrap(), pipeline.name(), Some(case)).unwrap();
+        verify(pipeline.output_dir().unwrap()).unwrap();
         Ok(())
     };
     let bootloader_inputs = rust_continuations_dry_run(&mut pipeline);
