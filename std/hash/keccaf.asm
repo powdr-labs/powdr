@@ -36,6 +36,10 @@ let RC: int[24] = [
     0x8000000000008080, 0x0000000080000001, 0x8000000080008008
 ];
 
+// ln 30 - 33
+// left rotation
+let rotl32: u32, u32 -> u32 = |x, n| or((x << n), (x >> (32 - n)));
+
 // ln 35 - 40
 // change endianness for a 32 bit number byte by byte
 // e.g. 0xaabbccdd -> 0xddccbbaa
@@ -81,12 +85,55 @@ let theta_t_loop_rearrange: int[5], int[25], int -> int[25] = |bc, st, t| {
 };
 // rearrange st returned in ln 60 - version 2: needs to be called with theta_t_loop in another function
 let theta_t_loop_rearrange_v2: int[5][5] -> int[25] = |sp_partials| 
-    std::array::fold(std::array::new(5, |i| i), [], |initial, i| 
+    array::fold(array::new(5, |i| i), [], |initial, i| 
         a + [sp_partials[0][i], sp_partials[1][i], sp_partials[2][i], sp_partials[3][i], sp_partials[4][i]]
     );
 
 // ln 64
 let theta_t_reassign: int[25] -> int = |st| st[1];
+
+// ln 66 - 72
+// for u32 i in 0..24 {
+//    u32 j = PI[i];
+//    bc[0] = st[j];
+//    st[j] = rotl64(t, RHO[i]);
+//    t = bc[0];
+// }
+// reduced to:
+// for u32 i in 0..24 {
+//    u32 j = PI[i];
+//    t_next = st[j];
+//    st[j] = rotl64(t, RHO[i]);
+//    t = t_next;
+// }
+// bc[0] = st[PI[23]];
+let rho_pi: int[25], int, int -> (int, int) = |st, t, i| {
+    let new_t = st[PI[i]];
+    let new_st_j = rotl32(t, RHO[i]);
+    (new_st_j, new_t)
+};
+// collect st_j
+let rho_pi_loop: int[25], int -> (int[25], int) = |st, t| array::fold(array::new(24, |i| i), ([], st[1]), |(new_st, t), i| {
+    let (new_st_j, new_t) = rho_pi(st, t);
+    (new_st + [new_st_j], new_t)
+});
+// rearrange st_j
+let rho_pi_loop_rearrange: int[25], int -> (int[25], int) = |st, t| {
+    let (new_st, final_t) = rho_pi_loop(st, t);
+    let final_st = [
+        new_st[23], new_st[17], new_st[5], new_st[11], new_st[6], new_st[22],
+        new_st[1], new_st[8], new_st[21], new_st[0], new_st[2], new_st[16], 
+        new_st[15], new_st[19], new_st[12], new_st[7], new_st[3], new_st[4], 
+        new_st[14], new_st[18], new_st[9], new_st[20], new_st[13], new_st[10]
+    ];
+    (final_st, final_t)
+};
+// note that there's no need to update bc[0] = st[j] as bc[0] is updated in the chi steps immediately before being used
+
+// ln 74 - 83
+// chi
+
+
 
 
 // main machine
