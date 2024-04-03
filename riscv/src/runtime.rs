@@ -35,8 +35,8 @@ struct SubMachine {
     path: SymbolPath,
     /// Optional alias (`use path::to::Machine as TheAlias;`)
     alias: Option<String>,
-    /// Declaration name,
-    name: String,
+    /// Instance declaration name,
+    instance_name: String,
     /// Instruction declarations
     instructions: Vec<MachineStatement>,
     /// TODO: only needed because of witgen requiring that each machine be called at least once
@@ -55,7 +55,7 @@ impl SubMachine {
 
     fn declaration(&self) -> String {
         let ty = self.alias.as_deref().unwrap_or(self.path.name());
-        format!("{} {};", ty, self.name)
+        format!("{} {};", ty, self.instance_name)
     }
 }
 
@@ -210,14 +210,14 @@ impl Runtime {
         &mut self,
         path: &str,
         alias: Option<&str>,
-        name: &str,
+        instance_name: &str,
         instructions: I1,
         init_call: I2,
     ) {
         let subm = SubMachine {
             path: str::parse(path).expect("invalid submachine path"),
             alias: alias.map(|s| s.to_string()),
-            name: name.to_string(),
+            instance_name: instance_name.to_string(),
             instructions: instructions
                 .into_iter()
                 .map(|s| parse_instruction_declaration(s.as_ref()))
@@ -228,8 +228,10 @@ impl Runtime {
                 .collect(),
         };
         assert!(
-            self.submachines.insert(name.to_string(), subm).is_none(),
-            "submachine {name} already present"
+            self.submachines
+                .insert(instance_name.to_string(), subm)
+                .is_none(),
+            "submachine {instance_name} already present"
         );
     }
 
