@@ -642,3 +642,27 @@ fn match_shadowing() {
 ";
     assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
 }
+
+#[test]
+fn single_ellipsis() {
+    let input = "    let t: int[] -> int = (|i| match i {
+        [1, .., 3] => 2,
+        [..] => 3,
+        [.., 1] => 9,
+        [7, 8, ..] => 2,
+        _ => -1,
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Only one \"..\"-item allowed in array pattern"]
+fn multi_ellipsis() {
+    let input = "    let t: int[] -> int = (|i| match i {
+        [1, .., 3, ..] => 2,
+        _ => -1,
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}

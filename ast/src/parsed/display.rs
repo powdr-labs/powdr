@@ -332,6 +332,7 @@ impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Pattern::CatchAll => write!(f, "_"),
+            Pattern::Ellipsis => write!(f, ".."),
             Pattern::Number(n) => write!(f, "{n}"),
             Pattern::String(s) => write!(f, "{}", quote(s)),
             Pattern::Tuple(t) => write!(f, "({})", t.iter().format(", ")),
