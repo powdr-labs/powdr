@@ -17,7 +17,7 @@ use powdr_ast::{
     object::PILGraph,
     parsed::{asm::ASMProgram, PILFile},
 };
-use powdr_backend::{BackendType, Proof};
+use powdr_backend::{BackendOptions, BackendType, Proof};
 use powdr_executor::{
     constant_evaluator,
     witgen::{
@@ -92,6 +92,8 @@ struct Arguments<T: FieldElement> {
     query_callback: Option<Arc<dyn QueryCallback<T>>>,
     /// Backend to use for proving. If None, proving will fail.
     backend: Option<BackendType>,
+    /// Backend options
+    backend_options: BackendOptions,
     /// CSV render mode for witness generation.
     csv_render_mode: CsvRenderMode,
     /// Whether to export the witness as a CSV file.
@@ -173,7 +175,7 @@ where
 ///
 /// let mut pipeline = Pipeline::<GoldilocksField>::default()
 ///   .from_file(resolve_test_file("pil/fibonacci.pil"))
-///   .with_backend(BackendType::PilStarkCli);
+///   .with_backend(BackendType::PilStarkCli, "stark_gl".to_string());
 ///
 /// // Get the result
 /// let proof = pipeline.compute_proof().unwrap();
@@ -257,8 +259,9 @@ impl<T: FieldElement> Pipeline<T> {
         self.add_query_callback(Arc::new(inputs_to_query_callback(inputs)))
     }
 
-    pub fn with_backend(mut self, backend: BackendType) -> Self {
+    pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
         self.arguments.backend = Some(backend);
+        self.arguments.backend_options = options.unwrap_or_default();
         self
     }
 
@@ -886,6 +889,7 @@ impl<T: FieldElement> Pipeline<T> {
                 self.output_dir(),
                 setup.as_io_read(),
                 vkey.as_io_read(),
+                self.arguments.backend_options.clone(),
             )
             .unwrap();
 
@@ -957,6 +961,7 @@ impl<T: FieldElement> Pipeline<T> {
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),
                 None,
+                self.arguments.backend_options.clone(),
             )
             .unwrap();
 
@@ -998,6 +1003,7 @@ impl<T: FieldElement> Pipeline<T> {
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),
                 Some(&mut vkey_file),
+                self.arguments.backend_options.clone(),
             )
             .unwrap();
 

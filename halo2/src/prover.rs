@@ -37,6 +37,12 @@ pub use halo2_proofs::poly::commitment::Params;
 pub use halo2_proofs::poly::kzg::commitment::ParamsKZG;
 pub use halo2_proofs::SerdeFormat;
 
+#[derive(Clone)]
+pub enum ProofType {
+    Poseidon,
+    Snark,
+}
+
 /// Create a halo2 proof for a given PIL, fixed column values and witness column
 /// values. We use KZG ([GWC variant](https://eprint.iacr.org/2019/953)) and
 /// Keccak256
@@ -49,6 +55,7 @@ pub struct Halo2Prover<'a, F> {
     fixed: &'a [(String, Vec<F>)],
     params: ParamsKZG<Bn256>,
     vkey: Option<VerifyingKey<G1Affine>>,
+    proof_type: ProofType,
 }
 
 fn degree_bits(degree: DegreeType) -> u32 {
@@ -64,6 +71,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         analyzed: &'a Analyzed<F>,
         fixed: &'a [(String, Vec<F>)],
         setup: Option<&mut dyn io::Read>,
+        proof_type: ProofType,
     ) -> Result<Self, io::Error> {
         Self::assert_field_is_bn254();
 
@@ -81,18 +89,25 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             fixed,
             params,
             vkey: None,
+            proof_type,
         })
+    }
+
+    pub fn proof_type(&self) -> ProofType {
+        self.proof_type.clone()
     }
 
     pub fn write_setup(&self, output: &mut impl io::Write) -> Result<(), io::Error> {
         self.params.write(output)
     }
 
-    pub fn prove_ast(
+    pub fn prove_poseidon(
         &self,
         witness: &[(String, Vec<F>)],
         witgen_callback: WitgenCallback<F>,
     ) -> Result<Vec<u8>, String> {
+        assert!(matches!(self.proof_type, ProofType::Poseidon));
+
         log::info!("Starting proof generation...");
 
         let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
@@ -137,11 +152,13 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         Ok(proof)
     }
 
-    pub fn prove_aggr(
+    pub fn prove_snark(
         &self,
         witness: &[(String, Vec<F>)],
         proof: Vec<u8>,
     ) -> Result<Vec<u8>, String> {
+        assert!(matches!(self.proof_type, ProofType::Snark));
+
         log::info!("Starting proof aggregation...");
 
         log::info!("Generating circuit for app snark...");
@@ -266,7 +283,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         }
     }
 
-    pub fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), String> {
+    pub fn verify_poseidon(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), String> {
         let instances = instances
             .iter()
             .map(|instance| {

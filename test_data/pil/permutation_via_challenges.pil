@@ -12,6 +12,12 @@ namespace Main(N);
     col witness a(i) query std::prover::Query::Hint(i);
     col witness b(i) query std::prover::Query::Hint(7 - i);
 
+	// a = [0,1,2,3,4,5,6,7]
+	// b = [7,6,5,4,3,2,1,0]
+	// {a} is {b}
+
+	// z = [1, a ou b, 1]
+
     col witness stage(1) z;
     let beta: expr = std::prover::challenge(0, 12345);
 

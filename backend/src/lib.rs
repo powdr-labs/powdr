@@ -24,6 +24,11 @@ pub enum BackendType {
     PilStarkCli,
 }
 
+pub type BackendOptions = String;
+pub const DEFAULT_HALO2_OPTIONS: &str = "poseidon";
+pub const DEFAULT_HALO2_MOCK_OPTIONS: &str = "";
+pub const DEFAULT_ESTARK_OPTIONS: &str = "stark_gl";
+
 impl BackendType {
     pub fn factory<T: FieldElement>(&self) -> &'static dyn BackendFactory<T> {
         #[cfg(feature = "halo2")]
@@ -83,6 +88,7 @@ pub trait BackendFactory<F: FieldElement> {
         output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
+        backend_options: BackendOptions,
     ) -> Result<Box<dyn Backend<'a, F> + 'a>, Error>;
 
     /// Generate a new setup.

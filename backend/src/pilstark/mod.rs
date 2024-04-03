@@ -7,7 +7,7 @@ use std::{
     path::Path,
 };
 
-use crate::{Backend, BackendFactory, Error, Proof};
+use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
@@ -22,6 +22,7 @@ impl<F: FieldElement> BackendFactory<F> for PilStarkCliFactory {
         output_dir: Option<&'a Path>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
+        _options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         if setup.is_some() {
             return Err(Error::NoSetupAvailable);
