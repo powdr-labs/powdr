@@ -558,3 +558,87 @@ fn let_inside_block_scoping_limited() {
     ";
     analyze_string::<GoldilocksField>(input).to_string();
 }
+
+#[test]
+fn patterns() {
+    let input = "    let t: ((int, int), int[]) -> int = (|i| match i {
+        ((_, 6), []) => 2,
+        ((2, _), [3, 4]) => 3,
+        ((_, 6), x) => x[0],
+        ((_, y), _) => y,
+        (_, [2]) => 7,
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn patterns_shadowing() {
+    let input = "
+    let t: int, int -> expr = |i, j| match (i, j) {
+        (x, x) => x,
+    };
+    ";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn block_shadowing() {
+    let input = "
+    let t = {
+        let x = 2;
+        let x = 3;
+        x
+    };
+    ";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn sub_block_shadowing() {
+    let input = "    let t = ({
+        let x = 2;
+        {
+            let x = 3;
+            x
+        }
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+fn disjoint_block_shadowing() {
+    let input = "    let t: int = {
+        let b = {
+            let x = 2;
+            x
+        };
+        {
+            let x = 3;
+            (x + b)
+        }
+    };
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+fn sub_function_shadowing() {
+    let input = "    let t: int -> int = (|x| (|x| x)(2));
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+fn match_shadowing() {
+    let input = "    let t: (int, int) -> int = (|i| match i {
+        (_, x) => 2,
+        (x, _) => 3,
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
