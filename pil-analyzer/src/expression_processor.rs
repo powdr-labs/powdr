@@ -145,8 +145,14 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     /// Processes a pattern, registering all variables bound in there.
     fn process_pattern(&mut self, pattern: &Pattern) {
         match pattern {
-            Pattern::CatchAll | Pattern::Number(_) | Pattern::String(_) => {}
+            Pattern::CatchAll | Pattern::Ellipsis | Pattern::Number(_) | Pattern::String(_) => {}
             Pattern::Tuple(items) | Pattern::Array(items) => {
+                if matches!(pattern, Pattern::Array(_)) {
+                    // If there is more than one Pattern::Ellipsis in items, it is an error
+                    if items.iter().filter(|p| *p == &Pattern::Ellipsis).count() > 1 {
+                        panic!("Only one \"..\"-item allowed in array pattern");
+                    }
+                }
                 items.iter().for_each(|p| self.process_pattern(p));
             }
             Pattern::Variable(name) => {

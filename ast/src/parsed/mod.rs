@@ -832,7 +832,8 @@ impl Children<Expression> for ArrayExpression {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Pattern {
-    CatchAll,
+    CatchAll, // "_", matches a single value
+    Ellipsis, // "..", matches a series of values, only valid inside array patterns
     #[schemars(skip)]
     Number(BigInt),
     String(String),
@@ -854,18 +855,22 @@ impl Pattern {
 impl Children<Pattern> for Pattern {
     fn children(&self) -> Box<dyn Iterator<Item = &Pattern> + '_> {
         match self {
-            Pattern::CatchAll | Pattern::Number(_) | Pattern::String(_) | Pattern::Variable(_) => {
-                Box::new(empty())
-            }
+            Pattern::CatchAll
+            | Pattern::Ellipsis
+            | Pattern::Number(_)
+            | Pattern::String(_)
+            | Pattern::Variable(_) => Box::new(empty()),
             Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter()),
         }
     }
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Pattern> + '_> {
         match self {
-            Pattern::CatchAll | Pattern::Number(_) | Pattern::String(_) | Pattern::Variable(_) => {
-                Box::new(empty())
-            }
+            Pattern::CatchAll
+            | Pattern::Ellipsis
+            | Pattern::Number(_)
+            | Pattern::String(_)
+            | Pattern::Variable(_) => Box::new(empty()),
             Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter_mut()),
         }
     }

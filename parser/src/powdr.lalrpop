@@ -646,8 +646,13 @@ Pattern: Pattern = {
     StringLiteral => Pattern::String(<>),
     TuplePattern,
     ArrayPattern,
-    VariablePattern,
+    Identifier => Pattern::Variable(<>),
     //EnumPattern,
+}
+
+PatternIncludingEllipsis: Pattern = {
+    Pattern => <>,
+    ".." => Pattern::Ellipsis,
 }
 
 TuplePattern: Pattern = {
@@ -657,11 +662,7 @@ TuplePattern: Pattern = {
 
 ArrayPattern: Pattern = {
     "[" "]" => Pattern::Array(vec![]),
-    "[" <mut items:(<Pattern> ",")*> <last:Pattern> "]" => Pattern::Array({items.push(last); items})
-}
-
-VariablePattern: Pattern = {
-    <Identifier> => Pattern::Variable(<>),
+    "[" <mut items:(<PatternIncludingEllipsis> ",")*> <last:PatternIncludingEllipsis> "]" => Pattern::Array({items.push(last); items})
 }
 
 
