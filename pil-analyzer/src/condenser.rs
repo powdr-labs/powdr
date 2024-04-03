@@ -321,16 +321,16 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn lookup(
         &mut self,
         name: &'a str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         // Cache already computed values.
         // Note that the cache is essential because otherwise
         // we re-evaluate simple values, which users would not expect.
-        let cache_key = (name.to_string(), generic_args.clone());
+        let cache_key = (name.to_string(), type_args.clone());
         if let Some(v) = self.symbol_values.get(&cache_key) {
             return Ok(v.clone());
         }
-        let value = Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)?;
+        let value = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
         self.symbol_values
             .entry(cache_key)
             .or_insert_with(|| value.clone());

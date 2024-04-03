@@ -948,7 +948,7 @@ pub struct PolynomialReference {
     pub poly_id: Option<PolyID>,
     /// The type arguments if the symbol is generic.
     /// Guaranteed to be Some(_) after type checking is completed.
-    pub generic_args: Option<Vec<Type>>,
+    pub type_args: Option<Vec<Type>>,
 }
 
 #[derive(
