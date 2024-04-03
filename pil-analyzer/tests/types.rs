@@ -382,9 +382,11 @@ fn partial_specialization() {
                 folder(fold((length - 1), f, initial, folder), f((length - 1)))
             };
         let<T> fold_to_int_arr: int, (int -> T), int[], (int[], T -> int[]) -> int[] = fold::<T, int[]>;
+        let<T> fold_int: int, (int -> int), T, (T, int -> T) -> T = fold::<int, T>;
         let y = fold_to_int_arr(4, |i| i, [], |acc, x| acc + [x]);
+        let z = fold_int(4, |i| i, 0, |acc, x| acc + x);
     ";
-    type_check(input, &[("y", "", "int[]")]);
+    type_check(input, &[("y", "", "int[]"), ("z", "", "int")]);
 }
 
 #[test]
