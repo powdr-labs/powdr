@@ -61,12 +61,8 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
         let proof = match self.proof_type() {
             ProofType::Poseidon => self.prove_poseidon(witness, witgen_callback),
             ProofType::Snark => match prev_proof {
-                Some(proof) => self.prove_snark(witness, proof),
-                None => {
-                    return Err(Error::BackendError(
-                        "No previous proof provided".to_string(),
-                    ))
-                }
+                Some(proof) => self.prove_snark_aggr(witness, proof),
+                None => self.prove_snark_single(witness, witgen_callback),
             },
         };
 
@@ -82,6 +78,20 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
         vk.write(&mut output, powdr_halo2::SerdeFormat::Processed)?;
 
         Ok(())
+    }
+
+    fn export_ethereum_verifier(&self, output: &mut dyn io::Write) -> Result<(), Error> {
+        match self.proof_type() {
+            ProofType::Poseidon => {
+                    Err(Error::BackendError(
+                        "SNARK verifier is only supported for aggregated SNARKs".to_string(),
+                    ))
+            }
+            ProofType::Snark => match self.export_ethereum_verifier_snark(output) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(Error::BackendError(e.to_string())),
+            },
+        }
     }
 }
 

@@ -771,7 +771,8 @@ impl<T: FieldElement> Pipeline<T> {
         let analyzed_pil = self.artifact.analyzed_pil.take().unwrap();
 
         self.log("Optimizing pil...");
-        let optimized = powdr_pilopt::optimize(analyzed_pil);
+        //let optimized = powdr_pilopt::optimize(analyzed_pil);
+        let optimized = analyzed_pil.clone();
         self.maybe_write_pil(&optimized, "_opt")?;
         self.maybe_write_pil_object(&optimized, "_opt")?;
 
@@ -966,6 +967,45 @@ impl<T: FieldElement> Pipeline<T> {
             .unwrap();
 
         match backend.export_verification_key(&mut writer) {
+            Ok(()) => Ok(()),
+            Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
+            _ => panic!(),
+        }
+    }
+
+    pub fn export_ethereum_verifier<W: io::Write>(
+        &mut self,
+        mut writer: W,
+    ) -> Result<(), Vec<String>> {
+        let backend = self
+            .arguments
+            .backend
+            .expect("backend must be set before generating verifier!");
+        let factory = backend.factory::<T>();
+
+        let mut setup_file = self
+            .arguments
+            .setup_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
+        let pil = self.compute_optimized_pil()?;
+        let fixed_cols = self.compute_fixed_cols()?;
+
+        let backend = factory
+            .create(
+                pil.borrow(),
+                &fixed_cols[..],
+                self.output_dir(),
+                setup_file
+                    .as_mut()
+                    .map(|file| file as &mut dyn std::io::Read),
+                None,
+                self.arguments.backend_options.clone(),
+            )
+            .unwrap();
+
+        match backend.export_ethereum_verifier(&mut writer) {
             Ok(()) => Ok(()),
             Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
             _ => panic!(),

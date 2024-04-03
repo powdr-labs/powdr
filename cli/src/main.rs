@@ -405,6 +405,37 @@ enum Commands {
         params: Option<String>,
     },
 
+    ExportVerifier {
+        /// Input PIL file
+        file: String,
+
+        /// Directory to find the fixed values
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        dir: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Chosen backend.
+        #[arg(short, long)]
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        backend: BackendType,
+
+        /// Backend options. Halo2: "poseidon" or "snark". EStark and PilStarkCLI: "stark_gl", "stark_bn" or
+        /// "snark_bn".
+        #[arg(long)]
+        backend_options: Option<String>,
+
+        /// File containing previously generated setup parameters.
+        /// This will be needed for SNARK verification keys but not for STARK.
+        #[arg(long)]
+        params: Option<String>,
+    },
+
     Setup {
         /// Size of the parameters
         size: u64,
@@ -669,6 +700,24 @@ fn run_command(command: Commands) {
                 params
             ))
         }
+        Commands::ExportVerifier {
+            file,
+            dir,
+            field,
+            backend,
+            backend_options,
+            params,
+        } => {
+            let pil = Path::new(&file);
+            let dir = Path::new(&dir);
+            call_with_field!(export_verifier::<field>(
+                pil,
+                dir,
+                &backend,
+                backend_options,
+                params
+            ))
+        }
         Commands::Setup {
             size,
             dir,
@@ -703,6 +752,26 @@ fn verification_key<T: FieldElement>(
     let vkey_file = BufWriter::new(fs::File::create(dir.join("vkey.bin")).unwrap());
     write_or_panic(vkey_file, |w| pipeline.export_verification_key(w))?;
     log::info!("Wrote vkey.bin.");
+
+    Ok(())
+}
+
+fn export_verifier<T: FieldElement>(
+    file: &Path,
+    dir: &Path,
+    backend_type: &BackendType,
+    backend_options: Option<String>,
+    params: Option<String>,
+) -> Result<(), Vec<String>> {
+    let mut pipeline = Pipeline::<T>::default()
+        .from_file(file.to_path_buf())
+        .read_constants(dir)
+        .with_setup_file(params.map(PathBuf::from))
+        .with_backend(*backend_type, backend_options);
+
+    let verifier_file = BufWriter::new(fs::File::create(dir.join("verifier.sol")).unwrap());
+    write_or_panic(verifier_file, |w| pipeline.export_ethereum_verifier(w))?;
+    log::info!("Wrote verifier.sol.");
 
     Ok(())
 }

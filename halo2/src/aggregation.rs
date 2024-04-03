@@ -1,3 +1,4 @@
+/*
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     halo2curves::{
@@ -363,35 +364,4 @@ impl Circuit<Fr> for AggregationCircuit {
         Ok(())
     }
 }
-
-pub fn gen_aggregation_evm_verifier(
-    params: &ParamsKZG<Bn256>,
-    vk: &VerifyingKey<G1Affine>,
-    num_instance: Vec<usize>,
-    accumulator_indices: Vec<(usize, usize)>,
-) -> Vec<u8> {
-    let protocol = compile(
-        params,
-        vk,
-        Config::kzg()
-            .with_num_instance(num_instance.clone())
-            .with_accumulator_indices(Some(accumulator_indices)),
-    );
-    let vk = (params.get_g()[0], params.g2(), params.s_g2()).into();
-
-    let loader = EvmLoader::new::<Fq, Fr>();
-    let protocol = protocol.loaded(&loader);
-    let mut transcript = EvmTranscript::<_, Rc<EvmLoader>, _, _>::new(&loader);
-
-    let instances = transcript.load_instances(num_instance);
-    let proof = PlonkVerifier::read_proof(&vk, &protocol, &instances, &mut transcript).unwrap();
-    PlonkVerifier::verify(&vk, &protocol, &instances, &proof).unwrap();
-
-    evm::compile_solidity(&loader.solidity_code())
-}
-
-pub fn evm_verify(deployment_code: Vec<u8>, instances: Vec<Vec<Fr>>, proof: &[u8]) {
-    let calldata = encode_calldata(&instances, proof);
-    let gas_cost = deploy_and_call(deployment_code, calldata).unwrap();
-    dbg!(gas_cost);
-}
+*/
