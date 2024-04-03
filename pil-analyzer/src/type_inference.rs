@@ -450,23 +450,23 @@ impl TypeChecker {
                 poly_id: _,
                 type_args,
             })) => {
-                let (ty, gen_args) = self.instantiate_scheme(self.declared_types[name].clone());
-                if let Some(requested_gen_args) = generic_args {
-                    if requested_gen_args.len() != gen_args.len() {
+                let (ty, args) = self.instantiate_scheme(self.declared_types[name].clone());
+                if let Some(requested_type_args) = type_args {
+                    if requested_type_args.len() != args.len() {
                         return Err(format!(
                             "Expected {} generic arguments for symbol {name}, but got {}: {}",
-                            gen_args.len(),
-                            requested_gen_args.len(),
-                            requested_gen_args.iter().join(", ")
+                            args.len(),
+                            requested_type_args.len(),
+                            requested_type_args.iter().join(", ")
                         ));
                     }
-                    for (requested, inferred) in requested_gen_args.iter_mut().zip(&gen_args) {
+                    for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
                         requested.substitute_type_vars(&self.declared_type_vars);
                         self.unifier
                             .unify_types(requested.clone(), inferred.clone())?;
                     }
                 }
-                *generic_args = Some(gen_args);
+                *type_args = Some(args);
                 type_for_reference(&ty)
             }
             Expression::PublicReference(_) => Type::Expr,

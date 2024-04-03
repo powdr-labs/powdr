@@ -600,7 +600,7 @@ NamespacedPolynomialReference: NamespacedPolynomialReference = {
 
 GenericReference: NamespacedPolynomialReference = {
     <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
-    <path:GenericSymbolPath> => NamespacedPolynomialReference{path: path.0, generic_args: path.1},
+    <path:GenericSymbolPath> => NamespacedPolynomialReference{path: path.0, type_args: path.1},
 }
 
 MatchExpression: Box<Expression> = {

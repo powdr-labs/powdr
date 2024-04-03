@@ -500,7 +500,7 @@ namespace N(2);
     }
 
     #[test]
-    fn generic_args() {
+    fn type_args() {
         let input = r#"
 namespace N(2);
     let<T: Ord> max: T, T -> T = (|a, b| if (a < b) { b } else { a });
@@ -514,7 +514,7 @@ namespace N(2);
     }
 
     #[test]
-    fn generic_args_with_space() {
+    fn type_args_with_space() {
         let input = r#"
 namespace N(2);
     let<T: Ord> max: T, T -> T = (|a, b| if (a < b) { b } else { a });

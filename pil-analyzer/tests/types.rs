@@ -335,7 +335,7 @@ fn query_with_wrong_type() {
 
 #[test]
 #[should_panic = "Type int[] does not satisfy trait"]
-fn wrong_generic_args() {
+fn wrong_type_args() {
     let input = "
         let<T: FromLiteral + Mul + Add> bn: T, T -> T = |a, b| a * 0x100000000 + b;
         let t: int = bn::<int[]>(5, 6);
