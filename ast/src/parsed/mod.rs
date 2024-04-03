@@ -846,12 +846,12 @@ impl Pattern {
     /// Return true if the pattern is irrefutable, i.e. matches all possible values of its type.
     pub fn is_irrefutable(&self) -> bool {
         match self {
-            Pattern::Rest => unreachable!(),
+            Pattern::Ellipsis => unreachable!(),
             Pattern::CatchAll | Pattern::Variable(_) => true,
             Pattern::Number(_) | Pattern::String(_) => false,
             Pattern::Array(items) => {
                 // Only "[..]"" is irrefutable
-                items == &vec![Pattern::Rest]
+                items == &vec![Pattern::Ellipsis]
             }
             Pattern::Tuple(p) => p.iter().all(|p| p.is_irrefutable()),
         }
