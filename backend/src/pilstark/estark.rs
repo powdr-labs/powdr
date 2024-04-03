@@ -2,7 +2,7 @@ use std::io;
 use std::iter::{once, repeat};
 use std::time::Instant;
 
-use crate::{pilstark, Backend, BackendFactory, Error};
+use crate::{pilstark, Backend, BackendFactory, BackendOptions, Error};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, GoldilocksField, LargeInt};
@@ -20,6 +20,23 @@ use starky::{
 
 pub struct EStarkFactory;
 
+enum ProofType {
+    StarkGL,
+    StarkBN,
+    SnarkBN,
+}
+
+impl From<BackendOptions> for ProofType {
+    fn from(options: BackendOptions) -> Self {
+        match options.as_str() {
+            "" | "stark_gl" => ProofType::StarkGL,
+            "stark_bn" => ProofType::StarkBN,
+            "snark_bn" => ProofType::SnarkBN,
+            _ => panic!("Unsupported proof type: {options}"),
+        }
+    }
+}
+
 impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
     fn create<'a>(
         &self,
@@ -28,6 +45,7 @@ impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
         _output_dir: Option<&std::path::Path>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
+        options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         if F::modulus().to_arbitrary_integer() != GoldilocksField::modulus().to_arbitrary_integer()
         {
@@ -37,6 +55,8 @@ impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
         if setup.is_some() {
             return Err(Error::NoSetupAvailable);
         }
+
+        let proof_type: ProofType = ProofType::from(options);
 
         let degree = pil.degree();
         assert!(degree > 1);
@@ -49,11 +69,17 @@ impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
             .map(|b| Step { nBits: b })
             .collect();
 
+        let hash_type = match proof_type {
+            ProofType::StarkGL => "GL",
+            ProofType::StarkBN => "BN",
+            ProofType::SnarkBN => "BN",
+        };
+
         let params = StarkStruct {
             nBits: n_bits,
             nBitsExt: n_bits_ext,
             nQueries: 2,
-            verificationHashType: "GL".to_owned(),
+            verificationHashType: hash_type.to_string(),
             steps,
         };
 
@@ -71,6 +97,7 @@ impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
             pil_json,
             params,
             setup,
+            proof_type,
         }))
     }
 }
@@ -139,14 +166,17 @@ pub struct EStark<F: FieldElement> {
     // eSTARK calls it setup, but it works similarly to a verification key and depends only on the
     // constants and circuit.
     setup: StarkSetup<MerkleTreeGL>,
+    proof_type: ProofType,
 }
 
 impl<F: FieldElement> EStark<F> {
-    fn verify_stark_with_publics(
+    fn verify_stark_gl_with_publics(
         &self,
         proof: &StarkProof<MerkleTreeGL>,
         instances: &[Vec<F>],
     ) -> Result<(), Error> {
+        assert!(matches!(self.proof_type, ProofType::StarkGL));
+
         assert_eq!(instances.len(), 1);
         let proof_publics = proof
             .publics
@@ -155,10 +185,12 @@ impl<F: FieldElement> EStark<F> {
             .collect::<Vec<_>>();
         assert_eq!(instances[0], proof_publics);
 
-        self.verify_stark(proof)
+        self.verify_stark_gl(proof)
     }
 
-    fn verify_stark(&self, proof: &StarkProof<MerkleTreeGL>) -> Result<(), Error> {
+    fn verify_stark_gl(&self, proof: &StarkProof<MerkleTreeGL>) -> Result<(), Error> {
+        assert!(matches!(self.proof_type, ProofType::StarkGL));
+
         match stark_verify::<MerkleTreeGL, TranscriptGL>(
             proof,
             &self.setup.const_root,
@@ -171,22 +203,17 @@ impl<F: FieldElement> EStark<F> {
             Err(e) => Err(Error::BackendError(e.to_string())),
         }
     }
-}
 
-impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
-    fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
-        let proof: StarkProof<MerkleTreeGL> =
-            serde_json::from_str(&String::from_utf8(proof.to_vec()).unwrap()).unwrap();
-        self.verify_stark_with_publics(&proof, instances)
-    }
-
-    fn prove(
+    fn prove_stark_gl(
         &self,
         witness: &[(String, Vec<F>)],
         prev_proof: Option<crate::Proof>,
         // TODO: Implement challenges
         _witgen_callback: WitgenCallback<F>,
     ) -> Result<crate::Proof, Error> {
+        assert!(matches!(self.proof_type, ProofType::StarkGL));
+
+        // TODO this should be supported by GL -> GL compression
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
@@ -222,9 +249,37 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
 
         log::info!("Proof done in: {:?}", duration);
 
-        match self.verify_stark(&starkproof) {
+        match self.verify_stark_gl(&starkproof) {
             Ok(_) => Ok(serde_json::to_string(&starkproof).unwrap().into_bytes()),
             Err(e) => Err(e),
+        }
+    }
+}
+
+impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
+    fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
+        match self.proof_type {
+            ProofType::StarkGL => {
+                let proof: StarkProof<MerkleTreeGL> =
+                    serde_json::from_str(&String::from_utf8(proof.to_vec()).unwrap()).unwrap();
+                self.verify_stark_gl_with_publics(&proof, instances)
+            }
+            ProofType::StarkBN => unimplemented!(),
+            ProofType::SnarkBN => unimplemented!(),
+        }
+    }
+
+    fn prove(
+        &self,
+        witness: &[(String, Vec<F>)],
+        prev_proof: Option<crate::Proof>,
+        // TODO: Implement challenges
+        _witgen_callback: WitgenCallback<F>,
+    ) -> Result<crate::Proof, Error> {
+        match self.proof_type {
+            ProofType::StarkGL => self.prove_stark_gl(witness, prev_proof, _witgen_callback),
+            ProofType::StarkBN => unimplemented!(),
+            ProofType::SnarkBN => unimplemented!(),
         }
     }
 

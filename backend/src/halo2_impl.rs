@@ -1,9 +1,9 @@
 use std::{io, path::Path};
 
-use crate::{Backend, BackendFactory, Error, Proof};
+use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_halo2::{generate_setup, Halo2Prover, Params};
+use powdr_halo2::{generate_setup, Halo2Prover, Params, ProofType};
 use powdr_number::{DegreeType, FieldElement};
 
 pub(crate) struct Halo2ProverFactory;
@@ -16,8 +16,19 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
         _output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
+        options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
-        let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup)?);
+        let proof_type = match options.as_str() {
+            "" | "poseidon" => ProofType::Poseidon,
+            "snark_single" => ProofType::SnarkSingle,
+            "snark_aggr" => ProofType::SnarkAggr,
+            _ => {
+                return Err(Error::BackendError(format!(
+                    "Invalid proof type: {options}"
+                )))
+            }
+        };
+        let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup, proof_type)?);
         if let Some(vk) = verification_key {
             halo2.add_verification_key(vk);
         }
@@ -36,7 +47,12 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
 
 impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
-        Ok(self.verify(proof, instances)?)
+        match self.proof_type() {
+            ProofType::Poseidon => Ok(self.verify_poseidon(proof, instances)?),
+            ProofType::SnarkSingle | ProofType::SnarkAggr => {
+                Ok(self.verify_snark(proof, instances)?)
+            }
+        }
     }
 
     fn prove(
@@ -45,9 +61,13 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Proof, Error> {
-        let proof = match prev_proof {
-            Some(proof) => self.prove_aggr(witness, proof),
-            None => self.prove_ast(witness, witgen_callback),
+        let proof = match self.proof_type() {
+            ProofType::Poseidon => self.prove_poseidon(witness, witgen_callback),
+            ProofType::SnarkSingle => self.prove_snark_single(witness, witgen_callback),
+            ProofType::SnarkAggr => match prev_proof {
+                Some(proof) => self.prove_snark_aggr(witness, proof),
+                None => Err("Aggregated proof requires a previous proof".to_string()),
+            },
         };
 
         Ok(proof?)
@@ -63,6 +83,20 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
 
         Ok(())
     }
+
+    fn export_ethereum_verifier(&self, output: &mut dyn io::Write) -> Result<(), Error> {
+        match self.proof_type() {
+            ProofType::Poseidon => Err(Error::BackendError(
+                "Ethereum verifier is only supported for snark_single and snark_aggr".to_string(),
+            )),
+            ProofType::SnarkSingle | ProofType::SnarkAggr => {
+                match self.export_ethereum_verifier_snark(output) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(Error::BackendError(e.to_string())),
+                }
+            }
+        }
+    }
 }
 
 pub(crate) struct Halo2MockFactory;
@@ -75,6 +109,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
         _output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
+        _options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         if setup.is_some() {
             return Err(Error::NoSetupAvailable);

@@ -19,6 +19,7 @@ halo2_curves = { version = "0.6.1", package = "halo2curves" }
 # TODO change this once Halo2 releases 0.3.1 and snark-verifier uses it
 #snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier", tag = "v2024_01_31" }
 snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier", branch = "powdr-halo2" }
+halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier", branch = "main", features = ["evm"] }
 
 num-traits = "0.2.15"
 num-integer = "0.1.45"

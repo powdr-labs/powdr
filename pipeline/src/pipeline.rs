@@ -17,7 +17,7 @@ use powdr_ast::{
     object::PILGraph,
     parsed::{asm::ASMProgram, PILFile},
 };
-use powdr_backend::{BackendType, Proof};
+use powdr_backend::{BackendOptions, BackendType, Proof};
 use powdr_executor::{
     constant_evaluator,
     witgen::{
@@ -92,6 +92,8 @@ struct Arguments<T: FieldElement> {
     query_callback: Option<Arc<dyn QueryCallback<T>>>,
     /// Backend to use for proving. If None, proving will fail.
     backend: Option<BackendType>,
+    /// Backend options
+    backend_options: BackendOptions,
     /// CSV render mode for witness generation.
     csv_render_mode: CsvRenderMode,
     /// Whether to export the witness as a CSV file.
@@ -173,7 +175,7 @@ where
 ///
 /// let mut pipeline = Pipeline::<GoldilocksField>::default()
 ///   .from_file(resolve_test_file("pil/fibonacci.pil"))
-///   .with_backend(BackendType::PilStarkCli);
+///   .with_backend(BackendType::PilStarkCli, "stark_gl".to_string());
 ///
 /// // Get the result
 /// let proof = pipeline.compute_proof().unwrap();
@@ -257,8 +259,9 @@ impl<T: FieldElement> Pipeline<T> {
         self.add_query_callback(Arc::new(inputs_to_query_callback(inputs)))
     }
 
-    pub fn with_backend(mut self, backend: BackendType) -> Self {
+    pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
         self.arguments.backend = Some(backend);
+        self.arguments.backend_options = options.unwrap_or_default();
         self
     }
 
@@ -769,6 +772,7 @@ impl<T: FieldElement> Pipeline<T> {
 
         self.log("Optimizing pil...");
         let optimized = powdr_pilopt::optimize(analyzed_pil);
+        //let optimized = analyzed_pil.clone();
         self.maybe_write_pil(&optimized, "_opt")?;
         self.maybe_write_pil_object(&optimized, "_opt")?;
 
@@ -886,6 +890,7 @@ impl<T: FieldElement> Pipeline<T> {
                 self.output_dir(),
                 setup.as_io_read(),
                 vkey.as_io_read(),
+                self.arguments.backend_options.clone(),
             )
             .unwrap();
 
@@ -957,11 +962,60 @@ impl<T: FieldElement> Pipeline<T> {
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),
                 None,
+                self.arguments.backend_options.clone(),
             )
             .unwrap();
 
         match backend.export_verification_key(&mut writer) {
             Ok(()) => Ok(()),
+            Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
+            _ => panic!(),
+        }
+    }
+
+    pub fn export_ethereum_verifier<W: io::Write>(
+        &mut self,
+        mut writer: W,
+    ) -> Result<(), Vec<String>> {
+        let backend = self
+            .arguments
+            .backend
+            .expect("backend must be set before generating verifier!");
+        let factory = backend.factory::<T>();
+
+        let mut setup_file = self
+            .arguments
+            .setup_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
+        let mut vkey = self
+            .arguments
+            .vkey_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
+        let pil = self.compute_optimized_pil()?;
+        let fixed_cols = self.compute_fixed_cols()?;
+
+        let backend = factory
+            .create(
+                pil.borrow(),
+                &fixed_cols[..],
+                self.output_dir(),
+                setup_file
+                    .as_mut()
+                    .map(|file| file as &mut dyn std::io::Read),
+                vkey.as_io_read(),
+                self.arguments.backend_options.clone(),
+            )
+            .unwrap();
+
+        match backend.export_ethereum_verifier(&mut writer) {
+            Ok(()) => Ok(()),
+            Err(powdr_backend::Error::NoEthereumVerifierAvailable) => {
+                Err(vec!["No Ethereum verifier available".to_string()])
+            }
             Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
             _ => panic!(),
         }
@@ -998,6 +1052,7 @@ impl<T: FieldElement> Pipeline<T> {
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),
                 Some(&mut vkey_file),
+                self.arguments.backend_options.clone(),
             )
             .unwrap();
 

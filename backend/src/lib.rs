@@ -24,6 +24,11 @@ pub enum BackendType {
     PilStarkCli,
 }
 
+pub type BackendOptions = String;
+pub const DEFAULT_HALO2_OPTIONS: &str = "poseidon";
+pub const DEFAULT_HALO2_MOCK_OPTIONS: &str = "";
+pub const DEFAULT_ESTARK_OPTIONS: &str = "stark_gl";
+
 impl BackendType {
     pub fn factory<T: FieldElement>(&self) -> &'static dyn BackendFactory<T> {
         #[cfg(feature = "halo2")]
@@ -54,6 +59,8 @@ pub enum Error {
     NoSetupAvailable,
     #[error("the backend does not implement proof verification")]
     NoVerificationAvailable,
+    #[error("the backend does not support Ethereum onchain verification")]
+    NoEthereumVerifierAvailable,
     #[error("the backend does not support proof aggregation")]
     NoAggregationAvailable,
     #[error("internal backend error")]
@@ -83,6 +90,7 @@ pub trait BackendFactory<F: FieldElement> {
         output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
+        backend_options: BackendOptions,
     ) -> Result<Box<dyn Backend<'a, F> + 'a>, Error>;
 
     /// Generate a new setup.
@@ -95,7 +103,8 @@ pub trait BackendFactory<F: FieldElement> {
 pub trait Backend<'a, F: FieldElement> {
     /// Perform the proving.
     ///
-    /// If prev_proof is provided, proof aggregation is performed.
+    /// The backend uses the BackendOptions provided at creation time
+    /// to potentially perform aggregation/compression.
     ///
     /// Returns the generated proof.
     fn prove(
@@ -120,5 +129,10 @@ pub trait Backend<'a, F: FieldElement> {
     /// to create a new backend object of the same kind.
     fn export_verification_key(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
         Err(Error::NoVerificationAvailable)
+    }
+
+    /// Exports an Ethereum verifier.
+    fn export_ethereum_verifier(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
+        Err(Error::NoEthereumVerifierAvailable)
     }
 }

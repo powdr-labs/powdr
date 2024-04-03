@@ -37,7 +37,7 @@ fn test_lookup_with_selector() {
             "main.w".to_string(),
             witness.iter().cloned().map(Bn254Field::from).collect(),
         )])
-        .with_backend(powdr_backend::BackendType::Halo2Mock)
+        .with_backend(powdr_backend::BackendType::Halo2Mock, None)
         .compute_proof()
         .unwrap();
 
@@ -64,7 +64,7 @@ fn test_permutation_with_selector() {
             "main.w".to_string(),
             witness.iter().cloned().map(Bn254Field::from).collect(),
         )])
-        .with_backend(powdr_backend::BackendType::Halo2Mock)
+        .with_backend(powdr_backend::BackendType::Halo2Mock, None)
         .compute_proof()
         .unwrap();
 

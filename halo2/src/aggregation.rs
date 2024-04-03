@@ -18,7 +18,7 @@ use halo2_wrong_ecc::{
 use snark_verifier::{
     loader::{
         self,
-        evm::{self, deploy_and_call, encode_calldata, EvmLoader},
+        evm::{self, EvmLoader},
         halo2::halo2_wrong_ecc,
         native::NativeLoader,
     },
@@ -364,12 +364,12 @@ impl Circuit<Fr> for AggregationCircuit {
     }
 }
 
-pub fn gen_aggregation_evm_verifier(
+pub fn gen_aggregation_solidity_verifier(
     params: &ParamsKZG<Bn256>,
     vk: &VerifyingKey<G1Affine>,
     num_instance: Vec<usize>,
     accumulator_indices: Vec<(usize, usize)>,
-) -> Vec<u8> {
+) -> String {
     let protocol = compile(
         params,
         vk,
@@ -387,11 +387,14 @@ pub fn gen_aggregation_evm_verifier(
     let proof = PlonkVerifier::read_proof(&vk, &protocol, &instances, &mut transcript).unwrap();
     PlonkVerifier::verify(&vk, &protocol, &instances, &proof).unwrap();
 
-    evm::compile_solidity(&loader.solidity_code())
+    loader.solidity_code()
 }
-
-pub fn evm_verify(deployment_code: Vec<u8>, instances: Vec<Vec<Fr>>, proof: &[u8]) {
-    let calldata = encode_calldata(&instances, proof);
-    let gas_cost = deploy_and_call(deployment_code, calldata).unwrap();
-    dbg!(gas_cost);
+pub fn gen_aggregation_evm_verifier(
+    params: &ParamsKZG<Bn256>,
+    vk: &VerifyingKey<G1Affine>,
+    num_instance: Vec<usize>,
+    accumulator_indices: Vec<(usize, usize)>,
+) -> Vec<u8> {
+    let sol = gen_aggregation_solidity_verifier(params, vk, num_instance, accumulator_indices);
+    evm::compile_solidity(&sol)
 }
