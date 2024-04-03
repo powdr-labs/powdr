@@ -22,7 +22,7 @@ pub fn poseidon_gl(mut data: [u64; 12]) -> [u64; 4] {
 /// This is unsafe because it does not check if the u64 elements fit the Goldilocks field.
 pub fn poseidon_gl_unsafe(mut data: [u64; 12]) -> [u64; 4] {
     unsafe {
-        asm!("ecall", in("a0") &mut data as *mut [u64; 12], in("t0") Syscall::PoseidonGL);
+        asm!("ecall", in("a0") &mut data as *mut [u64; 12], in("t0") u32::from(Syscall::PoseidonGL));
     }
 
     [data[0], data[1], data[2], data[3]]
