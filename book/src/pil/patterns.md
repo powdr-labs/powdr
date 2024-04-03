@@ -67,8 +67,8 @@ let [x, ..] = f(8);
 
 The following patterns are refutable:
 
-- all integer literal pattern
-- all string literal pattern
+- all integer literal patterns
+- all string literal patterns
 - tuple patterns that have refutable components
 - array patterns that are not `[..]`.
 
