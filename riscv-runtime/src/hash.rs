@@ -15,11 +15,7 @@ pub fn poseidon_gl(mut data: [u64; 12]) -> [u64; 4] {
         assert!(n < GOLDILOCKS);
     }
 
-    unsafe {
-        asm!("ecall", in("a0") &mut data as *mut [u64; 12], in("t0") Syscall::PoseidonGL as u32);
-    };
-
-    [data[0], data[1], data[2], data[3]]
+    poseidon_gl_unsafe(data)
 }
 
 pub fn poseidon_gl_unsafe(mut data: [u64; 12]) -> [u64; 4] {
