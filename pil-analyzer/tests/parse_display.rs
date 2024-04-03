@@ -657,6 +657,14 @@ fn sub_function_shadowing() {
 }
 
 #[test]
+#[should_panic = "Variable already defined: x"]
+fn function_param_shadowing() {
+    let input = "    let t: int, int -> int = (|x, x| (x + x));
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
 fn match_shadowing() {
     let input = "    let t: (int, int) -> int = (|i| match i {
         (_, x) => 2,
