@@ -70,7 +70,7 @@ impl TypeChecker {
         expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<Vec<(String, Type)>, String> {
         let type_var_mapping = self.infer_types_inner(&mut definitions, expressions)?;
-        self.update_generic_args(&mut definitions, expressions, &type_var_mapping)?;
+        self.update_type_args(&mut definitions, expressions, &type_var_mapping)?;
         Ok(definitions
             .into_iter()
             .filter(|(_, (ty, _))| ty.is_none())
@@ -287,7 +287,7 @@ impl TypeChecker {
     /// Updates generic arguments and literal annotations with the proper resolved types.
     /// `type_var_mapping` is a mapping (for each generic symbol) from
     /// the type variable names used by the type checker to those from the declaration.
-    fn update_generic_args(
+    fn update_type_args(
         &mut self,
         definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
         expressions: &mut [(&mut Expression, ExpectedType)],
@@ -301,7 +301,7 @@ impl TypeChecker {
                 let empty_mapping = Default::default();
                 let var_mapping = type_var_mapping.get(name).unwrap_or(&empty_mapping);
                 expr.post_visit_expressions_mut(&mut |e| {
-                    if let Err(e) = self.update_generic_args_for_expression(e, var_mapping) {
+                    if let Err(e) = self.update_type_args_for_expression(e, var_mapping) {
                         // TODO cannot borrow the value here for printing it.
                         // We should fix this properly by using source references.
                         errors.push(format!(
@@ -314,7 +314,7 @@ impl TypeChecker {
         for (expr, _) in expressions {
             expr.post_visit_expressions_mut(&mut |e| {
                 // There should be no generic types in identities.
-                if let Err(e) = self.update_generic_args_for_expression(e, &Default::default()) {
+                if let Err(e) = self.update_type_args_for_expression(e, &Default::default()) {
                     // TODO cannot borrow the expression here for printing it.
                     // We should fix this properly by using source references.
                     errors.push(format!(
@@ -331,7 +331,7 @@ impl TypeChecker {
     }
 
     /// Updates the type annotations in the literals and the generic arguments.
-    fn update_generic_args_for_expression(
+    fn update_type_args_for_expression(
         &self,
         e: &mut Expression,
         type_var_mapping: &HashMap<String, Type>,
@@ -367,9 +367,9 @@ impl TypeChecker {
             Expression::Reference(Reference::Poly(PolynomialReference {
                 name,
                 poly_id: _,
-                generic_args,
+                type_args,
             })) => {
-                for ty in generic_args.as_mut().unwrap() {
+                for ty in type_args.as_mut().unwrap() {
                     // Apply regular substitution obtained from unification.
                     self.substitute(ty);
                     // Now rename remaining type vars to match the declaration scheme.
@@ -448,7 +448,7 @@ impl TypeChecker {
             Expression::Reference(Reference::Poly(PolynomialReference {
                 name,
                 poly_id: _,
-                generic_args,
+                type_args,
             })) => {
                 let (ty, gen_args) = self.instantiate_scheme(self.declared_types[name].clone());
                 if let Some(requested_gen_args) = generic_args {

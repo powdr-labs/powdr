@@ -228,7 +228,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         reference: NamespacedPolynomialReference,
     ) -> PolynomialReference {
         let type_processor = TypeProcessor::new(self.driver, self.type_vars);
-        let generic_args = reference.generic_args.map(|args| {
+        let type_args = reference.type_args.map(|args| {
             args.into_iter()
                 .map(|t| type_processor.process_type(t))
                 .collect()
@@ -236,7 +236,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         PolynomialReference {
             name: self.driver.resolve_value_ref(&reference.path),
             poly_id: None,
-            generic_args,
+            type_args,
         }
     }
 
