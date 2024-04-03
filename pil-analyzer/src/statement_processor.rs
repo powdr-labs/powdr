@@ -312,7 +312,10 @@ where
                 source,
                 IdentityKind::Polynomial,
                 SelectedExpressions {
-                    selector: Some(self.process_expression(expression, &Default::default())),
+                    selector: Some(
+                        self.expression_processor(&Default::default())
+                            .process_expression(expression),
+                    ),
                     expressions: vec![],
                 },
                 SelectedExpressions::default(),
@@ -320,14 +323,18 @@ where
             PilStatement::PlookupIdentity(source, key, haystack) => (
                 source,
                 IdentityKind::Plookup,
-                self.process_selected_expressions(key),
-                self.process_selected_expressions(haystack),
+                self.expression_processor(&Default::default())
+                    .process_selected_expressions(key),
+                self.expression_processor(&Default::default())
+                    .process_selected_expressions(haystack),
             ),
             PilStatement::PermutationIdentity(source, left, right) => (
                 source,
                 IdentityKind::Permutation,
-                self.process_selected_expressions(left),
-                self.process_selected_expressions(right),
+                self.expression_processor(&Default::default())
+                    .process_selected_expressions(left),
+                self.expression_processor(&Default::default())
+                    .process_selected_expressions(right),
             ),
             PilStatement::ConnectIdentity(source, left, right) => (
                 source,
@@ -466,7 +473,9 @@ where
                     .map(|ts| ts.vars.vars().collect())
                     .unwrap_or_default();
                 FunctionValueDefinition::Expression(TypedExpression {
-                    e: self.process_expression(expr, &type_vars),
+                    e: self
+                        .expression_processor(&type_vars)
+                        .process_expression(expr),
                     type_scheme,
                 })
             }
@@ -525,23 +534,6 @@ where
         type_vars: &'b HashSet<&'b String>,
     ) -> ExpressionProcessor<'b, D> {
         ExpressionProcessor::new(self.driver, type_vars)
-    }
-
-    fn process_expression(
-        &self,
-        expr: parsed::Expression,
-        type_vars: &HashSet<&String>,
-    ) -> Expression {
-        self.expression_processor(type_vars)
-            .process_expression(expr)
-    }
-
-    fn process_selected_expressions(
-        &self,
-        expr: parsed::SelectedExpressions<parsed::Expression>,
-    ) -> SelectedExpressions<Expression> {
-        self.expression_processor(&Default::default())
-            .process_selected_expressions(expr)
     }
 
     fn type_processor<'b>(&'b self, type_vars: &'b HashSet<&'b String>) -> TypeProcessor<'b, D> {
