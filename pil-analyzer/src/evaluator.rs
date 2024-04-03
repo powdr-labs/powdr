@@ -251,7 +251,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
         pattern: &Pattern,
     ) -> Option<Vec<Arc<Value<'b, T>>>> {
         match pattern {
-            Pattern::Rest => unreachable!("Should be handled higher up"),
+            Pattern::Ellipsis => unreachable!("Should be handled higher up"),
             Pattern::CatchAll => Some(vec![]),
             Pattern::Number(n) => match v.as_ref() {
                 Value::Integer(x) if x == n => Some(vec![]),
@@ -284,9 +284,9 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     panic!("Type error")
                 };
                 // Index of ".."
-                let rest_pos = items.iter().position(|i| *i == Pattern::Rest);
+                let ellipsis_pos = items.iter().position(|i| *i == Pattern::Ellipsis);
                 // Check if the value is too short.
-                let length_matches = match rest_pos {
+                let length_matches = match ellipsis_pos {
                     Some(_) => values.len() >= items.len() - 1,
                     None => values.len() == items.len(),
                 };
@@ -294,16 +294,16 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     return None;
                 }
                 // Split value into "left" and "right" part.
-                let left_len = rest_pos.unwrap_or(values.len());
-                let right_len = rest_pos.map(|p| items.len() - p - 1).unwrap_or(0);
+                let left_len = ellipsis_pos.unwrap_or(values.len());
+                let right_len = ellipsis_pos.map(|p| items.len() - p - 1).unwrap_or(0);
                 let left = values.iter().take(left_len);
                 let right = values.iter().skip(values.len() - right_len);
                 assert_eq!(
                     left.len() + right.len(),
-                    items.len() - rest_pos.map(|_| 1).unwrap_or_default()
+                    items.len() - ellipsis_pos.map(|_| 1).unwrap_or_default()
                 );
                 left.chain(right)
-                    .zip(items.iter().filter(|&i| *i != Pattern::Rest))
+                    .zip(items.iter().filter(|&i| *i != Pattern::Ellipsis))
                     .try_fold(vec![], |mut vars, (e, p)| {
                         Value::try_match_pattern(e, p).map(|v| {
                             vars.extend(v);

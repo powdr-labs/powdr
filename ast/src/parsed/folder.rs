@@ -171,7 +171,7 @@ pub trait ExpressionFolder<Ref> {
     fn fold_pattern(&mut self, pattern: Pattern) -> Result<Pattern, Self::Error> {
         Ok(match pattern {
             Pattern::CatchAll
-            | Pattern::Rest
+            | Pattern::Ellipsis
             | Pattern::Number(_)
             | Pattern::String(_)
             | Pattern::Variable(_) => pattern,

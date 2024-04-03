@@ -632,9 +632,9 @@ Pattern: Pattern = {
     //EnumPattern,
 }
 
-PatternIncludingRest: Pattern = {
+PatternIncludingEllipsis: Pattern = {
     Pattern => <>,
-    ".." => Pattern::Rest,
+    ".." => Pattern::Ellipsis,
 }
 
 TuplePattern: Pattern = {
@@ -644,7 +644,7 @@ TuplePattern: Pattern = {
 
 ArrayPattern: Pattern = {
     "[" "]" => Pattern::Array(vec![]),
-    "[" <mut items:(<PatternIncludingRest> ",")*> <last:PatternIncludingRest> "]" => Pattern::Array({items.push(last); items})
+    "[" <mut items:(<PatternIncludingEllipsis> ",")*> <last:PatternIncludingEllipsis> "]" => Pattern::Array({items.push(last); items})
 }
 
 
