@@ -115,7 +115,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
                 Box::new(self.process_expression(*scrutinee)),
                 arms.into_iter()
                     .map(|MatchArm { pattern, value }| {
-                        let vars = self.store_local_variables();
+                        let vars = self.save_local_variables();
                         self.process_pattern(&pattern);
                         let value = self.process_expression(value);
                         self.reset_local_variables(vars);
@@ -171,7 +171,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
         params: &[String],
         expression: ::powdr_ast::parsed::Expression,
     ) -> Expression {
-        let previous_local_vars = self.local_variables.clone();
+        let previous_local_vars = self.save_local_variables();
 
         // Add the new local variables, potentially overwriting existing variables.
         self.local_variables.extend(
@@ -181,10 +181,10 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
                 .map(|(p, i)| (p.clone(), i)),
         );
         self.local_variable_counter += params.len() as u64;
+
         let processed_value = self.process_expression(expression);
-        // Reset the local variable mapping.
-        self.local_variables = previous_local_vars;
-        self.local_variable_counter -= params.len() as u64;
+
+        self.reset_local_variables(previous_local_vars);
         processed_value
     }
 
@@ -193,7 +193,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
         statements: Vec<StatementInsideBlock>,
         expr: ::powdr_ast::parsed::Expression,
     ) -> Expression {
-        let vars = self.store_local_variables();
+        let vars = self.save_local_variables();
 
         let mut local_var_count = 0;
         let processed_statements = statements
@@ -234,7 +234,7 @@ impl<D: AnalysisDriver> ExpressionProcessor<D> {
         }
     }
 
-    fn store_local_variables(&self) -> LocalVariableState {
+    fn save_local_variables(&self) -> LocalVariableState {
         LocalVariableState {
             local_variables: self.local_variables.clone(),
             local_variable_counter: self.local_variable_counter,
