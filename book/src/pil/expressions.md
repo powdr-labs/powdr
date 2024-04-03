@@ -47,7 +47,7 @@ A ``{``-``}``-delimited block can be used everywhere where an expression is expe
 
 It has the form ``{ <statement> ; <statement> ; ... ; <expression> }``,
 i.e. a sequence of statements followed by an expression.
-The statements can either be expressions or let statements: ``let x = ...`` / ``let x;``
+The statements can either be expressions (``f();``) or let statements: ``let x = ...;`` / ``let x;``
 
 The value of the statement block is the value of the final expression.
 
