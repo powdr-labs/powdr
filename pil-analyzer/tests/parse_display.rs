@@ -650,6 +650,7 @@ fn disjoint_block_shadowing() {
 }
 
 #[test]
+#[should_panic = "Variable already defined: x"]
 fn sub_function_shadowing() {
     let input = "    let t: int -> int = (|x| (|x| x)(2));
 ";
