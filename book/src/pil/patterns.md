@@ -49,7 +49,7 @@ An example is the pattern `7` since it does not match all integers, or the patte
 does not match the empty array.
 
 Refutable patterns are fine in match arms, because if the pattern does not match, the evaluator will
-just continue trying the next match arm, but they are disallowed in let statements an ind function
+just continue trying the next match arm, but they are disallowed in let statements and in function
 parameters, because there we do not have the option of "trying the next arm".
 
 Example:
