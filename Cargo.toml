@@ -23,6 +23,7 @@ members = [
     "asm-utils",
     "airgen",
     "riscv-executor",
+    "riscv-syscalls",
     "schemas",
 ]
 

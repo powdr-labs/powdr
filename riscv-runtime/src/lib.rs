@@ -12,8 +12,9 @@ use core::panic::PanicInfo;
 use crate::fmt::print_str;
 
 mod allocator;
-pub mod coprocessors;
 pub mod fmt;
+pub mod hash;
+pub mod input;
 
 #[panic_handler]
 unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
@@ -29,15 +30,6 @@ unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
 
     asm!("unimp");
     loop {}
-}
-
-#[inline]
-pub fn get_prover_input(index: u32) -> u32 {
-    let mut value: u32;
-    unsafe {
-        asm!("ecall", lateout("a0") value, in("a0") index);
-    }
-    value
 }
 
 extern "Rust" {

@@ -14,6 +14,8 @@ powdr-executor = { path = "../executor" }
 powdr-importer = { path = "../importer" }
 powdr-number = { path = "../number" }
 powdr-parser = { path = "../parser" }
+powdr-riscv-syscalls = { path = "../riscv-syscalls" }
+
 
 log = "0.4.17"
 itertools = "0.11"

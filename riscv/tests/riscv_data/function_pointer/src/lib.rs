@@ -1,6 +1,6 @@
 #![no_std]
 
-use powdr_riscv_runtime::get_prover_input;
+use powdr_riscv_runtime::input::get_prover_input;
 
 // Never inline to make sure the function is not optimized away, and public to
 // make sure op argument is not removed, forcing a function pointer to be loaded

@@ -1,6 +1,8 @@
 use core::arch::asm;
 use core::fmt;
 
+use powdr_riscv_syscalls::Syscall;
+
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)+) => {{
@@ -35,6 +37,6 @@ fn print_prover_char(c: u8) {
     let mut value = c as u32;
     #[allow(unused_assignments)]
     unsafe {
-        asm!("ebreak", lateout("a0") value, in("a0") value);
+        asm!("ecall", lateout("a0") value, in("a0") value, in("t0") u32::from(Syscall::PrintChar));
     }
 }
