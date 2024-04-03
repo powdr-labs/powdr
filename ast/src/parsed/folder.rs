@@ -219,10 +219,10 @@ pub trait ExpressionFolder<Ref> {
 
     fn fold_let_statement_inside_block(
         &mut self,
-        LetStatementInsideBlock { name, value }: LetStatementInsideBlock<Ref>,
+        LetStatementInsideBlock { pattern, value }: LetStatementInsideBlock<Ref>,
     ) -> Result<LetStatementInsideBlock<Ref>, Self::Error> {
         Ok(LetStatementInsideBlock {
-            name,
+            pattern,
             value: value.map(|v| self.fold_expression(v)).transpose()?,
         })
     }
