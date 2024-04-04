@@ -15,8 +15,8 @@ jobs:
     - uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Install Rust toolchain 1.74 (with clippy and rustfmt)
-      run: rustup toolchain install 1.74-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.74-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.74-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain 1.77 (with clippy and rustfmt)
+      run: rustup toolchain install 1.77-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.77-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.77-x86_64-unknown-linux-gnu
     - name: Lint
       run: cargo clippy --all --all-targets --all-features --profile pr-tests -- -D warnings
     - name: Lint
