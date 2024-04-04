@@ -346,7 +346,7 @@ fn craft_expression<T: FieldElement>(
                 return (
                     1,
                     format!(
-                        "FF(uint256_t{{{}LLU, {}LLU, {}LLU, {}LLU}})",
+                        "FF(uint256_t{{{}UL, {}UL, {}UL, {}UL}})",
                         chunks[0], chunks[1], chunks[2], chunks[3],
                     ),
                 );
