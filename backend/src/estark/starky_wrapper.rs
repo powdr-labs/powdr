@@ -17,7 +17,7 @@ use starky::{
     types::{StarkStruct, PIL},
 };
 
-use super::{create_stark_struct, pil_hack_fix};
+use super::{create_stark_struct, first_step_fixup};
 
 pub struct Factory;
 
@@ -41,7 +41,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
 
         let params = create_stark_struct(pil.degree());
 
-        let (pil_json, fixed) = pil_hack_fix(pil, fixed);
+        let (pil_json, fixed) = first_step_fixup(pil, fixed);
         let const_pols = to_starky_pols_array(&fixed, &pil_json, PolKind::Constant);
 
         let setup = if let Some(vkey) = verification_key {
