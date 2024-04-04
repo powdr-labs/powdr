@@ -193,7 +193,7 @@ impl PILAnalyzer {
 
                         let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = value
                         else {
-                            panic!("Invalid value for query funciton")
+                            panic!("Invalid value for query function")
                         };
 
                         expressions.push((e, query_type.clone().into()));
