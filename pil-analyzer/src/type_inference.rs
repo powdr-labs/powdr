@@ -590,7 +590,7 @@ impl<'a> TypeChecker<'a> {
                             self.expect_type_of_pattern(&value_type, pattern)?;
                         }
                         StatementInsideBlock::Expression(expr) => {
-                            self.expect_type_with_flexibility(&self.statement_type, expr)?;
+                            self.expect_type_with_flexibility(self.statement_type, expr)?;
                         }
                     }
                 }
