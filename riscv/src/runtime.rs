@@ -9,6 +9,8 @@ use powdr_parser::ParserContext;
 
 use crate::compiler::{pop_register, push_register};
 
+static EXTRA_REG_PREFIX: &str = "xtra";
+
 lazy_static::lazy_static! {
     static ref INSTRUCTION_DECLARATION_PARSER: powdr_parser::powdr::InstructionDeclarationParser
         = powdr_parser::powdr::InstructionDeclarationParser::new();
@@ -39,6 +41,8 @@ struct SubMachine {
     instance_name: String,
     /// Instruction declarations
     instructions: Vec<MachineStatement>,
+    /// Number of extra registers need by this machine's instruction declarations
+    extra_registers: u8,
     /// TODO: only needed because of witgen requiring that each machine be called at least once
     init_call: Vec<FunctionStatement>,
 }
@@ -89,6 +93,7 @@ impl Runtime {
                 "instr or Y, Z -> X ~ binary.or;",
                 "instr xor Y, Z -> X ~ binary.xor;",
             ],
+            0,
             ["x10 <== and(x10, x10);"],
         );
 
@@ -100,6 +105,7 @@ impl Runtime {
                 "instr shl Y, Z -> X ~ shift.shl;",
                 "instr shr Y, Z -> X ~ shift.shr;",
             ],
+            0,
             ["x10 <== shl(x10, x10);"],
         );
 
@@ -108,6 +114,7 @@ impl Runtime {
             None,
             "split_gl",
             ["instr split_gl Z -> X, Y ~ split_gl.split;"],
+            0,
             ["x10, x11 <== split_gl(x10);", "x10 <=X= 0;", "x11 <=X= 0;"],
         );
 
@@ -146,6 +153,7 @@ impl Runtime {
             None,
             "poseidon_gl",
             ["instr poseidon_gl ~ poseidon_gl.poseidon_permutation x10, x11, x12, x13, x14, x15, x16, x17, x6, x7, x28, x29 -> x10', x11', x12', x13';"],
+            0,
             // init call
             [
                 "poseidon_gl;",
@@ -159,42 +167,41 @@ impl Runtime {
         // memory address of the 12 field element input array. Since the memory
         // offset is chosen by LLVM, we assume it is properly aligned.
 
-        // The poseidon syscall uses x10 for input, we store it in tmp3, as x10 is
-        // also used as input to the poseidon machine instruction.
-        let setup = std::iter::once("tmp3 <=X= x10;".to_string());
+        // // load input from memory into register
+        // let load_word = |i| {
+        //     let reg = SYSCALL_REGISTERS[i];
+        //     let lo = i * 8;
+        //     let hi = i * 8 + 4;
+        //     [
+        //         format!("{reg}, tmp2 <== mload({lo} + tmp3);"),
+        //         format!("tmp1, tmp2 <== mload({hi} + tmp3);"),
+        //         format!("{reg} <=X= {reg} + tmp1 * 2**32;"),
+        //     ]
+        // };
 
-        // load input from memory into register
-        let load_word = |i| {
-            let reg = SYSCALL_REGISTERS[i];
-            let lo = i * 8;
-            let hi = i * 8 + 4;
-            [
-                format!("{reg}, tmp2 <== mload({lo} + tmp3);"),
-                format!("tmp1, tmp2 <== mload({hi} + tmp3);"),
-                format!("{reg} <=X= {reg} + tmp1 * 2**32;"),
-            ]
-        };
+        // // copy output from register into memory
+        // let store_word = |i| {
+        //     let reg = SYSCALL_REGISTERS[i];
+        //     let lo = i * 8;
+        //     let hi = i * 8 + 4;
+        //     [
+        //         format!("tmp1, tmp2 <== split_gl({reg});"),
+        //         format!("mstore {lo} + tmp3, tmp1;"),
+        //         format!("mstore {hi} + tmp3, tmp2;"),
+        //     ]
+        // };
 
-        // copy output from register into memory
-        let store_word = |i| {
-            let reg = SYSCALL_REGISTERS[i];
-            let lo = i * 8;
-            let hi = i * 8 + 4;
-            [
-                format!("tmp1, tmp2 <== split_gl({reg});"),
-                format!("mstore {lo} + tmp3, tmp1;"),
-                format!("mstore {hi} + tmp3, tmp2;"),
-            ]
-        };
-
-        let implementation = setup
+        let implementation =
+            // The poseidon syscall uses x10 for input, we store it in tmp3, as x10 is
+            // also used as input to the poseidon machine instruction.
+            std::iter::once("tmp3 <=X= x10;".to_string())
             // The poseidon instruction uses the first 12 SYSCALL_REGISTERS as input/output.
             // The contents of memory are loaded into these registers before calling the instruction.
             // These might be in use by the riscv machine, so we save the registers on the stack.
             .chain((0..12).flat_map(|i| push_register(SYSCALL_REGISTERS[i])))
-            .chain((0..12).flat_map(load_word))
+            .chain((0..12).flat_map(|i| load_word("tmp3", i as u32 * 8, SYSCALL_REGISTERS[i])))
             .chain(std::iter::once("poseidon_gl;".to_string()))
-            .chain((0..4).flat_map(store_word))
+            .chain((0..4).flat_map(|i| store_word("tmp3", i as u32 * 8, SYSCALL_REGISTERS[i])))
             // After copying the result back into memory, we restore the original register values.
             .chain(
                 (0..12)
@@ -206,12 +213,71 @@ impl Runtime {
         self
     }
 
+    pub fn with_arith(mut self) -> Self {
+        self.add_submachine(
+            "std::arith::Arith",
+            None,
+            "arith",
+            [
+                // format!(
+                //     "instr affine_256 ~ arith.affine {}",
+                //     instr_register_params(24, 16)
+                // ),
+                // format!(
+                //     "instr ec_add ~ arith.ec_add {}",
+                //     instr_register_params(32, 16)
+                // ),
+                format!(
+                    "instr ec_double ~ arith.ec_double {}",
+                    instr_register_params(2, 16, 16) // will use registers 2..18
+                ),
+            ],
+            // uses the 26 registers from risc-v plus 10 extra registers
+            10,
+            // init calling ec_double for (0,0)
+            std::iter::once("ec_double;".to_string())
+                // clear out output registers
+                .chain((2..18).map(|i| format!("{} <=X= 0;", register_by_idx(i)))),
+        );
+
+        // let affine256 = todo!();
+        // let ec_add = todo!();
+        // self.add_syscall(Syscall::Affine256, affine256);
+        // self.add_syscall(Syscall::EcAdd, ec_add);
+
+        // The ec_double syscall takes as input the addresses of x and y in x10 and x11 respectively.
+        // It will then store the resulting x and y into the same addresses.
+        let ec_double =
+            // Save instruction registers.
+            (2..18).flat_map(|i| push_register(&register_by_idx(i)))
+            // Load p.x
+            .chain((2..10).flat_map(|i| load_word("x10", i as u32 * 8, &register_by_idx(i))))
+            // Load p.y
+            .chain((10..18).flat_map(|i| load_word("x11", i as u32 * 8, &register_by_idx(i))))
+            // Call instruction
+            .chain(std::iter::once("ec_double;".to_string()))
+            // Store result p.x
+            .chain((2..10).flat_map(|i| store_word("x10", i as u32 * 8, &register_by_idx(i))))
+            // Store result p.y
+            .chain((10..18).flat_map(|i| store_word("x11", i as u32 * 8, &register_by_idx(i))))
+            // Restore instruction registers.
+            .chain(
+                (2..18)
+                    .rev()
+                    .flat_map(|i| pop_register(&register_by_idx(i))),
+            );
+
+        self.add_syscall(Syscall::EcDouble, ec_double);
+        self
+    }
+
     pub fn add_submachine<S: AsRef<str>, I1: IntoIterator<Item = S>, I2: IntoIterator<Item = S>>(
         &mut self,
         path: &str,
         alias: Option<&str>,
         instance_name: &str,
         instructions: I1,
+        extra_registers: u8,
         init_call: I2,
     ) {
         let subm = SubMachine {
@@ -222,6 +288,7 @@ impl Runtime {
                 .into_iter()
                 .map(|s| parse_instruction_declaration(s.as_ref()))
                 .collect(),
+            extra_registers,
             init_call: init_call
                 .into_iter()
                 .map(|s| parse_function_statement(s.as_ref()))
@@ -276,6 +343,19 @@ impl Runtime {
             .values()
             .flat_map(|m| m.instructions.iter())
             .map(|s| s.to_string())
+            .collect()
+    }
+
+    pub fn submachines_extra_registers(&self) -> Vec<String> {
+        let count = self
+            .submachines
+            .values()
+            .map(|m| m.extra_registers)
+            .max()
+            .unwrap_or(0);
+
+        (1..=count)
+            .map(|i| format!("reg {EXTRA_REG_PREFIX}{i};"))
             .collect()
     }
 
@@ -366,9 +446,66 @@ impl TryFrom<&[&str]> for Runtime {
             }
             match *name {
                 "poseidon_gl" => runtime = runtime.with_poseidon(),
+                "arith" => runtime = runtime.with_arith(),
                 _ => return Err(format!("Invalid co-processor specified: {name}")),
             }
         }
         Ok(runtime)
     }
+}
+
+/// Helper function for register names used in instruction params
+fn register_by_idx(mut idx: u8) -> String {
+    // s* callee saved registers
+    static SAVED_REGS: [&str; 12] = [
+        "x8", "x9", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
+    ];
+
+    // first, use syscall_registers
+    if idx < SYSCALL_REGISTERS.len() as u8 {
+        return SYSCALL_REGISTERS[idx as usize].to_string();
+    }
+    idx -= SYSCALL_REGISTERS.len() as u8;
+    // second, use s* registers
+    if idx < SAVED_REGS.len() as u8 {
+        return SAVED_REGS[idx as usize].to_string();
+    }
+    idx -= SAVED_REGS.len() as u8 + 1;
+    // lastly, use extra submachine registers
+    format!("{EXTRA_REG_PREFIX}{idx}")
+}
+
+/// Helper function to generate params (i.e., "A, B -> C, D") for instruction declarations using registers
+fn instr_register_params(start_idx: u8, inputs: u8, outputs: u8) -> String {
+    format!(
+        "{} -> {}",
+        (start_idx..start_idx + inputs)
+            .map(register_by_idx)
+            .join(", "),
+        (start_idx..start_idx + outputs)
+            .map(|i| format!("{}'", register_by_idx(i)))
+            .join(", "),
+    )
+}
+
+/// Load from addr+offset into register
+fn load_word(addr: &str, offset: u32, reg: &str) -> [String; 3] {
+    let lo = offset;
+    let hi = offset + 4;
+    [
+        format!("{reg}, tmp2 <== mload({lo} + {addr});"),
+        format!("tmp1, tmp2 <== mload({hi} + {addr});"),
+        format!("{reg} <=X= {reg} + tmp1 * 2**32;"),
+    ]
+}
+
+/// Store register in addr+offset
+fn store_word(addr: &str, offset: u32, reg: &str) -> [String; 3] {
+    let lo = offset;
+    let hi = offset + 4;
+    [
+        format!("tmp1, tmp2 <== split_gl({reg});"),
+        format!("mstore {lo} + {addr}, tmp1;"),
+        format!("mstore {hi} + {addr}, tmp2;"),
+    ]
 }

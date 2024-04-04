@@ -2,6 +2,9 @@ use core::arch::asm;
 
 use powdr_riscv_syscalls::Syscall;
 
+// TODO: there could be a lot of copying by passing these values on the stack.
+// Maybe use references instead.
+
 pub fn affine_256_unsafe(
     mut x1: [u32; 8],
     mut y1: [u32; 8],
@@ -26,7 +29,14 @@ pub fn ec_add(mut a: ([u32; 8], [u32; 8]), mut b: ([u32; 8], [u32; 8])) -> ([u32
 }
 
 pub fn ec_double_unsafe(mut p: ([u32; 8], [u32; 8])) -> ([u32; 8], [u32; 8]) {
-    unimplemented!()
+    unsafe {
+        asm!("ecall",
+             in("a0") &mut p.0 as *mut [u32; 8],
+             in("a1") &mut p.1 as *mut [u32; 8],
+             in("t0") u32::from(Syscall::EcDouble));
+    }
+
+    p
 }
 
 pub fn ec_double(mut p: ([u32; 8], [u32; 8])) -> ([u32; 8], [u32; 8]) {
