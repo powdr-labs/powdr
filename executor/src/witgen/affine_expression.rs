@@ -376,9 +376,7 @@ where
             assignments.combine(EvalValue::complete(vec![(
                 *i,
                 Constraint::Assignment(
-                    ((offset & mask).to_arbitrary_integer() / coeff.to_arbitrary_integer())
-                        .try_into()
-                        .unwrap(),
+                    ((offset & mask).to_arbitrary_integer() / coeff.to_arbitrary_integer()).into(),
                 ),
             )]));
             offset &= !mask;
