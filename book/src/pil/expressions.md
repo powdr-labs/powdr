@@ -41,6 +41,32 @@ Elementary expressions are
 
 Parentheses are allowed at any point to force precedence.
 
+### Lambda Functions
+
+The only way to declare a function in pil is by assigning a lambda function to a symbol.
+
+Example:
+
+```rust
+let x = |i| i + 1;
+```
+
+If you want to specify the types of parameters or return values explicitly, you have to do it
+on the symbol, you cannot do it on the parameters:
+
+```rust
+let x: int -> int = |i| i + 1;
+```
+
+It is possible to use [patterns](./patterns.md) in the function parameters:
+
+```rust
+let y: (int, int), int -> int = |(i, j), _| i + j;
+```
+
+If you use patterns, they have to be irrefutable, which means that the pattern has to
+be able to match any value of the given type.
+
 ### Statement Blocks
 
 A ``{``-``}``-delimited block can be used everywhere where an expression is expected.
@@ -59,7 +85,18 @@ let plus_one_squared = |x| { let y = x + 1; y * y };
 ```
 
 Let statements with value can be used everywhere, they just bind an expression to a local variable
-and allow to avoid repeating the expression.
+and allow to avoid repeating the expression. You can use [patterns](./patterns.md) for the
+left hand side of let statements to destructure values.
+
+Example:
+
+```rust
+let f = |i| (i / 2, i % 2);
+let (quot, rem) = f(7);
+```
+
+The second let statement will create two local variables `x` and `y`. You can also ignore values using
+the `_` pattern element. For details, please see the [patterns](./patterns.md) section.
 
 Let statements without value (``let x;``) create a new witness column and are only allowed inside [``constr``-functions](#constr-and-query-functions).
 
@@ -81,7 +118,9 @@ Match expressions take the form ``match <value> { <pattern 1> => <value 1>, <pat
 with an arbitrary number of match arms.
 
 The semantics are that the first match arm where the pattern equals the value after the `match` keyword is evaluated.
-The "default" arm with the pattern `_` matches all values.
+
+Patterns can be used to destructure more complex data types and to capture values inside new local variables.
+For more details, please see the [patterns](./patterns.md) section.
 
 Example:
 

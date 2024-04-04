@@ -29,8 +29,8 @@ pub struct PILFile(pub Vec<PilStatement>);
 pub enum PilStatement {
     /// File name
     Include(SourceRef, String),
-    /// Name of namespace and polynomial degree (constant)
-    Namespace(SourceRef, SymbolPath, Expression),
+    /// Name of namespace and optional polynomial degree (constant)
+    Namespace(SourceRef, SymbolPath, Option<Expression>),
     LetStatement(
         SourceRef,
         String,
@@ -131,7 +131,7 @@ impl Children<Expression> for PilStatement {
                 Box::new(left.iter().chain(right.iter()))
             }
             PilStatement::Expression(_, e)
-            | PilStatement::Namespace(_, _, e)
+            | PilStatement::Namespace(_, _, Some(e))
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
@@ -150,6 +150,7 @@ impl Children<Expression> for PilStatement {
             | PilStatement::PolynomialCommitDeclaration(_, _, _, Some(def)) => def.children(),
             PilStatement::PolynomialCommitDeclaration(_, _, _, None)
             | PilStatement::Include(_, _)
+            | PilStatement::Namespace(_, _, None)
             | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
         }
     }
@@ -165,7 +166,7 @@ impl Children<Expression> for PilStatement {
                 Box::new(left.iter_mut().chain(right.iter_mut()))
             }
             PilStatement::Expression(_, e)
-            | PilStatement::Namespace(_, _, e)
+            | PilStatement::Namespace(_, _, Some(e))
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
@@ -181,6 +182,7 @@ impl Children<Expression> for PilStatement {
             | PilStatement::PolynomialCommitDeclaration(_, _, _, Some(def)) => def.children_mut(),
             PilStatement::PolynomialCommitDeclaration(_, _, _, None)
             | PilStatement::Include(_, _)
+            | PilStatement::Namespace(_, _, None)
             | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
         }
     }
@@ -504,7 +506,7 @@ impl NamespacedPolynomialReference {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub struct LambdaExpression<Ref = NamespacedPolynomialReference> {
     pub kind: FunctionKind,
-    pub params: Vec<String>,
+    pub params: Vec<Pattern>,
     pub body: Box<Expression<Ref>>,
 }
 
@@ -686,7 +688,7 @@ impl<R> Children<Expression<R>> for StatementInsideBlock<R> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LetStatementInsideBlock<Ref = NamespacedPolynomialReference> {
-    pub name: String,
+    pub pattern: Pattern,
     pub value: Option<Expression<Ref>>,
 }
 
@@ -848,6 +850,20 @@ impl Pattern {
         match self {
             Pattern::Variable(v) => Box::new(once(v)),
             _ => Box::new(self.children().flat_map(|p| p.variables())),
+        }
+    }
+
+    /// Return true if the pattern is irrefutable, i.e. matches all possible values of its type.
+    pub fn is_irrefutable(&self) -> bool {
+        match self {
+            Pattern::Ellipsis => unreachable!(),
+            Pattern::CatchAll | Pattern::Variable(_) => true,
+            Pattern::Number(_) | Pattern::String(_) => false,
+            Pattern::Array(items) => {
+                // Only "[..]"" is irrefutable
+                items == &vec![Pattern::Ellipsis]
+            }
+            Pattern::Tuple(p) => p.iter().all(|p| p.is_irrefutable()),
         }
     }
 }

@@ -558,6 +558,29 @@ fn let_inside_block_scoping_limited() {
 }
 
 #[test]
+#[should_panic = "Function parameters must be irrefutable, but [x, y] is refutable."]
+fn refutable_function_param() {
+    let input = "
+    namespace Main(8);
+        let t = |[x, y], z| x;
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+#[should_panic = "Let statement requires an irrefutable pattern, but [x, y] is refutable."]
+fn refutable_let() {
+    let input = "
+    namespace Main(8);
+        let t = {
+            let [x, y] = [1, 2];
+            x
+        };
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
 fn patterns() {
     let input = "    let t: ((int, int), int[]) -> int = (|i| match i {
         ((_, 6), []) => 2,
@@ -625,8 +648,17 @@ fn disjoint_block_shadowing() {
 }
 
 #[test]
+#[should_panic = "Variable already defined: x"]
 fn sub_function_shadowing() {
     let input = "    let t: int -> int = (|x| (|x| x)(2));
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn function_param_shadowing() {
+    let input = "    let t: int, int -> int = (|x, x| (x + x));
 ";
     assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
 }
@@ -663,4 +695,21 @@ fn multi_ellipsis() {
     });
 ";
     assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+fn namespace_no_degree() {
+    let input = "namespace X;
+    let y: int = 7;
+namespace T(8);
+    let k = X::y;
+";
+    let expected = "namespace X(8);
+    let y: int = 7;
+namespace T(8);
+    let k: int = X.y;
+";
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.degree, Some(8));
+    assert_eq!(expected, analyzed.to_string());
 }

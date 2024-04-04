@@ -10,20 +10,19 @@ use test_log::test;
 
 use powdr_riscv::{
     continuations::{rust_continuations, rust_continuations_dry_run},
-    CoProcessors,
+    Runtime,
 };
 
 /// Compiles and runs a rust program with continuations, runs the full
 /// witness generation & verifies it using Pilcom.
 pub fn test_continuations(case: &str) {
-    let coprocessors = CoProcessors::base().with_poseidon();
+    let runtime = Runtime::base().with_poseidon();
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    let powdr_asm =
-        powdr_riscv::compiler::compile::<GoldilocksField>(riscv_asm, &coprocessors, true);
+    let powdr_asm = powdr_riscv::compiler::compile::<GoldilocksField>(riscv_asm, &runtime, true);
 
     // Manually create tmp dir, so that it is the same in all chunks.
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
@@ -48,25 +47,21 @@ pub fn test_continuations(case: &str) {
 #[ignore = "Too slow"]
 fn test_trivial() {
     let case = "trivial";
-    verify_riscv_crate(case, Default::default(), &CoProcessors::base())
+    verify_riscv_crate(case, Default::default(), &Runtime::base())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn test_zero_with_values() {
     let case = "zero_with_values";
-    verify_riscv_crate(case, Default::default(), &CoProcessors::base())
+    verify_riscv_crate(case, Default::default(), &Runtime::base())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn test_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor";
-    verify_riscv_crate(
-        case,
-        Default::default(),
-        &CoProcessors::base().with_poseidon(),
-    );
+    verify_riscv_crate(case, Default::default(), &Runtime::base().with_poseidon());
 }
 
 #[test]
@@ -76,7 +71,7 @@ fn test_sum() {
     verify_riscv_crate(
         case,
         [16, 4, 1, 2, 8, 5].iter().map(|&x| x.into()).collect(),
-        &CoProcessors::base(),
+        &Runtime::base(),
     );
 }
 
@@ -87,7 +82,7 @@ fn test_byte_access() {
     verify_riscv_crate(
         case,
         [0, 104, 707].iter().map(|&x| x.into()).collect(),
-        &CoProcessors::base(),
+        &Runtime::base(),
     );
 }
 
@@ -113,7 +108,7 @@ fn test_double_word() {
         .iter()
         .map(|&x| x.into())
         .collect(),
-        &CoProcessors::base(),
+        &Runtime::base(),
     );
 }
 
@@ -121,14 +116,14 @@ fn test_double_word() {
 #[ignore = "Too slow"]
 fn test_memfuncs() {
     let case = "memfuncs";
-    verify_riscv_crate(case, Default::default(), &CoProcessors::base());
+    verify_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn test_keccak() {
     let case = "keccak";
-    verify_riscv_crate(case, Default::default(), &CoProcessors::base());
+    verify_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
 #[test]
@@ -141,7 +136,7 @@ fn test_vec_median() {
             .into_iter()
             .map(|x| x.into())
             .collect(),
-        &CoProcessors::base(),
+        &Runtime::base(),
     );
 }
 
@@ -149,7 +144,7 @@ fn test_vec_median() {
 #[ignore = "Too slow"]
 fn test_password() {
     let case = "password_checker";
-    verify_riscv_crate(case, Default::default(), &CoProcessors::base());
+    verify_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
 #[test]
@@ -159,7 +154,7 @@ fn test_function_pointer() {
     verify_riscv_crate(
         case,
         [2734, 735, 1999].into_iter().map(|x| x.into()).collect(),
-        &CoProcessors::base(),
+        &Runtime::base(),
     );
 }
 
@@ -177,7 +172,7 @@ fn test_evm() {
     let case = "evm";
     let bytes = hex::decode(BYTECODE).unwrap();
 
-    verify_riscv_crate_with_data(case, vec![], &CoProcessors::base(), vec![(666, bytes)]);
+    verify_riscv_crate_with_data(case, vec![], &Runtime::base(), vec![(666, bytes)]);
 }
 
 #[ignore = "Too slow"]
@@ -191,7 +186,7 @@ fn test_sum_serde() {
     verify_riscv_crate_with_data(
         case,
         vec![answer.into()],
-        &CoProcessors::base(),
+        &Runtime::base(),
         vec![(42, data)],
     );
 }
@@ -203,7 +198,7 @@ fn test_sum_serde() {
 )]
 fn test_print() {
     let case = "print";
-    verify_riscv_crate(case, Default::default(), &CoProcessors::base());
+    verify_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
 #[test]
@@ -212,14 +207,13 @@ fn test_many_chunks_dry() {
     // and validating the bootloader inputs.
     // Doesn't do a full witness generation, verification, or proving.
     let case = "many_chunks";
-    let coprocessors = CoProcessors::base().with_poseidon();
+    let runtime = Runtime::base().with_poseidon();
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    let powdr_asm =
-        powdr_riscv::compiler::compile::<GoldilocksField>(riscv_asm, &coprocessors, true);
+    let powdr_asm = powdr_riscv::compiler::compile::<GoldilocksField>(riscv_asm, &runtime, true);
 
     let mut pipeline = Pipeline::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
@@ -239,28 +233,27 @@ fn test_many_chunks_memory() {
     test_continuations("many_chunks_memory")
 }
 
-fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProcessors) {
-    let powdr_asm = compile_riscv_crate::<GoldilocksField>(case, coprocessors);
-
+fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, runtime: &Runtime) {
+    let powdr_asm = compile_riscv_crate::<GoldilocksField>(case, runtime);
     verify_riscv_asm_string::<()>(&format!("{case}.asm"), &powdr_asm, inputs, None);
 }
 
 fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
     case: &str,
     inputs: Vec<GoldilocksField>,
-    coprocessors: &CoProcessors,
+    runtime: &Runtime,
     data: Vec<(u32, S)>,
 ) {
-    let powdr_asm = compile_riscv_crate::<GoldilocksField>(case, coprocessors);
+    let powdr_asm = compile_riscv_crate::<GoldilocksField>(case, runtime);
 
     verify_riscv_asm_string(&format!("{case}.asm"), &powdr_asm, inputs, Some(data));
 }
 
-fn compile_riscv_crate<T: FieldElement>(case: &str, coprocessors: &CoProcessors) -> String {
+fn compile_riscv_crate<T: FieldElement>(case: &str, runtime: &Runtime) -> String {
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    powdr_riscv::compiler::compile::<T>(riscv_asm, coprocessors, false)
+    powdr_riscv::compiler::compile::<T>(riscv_asm, runtime, false)
 }

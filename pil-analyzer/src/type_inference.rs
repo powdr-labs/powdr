@@ -22,13 +22,15 @@ use crate::{
 
 /// Infers types on all definitions and checks type-correctness for isolated
 /// expressions (from identities and arrays) where the expected type is given.
+/// The parameter `statement_type` is the expected type for expressions at statement level.
 /// Sets the generic arguments for references and the literal types in all expressions.
 /// Returns the types for symbols without explicit type.
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
+    statement_type: &ExpectedType,
 ) -> Result<Vec<(String, Type)>, String> {
-    TypeChecker::default().infer_types(definitions, expressions)
+    TypeChecker::new(statement_type).infer_types(definitions, expressions)
 }
 
 /// A type to expect and a flag that says if arrays of that type are also fine.
@@ -47,8 +49,9 @@ impl From<Type> for ExpectedType {
     }
 }
 
-#[derive(Default)]
-struct TypeChecker {
+struct TypeChecker<'a> {
+    /// The expected type for expressions at statement level in block expressions.
+    statement_type: &'a ExpectedType,
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
     /// Declared types for all symbols. Contains the unmodified type scheme for symbols
@@ -61,7 +64,17 @@ struct TypeChecker {
     last_type_var: usize,
 }
 
-impl TypeChecker {
+impl<'a> TypeChecker<'a> {
+    pub fn new(statement_type: &'a ExpectedType) -> Self {
+        Self {
+            statement_type,
+            local_var_types: Default::default(),
+            declared_types: Default::default(),
+            unifier: Default::default(),
+            last_type_var: Default::default(),
+        }
+    }
+
     /// Infers and checks types for all provided definitions and expressions and
     /// returns the types for symbols without explicit type.
     pub fn infer_types(
@@ -498,14 +511,16 @@ impl TypeChecker {
                 params,
                 body,
             }) => {
-                let param_types = (0..params.len())
-                    .map(|_| self.new_type_var())
-                    .collect::<Vec<_>>();
                 let old_len = self.local_var_types.len();
-                self.local_var_types.extend(param_types.clone());
-                let body_type_result = self.infer_type_of_expression(body);
+                let result = params
+                    .iter()
+                    .map(|p| self.infer_type_of_pattern(p))
+                    .collect::<Result<Vec<_>, _>>()
+                    .and_then(|param_types| {
+                        Ok((param_types, self.infer_type_of_expression(body)?))
+                    });
                 self.local_var_types.truncate(old_len);
-                let body_type = body_type_result?;
+                let (param_types, body_type) = result?;
                 Type::Function(FunctionType {
                     params: param_types,
                     value: Box::new(body_type),
@@ -582,35 +597,27 @@ impl TypeChecker {
                 result
             }
             Expression::BlockExpression(statements, expr) => {
-                let mut local_var_count = 0;
+                let original_var_count = self.local_var_types.len();
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
-                            name: _,
+                            pattern,
                             value,
                         }) => {
-                            let var_type = if let Some(value) = value {
+                            let value_type = if let Some(value) = value {
                                 self.infer_type_of_expression(value)?
                             } else {
                                 Type::Expr
                             };
-                            self.local_var_types.push(var_type);
-                            local_var_count += 1;
+                            self.expect_type_of_pattern(&value_type, pattern)?;
                         }
                         StatementInsideBlock::Expression(expr) => {
-                            self.expect_type_with_flexibility(
-                                &ExpectedType {
-                                    ty: Type::Constr,
-                                    allow_array: true,
-                                },
-                                expr,
-                            )?;
+                            self.expect_type_with_flexibility(self.statement_type, expr)?;
                         }
                     }
                 }
                 let result = self.infer_type_of_expression(expr);
-                self.local_var_types
-                    .truncate(self.local_var_types.len() - local_var_count);
+                self.local_var_types.truncate(original_var_count);
                 result?
             }
         })

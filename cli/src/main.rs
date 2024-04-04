@@ -340,6 +340,11 @@ enum Commands {
         #[arg(long)]
         proof: String,
 
+        /// Comma-separated list of public inputs (numbers).
+        #[arg(long)]
+        #[arg(default_value_t = String::new())]
+        publics: String,
+
         /// File containing the verification ley.
         #[arg(long)]
         vkey: String,
@@ -592,13 +597,14 @@ fn run_command(command: Commands) {
             field,
             backend,
             proof,
+            publics,
             params,
             vkey,
         } => {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
             call_with_field!(read_and_verify::<field>(
-                pil, dir, &backend, proof, params, vkey
+                pil, dir, &backend, proof, publics, params, vkey
             ))
         }
         Commands::VerificationKey {
@@ -676,17 +682,18 @@ fn run_rust<F: FieldElement>(
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let coprocessors = match coprocessors {
+    let runtime = match coprocessors {
         Some(list) => {
-            powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
         }
-        None => powdr_riscv::CoProcessors::base(),
+        None => powdr_riscv::Runtime::base(),
     };
+
     let (asm_file_path, asm_contents) = compile_rust::<F>(
         file_name,
         output_dir,
         force_overwrite,
-        &coprocessors,
+        &runtime,
         continuations,
     )
     .ok_or_else(|| vec!["could not compile rust".to_string()])?;
@@ -725,18 +732,19 @@ fn run_riscv_asm<F: FieldElement>(
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let coprocessors = match coprocessors {
+    let runtime = match coprocessors {
         Some(list) => {
-            powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
         }
-        None => powdr_riscv::CoProcessors::base(),
+        None => powdr_riscv::Runtime::base(),
     };
+
     let (asm_file_path, asm_contents) = compile_riscv_asm::<F>(
         original_file_name,
         file_names,
         output_dir,
         force_overwrite,
-        &coprocessors,
+        &runtime,
         continuations,
     )
     .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
@@ -866,6 +874,7 @@ fn read_and_verify<T: FieldElement>(
     dir: &Path,
     backend_type: &BackendType,
     proof: String,
+    publics: String,
     params: Option<String>,
     vkey: String,
 ) -> Result<(), Vec<String>> {
@@ -873,6 +882,7 @@ fn read_and_verify<T: FieldElement>(
     let vkey = Path::new(&vkey).to_path_buf();
 
     let proof = fs::read(proof).unwrap();
+    let publics = split_inputs(publics.as_str());
 
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
@@ -881,8 +891,7 @@ fn read_and_verify<T: FieldElement>(
         .with_vkey_file(Some(vkey))
         .with_backend(*backend_type);
 
-    // TODO add support for publics
-    pipeline.verify(&proof, &[vec![]])?;
+    pipeline.verify(&proof, &[publics])?;
     println!("Proof is valid!");
 
     Ok(())
