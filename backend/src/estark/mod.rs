@@ -46,7 +46,7 @@ fn pil_hack_fix<'a, F: FieldElement>(
 
     let mut pil: PIL = json_exporter::export(pil);
 
-    // TODO eStark provers requires a fixed column with the equivalent semantics
+    // TODO eStark provers require a fixed column with the equivalent semantics
     // to Polygon zkEVM's `L1` column. Powdr generated PIL will always have
     // `main.first_step`, but directly given PIL may not have it. This is a hack
     // to inject such column if it doesn't exist. It should be eventually
