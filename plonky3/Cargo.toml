@@ -9,15 +9,15 @@ repository.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-p3-air = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-matrix = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-air = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
+p3-matrix = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
 powdr-ast = { version = "0.1.0-alpha.1", path = "../ast" }
 powdr-number = { version = "0.1.0-alpha.1", path = "../number" }
-p3-field = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
 rand = "0.8.5"
 
 [dev-dependencies]
-p3-uni-stark = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-uni-stark = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
 powdr-airgen = { path = "../airgen" }
 powdr-analysis = { path = "../analysis" }
 powdr-executor = { path = "../executor" }
@@ -25,15 +25,15 @@ powdr-importer = { path = "../importer" }
 powdr-linker = { path = "../linker" }
 powdr-parser = { path = "../parser" }
 powdr-pipeline = { path = "../pipeline" }
-p3-commit = { git = "https://github.com/Plonky3/Plonky3.git", features = ["test-utils"] }
-p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-circle = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-fri = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-keccak = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-mds = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-merkle-tree = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-dft = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-challenger = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-util = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-commit = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af", features = ["test-utils"] }
+p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
+p3-circle = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
+p3-fri = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
+p3-keccak = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
+p3-mds = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
+p3-merkle-tree = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
+p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
+p3-dft = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
+p3-challenger = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
+p3-util = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
