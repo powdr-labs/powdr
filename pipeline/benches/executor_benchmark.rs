@@ -1,8 +1,11 @@
+use std::sync::Arc;
+
 use ::powdr_pipeline::{inputs_to_query_callback, Pipeline};
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::{BigInt, FieldElement, GoldilocksField};
+use powdr_pil_analyzer::evaluator::Value;
 
-use powdr_pipeline::test_util::{evaluate_integer_function, std_analyzed};
+use powdr_pipeline::test_util::{evaluate_function, evaluate_integer_function, std_analyzed};
 use powdr_riscv::{
     compile_rust_crate_to_riscv_asm, compiler, continuations::bootloader::default_input, Runtime,
 };
@@ -145,6 +148,31 @@ fn evaluator_benchmark(c: &mut Criterion) {
             b.iter(|| {
                 let y = BigInt::from(x) * BigInt::from(112655675);
                 evaluate_integer_function(&sqrt_analyzed, "sqrt", vec![y.clone()]);
+            });
+        });
+    }
+
+    let sort_analyzed: Analyzed<GoldilocksField> = {
+        // airgen needs a main machine.
+        let code = "
+            let sort_int: int[] -> int[] = |x| std::array::sort(x, |a, b| a < b);
+            machine Main { }
+        "
+        .to_string();
+        let mut pipeline = Pipeline::default().from_asm_string(code, None);
+        pipeline.compute_analyzed_pil().unwrap().clone()
+    };
+
+    for l in [20, 1000, 10000, 100000] {
+        let input = Arc::new(Value::Array(
+            (0..l)
+                .rev()
+                .map(|x| Arc::new(Value::Integer(x.into())))
+                .collect(),
+        ));
+        group.bench_with_input(format!("sort_{l}"), &input, |b, x| {
+            b.iter(|| {
+                evaluate_function(&sort_analyzed, "sort_int", vec![x.clone()]);
             });
         });
     }
