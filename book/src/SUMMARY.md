@@ -23,6 +23,7 @@
 - [pil](./pil/README.md)
     - [Declarations](./pil/declarations.md)
     - [Expressions](./pil/expressions.md)
+    - [Patterns](./pil/patterns.md)
     - [Types](./pil/types.md)
     - [Fixed Columns](./pil/fixed_columns.md)
     - [Built-in Functions](./pil/builtins.md)

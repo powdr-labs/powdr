@@ -476,14 +476,16 @@ impl TypeChecker {
                 params,
                 body,
             }) => {
-                let param_types = (0..params.len())
-                    .map(|_| self.new_type_var())
-                    .collect::<Vec<_>>();
                 let old_len = self.local_var_types.len();
-                self.local_var_types.extend(param_types.clone());
-                let body_type_result = self.infer_type_of_expression(body);
+                let result = params
+                    .iter()
+                    .map(|p| self.infer_type_of_pattern(p))
+                    .collect::<Result<Vec<_>, _>>()
+                    .and_then(|param_types| {
+                        Ok((param_types, self.infer_type_of_expression(body)?))
+                    });
                 self.local_var_types.truncate(old_len);
-                let body_type = body_type_result?;
+                let (param_types, body_type) = result?;
                 Type::Function(FunctionType {
                     params: param_types,
                     value: Box::new(body_type),
@@ -560,20 +562,19 @@ impl TypeChecker {
                 result
             }
             Expression::BlockExpression(statements, expr) => {
-                let mut local_var_count = 0;
+                let original_var_count = self.local_var_types.len();
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
-                            name: _,
+                            pattern,
                             value,
                         }) => {
-                            let var_type = if let Some(value) = value {
+                            let value_type = if let Some(value) = value {
                                 self.infer_type_of_expression(value)?
                             } else {
                                 Type::Expr
                             };
-                            self.local_var_types.push(var_type);
-                            local_var_count += 1;
+                            self.expect_type_of_pattern(&value_type, pattern)?;
                         }
                         StatementInsideBlock::Expression(expr) => {
                             self.expect_type_with_flexibility(
@@ -587,8 +588,7 @@ impl TypeChecker {
                     }
                 }
                 let result = self.infer_type_of_expression(expr);
-                self.local_var_types
-                    .truncate(self.local_var_types.len() - local_var_count);
+                self.local_var_types.truncate(original_var_count);
                 result?
             }
         })

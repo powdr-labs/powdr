@@ -42,8 +42,6 @@ mod R {
         sum(2, |i| w[i]) = 8;
 
         let two: int = 2;
-        // Try to see if we only clear local variables
-        // if they not already exist in the outer scope.
-        make_array(2, |i| ((|i| w)(two))[i] = 4);
+        make_array(2, |i| ((|j| w)(two))[i] = 4);
     }
 }

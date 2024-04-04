@@ -68,11 +68,20 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
 
                 )))?
             }
+            let matched_arguments =
+                arguments
+                    .iter()
+                    .zip(&lambda.params)
+                    .flat_map(|(arg, pattern)| {
+                        Value::try_match_pattern(arg, pattern).unwrap_or_else(|| {
+                            panic!("Irrefutable pattern did not match: {pattern} = {arg}")
+                        })
+                    });
 
             let local_vars = environment
                 .iter()
                 .cloned()
-                .chain(arguments)
+                .chain(matched_arguments)
                 .collect::<Vec<_>>();
 
             internal::evaluate(&lambda.body, &local_vars, type_args, symbols)
@@ -680,15 +689,22 @@ mod internal {
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
-                            name,
+                            pattern,
                             value,
                         }) => {
                             let value = if let Some(value) = value {
                                 evaluate(value, &locals, type_args, symbols)?
                             } else {
+                                let Pattern::Variable(name) = pattern else {
+                                    unreachable!()
+                                };
                                 symbols.new_witness_column(name, SourceRef::unknown())?
                             };
-                            locals.push(value);
+                            locals.extend(
+                                Value::try_match_pattern(&value, pattern).unwrap_or_else(|| {
+                                    panic!("Irrefutable pattern did not match: {pattern} = {value}")
+                                }),
+                            );
                         }
                         StatementInsideBlock::Expression(expr) => {
                             let result = evaluate(expr, &locals, type_args, symbols)?;
@@ -1268,6 +1284,29 @@ mod test {
         assert_eq!(
             parse_and_evaluate_symbol(src, "t"),
             "[99, 99, 2, 2, 2]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn unpack_fun() {
+        let src = r#"
+            let t: (int, fe, int), int -> int[] = |(x, _, y), z| [x, y, z];
+            let x: int[] = t((1, 2, 3), 4);
+        "#;
+        assert_eq!(parse_and_evaluate_symbol(src, "x"), "[1, 3, 4]".to_string());
+    }
+
+    #[test]
+    pub fn unpack_let() {
+        let src = r#"
+            let x: int[] = {
+                let (a, (_, b), (c, _, _, d, _)) = (1, ((), 3), (4, (), (), 7, ()));
+                [a, b, c, d]
+            };
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "x"),
+            "[1, 3, 4, 7]".to_string()
         );
     }
 }
