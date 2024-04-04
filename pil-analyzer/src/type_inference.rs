@@ -70,6 +70,7 @@ impl<'a> TypeChecker<'a> {
             statement_type,
             local_var_types: Default::default(),
             declared_types: Default::default(),
+            declared_type_vars: Default::default(),
             unifier: Default::default(),
             last_type_var: Default::default(),
         }
