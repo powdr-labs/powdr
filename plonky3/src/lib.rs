@@ -83,6 +83,7 @@ impl<'a, T: Plonky3FieldElement> PowdrCircuit<'a, T> {
                     AlgebraicUnaryOperator::Minus => -e,
                 }
             }
+            AlgebraicExpression::Challenge(_) => todo!(),
         };
         res
     }
