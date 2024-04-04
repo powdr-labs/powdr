@@ -57,6 +57,8 @@ struct TypeChecker<'a> {
     /// Declared types for all symbols. Contains the unmodified type scheme for symbols
     /// with generic types and newly created type variables for symbols without declared type.
     declared_types: HashMap<String, TypeScheme>,
+    /// Current mapping of declared type vars to type. Reset before checking each definition.
+    declared_type_vars: HashMap<String, Type>,
     unifier: Unifier,
     /// Last used type variable index.
     last_type_var: usize,
@@ -68,6 +70,7 @@ impl<'a> TypeChecker<'a> {
             statement_type,
             local_var_types: Default::default(),
             declared_types: Default::default(),
+            declared_type_vars: Default::default(),
             unifier: Default::default(),
             last_type_var: Default::default(),
         }
@@ -133,8 +136,14 @@ impl<'a> TypeChecker<'a> {
 
             let declared_type = self.declared_types[&name].clone();
             let result = if declared_type.vars.is_empty() {
+                self.declared_type_vars.clear();
                 self.process_concrete_symbol(&name, declared_type.ty.clone(), value)
             } else {
+                self.declared_type_vars = declared_type
+                    .vars
+                    .vars()
+                    .map(|v| (v.clone(), self.new_type_var()))
+                    .collect();
                 self.infer_type_of_expression(value).map(|ty| {
                     inferred_types.insert(name.to_string(), ty);
                 })
@@ -145,6 +154,7 @@ impl<'a> TypeChecker<'a> {
                 ));
             }
         }
+        self.declared_type_vars.clear();
 
         self.check_expressions(expressions)?;
 
@@ -454,9 +464,22 @@ impl<'a> TypeChecker<'a> {
                 poly_id: _,
                 type_args,
             })) => {
-                // The generic args (some of them) could be pre-filled by the parser, but we do not yet support that.
-                assert!(type_args.is_none());
                 let (ty, args) = self.instantiate_scheme(self.declared_types[name].clone());
+                if let Some(requested_type_args) = type_args {
+                    if requested_type_args.len() != args.len() {
+                        return Err(format!(
+                            "Expected {} type arguments for symbol {name}, but got {}: {}",
+                            args.len(),
+                            requested_type_args.len(),
+                            requested_type_args.iter().join(", ")
+                        ));
+                    }
+                    for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
+                        requested.substitute_type_vars(&self.declared_type_vars);
+                        self.unifier
+                            .unify_types(requested.clone(), inferred.clone())?;
+                    }
+                }
                 *type_args = Some(args);
                 type_for_reference(&ty)
             }

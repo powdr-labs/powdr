@@ -601,7 +601,11 @@ impl Display for PolynomialName {
 
 impl Display for NamespacedPolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.path.to_dotted_string())
+        if let Some(type_args) = &self.type_args {
+            write!(f, "{}::<{}>", self.path, type_args.iter().format(", "))
+        } else {
+            write!(f, "{}", self.path.to_dotted_string())
+        }
     }
 }
 

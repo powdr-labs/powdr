@@ -477,11 +477,15 @@ pub struct PolynomialName {
 /// This is different from SymbolPath mainly due to different formatting.
 pub struct NamespacedPolynomialReference {
     pub path: SymbolPath,
+    pub type_args: Option<Vec<Type<Expression>>>,
 }
 
 impl From<SymbolPath> for NamespacedPolynomialReference {
     fn from(value: SymbolPath) -> Self {
-        Self { path: value }
+        Self {
+            path: value,
+            type_args: Default::default(),
+        }
     }
 }
 
@@ -491,7 +495,11 @@ impl NamespacedPolynomialReference {
     }
 
     pub fn try_to_identifier(&self) -> Option<&String> {
-        self.path.try_to_identifier()
+        if self.type_args.is_none() {
+            self.path.try_to_identifier()
+        } else {
+            None
+        }
     }
 }
 
