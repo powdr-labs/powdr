@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use powdr_ast::parsed::asm::{parse_absolute_path, AbsoluteSymbolPath, SymbolPath};
 use powdr_ast::parsed::types::Type;
@@ -16,7 +17,7 @@ use powdr_ast::analyzed::{
     type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
     PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
 };
-use powdr_parser::parse_type;
+use powdr_parser::{parse, parse_type};
 
 use crate::type_inference::{infer_types, ExpectedType};
 use crate::{side_effect_checker, AnalysisDriver};
@@ -64,6 +65,8 @@ struct PILAnalyzer {
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
     symbol_counters: Option<Counters>,
+    /// Symbols from the core that were added automatically but will not be printed.
+    auto_added_symbols: HashSet<String>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -117,12 +120,22 @@ impl PILAnalyzer {
         }
     }
 
-    pub fn process(&mut self, files: Vec<PILFile>) {
+    pub fn process(&mut self, mut files: Vec<PILFile>) {
         for PILFile(file) in &files {
             self.current_namespace = Default::default();
             for statement in file {
                 self.collect_names(statement);
             }
+        }
+
+        if let Some(core) = self.core_if_not_present() {
+            self.current_namespace = Default::default();
+            for statement in &core.0 {
+                for (name, _) in self.collect_names(statement) {
+                    self.auto_added_symbols.insert(name);
+                }
+            }
+            files = once(core).chain(files).collect();
         }
 
         for PILFile(file) in files {
@@ -131,6 +144,22 @@ impl PILAnalyzer {
                 self.handle_statement(statement);
             }
         }
+    }
+
+    /// Adds core types and built-in functions if they are not present in the input.
+    fn core_if_not_present(&self) -> Option<PILFile> {
+        (!self.known_symbols.contains_key("constraint")).then(|| {
+            parse(
+                None,
+                "enum constraint {
+        Identity(expr, expr),
+        Plookup(expr, expr[], expr, expr[]),
+        Permutation(expr, expr[], expr, expr[]),
+        Connection(expr[], expr[])
+    }",
+            )
+            .unwrap()
+        })
     }
 
     /// Check that query and constr functions are used in the correct contexts.
@@ -173,6 +202,8 @@ impl PILAnalyzer {
     }
 
     pub fn type_check(&mut self) {
+        // TODO also add Query to core?
+
         let query_type: Type = parse_type("int -> std::prover::Query").unwrap().into();
         let mut expressions = vec![];
         // Collect all definitions with their types and expressions.
@@ -228,7 +259,7 @@ impl PILAnalyzer {
             .collect();
         // Collect all expressions in identities.
         let statement_type = ExpectedType {
-            ty: Type::Constr,
+            ty: Type::NamedType(SymbolPath::from_str("constraint").unwrap()),
             allow_array: true,
         };
         for id in &mut self.identities {
@@ -272,14 +303,16 @@ impl PILAnalyzer {
             self.public_declarations,
             &self.identities,
             self.source_order,
+            self.auto_added_symbols,
         )
     }
 
     /// A step to collect all defined names in the statement.
-    fn collect_names(&mut self, statement: &PilStatement) {
+    fn collect_names(&mut self, statement: &PilStatement) -> Vec<(String, SymbolCategory)> {
         match statement {
             PilStatement::Namespace(_, name, _) => {
                 self.current_namespace = AbsoluteSymbolPath::default().join(name.clone());
+                vec![]
             }
             PilStatement::Include(_, _) => unreachable!(),
             _ => {
@@ -298,15 +331,16 @@ impl PILAnalyzer {
                         )
                     })
                     .collect::<Vec<_>>();
-                for (name, symbol_kind) in names {
+                for (name, symbol_kind) in &names {
                     if self
                         .known_symbols
-                        .insert(name.clone(), symbol_kind)
+                        .insert(name.clone(), *symbol_kind)
                         .is_some()
                     {
                         panic!("Duplicate symbol definition: {name}");
                     }
                 }
+                names
             }
         }
     }

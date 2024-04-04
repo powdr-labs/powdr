@@ -313,16 +313,16 @@ fn function_type_display() {
 #[test]
 fn expr_and_identity() {
     let input = r#"namespace N(16);
-    let f: expr, expr -> constr[] = |x, y| [x = y];
-    let g: expr -> constr[] = |x| [x = 0];
+    let f: expr, expr -> constraint[] = |x, y| [x = y];
+    let g: expr -> constraint[] = |x| [x = 0];
     let x: col;
     let y: col;
     f(x, y);
     g((x));
     "#;
     let expected = r#"namespace N(16);
-    let f: expr, expr -> constr[] = (|x, y| [(x = y)]);
-    let g: expr -> constr[] = (|x| [(x = 0)]);
+    let f: expr, expr -> constraint[] = (|x, y| [(x = y)]);
+    let g: expr -> constraint[] = (|x| [(x = 0)]);
     col witness x;
     col witness y;
     N.x = N.y;
@@ -333,7 +333,7 @@ fn expr_and_identity() {
 }
 
 #[test]
-#[should_panic = "Expected type constr but got type expr"]
+#[should_panic = "Expected type constraint but got type expr"]
 fn expression_but_expected_constraint() {
     let input = r#"namespace N(16);
     col witness y;
@@ -344,7 +344,7 @@ fn expression_but_expected_constraint() {
 }
 
 #[test]
-#[should_panic = "Expected type: expr\\nInferred type: constr\\n"]
+#[should_panic = "Expected type: expr\\nInferred type: constraint\\n"]
 fn constraint_but_expected_expression() {
     let input = r#"namespace N(16);
     col witness y;

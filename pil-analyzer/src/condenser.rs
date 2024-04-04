@@ -35,6 +35,7 @@ pub fn condense<T: FieldElement>(
     mut public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[Identity<Expression>],
     source_order: Vec<StatementIdentifier>,
+    auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
     let mut condenser = Condenser::new(&definitions, degree);
 
@@ -149,6 +150,7 @@ pub fn condense<T: FieldElement>(
         intermediate_columns,
         identities: condensed_identities,
         source_order,
+        auto_added_symbols,
     }
 }
 
@@ -383,6 +385,18 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         source: SourceRef,
     ) -> Result<(), evaluator::EvalError> {
         let identities: Box<dyn Iterator<Item = _>> = match constraints.as_ref() {
+            Value::Enum("Identity", Some(fields)) => {
+                let [left, right] = &fields[..] else {
+                    panic!();
+                };
+                let Value::Expression(left) = left.as_ref() else {
+                    panic!()
+                };
+                let Value::Expression(right) = right.as_ref() else {
+                    panic!()
+                };
+                Box::new(iter::once((left, right)))
+            }
             Value::Identity(left, right) => Box::new(iter::once((left, right))),
             Value::Array(items) => Box::new(items.iter().map(|item| match item.as_ref() {
                 Value::Identity(left, right) => (left, right),

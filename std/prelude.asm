@@ -10,3 +10,15 @@ use std::convert::int as to_int;
 
 let true: bool = "" == "";
 let false: bool = !true;
+
+/// The "constraint" type.
+enum Constr {
+    /// A polynomial identity.
+    Identity(expr, expr),
+    /// A (polynomial) lookup constraint with selectors.
+    Plookup(expr, expr[], expr, expr[]),
+    /// A permutation constraint with selectors.
+    Permutation(expr, expr[], expr, expr[]),
+    /// A connection constraint (copy constraint).
+    Connection(expr[], expr[])
+}

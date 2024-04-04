@@ -1006,8 +1006,8 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
                 }
             }
         }
-        (Value::Expression(l), BinaryOperator::Identity, Value::Expression(r)) => {
-            Value::Identity(l.clone(), r.clone()).into()
+        (l @ Value::Expression(_), BinaryOperator::Identity, r @ Value::Expression(_)) => {
+            Value::Enum("Identity", Some(vec![l.clone().into(), r.clone().into()])).into()
         }
         (Value::Expression(l), op, Value::Expression(r)) => match (l, r) {
             (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) => {
