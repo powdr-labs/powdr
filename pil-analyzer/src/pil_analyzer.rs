@@ -226,16 +226,14 @@ impl PILAnalyzer {
             })
             .collect();
         // Collect all expressions in identities.
+        let statement_type = ExpectedType {
+            ty: Type::Constr,
+            allow_array: true,
+        };
         for id in &mut self.identities {
             if id.kind == IdentityKind::Polynomial {
                 // At statement level, we allow constr or constr[].
-                expressions.push((
-                    id.expression_for_poly_id_mut(),
-                    ExpectedType {
-                        ty: Type::Constr,
-                        allow_array: true,
-                    },
-                ));
+                expressions.push((id.expression_for_poly_id_mut(), statement_type.clone()));
             } else {
                 for part in [&mut id.left, &mut id.right] {
                     if let Some(selector) = &mut part.selector {
@@ -247,7 +245,7 @@ impl PILAnalyzer {
                 }
             }
         }
-        let inferred_types = infer_types(definitions, &mut expressions)
+        let inferred_types = infer_types(definitions, &mut expressions, &statement_type)
             .map_err(|e| {
                 eprintln!("\nError during type inference:\n{e}");
                 e
