@@ -22,13 +22,15 @@ use crate::{
 
 /// Infers types on all definitions and checks type-correctness for isolated
 /// expressions (from identities and arrays) where the expected type is given.
+/// The paremeter `statement_type` is the type expected for expressions at statement level.
 /// Sets the generic arguments for references and the literal types in all expressions.
 /// Returns the types for symbols without explicit type.
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
+    statement_type: &ExpectedType,
 ) -> Result<Vec<(String, Type)>, String> {
-    TypeChecker::default().infer_types(definitions, expressions)
+    TypeChecker::new(statement_type).infer_types(definitions, expressions)
 }
 
 /// A type to expect and a flag that says if arrays of that type are also fine.
@@ -47,8 +49,9 @@ impl From<Type> for ExpectedType {
     }
 }
 
-#[derive(Default)]
-struct TypeChecker {
+struct TypeChecker<'a> {
+    /// The type expected for expressions at statement level in block expressions.
+    statement_type: &'a ExpectedType,
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
     /// Declared types for all symbols. Contains the unmodified type scheme for symbols
@@ -59,7 +62,17 @@ struct TypeChecker {
     last_type_var: usize,
 }
 
-impl TypeChecker {
+impl<'a> TypeChecker<'a> {
+    pub fn new(statement_type: &'a ExpectedType) -> Self {
+        Self {
+            statement_type,
+            local_var_types: Default::default(),
+            declared_types: Default::default(),
+            unifier: Default::default(),
+            last_type_var: Default::default(),
+        }
+    }
+
     /// Infers and checks types for all provided definitions and expressions and
     /// returns the types for symbols without explicit type.
     pub fn infer_types(
@@ -577,13 +590,7 @@ impl TypeChecker {
                             self.expect_type_of_pattern(&value_type, pattern)?;
                         }
                         StatementInsideBlock::Expression(expr) => {
-                            self.expect_type_with_flexibility(
-                                &ExpectedType {
-                                    ty: Type::Constr,
-                                    allow_array: true,
-                                },
-                                expr,
-                            )?;
+                            self.expect_type_with_flexibility(&self.statement_type, expr)?;
                         }
                     }
                 }
