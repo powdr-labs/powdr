@@ -22,7 +22,7 @@ use crate::{
 
 /// Infers types on all definitions and checks type-correctness for isolated
 /// expressions (from identities and arrays) where the expected type is given.
-/// The paremeter `statement_type` is the expected type for expressions at statement level.
+/// The parameter `statement_type` is the expected type for expressions at statement level.
 /// Sets the generic arguments for references and the literal types in all expressions.
 /// Returns the types for symbols without explicit type.
 pub fn infer_types(
