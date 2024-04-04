@@ -256,16 +256,12 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 
     /// Returns the witness columns generated since the last call to this function.
     pub fn extract_new_witness_columns(&mut self) -> Vec<Symbol> {
-        let mut new_witnesses = vec![];
-        std::mem::swap(&mut self.new_witnesses, &mut new_witnesses);
-        new_witnesses
+        std::mem::take(&mut self.new_witnesses)
     }
 
     /// Returns the new constraints generated since the last call to this function.
     pub fn extract_new_constraints(&mut self) -> Vec<IdentityWithoutID<AlgebraicExpression<T>>> {
-        let mut new_constraints = vec![];
-        std::mem::swap(&mut self.new_constraints, &mut new_constraints);
-        new_constraints
+        std::mem::take(&mut self.new_constraints)
     }
 
     fn condense_selected_expressions(
