@@ -32,7 +32,7 @@ pub enum StatementIdentifier {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
-    /// The degree of all namespaces, which must match. If there are no namespaces, then `None`.
+    /// The degree of all namespaces, which must match if provided. If no degrees are given, then `None`.
     pub degree: Option<DegreeType>,
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,

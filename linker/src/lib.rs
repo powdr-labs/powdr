@@ -32,7 +32,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
 
     let mut errors = vec![];
 
-    let mut pil = process_definitions(&main_degree, graph.definitions);
+    let mut pil = process_definitions(graph.definitions);
 
     for (location, object) in graph.objects.into_iter() {
         if let Some(degree) = object.degree {
@@ -48,7 +48,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
-            main_degree.clone(),
+            Some(main_degree.clone()),
         ));
 
         pil.extend(object.pil);
@@ -91,7 +91,6 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
 
 // Extract the utilities and sort them into namespaces where possible.
 fn process_definitions(
-    main_degree: &Expression,
     definitions: BTreeMap<AbsoluteSymbolPath, TypeOrExpression>,
 ) -> Vec<PilStatement> {
     let mut current_namespace = Default::default();
@@ -126,7 +125,7 @@ fn process_definitions(
                     PilStatement::Namespace(
                         SourceRef::unknown(),
                         namespace.relative_to(&AbsoluteSymbolPath::default()),
-                        main_degree.clone(),
+                        None,
                     ),
                     statement,
                 ]
@@ -272,10 +271,10 @@ mod test {
             .into_iter()
             .collect(),
         };
-        // a test over a pil file `f` checking if all namespaces have degree `n`
+        // a test over a pil file `f` checking if all namespaces have degree `n` (if they are set)
         let all_namespaces_have_degree = |f: PILFile, n: u64| {
             f.0.iter().all(|s| match s {
-                powdr_ast::parsed::PilStatement::Namespace(_, _, e) => {
+                powdr_ast::parsed::PilStatement::Namespace(_, _, Some(e)) => {
                     *e == Expression::Number(n.into(), None)
                 }
                 _ => true,

@@ -5,10 +5,9 @@ use std::iter::once;
 use std::path::{Path, PathBuf};
 
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
-
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
-use powdr_ast::parsed::{FunctionKind, LambdaExpression, PILFile, PilStatement};
+use powdr_ast::parsed::{self, FunctionKind, LambdaExpression, PILFile, PilStatement};
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
@@ -350,24 +349,26 @@ impl PILAnalyzer {
         }
     }
 
-    fn handle_namespace(&mut self, name: SymbolPath, degree: ::powdr_ast::parsed::Expression) {
-        let degree = ExpressionProcessor::new(self.driver()).process_expression(degree);
-        // TODO we should maybe implement a separate evaluator that is able to run before type checking
-        // and is field-independent (only uses integers)?
-        let namespace_degree: u64 = u64::try_from(
-            evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
-                .unwrap()
-                .try_to_integer()
-                .unwrap(),
-        )
-        .unwrap();
-        if let Some(degree) = self.polynomial_degree {
-            assert_eq!(
-                degree, namespace_degree,
-                "all namespaces must have the same degree"
-            );
-        } else {
-            self.polynomial_degree = Some(namespace_degree);
+    fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::Expression>) {
+        if let Some(degree) = degree {
+            let degree = ExpressionProcessor::new(self.driver()).process_expression(degree);
+            // TODO we should maybe implement a separate evaluator that is able to run before type checking
+            // and is field-independent (only uses integers)?
+            let namespace_degree: u64 = u64::try_from(
+                evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
+                    .unwrap()
+                    .try_to_integer()
+                    .unwrap(),
+            )
+            .unwrap();
+            if let Some(degree) = self.polynomial_degree {
+                assert_eq!(
+                    degree, namespace_degree,
+                    "all namespaces must have the same degree"
+                );
+            } else {
+                self.polynomial_degree = Some(namespace_degree);
+            }
         }
         self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }
