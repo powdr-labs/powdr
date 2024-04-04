@@ -29,8 +29,8 @@ pub struct PILFile(pub Vec<PilStatement>);
 pub enum PilStatement {
     /// File name
     Include(SourceRef, String),
-    /// Name of namespace and polynomial degree (constant)
-    Namespace(SourceRef, SymbolPath, Expression),
+    /// Name of namespace and optional polynomial degree (constant)
+    Namespace(SourceRef, SymbolPath, Option<Expression>),
     LetStatement(
         SourceRef,
         String,
@@ -131,7 +131,7 @@ impl Children<Expression> for PilStatement {
                 Box::new(left.iter().chain(right.iter()))
             }
             PilStatement::Expression(_, e)
-            | PilStatement::Namespace(_, _, e)
+            | PilStatement::Namespace(_, _, Some(e))
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
@@ -150,6 +150,7 @@ impl Children<Expression> for PilStatement {
             | PilStatement::PolynomialCommitDeclaration(_, _, _, Some(def)) => def.children(),
             PilStatement::PolynomialCommitDeclaration(_, _, _, None)
             | PilStatement::Include(_, _)
+            | PilStatement::Namespace(_, _, None)
             | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
         }
     }
@@ -165,7 +166,7 @@ impl Children<Expression> for PilStatement {
                 Box::new(left.iter_mut().chain(right.iter_mut()))
             }
             PilStatement::Expression(_, e)
-            | PilStatement::Namespace(_, _, e)
+            | PilStatement::Namespace(_, _, Some(e))
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
@@ -181,6 +182,7 @@ impl Children<Expression> for PilStatement {
             | PilStatement::PolynomialCommitDeclaration(_, _, _, Some(def)) => def.children_mut(),
             PilStatement::PolynomialCommitDeclaration(_, _, _, None)
             | PilStatement::Include(_, _)
+            | PilStatement::Namespace(_, _, None)
             | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
         }
     }

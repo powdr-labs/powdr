@@ -108,7 +108,7 @@ Include: PilStatement = {
 };
 
 Namespace: PilStatement = {
-    <start:@L> "namespace" <name:SymbolPath> "(" <pol_degree:Expression> ")" ";" => PilStatement::Namespace(ctx.source_ref(start), name, pol_degree)
+    <start:@L> "namespace" <name:SymbolPath> <pol_degree:("(" <Expression> ")")?> ";" => PilStatement::Namespace(ctx.source_ref(start), name, pol_degree)
 }
 
 LetStatement: PilStatement = {
