@@ -57,15 +57,8 @@ pub fn bootloader_preamble() -> String {
     instr load_bootloader_input X -> Y = bootloader_inputs.access X, Y ->;
     instr assert_bootloader_input X, Y -> = bootloader_inputs.access X, Y ->;
 
-    let tmp_bootloader_value;
-
-    // Sets the PC to the bootloader input at the provided index if it is nonzero
-    // TODO: This should work, but this leads to a wrong PC update rule.
-    // instr jump_to_bootloader_input X = bootloader_inputs.access X, pc' ->;
-    instr jump_to_bootloader_input X {
-        {X, tmp_bootloader_value} in {main_bootloader_inputs.ADDR, main_bootloader_inputs.value},
-        pc' = tmp_bootloader_value
-    }
+    // Sets the PC to the bootloader input at the provided index
+    instr jump_to_bootloader_input X = bootloader_inputs.access X, pc' ->;
 
     // ============== Shutdown routine constraints =======================
     // Insert a `jump_to_shutdown_routine` witness column, which will let the prover indicate that
