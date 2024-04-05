@@ -2,7 +2,8 @@ use super::{
     asm::{
         ASMModule, ASMProgram, Import, Machine, Module, ModuleStatement, SymbolDefinition,
         SymbolValue,
-    }, EnumDeclaration, Expression,
+    },
+    EnumDeclaration, Expression,
 };
 
 pub trait Folder {
