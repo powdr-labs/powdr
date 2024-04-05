@@ -1,30 +1,28 @@
 use std::collections::{BTreeMap, HashSet};
 use std::iter;
-use std::str::FromStr;
 
 use itertools::Itertools;
 
 use powdr_ast::analyzed::TypedExpression;
 use powdr_ast::parsed::{
     self,
-    asm::SymbolPath,
     types::{ArrayType, Type, TypeScheme},
-    visitor::Children,
     EnumDeclaration, EnumVariant, FunctionDefinition, PilStatement, PolynomialName,
     SelectedExpressions,
 };
+use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_ast::SourceRef;
-use powdr_number::{BigInt, DegreeType, GoldilocksField};
+use powdr_number::DegreeType;
 
 use powdr_ast::analyzed::{
     Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
     Symbol, SymbolKind,
 };
 
-use crate::evaluator::EvalError;
-use crate::AnalysisDriver;
+use crate::type_processor::TypeProcessor;
+use crate::{untyped_evaluator, AnalysisDriver};
 
-use crate::{evaluator, expression_processor::ExpressionProcessor};
+use crate::expression_processor::ExpressionProcessor;
 
 pub enum PILItem {
     Definition(Symbol, Option<FunctionValueDefinition>),
@@ -191,8 +189,7 @@ where
         let ty = Some(match array_size {
             None => Type::Col,
             Some(len) => {
-                let length = self
-                    .evaluate_expression_to_int(len)
+                let length = untyped_evaluator::evaluate_expression_to_int(self.driver, len)
                     .map(|length| {
                         length
                             .try_into()
@@ -228,7 +225,7 @@ where
                 );
             }
             let declared_type_vars = vars.vars().collect::<HashSet<_>>();
-            let ty = self.handle_type(&declared_type_vars, &ts.ty);
+            let ty = self.type_processor(&declared_type_vars).process_type(ts.ty);
             let contained_type_vars = ty.contained_type_vars().collect::<HashSet<_>>();
             if contained_type_vars != declared_type_vars {
                 assert!(contained_type_vars.is_subset(&declared_type_vars));
@@ -289,19 +286,6 @@ where
         }
     }
 
-    /// Handles a type occurring in a context that has the given type variables declared.
-    fn handle_type(&self, type_vars: &HashSet<&String>, ty: &Type<parsed::Expression>) -> Type {
-        let mut ty = self.evaluate_array_lengths(ty.clone())
-            .map_err(|e| panic!("Error evaluating expressions in type name \"{}\" to reduce it to a type:\n{e})", ty))
-            .unwrap();
-        ty.map_to_type_vars(type_vars);
-        ty.contained_named_types_mut().for_each(|n| {
-            let name = self.driver.resolve_type_ref(n);
-            *n = SymbolPath::from_str(&name).unwrap();
-        });
-        ty
-    }
-
     fn symbol_kind_from_type(ts: &TypeScheme) -> SymbolKind {
         if !ts.vars.is_empty() {
             return SymbolKind::Other();
@@ -328,7 +312,10 @@ where
                 source,
                 IdentityKind::Polynomial,
                 SelectedExpressions {
-                    selector: Some(self.process_expression(expression)),
+                    selector: Some(
+                        self.expression_processor(&Default::default())
+                            .process_expression(expression),
+                    ),
                     expressions: vec![],
                 },
                 SelectedExpressions::default(),
@@ -336,25 +323,33 @@ where
             PilStatement::PlookupIdentity(source, key, haystack) => (
                 source,
                 IdentityKind::Plookup,
-                self.process_selected_expressions(key),
-                self.process_selected_expressions(haystack),
+                self.expression_processor(&Default::default())
+                    .process_selected_expressions(key),
+                self.expression_processor(&Default::default())
+                    .process_selected_expressions(haystack),
             ),
             PilStatement::PermutationIdentity(source, left, right) => (
                 source,
                 IdentityKind::Permutation,
-                self.process_selected_expressions(left),
-                self.process_selected_expressions(right),
+                self.expression_processor(&Default::default())
+                    .process_selected_expressions(left),
+                self.expression_processor(&Default::default())
+                    .process_selected_expressions(right),
             ),
             PilStatement::ConnectIdentity(source, left, right) => (
                 source,
                 IdentityKind::Connect,
                 SelectedExpressions {
                     selector: None,
-                    expressions: self.expression_processor().process_expressions(left),
+                    expressions: self
+                        .expression_processor(&Default::default())
+                        .process_expressions(left),
                 },
                 SelectedExpressions {
                     selector: None,
-                    expressions: self.expression_processor().process_expressions(right),
+                    expressions: self
+                        .expression_processor(&Default::default())
+                        .process_expressions(right),
                 },
             ),
             // TODO at some point, these should all be caught by the type checker.
@@ -462,21 +457,32 @@ where
 
         let value = value.map(|v| match v {
             FunctionDefinition::Expression(expr) => {
-                assert!(symbol_kind != SymbolKind::Poly(PolynomialType::Committed));
+                if symbol_kind == SymbolKind::Poly(PolynomialType::Committed) {
+                    // The only allowed value for a witness column is a query function.
+                    assert!(matches!(
+                        expr,
+                        parsed::Expression::LambdaExpression(LambdaExpression {
+                            kind: FunctionKind::Query,
+                            ..
+                        })
+                    ));
+                    assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
+                }
+                let type_vars = type_scheme
+                    .as_ref()
+                    .map(|ts| ts.vars.vars().collect())
+                    .unwrap_or_default();
                 FunctionValueDefinition::Expression(TypedExpression {
-                    e: self.process_expression(expr),
+                    e: self
+                        .expression_processor(&type_vars)
+                        .process_expression(expr),
                     type_scheme,
                 })
-            }
-            FunctionDefinition::Query(expr) => {
-                assert_eq!(symbol_kind, SymbolKind::Poly(PolynomialType::Committed));
-                assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
-                FunctionValueDefinition::Query(self.process_expression(expr))
             }
             FunctionDefinition::Array(value) => {
                 let size = value.solve(self.degree.unwrap());
                 let expression = self
-                    .expression_processor()
+                    .expression_processor(&Default::default())
                     .process_array_expression(value, size);
                 assert_eq!(
                     expression.iter().map(|e| e.size()).sum::<DegreeType>(),
@@ -500,11 +506,10 @@ where
     ) -> Vec<PILItem> {
         let id = self.counters.dispense_public_id();
         let polynomial = self
-            .expression_processor()
-            .process_namespaced_polynomial_reference(&poly.path);
+            .expression_processor(&Default::default())
+            .process_namespaced_polynomial_reference(poly);
         let array_index = array_index.map(|i| {
-            let index: u64 = self
-                .evaluate_expression_to_int(i)
+            let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
                 .unwrap()
                 .try_into()
                 .unwrap();
@@ -517,55 +522,22 @@ where
             name: name.to_string(),
             polynomial,
             array_index,
-            index: self
-                .evaluate_expression_to_int(index)
+            index: untyped_evaluator::evaluate_expression_to_int(self.driver, index)
                 .unwrap()
                 .try_into()
                 .unwrap(),
         })]
     }
 
-    /// Turns a Type<Expression> to a Type<u64> by evaluating the array length expressions.
-    fn evaluate_array_lengths(&self, mut n: Type<parsed::Expression>) -> Result<Type, EvalError> {
-        // Replace all expressions by number literals.
-        // Any expression inside a type name has to be an array length,
-        // so we expect an integer that fits u64.
-        n.children_mut()
-            .try_for_each(|e: &mut parsed::Expression| {
-                let v = self.evaluate_expression_to_int(e.clone())?;
-                let v_u64: u64 = v.clone().try_into().map_err(|_| {
-                    EvalError::TypeError(format!("Number too large, expected u64, but got {v}"))
-                })?;
-                *e = parsed::Expression::Number(v_u64.into(), None);
-                Ok(())
-            })?;
-        Ok(n.into())
+    fn expression_processor<'b>(
+        &'b self,
+        type_vars: &'b HashSet<&'b String>,
+    ) -> ExpressionProcessor<'b, D> {
+        ExpressionProcessor::new(self.driver, type_vars)
     }
 
-    fn evaluate_expression_to_int(&self, expr: parsed::Expression) -> Result<BigInt, EvalError> {
-        // TODO we should maybe implement a separate evaluator that is able to run before type checking
-        // and is field-independent (only uses integers)?
-        evaluator::evaluate_expression::<GoldilocksField>(
-            &ExpressionProcessor::new(self.driver).process_expression(expr),
-            self.driver.definitions(),
-        )?
-        .try_to_integer()
-    }
-
-    fn expression_processor(&self) -> ExpressionProcessor<D> {
-        ExpressionProcessor::new(self.driver)
-    }
-
-    fn process_expression(&self, expr: parsed::Expression) -> Expression {
-        self.expression_processor().process_expression(expr)
-    }
-
-    fn process_selected_expressions(
-        &self,
-        expr: parsed::SelectedExpressions<parsed::Expression>,
-    ) -> SelectedExpressions<Expression> {
-        self.expression_processor()
-            .process_selected_expressions(expr)
+    fn type_processor<'b>(&'b self, type_vars: &'b HashSet<&'b String>) -> TypeProcessor<'b, D> {
+        TypeProcessor::new(self.driver, type_vars)
     }
 
     fn process_enum_declaration(
@@ -587,7 +559,7 @@ where
             name: enum_variant.name,
             fields: enum_variant.fields.map(|f| {
                 f.into_iter()
-                    .map(|ty| self.handle_type(&Default::default(), &ty))
+                    .map(|ty| self.type_processor(&Default::default()).process_type(ty))
                     .collect()
             }),
         }

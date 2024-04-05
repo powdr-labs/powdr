@@ -115,10 +115,10 @@ impl ReferencedSymbols for Expression {
                 .flat_map(|e| match e {
                     Expression::Reference(Reference::Poly(PolynomialReference {
                         name,
-                        generic_args,
+                        type_args,
                         poly_id: _,
                     })) => Some(
-                        generic_args
+                        type_args
                             .iter()
                             .flat_map(|t| t.iter())
                             .flat_map(|t| t.symbols())
@@ -191,9 +191,7 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .iter()
         .filter(|(p, _)| !p.is_array())
         .filter_map(|(poly, definition)| {
-            let Some(definition) = definition else {
-                return None;
-            };
+            let definition = definition.as_ref()?;
             let value = constant_value(definition)?;
             log::debug!(
                 "Determined fixed column {} to be constant {value}. Removing.",
@@ -228,8 +226,7 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
                 None
             }
         }
-        FunctionValueDefinition::Query(_)
-        | FunctionValueDefinition::Expression(_)
+        FunctionValueDefinition::Expression(_)
         | FunctionValueDefinition::TypeDeclaration(_)
         | FunctionValueDefinition::TypeConstructor(_, _) => None,
     }
@@ -419,7 +416,7 @@ fn substitute_polynomial_references<T: FieldElement>(
         if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             poly_id: Some(poly_id),
-            generic_args: _,
+            type_args: _,
         })) = e
         {
             if let Some(value) = substitutions.get(poly_id) {

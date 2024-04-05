@@ -17,10 +17,13 @@ powdr-ast = { path = "../ast" }
 powdr-asm-utils = { path = "../asm-utils" }
 powdr-executor = { path = "../executor" }
 powdr-number = { path = "../number" }
+powdr-parser = { path = "../parser" }
 powdr-parser-util = { path = "../parser-util" }
 powdr-pipeline = { path = "../pipeline" }
 powdr-riscv-executor = { path = "../riscv-executor" }
+powdr-riscv-syscalls = { path = "../riscv-syscalls" }
 
+lazy_static = "1.4.0"
 itertools = "^0.10"
 lalrpop-util = { version = "^0.19", features = ["lexer"] }
 log = "0.4.17"

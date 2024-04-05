@@ -1,10 +1,7 @@
 let N = 16;
 
 namespace Fibonacci(N);
-    let ISLAST: col = |i| match i {
-        N - 1 => 1,
-        _ => 0,
-    };
+    col fixed ISLAST(i) { if i == N - 1 { 1 } else { 0 } };
 
     let x;
     let y;

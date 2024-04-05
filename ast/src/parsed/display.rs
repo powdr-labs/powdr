@@ -328,11 +328,16 @@ impl<Ref: Display> Display for MatchArm<Ref> {
     }
 }
 
-impl<Ref: Display> Display for MatchPattern<Ref> {
+impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            MatchPattern::CatchAll => write!(f, "_"),
-            MatchPattern::Pattern(p) => write!(f, "{p}"),
+            Pattern::CatchAll => write!(f, "_"),
+            Pattern::Ellipsis => write!(f, ".."),
+            Pattern::Number(n) => write!(f, "{n}"),
+            Pattern::String(s) => write!(f, "{}", quote(s)),
+            Pattern::Tuple(t) => write!(f, "({})", t.iter().format(", ")),
+            Pattern::Array(a) => write!(f, "[{}]", a.iter().format(", ")),
+            Pattern::Variable(v) => write!(f, "{v}"),
         }
     }
 }
@@ -347,9 +352,18 @@ impl<Ref: Display> Display for IfExpression<Ref> {
     }
 }
 
+impl<Ref: Display> Display for StatementInsideBlock<Ref> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            StatementInsideBlock::LetStatement(s) => write!(f, "{s}"),
+            StatementInsideBlock::Expression(e) => write!(f, "{e};"),
+        }
+    }
+}
+
 impl<Ref: Display> Display for LetStatementInsideBlock<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "let {}", self.name)?;
+        write!(f, "let {}", self.pattern)?;
         if let Some(v) = &self.value {
             write!(f, " = {v};")
         } else {
@@ -385,13 +399,20 @@ impl Display for PilStatement {
         match self {
             PilStatement::Include(_, path) => write!(f, "include {};", quote(path)),
             PilStatement::Namespace(_, name, poly_length) => {
-                write!(f, "namespace {name}({poly_length});")
+                write!(
+                    f,
+                    "namespace {name}{};",
+                    poly_length
+                        .as_ref()
+                        .map(|l| format!("({l})"))
+                        .unwrap_or_default()
+                )
             }
-            PilStatement::LetStatement(_, name, type_scheme, value) => write_indented_by(
+            PilStatement::LetStatement(_, pattern, type_scheme, value) => write_indented_by(
                 f,
                 format!(
                     "let{}{};",
-                    format_type_scheme_around_name(name, type_scheme),
+                    format_type_scheme_around_name(pattern, type_scheme),
                     value
                         .as_ref()
                         .map(|value| format!(" = {value}"))
@@ -475,24 +496,19 @@ impl Display for FunctionDefinition {
             FunctionDefinition::Array(array_expression) => {
                 write!(f, " = {array_expression}")
             }
-            FunctionDefinition::Query(Expression::LambdaExpression(lambda)) => write!(
-                f,
-                "({}) query {}",
-                lambda.params.iter().format(", "),
-                lambda.body,
-            ),
-            FunctionDefinition::Query(e) => {
-                write!(f, " query = {e}")
-            }
             FunctionDefinition::Expression(Expression::LambdaExpression(lambda))
                 if lambda.params.len() == 1 =>
             {
-                let body = if matches!(lambda.body.as_ref(), Expression::BlockExpression(_, _)) {
-                    format!("{}", lambda.body)
-                } else {
-                    format!("{{ {} }}", lambda.body)
-                };
-                write!(f, "({}) {body}", lambda.params.iter().format(", "),)
+                write!(
+                    f,
+                    "({}) {}{}",
+                    lambda.params.iter().format(", "),
+                    match lambda.kind {
+                        FunctionKind::Pure => "".into(),
+                        _ => format!("{} ", &lambda.kind),
+                    },
+                    lambda.body
+                )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
             FunctionDefinition::TypeDeclaration(_) => {
@@ -585,13 +601,36 @@ impl Display for PolynomialName {
 
 impl Display for NamespacedPolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.path.to_dotted_string())
+        if let Some(type_args) = &self.type_args {
+            write!(f, "{}::<{}>", self.path, type_args.iter().format(", "))
+        } else {
+            write!(f, "{}", self.path.to_dotted_string())
+        }
     }
 }
 
 impl<Ref: Display> Display for LambdaExpression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "(|{}| {})", self.params.iter().format(", "), self.body)
+        write!(
+            f,
+            "({}|{}| {})",
+            match self.kind {
+                FunctionKind::Pure => "".into(),
+                _ => format!("{} ", &self.kind),
+            },
+            self.params.iter().format(", "),
+            self.body
+        )
+    }
+}
+
+impl Display for FunctionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FunctionKind::Pure => write!(f, "pure"),
+            FunctionKind::Constr => write!(f, "constr"),
+            FunctionKind::Query => write!(f, "query"),
+        }
     }
 }
 
@@ -711,8 +750,8 @@ fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
         .to_string()
 }
 
-pub fn format_type_scheme_around_name<E: Display>(
-    name: &str,
+pub fn format_type_scheme_around_name<E: Display, N: Display>(
+    name: &N,
     type_scheme: &Option<TypeScheme<E>>,
 ) -> String {
     if let Some(type_scheme) = type_scheme {

@@ -15,7 +15,8 @@ use powdr_ast::parsed::{
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, PilStatement, TypedExpression,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, PilStatement, StatementInsideBlock,
+    TypedExpression,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -569,10 +570,14 @@ fn check_expression(
         Expression::Tuple(items) | Expression::ArrayLiteral(ArrayLiteral { items }) => {
             check_expressions(location, items, state, local_variables)
         }
-        Expression::LambdaExpression(LambdaExpression { params, body }) => {
+        Expression::LambdaExpression(LambdaExpression {
+            kind: _,
+            params,
+            body,
+        }) => {
             // Add the local variables, ignore collisions.
             let mut local_variables = local_variables.clone();
-            local_variables.extend(params.iter().cloned());
+            local_variables.extend(params.iter().flat_map(|p| p.variables().cloned()));
             check_expression(location, body, state, &local_variables)
         }
         Expression::BinaryOperation(a, _, b)
@@ -593,13 +598,9 @@ fn check_expression(
         Expression::MatchExpression(scrutinee, arms) => {
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
-                match pattern {
-                    powdr_ast::parsed::MatchPattern::CatchAll => Ok(()),
-                    powdr_ast::parsed::MatchPattern::Pattern(e) => {
-                        check_expression(location, e, state, local_variables)
-                    }
-                }?;
-                check_expression(location, value, state, local_variables)
+                let mut local_variables = local_variables.clone();
+                local_variables.extend(pattern.variables().cloned());
+                check_expression(location, value, state, &local_variables)
             })
         }
         Expression::IfExpression(powdr_ast::parsed::IfExpression {
@@ -611,13 +612,23 @@ fn check_expression(
             check_expression(location, body, state, local_variables)?;
             check_expression(location, else_body, state, local_variables)
         }
-        Expression::BlockExpression(statments, expr) => {
+        Expression::BlockExpression(statements, expr) => {
             let mut local_variables = local_variables.clone();
-            for LetStatementInsideBlock { name, value } in statments {
-                if let Some(value) = value {
-                    check_expression(location, value, state, &local_variables)?;
+            for statement in statements {
+                match statement {
+                    StatementInsideBlock::LetStatement(LetStatementInsideBlock {
+                        pattern,
+                        value,
+                    }) => {
+                        if let Some(value) = value {
+                            check_expression(location, value, state, &local_variables)?;
+                        }
+                        local_variables.extend(pattern.variables().cloned());
+                    }
+                    StatementInsideBlock::Expression(expr) => {
+                        check_expression(location, expr, state, &local_variables)?;
+                    }
                 }
-                local_variables.insert(name.clone());
             }
             check_expression(location, expr, state, &local_variables)
         }

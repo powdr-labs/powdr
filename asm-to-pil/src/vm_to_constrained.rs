@@ -13,7 +13,7 @@ use powdr_ast::{
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
-        LambdaExpression, MatchArm, MatchPattern, PilStatement, PolynomialName,
+        FunctionKind, LambdaExpression, MatchArm, Pattern, PilStatement, PolynomialName,
         SelectedExpressions, UnaryOperator,
     },
     SourceRef,
@@ -28,7 +28,7 @@ pub fn convert_machine<T: FieldElement>(machine: Machine, rom: Option<Rom>) -> M
         .map(|f| f.params.outputs.len())
         .max()
         .unwrap_or_default();
-    ASMPILConverter::<T>::with_output_count(output_count).convert_machine(machine, rom)
+    VMConverter::<T>::with_output_count(output_count).convert_machine(machine, rom)
 }
 
 pub enum Input {
@@ -45,7 +45,7 @@ pub enum LiteralKind {
 /// Component that turns a virtual machine into a constrained machine.
 /// TODO check if the conversion really depends on the finite field.
 #[derive(Default)]
-struct ASMPILConverter<T> {
+struct VMConverter<T> {
     pil: Vec<PilStatement>,
     pc_name: Option<String>,
     assignment_register_names: Vec<String>,
@@ -61,7 +61,7 @@ struct ASMPILConverter<T> {
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: FieldElement> ASMPILConverter<T> {
+impl<T: FieldElement> VMConverter<T> {
     fn with_output_count(output_count: usize) -> Self {
         Self {
             output_count,
@@ -542,7 +542,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         if let Expression::Reference(poly) = e.as_ref() {
                             poly.try_to_identifier()
                                 .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
-                                .filter(|(_, reg)| reg.ty == RegisterTy::Write)
+                                .filter(|(_, reg)| {
+                                    [RegisterTy::Write, RegisterTy::Pc].contains(&reg.ty)
+                                })
                                 .map(|(name, _)| rhs_next_write_registers.insert(name.clone()));
                         }
                     }
@@ -739,10 +741,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 vec![(1.into(), AffineExpressionComponent::Register(name.clone()))]
             }
             Expression::Number(value, _) => {
-                vec![(
-                    T::try_from(value).unwrap(),
-                    AffineExpressionComponent::Constant,
-                )]
+                vec![(T::from(value), AffineExpressionComponent::Constant)]
             }
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
@@ -933,7 +932,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 .get_mut(assign_reg)
                                 .unwrap()
                                 .push(MatchArm {
-                                    pattern: MatchPattern::Pattern(BigUint::from(i as u64).into()),
+                                    pattern: Pattern::Number(i.into()),
                                     value: expr.clone(),
                                 });
                         }
@@ -978,8 +977,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 let free_value = format!("{reg}_free_value");
                 let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
-                    FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression {
-                        params: vec!["__i".to_string()],
+                    FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression {
+                        kind: FunctionKind::Query,
+                        params: vec![Pattern::Variable("__i".to_string())],
                         body: Box::new(Expression::MatchExpression(
                             Box::new(Expression::FunctionCall(FunctionCall {
                                 function: Box::new(absolute_reference("::std::prover::eval")),

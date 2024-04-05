@@ -4,7 +4,7 @@ use super::{
         SymbolValue,
     },
     ArrayLiteral, EnumDeclaration, Expression, FunctionCall, IfExpression, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, MatchPattern,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock,
 };
 
 pub trait Folder {
@@ -113,7 +113,7 @@ pub trait ExpressionFolder<Ref> {
             Expression::BlockExpression(statements, expr) => Expression::BlockExpression(
                 statements
                     .into_iter()
-                    .map(|s| self.fold_let_statement_inside_block(s))
+                    .map(|s| self.fold_statement_inside_block(s))
                     .collect::<Result<_, _>>()?,
                 self.fold_boxed_expression(*expr)?,
             ),
@@ -129,6 +129,7 @@ pub trait ExpressionFolder<Ref> {
         l: LambdaExpression<Ref>,
     ) -> Result<LambdaExpression<Ref>, Self::Error> {
         Ok(LambdaExpression {
+            kind: l.kind,
             params: l.params,
             body: self.fold_boxed_expression(*l.body)?,
         })
@@ -162,18 +163,28 @@ pub trait ExpressionFolder<Ref> {
         MatchArm { pattern, value }: MatchArm<Ref>,
     ) -> Result<MatchArm<Ref>, Self::Error> {
         Ok(MatchArm {
-            pattern: self.fold_match_pattern(pattern)?,
+            pattern: self.fold_pattern(pattern)?,
             value: self.fold_expression(value)?,
         })
     }
 
-    fn fold_match_pattern(
-        &mut self,
-        pattern: MatchPattern<Ref>,
-    ) -> Result<MatchPattern<Ref>, Self::Error> {
+    fn fold_pattern(&mut self, pattern: Pattern) -> Result<Pattern, Self::Error> {
         Ok(match pattern {
-            MatchPattern::CatchAll => MatchPattern::CatchAll,
-            MatchPattern::Pattern(p) => MatchPattern::Pattern(self.fold_expression(p)?),
+            Pattern::CatchAll
+            | Pattern::Ellipsis
+            | Pattern::Number(_)
+            | Pattern::String(_)
+            | Pattern::Variable(_) => pattern,
+            Pattern::Tuple(t) => Pattern::Tuple(
+                t.into_iter()
+                    .map(|p| self.fold_pattern(p))
+                    .collect::<Result<_, _>>()?,
+            ),
+            Pattern::Array(a) => Pattern::Array(
+                a.into_iter()
+                    .map(|p| self.fold_pattern(p))
+                    .collect::<Result<_, _>>()?,
+            ),
         })
     }
 
@@ -192,12 +203,26 @@ pub trait ExpressionFolder<Ref> {
         })
     }
 
+    fn fold_statement_inside_block(
+        &mut self,
+        s: StatementInsideBlock<Ref>,
+    ) -> Result<StatementInsideBlock<Ref>, Self::Error> {
+        match s {
+            StatementInsideBlock::LetStatement(s) => self
+                .fold_let_statement_inside_block(s)
+                .map(StatementInsideBlock::LetStatement),
+            StatementInsideBlock::Expression(e) => self
+                .fold_expression(e)
+                .map(StatementInsideBlock::Expression),
+        }
+    }
+
     fn fold_let_statement_inside_block(
         &mut self,
-        LetStatementInsideBlock { name, value }: LetStatementInsideBlock<Ref>,
+        LetStatementInsideBlock { pattern, value }: LetStatementInsideBlock<Ref>,
     ) -> Result<LetStatementInsideBlock<Ref>, Self::Error> {
         Ok(LetStatementInsideBlock {
-            name,
+            pattern,
             value: value.map(|v| self.fold_expression(v)).transpose()?,
         })
     }

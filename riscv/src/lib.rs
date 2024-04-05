@@ -14,13 +14,13 @@ use serde_json::Value as JsonValue;
 use std::fs;
 
 use crate::compiler::{FunctionKind, Register};
-pub use crate::coprocessors::CoProcessors;
+pub use crate::runtime::Runtime;
 
 pub mod compiler;
 pub mod continuations;
-mod coprocessors;
 mod disambiguator;
 pub mod parser;
+pub mod runtime;
 
 type Statement = powdr_asm_utils::ast::Statement<Register, FunctionKind>;
 type Argument = powdr_asm_utils::ast::Argument<Register, FunctionKind>;
@@ -33,12 +33,12 @@ pub fn compile_rust<T: FieldElement>(
     file_name: &str,
     output_dir: &Path,
     force_overwrite: bool,
-    coprocessors: &CoProcessors,
+    runtime: &Runtime,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     if with_bootloader {
         assert!(
-            coprocessors.has("poseidon_gl"),
+            runtime.has_submachine("poseidon_gl"),
             "PoseidonGL coprocessor is required for bootloader"
         );
     }
@@ -48,7 +48,7 @@ pub fn compile_rust<T: FieldElement>(
     } else if fs::metadata(file_name).unwrap().is_dir() {
         compile_rust_crate_to_riscv_asm(&format!("{file_name}/Cargo.toml"), output_dir)
     } else {
-        compile_rust_to_riscv_asm(file_name, output_dir)
+        panic!("input must be a crate directory or `Cargo.toml` file");
     };
     if !output_dir.exists() {
         fs::create_dir_all(output_dir).unwrap()
@@ -75,7 +75,7 @@ pub fn compile_rust<T: FieldElement>(
         riscv_asm,
         output_dir,
         force_overwrite,
-        coprocessors,
+        runtime,
         with_bootloader,
     )
 }
@@ -86,7 +86,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
     riscv_asm_files: BTreeMap<String, String>,
     output_dir: &Path,
     force_overwrite: bool,
-    coprocessors: &CoProcessors,
+    runtime: &Runtime,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     let powdr_asm_file_name = output_dir.join(format!(
@@ -105,7 +105,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
         return None;
     }
 
-    let powdr_asm = compiler::compile::<T>(riscv_asm_files, coprocessors, with_bootloader);
+    let powdr_asm = compiler::compile::<T>(riscv_asm_files, runtime, with_bootloader);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -120,7 +120,7 @@ pub fn compile_riscv_asm<T: FieldElement>(
     file_names: impl Iterator<Item = String>,
     output_dir: &Path,
     force_overwrite: bool,
-    coprocessors: &CoProcessors,
+    runtime: &Runtime,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     compile_riscv_asm_bundle::<T>(
@@ -133,40 +133,9 @@ pub fn compile_riscv_asm<T: FieldElement>(
             .collect(),
         output_dir,
         force_overwrite,
-        coprocessors,
+        runtime,
         with_bootloader,
     )
-}
-
-pub fn compile_rust_to_riscv_asm(input_file: &str, output_dir: &Path) -> BTreeMap<String, String> {
-    let crate_dir = Temp::new_dir().unwrap();
-    // TODO is there no easier way?
-    let mut cargo_file = crate_dir.clone();
-    cargo_file.push("Cargo.toml");
-
-    fs::write(
-        &cargo_file,
-        format!(
-            r#"[package]
-name = "{}"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-powdr-riscv-runtime = {{ git = "https://github.com/powdr-labs/powdr", branch = "main" }}
-            "#,
-            Path::new(input_file).file_stem().unwrap().to_str().unwrap()
-        ),
-    )
-    .unwrap();
-
-    let mut src_file = crate_dir.clone();
-    src_file.push("src");
-    fs::create_dir(&src_file).unwrap();
-    src_file.push("lib.rs");
-    fs::write(src_file, fs::read_to_string(input_file).unwrap()).unwrap();
-
-    compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap(), output_dir)
 }
 
 macro_rules! as_ref [

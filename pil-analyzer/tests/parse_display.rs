@@ -6,9 +6,6 @@ use pretty_assertions::assert_eq;
 
 #[test]
 fn parse_print_analyzed() {
-    // Re-add this line once we can parse the turbofish operator.
-    //    col witness X_free_value(__i) query match std::prover::eval(T.pc) { 0 => std::prover::Query::Input(1), 3 => std::prover::Query::Input(std::convert::int::<fe>(std::prover::eval(T.CNT) + 1)), 7 => std::prover::Query::Input(0), };
-
     // This is rather a test for the Display trait than for the analyzer.
     let input = r#"constant %N = 65536;
 public P = T.pc(2);
@@ -52,6 +49,7 @@ namespace T(65536);
     T.A' = (((T.first_step' * 0) + (T.reg_write_X_A * T.X)) + ((1 - (T.first_step' + T.reg_write_X_A)) * T.A));
     col witness X_free_value(__i) query match std::prover::eval(T.pc) {
         0 => std::prover::Query::Input(1),
+        3 => std::prover::Query::Input(std::convert::int::<fe>((std::prover::eval(T.CNT) + 1))),
         7 => std::prover::Query::Input(0),
     };
     col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
@@ -195,7 +193,7 @@ fn if_expr() {
 fn symbolic_functions() {
     let input = r#"namespace N(16);
     let last_row: int = 15;
-    let ISLAST: col = |i| match i { last_row => 1, _ => 0 };
+    let ISLAST: col = |i| if i == last_row { 1 } else { 0 };
     let x;
     let y;
     let constrain_equal_expr = |A, B| A - B;
@@ -205,10 +203,7 @@ fn symbolic_functions() {
     "#;
     let expected = r#"namespace N(16);
     let last_row: int = 15;
-    col fixed ISLAST(i) { match i {
-        N.last_row => 1,
-        _ => 0,
-    } };
+    col fixed ISLAST(i) { if (i == N.last_row) { 1 } else { 0 } };
     col witness x;
     col witness y;
     let constrain_equal_expr: expr, expr -> expr = (|A, B| (A - B));
@@ -242,7 +237,7 @@ fn next_op_on_param() {
 fn fixed_symbolic() {
     let input = r#"namespace N(16);
     let last_row = 15;
-    let islast = |i| match i { N.last_row => 1, _ => 0, };
+    let islast = |i| if i == N.last_row { 1 } else { 0 };
     let ISLAST: col = |i| islast(i);
     let x;
     let y;
@@ -250,10 +245,7 @@ fn fixed_symbolic() {
     "#;
     let expected = r#"namespace N(16);
     let last_row: int = 15;
-    let islast: int -> fe = (|i| match i {
-        N.last_row => 1,
-        _ => 0,
-    });
+    let islast: int -> fe = (|i| if (i == N.last_row) { 1 } else { 0 });
     col fixed ISLAST(i) { N.islast(i) };
     col witness x;
     col witness y;
@@ -484,7 +476,7 @@ fn let_inside_block() {
     let input = "
     namespace Main(8);
         let w;
-        let t: int -> expr = |i| match i {
+        let t: int -> expr = constr |i| match i {
             0 => { let x; x },
             1 => w,
             _ => if (i < 3) { let y; y } else { w },
@@ -497,7 +489,7 @@ fn let_inside_block() {
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     let expected = "namespace Main(8);
     col witness w;
-    let t: int -> expr = (|i| match i {
+    let t: int -> expr = (constr |i| match i {
         0 => {
             let x;
             x
@@ -563,4 +555,161 @@ fn let_inside_block_scoping_limited() {
         };
     ";
     analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+#[should_panic = "Function parameters must be irrefutable, but [x, y] is refutable."]
+fn refutable_function_param() {
+    let input = "
+    namespace Main(8);
+        let t = |[x, y], z| x;
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+#[should_panic = "Let statement requires an irrefutable pattern, but [x, y] is refutable."]
+fn refutable_let() {
+    let input = "
+    namespace Main(8);
+        let t = {
+            let [x, y] = [1, 2];
+            x
+        };
+    ";
+    analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+fn patterns() {
+    let input = "    let t: ((int, int), int[]) -> int = (|i| match i {
+        ((_, 6), []) => 2,
+        ((2, _), [3, 4]) => 3,
+        ((_, 6), x) => x[0],
+        ((_, y), _) => y,
+        (_, [2]) => 7,
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn patterns_shadowing() {
+    let input = "
+    let t: int, int -> expr = |i, j| match (i, j) {
+        (x, x) => x,
+    };
+    ";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn block_shadowing() {
+    let input = "
+    let t = {
+        let x = 2;
+        let x = 3;
+        x
+    };
+    ";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn sub_block_shadowing() {
+    let input = "    let t = ({
+        let x = 2;
+        {
+            let x = 3;
+            x
+        }
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+fn disjoint_block_shadowing() {
+    let input = "    let t: int = {
+        let b = {
+            let x = 2;
+            x
+        };
+        {
+            let x = 3;
+            (x + b)
+        }
+    };
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn sub_function_shadowing() {
+    let input = "    let t: int -> int = (|x| (|x| x)(2));
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Variable already defined: x"]
+fn function_param_shadowing() {
+    let input = "    let t: int, int -> int = (|x, x| (x + x));
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+fn match_shadowing() {
+    let input = "    let t: (int, int) -> int = (|i| match i {
+        (_, x) => 2,
+        (x, _) => 3,
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+fn single_ellipsis() {
+    let input = "    let t: int[] -> int = (|i| match i {
+        [1, .., 3] => 2,
+        [..] => 3,
+        [.., 1] => 9,
+        [7, 8, ..] => 2,
+        _ => -1,
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+#[should_panic = "Only one \"..\"-item allowed in array pattern"]
+fn multi_ellipsis() {
+    let input = "    let t: int[] -> int = (|i| match i {
+        [1, .., 3, ..] => 2,
+        _ => -1,
+    });
+";
+    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+fn namespace_no_degree() {
+    let input = "namespace X;
+    let y: int = 7;
+namespace T(8);
+    let k = X::y;
+";
+    let expected = "namespace X(8);
+    let y: int = 7;
+namespace T(8);
+    let k: int = X.y;
+";
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.degree, Some(8));
+    assert_eq!(expected, analyzed.to_string());
 }

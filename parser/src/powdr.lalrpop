@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use std::collections::BTreeSet;
 use powdr_ast::parsed::{*, asm::*, types::*};
-use powdr_number::BigUint;
+use powdr_number::{BigInt, BigUint};
 use crate::{ParserContext, unescape_string};
 
 grammar(ctx: &ParserContext);
@@ -60,6 +60,19 @@ Part: Part = {
     <name:Identifier> => Part::Named(name),
 }
 
+// Same as SymbolPath plus we allow "::<...>" at the end.
+GenericSymbolPath: (SymbolPath, Option<Vec<Type<Expression>>>) = {
+    // If we "inline" SymbolPath here, we get an ambiguity error.
+    <abs:"::"?> <parts:( <Part> "::" )*> <end:Part> <types:("::" "<" <TypeTermList> ">")?>  => (
+        SymbolPath::from_parts([
+            abs.map(|_| vec![Part::Named(String::new())]).unwrap_or_default(),
+            parts,
+            vec![end],
+        ].concat()),
+        types
+    ),
+}
+
 /// Same as SymbolPath except that we do not allow 'int' and 'fe' to be parsed as identifiers.
 TypeSymbolPath: SymbolPath = {
     <abs:"::"?> <parts:( <TypeSymbolPathPart> "::" )*> <end:TypeSymbolPathPart>  => {
@@ -108,7 +121,7 @@ Include: PilStatement = {
 };
 
 Namespace: PilStatement = {
-    <start:@L> "namespace" <name:SymbolPath> "(" <pol_degree:Expression> ")" ";" => PilStatement::Namespace(ctx.source_ref(start), name, pol_degree)
+    <start:@L> "namespace" <name:SymbolPath> <pol_degree:("(" <Expression> ")")?> ";" => PilStatement::Namespace(ctx.source_ref(start), name, pol_degree)
 }
 
 LetStatement: PilStatement = {
@@ -141,12 +154,13 @@ PolynomialConstantDefinition: PilStatement = {
 }
 
 FunctionDefinition: FunctionDefinition = {
-    "(" <params:ParameterList> ")" <body:BracedExpression> => FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{params, body})),
+    "(" <params:ParameterList> ")" <body:BracedExpression> =>
+        FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{kind: FunctionKind::Pure, params, body})),
     "=" <ArrayLiteralExpression> => FunctionDefinition::Array(<>),
 }
 
-ParameterList: Vec<String> = {
-    <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list },
+ParameterList: Vec<Pattern> = {
+    <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
     => vec![]
 }
 
@@ -167,7 +181,7 @@ PolynomialCommitDeclaration: PilStatement = {
         ctx.source_ref(start),
         stage,
         vec![name],
-        Some(FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression{params, body})))
+        Some(FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{kind: FunctionKind::Query, params, body})))
     )
 }
 
@@ -431,9 +445,15 @@ BoxedExpression: Box<Expression> = {
 }
 
 LambdaExpression: Box<Expression> = {
-    "||" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{params: vec![], body})),
-    "|" <params:ParameterList> "|" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{params, body})),
+    <kind:FunctionKind> "||" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{kind, params: vec![], body})),
+    <kind:FunctionKind> "|" <params:ParameterList> "|" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{kind, params, body})),
     LogicalOr
+}
+
+FunctionKind: FunctionKind = {
+    => FunctionKind::Pure,
+    "query" => FunctionKind::Query,
+    "constr" => FunctionKind::Constr,
 }
 
 LogicalOr: Box<Expression> = {
@@ -551,7 +571,7 @@ Term: Box<Expression> = {
     IndexAccess => Box::new(Expression::IndexAccess(<>)),
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
     ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference::from_identifier(<>))),
-    NamespacedPolynomialReference => Box::new(Expression::Reference(<>)),
+    GenericReference => Box::new(Expression::Reference(<>)),
     PublicIdentifier => Box::new(Expression::PublicReference(<>)),
     Number => Box::new(Expression::Number(<>.into(), None)),
     StringLiteral => Box::new(Expression::String(<>)),
@@ -560,6 +580,7 @@ Term: Box<Expression> = {
     BlockExpression,
     "[" <items:ExpressionList> "]" => Box::new(Expression::ArrayLiteral(ArrayLiteral{items})),
     "(" <head:Expression> "," <tail:ExpressionList> ")" => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(list)) },
+    "(" ")" => Box::new(Expression::Tuple(vec![])),
     "(" <BoxedExpression> ")",
     "${" <BoxedExpression> "}" => Box::new(Expression::FreeInput(<>))
 }
@@ -577,6 +598,11 @@ NamespacedPolynomialReference: NamespacedPolynomialReference = {
     <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
 }
 
+GenericReference: NamespacedPolynomialReference = {
+    <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
+    <path:GenericSymbolPath> => NamespacedPolynomialReference{path: path.0, type_args: path.1},
+}
+
 MatchExpression: Box<Expression> = {
     "match" <BoxedExpression> "{" <MatchArms> "}" => Box::new(Expression::MatchExpression(<>))
 }
@@ -587,12 +613,7 @@ MatchArms: Vec<MatchArm> = {
 }
 
 MatchArm: MatchArm = {
-    <pattern: MatchPattern> "=>" <value: Expression> => MatchArm{pattern, value},
-}
-
-MatchPattern: MatchPattern = {
-    "_" => MatchPattern::CatchAll,
-    Expression => MatchPattern::Pattern(<>),
+    <pattern:Pattern> "=>" <value: Expression> => MatchArm{pattern, value},
 }
 
 IfExpression: Box<Expression> = {
@@ -603,17 +624,47 @@ IfExpression: Box<Expression> = {
 }
 
 BlockExpression: Box<Expression> = {
-    "{" <LetStatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>))
+    "{" <StatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>))
 }
 
 BracedExpression: Box<Expression> = {
-    "{" <LetStatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>)),
+    "{" <StatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>)),
     "{" <BoxedExpression> "}" => Box::new(Expression::BlockExpression(vec![], <>))
 }
 
-LetStatementInsideBlock: LetStatementInsideBlock = {
-    "let" <name:Identifier> <value:("=" <Expression>)?> ";" => LetStatementInsideBlock{<>}
+StatementInsideBlock: StatementInsideBlock = {
+    "let" <pattern:Pattern> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
+    <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
+
+// ---------------------------- Pattern -----------------------------
+
+Pattern: Pattern = {
+    "_" => Pattern::CatchAll,
+    Number => Pattern::Number(<>.into()),
+    "-" <Number> => Pattern::Number(-BigInt::from(<>)),
+    StringLiteral => Pattern::String(<>),
+    TuplePattern,
+    ArrayPattern,
+    Identifier => Pattern::Variable(<>),
+    //EnumPattern,
+}
+
+PatternIncludingEllipsis: Pattern = {
+    Pattern => <>,
+    ".." => Pattern::Ellipsis,
+}
+
+TuplePattern: Pattern = {
+    "(" ")" => Pattern::Tuple(vec![]),
+    "(" <mut items:(<Pattern> ",")+> <last:Pattern> ")" => Pattern::Tuple({items.push(last); items})
+}
+
+ArrayPattern: Pattern = {
+    "[" "]" => Pattern::Array(vec![]),
+    "[" <mut items:(<PatternIncludingEllipsis> ",")*> <last:PatternIncludingEllipsis> "]" => Pattern::Array({items.push(last); items})
+}
+
 
 // ---------------------------- Type Declarations -----------------------------
 
@@ -718,7 +769,6 @@ SpecialIdentifier: &'input str = {
     "int",
     "fe",
     "expr",
-    "constr",
     "bool",
 }
 
@@ -728,7 +778,6 @@ ConstantIdentifier: String = {
 
 PublicIdentifier: String = {
     r":[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.strip_prefix(":").unwrap().to_string()
-
 }
 
 Number: BigUint = {

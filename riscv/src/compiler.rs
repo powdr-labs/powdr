@@ -18,9 +18,9 @@ use powdr_asm_utils::{
 use powdr_number::{FieldElement, KnownField};
 
 use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
-use crate::coprocessors::*;
 use crate::disambiguator;
 use crate::parser::RiscParser;
+use crate::runtime::Runtime;
 use crate::{Argument, Expression, Statement};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -105,7 +105,7 @@ impl Architecture for RiscvArchitecture {
 /// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
 pub fn compile<T: FieldElement>(
     mut assemblies: BTreeMap<String, String>,
-    coprocessors: &CoProcessors,
+    runtime: &Runtime,
     with_bootloader: bool,
 ) -> String {
     // stack grows towards zero
@@ -114,11 +114,7 @@ pub fn compile<T: FieldElement>(
     let data_start = 0x10100;
 
     assert!(assemblies
-        .insert("__runtime".to_string(), runtime(coprocessors))
-        .is_none());
-
-    assert!(assemblies
-        .insert("__extra_symbols".to_string(), EXTRA_SYMBOLS.to_string())
+        .insert("__runtime".to_string(), runtime.global_declarations())
         .is_none());
 
     // TODO remove unreferenced files.
@@ -140,10 +136,6 @@ pub fn compile<T: FieldElement>(
 
     // Replace dynamic references to code labels
     replace_dynamic_label_references(&mut statements, &data_labels);
-
-    // Remove the riscv asm stub function, which is used
-    // for compilation, and will not be called.
-    statements = replace_coprocessor_stubs(statements, coprocessors).collect::<Vec<_>>();
 
     let mut initial_mem = Vec::new();
     let mut data_code = Vec::new();
@@ -201,16 +193,16 @@ pub fn compile<T: FieldElement>(
             }
         });
 
-    let submachine_init = call_every_submachine(coprocessors);
+    let submachines_init = runtime.submachines_init();
     let bootloader_and_shutdown_routine_lines = if with_bootloader {
-        let bootloader_and_shutdown_routine = bootloader_and_shutdown_routine(&submachine_init);
+        let bootloader_and_shutdown_routine = bootloader_and_shutdown_routine(&submachines_init);
         log::debug!("Adding Bootloader:\n{}", bootloader_and_shutdown_routine);
         bootloader_and_shutdown_routine
             .split('\n')
             .map(|l| l.to_string())
             .collect::<Vec<_>>()
     } else {
-        submachine_init
+        submachines_init
     };
 
     let mut program: Vec<String> = file_ids
@@ -229,7 +221,7 @@ pub fn compile<T: FieldElement>(
     program.extend(
         substitute_symbols_with_values(statements, &data_positions)
             .into_iter()
-            .flat_map(|v| process_statement(v, coprocessors)),
+            .flat_map(process_statement),
     );
     if !data_code.is_empty() {
         program.extend(
@@ -240,6 +232,7 @@ pub fn compile<T: FieldElement>(
                 .to_string(),
         ]));
     }
+    program.extend(runtime.ecall_handler());
 
     // The program ROM needs to fit the degree, so we use the next power of 2.
     let degree = program.len().ilog2() + 1;
@@ -257,25 +250,10 @@ pub fn compile<T: FieldElement>(
     assert!((18..=20).contains(&degree));
     let degree = 1 << degree;
 
-    let mut imports = vec![
-        "use std::binary::Binary;",
-        "use std::shift::Shift;",
-        "use std::split::split_gl::SplitGL;",
-    ];
-    imports.extend(coprocessors.machine_imports());
-
-    let mut declarations = vec![
-        ("binary", "Binary"),
-        ("shift", "Shift"),
-        ("split_gl", "SplitGL"),
-    ];
-    declarations.extend(coprocessors.declarations());
-
     riscv_machine(
-        &imports,
-        &preamble::<T>(degree, coprocessors, with_bootloader),
+        runtime,
+        &preamble::<T>(degree, runtime, with_bootloader),
         initial_mem,
-        &declarations,
         program,
     )
 }
@@ -365,32 +343,6 @@ fn replace_dynamic_label_reference(
     ))
 }
 
-fn remove_matching_and_next<I: Iterator, F>(iter: I, predicate: F) -> impl Iterator<Item = I::Item>
-where
-    F: Fn(&I::Item) -> bool,
-{
-    iter.scan(false, move |filter_next, item| {
-        let mut filter_current = *filter_next;
-        *filter_next = predicate(&item);
-        // if the predicate says this line should be filtered, then
-        // the next one should be filtered as well.
-        filter_current |= *filter_next;
-        Some((filter_current, item))
-    })
-    .filter_map(|(filter, statement)| (!filter).then_some(statement))
-}
-
-fn replace_coprocessor_stubs<'a>(
-    statements: impl IntoIterator<Item = Statement> + 'a,
-    coprocessors: &'a CoProcessors,
-) -> impl Iterator<Item = Statement> + 'a {
-    let stub_names: Vec<&'a str> = coprocessors.runtime_names();
-
-    remove_matching_and_next(statements.into_iter(), move |statement| -> bool {
-        matches!(&statement, Statement::Label(label) if stub_names.contains(&label.as_str()))
-    })
-}
-
 fn substitute_symbols_with_values(
     mut statements: Vec<Statement>,
     data_positions: &BTreeMap<String, u32>,
@@ -451,10 +403,9 @@ fn substitute_symbols_with_values(
 }
 
 fn riscv_machine(
-    machines: &[&str],
+    runtime: &Runtime,
     preamble: &str,
     initial_memory: Vec<String>,
-    submachines: &[(&str, &str)],
     program: Vec<String>,
 ) -> String {
     format!(
@@ -474,12 +425,8 @@ let initial_memory: (fe, fe)[] = [
     }}
 }}    
 "#,
-        machines.join("\n"),
-        submachines
-            .iter()
-            .format_with("\n", |(instance, ty), f| f(&format_args!(
-                "\t\t{ty} {instance};"
-            ))),
+        runtime.submachines_import(),
+        runtime.submachines_declare(),
         preamble,
         initial_memory
             .into_iter()
@@ -490,28 +437,29 @@ let initial_memory: (fe, fe)[] = [
     )
 }
 
-fn preamble<T: FieldElement>(
-    degree: u64,
-    coprocessors: &CoProcessors,
-    with_bootloader: bool,
-) -> String {
+fn preamble<T: FieldElement>(degree: u64, runtime: &Runtime, with_bootloader: bool) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
         bootloader_preamble()
     } else {
         "".to_string()
     };
 
-    let mul_instruction = mul_instruction::<T>();
+    for machine in ["binary", "shift"] {
+        assert!(
+            runtime.has_submachine(machine),
+            "RISC-V machine requires the `{machine}` submachine"
+        );
+    }
+
+    let mul_instruction = mul_instruction::<T>(runtime);
 
     format!("degree {degree};")
-        + r#"
+        + &r#"
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
     reg Z[<=];
     reg W[<=];
-"# + &coprocessors.registers()
-        + &r#"
     reg tmp1;
     reg tmp2;
     reg tmp3;
@@ -532,11 +480,7 @@ fn preamble<T: FieldElement>(
     x0 = 0;
 
     // ============== iszero check for X =======================
-    col witness XInv;
-    col witness XIsZero;
-    XIsZero = 1 - X * XInv;
-    XIsZero * X = 0;
-    std::utils::force_bool(XIsZero);
+    let XIsZero = std::utils::is_zero(X);
 
     // ============== control-flow instructions ==============
 
@@ -569,20 +513,12 @@ fn preamble<T: FieldElement>(
     instr is_equal_zero X -> Y { Y = XIsZero }
     instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
 
-    // ================= binary/bitwise instructions =================
-    instr and Y, Z -> X ~ binary.and;
-    instr or Y, Z -> X ~ binary.or;
-    instr xor Y, Z -> X ~ binary.xor;
-
-    // ================= shift instructions =================
-    instr shl Y, Z -> X ~ shift.shl;
-    instr shr Y, Z -> X ~ shift.shr;
-
-    // ================== wrapping instructions ==============
-    instr split_gl Z -> X, Y ~ split_gl.split;
-
-    // ================= coprocessor substitution instructions =================
-"# + &coprocessors.instructions()
+    // ================= submachine instructions =================
+"# + &runtime
+        .submachines_instructions()
+        .into_iter()
+        .map(|s| format!("    {s}"))
+        .join("\n")
         + r#"
     // Wraps a value in Y to 32 bits.
     // Requires 0 <= Y < 2**33
@@ -679,7 +615,7 @@ fn preamble<T: FieldElement>(
 "# + mul_instruction
 }
 
-fn mul_instruction<T: FieldElement>() -> &'static str {
+fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
     match T::known_field().expect("Unknown field!") {
         KnownField::Bn254Field => {
             // The BN254 field can fit any 64-bit number, so we can naively de-compose
@@ -697,6 +633,10 @@ fn mul_instruction<T: FieldElement>() -> &'static str {
 "#
         }
         KnownField::GoldilocksField => {
+            assert!(
+                runtime.has_submachine("split_gl"),
+                "RISC-V machine with the goldilocks field requires the `split_gl` submachine"
+            );
             // The Goldilocks field cannot fit some 64-bit numbers, so we have to use
             // the split machine. Note that it can fit a product of two 32-bit numbers.
             r#"
@@ -866,51 +806,7 @@ fn memory(with_bootloader: bool) -> String {
     "#
 }
 
-/// some extra symbols expected by rust code:
-/// - __rust_no_alloc_shim_is_unstable: compilation time acknowledgment that this feature is unstable.
-/// - __rust_alloc_error_handler_should_panic: needed by the default alloc error handler,
-///  not sure why it's not present in the asm.
-///  https://github.com/rust-lang/rust/blob/ae9d7b0c6434b27e4e2effe8f05b16d37e7ef33f/library/alloc/src/alloc.rs#L415
-static EXTRA_SYMBOLS: &str = r".data
-.globl __rust_alloc_error_handler_should_panic
-__rust_alloc_error_handler_should_panic: .byte 0
-.globl __rust_no_alloc_shim_is_unstable
-__rust_no_alloc_shim_is_unstable: .byte 0
-.text
-";
-
-fn runtime(coprocessors: &CoProcessors) -> String {
-    [
-        "__divdi3",
-        "__udivdi3",
-        "__udivti3",
-        "__divdf3",
-        "__muldf3",
-        "__moddi3",
-        "__umoddi3",
-        "__umodti3",
-        "__eqdf2",
-        "__ltdf2",
-        "__nedf2",
-        "__unorddf2",
-        "__floatundidf",
-        "__extendsfdf2",
-        "memcpy",
-        "memmove",
-        "memset",
-        "memcmp",
-        "bcmp",
-        "strlen",
-    ]
-    .map(|n| format!(".globl {n}@plt\n.globl {n}\n.set {n}@plt, {n}\n"))
-    .join("\n\n")
-        + &[("__rust_alloc_error_handler", "__rg_oom")]
-            .map(|(n, m)| format!(".globl {n}\n.set {n}, {m}\n"))
-            .join("\n\n")
-        + &coprocessors.runtime()
-}
-
-fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
+fn process_statement(s: Statement) -> Vec<String> {
     match &s {
         Statement::Label(l) => vec![format!("{}:", escape_label(l))],
         Statement::Directive(directive, args) => match (directive.as_str(), &args[..]) {
@@ -940,7 +836,7 @@ fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
             let stmt_str = &stmt_str[2..(stmt_str.len() - 1)];
             let mut ret = vec![format!("  .debug insn \"{stmt_str}\";")];
             ret.extend(
-                process_instruction(instr, args, coprocessors)
+                process_instruction(instr, args)
                     .into_iter()
                     .map(|s| "  ".to_string() + &s),
             );
@@ -1043,15 +939,23 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
     }
 }
 
-fn try_coprocessor_substitution(label: &str, coprocessors: &CoProcessors) -> Option<String> {
-    coprocessors
-        .substitutions()
-        .iter()
-        .find(|(l, _)| *l == label)
-        .map(|(_, subst)| subst.to_string())
+/// Push register into the stack
+pub fn push_register(name: &str) -> [String; 2] {
+    [
+        "x2 <=X= wrap(x2 - 4);".to_string(),
+        format!("mstore x2, {name};"),
+    ]
 }
 
-fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcessors) -> Vec<String> {
+/// Pop register from the stack
+pub fn pop_register(name: &str) -> [String; 2] {
+    [
+        format!("{name}, tmp1 <== mload(x2);"),
+        "x2 <=X= wrap(x2 + 4);".to_string(),
+    ]
+}
+
+fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
     match instr {
         // load/store registers
         "li" | "la" => {
@@ -1416,44 +1320,27 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             vec![format!("x1 <== jump_dyn({rs});")]
         }
         "call" | "tail" => {
-            // Depending on what symbol is called, the call is replaced by a
-            // powdr-asm call, or a call to a coprocessor if a special function
-            // has been recognized.
             assert_eq!(args.len(), 1);
             let label = &args[0];
-            let replacement = match label {
-                Argument::Expression(Expression::Symbol(l)) => {
-                    try_coprocessor_substitution(l, coprocessors)
-                }
-                _ => None,
-            };
-            match (replacement, instr) {
-                (None, instr) => {
-                    let arg = argument_to_escaped_symbol(label);
-                    let dest = if instr == "tail" { "tmp1" } else { "x1" };
-                    vec![format!("{dest} <== jump({arg});")]
-                }
-                // Both "call" and "tail" are pseudo-instructions that are
-                // supposed to use x6 to calculate the high bits of the
-                // destination address. Our implementation does not touch x6,
-                // but no sane program would rely on this behavior, so we are
-                // probably fine.
-                (Some(replacement), "call") => vec![replacement],
-                (Some(replacement), "tail") => {
-                    vec![replacement, "tmp1 <== jump_dyn(x1);".to_string()]
-                }
-                (Some(_), _) => unreachable!(),
-            }
+            let arg = argument_to_escaped_symbol(label);
+            let dest = if instr == "tail" { "tmp1" } else { "x1" };
+            vec![format!("{dest} <== jump({arg});")]
         }
         "ecall" => {
             assert!(args.is_empty());
-            vec!["x10 <=X= ${ std::prover::Query::Input(std::convert::int(std::prover::eval(x10))) };".to_string()]
+            // save ra/x1
+            push_register("x1")
+                .into_iter()
+                // jump to to handler
+                .chain(std::iter::once("x1 <== jump(__ecall_handler);".to_string()))
+                // restore ra/x1
+                .chain(pop_register("x1"))
+                .collect()
         }
         "ebreak" => {
             assert!(args.is_empty());
-            // This is using x0 on purpose, because we do not want to introduce
-            // nondeterminism with this.
-            vec!["x0 <=X= ${ std::prover::Query::PrintChar(std::convert::int(std::prover::eval(x10))) };\n".to_string()]
+            // we don't use ebreak for anything, ignore
+            vec![]
         }
         "ret" => {
             assert!(args.is_empty());
@@ -1600,39 +1487,5 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         _ => {
             panic!("Unknown instruction: {instr}");
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_remove_matching_and_next_integers() {
-        assert_eq!(
-            remove_matching_and_next([0, 1, 2, 0, 2, 0, 0, 3, 2, 1].iter(), |&&i| { i == 0 })
-                .copied()
-                .collect::<Vec<_>>(),
-            vec![2, 2, 1]
-        );
-    }
-
-    #[test]
-    fn test_remove_matching_and_next_strings() {
-        assert_eq!(
-            remove_matching_and_next(
-                [
-                    "croissant",
-                    "pain au chocolat",
-                    "chausson aux pommes",
-                    "croissant" // corner case: if the label is at the end of the program
-                ]
-                .iter(),
-                |&&s| { s == "croissant" }
-            )
-            .copied()
-            .collect::<Vec<_>>(),
-            vec!["chausson aux pommes"]
-        );
     }
 }

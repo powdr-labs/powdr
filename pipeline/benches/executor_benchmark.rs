@@ -4,8 +4,7 @@ use powdr_number::{BigInt, FieldElement, GoldilocksField};
 
 use powdr_pipeline::test_util::{evaluate_integer_function, std_analyzed};
 use powdr_riscv::{
-    compile_rust_crate_to_riscv_asm, compile_rust_to_riscv_asm, compiler,
-    continuations::bootloader::default_input, CoProcessors,
+    compile_rust_crate_to_riscv_asm, compiler, continuations::bootloader::default_input, Runtime,
 };
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -32,7 +31,7 @@ fn executor_benchmark(c: &mut Criterion) {
     let tmp_dir = Temp::new_dir().unwrap();
     let riscv_asm_files =
         compile_rust_crate_to_riscv_asm("../riscv/tests/riscv_data/keccak/Cargo.toml", &tmp_dir);
-    let contents = compiler::compile::<T>(riscv_asm_files, &CoProcessors::base(), false);
+    let contents = compiler::compile::<T>(riscv_asm_files, &Runtime::base(), false);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     let pil = pipeline.compute_optimized_pil().unwrap();
     let fixed_cols = pipeline.compute_fixed_cols().unwrap();
@@ -40,10 +39,11 @@ fn executor_benchmark(c: &mut Criterion) {
     group.bench_function("keccak", |b| b.iter(|| run_witgen(&pil, &fixed_cols, &[])));
 
     // The first chunk of `many_chunks`, with Poseidon co-processor & bootloader
-    let riscv_asm_files =
-        compile_rust_to_riscv_asm("../riscv/tests/riscv_data/many_chunks.rs", &tmp_dir);
-    let contents =
-        compiler::compile::<T>(riscv_asm_files, &CoProcessors::base().with_poseidon(), true);
+    let riscv_asm_files = compile_rust_crate_to_riscv_asm(
+        "../riscv/tests/riscv_data/many_chunks/Cargo.toml",
+        &tmp_dir,
+    );
+    let contents = compiler::compile::<T>(riscv_asm_files, &Runtime::base().with_poseidon(), true);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     let pil = pipeline.compute_optimized_pil().unwrap();
     let fixed_cols = pipeline.compute_fixed_cols().unwrap();

@@ -101,12 +101,12 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     fn lookup<'b>(
         &mut self,
         name: &'a str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Definitions::lookup_with_symbols(
             &self.fixed_data.analyzed.definitions,
             name,
-            generic_args,
+            type_args,
             self,
         )
     }
@@ -126,7 +126,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
             PolynomialType::Constant => {
                 let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values;
                 let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
-                values[usize::try_from(row).unwrap()]
+                values[usize::from(row)]
             }
         })
         .into())

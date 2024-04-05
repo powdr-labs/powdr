@@ -118,8 +118,7 @@ fn generate_values<T: FieldElement>(
                     values
                 })
         }
-        FunctionValueDefinition::Query(_)
-        | FunctionValueDefinition::TypeDeclaration(_)
+        FunctionValueDefinition::TypeDeclaration(_)
         | FunctionValueDefinition::TypeConstructor(_, _) => panic!(),
     };
     match result {
@@ -143,13 +142,13 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
     fn lookup(
         &mut self,
         name: &'a str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        let cache_key = (name.to_string(), generic_args.clone());
+        let cache_key = (name.to_string(), type_args.clone());
         if let Some(v) = self.cache.read().unwrap().get(&cache_key) {
             return Ok(v.clone());
         }
-        let result = Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)?;
+        let result = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
         self.cache
             .write()
             .unwrap()
@@ -177,11 +176,8 @@ mod test {
         let src = r#"
             let N = 8;
             namespace F(N);
-            pol constant LAST(i) { match i {
-                N - 1 => 1,
-                _ => 0,
-            } };
-        "#;
+            col fixed LAST(i) { if i == N - 1 { 1 } else { 0 } };
+            "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
         let constants = generate(&analyzed);

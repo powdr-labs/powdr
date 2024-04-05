@@ -3,7 +3,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    iter::once,
+    iter::{self, once},
     str::FromStr,
     sync::Arc,
 };
@@ -24,7 +24,10 @@ use powdr_ast::{
 };
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::evaluator::{self, Definitions, SymbolLookup, Value};
+use crate::{
+    evaluator::{self, Definitions, SymbolLookup, Value},
+    statement_processor::Counters,
+};
 
 pub fn condense<T: FieldElement>(
     degree: Option<DegreeType>,
@@ -34,6 +37,9 @@ pub fn condense<T: FieldElement>(
     source_order: Vec<StatementIdentifier>,
 ) -> Analyzed<T> {
     let mut condenser = Condenser::new(&definitions);
+
+    // Counter needed to re-assign identity IDs.
+    let mut counters = Counters::default();
 
     let mut condensed_identities = vec![];
     let mut intermediate_columns = HashMap::new();
@@ -48,17 +54,10 @@ pub fn condense<T: FieldElement>(
                 namespace.pop();
                 condenser.set_namespace(namespace);
             }
-            let statements = match s {
+            let statement = match s {
                 StatementIdentifier::Identity(index) => {
-                    let identities = condenser.condense_identity(&identities[index]);
-                    identities
-                        .into_iter()
-                        .map(|identity| {
-                            let id = condensed_identities.len();
-                            condensed_identities.push(identity);
-                            StatementIdentifier::Identity(id)
-                        })
-                        .collect()
+                    condenser.condense_identity(&identities[index]);
+                    None
                 }
                 StatementIdentifier::Definition(name)
                     if matches!(
@@ -94,17 +93,37 @@ pub fn condense<T: FieldElement>(
                         vec![condenser.condense_to_algebraic_expression(&e.e)]
                     };
                     intermediate_columns.insert(name.clone(), (symbol.clone(), value));
-                    vec![StatementIdentifier::Definition(name)]
+                    Some(StatementIdentifier::Definition(name))
                 }
-                s => vec![s],
+                s => Some(s),
             };
-            // Extract and prepend the new witness columns.
-            let new_wits = condenser.extract_new_witness_columns();
-            new_witness_columns.extend(new_wits.clone());
+            // Extract and prepend the new witness columns, then identites
+            // and finally the original statment (if it exists).
+            let new_wits = condenser
+                .extract_new_witness_columns()
+                .into_iter()
+                .map(|new_wit| {
+                    let name = new_wit.absolute_name.clone();
+                    new_witness_columns.push(new_wit);
+                    StatementIdentifier::Definition(name)
+                })
+                .collect::<Vec<_>>();
+
+            let identity_statements = condenser
+                .extract_new_constraints()
+                .into_iter()
+                .map(|identity| {
+                    let index = condensed_identities.len();
+                    let id = counters.dispense_identity_id();
+                    condensed_identities.push(identity.into_identity(id));
+                    StatementIdentifier::Identity(index)
+                })
+                .collect::<Vec<_>>();
+
             new_wits
                 .into_iter()
-                .map(|s| StatementIdentifier::Definition(s.absolute_name))
-                .chain(statements)
+                .chain(identity_statements)
+                .chain(statement)
         })
         .collect();
 
@@ -142,13 +161,47 @@ pub struct Condenser<'a, T> {
     symbol_values: BTreeMap<SymbolCacheKey, Arc<Value<'a, T>>>,
     /// Current namespace (for names of generated witnesses).
     namespace: AbsoluteSymbolPath,
-    next_identity_id: u64,
     next_witness_id: u64,
     /// The generated witness columns since the last extraction.
     new_witnesses: Vec<Symbol>,
     /// The names of all new witness columns ever generated, to avoid duplicates.
     all_new_witness_names: HashSet<String>,
-    _phantom: std::marker::PhantomData<T>,
+    new_constraints: Vec<IdentityWithoutID<AlgebraicExpression<T>>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct IdentityWithoutID<Expr> {
+    pub kind: IdentityKind,
+    pub source: SourceRef,
+    /// For a simple polynomial identity, the selector contains
+    /// the actual expression (see expression_for_poly_id).
+    pub left: SelectedExpressions<Expr>,
+    pub right: SelectedExpressions<Expr>,
+}
+
+impl<Expr> IdentityWithoutID<Expr> {
+    /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
+    pub fn from_polynomial_identity(source: SourceRef, identity: Expr) -> Self {
+        Self {
+            kind: IdentityKind::Polynomial,
+            source,
+            left: SelectedExpressions {
+                selector: Some(identity),
+                expressions: vec![],
+            },
+            right: Default::default(),
+        }
+    }
+
+    pub fn into_identity(self, id: u64) -> Identity<Expr> {
+        Identity {
+            id,
+            kind: self.kind,
+            source: self.source,
+            left: self.left,
+            right: self.right,
+        }
+    }
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
@@ -168,42 +221,31 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             symbol_values: Default::default(),
             namespace: Default::default(),
             next_witness_id,
-            next_identity_id: 0,
             new_witnesses: vec![],
             all_new_witness_names: HashSet::new(),
-            _phantom: Default::default(),
+            new_constraints: vec![],
         }
     }
 
-    fn dispense_identity_id(&mut self) -> u64 {
-        let id = self.next_identity_id;
-        self.next_identity_id += 1;
-        id
-    }
-
-    pub fn condense_identity(
-        &mut self,
-        identity: &'a Identity<Expression>,
-    ) -> Vec<Identity<AlgebraicExpression<T>>> {
+    pub fn condense_identity(&mut self, identity: &'a Identity<Expression>) {
         if identity.kind == IdentityKind::Polynomial {
-            self.condense_to_constraint_or_array(identity.expression_for_poly_id())
-                .into_iter()
-                .map(|constraint| {
-                    Identity::from_polynomial_identity(
-                        self.dispense_identity_id(),
-                        identity.source.clone(),
-                        constraint,
+            let expr = identity.expression_for_poly_id();
+            evaluator::evaluate(expr, self)
+                .and_then(|expr| self.add_constraints(expr, identity.source.clone()))
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "Error reducing expression to constraint:\nExpression: {expr}\nError: {err:?}"
                     )
-                })
-                .collect()
+                });
         } else {
-            vec![Identity {
-                id: self.dispense_identity_id(),
+            let left = self.condense_selected_expressions(&identity.left);
+            let right = self.condense_selected_expressions(&identity.right);
+            self.new_constraints.push(IdentityWithoutID {
                 kind: identity.kind,
                 source: identity.source.clone(),
-                left: self.condense_selected_expressions(&identity.left),
-                right: self.condense_selected_expressions(&identity.right),
-            }]
+                left,
+                right,
+            })
         }
     }
 
@@ -214,9 +256,12 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 
     /// Returns the witness columns generated since the last call to this function.
     pub fn extract_new_witness_columns(&mut self) -> Vec<Symbol> {
-        let mut new_witnesses = vec![];
-        std::mem::swap(&mut self.new_witnesses, &mut new_witnesses);
-        new_witnesses
+        std::mem::take(&mut self.new_witnesses)
+    }
+
+    /// Returns the new constraints generated since the last call to this function.
+    pub fn extract_new_constraints(&mut self) -> Vec<IdentityWithoutID<AlgebraicExpression<T>>> {
+        std::mem::take(&mut self.new_constraints)
     }
 
     fn condense_selected_expressions(
@@ -266,46 +311,22 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             _ => panic!("Expected array of algebraic expressions, but got {result}"),
         }
     }
-
-    /// Evaluates an expression and expects a single constraint or an array of constraints.
-    fn condense_to_constraint_or_array(
-        &mut self,
-        e: &'a Expression,
-    ) -> Vec<AlgebraicExpression<T>> {
-        let result = evaluator::evaluate(e, self).unwrap_or_else(|err| {
-            panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
-        });
-        match result.as_ref() {
-            Value::Identity(left, right) => vec![left.clone() - right.clone()],
-            Value::Array(items) => items
-                .iter()
-                .map(|item| {
-                    if let Value::Identity(left, right) = item.as_ref() {
-                        left.clone() - right.clone()
-                    } else {
-                        panic!("Expected constraint, but got {item}")
-                    }
-                })
-                .collect::<Vec<_>>(),
-            _ => panic!("Expected constraint or array of constraints, but got {result}"),
-        }
-    }
 }
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn lookup(
         &mut self,
         name: &'a str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         // Cache already computed values.
         // Note that the cache is essential because otherwise
         // we re-evaluate simple values, which users would not expect.
-        let cache_key = (name.to_string(), generic_args.clone());
+        let cache_key = (name.to_string(), type_args.clone());
         if let Some(v) = self.symbol_values.get(&cache_key) {
             return Ok(v.clone());
         }
-        let value = Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)?;
+        let value = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
         self.symbol_values
             .entry(cache_key)
             .or_insert_with(|| value.clone());
@@ -322,11 +343,12 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn new_witness_column(
         &mut self,
         name: &str,
+        source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         let name = self.find_unused_name(name);
         let symbol = Symbol {
             id: self.next_witness_id,
-            source: SourceRef::unknown(),
+            source,
             absolute_name: name.clone(),
             stage: None,
             kind: SymbolKind::Poly(PolynomialType::Committed),
@@ -343,6 +365,29 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }))
             .into(),
         )
+    }
+
+    fn add_constraints(
+        &mut self,
+        constraints: Arc<Value<'a, T>>,
+        source: SourceRef,
+    ) -> Result<(), evaluator::EvalError> {
+        let identities: Box<dyn Iterator<Item = _>> = match constraints.as_ref() {
+            Value::Identity(left, right) => Box::new(iter::once((left, right))),
+            Value::Array(items) => Box::new(items.iter().map(|item| match item.as_ref() {
+                Value::Identity(left, right) => (left, right),
+                _ => panic!("Expected constraint, but got {item}"),
+            })),
+            _ => panic!("Expected constraint but got {constraints}"),
+        };
+        for (left, right) in identities {
+            self.new_constraints
+                .push(IdentityWithoutID::from_polynomial_identity(
+                    source.clone(),
+                    left.clone() - right.clone(),
+                ));
+        }
+        Ok(())
     }
 }
 

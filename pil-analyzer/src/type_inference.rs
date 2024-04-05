@@ -8,7 +8,7 @@ use powdr_ast::{
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
         ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock,
-        MatchArm, MatchPattern,
+        MatchArm, Pattern, StatementInsideBlock,
     },
 };
 
@@ -22,13 +22,15 @@ use crate::{
 
 /// Infers types on all definitions and checks type-correctness for isolated
 /// expressions (from identities and arrays) where the expected type is given.
+/// The parameter `statement_type` is the expected type for expressions at statement level.
 /// Sets the generic arguments for references and the literal types in all expressions.
 /// Returns the types for symbols without explicit type.
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
+    statement_type: &ExpectedType,
 ) -> Result<Vec<(String, Type)>, String> {
-    TypeChecker::default().infer_types(definitions, expressions)
+    TypeChecker::new(statement_type).infer_types(definitions, expressions)
 }
 
 /// A type to expect and a flag that says if arrays of that type are also fine.
@@ -47,19 +49,33 @@ impl From<Type> for ExpectedType {
     }
 }
 
-#[derive(Default)]
-struct TypeChecker {
+struct TypeChecker<'a> {
+    /// The expected type for expressions at statement level in block expressions.
+    statement_type: &'a ExpectedType,
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
     /// Declared types for all symbols. Contains the unmodified type scheme for symbols
     /// with generic types and newly created type variables for symbols without declared type.
     declared_types: HashMap<String, TypeScheme>,
+    /// Current mapping of declared type vars to type. Reset before checking each definition.
+    declared_type_vars: HashMap<String, Type>,
     unifier: Unifier,
     /// Last used type variable index.
     last_type_var: usize,
 }
 
-impl TypeChecker {
+impl<'a> TypeChecker<'a> {
+    pub fn new(statement_type: &'a ExpectedType) -> Self {
+        Self {
+            statement_type,
+            local_var_types: Default::default(),
+            declared_types: Default::default(),
+            declared_type_vars: Default::default(),
+            unifier: Default::default(),
+            last_type_var: Default::default(),
+        }
+    }
+
     /// Infers and checks types for all provided definitions and expressions and
     /// returns the types for symbols without explicit type.
     pub fn infer_types(
@@ -68,7 +84,7 @@ impl TypeChecker {
         expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<Vec<(String, Type)>, String> {
         let type_var_mapping = self.infer_types_inner(&mut definitions, expressions)?;
-        self.update_generic_args(&mut definitions, expressions, &type_var_mapping)?;
+        self.update_type_args(&mut definitions, expressions, &type_var_mapping)?;
         Ok(definitions
             .into_iter()
             .filter(|(_, (ty, _))| ty.is_none())
@@ -120,8 +136,14 @@ impl TypeChecker {
 
             let declared_type = self.declared_types[&name].clone();
             let result = if declared_type.vars.is_empty() {
+                self.declared_type_vars.clear();
                 self.process_concrete_symbol(&name, declared_type.ty.clone(), value)
             } else {
+                self.declared_type_vars = declared_type
+                    .vars
+                    .vars()
+                    .map(|v| (v.clone(), self.new_type_var()))
+                    .collect();
                 self.infer_type_of_expression(value).map(|ty| {
                     inferred_types.insert(name.to_string(), ty);
                 })
@@ -132,6 +154,7 @@ impl TypeChecker {
                 ));
             }
         }
+        self.declared_type_vars.clear();
 
         self.check_expressions(expressions)?;
 
@@ -278,7 +301,7 @@ impl TypeChecker {
     /// Updates generic arguments and literal annotations with the proper resolved types.
     /// `type_var_mapping` is a mapping (for each generic symbol) from
     /// the type variable names used by the type checker to those from the declaration.
-    fn update_generic_args(
+    fn update_type_args(
         &mut self,
         definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
         expressions: &mut [(&mut Expression, ExpectedType)],
@@ -292,7 +315,7 @@ impl TypeChecker {
                 let empty_mapping = Default::default();
                 let var_mapping = type_var_mapping.get(name).unwrap_or(&empty_mapping);
                 expr.post_visit_expressions_mut(&mut |e| {
-                    if let Err(e) = self.update_generic_args_for_expression(e, var_mapping) {
+                    if let Err(e) = self.update_type_args_for_expression(e, var_mapping) {
                         // TODO cannot borrow the value here for printing it.
                         // We should fix this properly by using source references.
                         errors.push(format!(
@@ -305,7 +328,7 @@ impl TypeChecker {
         for (expr, _) in expressions {
             expr.post_visit_expressions_mut(&mut |e| {
                 // There should be no generic types in identities.
-                if let Err(e) = self.update_generic_args_for_expression(e, &Default::default()) {
+                if let Err(e) = self.update_type_args_for_expression(e, &Default::default()) {
                     // TODO cannot borrow the expression here for printing it.
                     // We should fix this properly by using source references.
                     errors.push(format!(
@@ -322,7 +345,7 @@ impl TypeChecker {
     }
 
     /// Updates the type annotations in the literals and the generic arguments.
-    fn update_generic_args_for_expression(
+    fn update_type_args_for_expression(
         &self,
         e: &mut Expression,
         type_var_mapping: &HashMap<String, Type>,
@@ -358,9 +381,9 @@ impl TypeChecker {
             Expression::Reference(Reference::Poly(PolynomialReference {
                 name,
                 poly_id: _,
-                generic_args,
+                type_args,
             })) => {
-                for ty in generic_args.as_mut().unwrap() {
+                for ty in type_args.as_mut().unwrap() {
                     // Apply regular substitution obtained from unification.
                     self.substitute(ty);
                     // Now rename remaining type vars to match the declaration scheme.
@@ -387,40 +410,49 @@ impl TypeChecker {
         expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<(), String> {
         for (e, expected_type) in expressions {
-            if expected_type.allow_array {
-                self.infer_type_of_expression(e)
-                    .and_then(|ty| {
-                        let ty = self.type_into_substituted(ty);
-                        let expected_type = if matches!(ty, Type::Array(_)) {
-                            Type::Array(ArrayType {
-                                base: Box::new(expected_type.ty.clone()),
-                                length: None,
-                            })
-                        } else {
-                            expected_type.ty.clone()
-                        };
-
-                        self.unifier
-                            .unify_types(ty.clone(), expected_type.clone())
-                            .map_err(|err| {
-                                format!(
-                                    "Expected type {} but got type {}.\n{err}",
-                                    self.type_into_substituted(expected_type),
-                                    self.type_into_substituted(ty)
-                                )
-                            })
-                    })
-                    .map_err(|err| {
-                        format!(
-                            "Expression is expected to evaluate to {} or ({})[]:\n  {e}:\n{err}",
-                            expected_type.ty, expected_type.ty
-                        )
-                    })?;
-            } else {
-                self.expect_type(&expected_type.ty, e)?;
-            }
+            self.expect_type_with_flexibility(expected_type, e)?;
         }
         Ok(())
+    }
+
+    /// Process an expression, inferring its type and expecting either a certain type or potentially an array of that type.
+    fn expect_type_with_flexibility(
+        &mut self,
+        expected_type: &ExpectedType,
+        expr: &mut Expression,
+    ) -> Result<(), String> {
+        if expected_type.allow_array {
+            self.infer_type_of_expression(expr)
+                .and_then(|ty| {
+                    let ty = self.type_into_substituted(ty);
+                    let expected_type = if matches!(ty, Type::Array(_)) {
+                        Type::Array(ArrayType {
+                            base: Box::new(expected_type.ty.clone()),
+                            length: None,
+                        })
+                    } else {
+                        expected_type.ty.clone()
+                    };
+
+                    self.unifier
+                        .unify_types(ty.clone(), expected_type.clone())
+                        .map_err(|err| {
+                            format!(
+                                "Expected type {} but got type {}.\n{err}",
+                                self.type_into_substituted(expected_type),
+                                self.type_into_substituted(ty)
+                            )
+                        })
+                })
+                .map_err(|err| {
+                    format!(
+                        "Expression is expected to evaluate to {} or ({})[]:\n  {expr}:\n{err}",
+                        expected_type.ty, expected_type.ty
+                    )
+                })
+        } else {
+            self.expect_type(&expected_type.ty, expr)
+        }
     }
 
     /// Process an expression and return the type of the expression.
@@ -430,12 +462,25 @@ impl TypeChecker {
             Expression::Reference(Reference::Poly(PolynomialReference {
                 name,
                 poly_id: _,
-                generic_args,
+                type_args,
             })) => {
-                // The generic args (some of them) could be pre-filled by the parser, but we do not yet support that.
-                assert!(generic_args.is_none());
-                let (ty, gen_args) = self.instantiate_scheme(self.declared_types[name].clone());
-                *generic_args = Some(gen_args);
+                let (ty, args) = self.instantiate_scheme(self.declared_types[name].clone());
+                if let Some(requested_type_args) = type_args {
+                    if requested_type_args.len() != args.len() {
+                        return Err(format!(
+                            "Expected {} type arguments for symbol {name}, but got {}: {}",
+                            args.len(),
+                            requested_type_args.len(),
+                            requested_type_args.iter().join(", ")
+                        ));
+                    }
+                    for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
+                        requested.substitute_type_vars(&self.declared_type_vars);
+                        self.unifier
+                            .unify_types(requested.clone(), inferred.clone())?;
+                    }
+                }
+                *type_args = Some(args);
                 type_for_reference(&ty)
             }
             Expression::PublicReference(_) => Type::Expr,
@@ -462,15 +507,21 @@ impl TypeChecker {
                     .map(|item| self.infer_type_of_expression(item))
                     .collect::<Result<_, _>>()?,
             }),
-            Expression::LambdaExpression(LambdaExpression { params, body }) => {
-                let param_types = (0..params.len())
-                    .map(|_| self.new_type_var())
-                    .collect::<Vec<_>>();
+            Expression::LambdaExpression(LambdaExpression {
+                kind: _,
+                params,
+                body,
+            }) => {
                 let old_len = self.local_var_types.len();
-                self.local_var_types.extend(param_types.clone());
-                let body_type_result = self.infer_type_of_expression(body);
+                let result = params
+                    .iter()
+                    .map(|p| self.infer_type_of_pattern(p))
+                    .collect::<Result<Vec<_>, _>>()
+                    .and_then(|param_types| {
+                        Ok((param_types, self.infer_type_of_expression(body)?))
+                    });
                 self.local_var_types.truncate(old_len);
-                let body_type = body_type_result?;
+                let (param_types, body_type) = result?;
                 Type::Function(FunctionType {
                     params: param_types,
                     value: Box::new(body_type),
@@ -532,10 +583,11 @@ impl TypeChecker {
                 let scrutinee_type = self.infer_type_of_expression(scrutinee)?;
                 let result = self.new_type_var();
                 for MatchArm { pattern, value } in arms {
-                    if let MatchPattern::Pattern(pattern) = pattern {
-                        self.expect_type(&scrutinee_type, pattern)?;
-                    }
-                    self.expect_type(&result, value)?;
+                    let local_var_count = self.local_var_types.len();
+                    self.expect_type_of_pattern(&scrutinee_type, pattern)?;
+                    let result = self.expect_type(&result, value);
+                    self.local_var_types.truncate(local_var_count);
+                    result?;
                 }
                 result
             }
@@ -546,18 +598,27 @@ impl TypeChecker {
                 result
             }
             Expression::BlockExpression(statements, expr) => {
-                let statements_len = statements.len();
-                for LetStatementInsideBlock { name: _, value } in statements {
-                    let var_type = if let Some(value) = value {
-                        self.infer_type_of_expression(value)?
-                    } else {
-                        Type::Expr
-                    };
-                    self.local_var_types.push(var_type);
+                let original_var_count = self.local_var_types.len();
+                for statement in statements {
+                    match statement {
+                        StatementInsideBlock::LetStatement(LetStatementInsideBlock {
+                            pattern,
+                            value,
+                        }) => {
+                            let value_type = if let Some(value) = value {
+                                self.infer_type_of_expression(value)?
+                            } else {
+                                Type::Expr
+                            };
+                            self.expect_type_of_pattern(&value_type, pattern)?;
+                        }
+                        StatementInsideBlock::Expression(expr) => {
+                            self.expect_type_with_flexibility(self.statement_type, expr)?;
+                        }
+                    }
                 }
                 let result = self.infer_type_of_expression(expr);
-                self.local_var_types
-                    .truncate(self.local_var_types.len() - statements_len);
+                self.local_var_types.truncate(original_var_count);
                 result?
             }
         })
@@ -626,6 +687,61 @@ impl TypeChecker {
                     self.type_into_substituted(inferred_type)
                 )
             })
+    }
+
+    /// Type-checks a pattern and adds local variables.
+    fn expect_type_of_pattern(
+        &mut self,
+        expected_type: &Type,
+        pattern: &Pattern,
+    ) -> Result<(), String> {
+        let inferred_type = self.infer_type_of_pattern(pattern)?;
+        self.unifier
+            .unify_types(inferred_type.clone(), expected_type.clone())
+            .map_err(|err| {
+                format!(
+                    "Error checking pattern {pattern}:\nExpected type: {}\nInferred type: {}\n{err}",
+                    self.type_into_substituted(expected_type.clone()),
+                    self.type_into_substituted(inferred_type)
+                )
+            })
+    }
+
+    /// Type-checks a pattern and adds local variables.
+    fn infer_type_of_pattern(&mut self, pattern: &Pattern) -> Result<Type, String> {
+        Ok(match pattern {
+            Pattern::Ellipsis => unreachable!("Should be handled higher up."),
+            Pattern::CatchAll => self.new_type_var(),
+            Pattern::Number(_) => {
+                let ty = self.new_type_var();
+                self.unifier.ensure_bound(&ty, "FromLiteral".to_string())?;
+                ty
+            }
+            Pattern::String(_) => Type::String,
+            Pattern::Tuple(items) => Type::Tuple(TupleType {
+                items: items
+                    .iter()
+                    .map(|p| self.infer_type_of_pattern(p))
+                    .collect::<Result<_, _>>()?,
+            }),
+            Pattern::Array(items) => {
+                let item_type = self.new_type_var();
+                for item in items {
+                    if item != &Pattern::Ellipsis {
+                        self.expect_type_of_pattern(&item_type, item)?;
+                    }
+                }
+                Type::Array(ArrayType {
+                    base: Box::new(item_type),
+                    length: None,
+                })
+            }
+            Pattern::Variable(_) => {
+                let ty = self.new_type_var();
+                self.local_var_types.push(ty.clone());
+                ty
+            }
+        })
     }
 
     /// Returns, for each name declared with a type scheme, a mapping from

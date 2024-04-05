@@ -133,6 +133,7 @@ mod test {
         SelectedExpressions,
     };
     use powdr_parser_util::UnwrapErrToStderr;
+    use pretty_assertions::assert_eq;
     use similar::TextDiff;
     use test_log::test;
     use walkdir::WalkDir;
@@ -397,15 +398,11 @@ mod test {
         }
     }
 
-    mod display {
-        use powdr_parser_util::UnwrapErrToStderr;
-        use pretty_assertions::assert_eq;
+    use crate::parse;
 
-        use crate::parse;
-
-        #[test]
-        fn reparse() {
-            let input = r#"
+    #[test]
+    fn reparse() {
+        let input = r#"
     constant %N = 16;
 namespace Fibonacci(%N);
     constant %last_row = (%N - 1);
@@ -421,54 +418,54 @@ namespace Fibonacci(%N);
     y { (x + 2), y' } is ISLAST { ISLAST, 7 };
     (((x - 2) * y) = 8);
     public out = y(%last_row);"#;
-            let printed = format!("{}", parse(Some("input"), input).unwrap());
-            assert_eq!(input.trim(), printed.trim());
-        }
+        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        assert_eq!(input.trim(), printed.trim());
+    }
 
-        #[test]
-        fn reparse_witness_query() {
-            let input = r#"pol commit wit(i) query (x(i), y(i));"#;
-            let printed = format!("{}", parse(Some("input"), input).unwrap());
-            assert_eq!(input.trim(), printed.trim());
-        }
+    #[test]
+    fn reparse_witness_query() {
+        let input = r#"pol commit wit(i) query (x(i), y(i));"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        assert_eq!(input.trim(), printed.trim());
+    }
 
-        #[test]
-        fn reparse_arrays() {
-            let input = "    pol commit y[3];\n    ((y - 2) = 0);\n    ((y[2] - 2) = 0);\n    public out = y[1](2);";
-            let printed = format!("{}", parse(Some("input"), input).unwrap());
-            assert_eq!(input.trim(), printed.trim());
-        }
+    #[test]
+    fn reparse_arrays() {
+        let input = "    pol commit y[3];\n    ((y - 2) = 0);\n    ((y[2] - 2) = 0);\n    public out = y[1](2);";
+        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        assert_eq!(input.trim(), printed.trim());
+    }
 
-        #[test]
-        fn reparse_strings_and_tuples() {
-            let input = r#"constant %N = ("abc", 3);"#;
-            let printed = format!("{}", parse(Some("input"), input).unwrap());
-            assert_eq!(input.trim(), printed.trim());
-        }
+    #[test]
+    fn reparse_strings_and_tuples() {
+        let input = r#"constant %N = ("abc", 3);"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        assert_eq!(input.trim(), printed.trim());
+    }
 
-        #[test]
-        fn array_literals() {
-            let input = r#"let x = [[1], [2], [(3 + 7)]];"#;
-            let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
-            assert_eq!(input.trim(), printed.trim());
-        }
+    #[test]
+    fn array_literals() {
+        let input = r#"let x = [[1], [2], [(3 + 7)]];"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(input.trim(), printed.trim());
+    }
 
-        #[test]
-        fn type_names_simple() {
-            let input = r#"
+    #[test]
+    fn type_names_simple() {
+        let input = r#"
     let a: col;
     let b: int;
     let c: fe;
     let d: int[];
     let e: int[7];
     let f: (int, fe, fe[3])[2];"#;
-            let printed = format!("{}", parse(Some("input"), input).unwrap());
-            assert_eq!(input.trim(), printed.trim());
-        }
+        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        assert_eq!(input.trim(), printed.trim());
+    }
 
-        #[test]
-        fn type_names_complex() {
-            let input = r#"
+    #[test]
+    fn type_names_complex() {
+        let input = r#"
     let a: int -> fe;
     let b: int -> ();
     let c: -> ();
@@ -477,9 +474,8 @@ namespace Fibonacci(%N);
     let f: ((int, fe), fe[2] -> (fe -> int))[];
     let g: (int -> fe) -> int;
     let h: int -> (fe -> int);"#;
-            let printed = format!("{}", parse(Some("input"), input).unwrap());
-            assert_eq!(input.trim(), printed.trim());
-        }
+        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        assert_eq!(input.trim(), printed.trim());
     }
 
     #[test]
@@ -497,5 +493,49 @@ namespace N(2);
 "#;
         let printed = format!("{}", parse(Some("input"), input).unwrap());
         assert_eq!(input.trim(), printed.trim());
+    }
+
+    #[test]
+    fn patterns() {
+        let input = r#"
+namespace N(2);
+    let x = (|(x, y), [t, r, ..]| (x, y, t, r));
+    {
+        let (a, b, _, d) = x((1, 2), [3, 4]);
+        b
+    };
+"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(input.trim(), printed.trim());
+    }
+
+    #[test]
+    fn type_args() {
+        let input = r#"
+namespace N(2);
+    let<T: Ord> max: T, T -> T = (|a, b| if (a < b) { b } else { a });
+    let<T1, T2> left: T1, T2 -> T1 = (|a, b| a);
+    let seven = max::<int>(3, 7);
+    let five = left::<int, fe[]>(5, [7]);
+    let also_five = five::<>;
+"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(input.trim(), printed.trim());
+    }
+
+    #[test]
+    fn type_args_with_space() {
+        let input = r#"
+namespace N(2);
+    let<T: Ord> max: T, T -> T = (|a, b| if (a < b) { b } else { a });
+    let seven = max :: <int>(3, 7);
+"#;
+        let expected = r#"
+namespace N(2);
+    let<T: Ord> max: T, T -> T = (|a, b| if (a < b) { b } else { a });
+    let seven = max::<int>(3, 7);
+"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
     }
 }

@@ -32,7 +32,7 @@ pub enum StatementIdentifier {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
-    /// The degree of all namespaces, which must match. If there are no namespaces, then `None`.
+    /// The degree of all namespaces, which must match if provided. If no degrees are given, then `None`.
     pub degree: Option<DegreeType>,
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
@@ -401,9 +401,7 @@ pub fn type_from_definition(
 ) -> Option<TypeScheme> {
     if let Some(value) = value {
         match value {
-            FunctionValueDefinition::Array(_) | FunctionValueDefinition::Query(_) => {
-                Some(Type::Col.into())
-            }
+            FunctionValueDefinition::Array(_) => Some(Type::Col.into()),
             FunctionValueDefinition::Expression(TypedExpression { e: _, type_scheme }) => {
                 type_scheme.clone()
             }
@@ -509,7 +507,6 @@ pub enum SymbolKind {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum FunctionValueDefinition {
     Array(Vec<RepeatedArray>),
-    Query(Expression),
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(String, EnumVariant),
@@ -518,8 +515,7 @@ pub enum FunctionValueDefinition {
 impl Children<Expression> for FunctionValueDefinition {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
-            FunctionValueDefinition::Query(e)
-            | FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
+            FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 Box::new(iter::once(e))
             }
             FunctionValueDefinition::Array(array) => {
@@ -534,8 +530,7 @@ impl Children<Expression> for FunctionValueDefinition {
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
-            FunctionValueDefinition::Query(e)
-            | FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
+            FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 Box::new(iter::once(e))
             }
             FunctionValueDefinition::Array(array) => {
@@ -627,6 +622,7 @@ impl PublicDeclaration {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Identity<Expr> {
+    /// The ID is globally unique among identities.
     pub id: u64,
     pub kind: IdentityKind,
     pub source: SourceRef,
@@ -952,7 +948,7 @@ pub struct PolynomialReference {
     pub poly_id: Option<PolyID>,
     /// The type arguments if the symbol is generic.
     /// Guaranteed to be Some(_) after type checking is completed.
-    pub generic_args: Option<Vec<Type>>,
+    pub type_args: Option<Vec<Type>>,
 }
 
 #[derive(
