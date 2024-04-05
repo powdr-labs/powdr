@@ -454,3 +454,10 @@ fn test_failing_assertion() {
     let i = [];
     verify_asm(f, slice_to_vec(&i));
 }
+
+#[test]
+fn connect_no_witgen() {
+    let f = "asm/connect_no_witgen.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
+}
