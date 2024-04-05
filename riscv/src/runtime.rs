@@ -41,7 +41,8 @@ struct SubMachine {
     instance_name: String,
     /// Instruction declarations
     instructions: Vec<MachineStatement>,
-    /// Number of extra registers need by this machine's instruction declarations
+    /// Number of extra registers need by this machine's instruction declarations.
+    /// 26 of the RISC-V registers are available for use, these are added to that number.
     extra_registers: u8,
     /// TODO: only needed because of witgen requiring that each machine be called at least once
     init_call: Vec<FunctionStatement>,
@@ -160,7 +161,7 @@ impl Runtime {
             // init call
             std::iter::once("poseidon_gl;".to_string())
                 // zero out output registers
-                .chain((0..4).map(|i| format!("{} <=X= 0;", register_by_idx(i)))),
+                .chain((0..4).map(|i| format!("{} <=X= 0;", reg(i)))),
         );
 
         // The poseidon syscall has a single argument passed on x10, the
@@ -173,10 +174,10 @@ impl Runtime {
             // The poseidon instruction uses registers 0..12 as input/output.
             // The memory field elements are loaded into these registers before calling the instruction.
             // They might be in use by the riscv machine, so we save the registers on the stack.
-            .chain((0..12).flat_map(|i| push_register(&register_by_idx(i))))
-            .chain((0..12).flat_map(|i| load_gl_fe("tmp3", i as u32 * 8, &register_by_idx(i))))
+            .chain((0..12).flat_map(|i| push_register(&reg(i))))
+            .chain((0..12).flat_map(|i| load_gl_fe("tmp3", i as u32 * 8, &reg(i))))
             .chain(std::iter::once("poseidon_gl;".to_string()))
-            .chain((0..4).flat_map(|i| store_gl_fe("tmp3", i as u32 * 8, &register_by_idx(i))))
+            .chain((0..4).flat_map(|i| store_gl_fe("tmp3", i as u32 * 8, &reg(i))))
             // After copying the result back into memory, we restore the original register values.
             .chain(
                 (0..12)
@@ -194,14 +195,14 @@ impl Runtime {
             None,
             "arith",
             [
-                // format!(
-                //     "instr affine_256 ~ arith.affine {}",
-                //     instr_register_params(24, 16)
-                // ),
-                // format!(
-                //     "instr ec_add ~ arith.ec_add {}",
-                //     instr_register_params(32, 16)
-                // ),
+                format!(
+                    "instr affine_256 ~ arith.affine_256 {};",
+                    instr_register_params(3, 24, 16) // will use registers 3..27
+                ),
+                format!(
+                    "instr ec_add ~ arith.ec_add {};",
+                    instr_register_params(4, 32, 16) // will use registers 4..36
+                ),
                 format!(
                     "instr ec_double ~ arith.ec_double {};",
                     instr_register_params(2, 16, 16) // will use registers 2..18
@@ -210,7 +211,7 @@ impl Runtime {
             // machine uses the 26 registers from risc-v plus 10 extra registers
             10,
             // calling ec_double for machine initialization.
-            // store x in registers
+            // store x in registers 2..10
             [
                 0x60297556u32,
                 0x2f057a14,
@@ -223,8 +224,8 @@ impl Runtime {
             ]
             .into_iter()
             .enumerate()
-            .map(|(i, fe)| format!("{} <=X= {fe};", register_by_idx(i as u8 + 2)))
-            // store y in registers
+            .map(|(i, fe)| format!("{} <=X= {fe};", reg(i as u8 + 2)))
+            // store y in registers 10..18
             .chain(
                 [
                     0xb075f297u32,
@@ -238,41 +239,87 @@ impl Runtime {
                 ]
                 .into_iter()
                 .enumerate()
-                .map(|(i, fe)| format!("{} <=X= {fe};", register_by_idx(i as u8 + 10))),
+                .map(|(i, fe)| format!("{} <=X= {fe};", reg(i as u8 + 10))),
             )
             // call machine instruction
             .chain(std::iter::once("ec_double;".to_string()))
             // zero out output registers
-            .chain((2..18).map(|i| format!("{} <=X= 0;", register_by_idx(i)))),
+            .chain((2..18).map(|i| format!("{} <=X= 0;", reg(i)))),
         );
 
-        // let affine256 = todo!();
-        // self.add_syscall(Syscall::Affine256, affine256);
-        // let ec_add = todo!();
-        // self.add_syscall(Syscall::EcAdd, ec_add);
+        // TODO: we're also saving the "extra registers", but those don't have to be saved
+
+        // The affine_256 syscall takes as input the addresses of x1, y1 and x2.
+        // We load them into registers 3..11, 11..19, 19..27.
+        let affine256 =
+            // Save instruction registers
+            (3..27).flat_map(|i| push_register(&reg(i)))
+            // Load x1
+            .chain((3..11).flat_map(|i| load_word(&reg(0), (i - 3) as u32 *4 , &reg(i))))
+            // Load y1
+            .chain((11..19).flat_map(|i| load_word(&reg(1), (i - 11) as u32 *4 , &reg(i))))
+            // Load x2
+            .chain((19..27).flat_map(|i| load_word(&reg(2), (i - 19) as u32 *4 , &reg(i))))
+            // Call instruction
+            .chain(std::iter::once("affine_256;".to_string()))
+            // Store result y2 in x1's memory
+            .chain((3..11).flat_map(|i| store_word(&reg(0), (i - 3) as u32 *4 , &reg(i))))
+            // Store result y3 in y1's memory
+            .chain((11..19).flat_map(|i| store_word(&reg(1), (i - 11) as u32 *4 , &reg(i))))
+            // Restore instruction registers
+            .chain(
+                (3..27)
+                    .rev()
+                    .flat_map(|i| pop_register(&reg(i))));
+        self.add_syscall(Syscall::Affine256, affine256);
+
+        // The ec_add syscall takes as input the four addresses of x1, y1, x2, y2.
+        // We load them into registers 4..12, 12..20, 20..28, 28..36.
+        let ec_add =
+            // Save instruction registers.
+            (4..36).flat_map(|i| push_register(&reg(i)))
+            // Load x1
+            .chain((4..12).flat_map(|i| load_word(&reg(0), (i - 4) as u32 * 4, &reg(i))))
+            // Load y1
+            .chain((12..20).flat_map(|i| load_word(&reg(1), (i - 12) as u32 * 4, &reg(i))))
+            // Load x2
+            .chain((20..28).flat_map(|i| load_word(&reg(2), (i - 20) as u32 * 4, &reg(i))))
+            // Load y2
+            .chain((28..36).flat_map(|i| load_word(&reg(3), (i - 28) as u32 * 4, &reg(i))))
+            // Call instruction
+            .chain(std::iter::once("ec_add;".to_string()))
+            // Save result x3 in x1
+            .chain((4..12).flat_map(|i| store_word(&reg(0), (i - 4) as u32 * 4, &reg(i))))
+            // Save result y3 in y1
+            .chain((12..20).flat_map(|i| store_word(&reg(1), (i - 12) as u32 * 4, &reg(i))))
+            // Restore instruction registers.
+            .chain(
+                (4..36)
+                    .rev()
+                    .flat_map(|i| pop_register(&reg(i))));
+        self.add_syscall(Syscall::EcAdd, ec_add);
 
         // The ec_double syscall takes as input the addresses of x and y in x10 and x11 respectively.
         // We load x and y from memory into registers 2..10 and registers 10..18 respectively.
         // We then store the result from those registers into the same addresses (x10 and x11).
         let ec_double =
             // Save instruction registers.
-            (2..18).flat_map(|i| push_register(&register_by_idx(i)))
-            // Load p.x
-            .chain((2..10).flat_map(|i| load_word("x10", (i - 2) as u32 * 4, &register_by_idx(i))))
-            // Load p.y
-            .chain((10..18).flat_map(|i| load_word("x11", (i - 10) as u32 * 4, &register_by_idx(i))))
+            (2..18).flat_map(|i| push_register(&reg(i)))
+            // Load x
+            .chain((2..10).flat_map(|i| load_word(&reg(0), (i - 2) as u32 * 4, &reg(i))))
+            // Load y
+            .chain((10..18).flat_map(|i| load_word(&reg(1), (i - 10) as u32 * 4, &reg(i))))
             // Call instruction
             .chain(std::iter::once("ec_double;".to_string()))
-            // Store result p.x
-            .chain((2..10).flat_map(|i| store_word("x10", (i - 2) as u32 * 4, &register_by_idx(i))))
-            // Store result p.y
-            .chain((10..18).flat_map(|i| store_word("x11", (i - 10) as u32 * 4, &register_by_idx(i))))
+            // Store result x
+            .chain((2..10).flat_map(|i| store_word(&reg(0), (i - 2) as u32 * 4, &reg(i))))
+            // Store result y
+            .chain((10..18).flat_map(|i| store_word(&reg(1), (i - 10) as u32 * 4, &reg(i))))
             // Restore instruction registers.
             .chain(
                 (2..18)
                     .rev()
-                    .flat_map(|i| pop_register(&register_by_idx(i))),
-            );
+                    .flat_map(|i| pop_register(&reg(i))));
 
         self.add_syscall(Syscall::EcDouble, ec_double);
         self
@@ -462,7 +509,7 @@ impl TryFrom<&[&str]> for Runtime {
 }
 
 /// Helper function for register names used in instruction params
-fn register_by_idx(mut idx: u8) -> String {
+fn reg(mut idx: u8) -> String {
     // s* callee saved registers
     static SAVED_REGS: [&str; 12] = [
         "x8", "x9", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
@@ -477,7 +524,8 @@ fn register_by_idx(mut idx: u8) -> String {
     if idx < SAVED_REGS.len() as u8 {
         return SAVED_REGS[idx as usize].to_string();
     }
-    idx -= SAVED_REGS.len() as u8 + 1;
+    idx -= SAVED_REGS.len() as u8;
+    idx += 1;
     // lastly, use extra submachine registers
     format!("{EXTRA_REG_PREFIX}{idx}")
 }
@@ -486,11 +534,9 @@ fn register_by_idx(mut idx: u8) -> String {
 fn instr_register_params(start_idx: u8, inputs: u8, outputs: u8) -> String {
     format!(
         "{} -> {}",
-        (start_idx..start_idx + inputs)
-            .map(register_by_idx)
-            .join(", "),
+        (start_idx..start_idx + inputs).map(reg).join(", "),
         (start_idx..start_idx + outputs)
-            .map(|i| format!("{}'", register_by_idx(i)))
+            .map(|i| format!("{}'", reg(i)))
             .join(", "),
     )
 }

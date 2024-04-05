@@ -1,0 +1,61 @@
+#![no_std]
+
+extern crate alloc;
+use alloc::vec::Vec;
+
+use powdr_riscv_runtime::arith::ec_add;
+
+#[no_mangle]
+pub fn main() {
+    let x1 = [
+        0x16f81798, 0x59f2815b, 0x2dce28d9, 0x029bfcdb, 0xce870b07, 0x55a06295, 0xf9dcbbac,
+        0x79be667e,
+    ];
+    let y1 = [
+        0xfb10d4b8, 0x9c47d08f, 0xa6855419, 0xfd17b448, 0x0e1108a8, 0x5da4fbfc, 0x26a3c465,
+        0x483ada77,
+    ];
+    let x2 = [
+        0x5c709ee5, 0xabac09b9, 0x8cef3ca7, 0x5c778e4b, 0x95c07cd8, 0x3045406e, 0x41ed7d6d,
+        0xc6047f94,
+    ];
+    let y2 = [
+        0x50cfe52a, 0x236431a9, 0x3266d0e1, 0xf7f63265, 0x466ceaee, 0xa3c58419, 0xa63dc339,
+        0x1ae168fe,
+    ];
+    let x3 = [
+        0xbce036f9, 0x8601f113, 0x836f99b0, 0xb531c845, 0xf89d5229, 0x49344f85, 0x9258c310,
+        0xf9308a01,
+    ];
+    let y3 = [
+        0x84b8e672, 0x6cb9fd75, 0x34c2231b, 0x6500a999, 0x2a37f356, 0x0fe337e6, 0x632de814,
+        0x388f7b0f,
+    ];
+
+    assert_eq!(ec_add((x1, y1), (x2, y2)), (x3, y3));
+
+    // let x1 = [
+    //     0x70afe85a, 0xc5b0f470, 0x9620095b, 0x687cf441, 0x4d734633, 0x15c38f00, 0x48e7561b,
+    //     0xd01115d5,
+    // ];
+    // let y1 = [
+    //     0xf4062327, 0x6b051b13, 0xd9a86d52, 0x79238c5d, 0xe17bd815, 0xa8b64537, 0xc815e0d7,
+    //     0xa9f34ffd,
+    // ];
+    // let x2 = [
+    //     0x23510ef9, 0xbb3af611, 0xf22c19c7, 0x87d4c3cb, 0x53cecf40, 0xd11823c1, 0xdc6f9ec5,
+    //     0xe12026ef,
+    // ];
+    // let y2 = [
+    //     0xb058f360, 0x96451fbb, 0x20e5efc6, 0xdcda7f72, 0xe03ad137, 0xf367ef20, 0x5a51eadc,
+    //     0x30a930ea,
+    // ];
+    // let x3 = [
+    //     0xaee8b7f4, 0xbfd2ecb4, 0xe21c31ef, 0x22c7841e, 0x2da82592, 0x7d356af0, 0x64eab6f5,
+    //     0xd5ae772d,
+    // ];
+    // let y3 = [
+    //     0x454d87bc, 0x18cf6cf2, 0xe498d098, 0x8d035085, 0x121f031d, 0x43b132ac, 0x313a838a,
+    //     0x10231a1d,
+    // ];
+}
