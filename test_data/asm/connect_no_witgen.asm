@@ -1,6 +1,11 @@
-// Should be a 1024th root of unity.
-let root_of_unity: fe = 11353340290879379826;
-let power_of_omega: int -> fe = |k| root_of_unity ** k;
+// Should be a 2**32th root of unity in the goldilocks field.
+let root_of_unity: fe = 7277203076849721926;
+
+/// Returns a 2**n'th root of unity on input n.
+let root_of_unity_for_log_degree: int -> fe = |n| root_of_unity ** (2**(32 - n));
+
+let omega = root_of_unity_for_log_degree(10);
+let power_of_omega: int -> fe = |k| omega ** k;
 
 machine Empty {
     // The permutation (0 1) (2 3) (4 5) ...
@@ -13,7 +18,8 @@ machine Empty {
     w = f;
 
     // TODO we should also check that the degree is equal to 1024
-    std::check::assert(root_of_unity ** 1024 == 1, || "");
+    std::check::assert(omega ** 512 != 1, || "");
+    std::check::assert(omega ** 1024 == 1, || "");
 
     { w } connect { r };
 }
