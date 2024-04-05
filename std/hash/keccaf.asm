@@ -48,15 +48,10 @@ let swap_u32: int -> int = |x|
     or((or(and((x << 8), 0xff00ff00), and((x >> 8), 0x00ff00ff)) >> 16),
     (or(and((x << 8), 0xff00ff00), and((x >> 8), 0x00ff00ff)) << 16)); 
 
-// ln 44
-// no bc is needed as it's just a helper array
-
-// ln 45
-// no t needed as it's just a helper variable
-
 // ln 47 - 49
 let swap_u32_loop: int[25] -> int[25] = |st| array::new(25, |i| swap_u32(st[i]));
 
+// Note that neither t nor bc is needed as they are both helper variables
 // ln 52 - 55
 let xor_mult: int[] -> int = |input| std::array::fold(input, 0, |x, y| xor(x, y));
 let theta_bc: int[25] -> int = |st, i| |i| xor_mult([st[i], st[i + 5], st[i + 10], st[i + 15], st[i + 20]]);
@@ -69,28 +64,8 @@ let theta_st: int[25] -> int[25] = |st| array::map_enumerated(st, |idx, elem| {
     xor(elem, t)
 });
 
-// ln 64
-// t will be initialized in fold
-
 // ln 66 - 72
 // rho pi
-
-// for u32 i in 0..24 {
-//    u32 j = PI[i];
-//    bc[0] = st[j];
-//    st[j] = rotl64(t, RHO[i]);
-//    t = bc[0];
-// }
-// reduced to:
-// for u32 i in 0..24 {
-//    u32 j = PI[i];
-//    t_next = st[j];
-//    st[j] = rotl64(t, RHO[i]);
-//    t = t_next;
-// }
-// bc[0] = st[PI[23]];
-
-// helper for the fold loop
 let rho_pi: int[25], int -> int = |st, i| {
     let t = if i == 0 { st[1] } else { st[PI[i - 1]] };
     let new_st_j = rotl32(t, RHO[i]);
@@ -101,7 +76,6 @@ let rho_pi_loop: int[25] -> int[25] = |st| utils::fold(24, |i| i, [], |new_st, i
     let new_st_j = rho_pi(st, idx);
     new_st + [new_st_j]
 });
-
 // rearrange st_j
 let rho_pi_rearrange: int[25] -> int[25] = |st| {
     let rearranged_st = [
@@ -133,6 +107,55 @@ let r_loop: int[25] -> int[25] = |st| utils::fold(24, |i| i, st, |acc, i| iota(c
 // compression function
 let keccakf: int[25] -> int[25] = |st| swap_u32_loop(r_loop(swap_u32_loop(st)));
 
+// ln 96 - 141
+// TODO: to_bytes and from_bytes are currently treated as given as I'm not sure about our infrastructure
+
+// ln 148 - 158
+let update_finalize_b: int[], int[], int, int -> int[] = |input, b, rate, delim| {
+    let num_loop = array::len(input) / rate;
+    let num_remaining = array::len(input) % rate;
+    let b_delim_idx = (num_remaining + 1) % rate;
+    let b_keccak = utils::fold(num_loop, |i| i, b, |acc, idx| {
+        let new_b = xor(array::new(rate, |i| acc[i]), array::new(rate, |i| input[idx * rate + i]));
+        to_bytes(keccakf(from_bytes(new_b)))
+    });
+    let b_update = array::new(rate, |i| {
+        // num_remaining is 0 the minimum and rate - 1 the maximum
+        if i < num_remaining {
+            // ln 150, one of the remaining to be xor'ed
+            xor(b_keccak[i], input[num_loop * rate + i])
+        } else if i == num_remaining {
+            if i == rate - 1 { 
+                // num_remaining == rate - 1, so ln 156 and 157 update the same index of b
+                xor_mult([b_keccak[i], delim, 0x80])
+            } else {
+                // ln 156
+                xor(b_keccak[i], delim)
+            }
+        } else {
+            if i == rate - 1 {
+                // ln 157
+                xor(b_keccak[i], 0x80)
+            } else {
+                // not one of the remaining, just return as is
+                b_keccak[i]
+            }
+        }
+    });
+    to_bytes(keccakf(from_bytes(b_update)))    
+};
+
+
+let main: int, int, int[], int -> int[] = |W, input, delim| {
+    let b: int[100] = array::new(100, |i| 0);
+    let rate: int = 100 - (2 * W);
+
+    let b_finalized = update_finalize_b(input, b, rate, delim);
+
+    // TODO: as per ln 143, should return array of length W, but what if array length, i.e. rate, is less than W?
+    // here we return the entire array rather than padding it to length W
+    if 3 * W <= 100 { array::new(W, |i| b_finalized[i]) } else { b_finalized }
+}
 
 // main machine
 machine Main { 
