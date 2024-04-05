@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::{types::Type, visitor::Children};
 
 use crate::type_builtins::elementary_type_bounds;
 
@@ -43,18 +43,21 @@ impl Unifier {
 
         if let Type::TypeVar(n) = ty {
             self.add_type_var_bound(n.clone(), bound);
-            Ok(())
         } else if let Type::NamedType(n) = ty {
             // Change this as soon as we support user-implemented traits.
-            Err(format!("Type {n} does not satisfy trait {bound}."))
+            return Err(format!("Type {n} does not satisfy trait {bound}."));
+        } else if bound == "ToString" && matches!(ty, Type::Array(_) | Type::Tuple(_)) {
+            // Change this to a proper trait impl later.
+            for c in ty.clone().children().collect::<Vec<_>>() {
+                self.ensure_bound(c, "ToString".to_string())?;
+            }
         } else {
             let bounds = elementary_type_bounds(ty);
-            if bounds.contains(&bound.as_str()) {
-                Ok(())
-            } else {
-                Err(format!("Type {ty} does not satisfy trait {bound}."))
+            if !bounds.contains(&bound.as_str()) {
+                return Err(format!("Type {ty} does not satisfy trait {bound}."));
             }
         }
+        Ok(())
     }
 
     pub fn unify_types(&mut self, mut inner: Type, mut expected: Type) -> Result<(), String> {
