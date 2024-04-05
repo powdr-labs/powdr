@@ -3,7 +3,7 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-use powdr_riscv_runtime::arith::ec_double_unsafe;
+use powdr_riscv_runtime::arith::ec_double;
 
 #[no_mangle]
 pub fn main() {
@@ -23,7 +23,7 @@ pub fn main() {
         0xf4062327, 0x6b051b13, 0xd9a86d52, 0x79238c5d, 0xe17bd815, 0xa8b64537, 0xc815e0d7,
         0xa9f34ffd,
     ];
-    let res = ec_double_unsafe((x1, y1));
+    let res = ec_double((x1, y1));
     assert_eq!(res, (x2, y2));
 
     ////////////////
@@ -44,7 +44,7 @@ pub fn main() {
         0x5a08668, 0x498a2f78, 0x3bf8ec34, 0x3a496a3a, 0x74b875a0, 0x592f5790, 0x7a7a0710,
         0xd50123b5,
     ];
-    let res = ec_double_unsafe((x1, y1));
+    let res = ec_double((x1, y1));
     assert_eq!(res, (x2, y2));
 
     ////////////////
@@ -65,7 +65,7 @@ pub fn main() {
         0xea5f404f, 0xcb0289e2, 0xa65b53a4, 0x9501253a, 0x485d01b3, 0xe90b9c08, 0x296cbc91,
         0xcb66d7d7,
     ];
-    let res = ec_double_unsafe((x1, y1));
+    let res = ec_double((x1, y1));
     assert_eq!(res, (x2, y2));
 
     ////////////////
@@ -86,6 +86,6 @@ pub fn main() {
         0x315b32cd, 0x6ca2e81d, 0xdfd3dc52, 0x12af748, 0x4efa701c, 0xeafa9947, 0x35af7f7a,
         0x3382909,
     ];
-    let res = ec_double_unsafe((x1, y1));
+    let res = ec_double((x1, y1));
     assert_eq!(res, (x2, y2));
 }
