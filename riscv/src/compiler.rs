@@ -470,14 +470,14 @@ fn preamble<T: FieldElement>(degree: u64, runtime: &Runtime, with_bootloader: bo
         .to_string()
         // risc-v x* registers
         + &(0..32)
-            .map(|i| format!("\t\treg x{i};"))
-            .join("\n")
+            .map(|i| format!("\t\treg x{i};\n"))
+            .join("")
         // runtime extra registers
         + &runtime
             .submachines_extra_registers()
             .into_iter()
-            .map(|s| format!("\t\t{s}"))
-            .join("\n")
+            .map(|s| format!("\t\t{s}\n"))
+            .join("")
         + &bootloader_preamble_if_included
         + &memory(with_bootloader)
         + r#"

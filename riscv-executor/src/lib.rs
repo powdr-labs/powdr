@@ -27,6 +27,7 @@ use powdr_ast::{
 use powdr_number::{FieldElement, LargeInt};
 use powdr_riscv_syscalls::SYSCALL_REGISTERS;
 
+pub mod arith;
 pub mod poseidon_gl;
 
 /// Initial value of the PC.
@@ -730,12 +731,33 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "poseidon_gl" => {
                 assert!(args.is_empty());
                 let inputs = (0..12)
-                    .map(|i| self.proc.get_reg(SYSCALL_REGISTERS[i]).into_fe())
+                    .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
                     .collect::<Vec<_>>();
                 let result = poseidon_gl::poseidon_gl(&inputs);
                 (0..4).for_each(|i| {
                     self.proc
-                        .set_reg(SYSCALL_REGISTERS[i], Elem::Field(result[i]))
+                        .set_reg(&register_by_idx(i), Elem::Field(result[i as usize]))
+                });
+                vec![]
+            }
+            "ec_double" => {
+                assert!(args.is_empty());
+                // take input from registers
+                let x = (2..10)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
+                    .collect::<Vec<_>>();
+                let y = (10..18)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
+                    .collect::<Vec<_>>();
+                let result = arith::ec_double(&x, &y);
+                // store result in registers
+                (2..10).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i), Elem::Field(result.0[i as usize - 2]))
+                });
+                (10..18).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i), Elem::Field(result.1[i as usize - 10]))
                 });
                 vec![]
             }
@@ -1002,4 +1024,26 @@ pub fn execute<F: FieldElement>(
         usize::MAX,
         mode,
     )
+}
+
+/// FIXME: copied from `riscv/runtime.rs` instead of adding dependency.
+/// Helper function for register names used in submachine instruction params.
+fn register_by_idx(mut idx: u8) -> String {
+    // s* callee saved registers
+    static SAVED_REGS: [&str; 12] = [
+        "x8", "x9", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
+    ];
+
+    // first, use syscall_registers
+    if idx < SYSCALL_REGISTERS.len() as u8 {
+        return SYSCALL_REGISTERS[idx as usize].to_string();
+    }
+    idx -= SYSCALL_REGISTERS.len() as u8;
+    // second, use s* registers
+    if idx < SAVED_REGS.len() as u8 {
+        return SAVED_REGS[idx as usize].to_string();
+    }
+    idx -= SAVED_REGS.len() as u8 + 1;
+    // lastly, use extra submachine registers
+    format!("xtra{idx}")
 }

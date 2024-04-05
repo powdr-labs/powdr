@@ -152,56 +152,31 @@ impl Runtime {
             "std::hash::poseidon_gl::PoseidonGL",
             None,
             "poseidon_gl",
-            ["instr poseidon_gl ~ poseidon_gl.poseidon_permutation x10, x11, x12, x13, x14, x15, x16, x17, x6, x7, x28, x29 -> x10', x11', x12', x13';"],
+            [format!(
+                "instr poseidon_gl ~ poseidon_gl.poseidon_permutation {};",
+                instr_register_params(0, 12, 4)
+            )],
             0,
             // init call
-            [
-                "poseidon_gl;",
-                "x10 <=X= 0;",
-                "x11 <=X= 0;",
-                "x12 <=X= 0;",
-                "x13 <=X= 0;",
-            ]);
+            std::iter::once("poseidon_gl;".to_string())
+                // zero out output registers
+                .chain((0..4).map(|i| format!("{} <=X= 0;", register_by_idx(i)))),
+        );
 
         // The poseidon syscall has a single argument passed on x10, the
         // memory address of the 12 field element input array. Since the memory
-        // offset is chosen by LLVM, we assume it is properly aligned.
-
-        // // load input from memory into register
-        // let load_word = |i| {
-        //     let reg = SYSCALL_REGISTERS[i];
-        //     let lo = i * 8;
-        //     let hi = i * 8 + 4;
-        //     [
-        //         format!("{reg}, tmp2 <== mload({lo} + tmp3);"),
-        //         format!("tmp1, tmp2 <== mload({hi} + tmp3);"),
-        //         format!("{reg} <=X= {reg} + tmp1 * 2**32;"),
-        //     ]
-        // };
-
-        // // copy output from register into memory
-        // let store_word = |i| {
-        //     let reg = SYSCALL_REGISTERS[i];
-        //     let lo = i * 8;
-        //     let hi = i * 8 + 4;
-        //     [
-        //         format!("tmp1, tmp2 <== split_gl({reg});"),
-        //         format!("mstore {lo} + tmp3, tmp1;"),
-        //         format!("mstore {hi} + tmp3, tmp2;"),
-        //     ]
-        // };
-
+        // offset is chosen by LLVM, we assume it's properly aligned.
         let implementation =
-            // The poseidon syscall uses x10 for input, we store it in tmp3, as x10 is
-            // also used as input to the poseidon machine instruction.
+            // The poseidon syscall uses x10 for input, we store it in tmp3 and
+            // reuse x10 as input to the poseidon machine instruction.
             std::iter::once("tmp3 <=X= x10;".to_string())
-            // The poseidon instruction uses the first 12 SYSCALL_REGISTERS as input/output.
-            // The contents of memory are loaded into these registers before calling the instruction.
-            // These might be in use by the riscv machine, so we save the registers on the stack.
-            .chain((0..12).flat_map(|i| push_register(SYSCALL_REGISTERS[i])))
-            .chain((0..12).flat_map(|i| load_word("tmp3", i as u32 * 8, SYSCALL_REGISTERS[i])))
+            // The poseidon instruction uses registers 0..12 as input/output.
+            // The memory field elements are loaded into these registers before calling the instruction.
+            // They might be in use by the riscv machine, so we save the registers on the stack.
+            .chain((0..12).flat_map(|i| push_register(&register_by_idx(i))))
+            .chain((0..12).flat_map(|i| load_gl_fe("tmp3", i as u32 * 8, &register_by_idx(i))))
             .chain(std::iter::once("poseidon_gl;".to_string()))
-            .chain((0..4).flat_map(|i| store_word("tmp3", i as u32 * 8, SYSCALL_REGISTERS[i])))
+            .chain((0..4).flat_map(|i| store_gl_fe("tmp3", i as u32 * 8, &register_by_idx(i))))
             // After copying the result back into memory, we restore the original register values.
             .chain(
                 (0..12)
@@ -214,6 +189,7 @@ impl Runtime {
     }
 
     pub fn with_arith(mut self) -> Self {
+        println!("ADDING ARITH!");
         self.add_submachine(
             "std::arith::Arith",
             None,
@@ -228,38 +204,70 @@ impl Runtime {
                 //     instr_register_params(32, 16)
                 // ),
                 format!(
-                    "instr ec_double ~ arith.ec_double {}",
+                    "instr ec_double ~ arith.ec_double {};",
                     instr_register_params(2, 16, 16) // will use registers 2..18
                 ),
             ],
-            // uses the 26 registers from risc-v plus 10 extra registers
+            // machine uses the 26 registers from risc-v plus 10 extra registers
             10,
-            // init calling ec_double for (0,0)
-            std::iter::once("ec_double;".to_string())
-                // clear out output registers
-                .chain((2..18).map(|i| format!("{} <=X= 0;", register_by_idx(i)))),
+            // calling ec_double for machine initialization.
+            // store x in registers
+            [
+                0x60297556u32,
+                0x2f057a14,
+                0x8568a18b,
+                0x82f6472f,
+                0x355235d3,
+                0x20453a14,
+                0x755eeea4,
+                0xfff97bd5,
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(i, fe)| format!("{} <=X= {fe};", register_by_idx(i as u8 + 2)))
+            // store y in registers
+            .chain(
+                [
+                    0xb075f297u32,
+                    0x3c870c36,
+                    0x518fe4a0,
+                    0xde80f0f6,
+                    0x7f45c560,
+                    0xf3be9601,
+                    0xacfbb620,
+                    0xae12777a,
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(i, fe)| format!("{} <=X= {fe};", register_by_idx(i as u8 + 10))),
+            )
+            // call machine instruction
+            .chain(std::iter::once("ec_double;".to_string()))
+            // zero out output registers
+            .chain((2..18).map(|i| format!("{} <=X= 0;", register_by_idx(i)))),
         );
 
         // let affine256 = todo!();
-        // let ec_add = todo!();
         // self.add_syscall(Syscall::Affine256, affine256);
+        // let ec_add = todo!();
         // self.add_syscall(Syscall::EcAdd, ec_add);
 
         // The ec_double syscall takes as input the addresses of x and y in x10 and x11 respectively.
-        // It will then store the resulting x and y into the same addresses.
+        // We load x and y from memory into registers 2..10 and registers 10..18 respectively.
+        // We then store the result from those registers into the same addresses (x10 and x11).
         let ec_double =
             // Save instruction registers.
             (2..18).flat_map(|i| push_register(&register_by_idx(i)))
             // Load p.x
-            .chain((2..10).flat_map(|i| load_word("x10", i as u32 * 8, &register_by_idx(i))))
+            .chain((2..10).flat_map(|i| load_word("x10", (i - 2) as u32 * 4, &register_by_idx(i))))
             // Load p.y
-            .chain((10..18).flat_map(|i| load_word("x11", i as u32 * 8, &register_by_idx(i))))
+            .chain((10..18).flat_map(|i| load_word("x11", (i - 10) as u32 * 4, &register_by_idx(i))))
             // Call instruction
             .chain(std::iter::once("ec_double;".to_string()))
             // Store result p.x
-            .chain((2..10).flat_map(|i| store_word("x10", i as u32 * 8, &register_by_idx(i))))
+            .chain((2..10).flat_map(|i| store_word("x10", (i - 2) as u32 * 4, &register_by_idx(i))))
             // Store result p.y
-            .chain((10..18).flat_map(|i| store_word("x11", i as u32 * 8, &register_by_idx(i))))
+            .chain((10..18).flat_map(|i| store_word("x11", (i - 10) as u32 * 4, &register_by_idx(i))))
             // Restore instruction registers.
             .chain(
                 (2..18)
@@ -488,8 +496,8 @@ fn instr_register_params(start_idx: u8, inputs: u8, outputs: u8) -> String {
     )
 }
 
-/// Load from addr+offset into register
-fn load_word(addr: &str, offset: u32, reg: &str) -> [String; 3] {
+/// Load gl field element from addr+offset into register
+fn load_gl_fe(addr: &str, offset: u32, reg: &str) -> [String; 3] {
     let lo = offset;
     let hi = offset + 4;
     [
@@ -499,13 +507,27 @@ fn load_word(addr: &str, offset: u32, reg: &str) -> [String; 3] {
     ]
 }
 
-/// Store register in addr+offset
-fn store_word(addr: &str, offset: u32, reg: &str) -> [String; 3] {
+/// Store gl field element from register into addr+offset
+fn store_gl_fe(addr: &str, offset: u32, reg: &str) -> [String; 3] {
     let lo = offset;
     let hi = offset + 4;
     [
         format!("tmp1, tmp2 <== split_gl({reg});"),
         format!("mstore {lo} + {addr}, tmp1;"),
         format!("mstore {hi} + {addr}, tmp2;"),
+    ]
+}
+
+/// Load word from addr+offset into register
+fn load_word(addr: &str, offset: u32, reg: &str) -> [String; 1] {
+    [format!("{reg}, tmp2 <== mload({offset} + {addr});")]
+}
+
+/// Store word from register into addr+offset
+fn store_word(addr: &str, offset: u32, reg: &str) -> [String; 2] {
+    [
+        // riscv-executor seems to need the split_gl to ensure the register has a 32-bit value
+        format!("tmp1, tmp2 <== split_gl({reg});"),
+        format!("mstore {offset} + {addr}, tmp1;"),
     ]
 }
