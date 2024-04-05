@@ -2,9 +2,7 @@ use super::{
     asm::{
         ASMModule, ASMProgram, Import, Machine, Module, ModuleStatement, SymbolDefinition,
         SymbolValue,
-    },
-    ArrayLiteral, EnumDeclaration, Expression, FunctionCall, IfExpression, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock,
+    }, EnumDeclaration, Expression,
 };
 
 pub trait Folder {
