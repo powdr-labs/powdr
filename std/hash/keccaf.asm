@@ -1,4 +1,5 @@
 use std::array;
+use std::utils;
 
 // TODO
 let<T1, T2> routine: T1, T1, (T1, T1 -> T1), (T1, T1 -> T1), (T1, T1 -> T1) -> T2 =
@@ -47,52 +48,33 @@ let swap_u32: int -> int = |x|
     or((or(and((x << 8), 0xff00ff00), and((x >> 8), 0x00ff00ff)) >> 16),
     (or(and((x << 8), 0xff00ff00), and((x >> 8), 0x00ff00ff)) << 16)); 
 
-// compression function
-
 // ln 44
-let bc: int[5] = [0, 0, 0, 0, 0];
+// no bc is needed as it's just a helper array
 
 // ln 45
-let t: int = 0;
+// no t needed as it's just a helper variable
 
 // ln 47 - 49
-let swap_u32_loop: int[25] -> int[25] = |st| array::map(array::new(25, |i| i), |i| swap_u32(st[i]));
+let swap_u32_loop: int[25] -> int[25] = |st| array::new(25, |i| swap_u32(st[i]));
 
-// ln 53 - 55
-let theta_bc: int[25], i -> int = |st, i| xor(st[i], xor(st[i + 5], xor(st[i + 10], xor(st[i + 15], st[i + 20]))));
-let theta_bc_loop: int[25] -> int[5] = |st| array::map(array::new(5, |i| i), |i| theta_bc(st, i));
+// ln 52 - 55
+let xor_mult: int[] -> int = |input| std::array::fold(input, 0, |x, y| xor(x, y));
+let theta_bc: int[25] -> int = |st, i| |i| xor_mult([st[i], st[i + 5], st[i + 10], st[i + 15], st[i + 20]]);
 
 // ln 57 - 62
-let theta_t: int[5] -> int = |bc, i| xor(bc[(i + 4) % 5], rotl32(bc[(i + 1) % 5], 1));
-let theta_st: int[25], int, int, int -> int = |st, t, j, i| xor(st[(j * 5) + i], t);
-let theta_st_loop: int[25], int, int -> int[5] = |st, t, i| array::map(array::new(5, |i| i), |j| theta_st(st, t, j, i));
-let theta_t_loop: int[5], int[25], int -> int[5][5] = |bc, st, t| array::map(array::new(5, |i| i), |i| {
-    let t = theta_t(bc, i); // int
-    let st_partial = theta_st_loop(st, t, i); // int[5]
-    st_partial
+let theta_st: int[25] -> int[25] = |st| array::map_enumerated(st, |idx, elem| {
+    let i = idx % 5;
+    let j = idx / 5;
+    let t = xor(theta_bc(st, (i + 4) % 5), rotl32(theta_bc(st, (i + 1) % 5), 1));
+    xor(elem, t)
 });
-// rearrange st returned in ln 60 - version 1: calls theta_t_loop
-let theta_t_loop_rearrange: int[5], int[25], int -> int[25] = |bc, st, t| {
-    let st_partials = theta_t_loop(bc, st, t);
-    let st = [
-        st_partials[0][0], st_partials[1][0], st_partials[2][0], st_partials[3][0], st_partials[4][0],
-        st_partials[0][1], st_partials[1][1], st_partials[2][1], st_partials[3][1], st_partials[4][1],
-        st_partials[0][2], st_partials[1][2], st_partials[2][2], st_partials[3][2], st_partials[4][2],
-        st_partials[0][3], st_partials[1][3], st_partials[2][3], st_partials[3][3], st_partials[4][3],
-        st_partials[0][4], st_partials[1][4], st_partials[2][4], st_partials[3][4], st_partials[4][4]
-    ];
-    st 
-};
-// rearrange st returned in ln 60 - version 2: needs to be called with theta_t_loop in another function
-let theta_t_loop_rearrange_v2: int[5][5] -> int[25] = |sp_partials| 
-    array::fold(array::new(5, |i| i), [], |initial, i| 
-        a + [sp_partials[0][i], sp_partials[1][i], sp_partials[2][i], sp_partials[3][i], sp_partials[4][i]]
-    );
 
 // ln 64
-let theta_t_reassign: int[25] -> int = |st| st[1];
+// t will be initialized in fold
 
 // ln 66 - 72
+// rho pi
+
 // for u32 i in 0..24 {
 //    u32 j = PI[i];
 //    bc[0] = st[j];
@@ -107,33 +89,49 @@ let theta_t_reassign: int[25] -> int = |st| st[1];
 //    t = t_next;
 // }
 // bc[0] = st[PI[23]];
-let rho_pi: int[25], int, int -> (int, int) = |st, t, i| {
-    let new_t = st[PI[i]];
+
+// helper for the fold loop
+let rho_pi: int[25], int -> int = |st, i| {
+    let t = if i == 0 { st[1] } else { st[PI[i - 1]] };
     let new_st_j = rotl32(t, RHO[i]);
-    (new_st_j, new_t)
+    (new_st_j)
 };
 // collect st_j
-let rho_pi_loop: int[25], int -> (int[25], int) = |st, t| array::fold(array::new(24, |i| i), ([], st[1]), |(new_st, t), i| {
-    let (new_st_j, new_t) = rho_pi(st, t);
-    (new_st + [new_st_j], new_t)
+let rho_pi_loop: int[25] -> int[25] = |st| utils::fold(24, |i| i, [], |new_st, idx| {
+    let new_st_j = rho_pi(st, idx);
+    new_st + [new_st_j]
 });
+
 // rearrange st_j
-let rho_pi_loop_rearrange: int[25], int -> (int[25], int) = |st, t| {
-    let (new_st, final_t) = rho_pi_loop(st, t);
-    let final_st = [
-        new_st[23], new_st[17], new_st[5], new_st[11], new_st[6], new_st[22],
-        new_st[1], new_st[8], new_st[21], new_st[0], new_st[2], new_st[16], 
-        new_st[15], new_st[19], new_st[12], new_st[7], new_st[3], new_st[4], 
-        new_st[14], new_st[18], new_st[9], new_st[20], new_st[13], new_st[10]
+let rho_pi_rearrange: int[25] -> int[25] = |st| {
+    let rearranged_st = [
+        st[23], st[17], st[5], st[11], st[6], st[22],
+        st[1], st[8], st[21], st[0], st[2], st[16], 
+        st[15], st[19], st[12], st[7], st[3], st[4], 
+        st[14], st[18], st[9], st[20], st[13], st[10]
     ];
-    (final_st, final_t)
+    rearranged_st
 };
-// note that there's no need to update bc[0] = st[j] as bc[0] is updated in the chi steps immediately before being used
 
 // ln 74 - 83
 // chi
+// TODO: make sure that modulus has the same precedence as multiplication
+let chi: int[25] -> int[25] = |st| array::map_enumerated(st, |idx, elem| {
+    let i = idx / 5;
+    let j = idx % 5;
+    xor(st[idx], and(not(st[i * 5 + (j + 1) % 5]), st[i * 5 + (j + 2) % 5]))
+});
 
+// ln 85 - 86
+// iota
+let iota: int[25], int -> int[25] = |st, r| array::new(24, |i| if i == 0 { xor(st[0], RC[r]) } else { st[i] } );
 
+// ln 51 - 87
+let r_loop: int[25] -> int[25] = |st| utils::fold(24, |i| i, st, |acc, i| iota(chi(rho_pi_rearrange(rho_pi_loop(theta_st(acc)))), r) );
+
+// ln 42 - 94
+// compression function
+let keccakf: int[25] -> int[25] = |st| swap_u32_loop(r_loop(swap_u32_loop(st)));
 
 
 // main machine
