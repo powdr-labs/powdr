@@ -4,4 +4,4 @@
 /// This symbol is not an empty array, the actual semantics are overridden.
 let<T: ToString> print: T -> constr[] = [];
 
-let<T: ToString> println: T -> constr[] = |msg| { print(msg); print("\n") };
+let<T: ToString> println: T -> constr[] = |msg| { let _ = print(msg); print("\n") };
