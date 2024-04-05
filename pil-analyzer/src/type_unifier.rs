@@ -44,10 +44,10 @@ impl Unifier {
         if let Type::TypeVar(n) = ty {
             self.add_type_var_bound(n.clone(), bound);
         } else if let Type::NamedType(n) = ty {
-            // Change this as soon as we support user-implemented traits.
+            // TODO Change this as soon as we support user-implemented traits.
             return Err(format!("Type {n} does not satisfy trait {bound}."));
         } else if bound == "ToString" && matches!(ty, Type::Array(_) | Type::Tuple(_)) {
-            // Change this to a proper trait impl later.
+            // TODO Change this to a proper trait impl later.
             for c in ty.clone().children().collect::<Vec<_>>() {
                 self.ensure_bound(c, "ToString".to_string())?;
             }
