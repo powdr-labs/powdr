@@ -126,17 +126,19 @@ fn test_keccak() {
     verify_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
+#[cfg(feature = "estark-polygon")]
 #[test]
 #[ignore = "Too slow"]
 fn test_vec_median() {
     let case = "vec_median";
-    verify_riscv_crate(
+    verify_riscv_crate_with_backend(
         case,
         [5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]
             .into_iter()
             .map(|x| x.into())
             .collect(),
         &Runtime::base(),
+        BackendType::EStarkPolygon,
     );
 }
 
@@ -234,8 +236,17 @@ fn test_many_chunks_memory() {
 }
 
 fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, runtime: &Runtime) {
+    verify_riscv_crate_with_backend(case, inputs, runtime, BackendType::EStarkDump)
+}
+
+fn verify_riscv_crate_with_backend(
+    case: &str,
+    inputs: Vec<GoldilocksField>,
+    runtime: &Runtime,
+    backend: BackendType,
+) {
     let powdr_asm = compile_riscv_crate::<GoldilocksField>(case, runtime);
-    verify_riscv_asm_string::<()>(&format!("{case}.asm"), &powdr_asm, inputs, None);
+    verify_riscv_asm_string::<()>(&format!("{case}.asm"), &powdr_asm, inputs, None, backend);
 }
 
 fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
@@ -246,7 +257,13 @@ fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
 ) {
     let powdr_asm = compile_riscv_crate::<GoldilocksField>(case, runtime);
 
-    verify_riscv_asm_string(&format!("{case}.asm"), &powdr_asm, inputs, Some(data));
+    verify_riscv_asm_string(
+        &format!("{case}.asm"),
+        &powdr_asm,
+        inputs,
+        Some(data),
+        BackendType::EStarkDump,
+    );
 }
 
 fn compile_riscv_crate<T: FieldElement>(case: &str, runtime: &Runtime) -> String {

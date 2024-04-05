@@ -28,7 +28,7 @@ pub fn verify_test_file(
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
         .add_external_witness_values(external_witness_values);
-    verify_pipeline(pipeline)
+    verify_pipeline(pipeline, BackendType::EStarkDump)
 }
 
 pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
@@ -47,11 +47,14 @@ pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
         pipeline = pipeline.add_data_vec(&data);
     }
 
-    verify_pipeline(pipeline).unwrap();
+    verify_pipeline(pipeline, BackendType::EStarkDump).unwrap();
 }
 
-pub fn verify_pipeline(pipeline: Pipeline<GoldilocksField>) -> Result<(), String> {
-    let mut pipeline = pipeline.with_backend(BackendType::EStarkDump);
+pub fn verify_pipeline(
+    pipeline: Pipeline<GoldilocksField>,
+    backend: BackendType,
+) -> Result<(), String> {
+    let mut pipeline = pipeline.with_backend(backend);
 
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
     if pipeline.output_dir().is_none() {
@@ -228,7 +231,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
         .from_file(resolve_test_file(file_name))
         .set_witness(convert_witness(witness));
 
-    assert!(verify_pipeline(pipeline.clone()).is_err());
+    assert!(verify_pipeline(pipeline.clone(), BackendType::EStarkDump).is_err());
 }
 
 pub fn assert_proofs_fail_for_invalid_witnesses_estark(
