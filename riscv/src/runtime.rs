@@ -189,7 +189,6 @@ impl Runtime {
     }
 
     pub fn with_arith(mut self) -> Self {
-        println!("ADDING ARITH!");
         self.add_submachine(
             "std::arith::Arith",
             None,
