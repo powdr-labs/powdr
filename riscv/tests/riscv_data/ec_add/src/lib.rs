@@ -33,29 +33,4 @@ pub fn main() {
     ];
 
     assert_eq!(ec_add((x1, y1), (x2, y2)), (x3, y3));
-
-    // let x1 = [
-    //     0x70afe85a, 0xc5b0f470, 0x9620095b, 0x687cf441, 0x4d734633, 0x15c38f00, 0x48e7561b,
-    //     0xd01115d5,
-    // ];
-    // let y1 = [
-    //     0xf4062327, 0x6b051b13, 0xd9a86d52, 0x79238c5d, 0xe17bd815, 0xa8b64537, 0xc815e0d7,
-    //     0xa9f34ffd,
-    // ];
-    // let x2 = [
-    //     0x23510ef9, 0xbb3af611, 0xf22c19c7, 0x87d4c3cb, 0x53cecf40, 0xd11823c1, 0xdc6f9ec5,
-    //     0xe12026ef,
-    // ];
-    // let y2 = [
-    //     0xb058f360, 0x96451fbb, 0x20e5efc6, 0xdcda7f72, 0xe03ad137, 0xf367ef20, 0x5a51eadc,
-    //     0x30a930ea,
-    // ];
-    // let x3 = [
-    //     0xaee8b7f4, 0xbfd2ecb4, 0xe21c31ef, 0x22c7841e, 0x2da82592, 0x7d356af0, 0x64eab6f5,
-    //     0xd5ae772d,
-    // ];
-    // let y3 = [
-    //     0x454d87bc, 0x18cf6cf2, 0xe498d098, 0x8d035085, 0x121f031d, 0x43b132ac, 0x313a838a,
-    //     0x10231a1d,
-    // ];
 }

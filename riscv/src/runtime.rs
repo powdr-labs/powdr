@@ -250,22 +250,21 @@ impl Runtime {
         // TODO: we're also saving the "extra registers", but those don't have to be saved
 
         // The affine_256 syscall takes as input the addresses of x1, y1 and x2.
-        // We load them into registers 3..11, 11..19, 19..27.
         let affine256 =
             // Save instruction registers
             (3..27).flat_map(|i| push_register(&reg(i)))
-            // Load x1
-            .chain((3..11).flat_map(|i| load_word(&reg(0), (i - 3) as u32 *4 , &reg(i))))
-            // Load y1
-            .chain((11..19).flat_map(|i| load_word(&reg(1), (i - 11) as u32 *4 , &reg(i))))
-            // Load x2
-            .chain((19..27).flat_map(|i| load_word(&reg(2), (i - 19) as u32 *4 , &reg(i))))
+            // Load x1 in 3..11
+            .chain((0..8).flat_map(|i| load_word(&reg(0), i as u32 *4 , &reg(i + 3))))
+            // Load y1 in 11..19
+            .chain((0..8).flat_map(|i| load_word(&reg(1), i as u32 *4 , &reg(i + 11))))
+            // Load x2 in 19..27
+            .chain((0..8).flat_map(|i| load_word(&reg(2), i as u32 *4 , &reg(i + 19))))
             // Call instruction
             .chain(std::iter::once("affine_256;".to_string()))
             // Store result y2 in x1's memory
-            .chain((3..11).flat_map(|i| store_word(&reg(0), (i - 3) as u32 *4 , &reg(i))))
+            .chain((0..8).flat_map(|i| store_word(&reg(0), i as u32 *4 , &reg(i + 3))))
             // Store result y3 in y1's memory
-            .chain((11..19).flat_map(|i| store_word(&reg(1), (i - 11) as u32 *4 , &reg(i))))
+            .chain((0..8).flat_map(|i| store_word(&reg(1), i as u32 *4 , &reg(i + 11))))
             // Restore instruction registers
             .chain(
                 (3..27)
@@ -274,24 +273,23 @@ impl Runtime {
         self.add_syscall(Syscall::Affine256, affine256);
 
         // The ec_add syscall takes as input the four addresses of x1, y1, x2, y2.
-        // We load them into registers 4..12, 12..20, 20..28, 28..36.
         let ec_add =
             // Save instruction registers.
             (4..36).flat_map(|i| push_register(&reg(i)))
-            // Load x1
-            .chain((4..12).flat_map(|i| load_word(&reg(0), (i - 4) as u32 * 4, &reg(i))))
-            // Load y1
-            .chain((12..20).flat_map(|i| load_word(&reg(1), (i - 12) as u32 * 4, &reg(i))))
-            // Load x2
-            .chain((20..28).flat_map(|i| load_word(&reg(2), (i - 20) as u32 * 4, &reg(i))))
-            // Load y2
-            .chain((28..36).flat_map(|i| load_word(&reg(3), (i - 28) as u32 * 4, &reg(i))))
+            // Load x1 in 4..12
+            .chain((0..8).flat_map(|i| load_word(&reg(0), i as u32 * 4, &reg(i + 4))))
+            // Load y1 in 12..20
+            .chain((0..8).flat_map(|i| load_word(&reg(1), i as u32 * 4, &reg(i + 12))))
+            // Load x2 in 20..28
+            .chain((0..8).flat_map(|i| load_word(&reg(2), i as u32 * 4, &reg(i + 20))))
+            // Load y2 in 28..36
+            .chain((0..8).flat_map(|i| load_word(&reg(3), i as u32 * 4, &reg(i + 28))))
             // Call instruction
             .chain(std::iter::once("ec_add;".to_string()))
             // Save result x3 in x1
-            .chain((4..12).flat_map(|i| store_word(&reg(0), (i - 4) as u32 * 4, &reg(i))))
+            .chain((0..8).flat_map(|i| store_word(&reg(0), i as u32 * 4, &reg(i + 4))))
             // Save result y3 in y1
-            .chain((12..20).flat_map(|i| store_word(&reg(1), (i - 12) as u32 * 4, &reg(i))))
+            .chain((0..8).flat_map(|i| store_word(&reg(1), i as u32 * 4, &reg(i + 12))))
             // Restore instruction registers.
             .chain(
                 (4..36)
@@ -305,16 +303,16 @@ impl Runtime {
         let ec_double =
             // Save instruction registers.
             (2..18).flat_map(|i| push_register(&reg(i)))
-            // Load x
-            .chain((2..10).flat_map(|i| load_word(&reg(0), (i - 2) as u32 * 4, &reg(i))))
-            // Load y
-            .chain((10..18).flat_map(|i| load_word(&reg(1), (i - 10) as u32 * 4, &reg(i))))
+            // Load x in 2..10
+            .chain((0..8).flat_map(|i| load_word(&reg(0), i as u32 * 4, &reg(i + 2))))
+            // Load y in 10..18
+            .chain((0..8).flat_map(|i| load_word(&reg(1), i as u32 * 4, &reg(i + 10))))
             // Call instruction
             .chain(std::iter::once("ec_double;".to_string()))
-            // Store result x
-            .chain((2..10).flat_map(|i| store_word(&reg(0), (i - 2) as u32 * 4, &reg(i))))
-            // Store result y
-            .chain((10..18).flat_map(|i| store_word(&reg(1), (i - 10) as u32 * 4, &reg(i))))
+            // Store result in x
+            .chain((0..8).flat_map(|i| store_word(&reg(0), i as u32 * 4, &reg(i + 2))))
+            // Store result in y
+            .chain((0..8).flat_map(|i| store_word(&reg(1), i as u32 * 4, &reg(i + 10))))
             // Restore instruction registers.
             .chain(
                 (2..18)
