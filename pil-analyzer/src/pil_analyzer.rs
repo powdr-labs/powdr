@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
-use powdr_ast::parsed::{self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory};
+use powdr_ast::parsed::{
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+};
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
