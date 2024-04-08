@@ -344,7 +344,7 @@ fn wrong_type_args() {
 }
 
 #[test]
-#[should_panic = "Symbol not found: T"]
+#[should_panic = "Type symbol not found: T"]
 fn specialization_non_declared_type_var() {
     let input = "
         let<T: FromLiteral> x: T = 1;
