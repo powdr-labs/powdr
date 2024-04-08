@@ -740,24 +740,75 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
                 vec![]
             }
+            "affine_256" => {
+                assert!(args.is_empty());
+                // take input from registers
+                let x1 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 3)).into_fe())
+                    .collect::<Vec<_>>();
+                let y1 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 11)).into_fe())
+                    .collect::<Vec<_>>();
+                let x2 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 19)).into_fe())
+                    .collect::<Vec<_>>();
+                let result = arith::affine_256(&x1, &y1, &x2);
+                // store result in registers
+                (0..8).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i + 3), Elem::Field(result.0[i as usize]))
+                });
+                (0..8).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i + 11), Elem::Field(result.1[i as usize]))
+                });
+                vec![]
+            }
+            "ec_add" => {
+                assert!(args.is_empty());
+                // take input from registers
+                let x1 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 4)).into_fe())
+                    .collect::<Vec<_>>();
+                let y1 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 12)).into_fe())
+                    .collect::<Vec<_>>();
+                let x2 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 20)).into_fe())
+                    .collect::<Vec<_>>();
+                let y2 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 28)).into_fe())
+                    .collect::<Vec<_>>();
+                let result = arith::ec_add(&x1, &y1, &x2, &y2);
+                // store result in registers
+                (0..8).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i + 4), Elem::Field(result.0[i as usize]))
+                });
+                (0..8).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i + 12), Elem::Field(result.1[i as usize]))
+                });
+                vec![]
+            }
             "ec_double" => {
                 assert!(args.is_empty());
                 // take input from registers
-                let x = (2..10)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
+                let x = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 2)).into_fe())
                     .collect::<Vec<_>>();
-                let y = (10..18)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
+                let y = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 10)).into_fe())
                     .collect::<Vec<_>>();
                 let result = arith::ec_double(&x, &y);
                 // store result in registers
-                (2..10).for_each(|i| {
+                (0..8).for_each(|i| {
                     self.proc
-                        .set_reg(&register_by_idx(i), Elem::Field(result.0[i as usize - 2]))
+                        .set_reg(&register_by_idx(i + 2), Elem::Field(result.0[i as usize]))
                 });
-                (10..18).for_each(|i| {
+                (0..8).for_each(|i| {
                     self.proc
-                        .set_reg(&register_by_idx(i), Elem::Field(result.1[i as usize - 10]))
+                        .set_reg(&register_by_idx(i + 10), Elem::Field(result.1[i as usize]))
                 });
                 vec![]
             }
