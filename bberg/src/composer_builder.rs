@@ -40,7 +40,7 @@ void {name}Composer::compute_witness(CircuitConstructor& circuit)
     compute_witness(circuit_constructor);
     compute_commitment_key(circuit_constructor.get_circuit_subgroup_size());
 
-    {name}Prover output_state(proving_key, commitment_key);
+    {name}Prover output_state(proving_key, proving_key->commitment_key);
 
     return output_state;
 }}
@@ -167,7 +167,7 @@ class {name}Composer {{
 
         void compute_commitment_key(size_t circuit_size)
         {{
-            commitment_key = std::make_shared<CommitmentKey>(circuit_size);
+            proving_key->commitment_key = std::make_shared<CommitmentKey>(circuit_size);
         }};
 }};
 

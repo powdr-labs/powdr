@@ -10,8 +10,9 @@ pub trait CircuitBuilder {
         name: &str,
         relations: &[String],
         permutations: &[String],
-        fixed: &[String],
-        shifted: &[String],
+        all_cols_without_inverses: &[String],
+        all_cols: &[String],
+        to_be_shifted: &[String],
         all_cols_with_shifts: &[String],
     );
 }
@@ -62,6 +63,7 @@ impl CircuitBuilder for BBFiles {
         name: &str,
         relations: &[String],
         permutations: &[String],
+        all_cols_without_inverses: &[String],
         all_cols: &[String],
         to_be_shifted: &[String],
         all_cols_with_shifts: &[String],
@@ -97,7 +99,8 @@ impl CircuitBuilder for BBFiles {
         };
 
         // Apply transformations
-        let compute_polys_assignemnt = map_with_newline(all_cols, compute_polys_transformation);
+        let compute_polys_assignemnt =
+            map_with_newline(all_cols_without_inverses, compute_polys_transformation);
         let all_poly_shifts = map_with_newline(to_be_shifted, all_polys_transformation);
         let check_circuit_for_each_relation =
             map_with_newline(relations, check_circuit_transformation);

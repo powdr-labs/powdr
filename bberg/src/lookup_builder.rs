@@ -188,7 +188,7 @@ fn create_lookup_settings_file(lookup: &Lookup) -> String {
     let lookup_tuple_size = columns_per_set;
 
     // NOTE: hardcoded until optimizations required
-    let inverse_degree = 2;
+    let inverse_degree = 4;
     let read_term_degree = 0;
     let write_term_degree = 0;
     let read_term_types = "{0}";

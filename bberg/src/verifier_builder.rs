@@ -4,13 +4,13 @@ use crate::{
 };
 
 pub trait VerifierBuilder {
-    fn create_verifier_cpp(&mut self, name: &str, witness: &[String]);
+    fn create_verifier_cpp(&mut self, name: &str, witness: &[String], inverses: &[String]);
 
     fn create_verifier_hpp(&mut self, name: &str);
 }
 
 impl VerifierBuilder for BBFiles {
-    fn create_verifier_cpp(&mut self, name: &str, witness: &[String]) {
+    fn create_verifier_cpp(&mut self, name: &str, witness: &[String], inverses: &[String]) {
         let include_str = includes_cpp(&snake_case(name));
 
         let wire_transformation = |n: &String| {
@@ -19,6 +19,7 @@ impl VerifierBuilder for BBFiles {
         )
         };
         let wire_commitments = map_with_newline(witness, wire_transformation);
+        let inverse_commitments = map_with_newline(inverses, wire_transformation);
 
         let ver_cpp = format!("
 {include_str} 
@@ -70,6 +71,13 @@ impl VerifierBuilder for BBFiles {
     
         // Get commitments to VM wires
         {wire_commitments}
+
+        auto [beta, gamm] = transcript->template get_challenges<FF>(\"beta\", \"gamma\");
+        relation_parameters.beta = beta;
+        relation_parameters.gamma = gamm;
+
+        // Get commitments to inverses
+        {inverse_commitments}
     
         // Execute Sumcheck Verifier
         const size_t log_circuit_size = numeric::get_msb(circuit_size);

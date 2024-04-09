@@ -1,10 +1,15 @@
 use crate::file_writer::BBFiles;
-use crate::utils::snake_case;
+use crate::utils::{map_with_newline, snake_case};
 
 pub trait ProverBuilder {
-    fn create_prover_cpp(&mut self, name: &str);
-
     fn create_prover_hpp(&mut self, name: &str);
+
+    fn create_prover_cpp(
+        &mut self,
+        name: &str,
+        commitment_polys: &[String],
+        lookup_names: &[String],
+    );
 }
 
 impl ProverBuilder for BBFiles {
@@ -31,6 +36,7 @@ impl ProverBuilder for BBFiles {
     
         void execute_preamble_round();
         void execute_wire_commitments_round();
+        void execute_log_derivative_inverse_round();
         void execute_relation_check_rounds();
         void execute_zeromorph_rounds();
     
@@ -49,6 +55,7 @@ impl ProverBuilder for BBFiles {
         ProverPolynomials prover_polynomials;
     
         CommitmentLabels commitment_labels;
+        typename Flavor::WitnessCommitments witness_commitments;
 
         Polynomial quotient_W;
     
@@ -72,8 +79,19 @@ impl ProverBuilder for BBFiles {
         );
     }
 
-    fn create_prover_cpp(&mut self, name: &str) {
+    /// Create the prover cpp file
+    ///
+    /// Committed polys are included as we manually unroll all commitments, as we do not commit to everything
+    fn create_prover_cpp(
+        &mut self,
+        name: &str,
+        commitment_polys: &[String],
+        lookup_names: &[String],
+    ) {
         let include_str = includes_cpp(&snake_case(name));
+
+        let polynomial_commitment_phase = create_commitments_phase(commitment_polys);
+        let log_derivative_inverse_phase = create_log_derivative_inverse_round(lookup_names);
 
         let prover_cpp = format!("
     {include_str}
@@ -121,19 +139,21 @@ impl ProverBuilder for BBFiles {
     }}
     
     /**
-     * @brief Compute commitments to the first three wires
+     * @brief Compute commitments to all of the witness wires (apart from the logderivative inverse wires)
      *
      */
     void {name}Prover::execute_wire_commitments_round()
     {{
-        auto wire_polys = key->get_wires();
-        auto labels = commitment_labels.get_wires();
-        for (size_t idx = 0; idx < wire_polys.size(); ++idx) {{
-            transcript->send_to_verifier(labels[idx], commitment_key->commit(wire_polys[idx]));
-        }}
-    }}
-    
 
+        {polynomial_commitment_phase}
+
+    }}
+
+    void {name}Prover::execute_log_derivative_inverse_round()
+    {{
+
+        {log_derivative_inverse_phase}
+    }}
     
     /**
      * @brief Run Sumcheck resulting in u = (u_1,...,u_d) challenges and all evaluations at u being calculated.
@@ -187,13 +207,8 @@ impl ProverBuilder for BBFiles {
         // Compute wire commitments
         execute_wire_commitments_round();
     
-        // TODO: not implemented for codegen just yet
         // Compute sorted list accumulator and commitment
-        // execute_log_derivative_commitments_round();
-    
-        // Fiat-Shamir: bbeta & gamma
-        // Compute grand product(s) and commitments.
-        // execute_grand_product_computation_round();
+        execute_log_derivative_inverse_round();
     
         // Fiat-Shamir: alpha
         // Run sumcheck subprotocol.
@@ -250,5 +265,57 @@ fn includes_cpp(name: &str) -> String {
     #include \"barretenberg/relations/permutation_relation.hpp\"
     #include \"barretenberg/sumcheck/sumcheck.hpp\"
     "
+    )
+}
+
+/// Commitment Transform
+///
+/// Produces code to perform kzg commitment, then stores in the witness_commitments struct
+fn commitment_transform(name: &String) -> String {
+    format!("witness_commitments.{name} = commitment_key->commit(key->{name});")
+}
+
+/// Send to Verifier Transform
+///
+/// Sends commitment produces in commitment_transform to the verifier
+fn send_to_verifier_transform(name: &String) -> String {
+    format!("transcript->send_to_verifier(commitment_labels.{name}, witness_commitments.{name});")
+}
+
+fn create_commitments_phase(polys_to_commit_to: &[String]) -> String {
+    let all_commit_operations = map_with_newline(polys_to_commit_to, commitment_transform);
+    let send_to_verifier_operations =
+        map_with_newline(polys_to_commit_to, send_to_verifier_transform);
+
+    format!(
+        "
+        // Commit to all polynomials (apart from logderivative inverse polynomials, which are committed to in the later logderivative phase)
+        {all_commit_operations}
+
+        // Send all commitments to the verifier
+        {send_to_verifier_operations}
+        "
+    )
+}
+
+fn create_log_derivative_inverse_round(lookup_operations: &[String]) -> String {
+    let all_commit_operations = map_with_newline(lookup_operations, commitment_transform);
+    let send_to_verifier_operations =
+        map_with_newline(lookup_operations, send_to_verifier_transform);
+
+    format!(
+        "
+        auto [beta, gamm] = transcript->template get_challenges<FF>(\"beta\", \"gamma\");
+        relation_parameters.beta = beta;
+        relation_parameters.gamma = gamm;
+
+        key->compute_logderivative_inverses(relation_parameters);
+
+        // Commit to all logderivative inverse polynomials
+        {all_commit_operations}
+
+        // Send all commitments to the verifier
+        {send_to_verifier_operations}
+        "
     )
 }
