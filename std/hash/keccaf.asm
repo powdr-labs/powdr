@@ -1,17 +1,6 @@
 use std::array;
 use std::utils;
 
-// TODO
-let<T1, T2> routine: T1, T1, (T1, T1 -> T1), (T1, T1 -> T1), (T1, T1 -> T1) -> T2 =
-    |a, b, xor, and, or| a + b;
-
-// function definition
-let or: int, int -> int = |a, b| a | b;
-let and: int, int -> int = |a, b| a & b;
-let xor: int, int -> int = |a, b| a ^ b;
-// TODO: what is the bitwise not operator?
-let not: int -> int = |a| a;
-
 // ln 9 - 12
 // TODO: check that these are good for word size 32
 let RHO: int[] = [
@@ -48,67 +37,67 @@ let RC: int[] = [
 
 // ln 30 - 33
 // left rotation
-let rotl64: int, int -> int = |x, n| or((x << n), (x >> (64 - n))); // 32 if u32
+let rotl64: int, int, (int, int -> int) -> int = |x, n, or| or((x << n), (x >> (64 - n))); // 32 if u32
 
 // ln 35 - 40
 // change endianness for a 32 bit number byte by byte
 // e.g. 0xaabbccdd -> 0xddccbbaa
-// let swap_u32: int -> int = |x| 
+// let swap_u32: int, (int, int -> int), (int, int -> int) -> int = |x, or, and| 
 //     or((or(and((x << 8), 0xff00ff00), and((x >> 8), 0x00ff00ff)) >> 16),
 //     (or(and((x << 8), 0xff00ff00), and((x >> 8), 0x00ff00ff)) << 16)); 
 
-let swap_u64: int -> int = |x| {
+let swap_u64: int, (int, int -> int), (int, int -> int) -> int = |x, or, and| {
     let val = or(and((x << 8), 0xFF00FF00FF00FF00), and((x >> 8), 0x00FF00FF00FF00FF));
     let val_2 = or(and((val << 16), 0xFFFF0000FFFF0000), and((val >> 16), 0x0000FFFF0000FFFF));
     or((val_2 << 32), (val_2 >> 32))
 };
 
 // ln 47 - 49
-let swap_u64_loop: int[] -> int[] = |st| array::new(25, |i| swap_u64(st[i])); // int[25] -> int[25]
+let swap_u64_loop: int[], (int, int -> int), (int, int -> int) -> int[] = |st, or, and| array::new(25, |i| swap_u64(st[i], or, and)); // int[25] -> int[25]
 
 // Note that neither t nor bc is needed as they are both helper variables
 // ln 52 - 55
-let xor_mult: int[] -> int = |input| array::fold(input, 0, |x, y| xor(x, y));
-let theta_bc: int[], int -> int = |st, i| xor_mult([st[i], st[i + 5], st[i + 10], st[i + 15], st[i + 20]]); // int[25] -> int
+let xor_mult: int[], (int, int -> int) -> int = |input, xor| array::fold(input, 0, |x, y| xor(x, y));
+let theta_bc: int[], int, (int, int -> int) -> int = |st, i, xor| xor_mult([st[i], st[i + 5], st[i + 10], st[i + 15], st[i + 20]], xor); // int[25] -> int
 
 // ln 57 - 62
-let theta_st: int[] -> int[] = |st| array::map_enumerated(st, |idx, elem| { // int[25] -> int[25]
+let theta_st: int[], (int, int -> int), (int, int -> int) -> int[] = |st, xor, or| array::map_enumerated(st, |idx, elem| { // int[25] -> int[25]
     let i = idx % 5;
     let j = idx / 5;
-    let t = xor(theta_bc(st, (i + 4) % 5), rotl64(theta_bc(st, (i + 1) % 5), 1));
+    let t = xor(theta_bc(st, (i + 4) % 5, xor), rotl64(theta_bc(st, (i + 1) % 5, xor), 1, or));
     xor(elem, t)
 });
 
 // ln 66 - 72
 // rho pi
-let rho_pi: int[], int -> int = |st, i| { // int[25], int -> int
+let rho_pi: int[], int, (int, int -> int) -> int = |st, i, or| { // int[25], int -> int
     let p = if i == 0 { 23 } else { i - 1 };
-    rotl64(st[PI[p]], RHO[i])
+    rotl64(st[PI[p]], RHO[i], or)
 };
 // collect st_j
-let rho_pi_loop: int[] -> int[] = |st| array::new(25, |i| if i == 0 { st[0] } else { rho_pi(st, i - 1) } ); // int[25] -> int[25]
+let rho_pi_loop: int[], (int, int -> int) -> int[] = |st, or| array::new(25, |i| if i == 0 { st[0] } else { rho_pi(st, i - 1, or) } ); // int[25] -> int[25]
 // rearrange st_j
 let rho_pi_rearrange: int[] -> int[] = |st| array::new(25, |i| st[PI_INVERSE[i]]); // int[25] -> int[25]
 
 // ln 74 - 83
 // chi
 // TODO: make sure that modulus has the same precedence as multiplication
-let chi: int[] -> int[] = |st| array::map_enumerated(st, |idx, elem| { // int[25] -> int[25]
+let chi: int[], (int, int -> int), (int, int -> int), (int -> int) -> int[] = |st, xor, and, not| array::map_enumerated(st, |idx, elem| { // int[25] -> int[25]
     let i = idx / 5;
     let j = idx % 5;
-    xor(st[idx], and(not(st[i * 5 + (j + 1) % 5]), st[i * 5 + (j + 2) % 5]))
+    xor(elem, and(not(st[i * 5 + (j + 1) % 5]), st[i * 5 + (j + 2) % 5]))
 });
 
 // ln 85 - 86
 // iota
-let iota: int[], int -> int[] = |st, r| array::map_enumerated(st, |idx, elem| if idx == 0 { xor(elem, RC[r]) } else { elem } ); // int[25], int -> int[25]
+let iota: int[], int, (int, int -> int) -> int[] = |st, r, xor| array::map_enumerated(st, |idx, elem| if idx == 0 { xor(elem, RC[r]) } else { elem } ); // int[25], int -> int[25]
 
 // ln 51 - 87
-let r_loop: int[] -> int[] = |st| utils::fold(24, |i| i, st, |acc, r| iota(chi(rho_pi_rearrange(rho_pi_loop(theta_st(acc)))), r) ); // int[25] -> int[25]
+let r_loop: int[], (int, int -> int), (int, int -> int), (int, int -> int), (int -> int) -> int[] = |st, xor, and, or, not| utils::fold(24, |i| i, st, |acc, r| iota(chi(rho_pi_rearrange(rho_pi_loop(theta_st(acc, xor, or), or)), xor, and, not), r, xor) ); // int[25] -> int[25]
 
 // ln 42 - 94
 // compression function
-let keccakf: int[] -> int[] = |st| swap_u64_loop(r_loop(swap_u64_loop(st))); // int[25] -> int[25]
+let keccakf: int[], (int, int -> int), (int, int -> int), (int, int -> int), (int -> int) -> int[] = |st, xor, and, or, not| swap_u64_loop(r_loop(swap_u64_loop(st, or, and), xor, and, or, not), or, and); // int[25] -> int[25]
 
 // ln 96 - 141
 // TODO: to_bytes and from_bytes are implemented below but I'm not sure if we have existing helper functions to use
@@ -133,13 +122,13 @@ let from_bytes: int[] -> int[] = |input| // int[200] -> int[25]
     
 
 // ln 148 - 158
-let update_finalize_b: int[], int[], int, int -> int[] = |input, b, rate, delim| {
+let update_finalize_b: int[], int[], int, int, (int, int -> int), (int, int -> int), (int, int -> int), (int -> int) -> int[] = |input, b, rate, delim, xor, and, or, not| {
     let num_loop = array::len(input) / rate;
     let num_remaining = array::len(input) % rate;
     let b_delim_idx = (num_remaining + 1) % rate;
     let b_keccak = utils::fold(num_loop, |i| i, b, |acc, idx| {
         let new_b = array::zip(array::new(rate, |i| acc[i]), array::new(rate, |i| input[idx * rate + i]), xor);
-        to_bytes(keccakf(from_bytes(new_b)))
+        to_bytes(keccakf(from_bytes(new_b), xor, and, or, not))
     });
     let b_update = array::new(rate, |i| 
         // num_remaining is 0 the minimum and rate - 1 the maximum
@@ -150,7 +139,7 @@ let update_finalize_b: int[], int[], int, int -> int[] = |input, b, rate, delim|
             if i == num_remaining {
                 if i == rate - 1 { 
                     // num_remaining == rate - 1, so ln 156 and 157 update the same index of b
-                    xor_mult([b_keccak[i], delim, 0x80])
+                    xor_mult([b_keccak[i], delim, 0x80], xor)
                 } else {
                     // ln 156
                     xor(b_keccak[i], delim)
@@ -167,24 +156,36 @@ let update_finalize_b: int[], int[], int, int -> int[] = |input, b, rate, delim|
         }
     );
     // ln 158
-    to_bytes(keccakf(from_bytes(b_update)))    
+    to_bytes(keccakf(from_bytes(b_update), xor, and, or, not))    
 };
 
 // ln 143 - 161
-let main: int, int[], int -> int[] = |W, input, delim| {
-    // ln 144 - 145
-    let b = array::new(200, |i| 0); // int[200], 100 if u32
-    let rate = 200 - (2 * W); // int, 100 if u32
+let routine: int, int[], int, (int, int -> int), (int, int -> int), (int, int -> int), (int -> int) -> int[] = 
+    |(W, input, delim, or, and, xor, not)| { // W: int (number of bytes to return); input: int[] (arbitrary length array of bytes); delim: int (u8)
+        // ln 144 - 145
+        let b = array::new(200, |i| 0); // int[200], 100 if u32
+        let rate = 200 - (2 * W); // int, 100 if u32
 
-    let b_finalized = update_finalize_b(input, b, rate, delim);
+        let b_finalized = update_finalize_b(input, b, rate, delim, xor, and, or, not);
 
-    // TODO: as per ln 143, should return array of length W, but what if array length, i.e. rate, is less than W?
-    // here we return the entire array rather than padding it to length W
-    // ln 160
-    if 3 * W <= 200 { array::new(W, |i| b_finalized[i]) } else { b_finalized } // 100 if u32
-};
+        // TODO: as per ln 143, should return array of length W, but what if array length, i.e. rate, is less than W?
+        // here we return the entire array rather than padding it to length W
+        // ln 160
+        if 3 * W <= 200 { array::new(W, |i| b_finalized[i]) } else { b_finalized } // 100 if u32
+    };
+
+let concrete: int, int[], int -> (int, int[], int, (int, int -> int), (int, int -> int), (int, int -> int), (int -> int)) = |W, input, delim| (
+    W, input, delim,
+    |x, y| x | y,
+    |x, y| x & y,
+    |x, y| x ^ y,
+    // TODO: how to do bitwise not
+    |x| x
+);
+
+let concrete_routine: int, int[], int -> int[] = |W, input, delim| routine(concrete(W, input, delim));
 
 // main machine
-machine Main { 
-    let x; 
+machine Main {
+    let x;
 }
