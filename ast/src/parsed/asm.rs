@@ -384,6 +384,7 @@ impl Display for Part {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Machine {
     pub arguments: MachineArguments,
+    pub properties: MachineProperties,
     pub statements: Vec<MachineStatement>,
 }
 
@@ -407,15 +408,74 @@ impl Machine {
                         | MachineStatement::FunctionDeclaration(_, _, _, _)
                         | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
                     }
-                }),
+                })
+                .chain(self.arguments.names()),
         )
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
-pub struct MachineArguments {
+pub struct MachineArguments(pub Vec<Param>);
+
+impl MachineArguments {
+    pub fn names(&self) -> impl Iterator<Item = &String> {
+        self.0.iter().map(|p| &p.name)
+    }
+}
+
+impl TryFrom<Vec<Param>> for MachineArguments {
+    type Error = &'static str;
+
+    fn try_from(params: Vec<Param>) -> std::result::Result<Self, Self::Error> {
+        for p in &params {
+            if p.index.is_some() || p.ty.is_none() || p.name.is_empty() {
+                return Err("invalid machine param");
+            }
+        }
+        Ok(MachineArguments(params))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
+pub struct MachineProperties {
     pub latch: Option<String>,
     pub operation_id: Option<String>,
+}
+
+impl MachineProperties {}
+
+impl TryFrom<Vec<Param>> for MachineProperties {
+    type Error = &'static str;
+
+    fn try_from(prop_list: Vec<Param>) -> std::result::Result<Self, Self::Error> {
+        let mut props: Self = Default::default();
+        for param in prop_list {
+            match param.name.as_str() {
+                "latch" => {
+                    if props.latch.is_some() {
+                        return Err("latch already defined");
+                    };
+                    if param.ty.is_none() {
+                        return Err("invalid machine latch");
+                    };
+                    props.latch = param.ty;
+                }
+                "operation_id" => {
+                    if props.operation_id.is_some() {
+                        return Err("operation_id already defined");
+                    };
+                    if param.ty.is_none() {
+                        return Err("invalid machine operation_id");
+                    };
+                    props.operation_id = param.ty;
+                }
+                _ => {
+                    return Err("unknown machine property");
+                }
+            }
+        }
+        Ok(props)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]

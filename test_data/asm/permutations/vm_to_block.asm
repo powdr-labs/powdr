@@ -1,4 +1,7 @@
-machine Binary(latch, operation_id) {
+machine Binary with
+    latch: latch,
+    operation_id: operation_id,
+{
     operation or<0> A, B -> C;
     call_selectors sel;
 

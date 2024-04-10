@@ -182,8 +182,8 @@ impl TypeChecker {
             }
         }
 
-        let latch = machine.arguments.latch;
-        let operation_id = machine.arguments.operation_id;
+        let latch = machine.properties.latch;
+        let operation_id = machine.properties.operation_id;
 
         if !registers.iter().any(|r| r.ty.is_pc()) {
             let operation_count = callable.operation_definitions().count();
@@ -425,7 +425,7 @@ mod tests {
         let src = r#"
         mod A {
         }
-        machine M(l, i) {
+        machine M with latch: l, operation_id: i {
             A a;
         }"#;
         expect_check_str(
@@ -439,7 +439,7 @@ mod tests {
     #[test]
     fn constrained_machine_has_no_registers() {
         let src = r#"
-machine Main(latch, id) {
+machine Main with latch: latch, operation_id: id {
    reg A;
 }
 "#;
@@ -473,7 +473,7 @@ machine Main {
     #[test]
     fn multiple_ops_need_op_id() {
         let src = r#"
-machine Arith(latch, _) {
+machine Arith with latch: latch {
    operation add a, b -> c;
    operation sub a, b -> c;
 }
@@ -484,7 +484,7 @@ machine Arith(latch, _) {
     #[test]
     fn id_column_requires_op_id() {
         let src = r#"
-machine Arith(latch, id) {
+machine Arith with latch: latch, operation_id: id  {
    operation add a, b -> c;
    operation sub a, b -> c;
 }
@@ -496,7 +496,7 @@ machine Arith(latch, id) {
     #[test]
     fn id_op_id_requires_id_column() {
         let src = r#"
-machine Arith(latch, _) {
+machine Arith with latch: latch {
    operation add<0> a, b -> c;
 }
 "#;

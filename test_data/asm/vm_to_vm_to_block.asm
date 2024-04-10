@@ -51,7 +51,10 @@ machine Pythagoras {
     }
 }
 
-machine Arith(latch, operation_id) {
+machine Arith with
+    latch: latch,
+    operation_id: operation_id,
+{
 
     operation add<0> x1, x2 -> y;
     operation mul<1> x1, x2 -> y;

@@ -1,4 +1,6 @@
-machine Binary(latch, _) {
+machine Binary with
+    latch: latch
+{
     // fails because incoming permutation links to block machine requires call_selectors
     operation add A, B -> C;
     col fixed latch = [1]*;

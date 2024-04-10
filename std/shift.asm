@@ -2,7 +2,10 @@ use std::utils::unchanged_until;
 use std::utils::cross_product;
 use std::convert::int;
 
-machine Shift(latch, operation_id) {
+machine Shift with
+    latch: latch,
+    operation_id: operation_id,
+{
     // lower bound degree is 262144
 
     operation shl<0> A, B -> C;

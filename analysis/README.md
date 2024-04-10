@@ -168,7 +168,7 @@ The diff for our example program is as follows:
 -machine DifferentSignatures {
 // registers are removed and encoded as constraints
 -       reg pc[@pc];
-+machine DifferentSignatures(instr_return, _operation_id) {
++machine DifferentSignatures with latch: instr_return, operation_id: _operation_id {
 // the functions are removed and replaced with operations where the `operation_id` is the position of the associated label in the ROM and the inputs and outputs are the relevant input registers and output registers
 +       operation identity<2> _input_0 -> _output_0;
 +       operation nothing<3>;
@@ -222,7 +222,7 @@ The diff for our example program is as follows:
 +
 // we do the same for the main machine
 -machine Main {
-+machine Main(instr_return, _operation_id) {
++machine Main with latch: instr_return, operation_id: _operation_id {
 -       reg pc[@pc];
 -       reg X[<=];
 -       reg Y[<=];
@@ -323,7 +323,7 @@ Airgen takes machines which are only left with constraints and external instruct
 
 The final program after analysis is the following:
 ```
-machine DifferentSignatures(instr_return, _operation_id) {
+machine DifferentSignatures with latch: instr_return, operation_id: _operation_id {
         operation identity<2> _input_0 -> _output_0;
         operation nothing<3>;
         operation one<4> -> _output_0;
@@ -374,7 +374,7 @@ machine DifferentSignatures(instr_return, _operation_id) {
 
 
 }
-machine Main(instr_return, _operation_id) {
+machine Main with latch: instr_return, operation_id: _operation_id {
         degree 16;
 
         operation main<2>;

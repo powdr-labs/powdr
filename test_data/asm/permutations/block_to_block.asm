@@ -1,4 +1,7 @@
-machine Binary(latch, operation_id) {
+machine Binary with
+    latch: latch,
+    operation_id: operation_id,
+{
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
     operation or<0> A, B -> C;
@@ -28,7 +31,10 @@ machine Binary(latch, operation_id) {
     {A_byte, B_byte, C_byte} in {P_A, P_B, P_C};
 }
 
-machine Binary4(latch, operation_id) {
+machine Binary4 with
+    latch: latch,
+    operation_id: operation_id,
+{
     Binary bin;
 
     operation or4<0> A, B, C, D -> E;

@@ -2,7 +2,9 @@ use std::utils::cross_product;
 use std::prover::Query;
 
 // Splits an arbitrary field element into two u32s, on the Goldilocks field.
-machine SplitGL(RESET, _) {
+machine SplitGL with
+    latch: RESET,
+{
 
     operation split in_acc -> output_low, output_high;
 

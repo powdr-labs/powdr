@@ -1,5 +1,8 @@
 // calls a constrained machine from a constrained machine
-machine Arith(latch, operation_id) {
+machine Arith with
+    latch: latch,
+    operation_id: operation_id
+{
 
     degree 8;
 
@@ -13,7 +16,10 @@ machine Arith(latch, operation_id) {
     z = x + y;
 }
 
-machine Main(latch, operation_id) {
+machine Main with
+    latch: latch,
+    operation_id: operation_id
+{
 
     degree 8;
 

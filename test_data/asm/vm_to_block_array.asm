@@ -22,7 +22,10 @@ machine Main {
     }
 }
 
-machine Arith(latch, operation_id) {
+machine Arith with
+    latch: latch,
+    operation_id: operation_id
+{
 
     operation add<0> x[0], x[1] -> y;
     operation mul<1> x[0], x[1] -> y;

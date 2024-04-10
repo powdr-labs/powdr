@@ -2,7 +2,9 @@ use std::utils::cross_product;
 use std::prover::Query;
 
 // Splits an arbitrary field element into 8 u32s (in little endian order), on the BN254 field.
-machine SplitBN254(RESET, _) {
+machine SplitBN254 with
+    latch: RESET,
+{
 
     operation split in_acc -> o1, o2, o3, o4, o5, o6, o7, o8;
 

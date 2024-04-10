@@ -255,15 +255,24 @@ GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
 // ---------------------------- ASM part -----------------------------
 
 MachineDefinition: SymbolDefinition = {
-    "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, statements}.into() }
+    "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, properties: Default::default(), statements}.into() },
+    "machine" <name:Identifier> <arguments:MachineArguments> "with" <properties:MachineProperties> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, properties, statements}.into() },
+}
+
+MachineProperties: MachineProperties = {
+    <mut list:( <Param> "," )*> <end:Param> ","? =>? {
+        list.push(end);
+        MachineProperties::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
+    }
 }
 
 MachineArguments: MachineArguments = {
-    "(" "_" "," "_" ")" => MachineArguments::default(),
-    "(" <latch:Identifier> "," "_" ")" => MachineArguments { latch: Some(latch), operation_id: None },
-    "(" "_" "," <operation_id:Identifier> ")" => MachineArguments { latch: None, operation_id: Some(operation_id) },
-    "(" <latch:Identifier> "," <operation_id:Identifier> ")" => MachineArguments { latch: Some(latch), operation_id: Some(operation_id) },
     => MachineArguments::default(),
+    "(" ")" => MachineArguments::default(),
+    "(" <mut list:( <Param> "," )*> <end:Param> ","? ")" =>? {
+        list.push(end);
+        MachineArguments::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
+    }
 }
 
 MachineStatement: MachineStatement = {

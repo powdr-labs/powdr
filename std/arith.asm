@@ -12,7 +12,10 @@ use std::prover::Query;
 
 // Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 // Currently only supports "Equation 0", i.e., 256-Bit addition and multiplication.
-machine Arith(CLK32_31, operation_id){
+machine Arith with
+    latch: CLK32_31,
+    operation_id: operation_id,
+{
     
     // The operation ID will be bit-decomposed to yield selEq[], controlling which equations are activated.
     col witness operation_id;

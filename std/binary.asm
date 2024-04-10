@@ -2,7 +2,10 @@ use std::convert::int;
 use std::utils::cross_product;
 use std::utils::unchanged_until;
 
-machine Binary(latch, operation_id) {
+machine Binary with
+    latch: latch,
+    operation_id: operation_id,
+{
 
     // lower bound degree is 262144
 

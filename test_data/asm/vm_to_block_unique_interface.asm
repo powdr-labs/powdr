@@ -1,4 +1,7 @@
-machine Binary(latch, operation_id) {
+machine Binary with
+    latch: latch,
+    operation_id: operation_id,
+{
 
     operation and<0> x, y -> z;
 
@@ -16,7 +19,10 @@ machine Binary(latch, operation_id) {
     { operation_id, x, y, z } in { P_FUNCTION, P_X, P_Y, P_Z };
 }
 
-machine Arith(latch, operation_id) {
+machine Arith with
+    latch: latch,
+    operation_id: operation_id,
+{
 
     operation add<0> x, y -> z;
 

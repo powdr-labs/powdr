@@ -2,7 +2,10 @@ use std::array;
 use std::utils::unchanged_until;
 
 // Implements the Poseidon permutation for the Goldilocks field.
-machine PoseidonGL(FIRSTBLOCK, operation_id) {
+machine PoseidonGL with
+    latch: FIRSTBLOCK,
+    operation_id: operation_id,
+{
 
     // Hashes 8 "rate" elements and 4 "capacity" elements to 4 field elements
     // by applying the Poseidon permutation and returning the first 4 rate elements.

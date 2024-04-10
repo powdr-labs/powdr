@@ -1,4 +1,7 @@
-machine Inc(latch, operation_id) {
+machine Inc with
+    latch: latch,
+    operation_id: operation_id
+{
 
     degree 8;
 
@@ -11,7 +14,10 @@ machine Inc(latch, operation_id) {
     y = x + 1;
 }
 
-machine Assert1(latch, operation_id) {
+machine Assert1 with
+    latch: latch,
+    operation_id: operation_id
+{
 
     degree 8;
 

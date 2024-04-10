@@ -1,5 +1,7 @@
-
-machine Arith(latch, operation_id) {
+machine Arith with
+    latch: latch,
+    operation_id: operation_id
+{
 
     degree 8;
 

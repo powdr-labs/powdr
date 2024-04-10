@@ -36,23 +36,27 @@ impl Display for ModuleStatement {
             ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => match value {
                 SymbolValue::Machine(
                     m @ Machine {
-                        arguments:
-                            MachineArguments {
+                        arguments: MachineArguments(args),
+                        properties:
+                            MachineProperties {
                                 latch,
                                 operation_id,
                             },
                         ..
                     },
                 ) => {
-                    if let (None, None) = (latch, operation_id) {
-                        write!(f, "machine {name} {m}")
-                    } else {
-                        write!(
-                            f,
-                            "machine {name}({}, {}) {m}",
-                            latch.as_deref().unwrap_or("_"),
-                            operation_id.as_deref().unwrap_or("_"),
-                        )
+                    let args = args.iter().join(", ");
+                    let props = latch
+                        .as_ref()
+                        .map(|s| format!("latch: {s}"))
+                        .into_iter()
+                        .chain(operation_id.as_ref().map(|s| format!("operation_id: {s}")))
+                        .join(", ");
+                    match (args.is_empty(), props.is_empty()) {
+                        (true, true) => write!(f, "machine {name} {m}"),
+                        (true, false) => write!(f, "machine {name} with {props} {m}"),
+                        (false, true) => write!(f, "machine {name}({args}) {m}"),
+                        (false, false) => write!(f, "machine {name}({args}) with {props} {m}"),
                     }
                 }
                 SymbolValue::Import(i) => {
