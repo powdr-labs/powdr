@@ -429,7 +429,7 @@ impl TryFrom<Vec<Param>> for MachineArguments {
     fn try_from(params: Vec<Param>) -> std::result::Result<Self, Self::Error> {
         for p in &params {
             if p.index.is_some() || p.ty.is_none() || p.name.is_empty() {
-                return Err("invalid machine param");
+                return Err("invalid machine argument");
             }
         }
         Ok(MachineArguments(params))
