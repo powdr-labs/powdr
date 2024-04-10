@@ -27,7 +27,6 @@
     let rho_pi_loop: int[] -> int[] = (|st| std::array::new(25, (|i| if (i == 0) { st[0] } else { rho_pi(st, (i - 1)) })));
     let rho_pi_rearrange: int[] -> int[] = (|st| std::array::new(25, (|i| st[PI_INVERSE[i]])));
     let rotl64: int, int -> int = (|x, n| or((x << n), (x >> (64 - n))));
-    let<T1, T2> routine: T1, T1, (T1, T1 -> T1), (T1, T1 -> T1), (T1, T1 -> T1) -> T2 = (|a, b, xor, and, or| (a + b));
     let swap_u64: int -> int = (|x| {
         let val = or(and((x << 8), 18374966859414961920), and((x >> 8), 71777214294589695));
         let val_2 = or(and((val << 16), 18446462603027742720), and((val >> 16), 281470681808895));

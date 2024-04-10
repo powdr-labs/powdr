@@ -1,10 +1,6 @@
 use std::array;
 use std::utils;
 
-// TODO
-let<T1, T2> routine: T1, T1, (T1, T1 -> T1), (T1, T1 -> T1), (T1, T1 -> T1) -> T2 =
-    |a, b, xor, and, or| a + b;
-
 // function definition
 let or: int, int -> int = |a, b| a | b;
 let and: int, int -> int = |a, b| a & b;
@@ -185,6 +181,17 @@ let main: int, int[], int -> int[] = |W, input, delim| {
 };
 
 // main machine
-machine Main { 
-    let x; 
+machine Main(W) { 
+    // input is an arbitrary array of bytes
+    // delim is a byte
+    // W is the number of bytes to return
+    let INPUT_SIZE: int = 200; // this can be arbitrary given by user
+
+    pol commit input[INPUT_SIZE];
+    pol commit output[W];
+    pol commit delim;
+
+    let expected_output = main(W, input, delim);
+    
+    array::new(W, |i| output[i] - expected_output[i] = 0);
 }
