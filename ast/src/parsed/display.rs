@@ -869,4 +869,22 @@ mod tests {
         assert_eq!(p.clone().join(s.clone()).to_string(), "::abc::y");
         assert_eq!(SymbolPath::from(p.join(s)).to_string(), "::abc::y");
     }
+
+    #[test]
+    fn optimise_parentheses() {
+        let [x, y, z] = ['x', 'y', 'z'].map(|i| {
+            Box::new(Expression::<NamespacedPolynomialReference>::PublicReference(i.to_string()))
+        });
+        let e = Expression::BinaryOperation(
+            Box::new(Expression::BinaryOperation(
+                x.clone(),
+                BinaryOperator::Add,
+                y.clone(),
+            )),
+            BinaryOperator::Mul,
+            z.clone(),
+        );
+
+        assert_eq!(e.to_string(), format!("(({} + {}) * {})", x, y, z));
+    }
 }
