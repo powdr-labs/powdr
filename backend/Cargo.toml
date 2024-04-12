@@ -9,6 +9,7 @@ repository = { workspace = true }
 
 [features]
 halo2 = ["dep:powdr-halo2"]
+avx512 = ["starky/avx512"]
 
 [dependencies]
 powdr-ast = { path = "../ast" }
