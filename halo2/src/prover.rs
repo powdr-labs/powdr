@@ -69,7 +69,12 @@ pub struct Halo2Prover<'a, F> {
     analyzed: &'a Analyzed<F>,
     fixed: &'a [(String, Vec<F>)],
     params: ParamsKZG<Bn256>,
+    // Verification key of the proof type we're generating
     vkey: Option<VerifyingKey<G1Affine>>,
+    // Verification key of the app we're proving recursively.
+    // That is, if proof type is "snark_aggr", this will be
+    // the vkey of the "poseidon" proof.
+    vkey_app: Option<VerifyingKey<G1Affine>>,
     proof_type: ProofType,
 }
 
@@ -96,6 +101,10 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let params = setup
             .map(|mut setup| ParamsKZG::<Bn256>::read(&mut setup))
             .transpose()?
+            .map(|mut params| {
+                params.downsize(degree_bits(analyzed.degree()));
+                params
+            })
             .unwrap_or_else(|| generate_setup(analyzed.degree()));
 
         Ok(Self {
@@ -103,6 +112,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             fixed,
             params,
             vkey: None,
+            vkey_app: None,
             proof_type,
         })
     }
@@ -324,6 +334,16 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         self.vkey = Some(vkey);
     }
 
+    pub fn add_verification_app_key(&mut self, mut vkey: &mut dyn io::Read) {
+        let vkey_app = VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PowdrCircuit<F>>(
+            &mut vkey,
+            SerdeFormat::Processed,
+            self.analyzed.clone().into(),
+        )
+        .unwrap();
+        self.vkey_app = Some(vkey_app);
+    }
+
     pub fn verification_key(&self) -> Result<VerifyingKey<G1Affine>, String> {
         if let Some(vkey) = self.vkey.as_ref() {
             return Ok(vkey.clone());
@@ -341,28 +361,16 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     }
 
     fn verification_key_aggr(&self) -> Result<VerifyingKey<G1Affine>, String> {
-        let circuit_app = PowdrCircuit::new(self.analyzed, self.fixed);
-        let publics = [circuit_app.instance_column::<Fr>()];
+        let vkey_app = match self.vkey_app.as_ref() {
+            Some(vkey_app) => vkey_app,
+            None => {
+                return Err("Aggregation verification key needs app verification key".to_string())
+            }
+        };
 
-        assert_eq!(publics.len(), 1);
-        if !publics[0].is_empty() {
-            unimplemented!("Public inputs are not supported yet");
-        }
-
-        log::info!("Generating VK for app snark...");
-        let vk_app = keygen_vk(&self.params, &circuit_app).unwrap();
-
-        self.verification_key_aggr_from_app_vk(vk_app)
-    }
-
-    fn verification_key_aggr_from_app_vk(
-        &self,
-        vk_app: VerifyingKey<G1Affine>,
-    ) -> Result<VerifyingKey<G1Affine>, String> {
-        log::info!("Generating circuit for compression snark...");
         let protocol_app = compile(
             &self.params,
-            &vk_app,
+            vkey_app,
             Config::kzg().with_num_instance(vec![]),
         );
         let empty_snark = aggregation::Snark::new_without_witness(protocol_app.clone());
@@ -489,22 +497,11 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     pub fn ethereum_verifier_aggr_snark(&self) -> Result<String, String> {
         assert!(matches!(self.proof_type, ProofType::SnarkAggr));
 
-        let vk_app = self.verification_key().unwrap();
-
-        let protocol_app = compile(
-            &self.params,
-            &vk_app,
-            Config::kzg().with_num_instance(vec![]),
-        );
-        let empty_snark = aggregation::Snark::new_without_witness(protocol_app.clone());
-        let agg_circuit =
-            aggregation::AggregationCircuit::new_without_witness(&self.params, [empty_snark]);
-
-        let vk_aggr = keygen_vk(&self.params, &agg_circuit).unwrap();
+        let vk = self.verification_key()?;
 
         let verifier = aggregation::gen_aggregation_solidity_verifier(
             &self.params,
-            &vk_aggr,
+            &vk,
             aggregation::AggregationCircuit::num_instance(),
             aggregation::AggregationCircuit::accumulator_indices(),
         );

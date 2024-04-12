@@ -16,6 +16,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
         _output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
+        verification_app_key: Option<&mut dyn io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         let proof_type = match options.as_str() {
@@ -32,6 +33,10 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
         if let Some(vk) = verification_key {
             halo2.add_verification_key(vk);
         }
+        if let Some(vk_app) = verification_app_key {
+            halo2.add_verification_app_key(vk_app);
+        }
+
         Ok(halo2)
     }
 
@@ -109,6 +114,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
         _output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
+        verification_app_key: Option<&mut dyn io::Read>,
         _options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         if setup.is_some() {
@@ -117,6 +123,10 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
         if verification_key.is_some() {
             return Err(Error::NoVerificationAvailable);
         }
+        if verification_app_key.is_some() {
+            return Err(Error::NoAggregationAvailable);
+        }
+
         Ok(Box::new(Halo2Mock { pil, fixed }))
     }
 }

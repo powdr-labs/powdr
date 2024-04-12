@@ -370,7 +370,7 @@ enum Commands {
         #[arg(default_value_t = String::new())]
         publics: String,
 
-        /// File containing the verification ley.
+        /// File containing the verification key.
         #[arg(long)]
         vkey: String,
 
@@ -408,6 +408,11 @@ enum Commands {
         /// This will be needed for SNARK verification keys but not for STARK.
         #[arg(long)]
         params: Option<String>,
+
+        /// File containing the verification key of a proof to be
+        /// verified recursively.
+        #[arg(long)]
+        vkey_app: Option<String>,
     },
 
     ExportVerifier {
@@ -700,6 +705,7 @@ fn run_command(command: Commands) {
             backend,
             backend_options,
             params,
+            vkey_app,
         } => {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
@@ -708,7 +714,8 @@ fn run_command(command: Commands) {
                 dir,
                 &backend,
                 backend_options,
-                params
+                params,
+                vkey_app
             ))
         }
         Commands::ExportVerifier {
@@ -755,11 +762,13 @@ fn verification_key<T: FieldElement>(
     backend_type: &BackendType,
     backend_options: Option<String>,
     params: Option<String>,
+    vkey_app: Option<String>,
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
         .read_constants(dir)
         .with_setup_file(params.map(PathBuf::from))
+        .with_vkey_app_file(vkey_app.map(PathBuf::from))
         .with_backend(*backend_type, backend_options);
 
     println!("Generating verification key...");

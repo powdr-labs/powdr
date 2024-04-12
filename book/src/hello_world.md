@@ -76,14 +76,15 @@ The proof can be verified by anyone via:
 powdr verify test_data/asm/book/hello_world.asm --field bn254 --backend halo2 --vkey "vkey.bin" --params "params.bin" --proof "hello_world_proof.bin"
 ```
 
+> Note that CLI proof verification works analogously for eSTARK, without the setup step and using the Goldilocks field instead of Bn254.
+
 Another aspect that was omitted in this example is the fact that this proof
-uses a Poseidon transcript and cannot be verified in a cheap way on Ethereum.
+uses a Poseidon transcript and cannot be verified in a cheap way on Ethereum,
+even though we can verify it efficiently via powdr.
 There are two ways to enable verification on Ethereum:
 
 1. Use a different transcript when generating this proof. See section
-   `hello_world_ethereum` for the same example targeting EVM verification.
+   `hello_world_ethereum` (TODO link) for the same example targeting EVM verification.
 2. Use proof aggregation to compress the proof we just generated using a
    circuit that can be verified on Ethereum. See section
-   `hello_world_ethereum_aggregation` to learn how to do that.
-
-> Note that CLI proof verification works analogously for eSTARK, without the setup step and using the Goldilocks field instead of Bn254.
+   `hello_world_ethereum_aggregation` (TODO link) to learn how to do that.

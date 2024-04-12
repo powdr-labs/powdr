@@ -90,6 +90,7 @@ pub trait BackendFactory<F: FieldElement> {
         output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
+        verification_app_key: Option<&mut dyn io::Read>,
         backend_options: BackendOptions,
     ) -> Result<Box<dyn Backend<'a, F> + 'a>, Error>;
 

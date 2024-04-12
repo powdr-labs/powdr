@@ -22,6 +22,7 @@ impl<F: FieldElement> BackendFactory<F> for PilStarkCliFactory {
         output_dir: Option<&'a Path>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
+        verification_app_key: Option<&mut dyn std::io::Read>,
         _options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         if setup.is_some() {
@@ -29,6 +30,9 @@ impl<F: FieldElement> BackendFactory<F> for PilStarkCliFactory {
         }
         if verification_key.is_some() {
             return Err(Error::NoVerificationAvailable);
+        }
+        if verification_app_key.is_some() {
+            return Err(Error::NoAggregationAvailable);
         }
         Ok(Box::new(PilStarkCli {
             analyzed,

@@ -45,6 +45,7 @@ impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
         _output_dir: Option<&std::path::Path>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
+        verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         if F::modulus().to_arbitrary_integer() != GoldilocksField::modulus().to_arbitrary_integer()
@@ -54,6 +55,10 @@ impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
 
         if setup.is_some() {
             return Err(Error::NoSetupAvailable);
+        }
+
+        if verification_app_key.is_some() {
+            return Err(Error::NoAggregationAvailable);
         }
 
         let proof_type: ProofType = ProofType::from(options);
