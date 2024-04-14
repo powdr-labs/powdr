@@ -540,10 +540,35 @@ fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
 }
 
 impl<E: Display> Expression<E> {
-    pub fn precedence(&self) -> ExpressionPrecedence {
+    pub fn binary_op_precedence(&self) -> ExpressionPrecedence {
+        use BinaryOperator::*;
         match self {
-            Expression::BinaryOperation(_, BinaryOperator::Mul, _) => 1,
-            Expression::BinaryOperation(_, BinaryOperator::Add, _) => 2,
+            // Unary - * ! & &mut
+            Expression::BinaryOperation(_, op, _) => match op {
+                Pow => 2,
+                // * / %
+                Mul | Div | Mod => 3,
+                // + -
+                Add | Sub => 4,
+                // << >>
+                ShiftLeft | ShiftRight => 5,
+                // &
+                BinaryAnd => 6,
+                // ^
+                BinaryXor => 7,
+                // |
+                BinaryOr => 8,
+                // == != < > <= >=
+                Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => 9,
+                // &&
+                LogicalAnd => 10,
+                // ||
+                LogicalOr => 11,
+                // .. ..=
+                // ??
+                // = += -= *= /= %= &= |= ^= <<= >>=
+                Identity => 12,
+            },
             _ => 0,
         }
     }
@@ -553,13 +578,7 @@ pub fn format_expression_with_precedence<E: Display>(
     e: &Box<Expression<E>>,
     parent_precedence: ExpressionPrecedence,
 ) -> String {
-    println!(
-        "expression: {}, precedence: {}, parent precedence: {}",
-        e,
-        e.precedence(),
-        parent_precedence
-    );
-    if e.precedence() > parent_precedence {
+    if e.binary_op_precedence() > parent_precedence {
         format!("({})", e)
     } else {
         format!("{}", e)
@@ -579,9 +598,9 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::BinaryOperation(left, op, right) => write!(
                 f,
                 "{} {} {}",
-                format_expression_with_precedence(left, self.precedence()),
+                format_expression_with_precedence(left, self.binary_op_precedence()),
                 op,
-                format_expression_with_precedence(right, self.precedence())
+                format_expression_with_precedence(right, self.binary_op_precedence())
             ),
             Expression::UnaryOperation(op, exp) => {
                 if op.is_prefix() {
@@ -898,21 +917,123 @@ mod tests {
         assert_eq!(SymbolPath::from(p.join(s)).to_string(), "::abc::y");
     }
 
-    #[test]
-    fn optimise_parentheses() {
-        let [x, y, z] = ['x', 'y', 'z'].map(|i| {
-            Box::new(Expression::<NamespacedPolynomialReference>::PublicReference(i.to_string()))
-        });
-        let e = Expression::BinaryOperation(
-            Box::new(Expression::BinaryOperation(
+    mod binary_op_parentheses {
+        use super::*;
+
+        #[test]
+        fn add_mul() {
+            // Test 1: (x + y) * z
+            let [x, y, z] = ['x', 'y', 'z'].map(|i| {
+                Box::new(
+                    Expression::<NamespacedPolynomialReference>::PublicReference(i.to_string()),
+                )
+            });
+            let e1 = Expression::BinaryOperation(
+                Box::new(Expression::BinaryOperation(
+                    x.clone(),
+                    BinaryOperator::Add,
+                    y.clone(),
+                )),
+                BinaryOperator::Mul,
+                z.clone(),
+            );
+            assert_eq!(e1.to_string(), format!("({} + {}) * {}", x, y, z));
+
+            // Test 2: x * (y + z)
+            let e2 = Expression::BinaryOperation(
+                x.clone(),
+                BinaryOperator::Mul,
+                Box::new(Expression::BinaryOperation(
+                    y.clone(),
+                    BinaryOperator::Add,
+                    z.clone(),
+                )),
+            );
+            assert_eq!(e2.to_string(), format!("{} * ({} + {})", x, y, z));
+
+            // Test 3: x * y + z
+            let e3 = Expression::BinaryOperation(
+                Box::new(Expression::BinaryOperation(
+                    x.clone(),
+                    BinaryOperator::Mul,
+                    y.clone(),
+                )),
+                BinaryOperator::Add,
+                z.clone(),
+            );
+            assert_eq!(e3.to_string(), format!("{} * {} + {}", x, y, z));
+
+            // Test 4: x + y * z
+            let e4 = Expression::BinaryOperation(
                 x.clone(),
                 BinaryOperator::Add,
-                y.clone(),
-            )),
-            BinaryOperator::Mul,
-            z.clone(),
-        );
+                Box::new(Expression::BinaryOperation(
+                    y.clone(),
+                    BinaryOperator::Mul,
+                    z.clone(),
+                )),
+            );
+            assert_eq!(e4.to_string(), format!("{} + {} * {}", x, y, z));
+        }
 
-        assert_eq!(e.to_string(), format!("({} + {}) * {}", x, y, z));
+        #[test]
+        fn complex_expression() {
+            // a | b * (c << d + e) & (f ^ g) = h * (i + j)
+            let [a, b, c, d, e, f, g, h, i, j] = ('a'..='j')
+                .map(|i| {
+                    Box::new(
+                        Expression::<NamespacedPolynomialReference>::PublicReference(i.to_string()),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap();
+
+            let expr = Expression::BinaryOperation(
+                Box::new(Expression::BinaryOperation(
+                    a.clone(),
+                    BinaryOperator::BinaryOr,
+                    Box::new(Expression::BinaryOperation(
+                        Box::new(Expression::BinaryOperation(
+                            b.clone(),
+                            BinaryOperator::Mul,
+                            Box::new(Expression::BinaryOperation(
+                                c.clone(),
+                                BinaryOperator::ShiftLeft,
+                                Box::new(Expression::BinaryOperation(
+                                    d.clone(),
+                                    BinaryOperator::Add,
+                                    e.clone(),
+                                )),
+                            )),
+                        )),
+                        BinaryOperator::BinaryAnd,
+                        Box::new(Expression::BinaryOperation(
+                            f.clone(),
+                            BinaryOperator::BinaryXor,
+                            g.clone(),
+                        )),
+                    )),
+                )),
+                BinaryOperator::Identity,
+                Box::new(Expression::BinaryOperation(
+                    h.clone(),
+                    BinaryOperator::Mul,
+                    Box::new(Expression::BinaryOperation(
+                        i.clone(),
+                        BinaryOperator::Add,
+                        j.clone(),
+                    )),
+                )),
+            );
+
+            assert_eq!(
+                expr.to_string(),
+                format!(
+                    "{} | {} * ({} << {} + {}) & ({} ^ {}) = {} * ({} + {})",
+                    a, b, c, d, e, f, g, h, i, j
+                )
+            );
+        }
     }
 }
