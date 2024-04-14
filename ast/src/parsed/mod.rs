@@ -307,6 +307,8 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     BlockExpression(Vec<StatementInsideBlock<Ref>>, Box<Expression<Ref>>),
 }
 
+pub type ExpressionPrecedence = u8;
+
 impl<Ref> Expression<Ref> {
     pub fn new_binary(left: Self, op: BinaryOperator, right: Self) -> Self {
         Expression::BinaryOperation(Box::new(left), op, Box::new(right))
