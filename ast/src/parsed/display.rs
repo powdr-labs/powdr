@@ -564,6 +564,33 @@ fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
     format!("{}", list.into_iter().format(", "))
 }
 
+impl<E: Display> Expression<E> {
+    pub fn precedence(&self) -> ExpressionPrecedence {
+        match self {
+            Expression::BinaryOperation(_, BinaryOperator::Mul, _) => 1,
+            Expression::BinaryOperation(_, BinaryOperator::Add, _) => 2,
+            _ => 0,
+        }
+    }
+}
+
+pub fn format_expression_with_precedence<E: Display>(
+    e: &Box<Expression<E>>,
+    parent_precedence: ExpressionPrecedence,
+) -> String {
+    println!(
+        "expression: {}, precedence: {}, parent precedence: {}",
+        e,
+        e.precedence(),
+        parent_precedence
+    );
+    if e.precedence() > parent_precedence {
+        format!("({})", e)
+    } else {
+        format!("{}", e)
+    }
+}
+
 impl<Ref: Display> Display for Expression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
@@ -574,7 +601,13 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::Tuple(items) => write!(f, "({})", format_list(items)),
             Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
-            Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
+            Expression::BinaryOperation(left, op, right) => write!(
+                f,
+                "{} {} {}",
+                format_expression_with_precedence(left, self.precedence()),
+                op,
+                format_expression_with_precedence(right, self.precedence())
+            ),
             Expression::UnaryOperation(op, exp) => {
                 if op.is_prefix() {
                     write!(f, "{op}{exp}")
@@ -908,6 +941,6 @@ mod tests {
             z.clone(),
         );
 
-        assert_eq!(e.to_string(), format!("(({} + {}) * {})", x, y, z));
+        assert_eq!(e.to_string(), format!("({} + {}) * {}", x, y, z));
     }
 }
