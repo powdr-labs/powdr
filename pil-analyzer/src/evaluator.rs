@@ -388,7 +388,7 @@ impl<'a, T: Display> Display for Value<'a, T> {
 
 #[derive(Clone, Debug)]
 pub struct Closure<'a, T> {
-    pub lambda: &'a LambdaExpression<Reference>,
+    pub lambda: &'a LambdaExpression<Expression>,
     pub environment: Vec<Arc<Value<'a, T>>>,
     pub type_args: HashMap<String, Type>,
 }
