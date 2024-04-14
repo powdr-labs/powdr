@@ -575,7 +575,7 @@ impl<E: Display> Expression<E> {
 }
 
 pub fn format_expression_with_precedence<E: Display>(
-    e: &Box<Expression<E>>,
+    e: &Expression<E>,
     parent_precedence: ExpressionPrecedence,
 ) -> String {
     if e.binary_op_precedence() > parent_precedence {
