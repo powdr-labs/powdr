@@ -45,28 +45,28 @@ pub fn test_continuations(case: &str) {
 
 #[test]
 #[ignore = "Too slow"]
-fn test_trivial() {
+fn trivial() {
     let case = "trivial";
     verify_riscv_crate(case, Default::default(), &Runtime::base())
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn test_zero_with_values() {
+fn zero_with_values() {
     let case = "zero_with_values";
     verify_riscv_crate(case, Default::default(), &Runtime::base())
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn test_poseidon_gl() {
+fn poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor";
     verify_riscv_crate(case, Default::default(), &Runtime::base().with_poseidon());
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn test_sum() {
+fn sum() {
     let case = "sum";
     verify_riscv_crate(
         case,
@@ -77,7 +77,7 @@ fn test_sum() {
 
 #[test]
 #[ignore = "Too slow"]
-fn test_byte_access() {
+fn byte_access() {
     let case = "byte_access";
     verify_riscv_crate(
         case,
@@ -88,7 +88,7 @@ fn test_byte_access() {
 
 #[test]
 #[ignore = "Too slow"]
-fn test_double_word() {
+fn double_word() {
     let case = "double_word";
     let a0 = 0x01000000u32;
     let a1 = 0x010000ffu32;
@@ -114,21 +114,21 @@ fn test_double_word() {
 
 #[test]
 #[ignore = "Too slow"]
-fn test_memfuncs() {
+fn memfuncs() {
     let case = "memfuncs";
     verify_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn test_keccak() {
+fn keccak() {
     let case = "keccak";
     verify_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn test_vec_median() {
+fn vec_median() {
     let case = "vec_median";
     verify_riscv_crate(
         case,
@@ -142,14 +142,14 @@ fn test_vec_median() {
 
 #[test]
 #[ignore = "Too slow"]
-fn test_password() {
+fn password() {
     let case = "password_checker";
     verify_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn test_function_pointer() {
+fn function_pointer() {
     let case = "function_pointer";
     verify_riscv_crate(
         case,
@@ -168,7 +168,7 @@ static BYTECODE: &str = "61029a60005260206000f3";
 #[cfg(feature = "complex-tests")]
 #[ignore = "Too slow"]
 #[test]
-fn test_evm() {
+fn evm() {
     let case = "evm";
     let bytes = hex::decode(BYTECODE).unwrap();
 
@@ -177,7 +177,7 @@ fn test_evm() {
 
 #[ignore = "Too slow"]
 #[test]
-fn test_sum_serde() {
+fn sum_serde() {
     let case = "sum_serde";
 
     let data: Vec<u32> = vec![1, 2, 8, 5];
@@ -196,13 +196,13 @@ fn test_sum_serde() {
 #[should_panic(
     expected = "called `Result::unwrap()` on an `Err` value: \"Error accessing prover inputs: Index 0 out of bounds 0\""
 )]
-fn test_print() {
+fn print() {
     let case = "print";
     verify_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
 #[test]
-fn test_many_chunks_dry() {
+fn many_chunks_dry() {
     // Compiles and runs the many_chunks example with continuations, just computing
     // and validating the bootloader inputs.
     // Doesn't do a full witness generation, verification, or proving.
@@ -223,13 +223,13 @@ fn test_many_chunks_dry() {
 
 #[test]
 #[ignore = "Too slow"]
-fn test_many_chunks() {
+fn many_chunks() {
     test_continuations("many_chunks")
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn test_many_chunks_memory() {
+fn many_chunks_memory() {
     test_continuations("many_chunks_memory")
 }
 
