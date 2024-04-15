@@ -34,6 +34,7 @@ fn u8_array_to_fe_array<F: FieldElement>(x_bytes: &[u8]) -> [F; 8] {
     x
 }
 
+/// double point in secp256k1
 pub fn ec_double<F: FieldElement>(x: &[F], y: &[F]) -> ([F; 8], [F; 8]) {
     assert_eq!(x.len(), 8);
     assert_eq!(y.len(), 8);
@@ -52,6 +53,7 @@ pub fn ec_double<F: FieldElement>(x: &[F], y: &[F]) -> ([F; 8], [F; 8]) {
     (u8_array_to_fe_array(x_res), u8_array_to_fe_array(y_res))
 }
 
+/// add two points in secp256k1
 pub fn ec_add<F: FieldElement>(x1: &[F], y1: &[F], x2: &[F], y2: &[F]) -> ([F; 8], [F; 8]) {
     assert_eq!(x1.len(), 8);
     assert_eq!(y1.len(), 8);
@@ -81,31 +83,33 @@ pub fn ec_add<F: FieldElement>(x1: &[F], y1: &[F], x2: &[F], y2: &[F]) -> ([F; 8
     (u8_array_to_fe_array(x_res), u8_array_to_fe_array(y_res))
 }
 
-pub fn affine_256<F: FieldElement>(x1: &[F], y1: &[F], x2: &[F]) -> ([F; 8], [F; 8]) {
-    assert_eq!(x1.len(), 8);
-    assert_eq!(y1.len(), 8);
-    assert_eq!(x2.len(), 8);
+/// Calculates a * b + c for 256 bit values.
+/// Result is returned as a tuple of 256 bit values (hi, low).
+pub fn affine_256<F: FieldElement>(a: &[F], b: &[F], c: &[F]) -> ([F; 8], [F; 8]) {
+    assert_eq!(a.len(), 8);
+    assert_eq!(b.len(), 8);
+    assert_eq!(c.len(), 8);
 
-    let x1: BigUint = x1
+    let a: BigUint = a
         .iter()
         .enumerate()
         .map(|(i, fe)| fe.to_arbitrary_integer() << (i * 32))
         .reduce(|acc, b| acc + b)
         .unwrap();
-    let y1: BigUint = y1
+    let b: BigUint = b
         .iter()
         .enumerate()
         .map(|(i, fe)| fe.to_arbitrary_integer() << (i * 32))
         .reduce(|acc, b| acc + b)
         .unwrap();
-    let x2: BigUint = x2
+    let c: BigUint = c
         .iter()
         .enumerate()
         .map(|(i, fe)| fe.to_arbitrary_integer() << (i * 32))
         .reduce(|acc, b| acc + b)
         .unwrap();
 
-    let res = x1 * y1 + x2;
+    let res = a * b + c;
     let res_hi = res.clone() >> 256;
     let res_lo: BigUint = res & ((BigUint::try_from(1).unwrap() << 256) - 1);
     let mut hi: [F; 8] = Default::default();
