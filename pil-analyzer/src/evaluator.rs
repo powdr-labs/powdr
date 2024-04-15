@@ -388,7 +388,7 @@ impl<'a, T: Display> Display for Value<'a, T> {
 
 #[derive(Clone, Debug)]
 pub struct Closure<'a, T> {
-    pub lambda: &'a LambdaExpression<Reference>,
+    pub lambda: &'a LambdaExpression<Expression>,
     pub environment: Vec<Arc<Value<'a, T>>>,
     pub type_args: HashMap<String, Type>,
 }
@@ -901,14 +901,12 @@ mod internal {
                 Err(EvalError::FailedAssertion(msg))?
             }
             BuiltinFunction::Print => {
-                let msg = match arguments.pop().unwrap().as_ref() {
-                    Value::String(msg) => msg.clone(),
-                    v => panic!(
-                        "Expected string for std::debug::print, but got {v}: {}",
-                        v.type_formatted()
-                    ),
-                };
-                print!("{msg}");
+                let msg = arguments.pop().unwrap();
+                if let Value::String(s) = msg.as_ref() {
+                    print!("{s}");
+                } else {
+                    print!("{msg}");
+                }
                 Value::Array(Default::default()).into()
             }
             BuiltinFunction::ToExpr => {
@@ -1161,6 +1159,21 @@ mod test {
             namespace std::debug(8);
             let print = 2;
             let N = std::debug::print("test output\n");
+        "#;
+        parse_and_evaluate_symbol(src, "std::debug::N");
+    }
+
+    #[test]
+    pub fn debug_print_complex() {
+        let src = r#"
+            namespace std::debug(8);
+            let print = 2;
+            let t: fe = 9;
+            let x: int = 2;
+            let N = {
+                let _ = std::debug::print((t, [x, 3], "test output\n"));
+                std::debug::print("\n")
+            };
         "#;
         parse_and_evaluate_symbol(src, "std::debug::N");
     }

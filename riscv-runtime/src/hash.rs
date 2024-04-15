@@ -8,7 +8,7 @@ const GOLDILOCKS: u64 = 0xffffffff00000001;
 /// the last 4 elements are the "cap"
 /// and the return value is placed in data[0:4].
 /// This function will panic if any of the u64 elements doesn't fit the Goldilocks field.
-pub fn poseidon_gl(mut data: [u64; 12]) -> [u64; 4] {
+pub fn poseidon_gl(data: [u64; 12]) -> [u64; 4] {
     for &n in data.iter() {
         assert!(n < GOLDILOCKS);
     }

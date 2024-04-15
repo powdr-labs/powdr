@@ -9,14 +9,14 @@ Let's write [a minimal VM](https://github.com/powdr-labs/powdr/blob/main/test_da
 Then let's generate a proof of execution for the valid prover input `0` (since for `0 + 1 - 1 == 0`)
 
 ```console
-powdr pil hello_world.asm --field bn254 --force --inputs 0 --prove-with halo2
+powdr pil test_data/asm/book/hello_world.asm --field bn254 --inputs 0 --prove-with halo2
 ```
 
-We observe that a proof was created at `proof.bin`.
+We observe that a proof was created at `hello_world_proof.bin`.
 Now let's try for the invalid input `1`
 
 ```console
-powdr pil hello_world.asm --field bn254 --force --inputs 1 --prove-with halo2
+powdr pil test_data/asm/book/hello_world.asm --field bn254 --inputs 1 --prove-with halo2
 ```
 
 We observe that witness generation fails, and no proof is created.
@@ -61,19 +61,19 @@ needed for the proof, stored respectively in `hello_world_constants.bin` and
 `hello_world_commits.bin`.
 
 ```console
-powdr pil hello_world.asm --field bn254 --force --inputs 0
+powdr pil test_data/asm/book/hello_world.asm --field bn254 --force --inputs 0
 ```
 
 We can now generate the proof:
 
 ```console
-powdr prove hello_world.asm --field bn254 --backend halo2 --params "params.bin" --vkey "vkey.bin"
+powdr prove test_data/asm/book/hello_world.asm --field bn254 --backend halo2 --params "params.bin" --vkey "vkey.bin"
 ```
 
 The proof can be verified by anyone via:
 
 ```console
-powdr verify hello_world.asm --field bn254 --backend halo2 --vkey "vkey.bin" --params "params.bin" --proof "hello_world_proof.bin"
+powdr verify test_data/asm/book/hello_world.asm --field bn254 --backend halo2 --vkey "vkey.bin" --params "params.bin" --proof "hello_world_proof.bin"
 ```
 
 > Note that CLI proof verification works analogously for eSTARK, without the setup step and using the Goldilocks field instead of Bn254.
