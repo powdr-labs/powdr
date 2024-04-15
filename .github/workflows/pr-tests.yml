@@ -123,7 +123,7 @@ jobs:
       # Number threads is set to 1 because the runner does not have enough memory for more.
       run: |
         if [[ "${{ matrix.test }}" == "subset1" ]]; then
-          TESTS="test(=arith_test)"
+          TESTS="test(=arith_test)" | test(=test_vec_median_estark_polygon)
         elif [[ "${{ matrix.test }}" == "subset2" ]]; then
           TESTS="test(=test_keccak) | test(=test_vec_median) | test(=instruction_tests::addi) | test(=test_many_chunks) | test(=test_sum_serde)"
         fi

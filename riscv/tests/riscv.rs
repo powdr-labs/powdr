@@ -129,7 +129,7 @@ fn test_keccak() {
 #[cfg(feature = "estark-polygon")]
 #[test]
 #[ignore = "Too slow"]
-fn test_vec_median() {
+fn test_vec_median_estark_polygon() {
     let case = "vec_median";
     verify_riscv_crate_with_backend(
         case,
@@ -139,6 +139,20 @@ fn test_vec_median() {
             .collect(),
         &Runtime::base(),
         BackendType::EStarkPolygon,
+    );
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn test_vec_median() {
+    let case = "vec_median";
+    verify_riscv_crate(
+        case,
+        [5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]
+            .into_iter()
+            .map(|x| x.into())
+            .collect(),
+        &Runtime::base(),
     );
 }
 
