@@ -224,7 +224,7 @@ impl Runtime {
             ]
             .into_iter()
             .enumerate()
-            .map(|(i, fe)| format!("{} <=X= {fe};", reg(i as u8 + 2)))
+            .map(|(i, fe)| format!("{} <=X= {fe};", reg(i + 2)))
             // store y in registers 10..18
             .chain(
                 [
@@ -239,7 +239,7 @@ impl Runtime {
                 ]
                 .into_iter()
                 .enumerate()
-                .map(|(i, fe)| format!("{} <=X= {fe};", reg(i as u8 + 10))),
+                .map(|(i, fe)| format!("{} <=X= {fe};", reg(i + 10))),
             )
             // call machine instruction
             .chain(std::iter::once("ec_double;".to_string()))
@@ -507,29 +507,29 @@ impl TryFrom<&[&str]> for Runtime {
 }
 
 /// Helper function for register names used in instruction params
-fn reg(mut idx: u8) -> String {
+fn reg(mut idx: usize) -> String {
     // s* callee saved registers
     static SAVED_REGS: [&str; 12] = [
         "x8", "x9", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
     ];
 
     // first, use syscall_registers
-    if idx < SYSCALL_REGISTERS.len() as u8 {
-        return SYSCALL_REGISTERS[idx as usize].to_string();
+    if idx < SYSCALL_REGISTERS.len() {
+        return SYSCALL_REGISTERS[idx].to_string();
     }
-    idx -= SYSCALL_REGISTERS.len() as u8;
+    idx -= SYSCALL_REGISTERS.len();
     // second, use s* registers
-    if idx < SAVED_REGS.len() as u8 {
-        return SAVED_REGS[idx as usize].to_string();
+    if idx < SAVED_REGS.len() {
+        return SAVED_REGS[idx].to_string();
     }
-    idx -= SAVED_REGS.len() as u8;
+    idx -= SAVED_REGS.len();
     idx += 1;
     // lastly, use extra submachine registers
     format!("{EXTRA_REG_PREFIX}{idx}")
 }
 
 /// Helper function to generate params (i.e., "A, B -> C, D") for instruction declarations using registers
-fn instr_register_params(start_idx: u8, inputs: u8, outputs: u8) -> String {
+fn instr_register_params(start_idx: usize, inputs: usize, outputs: usize) -> String {
     format!(
         "{} -> {}",
         (start_idx..start_idx + inputs).map(reg).join(", "),

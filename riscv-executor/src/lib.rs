@@ -736,7 +736,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let result = poseidon_gl::poseidon_gl(&inputs);
                 (0..4).for_each(|i| {
                     self.proc
-                        .set_reg(&register_by_idx(i), Elem::Field(result[i as usize]))
+                        .set_reg(&register_by_idx(i), Elem::Field(result[i]))
                 });
                 vec![]
             }
@@ -756,11 +756,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // store result in registers
                 (0..8).for_each(|i| {
                     self.proc
-                        .set_reg(&register_by_idx(i + 3), Elem::Field(result.0[i as usize]))
+                        .set_reg(&register_by_idx(i + 3), Elem::Field(result.0[i]))
                 });
                 (0..8).for_each(|i| {
                     self.proc
-                        .set_reg(&register_by_idx(i + 11), Elem::Field(result.1[i as usize]))
+                        .set_reg(&register_by_idx(i + 11), Elem::Field(result.1[i]))
                 });
                 vec![]
             }
@@ -783,11 +783,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // store result in registers
                 (0..8).for_each(|i| {
                     self.proc
-                        .set_reg(&register_by_idx(i + 4), Elem::Field(result.0[i as usize]))
+                        .set_reg(&register_by_idx(i + 4), Elem::Field(result.0[i]))
                 });
                 (0..8).for_each(|i| {
                     self.proc
-                        .set_reg(&register_by_idx(i + 12), Elem::Field(result.1[i as usize]))
+                        .set_reg(&register_by_idx(i + 12), Elem::Field(result.1[i]))
                 });
                 vec![]
             }
@@ -804,11 +804,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // store result in registers
                 (0..8).for_each(|i| {
                     self.proc
-                        .set_reg(&register_by_idx(i + 2), Elem::Field(result.0[i as usize]))
+                        .set_reg(&register_by_idx(i + 2), Elem::Field(result.0[i]))
                 });
                 (0..8).for_each(|i| {
                     self.proc
-                        .set_reg(&register_by_idx(i + 10), Elem::Field(result.1[i as usize]))
+                        .set_reg(&register_by_idx(i + 10), Elem::Field(result.1[i]))
                 });
                 vec![]
             }
@@ -1079,22 +1079,23 @@ pub fn execute<F: FieldElement>(
 
 /// FIXME: copied from `riscv/runtime.rs` instead of adding dependency.
 /// Helper function for register names used in submachine instruction params.
-fn register_by_idx(mut idx: u8) -> String {
+fn register_by_idx(mut idx: usize) -> String {
     // s* callee saved registers
     static SAVED_REGS: [&str; 12] = [
         "x8", "x9", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
     ];
 
     // first, use syscall_registers
-    if idx < SYSCALL_REGISTERS.len() as u8 {
-        return SYSCALL_REGISTERS[idx as usize].to_string();
+    if idx < SYSCALL_REGISTERS.len() {
+        return SYSCALL_REGISTERS[idx].to_string();
     }
-    idx -= SYSCALL_REGISTERS.len() as u8;
+    idx -= SYSCALL_REGISTERS.len();
     // second, use s* registers
-    if idx < SAVED_REGS.len() as u8 {
-        return SAVED_REGS[idx as usize].to_string();
+    if idx < SAVED_REGS.len() {
+        return SAVED_REGS[idx].to_string();
     }
-    idx -= SAVED_REGS.len() as u8 + 1;
+    idx -= SAVED_REGS.len();
+    idx += 1;
     // lastly, use extra submachine registers
     format!("xtra{idx}")
 }
