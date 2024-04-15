@@ -914,7 +914,7 @@ mod test {
     use powdr_backend::BackendType;
 
     #[test]
-    fn test_simple_sum() {
+    fn simple_sum() {
         let output_dir = tempfile::tempdir().unwrap();
         let output_dir_str = output_dir.path().to_string_lossy().to_string();
 

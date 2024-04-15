@@ -203,7 +203,7 @@ fn vm_to_vm_to_vm() {
 }
 
 #[test]
-fn test_mem_read_write() {
+fn mem_read_write() {
     let f = "asm/mem_read_write.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
@@ -211,7 +211,7 @@ fn test_mem_read_write() {
 }
 
 #[test]
-fn test_mem_read_write_no_memory_accesses() {
+fn mem_read_write_no_memory_accesses() {
     let f = "asm/mem_read_write_no_memory_accesses.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
@@ -219,7 +219,7 @@ fn test_mem_read_write_no_memory_accesses() {
 }
 
 #[test]
-fn test_mem_read_write_with_bootloader() {
+fn mem_read_write_with_bootloader() {
     let f = "asm/mem_read_write_with_bootloader.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
@@ -227,7 +227,7 @@ fn test_mem_read_write_with_bootloader() {
 }
 
 #[test]
-fn test_mem_read_write_large_diffs() {
+fn mem_read_write_large_diffs() {
     let f = "asm/mem_read_write_large_diffs.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
@@ -235,7 +235,7 @@ fn test_mem_read_write_large_diffs() {
 }
 
 #[test]
-fn test_multi_assign() {
+fn multi_assign() {
     let f = "asm/multi_assign.asm";
     let i = [7];
     verify_asm(f, slice_to_vec(&i));
@@ -244,7 +244,7 @@ fn test_multi_assign() {
 }
 
 #[test]
-fn test_multi_return() {
+fn multi_return() {
     let f = "asm/multi_return.asm";
     let i = [];
     verify_asm(f, slice_to_vec(&i));
@@ -254,7 +254,7 @@ fn test_multi_return() {
 
 #[test]
 #[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Assignment register `Z` is incompatible with `square_and_double(3)`. Try using `<==` with no explicit assignment registers.\", \"Assignment register `Y` is incompatible with `square_and_double(3)`. Try using `<==` with no explicit assignment registers.\"]"]
-fn test_multi_return_wrong_assignment_registers() {
+fn multi_return_wrong_assignment_registers() {
     let f = "asm/multi_return_wrong_assignment_registers.asm";
     let i = [];
     verify_asm(f, slice_to_vec(&i));
@@ -262,14 +262,14 @@ fn test_multi_return_wrong_assignment_registers() {
 
 #[test]
 #[should_panic = "Result::unwrap()` on an `Err` value: [\"Mismatched number of registers for assignment A, B <=Y= square_and_double(3);\"]"]
-fn test_multi_return_wrong_assignment_register_length() {
+fn multi_return_wrong_assignment_register_length() {
     let f = "asm/multi_return_wrong_assignment_register_length.asm";
     let i = [];
     verify_asm(f, slice_to_vec(&i));
 }
 
 #[test]
-fn test_bit_access() {
+fn bit_access() {
     let f = "asm/bit_access.asm";
     let i = [20];
     verify_asm(f, slice_to_vec(&i));
@@ -281,7 +281,7 @@ fn test_bit_access() {
 }
 
 #[test]
-fn test_sqrt() {
+fn sqrt() {
     let f = "asm/sqrt.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
@@ -449,7 +449,7 @@ fn hello_world_asm_fail() {
 
 #[test]
 #[should_panic = "FailedAssertion(\"This should fail.\")"]
-fn test_failing_assertion() {
+fn failing_assertion() {
     let f = "asm/failing_assertion.asm";
     let i = [];
     verify_asm(f, slice_to_vec(&i));
