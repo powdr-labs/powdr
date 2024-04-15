@@ -41,7 +41,7 @@ struct SubMachine {
     instance_name: String,
     /// Instruction declarations
     instructions: Vec<MachineStatement>,
-    /// Number of extra registers need by this machine's instruction declarations.
+    /// Number of extra registers needed by this machine's instruction declarations.
     /// 26 of the RISC-V registers are available for use, these are added to that number.
     extra_registers: u8,
     /// TODO: only needed because of witgen requiring that each machine be called at least once
@@ -243,7 +243,7 @@ impl Runtime {
             )
             // call machine instruction
             .chain(std::iter::once("ec_double;".to_string()))
-            // zero out output registers
+            // set output registers to zero
             .chain((2..18).map(|i| format!("{} <=X= 0;", reg(i)))),
         );
 
@@ -406,7 +406,7 @@ impl Runtime {
             .max()
             .unwrap_or(0);
 
-        (1..=count)
+        (0..count)
             .map(|i| format!("reg {EXTRA_REG_PREFIX}{i};"))
             .collect()
     }
@@ -523,7 +523,6 @@ fn reg(mut idx: usize) -> String {
         return SAVED_REGS[idx].to_string();
     }
     idx -= SAVED_REGS.len();
-    idx += 1;
     // lastly, use extra submachine registers
     format!("{EXTRA_REG_PREFIX}{idx}")
 }

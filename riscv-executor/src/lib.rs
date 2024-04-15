@@ -1095,7 +1095,6 @@ fn register_by_idx(mut idx: usize) -> String {
         return SAVED_REGS[idx].to_string();
     }
     idx -= SAVED_REGS.len();
-    idx += 1;
     // lastly, use extra submachine registers
     format!("xtra{idx}")
 }
