@@ -49,7 +49,7 @@ pub fn ec_double<F: FieldElement>(x: &[F], y: &[F]) -> ([F; 8], [F; 8]) {
     let ep_doubled = AffinePoint::from(pp.double()).to_encoded_point(false);
     let x_res = ep_doubled.x().unwrap();
     let y_res = ep_doubled.y().unwrap();
-    (u8_array_to_fe_array(&x_res), u8_array_to_fe_array(&y_res))
+    (u8_array_to_fe_array(x_res), u8_array_to_fe_array(y_res))
 }
 
 pub fn ec_add<F: FieldElement>(x1: &[F], y1: &[F], x2: &[F], y2: &[F]) -> ([F; 8], [F; 8]) {
@@ -78,7 +78,7 @@ pub fn ec_add<F: FieldElement>(x1: &[F], y1: &[F], x2: &[F], y2: &[F]) -> ([F; 8
     let ep_sum = AffinePoint::from(pp1 + pp2).to_encoded_point(false);
     let x_res = ep_sum.x().unwrap();
     let y_res = ep_sum.y().unwrap();
-    (u8_array_to_fe_array(&x_res), u8_array_to_fe_array(&y_res))
+    (u8_array_to_fe_array(x_res), u8_array_to_fe_array(y_res))
 }
 
 pub fn affine_256<F: FieldElement>(x1: &[F], y1: &[F], x2: &[F]) -> ([F; 8], [F; 8]) {
@@ -111,8 +111,8 @@ pub fn affine_256<F: FieldElement>(x1: &[F], y1: &[F], x2: &[F]) -> ([F; 8], [F;
     let mut hi: [F; 8] = Default::default();
     let mut lo: [F; 8] = Default::default();
     for i in 0..8 {
-        hi[i] = F::try_from((res_hi.clone() >> (i * 32)) & 0xffffffffu64).unwrap();
-        lo[i] = F::try_from((res_lo.clone() >> (i * 32)) & 0xffffffffu64).unwrap();
+        hi[i] = F::from((res_hi.clone() >> (i * 32)) & 0xffffffffu64);
+        lo[i] = F::from((res_lo.clone() >> (i * 32)) & 0xffffffffu64);
     }
 
     (hi, lo)
