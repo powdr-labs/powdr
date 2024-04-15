@@ -6,9 +6,6 @@ use pretty_assertions::assert_eq;
 
 #[test]
 fn parse_print_analyzed() {
-    // Re-add this line once we can parse the turbofish operator.
-    //    col witness X_free_value(__i) query match std::prover::eval(T.pc) { 0 => std::prover::Query::Input(1), 3 => std::prover::Query::Input(std::convert::int::<fe>(std::prover::eval(T.CNT) + 1)), 7 => std::prover::Query::Input(0), };
-
     // This is rather a test for the Display trait than for the analyzer.
     let input = r#"constant %N = 65536;
 public P = T.pc(2);
@@ -52,6 +49,7 @@ namespace T(65536);
     T.A' = (((T.first_step' * 0) + (T.reg_write_X_A * T.X)) + ((1 - (T.first_step' + T.reg_write_X_A)) * T.A));
     col witness X_free_value(__i) query match std::prover::eval(T.pc) {
         0 => std::prover::Query::Input(1),
+        3 => std::prover::Query::Input(std::convert::int::<fe>((std::prover::eval(T.CNT) + 1))),
         7 => std::prover::Query::Input(0),
     };
     col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
@@ -697,4 +695,21 @@ fn multi_ellipsis() {
     });
 ";
     assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+}
+
+#[test]
+fn namespace_no_degree() {
+    let input = "namespace X;
+    let y: int = 7;
+namespace T(8);
+    let k = X::y;
+";
+    let expected = "namespace X(8);
+    let y: int = 7;
+namespace T(8);
+    let k: int = X.y;
+";
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.degree, Some(8));
+    assert_eq!(expected, analyzed.to_string());
 }

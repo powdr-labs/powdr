@@ -741,10 +741,7 @@ impl<T: FieldElement> VMConverter<T> {
                 vec![(1.into(), AffineExpressionComponent::Register(name.clone()))]
             }
             Expression::Number(value, _) => {
-                vec![(
-                    T::try_from(value).unwrap(),
-                    AffineExpressionComponent::Constant,
-                )]
+                vec![(T::from(value), AffineExpressionComponent::Constant)]
             }
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),

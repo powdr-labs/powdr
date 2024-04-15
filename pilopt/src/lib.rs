@@ -191,9 +191,7 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .iter()
         .filter(|(p, _)| !p.is_array())
         .filter_map(|(poly, definition)| {
-            let Some(definition) = definition else {
-                return None;
-            };
+            let definition = definition.as_ref()?;
             let value = constant_value(definition)?;
             log::debug!(
                 "Determined fixed column {} to be constant {value}. Removing.",

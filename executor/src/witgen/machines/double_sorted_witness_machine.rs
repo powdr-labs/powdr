@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::once;
 
 use itertools::Itertools;
-use num_traits::Zero;
 
 use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineExpression;
@@ -380,13 +379,6 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             addr.to_arbitrary_integer(),
             value_expr
         );
-        if !(addr.clone().to_arbitrary_integer() % 4u32).is_zero() {
-            panic!(
-                "Unaligned memory access: addr={:x}, step={step}, write: {is_write}, value: {}",
-                addr.to_arbitrary_integer(),
-                value_expr
-            );
-        }
 
         // TODO this does not check any of the failure modes
         let mut assignments = EvalValue::complete(vec![]);

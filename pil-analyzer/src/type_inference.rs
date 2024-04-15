@@ -22,13 +22,15 @@ use crate::{
 
 /// Infers types on all definitions and checks type-correctness for isolated
 /// expressions (from identities and arrays) where the expected type is given.
+/// The parameter `statement_type` is the expected type for expressions at statement level.
 /// Sets the generic arguments for references and the literal types in all expressions.
 /// Returns the types for symbols without explicit type.
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
+    statement_type: &ExpectedType,
 ) -> Result<Vec<(String, Type)>, String> {
-    TypeChecker::default().infer_types(definitions, expressions)
+    TypeChecker::new(statement_type).infer_types(definitions, expressions)
 }
 
 /// A type to expect and a flag that says if arrays of that type are also fine.
@@ -47,19 +49,33 @@ impl From<Type> for ExpectedType {
     }
 }
 
-#[derive(Default)]
-struct TypeChecker {
+struct TypeChecker<'a> {
+    /// The expected type for expressions at statement level in block expressions.
+    statement_type: &'a ExpectedType,
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
     /// Declared types for all symbols. Contains the unmodified type scheme for symbols
     /// with generic types and newly created type variables for symbols without declared type.
     declared_types: HashMap<String, TypeScheme>,
+    /// Current mapping of declared type vars to type. Reset before checking each definition.
+    declared_type_vars: HashMap<String, Type>,
     unifier: Unifier,
     /// Last used type variable index.
     last_type_var: usize,
 }
 
-impl TypeChecker {
+impl<'a> TypeChecker<'a> {
+    pub fn new(statement_type: &'a ExpectedType) -> Self {
+        Self {
+            statement_type,
+            local_var_types: Default::default(),
+            declared_types: Default::default(),
+            declared_type_vars: Default::default(),
+            unifier: Default::default(),
+            last_type_var: Default::default(),
+        }
+    }
+
     /// Infers and checks types for all provided definitions and expressions and
     /// returns the types for symbols without explicit type.
     pub fn infer_types(
@@ -120,8 +136,14 @@ impl TypeChecker {
 
             let declared_type = self.declared_types[&name].clone();
             let result = if declared_type.vars.is_empty() {
+                self.declared_type_vars.clear();
                 self.process_concrete_symbol(&name, declared_type.ty.clone(), value)
             } else {
+                self.declared_type_vars = declared_type
+                    .vars
+                    .vars()
+                    .map(|v| (v.clone(), self.new_type_var()))
+                    .collect();
                 self.infer_type_of_expression(value).map(|ty| {
                     inferred_types.insert(name.to_string(), ty);
                 })
@@ -132,6 +154,7 @@ impl TypeChecker {
                 ));
             }
         }
+        self.declared_type_vars.clear();
 
         self.check_expressions(expressions)?;
 
@@ -441,9 +464,22 @@ impl TypeChecker {
                 poly_id: _,
                 type_args,
             })) => {
-                // The generic args (some of them) could be pre-filled by the parser, but we do not yet support that.
-                assert!(type_args.is_none());
                 let (ty, args) = self.instantiate_scheme(self.declared_types[name].clone());
+                if let Some(requested_type_args) = type_args {
+                    if requested_type_args.len() != args.len() {
+                        return Err(format!(
+                            "Expected {} type arguments for symbol {name}, but got {}: {}",
+                            args.len(),
+                            requested_type_args.len(),
+                            requested_type_args.iter().join(", ")
+                        ));
+                    }
+                    for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
+                        requested.substitute_type_vars(&self.declared_type_vars);
+                        self.unifier
+                            .unify_types(requested.clone(), inferred.clone())?;
+                    }
+                }
                 *type_args = Some(args);
                 type_for_reference(&ty)
             }
@@ -577,13 +613,7 @@ impl TypeChecker {
                             self.expect_type_of_pattern(&value_type, pattern)?;
                         }
                         StatementInsideBlock::Expression(expr) => {
-                            self.expect_type_with_flexibility(
-                                &ExpectedType {
-                                    ty: Type::Constr,
-                                    allow_array: true,
-                                },
-                                expr,
-                            )?;
+                            self.expect_type_with_flexibility(self.statement_type, expr)?;
                         }
                     }
                 }

@@ -5,10 +5,9 @@ use std::iter::once;
 use std::path::{Path, PathBuf};
 
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
-
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
-use powdr_ast::parsed::{FunctionKind, LambdaExpression, PILFile, PilStatement};
+use powdr_ast::parsed::{self, FunctionKind, LambdaExpression, PILFile, PilStatement};
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
@@ -193,7 +192,7 @@ impl PILAnalyzer {
 
                         let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = value
                         else {
-                            panic!("Invalid value for query funciton")
+                            panic!("Invalid value for query function")
                         };
 
                         expressions.push((e, query_type.clone().into()));
@@ -227,16 +226,14 @@ impl PILAnalyzer {
             })
             .collect();
         // Collect all expressions in identities.
+        let statement_type = ExpectedType {
+            ty: Type::Constr,
+            allow_array: true,
+        };
         for id in &mut self.identities {
             if id.kind == IdentityKind::Polynomial {
                 // At statement level, we allow constr or constr[].
-                expressions.push((
-                    id.expression_for_poly_id_mut(),
-                    ExpectedType {
-                        ty: Type::Constr,
-                        allow_array: true,
-                    },
-                ));
+                expressions.push((id.expression_for_poly_id_mut(), statement_type.clone()));
             } else {
                 for part in [&mut id.left, &mut id.right] {
                     if let Some(selector) = &mut part.selector {
@@ -248,7 +245,7 @@ impl PILAnalyzer {
                 }
             }
         }
-        let inferred_types = infer_types(definitions, &mut expressions)
+        let inferred_types = infer_types(definitions, &mut expressions, &statement_type)
             .map_err(|e| {
                 eprintln!("\nError during type inference:\n{e}");
                 e
@@ -350,24 +347,27 @@ impl PILAnalyzer {
         }
     }
 
-    fn handle_namespace(&mut self, name: SymbolPath, degree: ::powdr_ast::parsed::Expression) {
-        let degree = ExpressionProcessor::new(self.driver()).process_expression(degree);
-        // TODO we should maybe implement a separate evaluator that is able to run before type checking
-        // and is field-independent (only uses integers)?
-        let namespace_degree: u64 = u64::try_from(
-            evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
-                .unwrap()
-                .try_to_integer()
-                .unwrap(),
-        )
-        .unwrap();
-        if let Some(degree) = self.polynomial_degree {
-            assert_eq!(
-                degree, namespace_degree,
-                "all namespaces must have the same degree"
-            );
-        } else {
-            self.polynomial_degree = Some(namespace_degree);
+    fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::Expression>) {
+        if let Some(degree) = degree {
+            let degree = ExpressionProcessor::new(self.driver(), &Default::default())
+                .process_expression(degree);
+            // TODO we should maybe implement a separate evaluator that is able to run before type checking
+            // and is field-independent (only uses integers)?
+            let namespace_degree: u64 = u64::try_from(
+                evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
+                    .unwrap()
+                    .try_to_integer()
+                    .unwrap(),
+            )
+            .unwrap();
+            if let Some(degree) = self.polynomial_degree {
+                assert_eq!(
+                    degree, namespace_degree,
+                    "all namespaces must have the same degree"
+                );
+            } else {
+                self.polynomial_degree = Some(namespace_degree);
+            }
         }
         self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }

@@ -17,7 +17,7 @@ pub fn evaluate_expression_to_int(
     expr: parsed::Expression,
 ) -> Result<BigInt, EvalError> {
     evaluator::evaluate_expression::<GoldilocksField>(
-        &ExpressionProcessor::new(driver).process_expression(expr),
+        &ExpressionProcessor::new(driver, &Default::default()).process_expression(expr),
         driver.definitions(),
     )?
     .try_to_integer()

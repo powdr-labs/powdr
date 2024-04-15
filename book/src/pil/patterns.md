@@ -20,11 +20,11 @@ are themselves patterns.
 Some examples:
 
 ```rust
-// This pattern destructures the first function parameter.
+// This pattern de-structures the first function parameter.
 let f: (int, int), int -> int = |(a, b), c| (a + c, b);
 // Matches a tuple, ignores the second component.
 let (x, _) = f((6, 7), 3);
-// The match statement typically usse patterns to check for certain values
+// The match statement typically uses patterns to check for certain values
 // but it can also destructure and create new local variables valid inside
 // the match arm.
 let t = match (x, f((1, x), 2)) {

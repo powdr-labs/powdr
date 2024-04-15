@@ -32,7 +32,7 @@ pub enum StatementIdentifier {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
-    /// The degree of all namespaces, which must match. If there are no namespaces, then `None`.
+    /// The degree of all namespaces, which must match if provided. If no degrees are given, then `None`.
     pub degree: Option<DegreeType>,
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
@@ -192,7 +192,7 @@ impl<T> Analyzed<T> {
         })
     }
 
-    /// Removes the given definitions and itermediate columns by name. Those must not be referenced
+    /// Removes the given definitions and intermediate columns by name. Those must not be referenced
     /// by any remaining definitions, identities or public declarations.
     pub fn remove_definitions(&mut self, to_remove: &BTreeSet<String>) {
         self.definitions.retain(|name, _| !to_remove.contains(name));
@@ -261,6 +261,12 @@ impl<T> Analyzed<T> {
             }
         };
         self.post_visit_expressions_in_identities_mut(algebraic_visitor);
+        self.public_declarations
+            .values_mut()
+            .for_each(|public_decl| {
+                let poly_id = public_decl.polynomial.poly_id.unwrap();
+                public_decl.polynomial.poly_id = Some(replacements[&poly_id]);
+            });
     }
 
     pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
