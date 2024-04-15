@@ -508,7 +508,7 @@ impl TryFrom<&[&str]> for Runtime {
 
 /// Helper function for register names used in instruction params
 fn reg(mut idx: usize) -> String {
-    // s* callee saved registers
+    // callee saved registers (i.e., `s?`)
     static SAVED_REGS: [&str; 12] = [
         "x8", "x9", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
     ];
@@ -568,7 +568,7 @@ fn load_word(addr: &str, offset: u32, reg: &str) -> [String; 1] {
 /// Store word from register into addr+offset
 fn store_word(addr: &str, offset: u32, reg: &str) -> [String; 2] {
     [
-        // riscv-executor seems to need the split_gl to ensure the register has a 32-bit value
+        // split_gl ensures we store a 32-bit value
         format!("tmp1, tmp2 <== split_gl({reg});"),
         format!("mstore {offset} + {addr}, tmp1;"),
     ]
