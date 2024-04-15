@@ -5,26 +5,9 @@ use k256::{
     },
     ProjectivePoint,
 };
-use powdr_number::{BigUint, FieldElement, LargeInt};
+use powdr_number::{BigUint, FieldElement};
 
 use k256::{AffinePoint, EncodedPoint};
-
-pub fn fe_slice_to_hex<F: FieldElement>(x: &[F]) -> String {
-    assert_eq!(x.len(), 8);
-    let x_hex = format!(
-        "{:04X}{:04X}{:04X}{:04X}{:04X}{:04X}{:04X}{:04X}",
-        x[7].to_integer().try_into_u32().unwrap(),
-        x[6].to_integer().try_into_u32().unwrap(),
-        x[5].to_integer().try_into_u32().unwrap(),
-        x[4].to_integer().try_into_u32().unwrap(),
-        x[3].to_integer().try_into_u32().unwrap(),
-        x[2].to_integer().try_into_u32().unwrap(),
-        x[1].to_integer().try_into_u32().unwrap(),
-        x[0].to_integer().try_into_u32().unwrap(),
-    );
-    println!("{x_hex}");
-    x_hex
-}
 
 /// Convert our [FieldElement;8] to [u8; 32] (k256 coordinate)
 fn fe_slice_to_u8_array<F: FieldElement>(x: &[F]) -> [u8; 32] {
