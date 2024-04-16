@@ -45,13 +45,17 @@ jobs:
     - name: Build
       run: cargo build --all-targets --all --all-features --profile pr-tests
     - uses: taiki-e/install-action@nextest
+    - name: Archiving pil-stark-prover runtime dependencies
+      run: tar --zstd -cvf pil-stark-prover-deps.tar.zst target/pr-tests/build/pil-stark-prover-*/out
     - name: Create tests archive
       run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
-    - name: Upload tests archive
+    - name: Upload build artifacts
       uses: actions/upload-artifact@v2
       with:
         name: tests_archive
-        path: tests.tar.zst
+        path: |
+          tests.tar.zst
+          pil-stark-prover-deps.tar.zst
 
   test_quick:
     needs: build
@@ -86,6 +90,37 @@ jobs:
       run: PILCOM=$(pwd)/pilcom/ cargo nextest run --archive-file tests.tar.zst --verbose
     - name: Run examples
       run: cargo run --example hello_world
+
+  test_estark_polygon:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Download build artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: tests_archive
+    - name: ⚡ Cache nodejs
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/pilcom/node_modules
+        key: ${{ runner.os }}-pilcom-node-modules
+    - name: Install Rust toolchain 1.77 (with clippy and rustfmt)
+      run: rustup toolchain install 1.77-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.77-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.77-x86_64-unknown-linux-gnu
+    - name: Install nightly
+      run: rustup toolchain install nightly-2024-02-01-x86_64-unknown-linux-gnu
+    - name: Install riscv target
+      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+    - name: Install stdlib
+      run: rustup component add rust-src --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+    - uses: taiki-e/install-action@nextest
+    - name: Unpack pil-stark-prover runtime dependencies
+      run: tar --zstd -xf pil-stark-prover-deps.tar.zst
+    - name: Run EStark Polygon test
+      run: cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E  test(=test_vec_median_estark_polygon)
 
   test_slow:
     strategy:
@@ -125,7 +160,7 @@ jobs:
       # Number threads is set to 1 because the runner does not have enough memory for more.
       run: |
         if [[ "${{ matrix.test }}" == "subset1" ]]; then
-          TESTS="test(=arith_test) | test(=test_vec_median_estark_polygon)"
+          TESTS="test(=arith_test)"
         elif [[ "${{ matrix.test }}" == "subset2" ]]; then
           TESTS="test(=test_keccak) | test(=test_vec_median) | test(=instruction_tests::addi) | test(=test_many_chunks) | test(=test_sum_serde)"
         fi
