@@ -1,61 +1,115 @@
 #![no_std]
 
-extern crate alloc;
-use alloc::vec::Vec;
-
 use powdr_riscv_runtime::arith::affine_256;
 
 #[no_mangle]
 pub fn main() {
-    let x1 = [
+    let a = [
         0x77777777, 0x66666666, 0x55555555, 0x44444444, 0x33333333, 0x22222222, 0x11111111,
         0x00000000,
     ];
-    let y1 = [
+    let b = [
         0xffffffff, 0xeeeeeeee, 0xdddddddd, 0xcccccccc, 0xbbbbbbbb, 0xaaaaaaaa, 0x99999999,
         0x88888888,
     ];
-    let x2 = [
+    let c = [
         0xaaaaaaaa, 0xbbbbbbbb, 0xbbbbbbbb, 0xaaaaaaaa, 0xaaaaaaaa, 0xbbbbbbbb, 0xbbbbbbbb,
         0xaaaaaaaa,
     ];
-    let y2 = [
+    let hi = [
         0x9be02469, 0xf258bf25, 0x38e38e38, 0xe6f8091a, 0x740da740, 0x579be024, 0x091a2b3c,
         0x00000000,
     ];
-    let y3 = [
+    let lo = [
         0x33333333, 0xa1907f6e, 0xca8641fd, 0x369d0369, 0x907f6e5d, 0x60b60b60, 0x0da740da,
         0x1fdb9753,
     ];
-    assert_eq!(affine_256(x1, y1, x2), (y2, y3));
+    assert_eq!(affine_256(a, b, c), (hi, lo));
 
-    ///////////////
+    // 2 * 3 + 5 = 11
+    let a = [2, 0, 0, 0, 0, 0, 0, 0];
+    let b = [3, 0, 0, 0, 0, 0, 0, 0];
+    let c = [5, 0, 0, 0, 0, 0, 0, 0];
+    let hi = [0, 0, 0, 0, 0, 0, 0, 0];
+    let lo = [11, 0, 0, 0, 0, 0, 0, 0];
+    assert_eq!(affine_256(a, b, c), (hi, lo));
 
-    let x1 = [2, 0, 0, 0, 0, 0, 0, 0];
-    let y1 = [3, 0, 0, 0, 0, 0, 0, 0];
-    let x2 = [5, 0, 0, 0, 0, 0, 0, 0];
-    let y2 = [0, 0, 0, 0, 0, 0, 0, 0];
-    let y3 = [11, 0, 0, 0, 0, 0, 0, 0];
-    assert_eq!(affine_256(x1, y1, x2), (y2, y3));
+    // 256 * 256 + 1 = 65537
+    let a = [256, 0, 0, 0, 0, 0, 0, 0];
+    let b = [256, 0, 0, 0, 0, 0, 0, 0];
+    let c = [1, 0, 0, 0, 0, 0, 0, 0];
+    let hi = [0, 0, 0, 0, 0, 0, 0, 0];
+    let lo = [65537, 0, 0, 0, 0, 0, 0, 0];
+    assert_eq!(affine_256(a, b, c), (hi, lo));
 
-    ///////////////
+    // 3000 * 2000 + 5000 = 6005000
+    let a = [3000, 0, 0, 0, 0, 0, 0, 0];
+    let b = [2000, 0, 0, 0, 0, 0, 0, 0];
+    let c = [5000, 0, 0, 0, 0, 0, 0, 0];
+    let hi = [0, 0, 0, 0, 0, 0, 0, 0];
+    let lo = [6005000, 0, 0, 0, 0, 0, 0, 0];
+    assert_eq!(affine_256(a, b, c), (hi, lo));
 
-    let x1 = [
+    // 3000000 * 2000000 + 5000000 = 6000005000000
+    let a = [3000000, 0, 0, 0, 0, 0, 0, 0];
+    let b = [2000000, 0, 0, 0, 0, 0, 0, 0];
+    let c = [5000000, 0, 0, 0, 0, 0, 0, 0];
+    let hi = [0, 0, 0, 0, 0, 0, 0, 0];
+    let lo = [0xfc2aab40, 0x574, 0, 0, 0, 0, 0, 0];
+    assert_eq!(affine_256(a, b, c), (hi, lo));
+
+    // 3000 * 0 + 5000 = 5000
+    let a = [3000, 0, 0, 0, 0, 0, 0, 0];
+    let b = [0, 0, 0, 0, 0, 0, 0, 0];
+    let c = [5000, 0, 0, 0, 0, 0, 0, 0];
+    let hi = [0, 0, 0, 0, 0, 0, 0, 0];
+    let lo = [5000, 0, 0, 0, 0, 0, 0, 0];
+    assert_eq!(affine_256(a, b, c), (hi, lo));
+
+    // 2**255 * 2 + 0 = 2 ** 256
+    let a = [0, 0, 0, 0, 0, 0, 0, 0x80000000];
+    let b = [2, 0, 0, 0, 0, 0, 0, 0];
+    let c = [0, 0, 0, 0, 0, 0, 0, 0];
+    let hi = [1, 0, 0, 0, 0, 0, 0, 0];
+    let lo = [0, 0, 0, 0, 0, 0, 0, 0];
+    assert_eq!(affine_256(a, b, c), (hi, lo));
+
+    // (2**256 - 1) * (2**256 - 1) + (2**256 - 1) = 2 ** 256 * 115792089237316195423570985008687907853269984665640564039457584007913129639935
+    // = 2 ** 256 * 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+    let a = [
         0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
         0xffffffff,
     ];
-    let y1 = [
+    let b = [
         0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
         0xffffffff,
     ];
-    let x2 = [
+    let c = [
         0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
         0xffffffff,
     ];
-    let y2 = [
+    let hi = [
         0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
         0xffffffff,
     ];
-    let y3 = [0, 0, 0, 0, 0, 0, 0, 0];
-    assert_eq!(affine_256(x1, y1, x2), (y2, y3));
+    let lo = [0, 0, 0, 0, 0, 0, 0, 0];
+    assert_eq!(affine_256(a, b, c), (hi, lo));
+
+    // (2**256 - 1) * 1 + (2**256 - 1) = 2 ** 256 + 115792089237316195423570985008687907853269984665640564039457584007913129639934
+    // = 2 ** 256 + 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+    let a = [
+        0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
+        0xffffffff,
+    ];
+    let b = [1, 0, 0, 0, 0, 0, 0, 0];
+    let c = [
+        0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
+        0xffffffff,
+    ];
+    let hi = [1, 0, 0, 0, 0, 0, 0, 0];
+    let lo = [
+        0xfffffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
+        0xffffffff,
+    ];
+    assert_eq!(affine_256(a, b, c), (hi, lo));
 }
