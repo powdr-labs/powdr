@@ -158,6 +158,27 @@ fn function_pointer() {
     );
 }
 
+#[test]
+#[ignore = "Too slow"]
+fn arith_ec_double() {
+    let case = "ec_double";
+    verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn arith_ec_add() {
+    let case = "ec_add";
+    verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn arith_affine_256() {
+    let case = "affine_256";
+    verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
+}
+
 /*
 mstore(0, 666)
 return(0, 32)
