@@ -4,7 +4,8 @@ use powdr_number::{BigInt, GoldilocksField};
 
 use powdr_pil_analyzer::evaluator;
 use powdr_pipeline::test_util::{
-    evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof, std_analyzed, test_halo2, verify_test_file
+    evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof, std_analyzed,
+    test_halo2, verify_test_file,
 };
 use test_log::test;
 
@@ -202,7 +203,6 @@ fn ff_inv_big() {
     assert_eq!((result * x) % modulus, 1.into());
 }
 
-
 #[test]
 fn keccakf() {
     let analyzed = std_analyzed::<GoldilocksField>();
@@ -210,9 +210,13 @@ fn keccakf() {
     let result = evaluate_function(
         &analyzed,
         "std::hash::keccak::keccakf",
-        vec![Arc::new(evaluator::Value::Array(st.iter().map(|x| Arc::new(evaluator::Value::Integer(x.clone()))).collect()))],
+        vec![Arc::new(evaluator::Value::Array(
+            st.iter()
+                .map(|x| Arc::new(evaluator::Value::Integer(x.clone())))
+                .collect(),
+        ))],
     );
-    println!("{:?}", result);   
+    println!("{:?}", result);
 
     let W = 32;
     let input = vec![0x7a, 0x6f, 0x6b, 0x72, 0x61, 0x74, 0x65, 0x73];
@@ -221,10 +225,15 @@ fn keccakf() {
         &analyzed,
         "std::hash::keccak::main",
         vec![
-            Arc::new(evaluator::Value::Integer(BigInt::from(W))), 
-            Arc::new(evaluator::Value::Array(input.iter().map(|x| Arc::new(evaluator::Value::Integer(BigInt::from(*x)))).collect())), 
-            Arc::new(evaluator::Value::Integer(BigInt::from(delim)))
+            Arc::new(evaluator::Value::Integer(BigInt::from(W))),
+            Arc::new(evaluator::Value::Array(
+                input
+                    .iter()
+                    .map(|x| Arc::new(evaluator::Value::Integer(BigInt::from(*x))))
+                    .collect(),
+            )),
+            Arc::new(evaluator::Value::Integer(BigInt::from(delim))),
         ],
     );
-    println!("{:?}", result_full);   
+    println!("{:?}", result_full);
 }
