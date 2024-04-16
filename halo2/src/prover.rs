@@ -98,7 +98,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     ) -> Result<Self, io::Error> {
         Self::assert_field_is_bn254();
 
-        let params = setup
+        let mut params = setup
             .map(|mut setup| ParamsKZG::<Bn256>::read(&mut setup))
             .transpose()?
             /*
@@ -108,6 +108,10 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             })
             */
             .unwrap_or_else(|| generate_setup(analyzed.degree()));
+
+        if matches!(proof_type, ProofType::Poseidon) {
+            params.downsize(degree_bits(analyzed.degree()));
+        }
 
         Ok(Self {
             analyzed,
