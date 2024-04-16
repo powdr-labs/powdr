@@ -1,0 +1,27 @@
+namespace PlonkCircuit(4);
+
+    // This circuit computes c[2] = a[0]^2 + a[1]^2
+    // This assumes the following copy constraints:
+    // - a[0] = b[0]
+    // - a[1] = b[1]
+    // - c[0] = a[2]
+    // - c[1] = b[2]
+
+    // Whether the current gate is multiplication
+    // If it is zero, the gate is addition
+    col fixed MUL = [1, 1, 0, 0];
+
+    col witness a, b, c;
+
+    col fixed IS_FIRST = [1] + [0]*;
+
+    // Initialize a[0] with 3
+    IS_FIRST * (a - 3) = 0;
+
+    // Initialize a[1] with 4
+    IS_FIRST * (a' - 4) = 0;
+
+    // Implement addition and multiplication gate
+    MUL * (a * b - c) + (1 - MUL) * (a + b - c) = 0;
+
+    public out = c(2);

@@ -226,7 +226,22 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         );
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.witnesses,
-            [first_row].into_iter(),
+            [
+                first_row,
+                Row::fresh(
+                    self.fixed_data,
+                    RowIndex::from_degree(1, self.fixed_data.degree),
+                ),
+                Row::fresh(
+                    self.fixed_data,
+                    RowIndex::from_degree(2, self.fixed_data.degree),
+                ),
+                Row::fresh(
+                    self.fixed_data,
+                    RowIndex::from_degree(3, self.fixed_data.degree),
+                ),
+            ]
+            .into_iter(),
         );
         let mut processor = VmProcessor::new(
             RowIndex::from_degree(row_offset, self.fixed_data.degree),

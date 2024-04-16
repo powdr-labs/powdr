@@ -13,7 +13,7 @@ use crate::witgen::identity_processor::{self};
 use crate::witgen::IncompleteCause;
 
 use super::data_structures::finalizable_data::FinalizableData;
-use super::processor::{OuterQuery, Processor};
+use super::processor::{CopyConstraints, OuterQuery, Processor};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
@@ -73,7 +73,30 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witnesses);
+
+        // Hard-code copy constraints for now.
+        // - a[0] = b[0]
+        // - a[1] = b[1]
+        // - c[0] = a[2]
+        // - c[1] = b[2]
+        let a = fixed_data.try_column_by_name("PlonkCircuit.a").unwrap();
+        let b = fixed_data.try_column_by_name("PlonkCircuit.b").unwrap();
+        let c = fixed_data.try_column_by_name("PlonkCircuit.c").unwrap();
+        let copy_constraints = CopyConstraints::new(vec![
+            ((a, 0), (b, 0)),
+            ((a, 1), (b, 1)),
+            ((c, 0), (a, 2)),
+            ((c, 1), (b, 2)),
+        ]);
+
+        let processor = Processor::new(
+            row_offset,
+            data,
+            mutable_state,
+            fixed_data,
+            witnesses,
+            copy_constraints,
+        );
 
         let progress_bar = ProgressBar::new(fixed_data.degree);
         progress_bar.set_style(
@@ -108,7 +131,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     /// Starting out with a single row (at a given offset), iteratively append rows
     /// until we have exhausted the rows or the latch expression (if available) evaluates to 1.
     pub fn run(&mut self, is_main_run: bool) -> EvalValue<&'a AlgebraicReference, T> {
-        assert!(self.processor.len() == 1);
+        // assert!(self.processor.len() == 1);
 
         if is_main_run {
             log::info!("Running main machine for {} rows", self.fixed_data.degree);

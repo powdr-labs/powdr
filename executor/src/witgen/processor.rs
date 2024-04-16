@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashSet},
+    rc::Rc,
+};
 
 use powdr_ast::{
     analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID},
@@ -15,6 +18,48 @@ use super::{
     rows::{CellValue, Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
     Constraints, EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
+
+#[derive(Default)]
+pub struct CopyConstraints {
+    constraints: BTreeMap<(PolyID, usize), Rc<BTreeSet<(PolyID, usize)>>>,
+}
+
+impl CopyConstraints {
+    pub fn new(constraint_pairs: Vec<((PolyID, usize), (PolyID, usize))>) -> Self {
+        let mut eq_classes: Vec<BTreeSet<(PolyID, usize)>> = Vec::new();
+        for (a, b) in constraint_pairs {
+            let mut found = false;
+            for eq_class in &mut eq_classes {
+                if eq_class.contains(&a) || eq_class.contains(&b) {
+                    eq_class.insert(a);
+                    eq_class.insert(b);
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                let mut eq_class = BTreeSet::new();
+                eq_class.insert(a);
+                eq_class.insert(b);
+                eq_classes.push(eq_class);
+            }
+        }
+
+        let mut constraints = BTreeMap::new();
+        for eq_class in eq_classes {
+            let eq_class = Rc::new(eq_class);
+            for (a, b) in eq_class.iter().zip(eq_class.iter()) {
+                constraints.insert(*a, eq_class.clone());
+                constraints.insert(*b, eq_class.clone());
+            }
+        }
+        Self { constraints }
+    }
+
+    pub fn get(&self, poly_id: PolyID, row_index: usize) -> Option<Rc<BTreeSet<(PolyID, usize)>>> {
+        self.constraints.get(&(poly_id, row_index)).cloned()
+    }
+}
 
 type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
 
@@ -67,6 +112,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     outer_query: Option<OuterQuery<'a, T>>,
     inputs: Vec<(PolyID, T)>,
     previously_set_inputs: BTreeMap<PolyID, usize>,
+    copy_constraints: CopyConstraints,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
@@ -76,6 +122,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
+        copy_constraints: CopyConstraints,
     ) -> Self {
         let is_relevant_witness = WitnessColumnMap::from(
             fixed_data
@@ -93,6 +140,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             outer_query: None,
             inputs: Vec::new(),
             previously_set_inputs: BTreeMap::new(),
+            copy_constraints,
         }
     }
 
@@ -223,9 +271,13 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         let mut progress = false;
         if let Some(selector) = self.outer_query.as_ref().unwrap().right.selector.as_ref() {
             progress |= self
-                .set_value(row_index, selector, T::one(), || {
-                    "Set selector to 1".to_string()
-                })
+                .set_value(
+                    row_index,
+                    selector,
+                    T::one(), // || {
+                              //     "Set selector to 1".to_string()
+                              // }
+                )
                 .unwrap_or(false);
         }
 
@@ -314,7 +366,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         row_index: usize,
         expression: &'a Expression<T>,
         value: T,
-        name: impl Fn() -> String,
+        // name: impl Fn() -> String,
     ) -> Result<bool, IncompleteCause<&'a AlgebraicReference>> {
         let row_pair = RowPair::new(
             &self.data[row_index],
@@ -327,7 +379,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         let updates = (affine_expression - value.into())
             .solve_with_range_constraints(&row_pair)
             .unwrap();
-        Ok(self.apply_updates(row_index, &updates, name))
+        Ok(self.apply_updates(row_index, &updates, || "set value".to_string()))
     }
 
     fn apply_updates(
@@ -342,17 +394,27 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         log::trace!("    Updates from: {}", source_name());
 
-        // Build RowUpdater
-        // (a bit complicated, because we need two mutable
-        // references to elements of the same vector)
-        let (current, next) = self.data.mutable_row_pair(row_index);
-        let mut row_updater = RowUpdater::new(current, next, self.row_offset + row_index as u64);
-
         let mut progress = false;
         for (poly, c) in &updates.constraints {
             if self.witness_cols.contains(&poly.poly_id) {
+                // Build RowUpdater
+                // (a bit complicated, because we need two mutable
+                // references to elements of the same vector)
+                let (current, next) = self.data.mutable_row_pair(row_index);
+                let mut row_updater =
+                    RowUpdater::new(current, next, self.row_offset + row_index as u64);
                 row_updater.apply_update(poly, c);
                 progress = true;
+
+                if let Constraint::Assignment(v) = c {
+                    let row = self.row_offset + row_index + poly.next as usize;
+                    if let Some(eq_class) = self.copy_constraints.get(poly.poly_id, row.into()) {
+                        for (other_poly, row) in eq_class.iter() {
+                            let expression = &self.fixed_data.witness_cols[other_poly].expr;
+                            self.set_value(*row, expression, *v).unwrap();
+                        }
+                    }
+                }
             } else if let Constraint::Assignment(v) = c {
                 let left = &mut self.outer_query.as_mut().unwrap().left;
                 log::trace!("      => {} (outer) = {}", poly, v);
@@ -370,8 +432,9 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         self.data.len()
     }
 
-    pub fn finalize_range(&mut self, range: impl Iterator<Item = usize>) {
-        self.data.finalize_range(range)
+    pub fn finalize_range(&mut self, _range: impl Iterator<Item = usize>) {
+        // Never finalize! There could be copy-constraints coming.
+        // self.data.finalize_range(range)
     }
 
     pub fn row(&self, i: usize) -> &Row<'a, T> {

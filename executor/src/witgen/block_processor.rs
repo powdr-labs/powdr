@@ -34,7 +34,15 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witness_cols);
+        let processor = Processor::new(
+            row_offset,
+            data,
+            mutable_state,
+            fixed_data,
+            witness_cols,
+            // TODO: Copy constraints
+            Default::default(),
+        );
         Self {
             processor,
             identities,
