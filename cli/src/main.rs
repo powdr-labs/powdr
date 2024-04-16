@@ -134,6 +134,10 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         prove_with: Option<BackendType>,
 
+        /// File containing previously generated setup parameters.
+        #[arg(long)]
+        params: Option<String>,
+
         /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
         /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
         #[arg(long)]
@@ -197,6 +201,10 @@ enum Commands {
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         prove_with: Option<BackendType>,
+
+        /// File containing previously generated setup parameters.
+        #[arg(long)]
+        params: Option<String>,
 
         /// Backend options. Halo2: "poseidon" or "snark". EStark and PilStarkCLI: "stark_gl", "stark_bn" or
         /// "snark_bn".
@@ -266,6 +274,10 @@ enum Commands {
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         prove_with: Option<BackendType>,
+
+        /// File containing previously generated setup parameters.
+        #[arg(long)]
+        params: Option<String>,
 
         /// Backend options. Halo2: "poseidon" or "snark". EStark and PilStarkCLI: "stark_gl", "stark_bn" or
         /// "snark_bn".
@@ -550,6 +562,7 @@ fn run_command(command: Commands) {
             force,
             pilo,
             prove_with,
+            params,
             backend_options,
             export_csv,
             csv_mode,
@@ -564,6 +577,7 @@ fn run_command(command: Commands) {
                 force,
                 pilo,
                 prove_with,
+                params,
                 backend_options,
                 export_csv,
                 csv_mode,
@@ -580,6 +594,7 @@ fn run_command(command: Commands) {
             force,
             pilo,
             prove_with,
+            params,
             backend_options,
             export_csv,
             csv_mode,
@@ -602,6 +617,7 @@ fn run_command(command: Commands) {
                 force,
                 pilo,
                 prove_with,
+                params,
                 backend_options,
                 export_csv,
                 csv_mode,
@@ -631,6 +647,7 @@ fn run_command(command: Commands) {
             force,
             pilo,
             prove_with,
+            params,
             backend_options,
             export_csv,
             csv_mode,
@@ -645,6 +662,7 @@ fn run_command(command: Commands) {
                 force,
                 pilo,
                 prove_with,
+                params,
                 backend_options,
                 export_csv,
                 csv_mode,
@@ -822,6 +840,7 @@ fn run_rust<F: FieldElement>(
     force_overwrite: bool,
     pilo: bool,
     prove_with: Option<BackendType>,
+    params: Option<String>,
     backend_options: Option<String>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
@@ -864,6 +883,7 @@ fn run_rust<F: FieldElement>(
         pipeline,
         inputs,
         prove_with,
+        params,
         backend_options,
         just_execute,
         continuations,
@@ -880,6 +900,7 @@ fn run_riscv_asm<F: FieldElement>(
     force_overwrite: bool,
     pilo: bool,
     prove_with: Option<BackendType>,
+    params: Option<String>,
     backend_options: Option<String>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
@@ -923,6 +944,7 @@ fn run_riscv_asm<F: FieldElement>(
         pipeline,
         inputs,
         prove_with,
+        params,
         backend_options,
         just_execute,
         continuations,
@@ -939,6 +961,7 @@ fn run_pil<F: FieldElement>(
     force: bool,
     pilo: bool,
     prove_with: Option<BackendType>,
+    params: Option<String>,
     backend_options: Option<String>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
@@ -961,6 +984,7 @@ fn run_pil<F: FieldElement>(
         pipeline,
         inputs,
         prove_with,
+        params,
         backend_options,
         just_execute,
         continuations,
@@ -972,10 +996,13 @@ fn run<F: FieldElement>(
     mut pipeline: Pipeline<F>,
     inputs: Vec<F>,
     prove_with: Option<BackendType>,
+    params: Option<String>,
     backend_options: Option<String>,
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
+    pipeline = pipeline.with_setup_file(params.map(PathBuf::from));
+
     let bootloader_inputs = if continuations {
         pipeline = pipeline.with_prover_inputs(inputs.clone());
         rust_continuations_dry_run(&mut pipeline)

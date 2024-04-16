@@ -101,10 +101,12 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let params = setup
             .map(|mut setup| ParamsKZG::<Bn256>::read(&mut setup))
             .transpose()?
+            /*
             .map(|mut params| {
                 params.downsize(degree_bits(analyzed.degree()));
                 params
             })
+            */
             .unwrap_or_else(|| generate_setup(analyzed.degree()));
 
         Ok(Self {
@@ -368,8 +370,11 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             }
         };
 
+        let mut params_app = self.params.clone();
+        params_app.downsize(degree_bits(self.analyzed.degree()));
+
         let protocol_app = compile(
-            &self.params,
+            &params_app,
             vkey_app,
             Config::kzg().with_num_instance(vec![]),
         );
