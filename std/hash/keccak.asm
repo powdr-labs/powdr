@@ -6,7 +6,7 @@ let or: int, int -> int = |a, b| a | b;
 let and: int, int -> int = |a, b| a & b;
 let xor: int, int -> int = |a, b| a ^ b;
 // TODO: what is the bitwise not operator?
-let not: int -> int = |a| a;
+let not: int -> int = |a| a ^ 0xffffffffffffffff; // bitwise not for 64 bits
 
 // ln 9 - 12
 // TODO: check that these are good for word size 32
@@ -135,39 +135,40 @@ let update_finalize_b: int[], int[], int, int -> int[] = |input, b, rate, delim|
     let b_delim_idx = (num_remaining + 1) % rate;
     let b_keccak = utils::fold(num_loop, |i| i, b, |acc, idx| {
         let new_b = array::zip(array::new(rate, |i| acc[i]), array::new(rate, |i| input[idx * rate + i]), xor);
-        to_bytes(keccakf(from_bytes(new_b)))
+        let new_b_pad = array::new(200, |i| if i < rate { new_b[i] } else { acc[i] });
+        to_bytes(keccakf(from_bytes(new_b_pad)))
     });
-    let b_update = array::new(rate, |i| 
+    let b_finalize = array::new(200, |i| 
         // num_remaining is 0 the minimum and rate - 1 the maximum
         if i < num_remaining {
-            // ln 150, one of the remaining to be xor'ed
-            xor(b_keccak[i], input[num_loop * rate + i])
+            if i == b_delim_idx {
+                xor_mult([b_keccak[i], input[num_loop * rate + i], delim])
+            } else {
+                // ln 150, one of the remaining to be xor'ed
+                xor(b_keccak[i], input[num_loop * rate + i])
+            }
         } else {
-            if i == num_remaining {
-                if i == rate - 1 { 
-                    // num_remaining == rate - 1, so ln 156 and 157 update the same index of b
+            if i == b_delim_idx {
+                if i == rate - 1 {
                     xor_mult([b_keccak[i], delim, 0x80])
                 } else {
-                    // ln 156
                     xor(b_keccak[i], delim)
                 }
             } else {
                 if i == rate - 1 {
-                // ln 157
-                xor(b_keccak[i], 0x80)
+                    xor(b_keccak[i], 0x80)
                 } else {
-                    // not one of the remaining, just return as is
                     b_keccak[i]
                 }
             }
         }
     );
     // ln 158
-    to_bytes(keccakf(from_bytes(b_update)))    
+    to_bytes(keccakf(from_bytes(b_finalize)))    
 };
 
 // ln 143 - 161
-let main: int, int[], int -> int[] = |W, input, delim| {
+let main: int, int[], int -> int[] = |W, input, delim| { // W is output number of bytes, input is array of bytes, delim is a single byte
     // ln 144 - 145
     let b = array::new(200, |i| 0); // int[200], 100 if u32
     let rate = 200 - (2 * W); // int, 100 if u32
@@ -181,17 +182,18 @@ let main: int, int[], int -> int[] = |W, input, delim| {
 };
 
 // main machine
-machine Main(W) { 
+machine Main { 
     // input is an arbitrary array of bytes
     // delim is a byte
     // W is the number of bytes to return
-    let INPUT_SIZE: int = 200; // this can be arbitrary given by user
+    // let INPUT_SIZE: int = 200; // this can be arbitrary given by user
 
-    pol commit input[INPUT_SIZE];
-    pol commit output[W];
-    pol commit delim;
+    // pol commit input[INPUT_SIZE];
+    // pol commit output[W];
+    // pol commit delim;
 
-    let expected_output = main(W, input, delim);
+    // let expected_output = main(W, input, delim);
     
-    array::new(W, |i| output[i] - expected_output[i] = 0);
+    // array::new(W, |i| output[i] - expected_output[i] = 0);
+    let x;
 }
