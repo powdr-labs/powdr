@@ -205,17 +205,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     }
 
     fn process_enum_pattern(&mut self, name: String, fields: Option<Vec<Pattern>>) -> Pattern {
-        // let (_, Some(FunctionValueDefinition::TypeConstructor(_, variant))) =
-        //     &self.driver.definitions()[&name]
-        // else {
-        //     panic!("Expected enum variant: {name}")
-        // };
-        // if variant.fields.as_ref().map(|items| items.len())
-        //     != fields.as_ref().map(|items| items.len())
-        // {
-        //     panic!("Invalid pattern for enum variant {variant}");
-        // }
-
         Pattern::Enum(
             SymbolPath::from_str(&name).unwrap(),
             fields.map(|fields| {
