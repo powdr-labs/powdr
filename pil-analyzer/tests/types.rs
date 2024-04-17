@@ -444,7 +444,7 @@ fn multi_ellipsis() {
 }
 
 #[test]
-#[should_panic = "Invalid pattern for enum variant A(int)"]
+#[should_panic = "Expected enum variant for pattern X::A but got int -> X - maybe you forgot the parentheses?"]
 fn enum_no_paren_for_paren() {
     let input = "
     enum X { A(int) }
@@ -457,7 +457,7 @@ fn enum_no_paren_for_paren() {
 }
 
 #[test]
-#[should_panic = "Invalid pattern for enum variant A"]
+#[should_panic = "Enum variant X::A does not have fields, but is used with parentheses in X::A()"]
 fn enum_paren_for_no_paren() {
     let input = "
     enum X { A }
@@ -470,7 +470,7 @@ fn enum_paren_for_no_paren() {
 }
 
 #[test]
-#[should_panic = "Invalid pattern for enum variant A(int)"]
+#[should_panic = "Invalid number of data fields for enum variant X::A. Expected 1 but got 2."]
 fn enum_too_many_fields() {
     let input = "
     enum X { A(int) }
