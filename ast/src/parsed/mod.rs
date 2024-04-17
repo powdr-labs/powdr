@@ -135,7 +135,7 @@ impl PilStatement {
 
     /// If the statement defines any symbols inside a namespace, returns
     /// the name of the namespace and defined names inside that namespace
-    /// and their categroy.
+    /// and their category.
     pub fn defined_contained_names(
         &self,
     ) -> Box<dyn Iterator<Item = (&String, &String, SymbolCategory)> + '_> {
