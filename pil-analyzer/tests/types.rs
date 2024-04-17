@@ -431,3 +431,53 @@ fn enum_pattern() {
     ";
     type_check(input, &[("f", "", "X -> (int -> X)")]);
 }
+
+#[test]
+#[should_panic = "Only one \"..\"-item allowed in array pattern"]
+fn multi_ellipsis() {
+    let input = "    let t: int[] -> int = (|i| match i {
+        [1, .., 3, ..] => 2,
+        _ => -1,
+    });
+";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Invalid pattern for enum variant A(int)"]
+fn enum_no_paren_for_paren() {
+    let input = "
+    enum X { A(int) }
+    let f = |q| match q {
+        X::A => 2,
+        _ => 3,
+    };
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Invalid pattern for enum variant A"]
+fn enum_paren_for_no_paren() {
+    let input = "
+    enum X { A }
+    let f = |q| match q {
+        X::A() => 2,
+        _ => 3,
+    };
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Invalid pattern for enum variant A(int)"]
+fn enum_too_many_fields() {
+    let input = "
+    enum X { A(int) }
+    let f = |q| match q {
+        X::A(_, _) => 2,
+        _ => 3,
+    };
+    ";
+    type_check(input, &[]);
+}
