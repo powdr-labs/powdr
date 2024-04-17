@@ -242,7 +242,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     pub fn process_lambda_expression(
         &mut self,
         LambdaExpression { kind, params, body }: LambdaExpression,
-    ) -> LambdaExpression<Reference> {
+    ) -> LambdaExpression<Expression> {
         let previous_local_vars = self.save_local_variables();
 
         let params = params

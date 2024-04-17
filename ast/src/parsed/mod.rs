@@ -25,8 +25,12 @@ use crate::SourceRef;
 
 #[derive(Display, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolCategory {
+    /// A value, which has a type and can be referenced in expressions (a variable, function, constant, ...).
     Value,
+    /// A type, for example the name of an enum or other user-defined type.
     Type,
+    /// A type constructor, i.e. an enum variant, which can be used as a function or constant inside an expression
+    /// or to deconstruct a value in a pattern.
     TypeConstructor,
 }
 impl SymbolCategory {

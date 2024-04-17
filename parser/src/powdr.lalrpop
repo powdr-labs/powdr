@@ -645,9 +645,12 @@ Pattern: Pattern = {
     StringLiteral => Pattern::String(<>),
     TuplePattern,
     ArrayPattern,
-    // Identifiers are also initially parsed as Pattern::Enum.
-    // Single identifiers that do not exist in the current scope
-    // are then turned into Pattern::Variable.
+    // We never parse Pattern::Variable directly. Instead, we
+    // parse all identifiers (and symbol paths) as Pattern::Enum.
+    // At symbol resolution stage, single identifiers that do not
+    // exist in the current scope are then turned into Pattern::Variable
+    // to allow `match x { (y, None) => ... }` to bind the first component
+    // to `y` and match the enum variant `None` at the same time.
     EnumPattern,
 }
 

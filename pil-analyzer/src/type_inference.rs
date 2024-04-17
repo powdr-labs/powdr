@@ -751,10 +751,6 @@ impl<'a> TypeChecker<'a> {
 
                 match data {
                     Some(data) => {
-                        let _fun = Type::Function(FunctionType {
-                            params: vec![ty.clone()],
-                            value: Box::new(self.new_type_var()),
-                        });
                         let Type::Function(FunctionType { params, value }) = ty else {
                             panic!()
                         };
