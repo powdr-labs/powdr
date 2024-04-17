@@ -9,6 +9,7 @@ repository = { workspace = true }
 
 [features]
 halo2 = ["powdr-backend/halo2"]
+estark-polygon = ["powdr-backend/estark-polygon"]
 
 [dependencies]
 powdr-airgen = { path = "../airgen" }
