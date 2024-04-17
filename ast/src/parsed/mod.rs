@@ -11,6 +11,7 @@ use std::{
     ops,
 };
 
+use derive_more::Display;
 use powdr_number::{BigInt, BigUint, DegreeType};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -21,6 +22,30 @@ use self::{
     visitor::Children,
 };
 use crate::SourceRef;
+
+#[derive(Display, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolCategory {
+    /// A value, which has a type and can be referenced in expressions (a variable, function, constant, ...).
+    Value,
+    /// A type, for example the name of an enum or other user-defined type.
+    Type,
+    /// A type constructor, i.e. an enum variant, which can be used as a function or constant inside an expression
+    /// or to deconstruct a value in a pattern.
+    TypeConstructor,
+}
+impl SymbolCategory {
+    /// Returns if a symbol of a given category can satisfy a request for a certain category.
+    pub fn compatible_with_request(&self, request: SymbolCategory) -> bool {
+        match self {
+            SymbolCategory::Value => request == SymbolCategory::Value,
+            SymbolCategory::Type => request == SymbolCategory::Type,
+            SymbolCategory::TypeConstructor => {
+                // Type constructors can also satisfy requests for values.
+                request == SymbolCategory::TypeConstructor || request == SymbolCategory::Value
+            }
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PILFile(pub Vec<PilStatement>);
@@ -77,23 +102,45 @@ pub enum PilStatement {
 }
 
 impl PilStatement {
-    /// If the statement is a symbol definition, returns all (local) names of defined symbols.
+    /// If the statement is a symbol definition, returns all (local) names of defined symbols
+    /// and their category.
     /// Note it does not return nested definitions (for an enum for example).
-    /// The boolean indicates if the name is a type definition or a value definition.
-    pub fn symbol_definition_names(&self) -> Box<dyn Iterator<Item = (&String, bool)> + '_> {
+    pub fn symbol_definition_names(&self) -> impl Iterator<Item = (&String, SymbolCategory)> + '_ {
+        self.symbol_definition_names_and_contained()
+            .filter_map(|(name, sub_name, category)| match sub_name {
+                Some(_) => None,
+                None => Some((name, category)),
+            })
+    }
+
+    /// If the statement is a symbol definition, returns all (local) names of defined symbols
+    /// and their category.
+    /// For an enum, returns the name of the enum and all the variants, where the first
+    /// component is the name of the enum and the second the name of the variant.
+    pub fn symbol_definition_names_and_contained(
+        &self,
+    ) -> Box<dyn Iterator<Item = (&String, Option<&String>, SymbolCategory)> + '_> {
         match self {
             PilStatement::PolynomialDefinition(_, name, _)
             | PilStatement::PolynomialConstantDefinition(_, name, _)
             | PilStatement::ConstantDefinition(_, name, _)
             | PilStatement::PublicDeclaration(_, name, _, _, _)
-            | PilStatement::LetStatement(_, name, _, _) => Box::new(once((name, false))),
-            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants: _ }) => {
-                Box::new(once((name, true)))
+            | PilStatement::LetStatement(_, name, _, _) => {
+                Box::new(once((name, None, SymbolCategory::Value)))
             }
+            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants }) => Box::new(
+                once((name, None, SymbolCategory::Type)).chain(
+                    variants
+                        .iter()
+                        .map(move |v| (name, Some(&v.name), SymbolCategory::TypeConstructor)),
+                ),
+            ),
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
-            | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => {
-                Box::new(polynomials.iter().map(|p| (&p.name, false)))
-            }
+            | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => Box::new(
+                polynomials
+                    .iter()
+                    .map(|p| (&p.name, None, SymbolCategory::Value)),
+            ),
 
             PilStatement::Include(_, _)
             | PilStatement::Namespace(_, _, _)
@@ -101,20 +148,6 @@ impl PilStatement {
             | PilStatement::PermutationIdentity(_, _, _)
             | PilStatement::ConnectIdentity(_, _, _)
             | PilStatement::Expression(_, _) => Box::new(empty()),
-        }
-    }
-
-    /// If the statement defines any symbols inside a namespace, returns
-    /// the name of the namespace and defined names inside that namespace.
-    /// The boolean indicates if the name is a type definition or a value definition.
-    pub fn defined_contained_names(
-        &self,
-    ) -> Box<dyn Iterator<Item = (&String, &String, bool)> + '_> {
-        match self {
-            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants }) => {
-                Box::new(variants.iter().map(move |v| (name, &v.name, false)))
-            }
-            _ => Box::new(empty()),
         }
     }
 }
@@ -226,7 +259,7 @@ impl<E: Clone> EnumVariant<E> {
             None => Type::NamedType(type_name),
             Some(fields) => Type::Function(FunctionType {
                 params: (*fields).clone(),
-                value: Type::NamedType(type_name).into(),
+                value: Box::new(Type::NamedType(type_name)),
             }),
         }
     }
@@ -841,7 +874,11 @@ pub enum Pattern {
     String(String),
     Tuple(Vec<Pattern>),
     Array(Vec<Pattern>),
+    // A pattern that binds a variable. Variable references are parsed as
+    // Enum and are then re-mapped to Variable if they do not reference
+    // an enum variant.
     Variable(String),
+    Enum(SymbolPath, Option<Vec<Pattern>>),
 }
 
 impl Pattern {
@@ -858,7 +895,7 @@ impl Pattern {
         match self {
             Pattern::Ellipsis => unreachable!(),
             Pattern::CatchAll | Pattern::Variable(_) => true,
-            Pattern::Number(_) | Pattern::String(_) => false,
+            Pattern::Number(_) | Pattern::String(_) | Pattern::Enum(_, _) => false,
             Pattern::Array(items) => {
                 // Only "[..]"" is irrefutable
                 items == &vec![Pattern::Ellipsis]
@@ -877,6 +914,7 @@ impl Children<Pattern> for Pattern {
             | Pattern::String(_)
             | Pattern::Variable(_) => Box::new(empty()),
             Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter()),
+            Pattern::Enum(_, fields) => Box::new(fields.iter().flatten()),
         }
     }
 
@@ -888,6 +926,7 @@ impl Children<Pattern> for Pattern {
             | Pattern::String(_)
             | Pattern::Variable(_) => Box::new(empty()),
             Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter_mut()),
+            Pattern::Enum(_, fields) => Box::new(fields.iter_mut().flatten()),
         }
     }
 }

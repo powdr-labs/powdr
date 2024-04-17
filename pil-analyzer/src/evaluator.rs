@@ -274,18 +274,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 _ => None,
             },
             Pattern::Tuple(items) => match v.as_ref() {
-                Value::Tuple(values) => {
-                    assert_eq!(values.len(), items.len());
-                    values
-                        .iter()
-                        .zip(items)
-                        .try_fold(vec![], |mut vars, (e, p)| {
-                            Value::try_match_pattern(e, p).map(|v| {
-                                vars.extend(v);
-                                vars
-                            })
-                        })
-                }
+                Value::Tuple(values) => Value::try_match_pattern_list(values, items),
                 _ => unreachable!(),
             },
             Pattern::Array(items) => {
@@ -321,7 +310,36 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     })
             }
             Pattern::Variable(_) => Some(vec![v.clone()]),
+            Pattern::Enum(name, fields_pattern) => {
+                let Value::Enum(n, data) = v.as_ref() else {
+                    panic!()
+                };
+                if name.name() != n {
+                    return None;
+                }
+                if let Some(fields) = fields_pattern {
+                    Value::try_match_pattern_list(data.as_ref().unwrap(), fields)
+                } else {
+                    Some(vec![])
+                }
+            }
         }
+    }
+
+    fn try_match_pattern_list<'b>(
+        values: &[Arc<Value<'b, T>>],
+        patterns: &[Pattern],
+    ) -> Option<Vec<Arc<Value<'b, T>>>> {
+        assert_eq!(values.len(), patterns.len());
+        patterns
+            .iter()
+            .zip(values.iter())
+            .try_fold(vec![], |mut vars, (p, e)| {
+                Value::try_match_pattern(e, p).map(|v| {
+                    vars.extend(v);
+                    vars
+                })
+            })
     }
 }
 
@@ -1320,6 +1338,30 @@ mod test {
         assert_eq!(
             parse_and_evaluate_symbol(src, "x"),
             "[1, 3, 4, 7]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_enum() {
+        let src = r#"
+            enum X {
+                A,
+                B(),
+                C(int, int),
+                D(int, X)
+            }
+            let f = |x| match x {
+                X::A => 1,
+                X::B() => 2,
+                X::C(a, b) => a + b,
+                X::D(0, X::A) => 10001,
+                X::D(c, y) => c + f(y),
+            };
+            let t = [f(X::A), f(X::B()), f(X::C(3, 4)), f(X::D(0, X::A)), f(X::D(0, X::B())), f(X::D(100, X::C(4, 5)))];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[1, 2, 7, 10001, 2, 109]".to_string()
         );
     }
 }

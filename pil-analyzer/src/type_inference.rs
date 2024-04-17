@@ -741,6 +741,28 @@ impl<'a> TypeChecker<'a> {
                 self.local_var_types.push(ty.clone());
                 ty
             }
+            Pattern::Enum(name, data) => {
+                let (ty, gen_args) =
+                    self.instantiate_scheme(self.declared_types[&name.to_dotted_string()].clone());
+                if !gen_args.is_empty() {
+                    unimplemented!("Generic enums are not yet supported.");
+                }
+                let ty = type_for_reference(&ty);
+
+                match data {
+                    Some(data) => {
+                        let Type::Function(FunctionType { params, value }) = ty else {
+                            panic!()
+                        };
+                        params
+                            .iter()
+                            .zip(data)
+                            .try_for_each(|(ty, pat)| self.expect_type_of_pattern(ty, pat))?;
+                        (*value).clone()
+                    }
+                    None => ty,
+                }
+            }
         })
     }
 
