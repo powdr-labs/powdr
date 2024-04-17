@@ -7,7 +7,7 @@ use k256::{
 };
 use powdr_number::{BigUint, FieldElement};
 
-use k256::{AffinePoint, EncodedPoint};
+use k256::EncodedPoint;
 
 /// Convert our [FieldElement;8] to [u8; 32] (k256 coordinate)
 fn fe_slice_to_u8_array<F: FieldElement>(x: &[F]) -> [u8; 32] {
@@ -47,7 +47,7 @@ pub fn ec_double<F: FieldElement>(x: &[F], y: &[F]) -> ([F; 8], [F; 8]) {
         false,
     );
     let pp = ProjectivePoint::from_encoded_point(&ep).unwrap();
-    let ep_doubled = AffinePoint::from(pp.double()).to_encoded_point(false);
+    let ep_doubled = pp.double().to_encoded_point(false);
     let x_res = ep_doubled.x().unwrap();
     let y_res = ep_doubled.y().unwrap();
     (u8_array_to_fe_array(x_res), u8_array_to_fe_array(y_res))
@@ -77,7 +77,7 @@ pub fn ec_add<F: FieldElement>(x1: &[F], y1: &[F], x2: &[F], y2: &[F]) -> ([F; 8
         false,
     );
     let pp2 = ProjectivePoint::from_encoded_point(&ep2).unwrap();
-    let ep_sum = AffinePoint::from(pp1 + pp2).to_encoded_point(false);
+    let ep_sum = (pp1 + pp2).to_encoded_point(false);
     let x_res = ep_sum.x().unwrap();
     let y_res = ep_sum.y().unwrap();
     (u8_array_to_fe_array(x_res), u8_array_to_fe_array(y_res))
