@@ -751,15 +751,45 @@ impl<'a> TypeChecker<'a> {
                 match data {
                     Some(data) => {
                         let Type::Function(FunctionType { params, value }) = ty else {
-                            panic!()
+                            if matches!(ty, Type::NamedType(_)) {
+                                return Err(format!("Enum variant {name} does not have fields, but is used with parentheses in {pattern}."));
+                            } else {
+                                return Err(format!(
+                                    "Expected enum variant for pattern {pattern} but got {ty}"
+                                ));
+                            }
                         };
+                        if !matches!(value.as_ref(), Type::NamedType(_)) {
+                            return Err(format!(
+                                "Expected enum variant for pattern {pattern} but got {value}"
+                            ));
+                        }
+                        if params.len() != data.len() {
+                            return Err(format!(
+                                "Invalid number of data fields for enum variant {name}. Expected {} but got {}.",
+                                params.len(),
+                                data.len()
+                            ));
+                        }
                         params
                             .iter()
                             .zip(data)
                             .try_for_each(|(ty, pat)| self.expect_type_of_pattern(ty, pat))?;
                         (*value).clone()
                     }
-                    None => ty,
+                    None => {
+                        if let Type::NamedType(_) = ty {
+                            ty
+                        } else if matches!(ty, Type::Function(_)) {
+                            return Err(format!(
+                                "Expected enum variant for pattern {pattern} but got {ty} - maybe you forgot the parentheses?"
+                            ));
+                        } else {
+                            return Err(format!(
+                                "Expected enum variant for pattern {pattern} but got {ty}"
+                            ));
+                        }
+                    }
                 }
             }
         })

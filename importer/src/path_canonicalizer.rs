@@ -715,7 +715,7 @@ fn check_pattern<'b>(
             // So if "name" is a single identifier that does not resolve to an enum variant,
             // it is a variable pattern.
             // TODO we do not fully implement that here. Anything that is an identifier
-            // is mapped to a varaible. It will be fixed with the refactoring of
+            // is mapped to a variable. It will be fixed with the refactoring of
             // path_canonicalizer that removes the two-step approach.
             if fields.is_none() {
                 if let Some(identifier) = name.try_to_identifier() {
