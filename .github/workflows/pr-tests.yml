@@ -45,8 +45,8 @@ jobs:
     - name: Build
       run: cargo build --all-targets --all --all-features --profile pr-tests
     - uses: taiki-e/install-action@nextest
-    - name: Archiving pil-stark-prover runtime dependencies
-      run: tar --zstd -cvf pil-stark-prover-deps.tar.zst target/pr-tests/build/pil-stark-prover-*/out
+    - name: Archive EStarkPolygon prover built dependencies
+      run: tar --zstd -cf pil-stark-prover-deps.tar.zst target/pr-tests/build/pil-stark-prover-*/out
     - name: Create tests archive
       run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
     - name: Upload build artifacts
@@ -116,8 +116,10 @@ jobs:
       run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
     - name: Install stdlib
       run: rustup component add rust-src --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+    - name: Install EStarkPolygon prover system dependency
+      run: sudo apt-get install -y nlohmann-json3-dev
     - uses: taiki-e/install-action@nextest
-    - name: Unpack pil-stark-prover runtime dependencies
+    - name: Unpack EStarkPolygon built dependencies
       run: tar --zstd -xf pil-stark-prover-deps.tar.zst
     - name: Run EStark Polygon test
       run: cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E "test(=test_vec_median_estark_polygon)"
