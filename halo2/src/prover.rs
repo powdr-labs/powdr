@@ -256,6 +256,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     pub fn prove_snark_aggr(
         &self,
         witness: &[(String, Vec<F>)],
+        witgen_callback: WitgenCallback<F>,
         proof: Vec<u8>,
     ) -> Result<Vec<u8>, String> {
         assert!(matches!(self.proof_type, ProofType::SnarkAggr));
@@ -264,7 +265,9 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
 
         log::info!("Generating circuit for app snark...");
 
-        let circuit_app = PowdrCircuit::new(self.analyzed, self.fixed).with_witness(witness);
+        let circuit_app = PowdrCircuit::new(self.analyzed, self.fixed)
+            .with_witgen_callback(witgen_callback)
+            .with_witness(witness);
         let publics = vec![circuit_app.instance_column()];
 
         assert_eq!(publics.len(), 1);
@@ -273,12 +276,14 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         }
 
         log::info!("Generating VK for app snark...");
-        let vk_app = keygen_vk(&self.params, &circuit_app).unwrap();
+
+        let mut params_app = self.params.clone();
+        params_app.downsize(degree_bits(self.analyzed.degree()));
 
         log::info!("Generating circuit for compression snark...");
         let protocol_app = compile(
-            &self.params,
-            &vk_app,
+            &params_app,
+            &self.vkey_app.as_ref().unwrap(),
             Config::kzg().with_num_instance(vec![]),
         );
         let empty_snark = aggregation::Snark::new_without_witness(protocol_app.clone());
@@ -286,19 +291,22 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             aggregation::AggregationCircuit::new_without_witness(&self.params, [empty_snark]);
 
         log::info!("Generating VK and PK for compression snark...");
-        let vk_aggr = keygen_vk(&self.params, &agg_circuit).unwrap();
+        let vk_aggr = self.verification_key().unwrap();
         let pk_aggr = keygen_pk(&self.params, vk_aggr.clone(), &agg_circuit).unwrap();
 
         log::info!("Generating compressed snark verifier...");
+        /*
         let deployment_code = aggregation::gen_aggregation_evm_verifier(
             &self.params,
-            pk_aggr.get_vk(),
+            &pk_aggr.get_vk(),
             aggregation::AggregationCircuit::num_instance(),
             aggregation::AggregationCircuit::accumulator_indices(),
         );
+        */
 
         log::info!("Generating aggregated proof...");
         let start = Instant::now();
+
         let snark = aggregation::Snark::new(protocol_app, vec![], proof);
         let agg_circuit_with_proof = aggregation::AggregationCircuit::new(&self.params, [snark]);
         let proof = gen_proof::<_, _, EvmTranscript<G1Affine, _, _, _>>(
@@ -322,8 +330,10 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             }
         }
 
+        /*
         log::info!("Verifying aggregated proof in the EVM...");
         evm_verify(deployment_code, agg_circuit_with_proof.instances(), &proof);
+        */
 
         log::info!("Proof aggregation done.");
 
@@ -331,16 +341,29 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     }
 
     pub fn add_verification_key(&mut self, mut vkey: &mut dyn io::Read) {
-        let vkey = VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PowdrCircuit<F>>(
-            &mut vkey,
-            SerdeFormat::Processed,
-            self.analyzed.clone().into(),
-        )
-        .unwrap();
+        let vkey = match self.proof_type {
+            ProofType::Poseidon | ProofType::SnarkSingle => {
+                VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PowdrCircuit<F>>(
+                    &mut vkey,
+                    SerdeFormat::Processed,
+                    self.analyzed.clone().into(),
+                )
+                .unwrap()
+            }
+            ProofType::SnarkAggr => {
+                VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, aggregation::AggregationCircuit>(
+                    &mut vkey,
+                    SerdeFormat::Processed,
+                    ()
+                )
+                .unwrap()
+            }
+        };
         self.vkey = Some(vkey);
     }
 
     pub fn add_verification_app_key(&mut self, mut vkey: &mut dyn io::Read) {
+        assert!(matches!(self.proof_type, ProofType::SnarkAggr));
         let vkey_app = VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PowdrCircuit<F>>(
             &mut vkey,
             SerdeFormat::Processed,

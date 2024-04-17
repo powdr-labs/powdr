@@ -70,7 +70,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
             ProofType::Poseidon => self.prove_poseidon(witness, witgen_callback),
             ProofType::SnarkSingle => self.prove_snark_single(witness, witgen_callback),
             ProofType::SnarkAggr => match prev_proof {
-                Some(proof) => self.prove_snark_aggr(witness, proof),
+                Some(proof) => self.prove_snark_aggr(witness, witgen_callback, proof),
                 None => Err("Aggregated proof requires a previous proof".to_string()),
             },
         };

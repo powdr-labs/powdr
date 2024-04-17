@@ -343,6 +343,11 @@ enum Commands {
         #[arg(long)]
         vkey: Option<String>,
 
+        /// File containing the verification key of a proof to be
+        /// verified recursively.
+        #[arg(long)]
+        vkey_app: Option<String>,
+
         /// File containing previously generated setup parameters.
         #[arg(long)]
         params: Option<String>,
@@ -678,6 +683,7 @@ fn run_command(command: Commands) {
             backend_options,
             proof,
             vkey,
+            vkey_app,
             params,
         } => {
             let pil = Path::new(&file);
@@ -689,6 +695,7 @@ fn run_command(command: Commands) {
                 backend_options,
                 proof,
                 vkey,
+                vkey_app,
                 params
             ))
         }
@@ -1057,6 +1064,7 @@ fn read_and_prove<T: FieldElement>(
     backend_options: Option<String>,
     proof_path: Option<String>,
     vkey: Option<String>,
+    vkey_app: Option<String>,
     params: Option<String>,
 ) -> Result<(), Vec<String>> {
     Pipeline::<T>::default()
@@ -1064,6 +1072,7 @@ fn read_and_prove<T: FieldElement>(
         .with_output(dir.to_path_buf(), true)
         .read_witness(dir)
         .with_setup_file(params.map(PathBuf::from))
+        .with_vkey_app_file(vkey_app.map(PathBuf::from))
         .with_vkey_file(vkey.map(PathBuf::from))
         .with_existing_proof_file(proof_path.map(PathBuf::from))
         .with_backend(*backend_type, backend_options)
