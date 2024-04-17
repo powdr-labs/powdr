@@ -20,4 +20,4 @@ powdr-riscv-executor = { path = "../riscv-executor" }
 [features]
 default = ["halo2", "estark-polygon"] # halo2 and estark-polygon are enabled by default
 halo2 = ["powdr-backend/halo2", "powdr-pipeline/halo2"]
-estark-polygon = ["powdr-backend/estark-polygon", "powdr-pipeline/estark-polygon"]
+estark-polygon = ["powdr-backend/estark-polygon", "powdr-pipeline/estark-polygon", "powdr-riscv/estark-polygon"]
