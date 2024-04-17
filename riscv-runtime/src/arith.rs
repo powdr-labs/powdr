@@ -14,10 +14,8 @@ fn u8_be_to_u32(a: &[u8; 32], b: &mut [u32; 8]) {
 /// convert a u32 array (arith machine format) to big-endian u8 array
 fn u32_to_u8_be(a: &[u32; 8], b: &mut [u8; 32]) {
     for (i, n) in a.iter().rev().enumerate() {
-        let bytes = n.to_le_bytes();
-        for byte in 0..4 {
-            b[i * 4 + byte] = bytes[3 - byte];
-        }
+        let bytes = n.to_be_bytes();
+        b[i * 4..i * 4 + 4].copy_from_slice(&bytes)
     }
 }
 
