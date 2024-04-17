@@ -751,7 +751,7 @@ impl<'a> TypeChecker<'a> {
                 match data {
                     Some(data) => {
                         let Type::Function(FunctionType { params, value }) = ty else {
-                            if matches!(ty, Type::NamedType(_)) {
+                            if matches!(ty, Type::NamedType(_, _)) {
                                 return Err(format!("Enum variant {name} does not have fields, but is used with parentheses in {pattern}."));
                             } else {
                                 return Err(format!(
@@ -759,7 +759,7 @@ impl<'a> TypeChecker<'a> {
                                 ));
                             }
                         };
-                        if !matches!(value.as_ref(), Type::NamedType(_)) {
+                        if !matches!(value.as_ref(), Type::NamedType(_, _)) {
                             return Err(format!(
                                 "Expected enum variant for pattern {pattern} but got {value}"
                             ));
@@ -778,7 +778,7 @@ impl<'a> TypeChecker<'a> {
                         (*value).clone()
                     }
                     None => {
-                        if let Type::NamedType(_) = ty {
+                        if let Type::NamedType(_, _) = ty {
                             ty
                         } else if matches!(ty, Type::Function(_)) {
                             return Err(format!(
