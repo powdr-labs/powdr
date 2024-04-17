@@ -89,7 +89,7 @@ jobs:
     - name: Run default tests
       run: PILCOM=$(pwd)/pilcom/ cargo nextest run --archive-file tests.tar.zst --verbose
     - name: Run examples
-      run: cargo run --no-default-features --example hello_world
+      run: cargo run --example hello_world
 
   test_estark_polygon:
     needs: build
