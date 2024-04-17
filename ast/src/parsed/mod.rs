@@ -105,24 +105,42 @@ impl PilStatement {
     /// If the statement is a symbol definition, returns all (local) names of defined symbols
     /// and their category.
     /// Note it does not return nested definitions (for an enum for example).
-    pub fn symbol_definition_names(
+    pub fn symbol_definition_names(&self) -> impl Iterator<Item = (&String, SymbolCategory)> + '_ {
+        self.symbol_definition_names_and_contained()
+            .filter_map(|(name, sub_name, category)| match sub_name {
+                Some(_) => None,
+                None => Some((name, category)),
+            })
+    }
+
+    /// If the statement is a symbol definition, returns all (local) names of defined symbols
+    /// and their category.
+    /// For an enum, returns the name of the enum and all the variants, where the first
+    /// component is the name of the enum and the second the name of the variant.
+    pub fn symbol_definition_names_and_contained(
         &self,
-    ) -> Box<dyn Iterator<Item = (&String, SymbolCategory)> + '_> {
+    ) -> Box<dyn Iterator<Item = (&String, Option<&String>, SymbolCategory)> + '_> {
         match self {
             PilStatement::PolynomialDefinition(_, name, _)
             | PilStatement::PolynomialConstantDefinition(_, name, _)
             | PilStatement::ConstantDefinition(_, name, _)
             | PilStatement::PublicDeclaration(_, name, _, _, _)
             | PilStatement::LetStatement(_, name, _, _) => {
-                Box::new(once((name, SymbolCategory::Value)))
+                Box::new(once((name, None, SymbolCategory::Value)))
             }
-            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants: _ }) => {
-                Box::new(once((name, SymbolCategory::Type)))
-            }
+            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants }) => Box::new(
+                once((name, None, SymbolCategory::Type)).chain(
+                    variants
+                        .iter()
+                        .map(move |v| (name, Some(&v.name), SymbolCategory::TypeConstructor)),
+                ),
+            ),
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
-            | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => {
-                Box::new(polynomials.iter().map(|p| (&p.name, SymbolCategory::Value)))
-            }
+            | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => Box::new(
+                polynomials
+                    .iter()
+                    .map(|p| (&p.name, None, SymbolCategory::Value)),
+            ),
 
             PilStatement::Include(_, _)
             | PilStatement::Namespace(_, _, _)
@@ -130,22 +148,6 @@ impl PilStatement {
             | PilStatement::PermutationIdentity(_, _, _)
             | PilStatement::ConnectIdentity(_, _, _)
             | PilStatement::Expression(_, _) => Box::new(empty()),
-        }
-    }
-
-    /// If the statement defines any symbols inside a namespace, returns
-    /// the name of the namespace and defined names inside that namespace
-    /// and their category.
-    pub fn defined_contained_names(
-        &self,
-    ) -> Box<dyn Iterator<Item = (&String, &String, SymbolCategory)> + '_> {
-        match self {
-            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants }) => Box::new(
-                variants
-                    .iter()
-                    .map(move |v| (name, &v.name, SymbolCategory::TypeConstructor)),
-            ),
-            _ => Box::new(empty()),
         }
     }
 }

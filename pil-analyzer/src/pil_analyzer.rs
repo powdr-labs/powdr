@@ -286,20 +286,19 @@ impl PILAnalyzer {
             PilStatement::Include(_, _) => unreachable!(),
             _ => {
                 let names = statement
-                    .symbol_definition_names()
-                    .map(|(name, is_type)| (self.driver().resolve_decl(name), is_type))
-                    .chain(
-                        statement
-                            .defined_contained_names()
-                            .map(|(name, inner, is_type)| {
-                                (
-                                    self.driver()
-                                        .resolve_namespaced_decl(&[name, inner])
-                                        .to_dotted_string(),
-                                    is_type,
-                                )
-                            }),
-                    )
+                    .symbol_definition_names_and_contained()
+                    .map(|(name, sub_name, symbol_category)| {
+                        (
+                            match sub_name {
+                                None => self.driver().resolve_decl(name),
+                                Some(sub_name) => self
+                                    .driver()
+                                    .resolve_namespaced_decl(&[name, sub_name])
+                                    .to_dotted_string(),
+                            },
+                            symbol_category,
+                        )
+                    })
                     .collect::<Vec<_>>();
                 for (name, symbol_kind) in names {
                     if self
