@@ -11,6 +11,8 @@
 
 For detailed documentation please visit [the powdr book](https://docs.powdr.org/).
 
+If you have any questions or want to contribute, feel free to write us in our [Matrix Chat](https://matrix.to/#/#powdr:matrix.org).
+
 *powdr* is a toolkit that helps build zkVMs and similar proof frameworks.
 
 It has two main components:

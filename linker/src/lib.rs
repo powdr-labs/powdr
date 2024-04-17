@@ -577,7 +577,7 @@ machine Machine {
 
     #[test]
     #[should_panic(expected = "Number passed to unsigned parameter is negative or too large")]
-    pub fn negative_for_unsigned() {
+    fn negative_for_unsigned() {
         let source = r#"
 machine NegativeForUnsigned {
     reg pc[@pc];
@@ -595,7 +595,7 @@ machine NegativeForUnsigned {
     }
 
     #[test]
-    pub fn instr_external_generated_pil() {
+    fn instr_external_generated_pil() {
         let asm = r"
 machine SubVM(latch, operation_id) {
     operation add5<0> x -> y;
@@ -675,7 +675,7 @@ namespace main_vm(1024);
     }
 
     #[test]
-    pub fn permutation_instructions() {
+    fn permutation_instructions() {
         let expected = r#"namespace main(65536);
     pol commit _operation_id(i) query std::prover::Query::Hint(13);
     pol constant _block_enforcer_last_step = [0]* + [1];

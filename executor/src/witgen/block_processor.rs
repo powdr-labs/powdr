@@ -225,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fibonacci() {
+    fn fibonacci() {
         let src = r#"
             constant %N = 8;
 

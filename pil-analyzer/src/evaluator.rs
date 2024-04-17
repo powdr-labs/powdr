@@ -406,7 +406,7 @@ impl<'a, T: Display> Display for Value<'a, T> {
 
 #[derive(Clone, Debug)]
 pub struct Closure<'a, T> {
-    pub lambda: &'a LambdaExpression<Reference>,
+    pub lambda: &'a LambdaExpression<Expression>,
     pub environment: Vec<Arc<Value<'a, T>>>,
     pub type_args: HashMap<String, Type>,
 }
@@ -1044,7 +1044,7 @@ mod test {
     }
 
     #[test]
-    pub fn arrays_and_strings() {
+    fn arrays_and_strings() {
         let src = r#"namespace Main(16);
             let words = ["the", "quick", "brown", "fox"];
             let translate = |w| match w {
@@ -1062,7 +1062,7 @@ mod test {
     }
 
     #[test]
-    pub fn fibonacci() {
+    fn fibonacci() {
         let src = r#"namespace Main(16);
             let fib: int -> int = |i| match i {
                 0 => 0,
@@ -1078,7 +1078,7 @@ mod test {
     }
 
     #[test]
-    pub fn capturing() {
+    fn capturing() {
         let src = r#"namespace Main(16);
             let f: int, (int -> int) -> (int -> int) = |n, g| match n { 99 => |i| n, 1 => g };
             let result = f(1, f(99, |x| x + 3000))(0);
@@ -1092,7 +1092,7 @@ mod test {
     }
 
     #[test]
-    pub fn array_len() {
+    fn array_len() {
         let src = r#"
             let N: int = 2;
             namespace std::array(N);
@@ -1108,7 +1108,7 @@ mod test {
 
     #[test]
     #[should_panic = r#"FailedAssertion("this text")"#]
-    pub fn panic_complex() {
+    fn panic_complex() {
         let src = r#"
             constant %N = 2;
             namespace std::check(%N);
@@ -1123,7 +1123,7 @@ mod test {
 
     #[test]
     #[should_panic = r#"FailedAssertion("text")"#]
-    pub fn panic_string() {
+    fn panic_string() {
         let src = r#"
             constant %N = 2;
             namespace std::check(%N);
@@ -1135,7 +1135,7 @@ mod test {
     }
 
     #[test]
-    pub fn hex_number_outside_field() {
+    fn hex_number_outside_field() {
         // This tests that the parser does not lose precision when parsing large integers.
         let src = r#"
             let N: int = 0x9999999999999999999999999999999;
@@ -1144,7 +1144,7 @@ mod test {
     }
 
     #[test]
-    pub fn decimal_number_outside_field() {
+    fn decimal_number_outside_field() {
         // This tests that the parser does not lose precision when parsing large integers.
         let src = r#"
             let N: int = 9999999999999999999999999999999;
@@ -1154,7 +1154,7 @@ mod test {
 
     #[test]
     #[should_panic = "Number literal 9999999999999999999999999999999 is too large for field element."]
-    pub fn decimal_number_outside_field_for_fe() {
+    fn decimal_number_outside_field_for_fe() {
         let src = r#"
             let N: fe = 9999999999999999999999999999999;
         "#;
@@ -1162,7 +1162,7 @@ mod test {
     }
 
     #[test]
-    pub fn zero_power_zero() {
+    fn zero_power_zero() {
         let src = r#"
         let zpz_int: int = 0**0;
         let zpz_fe: fe = 0**0;
@@ -1172,7 +1172,7 @@ mod test {
     }
 
     #[test]
-    pub fn debug_print() {
+    fn debug_print() {
         let src = r#"
             namespace std::debug(8);
             let print = 2;
@@ -1182,7 +1182,7 @@ mod test {
     }
 
     #[test]
-    pub fn debug_print_complex() {
+    fn debug_print_complex() {
         let src = r#"
             namespace std::debug(8);
             let print = 2;
@@ -1197,7 +1197,7 @@ mod test {
     }
 
     #[test]
-    pub fn local_vars() {
+    fn local_vars() {
         let src = r#"
             let f: int -> int = |i| {
                 let x = i + 1;
@@ -1211,7 +1211,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_pattern() {
+    fn match_pattern() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [] => 0,
@@ -1231,7 +1231,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_pattern_complex() {
+    fn match_pattern_complex() {
         let src = r#"
             let f: ((int, int), int[]) -> int = |q| match q {
                 ((1, _), [x, 4]) => 1 + x,
@@ -1258,7 +1258,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array() {
+    fn match_skip_array() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [x, .., y] => x + y,
@@ -1274,7 +1274,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array_2() {
+    fn match_skip_array_2() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [.., y] => y,
@@ -1289,7 +1289,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array_3() {
+    fn match_skip_array_3() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [.., x, y] => x,
@@ -1304,7 +1304,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array_4() {
+    fn match_skip_array_4() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [x, y, ..] => y,
@@ -1319,7 +1319,7 @@ mod test {
     }
 
     #[test]
-    pub fn unpack_fun() {
+    fn unpack_fun() {
         let src = r#"
             let t: (int, fe, int), int -> int[] = |(x, _, y), z| [x, y, z];
             let x: int[] = t((1, 2, 3), 4);
@@ -1328,7 +1328,7 @@ mod test {
     }
 
     #[test]
-    pub fn unpack_let() {
+    fn unpack_let() {
         let src = r#"
             let x: int[] = {
                 let (a, (_, b), (c, _, _, d, _)) = (1, ((), 3), (4, (), (), 7, ()));
