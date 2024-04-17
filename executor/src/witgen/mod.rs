@@ -16,6 +16,7 @@ pub use self::eval_result::{
 };
 use self::generator::Generator;
 
+use self::global_constraints::GlobalConstraints;
 use self::identity_processor::Machines;
 use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::profiling::{record_end, record_start, reset_and_print_profile_summary};
@@ -151,7 +152,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     /// @returns the values (in source order) and the degree of the polynomials.
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
         record_start(OUTER_CODE_NAME);
-        let fixed = FixedData::new(
+        let mut fixed = FixedData::new(
             self.analyzed,
             self.fixed_col_values,
             self.external_witness_values,
@@ -179,22 +180,16 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             })
             .collect::<Vec<_>>();
 
-        let (
-            constraints,
-            // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
-            // These are already captured in the range constraints.
-            retained_identities,
-        ) = global_constraints::determine_global_constraints(&fixed, &identities);
+        // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
+        // These are already captured in the range constraints.
+        let retained_identities =
+            global_constraints::set_global_constraints(&mut fixed, &identities);
         let ExtractionOutput {
             mut fixed_lookup,
             mut machines,
             base_identities,
             base_witnesses,
-        } = machines::machine_extractor::split_out_machines(
-            &fixed,
-            retained_identities,
-            &constraints,
-        );
+        } = machines::machine_extractor::split_out_machines(&fixed, retained_identities);
         let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
             fixed_lookup: &mut fixed_lookup,
@@ -207,7 +202,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             &[], // No connecting identities
             base_identities,
             base_witnesses,
-            constraints.clone(),
             // We could set the latch of the main VM here, but then we would have to detect it.
             // Instead, the main VM will be computed in one block, directly continuing into the
             // infinite loop after the first return.
@@ -274,13 +268,14 @@ pub fn extract_publics<T: FieldElement>(
 }
 
 /// Data that is fixed for witness generation.
-pub struct FixedData<'a, T> {
+pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
     degree: DegreeType,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
     column_by_name: HashMap<String, PolyID>,
     challenges: BTreeMap<u64, T>,
+    global_range_constraints: GlobalConstraints<T>,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -332,6 +327,13 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
         let fixed_cols =
             FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)));
+
+        // The global range constraints are not set yet.
+        let global_range_constraints = GlobalConstraints {
+            witness_constraints: WitnessColumnMap::new(None, witness_cols.len()),
+            fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
+        };
+
         FixedData {
             analyzed,
             degree: analyzed.degree(),
@@ -344,7 +346,16 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 .map(|(name, (symbol, _))| (name.clone(), symbol.into()))
                 .collect(),
             challenges,
+            global_range_constraints,
         }
+    }
+
+    pub fn set_global_range_constraints(&mut self, global_range_constraints: GlobalConstraints<T>) {
+        self.global_range_constraints = global_range_constraints;
+    }
+
+    pub fn global_range_constraints(&self) -> &GlobalConstraints<T> {
+        &self.global_range_constraints
     }
 
     fn witness_map_with<V: Clone>(&self, initial_value: V) -> WitnessColumnMap<V> {

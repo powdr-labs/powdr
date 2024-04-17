@@ -5,12 +5,12 @@ use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::FieldElement;
 
 /// Evaluates only fixed columns on a specific row.
-pub struct FixedEvaluator<'a, T> {
+pub struct FixedEvaluator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     row: usize,
 }
 
-impl<'a, T> FixedEvaluator<'a, T> {
+impl<'a, T: FieldElement> FixedEvaluator<'a, T> {
     pub fn new(fixed_data: &'a FixedData<'a, T>, row: usize) -> Self {
         FixedEvaluator { fixed_data, row }
     }
