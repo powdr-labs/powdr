@@ -42,11 +42,11 @@ jobs:
       run: cargo clippy --all --all-targets --all-features --profile pr-tests -- -D warnings
     - name: Build
       run: cargo build --all-targets --all --all-features --profile pr-tests
-    - name: Run tiny example
-      run: cargo run --profile pr-tests --example hello_world
     - uses: taiki-e/install-action@nextest
     - name: Create tests archive
       run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
+    - name: Run tiny example
+      run: cargo run --profile pr-tests --example hello_world
     - name: Upload tests archive
       uses: actions/upload-artifact@v2
       with:
