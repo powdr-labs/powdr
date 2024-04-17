@@ -87,7 +87,9 @@ jobs:
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
     - name: Run default tests
-      run: PILCOM=$(pwd)/pilcom/ cargo nextest run --archive-file tests.tar.zst --verbose
+      run: cargo nextest run --archive-file tests.tar.zst --verbose
+      env:
+        PILCOM: ${{ github.workspace }}/pilcom/
     - name: Run examples
       run: cargo run --example hello_world
 
@@ -123,6 +125,8 @@ jobs:
       run: tar --zstd -xf pil-stark-prover-deps.tar.zst
     - name: Run EStark Polygon test
       run: cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E "test(=test_vec_median_estark_polygon)"
+      env:
+        PILCOM: ${{ github.workspace }}/pilcom/
 
   test_slow:
     strategy:
@@ -166,5 +170,7 @@ jobs:
         elif [[ "${{ matrix.test }}" == "subset2" ]]; then
           TESTS="test(=test_keccak) | test(=test_vec_median) | test(=instruction_tests::addi) | test(=test_many_chunks) | test(=test_sum_serde)"
         fi
-        PILCOM=$(pwd)/pilcom/ cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E "$TESTS"
+        cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E "$TESTS"
       shell: bash
+      env:
+        PILCOM: ${{ github.workspace }}/pilcom/
