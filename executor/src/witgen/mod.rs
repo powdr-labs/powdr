@@ -152,7 +152,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     /// @returns the values (in source order) and the degree of the polynomials.
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
         record_start(OUTER_CODE_NAME);
-        let mut fixed = FixedData::new(
+        let fixed = FixedData::new(
             self.analyzed,
             self.fixed_col_values,
             self.external_witness_values,
@@ -182,8 +182,8 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
         // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
         // These are already captured in the range constraints.
-        let retained_identities =
-            global_constraints::set_global_constraints(&mut fixed, &identities);
+        let (fixed, retained_identities) =
+            global_constraints::set_global_constraints(fixed, &identities);
         let ExtractionOutput {
             mut fixed_lookup,
             mut machines,
@@ -350,8 +350,23 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         }
     }
 
-    pub fn set_global_range_constraints(&mut self, global_range_constraints: GlobalConstraints<T>) {
-        self.global_range_constraints = global_range_constraints;
+    pub fn with_global_range_constraints(
+        self,
+        global_range_constraints: GlobalConstraints<T>,
+    ) -> Self {
+        for c in self
+            .global_range_constraints
+            .witness_constraints
+            .values()
+            .chain(self.global_range_constraints.fixed_constraints.values())
+        {
+            assert!(c.is_none(), "range constraints already set");
+        }
+
+        Self {
+            global_range_constraints,
+            ..self
+        }
     }
 
     pub fn global_range_constraints(&self) -> &GlobalConstraints<T> {
