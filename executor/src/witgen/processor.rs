@@ -21,12 +21,12 @@ use super::{
 
 #[derive(Default)]
 pub struct CopyConstraints {
-    constraints: BTreeMap<(PolyID, usize), Rc<BTreeSet<(PolyID, usize)>>>,
+    constraints: BTreeMap<(PolyID, RowIndex), Rc<BTreeSet<(PolyID, RowIndex)>>>,
 }
 
 impl CopyConstraints {
-    pub fn new(constraint_pairs: Vec<((PolyID, usize), (PolyID, usize))>) -> Self {
-        let mut eq_classes: Vec<BTreeSet<(PolyID, usize)>> = Vec::new();
+    pub fn new(constraint_pairs: Vec<((PolyID, RowIndex), (PolyID, RowIndex))>) -> Self {
+        let mut eq_classes: Vec<BTreeSet<(PolyID, RowIndex)>> = Vec::new();
         for (a, b) in constraint_pairs {
             let mut found = false;
             for eq_class in &mut eq_classes {
@@ -56,7 +56,11 @@ impl CopyConstraints {
         Self { constraints }
     }
 
-    pub fn get(&self, poly_id: PolyID, row_index: usize) -> Option<Rc<BTreeSet<(PolyID, usize)>>> {
+    pub fn get(
+        &self,
+        poly_id: PolyID,
+        row_index: RowIndex,
+    ) -> Option<Rc<BTreeSet<(PolyID, RowIndex)>>> {
         self.constraints.get(&(poly_id, row_index)).cloned()
     }
 }
@@ -363,15 +367,15 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     /// Sets the value of a given expression, in a given row.
     pub fn set_value(
         &mut self,
-        row_index: usize,
+        local_index: usize,
         expression: &'a Expression<T>,
         value: T,
         // name: impl Fn() -> String,
     ) -> Result<bool, IncompleteCause<&'a AlgebraicReference>> {
         let row_pair = RowPair::new(
-            &self.data[row_index],
-            &self.data[row_index + 1],
-            self.row_offset + row_index as u64,
+            &self.data[local_index],
+            &self.data[local_index + 1],
+            self.row_offset + local_index as u64,
             self.fixed_data,
             UnknownStrategy::Unknown,
         );
@@ -379,7 +383,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         let updates = (affine_expression - value.into())
             .solve_with_range_constraints(&row_pair)
             .unwrap();
-        Ok(self.apply_updates(row_index, &updates, || "set value".to_string()))
+        Ok(self.apply_updates(local_index, &updates, || "set value".to_string()))
     }
 
     fn apply_updates(
@@ -409,9 +413,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 if let Constraint::Assignment(v) = c {
                     let row = self.row_offset + row_index + poly.next as usize;
                     if let Some(eq_class) = self.copy_constraints.get(poly.poly_id, row.into()) {
-                        for (other_poly, row) in eq_class.iter() {
+                        for (other_poly, other_row) in eq_class.iter() {
                             let expression = &self.fixed_data.witness_cols[other_poly].expr;
-                            self.set_value(*row, expression, *v).unwrap();
+                            self.ensure_enough_rows(other_row);
+                            let local_index = other_row.to_local(&self.row_offset);
+                            self.set_value(local_index, expression, *v).unwrap();
                         }
                     }
                 }
@@ -452,6 +458,21 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         } else {
             assert_eq!(i, self.data.len());
             self.data.push(row);
+        }
+    }
+
+    /// Ensure that we have enough rows to create a RowPair starting from the given global row index.
+    /// This means that we need to have the given row and the next!
+    fn ensure_enough_rows(&mut self, row_index: &RowIndex) {
+        let local_index = row_index.to_local(&self.row_offset);
+        while self.data.len() <= local_index + 1 {
+            self.data.push(Row::fresh(
+                self.fixed_data,
+                RowIndex::from_degree(
+                    self.data.len() as DegreeType + u64::from(self.row_offset),
+                    self.fixed_data.degree,
+                ),
+            ));
         }
     }
 

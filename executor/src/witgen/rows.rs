@@ -23,7 +23,7 @@ use super::{
 /// A small wrapper around a row index, which knows the total number of rows.
 /// When converted to DegreeType or usize, it will be reduced modulo the number of rows
 /// (handling negative indices as well).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialOrd, PartialEq, Eq, Ord)]
 pub struct RowIndex {
     index: i64,
     num_rows: DegreeType,
@@ -57,6 +57,17 @@ impl RowIndex {
             index: index.try_into().unwrap(),
             num_rows,
         }
+    }
+
+    pub fn to_local(&self, row_offset: &RowIndex) -> usize {
+        let row_index = DegreeType::from(*self);
+        let row_offset = DegreeType::from(*row_offset);
+        if row_index >= row_offset {
+            (row_index - row_offset).try_into().unwrap()
+        } else {
+            (row_index + self.num_rows - row_offset).try_into().unwrap()
+        }
+    
     }
 }
 

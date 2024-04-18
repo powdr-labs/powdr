@@ -82,11 +82,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         let a = fixed_data.try_column_by_name("PlonkCircuit.a").unwrap();
         let b = fixed_data.try_column_by_name("PlonkCircuit.b").unwrap();
         let c = fixed_data.try_column_by_name("PlonkCircuit.c").unwrap();
+        let d = fixed_data.degree;
         let copy_constraints = CopyConstraints::new(vec![
-            ((a, 0), (b, 0)),
-            ((a, 1), (b, 1)),
-            ((c, 0), (a, 2)),
-            ((c, 1), (b, 2)),
+            ((a, RowIndex::from_i64(0, d)), (b, RowIndex::from_i64(0, d))),
+            ((a, RowIndex::from_i64(1, d)), (b, RowIndex::from_i64(1, d))),
+            ((c, RowIndex::from_i64(0, d)), (a, RowIndex::from_i64(2, d))),
+            ((c, RowIndex::from_i64(1, d)), (b, RowIndex::from_i64(2, d))),
         ]);
 
         let processor = Processor::new(
