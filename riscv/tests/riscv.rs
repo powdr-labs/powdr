@@ -129,7 +129,7 @@ fn keccak() {
 #[cfg(feature = "estark-polygon")]
 #[test]
 #[ignore = "Too slow"]
-fn test_vec_median_estark_polygon() {
+fn vec_median_estark_polygon() {
     let case = "vec_median";
     verify_riscv_crate_with_backend(
         case,
