@@ -173,7 +173,7 @@ where
 ///
 /// let mut pipeline = Pipeline::<GoldilocksField>::default()
 ///   .from_file(resolve_test_file("pil/fibonacci.pil"))
-///   .with_backend(BackendType::PilStarkCli);
+///   .with_backend(BackendType::EStarkDump);
 ///
 /// // Get the result
 /// let proof = pipeline.compute_proof().unwrap();
