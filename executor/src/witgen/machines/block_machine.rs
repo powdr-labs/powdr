@@ -345,8 +345,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 &mut mutable_state,
                 self.fixed_data,
                 &self.witness_cols,
-                // TODO: Copy constraints
-                Default::default(),
             );
 
             // Set all selectors to 0

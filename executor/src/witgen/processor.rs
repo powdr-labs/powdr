@@ -25,6 +25,35 @@ pub struct CopyConstraints {
 }
 
 impl CopyConstraints {
+    pub fn from_fixed_data<T: FieldElement>(
+        fixed_data: &FixedData<T>,
+        witness_cols: &HashSet<PolyID>,
+    ) -> Self {
+        let is_example = witness_cols
+            .iter()
+            .all(|c| fixed_data.column_name(&c).starts_with("PlonkCircuit."));
+
+        if is_example {
+            // Hard-code copy constraints for now.
+            // - a[0] = b[0]
+            // - a[1] = b[1]
+            // - c[0] = a[2]
+            // - c[1] = b[2]
+            let a = fixed_data.try_column_by_name("PlonkCircuit.a").unwrap();
+            let b = fixed_data.try_column_by_name("PlonkCircuit.b").unwrap();
+            let c = fixed_data.try_column_by_name("PlonkCircuit.c").unwrap();
+            let d = fixed_data.degree;
+            CopyConstraints::new(vec![
+                ((a, RowIndex::from_i64(0, d)), (b, RowIndex::from_i64(0, d))),
+                ((a, RowIndex::from_i64(1, d)), (b, RowIndex::from_i64(1, d))),
+                ((c, RowIndex::from_i64(0, d)), (a, RowIndex::from_i64(2, d))),
+                ((c, RowIndex::from_i64(1, d)), (b, RowIndex::from_i64(2, d))),
+            ])
+        } else {
+            CopyConstraints::default()
+        }
+    }
+
     pub fn new(constraint_pairs: Vec<((PolyID, RowIndex), (PolyID, RowIndex))>) -> Self {
         let mut eq_classes: Vec<BTreeSet<(PolyID, RowIndex)>> = Vec::new();
         for (a, b) in constraint_pairs {
@@ -62,6 +91,10 @@ impl CopyConstraints {
         row_index: RowIndex,
     ) -> Option<Rc<BTreeSet<(PolyID, RowIndex)>>> {
         self.constraints.get(&(poly_id, row_index)).cloned()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.constraints.is_empty()
     }
 }
 
@@ -126,7 +159,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
-        copy_constraints: CopyConstraints,
     ) -> Self {
         let is_relevant_witness = WitnessColumnMap::from(
             fixed_data
@@ -144,7 +176,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             outer_query: None,
             inputs: Vec::new(),
             previously_set_inputs: BTreeMap::new(),
-            copy_constraints,
+            copy_constraints: CopyConstraints::from_fixed_data(fixed_data, witness_cols),
         }
     }
 
@@ -438,9 +470,12 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         self.data.len()
     }
 
-    pub fn finalize_range(&mut self, _range: impl Iterator<Item = usize>) {
-        // Never finalize! There could be copy-constraints coming.
-        // self.data.finalize_range(range)
+    pub fn finalize_range(&mut self, range: impl Iterator<Item = usize>) {
+        // HACK: If there are copy constraints, never finalize,
+        // because it is harder to know when a row is final.
+        if self.copy_constraints.is_empty() {
+            self.data.finalize_range(range)
+        }
     }
 
     pub fn row(&self, i: usize) -> &Row<'a, T> {

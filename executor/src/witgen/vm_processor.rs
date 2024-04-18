@@ -13,7 +13,7 @@ use crate::witgen::identity_processor::{self};
 use crate::witgen::IncompleteCause;
 
 use super::data_structures::finalizable_data::FinalizableData;
-use super::processor::{CopyConstraints, OuterQuery, Processor};
+use super::processor::{OuterQuery, Processor};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
@@ -74,30 +74,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .iter()
             .partition(|identity| identity.contains_next_ref());
 
-        // Hard-code copy constraints for now.
-        // - a[0] = b[0]
-        // - a[1] = b[1]
-        // - c[0] = a[2]
-        // - c[1] = b[2]
-        let a = fixed_data.try_column_by_name("PlonkCircuit.a").unwrap();
-        let b = fixed_data.try_column_by_name("PlonkCircuit.b").unwrap();
-        let c = fixed_data.try_column_by_name("PlonkCircuit.c").unwrap();
-        let d = fixed_data.degree;
-        let copy_constraints = CopyConstraints::new(vec![
-            ((a, RowIndex::from_i64(0, d)), (b, RowIndex::from_i64(0, d))),
-            ((a, RowIndex::from_i64(1, d)), (b, RowIndex::from_i64(1, d))),
-            ((c, RowIndex::from_i64(0, d)), (a, RowIndex::from_i64(2, d))),
-            ((c, RowIndex::from_i64(1, d)), (b, RowIndex::from_i64(2, d))),
-        ]);
-
-        let processor = Processor::new(
-            row_offset,
-            data,
-            mutable_state,
-            fixed_data,
-            witnesses,
-            copy_constraints,
-        );
+        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witnesses);
 
         let progress_bar = ProgressBar::new(fixed_data.degree);
         progress_bar.set_style(
