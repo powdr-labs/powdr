@@ -912,6 +912,7 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 mod test {
     use crate::{run_command, Commands, CsvRenderModeCLI, FieldArgument};
     use powdr_backend::BackendType;
+    use test_log::test;
 
     #[test]
     fn simple_sum() {
@@ -930,7 +931,7 @@ mod test {
             inputs: "3,2,1,2".into(),
             force: false,
             pilo: false,
-            prove_with: Some(BackendType::PilStarkCli),
+            prove_with: Some(BackendType::EStarkDump),
             export_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,
             just_execute: false,

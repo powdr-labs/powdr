@@ -1,3 +1,4 @@
+use powdr_backend::BackendType;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{gen_estark_proof, resolve_test_file, test_halo2, verify_test_file},
@@ -341,14 +342,14 @@ fn read_poly_files() {
         // generate poly files
         let mut pipeline = Pipeline::<Bn254Field>::default()
             .from_file(resolve_test_file(f))
-            .with_output(tmp_dir.to_path_buf(), true);
+            .with_output(tmp_dir.to_path_buf(), true)
+            .with_backend(BackendType::EStarkDump);
         pipeline.compute_witness().unwrap();
-        let name = pipeline.name().to_string();
         let pil = pipeline.compute_optimized_pil().unwrap();
+        pipeline.compute_proof().unwrap();
 
         // check fixed cols (may have no fixed cols)
-        if let Some((fixed, degree)) =
-            try_read_poly_set::<FixedPolySet, _>(&pil, tmp_dir.as_path(), &name)
+        if let Some((fixed, degree)) = try_read_poly_set::<FixedPolySet, _>(&pil, tmp_dir.as_path())
         {
             assert_eq!(pil.degree(), degree);
             assert_eq!(pil.degree(), fixed[0].1.len() as u64);
@@ -356,7 +357,7 @@ fn read_poly_files() {
 
         // check witness cols (examples assumed to have at least one witness col)
         let (witness, degree) =
-            try_read_poly_set::<WitnessPolySet, _>(&pil, tmp_dir.as_path(), &name).unwrap();
+            try_read_poly_set::<WitnessPolySet, _>(&pil, tmp_dir.as_path()).unwrap();
         assert_eq!(pil.degree(), degree);
         assert_eq!(pil.degree(), witness[0].1.len() as u64);
     }
