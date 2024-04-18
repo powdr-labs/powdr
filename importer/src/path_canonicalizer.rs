@@ -79,11 +79,8 @@ impl<'a> Folder for Canonicalizer<'a> {
                             },
                             SymbolValue::Expression(mut exp) => {
                                 if let Some(type_scheme) = &mut exp.type_scheme {
-                                    type_scheme
-                                        .ty
-                                        .map_to_type_vars(&type_scheme.vars.vars().collect());
-                                    canonicalize_inside_type(
-                                        &mut type_scheme.ty,
+                                    canonicalize_inside_type_scheme(
+                                        type_scheme,
                                         &self.path,
                                         self.paths,
                                     );
@@ -92,10 +89,13 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 Some(Ok(SymbolValue::Expression(exp)))
                             }
                             SymbolValue::TypeDeclaration(mut enum_decl) => {
+                                let type_vars = enum_decl.type_vars.vars().collect();
                                 for variant in &mut enum_decl.variants {
                                     if let Some(fields) = &mut variant.fields {
                                         for field in fields {
-                                            canonicalize_inside_type(field, &self.path, self.paths);
+                                            canonicalize_inside_type(
+                                                field, &type_vars, &self.path, self.paths,
+                                            );
                                         }
                                     }
                                 }
@@ -285,17 +285,21 @@ fn canonicalize_inside_type_scheme(
     path: &AbsoluteSymbolPath,
     paths: &'_ PathMap,
 ) {
-    type_scheme
-        .ty
-        .map_to_type_vars(&type_scheme.vars.vars().collect());
-    canonicalize_inside_type(&mut type_scheme.ty, path, paths);
+    canonicalize_inside_type(
+        &mut type_scheme.ty,
+        &type_scheme.vars.vars().collect(),
+        path,
+        paths,
+    );
 }
 
 fn canonicalize_inside_type(
     ty: &mut Type<Expression>,
+    type_vars: &HashSet<&String>,
     path: &AbsoluteSymbolPath,
     paths: &'_ PathMap,
 ) {
+    ty.map_to_type_vars(type_vars);
     for p in ty.contained_named_types_mut() {
         let abs = paths.get(&path.clone().join(p.clone())).unwrap();
         *p = abs.relative_to(&Default::default()).clone();
@@ -742,9 +746,6 @@ fn check_type_declaration(
     enum_decl: &EnumDeclaration<Expression>,
     state: &mut State<'_>,
 ) -> Result<(), String> {
-    // If we add generic types, the type variables need to be added
-    // in a way similar to local variables in expressions.
-
     enum_decl.variants.iter().try_fold(
         BTreeSet::default(),
         |mut acc, EnumVariant { name, .. }| {
@@ -754,20 +755,14 @@ fn check_type_declaration(
         },
     )?;
 
+    let type_vars = enum_decl.type_vars.vars().collect::<HashSet<_>>();
+
     enum_decl
         .variants
         .iter()
         .flat_map(|v| v.fields.iter())
         .flat_map(|v| v.iter())
-        .try_for_each(|ty| {
-            check_type(
-                location,
-                ty,
-                state,
-                &Default::default(),
-                &Default::default(),
-            )
-        })
+        .try_for_each(|ty| check_type(location, ty, state, &type_vars, &Default::default()))
 }
 
 fn check_type_scheme(

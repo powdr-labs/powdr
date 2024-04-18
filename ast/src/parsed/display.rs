@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter, Result};
 use itertools::Itertools;
 
 use crate::{
+    indent,
     parsed::{BinaryOperator, UnaryOperator},
     write_indented_by, write_items, write_items_indented,
 };
@@ -523,9 +524,25 @@ impl Display for FunctionDefinition {
 
 impl<E: Display> Display for EnumDeclaration<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "enum {} {{", self.name)?;
-        write_items_indented(f, self.variants.iter())?;
-        write!(f, "}}")
+        write!(f, "{}", self.to_string_with_name(&self.name))
+    }
+}
+
+impl<E: Display> EnumDeclaration<E> {
+    /// Formats the enum declaration, exchanging its name by the provided one.
+    pub fn to_string_with_name(&self, name: &str) -> String {
+        let type_vars = if self.type_vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_vars)
+        };
+        format!(
+            "enum {name}{type_vars} {{\n{}}}",
+            indent(
+                self.variants.iter().map(|v| format!("{v},\n")).format(""),
+                1
+            )
+        )
     }
 }
 
@@ -539,7 +556,7 @@ impl<E: Display> Display for EnumVariant<E> {
                 fields.iter().map(format_type_with_parentheses).format(", ")
             )?;
         }
-        write!(f, ",")
+        Ok(())
     }
 }
 
@@ -703,7 +720,10 @@ impl<E: Display> Display for Type<E> {
             Type::Tuple(tuple) => write!(f, "{tuple}"),
             Type::Function(fun) => write!(f, "{fun}"),
             Type::TypeVar(name) => write!(f, "{name}"),
-            Type::NamedType(name) => write!(f, "{name}"),
+            Type::NamedType(name, Some(args)) => {
+                write!(f, "{name}<{}>", args.iter().format(", "))
+            }
+            Type::NamedType(name, None) => write!(f, "{name}"),
         }
     }
 }

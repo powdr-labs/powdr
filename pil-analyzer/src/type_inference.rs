@@ -742,17 +742,16 @@ impl<'a> TypeChecker<'a> {
                 ty
             }
             Pattern::Enum(name, data) => {
-                let (ty, gen_args) =
+                // We just ignore the generic args here, storing them in the pattern
+                // is not helpful because the type is obvious from the value.
+                let (ty, _generic_args) =
                     self.instantiate_scheme(self.declared_types[&name.to_dotted_string()].clone());
-                if !gen_args.is_empty() {
-                    unimplemented!("Generic enums are not yet supported.");
-                }
                 let ty = type_for_reference(&ty);
 
                 match data {
                     Some(data) => {
                         let Type::Function(FunctionType { params, value }) = ty else {
-                            if matches!(ty, Type::NamedType(_)) {
+                            if matches!(ty, Type::NamedType(_, _)) {
                                 return Err(format!("Enum variant {name} does not have fields, but is used with parentheses in {pattern}."));
                             } else {
                                 return Err(format!(
@@ -760,7 +759,7 @@ impl<'a> TypeChecker<'a> {
                                 ));
                             }
                         };
-                        if !matches!(value.as_ref(), Type::NamedType(_)) {
+                        if !matches!(value.as_ref(), Type::NamedType(_, _)) {
                             return Err(format!(
                                 "Expected enum variant for pattern {pattern} but got {value}"
                             ));
@@ -779,7 +778,7 @@ impl<'a> TypeChecker<'a> {
                         (*value).clone()
                     }
                     None => {
-                        if let Type::NamedType(_) = ty {
+                        if let Type::NamedType(_, _) = ty {
                             ty
                         } else if matches!(ty, Type::Function(_)) {
                             return Err(format!(
