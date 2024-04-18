@@ -19,9 +19,11 @@ use super::{
     Constraints, EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
+type CellRef = (PolyID, RowIndex);
+
 #[derive(Default)]
 pub struct CopyConstraints {
-    constraints: BTreeMap<(PolyID, RowIndex), Rc<BTreeSet<(PolyID, RowIndex)>>>,
+    constraints: BTreeMap<CellRef, Rc<BTreeSet<CellRef>>>,
 }
 
 impl CopyConstraints {
@@ -31,7 +33,7 @@ impl CopyConstraints {
     ) -> Self {
         let is_example = witness_cols
             .iter()
-            .all(|c| fixed_data.column_name(&c).starts_with("PlonkCircuit."));
+            .all(|c| fixed_data.column_name(c).starts_with("PlonkCircuit."));
 
         if is_example {
             // Hard-code copy constraints for now.
@@ -410,7 +412,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .solve_with_range_constraints(&row_pair)
             .unwrap();
         Ok(self.apply_updates(local_index, &updates, || {
-            format!("Setting value ({})", reason.to_string())
+            format!("Setting value ({})", reason)
         }))
     }
 
@@ -440,7 +442,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
                 if let Constraint::Assignment(v) = c {
                     let row = self.row_offset + row_index + poly.next as usize;
-                    if let Some(eq_class) = self.copy_constraints.get(poly.poly_id, row.into()) {
+                    if let Some(eq_class) = self.copy_constraints.get(poly.poly_id, row) {
                         for (other_poly, other_row) in eq_class.iter() {
                             let expression = &self.fixed_data.witness_cols[other_poly].expr;
                             self.ensure_enough_rows(other_row);

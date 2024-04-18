@@ -59,15 +59,14 @@ impl RowIndex {
         }
     }
 
-    pub fn to_local(&self, row_offset: &RowIndex) -> usize {
-        let row_index = DegreeType::from(*self);
+    pub fn to_local(self, row_offset: &RowIndex) -> usize {
+        let row_index = DegreeType::from(self);
         let row_offset = DegreeType::from(*row_offset);
         if row_index >= row_offset {
             (row_index - row_offset).try_into().unwrap()
         } else {
             (row_index + self.num_rows - row_offset).try_into().unwrap()
         }
-    
     }
 }
 
