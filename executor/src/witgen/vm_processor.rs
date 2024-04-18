@@ -73,7 +73,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
-
         let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witnesses);
 
         let progress_bar = ProgressBar::new(fixed_data.degree);
@@ -109,7 +108,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     /// Starting out with a single row (at a given offset), iteratively append rows
     /// until we have exhausted the rows or the latch expression (if available) evaluates to 1.
     pub fn run(&mut self, is_main_run: bool) -> EvalValue<&'a AlgebraicReference, T> {
-        // assert!(self.processor.len() == 1);
+        assert!(self.processor.len() == 1);
 
         if is_main_run {
             log::info!("Running main machine for {} rows", self.fixed_data.degree);
