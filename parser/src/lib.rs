@@ -538,4 +538,11 @@ namespace N(2);
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(expected.trim(), printed.trim());
     }
+    #[test]
+    fn add_mul_paren() {
+        let input = "let t = ((x + y) * z);";
+        let expected = "let t = (x + y) * z;";
+        let printed = format!("{}", parse(None, input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
 }
