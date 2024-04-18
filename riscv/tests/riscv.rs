@@ -34,9 +34,9 @@ pub fn test_continuations(case: &str) {
     let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
         // Can't use `verify_pipeline`, because the pipeline was renamed in the middle of after
         // computing the constants file.
-        let mut pipeline = pipeline.with_backend(BackendType::PilStarkCli);
+        let mut pipeline = pipeline.with_backend(BackendType::EStarkDump);
         pipeline.compute_proof().unwrap();
-        verify(pipeline.output_dir().unwrap(), pipeline.name(), Some(case)).unwrap();
+        verify(pipeline.output_dir().unwrap()).unwrap();
         Ok(())
     };
     let bootloader_inputs = rust_continuations_dry_run(&mut pipeline);
@@ -124,6 +124,22 @@ fn memfuncs() {
 fn keccak() {
     let case = "keccak";
     verify_riscv_crate(case, Default::default(), &Runtime::base());
+}
+
+#[cfg(feature = "estark-polygon")]
+#[test]
+#[ignore = "Too slow"]
+fn test_vec_median_estark_polygon() {
+    let case = "vec_median";
+    verify_riscv_crate_with_backend(
+        case,
+        [5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]
+            .into_iter()
+            .map(|x| x.into())
+            .collect(),
+        &Runtime::base(),
+        BackendType::EStarkPolygon,
+    );
 }
 
 #[test]
@@ -255,8 +271,17 @@ fn many_chunks_memory() {
 }
 
 fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, runtime: &Runtime) {
+    verify_riscv_crate_with_backend(case, inputs, runtime, BackendType::EStarkDump)
+}
+
+fn verify_riscv_crate_with_backend(
+    case: &str,
+    inputs: Vec<GoldilocksField>,
+    runtime: &Runtime,
+    backend: BackendType,
+) {
     let powdr_asm = compile_riscv_crate::<GoldilocksField>(case, runtime);
-    verify_riscv_asm_string::<()>(&format!("{case}.asm"), &powdr_asm, inputs, None);
+    verify_riscv_asm_string::<()>(&format!("{case}.asm"), &powdr_asm, inputs, None, backend);
 }
 
 fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
@@ -267,7 +292,13 @@ fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
 ) {
     let powdr_asm = compile_riscv_crate::<GoldilocksField>(case, runtime);
 
-    verify_riscv_asm_string(&format!("{case}.asm"), &powdr_asm, inputs, Some(data));
+    verify_riscv_asm_string(
+        &format!("{case}.asm"),
+        &powdr_asm,
+        inputs,
+        Some(data),
+        BackendType::EStarkDump,
+    );
 }
 
 fn compile_riscv_crate<T: FieldElement>(case: &str, runtime: &Runtime) -> String {

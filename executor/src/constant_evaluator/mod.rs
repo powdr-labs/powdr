@@ -469,7 +469,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic = "Symbol not found: w"]
+    #[should_panic = "Value symbol not found: w"]
     fn symbol_not_found() {
         let src = r#"
             constant %N = 10;

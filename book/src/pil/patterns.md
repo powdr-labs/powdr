@@ -6,13 +6,14 @@ function parameters or left hand sides of let statements in blocks.
 A pattern is built up in from the following components:
 
 - `_` - the "catch all" pattern that matches anything
-- `x` - for an identifier, matches anything and assigns the value to the new local variable of that name
+- `x` - for an identifier `x`, matches anything and assigns the value to the new local variable of that name
 - `k` - for a literal number `k`, matches the exact number, either as an `int` or a `fe`
 - `-k` - for a literal number `k`, matches the exact negated number, either as an `int` or a `fe`
 - `"text"` - for a string literal, matches the exact string literal as a `string`
 - `(a, b, c)` - for a tuple, matches a tuple-typed value if all the components match
 - `[a, b, c`] - for an array, matches array values of exactly the same length if all the components match
 - `[a, .., b, c]` - matches an array that has an initial segment of `a` and ends in `b, c`. The omitted part can be empty.
+- `X::Y(a, b)` - for an enum variant `X::Y`, matches that enum variant if all the enum fields match.
 
 Patterns can be nested, which means that the components of tuple and array patterns
 are themselves patterns.
@@ -69,6 +70,7 @@ The following patterns are refutable:
 
 - all integer literal patterns
 - all string literal patterns
+- enum variant patterns
 - tuple patterns that have refutable components
 - array patterns that are not `[..]`.
 
