@@ -194,7 +194,7 @@ impl<T: FieldElement> Debug for Row<'_, T> {
 }
 
 impl<'a, T: FieldElement> Row<'a, T> {
-    /// Creates a fresh row
+    /// Creates a "fresh" row, i.e., one that is empty but initialized with the global range constraints.
     pub fn fresh(fixed_data: &'a FixedData<'a, T>, row: RowIndex) -> Row<'a, T> {
         WitnessColumnMap::from(
             fixed_data

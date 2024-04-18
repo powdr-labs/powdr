@@ -354,14 +354,14 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         self,
         global_range_constraints: GlobalConstraints<T>,
     ) -> Self {
-        for c in self
-            .global_range_constraints
-            .witness_constraints
-            .values()
-            .chain(self.global_range_constraints.fixed_constraints.values())
-        {
-            assert!(c.is_none(), "range constraints already set");
-        }
+        assert!(
+            self.global_range_constraints
+                .witness_constraints
+                .values()
+                .chain(self.global_range_constraints.fixed_constraints.values())
+                .all(|c| c.is_none()),
+            "range constraints already set"
+        );
 
         Self {
             global_range_constraints,
