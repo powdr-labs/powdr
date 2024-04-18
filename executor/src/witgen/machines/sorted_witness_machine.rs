@@ -22,7 +22,7 @@ use powdr_number::FieldElement;
 /// Where
 ///  - NOTLAST is zero only on the last row
 ///  - POSITIVE has all values from 1 to half of the field size.
-pub struct SortedWitnesses<'a, T> {
+pub struct SortedWitnesses<'a, T: FieldElement> {
     rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
