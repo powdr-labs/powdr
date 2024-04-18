@@ -3,6 +3,7 @@ use core::arch::asm;
 use crate::arith::{be_to_u32, u32_to_be};
 use powdr_riscv_syscalls::Syscall;
 
+/// Add two k256 ec points. Coordinates are big-endian u8 arrays.
 pub fn add_u8_be(
     mut ax: [u8; 32],
     mut ay: [u8; 32],
@@ -34,6 +35,7 @@ pub fn add_u8_be(
     (ax, ay)
 }
 
+/// Add two k256 ec points. Coordinates are little-endian u32 arrays.
 pub fn add_u32_le(
     mut ax: [u32; 8],
     mut ay: [u32; 8],
@@ -51,6 +53,7 @@ pub fn add_u32_le(
     (ax, ay)
 }
 
+/// Double a k256 ec point. Coordinates are big-endian u8 arrays.
 pub fn double_u8_be(mut x: [u8; 32], mut y: [u8; 32]) -> ([u8; 32], [u8; 32]) {
     let mut x1: [u32; 8] = Default::default();
     let mut y1: [u32; 8] = Default::default();
@@ -71,6 +74,7 @@ pub fn double_u8_be(mut x: [u8; 32], mut y: [u8; 32]) -> ([u8; 32], [u8; 32]) {
     (x, y)
 }
 
+/// Double a k256 ec point. Coordinates are little-endian u32 arrays.
 pub fn double_u32_le(mut x: [u32; 8], mut y: [u32; 8]) -> ([u32; 8], [u32; 8]) {
     unsafe {
         asm!("ecall",
