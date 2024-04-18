@@ -635,6 +635,38 @@ pub enum BinaryOperator {
     Greater,
 }
 
+impl BinaryOperator {
+    pub fn precedence(&self) -> ExpressionPrecedence {
+        use BinaryOperator::*;
+        match self {
+            // Unary - * ! & &mut
+            Pow => 2,
+            // * / %
+            Mul | Div | Mod => 3,
+            // + -
+            Add | Sub => 4,
+            // << >>
+            ShiftLeft | ShiftRight => 5,
+            // &
+            BinaryAnd => 6,
+            // ^
+            BinaryXor => 7,
+            // |
+            BinaryOr => 8,
+            // == != < > <= >=
+            Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => 9,
+            // &&
+            LogicalAnd => 10,
+            // ||
+            LogicalOr => 11,
+            // .. ..=
+            // ??
+            // = += -= *= /= %= &= |= ^= <<= >>=
+            Identity => 12,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct IndexAccess<E = Expression<NamespacedPolynomialReference>> {
     pub array: Box<E>,

@@ -565,49 +565,39 @@ fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
 }
 
 impl<E: Display> Expression<E> {
-    pub fn binary_op_precedence(&self) -> ExpressionPrecedence {
-        use BinaryOperator::*;
+    pub fn precedence(&self) -> Option<ExpressionPrecedence> {
         match self {
-            // Unary - * ! & &mut
-            Expression::BinaryOperation(_, op, _) => match op {
-                Pow => 2,
-                // * / %
-                Mul | Div | Mod => 3,
-                // + -
-                Add | Sub => 4,
-                // << >>
-                ShiftLeft | ShiftRight => 5,
-                // &
-                BinaryAnd => 6,
-                // ^
-                BinaryXor => 7,
-                // |
-                BinaryOr => 8,
-                // == != < > <= >=
-                Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => 9,
-                // &&
-                LogicalAnd => 10,
-                // ||
-                LogicalOr => 11,
-                // .. ..=
-                // ??
-                // = += -= *= /= %= &= |= ^= <<= >>=
-                Identity => 12,
-            },
-            _ => 0,
+            Expression::BinaryOperation(_, op, _) => Some(op.precedence()),
+            _ => None,
+        }
+    }
+
+    pub fn format_with_precedence(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Expression::BinaryOperation(left, op, right) => {
+                write!(
+                    f,
+                    "{} {} {}",
+                    format_expression_with_precedence(left, self.precedence()),
+                    op,
+                    format_expression_with_precedence(right, self.precedence())
+                )
+            }
+            _ => panic!("Format with precedence called on non-binary operation."),
         }
     }
 }
 
 pub fn format_expression_with_precedence<E: Display>(
     e: &Expression<E>,
-    parent_precedence: ExpressionPrecedence,
+    parent_precedence: Option<ExpressionPrecedence>,
 ) -> String {
-    if e.binary_op_precedence() > parent_precedence {
-        format!("({})", e)
-    } else {
-        format!("{}", e)
+    if let (Some(_precedence), Some(_parent_precedence)) = (e.precedence(), parent_precedence) {
+        if _precedence > _parent_precedence {
+            return format!("({})", e);
+        }
     }
+    return format!("{}", e);
 }
 
 impl<Ref: Display> Display for Expression<Ref> {
@@ -620,13 +610,7 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::Tuple(items) => write!(f, "({})", format_list(items)),
             Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
-            Expression::BinaryOperation(left, op, right) => write!(
-                f,
-                "{} {} {}",
-                format_expression_with_precedence(left, self.binary_op_precedence()),
-                op,
-                format_expression_with_precedence(right, self.binary_op_precedence())
-            ),
+            Expression::BinaryOperation(_, _, _) => self.format_with_precedence(f),
             Expression::UnaryOperation(op, exp) => {
                 if op.is_prefix() {
                     write!(f, "{op}{exp}")
