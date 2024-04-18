@@ -1080,7 +1080,7 @@ pub fn execute<F: FieldElement>(
 /// FIXME: copied from `riscv/runtime.rs` instead of adding dependency.
 /// Helper function for register names used in submachine instruction params.
 fn register_by_idx(mut idx: usize) -> String {
-    // s* callee saved registers
+    // s0..11 callee saved registers
     static SAVED_REGS: [&str; 12] = [
         "x8", "x9", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
     ];
@@ -1090,7 +1090,7 @@ fn register_by_idx(mut idx: usize) -> String {
         return SYSCALL_REGISTERS[idx].to_string();
     }
     idx -= SYSCALL_REGISTERS.len();
-    // second, use s* registers
+    // second, callee saved registers
     if idx < SAVED_REGS.len() {
         return SAVED_REGS[idx].to_string();
     }

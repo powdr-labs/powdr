@@ -508,7 +508,7 @@ impl TryFrom<&[&str]> for Runtime {
 
 /// Helper function for register names used in instruction params
 fn reg(mut idx: usize) -> String {
-    // callee saved registers (i.e., `s?`)
+    // s0..11 callee saved registers
     static SAVED_REGS: [&str; 12] = [
         "x8", "x9", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
     ];
@@ -518,7 +518,7 @@ fn reg(mut idx: usize) -> String {
         return SYSCALL_REGISTERS[idx].to_string();
     }
     idx -= SYSCALL_REGISTERS.len();
-    // second, use s* registers
+    // second, callee saved registers
     if idx < SAVED_REGS.len() {
         return SAVED_REGS[idx].to_string();
     }
