@@ -307,13 +307,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         let mut progress = false;
         if let Some(selector) = self.outer_query.as_ref().unwrap().right.selector.as_ref() {
             progress |= self
-                .set_value(
-                    row_index,
-                    selector,
-                    T::one(), // || {
-                              //     "Set selector to 1".to_string()
-                              // }
-                )
+                .set_value(row_index, selector, T::one(), "Set selector to 1")
                 .unwrap_or(false);
         }
 
@@ -402,7 +396,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         local_index: usize,
         expression: &'a Expression<T>,
         value: T,
-        // name: impl Fn() -> String,
+        reason: &str,
     ) -> Result<bool, IncompleteCause<&'a AlgebraicReference>> {
         let row_pair = RowPair::new(
             &self.data[local_index],
@@ -415,7 +409,9 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         let updates = (affine_expression - value.into())
             .solve_with_range_constraints(&row_pair)
             .unwrap();
-        Ok(self.apply_updates(local_index, &updates, || "set value".to_string()))
+        Ok(self.apply_updates(local_index, &updates, || {
+            format!("Setting value ({})", reason.to_string())
+        }))
     }
 
     fn apply_updates(
@@ -449,7 +445,8 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                             let expression = &self.fixed_data.witness_cols[other_poly].expr;
                             self.ensure_enough_rows(other_row);
                             let local_index = other_row.to_local(&self.row_offset);
-                            self.set_value(local_index, expression, *v).unwrap();
+                            self.set_value(local_index, expression, *v, "copy constraint")
+                                .unwrap();
                         }
                     }
                 }
