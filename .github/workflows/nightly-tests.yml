@@ -8,42 +8,8 @@ env:
     CARGO_TERM_COLOR: always
 
 jobs:
-  check_if_needs_running:
-    runs-on: ubuntu-latest
-    outputs:
-      status: ${{ steps.count.outputs.status }}
-
-    steps:
-    - uses: actions/checkout@v3
-    - name: Count recent commits
-      id: count
-      run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
-
-  udeps:
-    runs-on: ubuntu-latest
-    needs: check_if_needs_running
-    if: needs.check_if_needs_running.outputs.status > 0
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-
-      - name: Install nightly toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
-
-      - name: Run cargo-udeps
-        uses: aig787/cargo-udeps-action@v1
-        with:
-          version: 'latest'
-          args: '--all-targets'
-
   test_release:
     runs-on: ubuntu-latest
-    needs: check_if_needs_running
-    if: needs.check_if_needs_running.outputs.status > 0
 
     steps:
     - uses: actions/checkout@v3

@@ -8,8 +8,8 @@ number = { path = "../number" }
 pil_analyzer = { path = "../pil_analyzer" }
 ast = { path = "../ast" }
 polyexen = { git = "https://github.com/Dhole/polyexen", branch = "feature/shuffles" }
-halo2_proofs = "0.2"
-halo2_curves = { git = "https://github.com/privacy-scaling-explorations/halo2curves", tag = "0.3.2", package = "halo2curves" }
+halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2", tag = "v0.3.0" }
+halo2_curves = { version = "0.6.1", package = "halo2curves" }
 snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier" }
 num-traits = "0.2.15"
 num-integer = "0.1.45"
