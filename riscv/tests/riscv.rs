@@ -59,7 +59,7 @@ fn zero_with_values() {
 
 #[test]
 #[ignore = "Too slow"]
-fn poseidon_gl() {
+fn runtime_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor";
     verify_riscv_crate(case, Default::default(), &Runtime::base().with_poseidon());
 }
@@ -176,21 +176,21 @@ fn function_pointer() {
 
 #[test]
 #[ignore = "Too slow"]
-fn arith_ec_double() {
+fn runtime_ec_double() {
     let case = "ec_double";
     verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn arith_ec_add() {
+fn runtime_ec_add() {
     let case = "ec_add";
     verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn arith_affine_256() {
+fn runtime_affine_256() {
     let case = "affine_256";
     verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
 }
