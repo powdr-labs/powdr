@@ -1,6 +1,6 @@
 #![no_std]
 
-use powdr_riscv_runtime::arith::affine_256;
+use powdr_riscv_runtime::arith::affine_256_u32_le as affine_256;
 
 #[no_mangle]
 pub fn main() {

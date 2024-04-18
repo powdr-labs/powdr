@@ -1,6 +1,6 @@
 #![no_std]
 
-use powdr_riscv_runtime::arith::ec_double;
+use powdr_riscv_runtime::ec::double_u32_le as ec_double;
 
 #[no_mangle]
 pub fn main() {
@@ -20,7 +20,7 @@ pub fn main() {
         0xf4062327, 0x6b051b13, 0xd9a86d52, 0x79238c5d, 0xe17bd815, 0xa8b64537, 0xc815e0d7,
         0xa9f34ffd,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -40,7 +40,7 @@ pub fn main() {
         0xcf58c5bf, 0x978ed2fb, 0x6b4a9d22, 0x1dc88e3, 0x9d729981, 0xd3ab47e0, 0x7ff24a68,
         0x6851de06,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -60,7 +60,7 @@ pub fn main() {
         0x5a08668, 0x498a2f78, 0x3bf8ec34, 0x3a496a3a, 0x74b875a0, 0x592f5790, 0x7a7a0710,
         0xd50123b5,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -80,7 +80,7 @@ pub fn main() {
         0xea5f404f, 0xcb0289e2, 0xa65b53a4, 0x9501253a, 0x485d01b3, 0xe90b9c08, 0x296cbc91,
         0xcb66d7d7,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -100,7 +100,7 @@ pub fn main() {
         0x762cef4, 0xbbc02738, 0xc062b742, 0xbe040a8, 0x40e28465, 0xf6f29283, 0x68008032,
         0x912770e0,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -120,7 +120,7 @@ pub fn main() {
         0x8b8f52d8, 0x6d3484bd, 0xd0c2b67f, 0x18a4b27, 0x8c7e1da9, 0x4f6e8c4b, 0x829b6f85,
         0x661a7a5f,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -140,7 +140,7 @@ pub fn main() {
         0xfbac376a, 0x35cff8d8, 0x2b14c478, 0x57b6ed33, 0xc5b34f34, 0x66fee22e, 0x9109e4e,
         0x83fd95e2,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -160,7 +160,7 @@ pub fn main() {
         0x315b32cd, 0x6ca2e81d, 0xdfd3dc52, 0x12af748, 0x4efa701c, 0xeafa9947, 0x35af7f7a,
         0x3382909,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -179,7 +179,7 @@ pub fn main() {
     let y2 = [
         0x16603c2, 0xe66a90cf, 0x12ff7031, 0x129c5093, 0xa61bf356, 0xd7c87ea7, 0x9a5490d, 0x531e392,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -198,7 +198,7 @@ pub fn main() {
         0x37344d80, 0xbfeb0a3f, 0x4fc68b04, 0x8c66df75, 0x8882f35e, 0xe5f0797d, 0xafa1fee8,
         0x26b8c3b8,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -218,7 +218,7 @@ pub fn main() {
         0x6e708572, 0xdaed3298, 0xe77aceda, 0xe9aac07a, 0x342d7fc6, 0xdf19e21b, 0xbf72d5f0,
         0x73f8a046,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -238,7 +238,7 @@ pub fn main() {
         0x7618e309, 0x478abda9, 0x2f1fdc68, 0xe25b3285, 0x59b333e0, 0x34dd2f7f, 0x8f9f21e2,
         0x8f3c305a,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -258,7 +258,7 @@ pub fn main() {
         0x593652d9, 0x55384998, 0xb88c2be, 0xcd993bf6, 0x8291693, 0xa2c945b6, 0x3e4def84,
         0x7a9b55a7,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -278,7 +278,7 @@ pub fn main() {
         0xd1af3445, 0x67b80b8a, 0x13ceeb42, 0xa439e8a2, 0x66507f32, 0xf413a007, 0x72d1c89e,
         0xcdb152b6,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -298,7 +298,7 @@ pub fn main() {
         0xdbe323b3, 0x31d944ae, 0x9eaa2e50, 0xa66a29b7, 0x5642fed7, 0xfe99837f, 0xe65366f8,
         0x96b0c142,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -318,7 +318,7 @@ pub fn main() {
         0x4082720f, 0xc4ba4136, 0xf468318e, 0x6fb94e5d, 0x924c8e01, 0x5b691363, 0x9087b41d,
         0xb97fd873,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -338,7 +338,7 @@ pub fn main() {
         0xa3f5cb70, 0xe75ea466, 0xb78c7f82, 0x980bf26e, 0xef016c04, 0x9d46fc4e, 0x8b7a90e,
         0xdeab3bcf,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -358,7 +358,7 @@ pub fn main() {
         0xdb9eb19f, 0xf0604449, 0xbf35d9d5, 0x7bbeb22f, 0x8ae2e8b8, 0xe3df7142, 0xacebbb52,
         0x292dad67,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -378,7 +378,7 @@ pub fn main() {
         0x1a2d2927, 0x721cc66b, 0x43b2c73c, 0x47dae842, 0xe30683ac, 0x7dd6544a, 0xfde8b3d2,
         0xb0eefada,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -398,7 +398,7 @@ pub fn main() {
         0xa485d7fd, 0x81f00093, 0x9a2acf26, 0x4c15502d, 0xb86fe22a, 0x78fad05c, 0x6cfe806c,
         0x57503ab4,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -418,7 +418,7 @@ pub fn main() {
         0xfe08e330, 0x25fd44ae, 0x349a08b, 0x7a0d8cd2, 0x409f561e, 0x6208096a, 0x976a7748,
         0x21846a34,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -438,7 +438,7 @@ pub fn main() {
         0xe3855df5, 0x53d6fb40, 0xaf79ebe, 0x9384f31d, 0x56839eff, 0xef44d11e, 0x16017eb8,
         0x89a83250,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -458,7 +458,7 @@ pub fn main() {
         0x67ce6b34, 0x57dd49aa, 0xcf859ef3, 0x80b27fda, 0xa1ba66a8, 0x5c99ef86, 0xa707e41d,
         0x9188fbe7,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -478,7 +478,7 @@ pub fn main() {
         0x1e9cb3fa, 0x797300fd, 0x54f17ccd, 0xda5fb3b8, 0xa850861f, 0x3f7c66f, 0xd33402cc,
         0x89974f2e,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -498,7 +498,7 @@ pub fn main() {
         0x9a039215, 0x3e730924, 0xd33f5f38, 0x3732cfba, 0xd6f6c6f4, 0x65f088b7, 0x9474a412,
         0x46dbc4dd,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -518,7 +518,7 @@ pub fn main() {
         0x749c0443, 0x57f6e117, 0xe8c9796e, 0x681385da, 0x30c54b0f, 0x8a79bc57, 0x70126667,
         0xe3586704,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -538,7 +538,7 @@ pub fn main() {
         0x56c181e1, 0x7363bcc3, 0xdc8f9782, 0x87220fcf, 0x99d297ff, 0x69b8feb6, 0x3eeac32f,
         0xb916ba1,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -558,7 +558,7 @@ pub fn main() {
         0x1b0e664e, 0x1b7f1bcd, 0xb6b96a67, 0xcb0d8b06, 0xc1c4a766, 0x472294e4, 0xc8a2d88f,
         0x6f24c8c2,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -578,7 +578,7 @@ pub fn main() {
         0x21bc2a34, 0x932a78bc, 0x6a0eb603, 0x5638d981, 0xd02ddf18, 0x8f2f2dca, 0xb2014498,
         0x9e15dab4,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -598,7 +598,7 @@ pub fn main() {
         0xae25fc0a, 0xf9a003f9, 0xd8b63338, 0x3fbfb532, 0x25130d6f, 0x63d570f6, 0xaa365edb,
         0xa0e75d87,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -618,7 +618,7 @@ pub fn main() {
         0x58aa258d, 0x34ebe609, 0x2bb6a88, 0x4ca58963, 0x16ad1f75, 0x4d57a8c6, 0x80d5e042,
         0xc68a3703,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -637,7 +637,7 @@ pub fn main() {
         0x41ce0a03, 0xb6cd0110, 0x82e16ee, 0x9c9a12b3, 0xef6536d4, 0xa54e223e, 0xd6cdb61e,
         0xfae62e14,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -656,7 +656,7 @@ pub fn main() {
         0xbbb25302, 0xa10aa4d1, 0x64de59b1, 0xd04082b9, 0xf9c08a96, 0xbfcce196, 0x4951e5c9,
         0xf65be145,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -676,7 +676,7 @@ pub fn main() {
         0x2716c458, 0x5972b2de, 0xb2e44934, 0x94a823e5, 0x42467254, 0xee75b4f3, 0xebb1eeea,
         0xb6318967,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -696,7 +696,7 @@ pub fn main() {
         0x99d0bed1, 0x9640392b, 0x4b053919, 0x47a38927, 0x7044804b, 0xcfd9c737, 0xbfe362d5,
         0x6205152f,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -716,7 +716,7 @@ pub fn main() {
         0xe5d694a8, 0x662da4d0, 0x5a438ddc, 0x1ad12c8c, 0x1ecafb5e, 0xedcc5e9d, 0xf51a9d23,
         0x21c09ab,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -736,7 +736,7 @@ pub fn main() {
         0x929138df, 0xd68f9fe1, 0xacc417dc, 0xe6085b61, 0x4e811bf1, 0xda622bb0, 0x224ac4ac,
         0x380423e7,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -756,7 +756,7 @@ pub fn main() {
         0x5b679d58, 0xd3b27eaf, 0x4b9f9d42, 0x3bae231c, 0x2f36d3bb, 0x8cd5650c, 0xae600c50,
         0x65331f9f,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -776,7 +776,7 @@ pub fn main() {
         0x91470e89, 0x6e79e97f, 0x6891f560, 0x5db6f560, 0x55292747, 0x619aa6c8, 0x1d980d31,
         0x34a9631a,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
@@ -796,5 +796,5 @@ pub fn main() {
         0x46fb4c72, 0x67b2bd22, 0x968e181b, 0x5ae87534, 0xa0dfddfb, 0xe03476c0, 0x660f5398,
         0xcc72b894,
     ];
-    assert_eq!(ec_double((x1, y1)), (x2, y2));
+    assert_eq!(ec_double(x1, y1), (x2, y2));
 }
