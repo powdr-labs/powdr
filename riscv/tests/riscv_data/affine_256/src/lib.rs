@@ -1,6 +1,9 @@
 #![no_std]
 
+use hex_literal::hex;
+
 use powdr_riscv_runtime::arith::affine_256_u32_le as affine_256;
+use powdr_riscv_runtime::arith::affine_256_u8_be;
 
 #[no_mangle]
 pub fn main() {
@@ -25,6 +28,14 @@ pub fn main() {
         0x1fdb9753,
     ];
     assert_eq!(affine_256(a, b, c), (hi, lo));
+
+    // same as above but using the big endian api
+    let a = hex!("0000000011111111222222223333333344444444555555556666666677777777");
+    let b = hex!("8888888899999999aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff");
+    let c = hex!("aaaaaaaabbbbbbbbbbbbbbbbaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbaaaaaaaa");
+    let hi = hex!("00000000091a2b3c579be024740da740e6f8091a38e38e38f258bf259be02469");
+    let lo = hex!("1fdb97530da740da60b60b60907f6e5d369d0369ca8641fda1907f6e33333333");
+    assert_eq!(affine_256_u8_be(a, b, c), (hi, lo));
 
     // 2 * 3 + 5 = 11
     let a = [2, 0, 0, 0, 0, 0, 0, 0];

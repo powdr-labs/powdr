@@ -1,6 +1,9 @@
 #![no_std]
 
+use hex_literal::hex;
+
 use powdr_riscv_runtime::ec::double_u32_le as ec_double;
+use powdr_riscv_runtime::ec::double_u8_be;
 
 #[no_mangle]
 pub fn main() {
@@ -21,6 +24,13 @@ pub fn main() {
         0xa9f34ffd,
     ];
     assert_eq!(ec_double(x1, y1), (x2, y2));
+
+    // same as above but using the big endian api
+    let x1 = hex!("fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556");
+    let y1 = hex!("ae12777aacfbb620f3be96017f45c560de80f0f6518fe4a03c870c36b075f297");
+    let x2 = hex!("d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a");
+    let y2 = hex!("a9f34ffdc815e0d7a8b64537e17bd81579238c5dd9a86d526b051b13f4062327");
+    assert_eq!(double_u8_be(x1, y1), (x2, y2));
 
     ///////////////////////////////////////////////////////////////
 
