@@ -44,7 +44,7 @@ let RC: int[] = [
 
 // ln 30 - 33
 // left rotation
-let rotl64: int, int -> int = |x, n| or((x << n), (x >> (64 - n))); // 32 if u32
+let rotl64: int, int -> int = |x, n| and(or((x << n), (x >> (64 - n))), 0xffffffffffffffff); // 32 and 0xffffffff if u32
 
 // ln 35 - 40
 // change endianness for a 32 bit number byte by byte
@@ -56,7 +56,7 @@ let rotl64: int, int -> int = |x, n| or((x << n), (x >> (64 - n))); // 32 if u32
 let swap_u64: int -> int = |x| {
     let val = or(and((x << 8), 0xFF00FF00FF00FF00), and((x >> 8), 0x00FF00FF00FF00FF));
     let val_2 = or(and((val << 16), 0xFFFF0000FFFF0000), and((val >> 16), 0x0000FFFF0000FFFF));
-    or((val_2 << 32), (val_2 >> 32))
+    or(and((val_2 << 32), 0xFFFFFFFFFFFFFFFF), (val_2 >> 32)) // added 0xFFFFFFFFFFFFFFFF to mask val_2 << 32
 };
 
 // ln 47 - 49
@@ -74,6 +74,16 @@ let theta_st: int[] -> int[] = |st| array::map_enumerated(st, |idx, elem| { // i
     let t = xor(theta_bc(st, (i + 4) % 5), rotl64(theta_bc(st, (i + 1) % 5), 1));
     xor(elem, t)
 });
+
+// t = st[1];
+
+// rho pi
+// for u32 i in 0..24 {
+//     u32 j = PI[i];
+//     bc[0] = st[j];
+//     st[j] = rotl64(t, RHO[i]);
+//     t = bc[0];
+// }
 
 // ln 66 - 72
 // rho pi
@@ -108,32 +118,63 @@ let keccakf: int[] -> int[] = |st| swap_u64_loop(r_loop(swap_u64_loop(st))); // 
 
 // ln 96 - 141
 // TODO: to_bytes and from_bytes are implemented below but I'm not sure if we have existing helper functions to use
+// needs to be little endian
 let to_bytes: int[] -> int[] = |input| // int[25] -> int[200] 
     array::fold(input, [], |acc, elem| {
         let new_bytes = array::new(8, |i| 
-            // elem % (1 << 8)
-            // elem % (1 << 16) / (1 << 8)
-            // elem % (1 << 24) / (1 << 16)
+            // elem % (1 << 64) / (1 << 56)
+            // elem % (1 << 56) / (1 << 48)
+            // elem % (1 << 48) / (1 << 40)
             // ...
-            elem % (1 << (8 * i + 8)) / (1 << (8 * i))
+            elem % (1 << (64 - 8 * i)) / (1 << (56 - 8 * i))
         );
         acc + new_bytes
     });
 
+// needs to be little endian
 let from_bytes: int[] -> int[] = |input| // int[200] -> int[25]
     array::new(25, |i| 
         utils::fold(8, |j| j, 0, |acc, idx| 
-            acc + input[i * 8 + idx] * (1 << (8 * idx))
+            acc + input[i * 8 + 7 - idx] * (1 << (8 * idx))
         )
     );
-    
+
+
+let finalize_b: int, int, int[], int, int, int, int[] -> int[] = |num_remaining, b_delim_idx, b_keccak, num_loop, rate, delim, input| {
+    let b_last_round = array::new(200, |i| 
+        // num_remaining is 0 the minimum and rate - 1 the maximum
+        if i < num_remaining {
+            // ln 150, one of the remaining to be xor'ed
+            xor(b_keccak[i], input[num_loop * rate + i])
+        } else {
+            if i == num_remaining {
+                if i == rate - 1 {
+                    xor_mult([b_keccak[i], delim, 0x80])
+                } else {
+                    xor(b_keccak[i], delim)
+                }
+            } else {
+                if i == rate - 1 {
+                    xor(b_keccak[i], 0x80)
+                } else {
+                    b_keccak[i]
+                }
+            }
+        }
+    );
+    // ln 158
+    // to_bytes(keccakf(from_bytes(b_last_round)))    
+    // from_bytes(b_last_round)
+    b_last_round
+};
 
 // ln 148 - 158
-let update_finalize_b: int[], int[], int, int -> int[] = |input, b, rate, delim| {
+let update_finalize_b: int[], int, int -> int[] = |input, rate, delim| {
     let num_loop = array::len(input) / rate;
     let num_remaining = array::len(input) % rate;
     let b_delim_idx = (num_remaining + 1) % rate;
-    let b_keccak = utils::fold(num_loop, |i| i, b, |acc, idx| {
+
+    let b_keccak = utils::fold(num_loop, |i| i, array::new(200, |i| 0), |acc, idx| {
         let new_b = array::zip(array::new(rate, |i| acc[i]), array::new(rate, |i| input[idx * rate + i]), xor);
         let new_b_pad = array::new(200, |i| if i < rate { new_b[i] } else { acc[i] });
         to_bytes(keccakf(from_bytes(new_b_pad)))
@@ -141,14 +182,10 @@ let update_finalize_b: int[], int[], int, int -> int[] = |input, b, rate, delim|
     let b_finalize = array::new(200, |i| 
         // num_remaining is 0 the minimum and rate - 1 the maximum
         if i < num_remaining {
-            if i == b_delim_idx {
-                xor_mult([b_keccak[i], input[num_loop * rate + i], delim])
-            } else {
-                // ln 150, one of the remaining to be xor'ed
-                xor(b_keccak[i], input[num_loop * rate + i])
-            }
+            // ln 150, one of the remaining to be xor'ed
+            xor(b_keccak[i], input[num_loop * rate + i])
         } else {
-            if i == b_delim_idx {
+            if i == num_remaining {
                 if i == rate - 1 {
                     xor_mult([b_keccak[i], delim, 0x80])
                 } else {
@@ -170,10 +207,9 @@ let update_finalize_b: int[], int[], int, int -> int[] = |input, b, rate, delim|
 // ln 143 - 161
 let main: int, int[], int -> int[] = |W, input, delim| { // W is output number of bytes, input is array of bytes, delim is a single byte
     // ln 144 - 145
-    let b = array::new(200, |i| 0); // int[200], 100 if u32
     let rate = 200 - (2 * W); // int, 100 if u32
 
-    let b_finalized = update_finalize_b(input, b, rate, delim);
+    let b_finalized = update_finalize_b(input,rate, delim);
 
     // TODO: as per ln 143, should return array of length W, but what if array length, i.e. rate, is less than W?
     // here we return the entire array rather than padding it to length W

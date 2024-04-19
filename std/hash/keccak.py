@@ -169,3 +169,7 @@ print(digest.hexdigest())
 
 print(hex(swap_u64(0x1234567890abcdef)))
 print(hex(rotl64(0x1234567890abcdef, 4)))
+
+digest = keccak.new(digest_bits=256)
+digest.update(b'\x7a\x6f\x6b\x72\x61\x74\x65\x73')
+print(digest.hexdigest()) # 'ca85d1976d40dcb6ca3becc8c6596e83c0774f4185cf016a05834f5856a37f39'
