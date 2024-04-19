@@ -1,9 +1,6 @@
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
-    test_util::{
-        evaluate_integer_function, gen_estark_proof, resolve_test_file, test_halo2,
-        verify_test_file,
-    },
+    test_util::{gen_estark_proof, resolve_test_file, test_halo2, verify_test_file},
     util::{try_read_poly_set, FixedPolySet, WitnessPolySet},
     Pipeline,
 };

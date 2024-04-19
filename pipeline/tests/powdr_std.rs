@@ -1,5 +1,6 @@
 use std::{result, sync::Arc};
 
+use powdr_ast::analyzed;
 use powdr_number::{BigInt, GoldilocksField};
 
 use powdr_pil_analyzer::evaluator;
@@ -206,300 +207,111 @@ fn ff_inv_big() {
 #[test]
 fn keccakf() {
     use powdr_pil_analyzer::evaluator::Value;
-    
-    // theta_bc
-    let analyzed = std_analyzed::<GoldilocksField>();
-    let st: Vec<u64> = vec![0x73657461726b6f7a, 0x1, 0x0, 0x0, 0x0, 
-                            0x0, 0x0, 0x0, 0x0, 0x0, 
-                            0x0, 0x0, 0x0, 0x0, 0x0,
-                            0x0, 0x8000000000000000, 0x0, 0x0, 0x0, 
-                            0x0, 0x0, 0x0, 0x0, 0x0];
-    let st_input = Arc::new(evaluator::Value::Array(
-        st.iter()
-            .map(|x| Arc::new(evaluator::Value::Integer(BigInt::from(*x))))
-            .collect(),
-        ));
-    let result: Vec<_> = (0..5).map(
-        |i| {
-            evaluate_function(
-                &analyzed,
-                "std::hash::keccak::theta_bc",
-                vec![
-                        st_input.clone(), 
-                        Arc::new(evaluator::Value::Integer(BigInt::from(i)))
-                    ],
-            )
+
+    fn compare_integer_array_evaluations<T>(this: &Value<T>, other: &Value<T>) {
+        if let (Value::Array(ref this), Value::Array(ref other)) = (this, other) {
+            assert_eq!(this.len(), other.len());
+            for (this_elem, other_elem) in this.iter().zip(other.iter()) {
+                if let (Value::Integer(ref this_int), Value::Integer(ref other_int)) =
+                    (this_elem.as_ref(), other_elem.as_ref())
+                {
+                    assert_eq!(this_int, other_int);
+                } else {
+                    panic!("Expected integer.");
+                }
+            }
+        } else {
+            panic!("Expected array.");
         }
-    ).collect();
-    result.iter().for_each(|x| println!("{}", x));
-
-    // theta_st
-    let analyzed = std_analyzed::<GoldilocksField>();
-    let st: Vec<u64> = vec![0x73657461726b6f7a, 0x1, 0x0, 0x0, 0x0, 
-                            0x0, 0x0, 0x0, 0x0, 0x0, 
-                            0x0, 0x0, 0x0, 0x0, 0x0,
-                            0x0, 0x8000000000000000, 0x0, 0x0, 0x0, 
-                            0x0, 0x0, 0x0, 0x0, 0x0];
-    let result_theta_st = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::theta_st",
-        vec![Arc::new(evaluator::Value::Array(
-            st.iter()
-                .map(|x| Arc::new(evaluator::Value::Integer(BigInt::from(*x))))
-                .collect(),
-        ))],
-    );
-    println!("theta st: ");
-    println!("{}", result_theta_st);
-    
-    // rho_pi_loop and rho_pi_rearrange
-    let analyzed = std_analyzed::<GoldilocksField>();
-
-    let result_rho_pi_loop = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::rho_pi_loop",
-        vec![Arc::new(result_theta_st)],
-    );
-
-    let result_rho_pi_rearrange = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::rho_pi_rearrange",
-        vec![Arc::new(result_rho_pi_loop)],
-    );
-    println!("rho pi rearrange: ");
-    println!("{}", result_rho_pi_rearrange);
-
-    // chi
-    let analyzed = std_analyzed::<GoldilocksField>();
-
-    let result_chi = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::chi",
-        vec![Arc::new(result_rho_pi_rearrange)],
-    );
-
-    println!("chi: ");
-    println!("{}", result_chi);
-
-    // iota
-    let analyzed = std_analyzed::<GoldilocksField>();
-
-    let result_iota = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::iota",
-        vec![Arc::new(result_chi), 
-            Arc::new(evaluator::Value::Integer(BigInt::from(0x0)))],
-    );
-
-    println!("iota: ");
-    println!("{}", result_iota);
-
-    // r_loop
-    let analyzed = std_analyzed::<GoldilocksField>();
-
-    let result_r_loop = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::r_loop",
-        vec![st_input.clone()]
-    );
-
-    println!("r loop: ");
-    println!("{}", result_r_loop);
-
-    // swap_u64_loop on st input (original endianness as raw input)
-    let analyzed = std_analyzed::<GoldilocksField>();
-
-    let result_swap_u64_loop = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::swap_u64_loop",
-        vec![Arc::new(result_r_loop.clone())]
-    );
-
-    println!("swap u64 loop: ");
-    println!("{}", result_swap_u64_loop);
-
-
-    // swap_u64_loop on r_loop
-    let analyzed = std_analyzed::<GoldilocksField>();
-
-    let result_r_loop_swap = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::swap_u64_loop",
-        vec![Arc::new(result_r_loop.clone())]
-    );
-
-    println!("r loop swap: ");
-    println!("{}", result_r_loop_swap);
-
-    // keccakf
-    let analyzed = std_analyzed::<GoldilocksField>();
-
-    let st_original_endianness: Vec<u64> = vec![0x7a6f6b7261746573, 0x0100000000000000, 0x0, 0x0, 0x0, 
-                            0x0, 0x0, 0x0, 0x0, 0x0, 
-                            0x0, 0x0, 0x0, 0x0, 0x0,
-                            0x0, 0x80, 0x0, 0x0, 0x0, 
-                            0x0, 0x0, 0x0, 0x0, 0x0];
-    let st_input_original_endianness = Arc::new(evaluator::Value::Array(
-        st_original_endianness.iter()
-            .map(|x| Arc::new(evaluator::Value::Integer(BigInt::from(*x))))
-            .collect(),
-        ));
-
-    let result_keccakf = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::keccakf",
-        vec![st_input_original_endianness.clone()],
-    );
-
-    println!("keccakf: ");
-    println!("{}", result_keccakf);
-
-    // update_finalize_b
-    let W = 32;
-    let rate = 200 - 2 * W;
-    let input = vec![0x7a, 0x6f, 0x6b, 0x72, 0x61, 0x74, 0x65, 0x73];
-    let delim = 0x01;
-    let result_update_finalize_b = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::update_finalize_b",
-        vec![
-            Arc::new(evaluator::Value::Array(
-                input
-                    .iter()
-                    .map(|x| Arc::new(evaluator::Value::Integer(BigInt::from(*x))))
-                    .collect(),
-            )),
-            Arc::new(evaluator::Value::Integer(BigInt::from(rate))),
-            Arc::new(evaluator::Value::Integer(BigInt::from(delim))),
-        ],
-    );
-    println!("update_finalize_b: ");
-    println!("{}", result_update_finalize_b);
-
-    // let st_original_endianness: Vec<u64> = 
-    // vec![0x7a6f6b7261746573, 0x0100000000000000, 0x0, 0x0, 0x0, 
-    // 0x0, 0x0, 0x0, 0x0, 0x0, 
-    // 0x0, 0x0, 0x0, 0x0, 0x0,
-    // 0x0, 0x80, 0x0, 0x0, 0x0, 
-    // 0x0, 0x0, 0x0, 0x0, 0x0];
-
-    // from_bytes
-    let input = (0..25).map(|x| {
-        let mut arr = [0usize; 8];
-        arr[x % 8] = x;
-        arr
-    }).flatten().collect::<Vec<usize>>();
-
-    println!("input len: {}", input.len());
-    
-    let result_from_bytes = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::from_bytes",
-        vec![
-            Arc::new(evaluator::Value::Array(
-                input
-                    .iter()
-                    .map(|x| Arc::new(evaluator::Value::Integer(BigInt::from(*x))))
-                    .collect(),
-            ))
-        ],
-    );
-
-    println!("from_bytes: ");
-    println!("{}", result_from_bytes);
-
-    // to_bytes
-    let result_to_bytes = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::to_bytes",
-        vec![
-            Arc::new(result_from_bytes)
-        ],
-    );
-
-    if let Value::Array(arr) = result_to_bytes.clone() {
-        println!("to_bytes len: {}", arr.len());
     }
-    
-    println!("to_bytes: ");
-    println!("{}", result_to_bytes);
 
-    // main
-    let W = 32;
-    let inputs = vec![
-        vec![0x7a, 0x6f, 0x6b, 0x72, 0x61, 0x74, 0x65, 0x73],
-        [0x2a; 135].to_vec(),
-        [0x2a; 136].to_vec(),
-        // 8d2f294ac2667fe768901937151dc8e49dc9474f9e4da910d46c5abba20ab439
-        // cf54f48e5701fed7b85fa015ff3def02604863f68c585fcf6af54a86d42e1046
-        {
-            let mut v = vec![0x2a; 399];
-            v.push(0x01); 
-            v
-        },
-        // d397b3b043d87fcd6fad1291ff0bfd16401c274896d8c63a923727f077b8e0b5
-        [0x00; 256].to_vec(),
-        
-    ];
-    let delim = 0x01;
-    inputs.iter().for_each(|input| {
-        let result_full = evaluate_function(
+    fn test_main(input: Vec<i32>, expected: Vec<i32>) {
+        let analyzed = std_analyzed::<GoldilocksField>();
+
+        let result = evaluate_function(
             &analyzed,
             "std::hash::keccak::main",
             vec![
-                Arc::new(evaluator::Value::Integer(BigInt::from(W))),
-                Arc::new(evaluator::Value::Array(
+                Arc::new(Value::Integer(BigInt::from(32))), // W = 32 (output bytes)
+                Arc::new(Value::Array(
                     input
                         .iter()
-                        .map(|x| Arc::new(evaluator::Value::Integer(BigInt::from(*x))))
+                        .map(|x| Arc::new(Value::Integer(BigInt::from(*x))))
                         .collect(),
                 )),
-                Arc::new(evaluator::Value::Integer(BigInt::from(delim))),
+                Arc::new(Value::Integer(BigInt::from(0x01))), // delim = 0x01
             ],
         );
-        println!("result full: ");
-        println!("{}", result_full);
-    });
 
-    // finalize b
-    // |num_remaining, b_delim_idx, b_keccak, num_loop, rate, delim, input|
-    let analyzed = std_analyzed::<GoldilocksField>();
-
-    let W = 32;
-    let num_remaining = 8;
-    let b_delim_idx = 9;
-    let b_keccak = [0; 200];
-    let num_loop = 0;
-    let rate = 200 - 2 * W;
-    let delim = 0x01;
-    let input = vec![0x7a, 0x6f, 0x6b, 0x72, 0x61, 0x74, 0x65, 0x73];
-
-    let result_finalize_b = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::finalize_b",
-        vec![
-            Arc::new(evaluator::Value::Integer(BigInt::from(num_remaining))),
-            Arc::new(evaluator::Value::Integer(BigInt::from(b_delim_idx))),
-            Arc::new(evaluator::Value::Array(
-                b_keccak
+        compare_integer_array_evaluations(
+            &result,
+            &Value::Array(
+                expected
                     .iter()
-                    .map(|x| Arc::new(evaluator::Value::Integer(BigInt::from(*x))))
+                    .map(|x| Arc::new(Value::Integer(BigInt::from(*x))))
                     .collect(),
-            )),
-            Arc::new(evaluator::Value::Integer(BigInt::from(num_loop))),
-            Arc::new(evaluator::Value::Integer(BigInt::from(rate))),
-            Arc::new(evaluator::Value::Integer(BigInt::from(delim))),
-            Arc::new(evaluator::Value::Array(
-                input
-                    .iter()
-                    .map(|x| Arc::new(evaluator::Value::Integer(BigInt::from(*x))))
-                    .collect(),
-            )),
-        ],
-    );
+            ),
+        );
+    }
 
-    println!("result finalize b: ");
-    println!("{}", result_finalize_b);
+    let input = vec![
+        // The following three test vectors are from Zokrates
+        // https://github.com/Zokrates/ZoKrates/blob/develop/zokrates_stdlib/tests/tests/hashes/keccak/keccak.zok
+        vec![0x7a, 0x6f, 0x6b, 0x72, 0x61, 0x74, 0x65, 0x73],
+        [0x2a; 135].to_vec(),
+        [0x2a; 136].to_vec(),
+        // This test vector tests input size greater than compression function (keccakf) output size (200 bytes)
+        {
+            let mut v = vec![0x2a; 399];
+            v.push(0x01);
+            v
+        },
+        // All zero input test vector
+        [0x00; 256].to_vec(),
+    ];
 
+    let expected = vec![
+        // ca85d1976d40dcb6ca3becc8c6596e83c0774f4185cf016a05834f5856a37f39
+        [
+            0xca, 0x85, 0xd1, 0x97, 0x6d, 0x40, 0xdc, 0xb6, 0xca, 0x3b, 0xec, 0xc8, 0xc6, 0x59,
+            0x6e, 0x83, 0xc0, 0x77, 0x4f, 0x41, 0x85, 0xcf, 0x01, 0x6a, 0x05, 0x83, 0x4f, 0x58,
+            0x56, 0xa3, 0x7f, 0x39,
+        ]
+        .to_vec(),
+        // 723e2ae02ca8d8fb45dca21e5f6369c4f124da72f217dca5e657a4bbc69b917d
+        [
+            0x72, 0x3e, 0x2a, 0xe0, 0x2c, 0xa8, 0xd8, 0xfb, 0x45, 0xdc, 0xa2, 0x1e, 0x5f, 0x63,
+            0x69, 0xc4, 0xf1, 0x24, 0xda, 0x72, 0xf2, 0x17, 0xdc, 0xa5, 0xe6, 0x57, 0xa4, 0xbb,
+            0xc6, 0x9b, 0x91, 0x7d,
+        ]
+        .to_vec(),
+        // e60d5160227cb1b8dc8547deb9c6a2c5e6c3306a1c1a55611a73ed2c2324bfc0
+        [
+            0xe6, 0x0d, 0x51, 0x60, 0x22, 0x7c, 0xb1, 0xb8, 0xdc, 0x85, 0x47, 0xde, 0xb9, 0xc6,
+            0xa2, 0xc5, 0xe6, 0xc3, 0x30, 0x6a, 0x1c, 0xa1, 0x55, 0x61, 0x1a, 0x73, 0xed, 0x2c,
+            0x23, 0x24, 0xbf, 0xc0,
+        ]
+        .to_vec(),
+        // cf54f48e5701fed7b85fa015ff3def02604863f68c585fcf6af54a86d42e1046
+        [
+            0xcf, 0x54, 0xf4, 0x8e, 0x57, 0x01, 0xfe, 0xd7, 0xb8, 0x5f, 0xa0, 0x15, 0xff, 0x3d,
+            0xef, 0x02, 0x60, 0x48, 0x63, 0xf6, 0x8c, 0x58, 0x5f, 0xcf, 0x6a, 0xf5, 0x4a, 0x86,
+            0xd4, 0x2e, 0x10, 0x46,
+        ]
+        .to_vec(),
+        // d397b3b043d87fcd6fad1291ff0bfd16401c274896d8c63a923727f077b8e0b5
+        [
+            0xd3, 0x97, 0xb3, 0xb0, 0x43, 0xd8, 0x7f, 0xcd, 0x6f, 0xad, 0x12, 0x91, 0xff, 0x0b,
+            0xfd, 0x16, 0x40, 0x1c, 0x27, 0x48, 0x96, 0xd8, 0xc6, 0x3a, 0x92, 0x37, 0x27, 0xf0,
+            0x77, 0xb8, 0xe0, 0xb5,
+        ]
+        .to_vec(),
+    ];
 
+    input
+        .into_iter()
+        .zip(expected.into_iter())
+        .for_each(|(input, expected)| {
+            test_main(input, expected);
+        });
 }

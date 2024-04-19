@@ -5,7 +5,6 @@ use std::utils;
 let or: int, int -> int = |a, b| a | b;
 let and: int, int -> int = |a, b| a & b;
 let xor: int, int -> int = |a, b| a ^ b;
-// TODO: what is the bitwise not operator?
 let not: int -> int = |a| a ^ 0xffffffffffffffff; // bitwise not for 64 bits
 
 // ln 9 - 12
@@ -21,6 +20,7 @@ let PI: int[] = [
     10, 7,  11, 17, 18, 3, 5,  16, 8,  21, 24, 4,
     15, 23, 19, 13, 12, 2, 20, 14, 22, 9,  6,  1
 ];
+
 // inverse of PI using 1 index plus zero at the beginning
 // because rho pi step doesn't update st[0]
 let PI_INVERSE: int[] = [
@@ -44,7 +44,8 @@ let RC: int[] = [
 
 // ln 30 - 33
 // left rotation
-let rotl64: int, int -> int = |x, n| and(or((x << n), (x >> (64 - n))), 0xffffffffffffffff); // 32 and 0xffffffff if u32
+// 32 and 0xffffffff if u32
+let rotl64: int, int -> int = |x, n| and(or((x << n), (x >> (64 - n))), 0xffffffffffffffff); 
 
 // ln 35 - 40
 // change endianness for a 32 bit number byte by byte
@@ -53,6 +54,7 @@ let rotl64: int, int -> int = |x, n| and(or((x << n), (x >> (64 - n))), 0xffffff
 //     or((or(and((x << 8), 0xff00ff00), and((x >> 8), 0x00ff00ff)) >> 16),
 //     (or(and((x << 8), 0xff00ff00), and((x >> 8), 0x00ff00ff)) << 16)); 
 
+// 64 bit version
 let swap_u64: int -> int = |x| {
     let val = or(and((x << 8), 0xFF00FF00FF00FF00), and((x >> 8), 0x00FF00FF00FF00FF));
     let val_2 = or(and((val << 16), 0xFFFF0000FFFF0000), and((val >> 16), 0x0000FFFF0000FFFF));
@@ -75,16 +77,6 @@ let theta_st: int[] -> int[] = |st| array::map_enumerated(st, |idx, elem| { // i
     xor(elem, t)
 });
 
-// t = st[1];
-
-// rho pi
-// for u32 i in 0..24 {
-//     u32 j = PI[i];
-//     bc[0] = st[j];
-//     st[j] = rotl64(t, RHO[i]);
-//     t = bc[0];
-// }
-
 // ln 66 - 72
 // rho pi
 let rho_pi: int[], int -> int = |st, i| { // int[25], int -> int
@@ -98,7 +90,6 @@ let rho_pi_rearrange: int[] -> int[] = |st| array::new(25, |i| st[PI_INVERSE[i]]
 
 // ln 74 - 83
 // chi
-// TODO: make sure that modulus has the same precedence as multiplication
 let chi: int[] -> int[] = |st| array::map_enumerated(st, |idx, elem| { // int[25] -> int[25]
     let i = idx / 5;
     let j = idx % 5;
@@ -139,36 +130,8 @@ let from_bytes: int[] -> int[] = |input| // int[200] -> int[25]
         )
     );
 
-
-let finalize_b: int, int, int[], int, int, int, int[] -> int[] = |num_remaining, b_delim_idx, b_keccak, num_loop, rate, delim, input| {
-    let b_last_round = array::new(200, |i| 
-        // num_remaining is 0 the minimum and rate - 1 the maximum
-        if i < num_remaining {
-            // ln 150, one of the remaining to be xor'ed
-            xor(b_keccak[i], input[num_loop * rate + i])
-        } else {
-            if i == num_remaining {
-                if i == rate - 1 {
-                    xor_mult([b_keccak[i], delim, 0x80])
-                } else {
-                    xor(b_keccak[i], delim)
-                }
-            } else {
-                if i == rate - 1 {
-                    xor(b_keccak[i], 0x80)
-                } else {
-                    b_keccak[i]
-                }
-            }
-        }
-    );
-    // ln 158
-    // to_bytes(keccakf(from_bytes(b_last_round)))    
-    // from_bytes(b_last_round)
-    b_last_round
-};
-
 // ln 148 - 158
+// int[N], int, int -> int[25]
 let update_finalize_b: int[], int, int -> int[] = |input, rate, delim| {
     let num_loop = array::len(input) / rate;
     let num_remaining = array::len(input) % rate;
@@ -205,19 +168,21 @@ let update_finalize_b: int[], int, int -> int[] = |input, rate, delim| {
 };
 
 // ln 143 - 161
-let main: int, int[], int -> int[] = |W, input, delim| { // W is output number of bytes, input is array of bytes, delim is a single byte
+// W is output number of bytes, input is array of bytes, delim is a single byte
+let main: int, int[], int -> int[] = |W, input, delim| { 
     // ln 144 - 145
     let rate = 200 - (2 * W); // int, 100 if u32
 
-    let b_finalized = update_finalize_b(input,rate, delim);
+    let b_finalized = update_finalize_b(input,rate, delim); // 200 bytes
 
-    // TODO: as per ln 143, should return array of length W, but what if array length, i.e. rate, is less than W?
-    // here we return the entire array rather than padding it to length W
     // ln 160
-    if 3 * W <= 200 { array::new(W, |i| b_finalized[i]) } else { b_finalized } // 100 if u32
+    // note that the biggest W is 64, i.e. 512-bit keccak
+    // therefore, W should always be lower than byte length of b_finalized (200)
+    array::new(W, |i| b_finalized[i])
 };
 
 // main machine
+// TODO: not sure how to integrate these
 machine Main { 
     // input is an arbitrary array of bytes
     // delim is a byte
