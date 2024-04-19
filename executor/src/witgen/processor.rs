@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use powdr_ast::{
     analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID},
@@ -44,9 +44,18 @@ pub fn make_copy_constraints<T: FieldElement>(
     fixed_data: &FixedData<T>,
     witness_cols: &HashSet<PolyID>,
 ) -> CopyConstraints<(PolyID, RowIndex)> {
-    let is_example = witness_cols
+    let column_names: BTreeSet<_> = witness_cols
         .iter()
-        .all(|c| fixed_data.column_name(c).starts_with("main_pythagoras."));
+        .map(|c| fixed_data.column_name(c))
+        .collect();
+    let is_example = column_names
+        == [
+            "main_pythagoras.a",
+            "main_pythagoras.b",
+            "main_pythagoras.c",
+        ]
+        .into_iter()
+        .collect();
 
     if is_example {
         log::info!("Using hard-coded copy constraints for Pythagoras example");
