@@ -43,7 +43,7 @@ impl<'a, T: FieldElement> OuterQuery<'a, T> {
 pub fn make_copy_constraints<T: FieldElement>(
     fixed_data: &FixedData<T>,
     witness_cols: &HashSet<PolyID>,
-) -> CopyConstraints {
+) -> CopyConstraints<(PolyID, RowIndex)> {
     let is_example = witness_cols
         .iter()
         .all(|c| fixed_data.column_name(c).starts_with("main_pythagoras."));
@@ -76,7 +76,7 @@ pub fn make_copy_constraints<T: FieldElement>(
             constraints.push(((c, index(i, 2)), (b, index(i, 3))));
             constraints.push(((c, index(i, 0)), (c, index(i, 3))));
         }
-        CopyConstraints::new(constraints)
+        CopyConstraints::new(&constraints)
     } else {
         CopyConstraints::default()
     }
@@ -112,7 +112,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     outer_query: Option<OuterQuery<'a, T>>,
     inputs: Vec<(PolyID, T)>,
     previously_set_inputs: BTreeMap<PolyID, usize>,
-    copy_constraints: CopyConstraints,
+    copy_constraints: CopyConstraints<(PolyID, RowIndex)>,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
