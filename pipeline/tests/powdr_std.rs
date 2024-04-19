@@ -426,24 +426,40 @@ fn keccakf() {
 
     // main
     let W = 32;
-    let input = vec![0x7a, 0x6f, 0x6b, 0x72, 0x61, 0x74, 0x65, 0x73];
+    let inputs = vec![
+        vec![0x7a, 0x6f, 0x6b, 0x72, 0x61, 0x74, 0x65, 0x73],
+        [0x2a; 135].to_vec(),
+        [0x2a; 136].to_vec(),
+        // 8d2f294ac2667fe768901937151dc8e49dc9474f9e4da910d46c5abba20ab439
+        // cf54f48e5701fed7b85fa015ff3def02604863f68c585fcf6af54a86d42e1046
+        {
+            let mut v = vec![0x2a; 399];
+            v.push(0x01); 
+            v
+        },
+        // d397b3b043d87fcd6fad1291ff0bfd16401c274896d8c63a923727f077b8e0b5
+        [0x00; 256].to_vec(),
+        
+    ];
     let delim = 0x01;
-    let result_full = evaluate_function(
-        &analyzed,
-        "std::hash::keccak::main",
-        vec![
-            Arc::new(evaluator::Value::Integer(BigInt::from(W))),
-            Arc::new(evaluator::Value::Array(
-                input
-                    .iter()
-                    .map(|x| Arc::new(evaluator::Value::Integer(BigInt::from(*x))))
-                    .collect(),
-            )),
-            Arc::new(evaluator::Value::Integer(BigInt::from(delim))),
-        ],
-    );
-    println!("result full: ");
-    println!("{}", result_full);
+    inputs.iter().for_each(|input| {
+        let result_full = evaluate_function(
+            &analyzed,
+            "std::hash::keccak::main",
+            vec![
+                Arc::new(evaluator::Value::Integer(BigInt::from(W))),
+                Arc::new(evaluator::Value::Array(
+                    input
+                        .iter()
+                        .map(|x| Arc::new(evaluator::Value::Integer(BigInt::from(*x))))
+                        .collect(),
+                )),
+                Arc::new(evaluator::Value::Integer(BigInt::from(delim))),
+            ],
+        );
+        println!("result full: ");
+        println!("{}", result_full);
+    });
 
     // finalize b
     // |num_remaining, b_delim_idx, b_keccak, num_loop, rate, delim, input|
