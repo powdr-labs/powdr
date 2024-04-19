@@ -15,14 +15,20 @@ mod test {
         type TestCase = (&'static str, &'static str);
         let test_cases: Vec<TestCase> = vec![
             // Remove unneeded
-            ("((x + y) * z);", "(x + y) * z;"),
             ("(x * y) * z;", "x * y * z;"),
-            ("x * (y * z);", "x * y * z;"),
             ("(x / y) / z;", "x / y / z;"),
-            ("x / (y / z);", "x / y / z;"),
+            ("x ** (y ** z);", "x ** y ** z;"),
+            ("(x ** (y ** z));", "x ** y ** z;"),
+            // Observe associativity
+            ("x * (y * z);", "x * (y * z);"),
+            ("x / (y / z);", "x / (y / z);"),
+            ("(x ** y) ** z;", "(x ** y) ** z;"),
+            ("((x ** y) ** z);", "(x ** y) ** z;"),
             // Don't remove needed
             ("(x + y) * z;", "(x + y) * z;"),
+            ("((x + y) * z);", "(x + y) * z;"),
             // Don't add extra
+            ("x + y + z;", "x + y + z;"),
             ("x * y * z;", "x * y * z;"),
             ("x / y / z;", "x / y / z;"),
         ];

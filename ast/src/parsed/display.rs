@@ -572,32 +572,43 @@ impl<E: Display> Expression<E> {
         }
     }
 
-    pub fn format_with_precedence(&self, f: &mut Formatter<'_>) -> Result {
+    pub fn format_binary_operation(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Expression::BinaryOperation(left, op, right) => {
-                write!(
-                    f,
-                    "{} {} {}",
-                    format_expression_with_precedence(left, self.precedence()),
-                    op,
-                    format_expression_with_precedence(right, self.precedence())
-                )
+                let use_left_parenthes = match left.precedence() {
+                    Some(left_precedence) => {
+                        left_precedence > op.precedence()
+                            || (left_precedence == op.precedence()
+                                && op.associativity() == BinaryOperatorAssociativity::Right)
+                    }
+                    None => false,
+                };
+
+                let use_right_parenthes = match right.precedence() {
+                    Some(right_precedence) => {
+                        right_precedence > op.precedence()
+                            || (right_precedence == op.precedence()
+                                && op.associativity() == BinaryOperatorAssociativity::Left)
+                    }
+                    None => false,
+                };
+
+                let left_string = if use_left_parenthes {
+                    format!("({})", left)
+                } else {
+                    format!("{}", left)
+                };
+                let right_string = if use_right_parenthes {
+                    format!("({})", right)
+                } else {
+                    format!("{}", right)
+                };
+
+                write!(f, "{} {} {}", left_string, op, right_string)
             }
             _ => panic!("Format with precedence called on non-binary operation."),
         }
     }
-}
-
-pub fn format_expression_with_precedence<E: Display>(
-    e: &Expression<E>,
-    parent_precedence: Option<ExpressionPrecedence>,
-) -> String {
-    if let (Some(_precedence), Some(_parent_precedence)) = (e.precedence(), parent_precedence) {
-        if _precedence > _parent_precedence {
-            return format!("({})", e);
-        }
-    }
-    return format!("{}", e);
 }
 
 impl<Ref: Display> Display for Expression<Ref> {
@@ -610,7 +621,7 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::Tuple(items) => write!(f, "({})", format_list(items)),
             Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
-            Expression::BinaryOperation(_, _, _) => self.format_with_precedence(f),
+            Expression::BinaryOperation(_, _, _) => self.format_binary_operation(f),
             Expression::UnaryOperation(op, exp) => {
                 if op.is_prefix() {
                     write!(f, "{op}{exp}")

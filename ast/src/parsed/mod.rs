@@ -635,6 +635,12 @@ pub enum BinaryOperator {
     Greater,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum BinaryOperatorAssociativity {
+    Left,
+    Right,
+}
+
 impl BinaryOperator {
     pub fn precedence(&self) -> ExpressionPrecedence {
         use BinaryOperator::*;
@@ -663,6 +669,13 @@ impl BinaryOperator {
             // ??
             // = += -= *= /= %= &= |= ^= <<= >>=
             Identity => 12,
+        }
+    }
+
+    pub fn associativity(&self) -> BinaryOperatorAssociativity {
+        match self {
+            BinaryOperator::Pow => BinaryOperatorAssociativity::Right,
+            _ => BinaryOperatorAssociativity::Left,
         }
     }
 }
