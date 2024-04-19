@@ -5,7 +5,6 @@ use std::{
     io::{self, BufReader, BufWriter},
     marker::Send,
     path::{Path, PathBuf},
-    rc::Rc,
     sync::Arc,
     time::Instant,
 };
@@ -62,11 +61,11 @@ pub struct Artifacts<T: FieldElement> {
     /// An analyzed .pil file, with all dependencies imported, potentially from other files.
     analyzed_pil: Option<Analyzed<T>>,
     /// An optimized .pil file.
-    optimized_pil: Option<Rc<Analyzed<T>>>,
+    optimized_pil: Option<Arc<Analyzed<T>>>,
     /// Fully evaluated fixed columns.
-    fixed_cols: Option<Rc<Columns<T>>>,
+    fixed_cols: Option<Arc<Columns<T>>>,
     /// Generated witnesses.
-    witness: Option<Rc<Columns<T>>>,
+    witness: Option<Arc<Columns<T>>>,
     /// The proof (if successful).
     proof: Option<Proof>,
 }
@@ -361,7 +360,7 @@ impl<T: FieldElement> Pipeline<T> {
 
         Ok(Pipeline {
             artifact: Artifacts {
-                optimized_pil: Some(Rc::new(analyzed)),
+                optimized_pil: Some(Arc::new(analyzed)),
                 ..Default::default()
             },
             name,
@@ -382,7 +381,7 @@ impl<T: FieldElement> Pipeline<T> {
 
         Pipeline {
             artifact: Artifacts {
-                fixed_cols: Some(Rc::new(fixed)),
+                fixed_cols: Some(Arc::new(fixed)),
                 ..self.artifact
             },
             ..self
@@ -402,7 +401,7 @@ impl<T: FieldElement> Pipeline<T> {
 
         Pipeline {
             artifact: Artifacts {
-                witness: Some(Rc::new(witness)),
+                witness: Some(Arc::new(witness)),
                 ..self.artifact
             },
             ..self
@@ -418,7 +417,7 @@ impl<T: FieldElement> Pipeline<T> {
         }
         Pipeline {
             artifact: Artifacts {
-                witness: Some(Rc::new(witness)),
+                witness: Some(Arc::new(witness)),
                 ..self.artifact
             },
             ..self
@@ -759,7 +758,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.analyzed_pil.as_ref().unwrap())
     }
 
-    pub fn compute_optimized_pil(&mut self) -> Result<Rc<Analyzed<T>>, Vec<String>> {
+    pub fn compute_optimized_pil(&mut self) -> Result<Arc<Analyzed<T>>, Vec<String>> {
         if let Some(ref optimized_pil) = self.artifact.optimized_pil {
             return Ok(optimized_pil.clone());
         }
@@ -772,16 +771,16 @@ impl<T: FieldElement> Pipeline<T> {
         self.maybe_write_pil(&optimized, "_opt")?;
         self.maybe_write_pil_object(&optimized, "_opt")?;
 
-        self.artifact.optimized_pil = Some(Rc::new(optimized));
+        self.artifact.optimized_pil = Some(Arc::new(optimized));
 
         Ok(self.artifact.optimized_pil.as_ref().unwrap().clone())
     }
 
-    pub fn optimized_pil(&self) -> Result<Rc<Analyzed<T>>, Vec<String>> {
+    pub fn optimized_pil(&self) -> Result<Arc<Analyzed<T>>, Vec<String>> {
         Ok(self.artifact.optimized_pil.as_ref().unwrap().clone())
     }
 
-    pub fn compute_fixed_cols(&mut self) -> Result<Rc<Columns<T>>, Vec<String>> {
+    pub fn compute_fixed_cols(&mut self) -> Result<Arc<Columns<T>>, Vec<String>> {
         if let Some(ref fixed_cols) = self.artifact.fixed_cols {
             return Ok(fixed_cols.clone());
         }
@@ -795,16 +794,16 @@ impl<T: FieldElement> Pipeline<T> {
         self.maybe_write_constants(&fixed_cols)?;
         self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
-        self.artifact.fixed_cols = Some(Rc::new(fixed_cols));
+        self.artifact.fixed_cols = Some(Arc::new(fixed_cols));
 
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
     }
 
-    pub fn fixed_cols(&self) -> Result<Rc<Columns<T>>, Vec<String>> {
+    pub fn fixed_cols(&self) -> Result<Arc<Columns<T>>, Vec<String>> {
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
     }
 
-    pub fn compute_witness(&mut self) -> Result<Rc<Columns<T>>, Vec<String>> {
+    pub fn compute_witness(&mut self) -> Result<Arc<Columns<T>>, Vec<String>> {
         if let Some(ref witness) = self.artifact.witness {
             return Ok(witness.clone());
         }
@@ -831,12 +830,12 @@ impl<T: FieldElement> Pipeline<T> {
 
         self.maybe_write_witness(&fixed_cols, &witness)?;
 
-        self.artifact.witness = Some(Rc::new(witness));
+        self.artifact.witness = Some(Arc::new(witness));
 
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }
 
-    pub fn witness(&self) -> Result<Rc<Columns<T>>, Vec<String>> {
+    pub fn witness(&self) -> Result<Arc<Columns<T>>, Vec<String>> {
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }
 

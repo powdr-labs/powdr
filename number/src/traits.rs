@@ -1,8 +1,7 @@
-use std::{fmt, hash::Hash, ops::*, str::FromStr};
-
 use num_traits::{ConstOne, ConstZero, One, Zero};
 use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::{fmt, hash::Hash, ops::*, str::FromStr};
 
 use crate::{BigUint, DegreeType};
 
@@ -147,17 +146,6 @@ pub trait FieldElement:
     /// As conventional, negative values are in relation to 0 in the field.
     /// Returns None if out of the range [0 - 2^31, 2^31).
     fn try_into_i32(&self) -> Option<i32>;
-}
-
-// this assumes that the field size is at most 64 bits, which is the case for plonky3 fields
-pub trait Plonky3FieldElement: FieldElement {
-    type Plonky3Field: p3_field::AbstractField;
-
-    fn into_plonky3(self) -> Self::Plonky3Field {
-        <Self::Plonky3Field as p3_field::AbstractField>::from_canonical_u64(
-            self.to_integer().try_into_u64().unwrap(),
-        )
-    }
 }
 
 #[cfg(test)]
