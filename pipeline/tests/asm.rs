@@ -25,6 +25,14 @@ fn simple_sum_asm() {
 }
 
 #[test]
+fn secondary_machine_plonk() {
+    let f = "asm/secondary_machine_plonk.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn secondary_block_machine_add2() {
     let f = "asm/secondary_block_machine_add2.asm";
     verify_asm(f, Default::default());
