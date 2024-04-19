@@ -61,7 +61,9 @@ impl<CellId: Ord + Copy> CopyConstraints<CellId> {
         false
     }
 
-    fn iter_equivalence_class(&self, start: CellId) -> impl Iterator<Item = CellId> + '_ {
+    /// Returns an iterator over the equivalence class of the given cell. The first element is the
+    /// given cell.
+    pub fn iter_equivalence_class(&self, start: CellId) -> impl Iterator<Item = CellId> + '_ {
         std::iter::successors(Some(start), move |&cell_ref| {
             let next = self.next(cell_ref);
             if next == start {

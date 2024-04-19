@@ -354,7 +354,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                         self.latch_row + 1,
                         rhs.selector.as_ref().unwrap(),
                         T::zero(),
-                        "Zero selectors",
+                        || "Zero selectors".to_string(),
                     )
                     .unwrap();
             }

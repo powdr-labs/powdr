@@ -279,7 +279,9 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         let mut progress = false;
         if let Some(selector) = self.outer_query.as_ref().unwrap().right.selector.as_ref() {
             progress |= self
-                .set_value(row_index, selector, T::one(), "Set selector to 1")
+                .set_value(row_index, selector, T::one(), || {
+                    "Set selector to 1".to_string()
+                })
                 .unwrap_or(false);
         }
 
@@ -365,15 +367,15 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     /// Sets the value of a given expression, in a given row.
     pub fn set_value(
         &mut self,
-        local_index: usize,
+        row_index: usize,
         expression: &'a Expression<T>,
         value: T,
-        reason: &str,
+        name: impl Fn() -> String,
     ) -> Result<bool, IncompleteCause<&'a AlgebraicReference>> {
         let row_pair = RowPair::new(
-            &self.data[local_index],
-            &self.data[local_index + 1],
-            self.row_offset + local_index as u64,
+            &self.data[row_index],
+            &self.data[row_index + 1],
+            self.row_offset + row_index as u64,
             self.fixed_data,
             UnknownStrategy::Unknown,
         );
@@ -381,9 +383,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         let updates = (affine_expression - value.into())
             .solve_with_range_constraints(&row_pair)
             .unwrap();
-        Ok(self.apply_updates(local_index, &updates, || {
-            format!("Setting value ({})", reason)
-        }))
+        Ok(self.apply_updates(row_index, &updates, name))
     }
 
     fn apply_updates(
@@ -436,16 +436,26 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             // If we we do an assignment, propagate the value to any other cell that is
             // copy-constrained to the current cell.
             let row = self.row_offset + row_index + poly.next as usize;
-            let (mut other_poly, mut other_row) = self.copy_constraints.next((poly.poly_id, row));
 
-            // Traverse the cycle until we reach the starting point.
-            while (other_poly, other_row) != (poly.poly_id, row) {
+            // Have to materialize the other cells to please the borrow checker...
+            let others = self
+                .copy_constraints
+                .iter_equivalence_class((poly.poly_id, row))
+                .skip(1)
+                .collect::<Vec<_>>();
+            for (other_poly, other_row) in others {
                 let expression = &self.fixed_data.witness_cols[&other_poly].expr;
-                self.ensure_enough_rows(&other_row);
                 let local_index = other_row.to_local(&self.row_offset);
-                self.set_value(local_index, expression, *v, "copy constraint")
-                    .unwrap();
-                (other_poly, other_row) = self.copy_constraints.next((other_poly, other_row));
+                self.set_value(local_index, expression, *v, || {
+                    format!(
+                        "Copy constraint: {} (Row {}) -> {} (Row {})",
+                        self.fixed_data.column_name(&poly.poly_id),
+                        row,
+                        self.fixed_data.column_name(&other_poly),
+                        other_row
+                    )
+                })
+                .unwrap();
             }
         }
     }
@@ -455,11 +465,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     }
 
     pub fn finalize_range(&mut self, range: impl Iterator<Item = usize>) {
-        // HACK: If there are copy constraints, never finalize,
-        // because it is harder to know when a row is final.
-        if self.copy_constraints.is_empty() {
-            self.data.finalize_range(range)
-        }
+        assert!(
+            self.copy_constraints.is_empty(),
+            "Machines with copy constraints should not be finalized while being processed."
+        );
+        self.data.finalize_range(range);
     }
 
     pub fn row(&self, i: usize) -> &Row<'a, T> {
@@ -477,21 +487,6 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         } else {
             assert_eq!(i, self.data.len());
             self.data.push(row);
-        }
-    }
-
-    /// Ensure that we have enough rows to create a RowPair starting from the given global row index.
-    /// This means that we need to have the given row and the next!
-    fn ensure_enough_rows(&mut self, row_index: &RowIndex) {
-        let local_index = row_index.to_local(&self.row_offset);
-        while self.data.len() <= local_index + 1 {
-            self.data.push(Row::fresh(
-                self.fixed_data,
-                RowIndex::from_degree(
-                    self.data.len() as DegreeType + u64::from(self.row_offset),
-                    self.fixed_data.degree,
-                ),
-            ));
         }
     }
 

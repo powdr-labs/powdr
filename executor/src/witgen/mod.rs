@@ -417,6 +417,7 @@ pub struct WitnessColumn<'a, T> {
     /// This is needed in situations where we want to update a cell when the
     /// update does not come from an identity (which also has an AlgebraicReference).
     poly: AlgebraicReference,
+    /// The algebraic expression that points to this column in the current row.
     expr: AlgebraicExpression<T>,
     /// The prover query expression, if any.
     query: Option<&'a Expression>,
