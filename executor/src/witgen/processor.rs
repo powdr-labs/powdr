@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
-    rc::Rc,
-};
+use std::collections::{BTreeMap, HashSet};
 
 use powdr_ast::{
     analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID},
@@ -23,7 +20,7 @@ type CellRef = (PolyID, RowIndex);
 
 #[derive(Default)]
 pub struct CopyConstraints {
-    constraints: BTreeMap<CellRef, Rc<BTreeSet<CellRef>>>,
+    copy_cycle: BTreeMap<CellRef, CellRef>,
 }
 
 impl CopyConstraints {
@@ -70,46 +67,31 @@ impl CopyConstraints {
     }
 
     pub fn new(constraint_pairs: Vec<((PolyID, RowIndex), (PolyID, RowIndex))>) -> Self {
-        let mut eq_classes: Vec<BTreeSet<(PolyID, RowIndex)>> = Vec::new();
-        for (a, b) in constraint_pairs {
-            let mut found = false;
-            for eq_class in &mut eq_classes {
-                if eq_class.contains(&a) || eq_class.contains(&b) {
-                    eq_class.insert(a);
-                    eq_class.insert(b);
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                let mut eq_class = BTreeSet::new();
-                eq_class.insert(a);
-                eq_class.insert(b);
-                eq_classes.push(eq_class);
-            }
-        }
+        let mut copy_cycle = BTreeMap::new();
+        let mut back_edges = BTreeMap::new();
 
-        let mut constraints = BTreeMap::new();
-        for eq_class in eq_classes {
-            let eq_class = Rc::new(eq_class);
-            for (a, b) in eq_class.iter().zip(eq_class.iter()) {
-                constraints.insert(*a, eq_class.clone());
-                constraints.insert(*b, eq_class.clone());
-            }
+        for (a, b) in constraint_pairs {
+            // In the general case, a and b will already be in a cycle,
+            // where a has a next node n_a and b has a previous node p_b.
+            // We want to change the edges such that a -> b and p_b -> n_a.
+            // If a node does not have an entry in the edge list, its previous
+            // and next nodes are the node itself.
+            let n_a = copy_cycle.get(&a).copied().unwrap_or(a);
+            let p_b = back_edges.get(&b).copied().unwrap_or(b);
+            copy_cycle.insert(a, b);
+            back_edges.insert(b, a);
+            copy_cycle.insert(p_b, n_a);
+            back_edges.insert(n_a, p_b);
         }
-        Self { constraints }
+        Self { copy_cycle }
     }
 
-    pub fn get(
-        &self,
-        poly_id: PolyID,
-        row_index: RowIndex,
-    ) -> Option<Rc<BTreeSet<(PolyID, RowIndex)>>> {
-        self.constraints.get(&(poly_id, row_index)).cloned()
+    pub fn next(&self, cell_ref: CellRef) -> CellRef {
+        self.copy_cycle.get(&cell_ref).copied().unwrap_or(cell_ref)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.constraints.is_empty()
+        self.copy_cycle.is_empty()
     }
 }
 
@@ -453,17 +435,8 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 row_updater.apply_update(poly, c);
                 progress = true;
 
-                if let Constraint::Assignment(v) = c {
-                    let row = self.row_offset + row_index + poly.next as usize;
-                    if let Some(eq_class) = self.copy_constraints.get(poly.poly_id, row) {
-                        for (other_poly, other_row) in eq_class.iter() {
-                            let expression = &self.fixed_data.witness_cols[other_poly].expr;
-                            self.ensure_enough_rows(other_row);
-                            let local_index = other_row.to_local(&self.row_offset);
-                            self.set_value(local_index, expression, *v, "copy constraint")
-                                .unwrap();
-                        }
-                    }
+                if !self.copy_constraints.is_empty() {
+                    self.handle_copy_constraints(row_index, poly, c);
                 }
             } else if let Constraint::Assignment(v) = c {
                 let left = &mut self.outer_query.as_mut().unwrap().left;
@@ -476,6 +449,30 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         }
 
         progress
+    }
+
+    fn handle_copy_constraints(
+        &mut self,
+        row_index: usize,
+        poly: &AlgebraicReference,
+        constraint: &Constraint<T>,
+    ) {
+        if let Constraint::Assignment(v) = constraint {
+            // If we we do an assignment, propagate the value to any other cell that is
+            // copy-constrained to the current cell.
+            let row = self.row_offset + row_index + poly.next as usize;
+            let (mut other_poly, mut other_row) = self.copy_constraints.next((poly.poly_id, row));
+
+            // Traverse the cycle until we reach the starting point.
+            while (other_poly, other_row) != (poly.poly_id, row) {
+                let expression = &self.fixed_data.witness_cols[&other_poly].expr;
+                self.ensure_enough_rows(&other_row);
+                let local_index = other_row.to_local(&self.row_offset);
+                self.set_value(local_index, expression, *v, "copy constraint")
+                    .unwrap();
+                (other_poly, other_row) = self.copy_constraints.next((other_poly, other_row));
+            }
+        }
     }
 
     pub fn len(&self) -> usize {
