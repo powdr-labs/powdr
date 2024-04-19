@@ -535,6 +535,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             ));
         }
 
+        if self.rows() + self.block_size as DegreeType >= self.fixed_data.degree {
+            return Err(EvalError::RowsExhausted(self.name.clone()));
+        }
+
         let process_result = self.process(mutable_state, left, right, &mut sequence_iterator)?;
 
         let process_result = if sequence_iterator.is_cached() && !process_result.is_success() {
@@ -610,9 +614,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// This is necessary to handle non-rectangular block machines, which already use
     /// unused cells in the previous block.
     fn append_block(&mut self, mut new_block: FinalizableData<'a, T>) -> Result<(), EvalError<T>> {
-        if self.rows() + self.block_size as DegreeType >= self.fixed_data.degree {
-            return Err(EvalError::RowsExhausted);
-        }
+        assert!(
+            (self.rows() + self.block_size as DegreeType) < self.fixed_data.degree,
+            "Block machine is full (this should have been checked before)"
+        );
 
         assert_eq!(new_block.len(), self.block_size + 2);
 
