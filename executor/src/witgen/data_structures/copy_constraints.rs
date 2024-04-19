@@ -120,7 +120,6 @@ mod tests {
         ];
         let equivalence_classes =
             CopyConstraints::new(&constraints).non_trivial_equivalence_classes();
-        println!("{:?}", equivalence_classes);
         assert_eq!(equivalence_classes.len(), 2);
         assert!(equivalence_classes.contains(&[1, 2, 3, 4, 5, 6, 7].iter().copied().collect()));
         assert!(equivalence_classes.contains(&[8, 9].iter().copied().collect()));
