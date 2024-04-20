@@ -351,7 +351,7 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     BlockExpression(Vec<StatementInsideBlock<Self>>, Box<Self>),
 }
 
-pub type ExpressionPrecedence = u8;
+pub type ExpressionPrecedence = u16;
 
 impl<Ref> Expression<Ref> {
     pub fn new_binary(left: Self, op: BinaryOperator, right: Self) -> Self {
@@ -639,43 +639,63 @@ pub enum BinaryOperator {
 pub enum BinaryOperatorAssociativity {
     Left,
     Right,
+    RequireParentheses,
+}
+
+const UNARY_EXPRESSION_PRIORITY_OFFSET: ExpressionPrecedence = 0; // All unary operators have the same precedence.
+const BINARY_EXPRESSION_PRIORITY_OFFSET: ExpressionPrecedence = 10; // Binary operators will have a lower precedence than unary operators.
+
+impl UnaryOperator {
+    pub fn precedence(&self) -> ExpressionPrecedence {
+        use UnaryOperator::*;
+        UNARY_EXPRESSION_PRIORITY_OFFSET
+            + match self {
+                Minus | LogicalNot => 1,
+                Next => 2,
+            }
+    }
 }
 
 impl BinaryOperator {
     pub fn precedence(&self) -> ExpressionPrecedence {
         use BinaryOperator::*;
-        match self {
-            // Unary - * ! & &mut
-            Pow => 2,
-            // * / %
-            Mul | Div | Mod => 3,
-            // + -
-            Add | Sub => 4,
-            // << >>
-            ShiftLeft | ShiftRight => 5,
-            // &
-            BinaryAnd => 6,
-            // ^
-            BinaryXor => 7,
-            // |
-            BinaryOr => 8,
-            // == != < > <= >=
-            Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => 9,
-            // &&
-            LogicalAnd => 10,
-            // ||
-            LogicalOr => 11,
-            // .. ..=
-            // ??
-            // = += -= *= /= %= &= |= ^= <<= >>=
-            Identity => 12,
-        }
+        BINARY_EXPRESSION_PRIORITY_OFFSET
+            + match self {
+                // Unary - * ! & &mut
+                Pow => 2,
+                // * / %
+                Mul | Div | Mod => 3,
+                // + -
+                Add | Sub => 4,
+                // << >>
+                ShiftLeft | ShiftRight => 5,
+                // &
+                BinaryAnd => 6,
+                // ^
+                BinaryXor => 7,
+                // |
+                BinaryOr => 8,
+                // == != < > <= >=
+                Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => 9,
+                // &&
+                LogicalAnd => 10,
+                // ||
+                LogicalOr => 11,
+                // .. ..=
+                // ??
+                // = += -= *= /= %= &= |= ^= <<= >>=
+                Identity => 12,
+            }
     }
 
     pub fn associativity(&self) -> BinaryOperatorAssociativity {
+        use BinaryOperator::*;
+        use BinaryOperatorAssociativity::*;
         match self {
-            BinaryOperator::Pow => BinaryOperatorAssociativity::Right,
-            _ => BinaryOperatorAssociativity::Left,
+            Identity => Right,
+            Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => RequireParentheses,
+            // .. ..= => RequireParentheses,
+            _ => Left,
         }
     }
 }

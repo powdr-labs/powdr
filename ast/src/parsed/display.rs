@@ -567,38 +567,75 @@ fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
 impl<E: Display> Expression<E> {
     pub fn precedence(&self) -> Option<ExpressionPrecedence> {
         match self {
+            Expression::UnaryOperation(op, _) => Some(op.precedence()),
             Expression::BinaryOperation(_, op, _) => Some(op.precedence()),
             _ => None,
+        }
+    }
+
+    pub fn require_parentheses(&self) -> bool {
+        match self {
+            Expression::BinaryOperation(_, op, _) => {
+                op.associativity() == BinaryOperatorAssociativity::RequireParentheses
+            }
+            _ => false,
+        }
+    }
+
+    pub fn format_unary_operation(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Expression::UnaryOperation(op, exp) => {
+                let _exp_string = if let (Some(_precision), Some(_exp_precision)) =
+                    (self.precedence(), exp.precedence())
+                {
+                    if _precision < _exp_precision {
+                        format!("({})", exp)
+                    } else {
+                        format!("{}", exp)
+                    }
+                } else {
+                    format!("{}", exp)
+                };
+
+                if op.is_prefix() {
+                    write!(f, "{}{}", op, _exp_string)
+                } else {
+                    write!(f, "{}{}", _exp_string, op)
+                }
+            }
+            _ => panic!("Format with precedence called on non-unary operation."),
         }
     }
 
     pub fn format_binary_operation(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Expression::BinaryOperation(left, op, right) => {
-                let use_left_parenthes = match left.precedence() {
-                    Some(left_precedence) => {
-                        left_precedence > op.precedence()
-                            || (left_precedence == op.precedence()
-                                && op.associativity() == BinaryOperatorAssociativity::Right)
-                    }
-                    None => false,
-                };
+                let use_left_parentheses = left.require_parentheses()
+                    || match left.precedence() {
+                        Some(left_precedence) => {
+                            left_precedence > op.precedence()
+                                || (left_precedence == op.precedence()
+                                    && op.associativity() == BinaryOperatorAssociativity::Right)
+                        }
+                        None => false,
+                    };
 
-                let use_right_parenthes = match right.precedence() {
-                    Some(right_precedence) => {
-                        right_precedence > op.precedence()
-                            || (right_precedence == op.precedence()
-                                && op.associativity() == BinaryOperatorAssociativity::Left)
-                    }
-                    None => false,
-                };
+                let use_right_parentheses = right.require_parentheses()
+                    || match right.precedence() {
+                        Some(right_precedence) => {
+                            right_precedence > op.precedence()
+                                || (right_precedence == op.precedence()
+                                    && op.associativity() == BinaryOperatorAssociativity::Left)
+                        }
+                        None => false,
+                    };
 
-                let left_string = if use_left_parenthes {
+                let left_string = if use_left_parentheses {
                     format!("({})", left)
                 } else {
                     format!("{}", left)
                 };
-                let right_string = if use_right_parenthes {
+                let right_string = if use_right_parentheses {
                     format!("({})", right)
                 } else {
                     format!("{}", right)
@@ -622,13 +659,7 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
             Expression::BinaryOperation(_, _, _) => self.format_binary_operation(f),
-            Expression::UnaryOperation(op, exp) => {
-                if op.is_prefix() {
-                    write!(f, "{op}{exp}")
-                } else {
-                    write!(f, "{exp}{op}")
-                }
-            }
+            Expression::UnaryOperation(_, _) => self.format_unary_operation(f),
             Expression::IndexAccess(index_access) => write!(f, "{index_access}"),
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),

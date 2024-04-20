@@ -14,19 +14,22 @@ mod test {
     fn test_parentheses() {
         type TestCase = (&'static str, &'static str);
         let test_cases: Vec<TestCase> = vec![
+            ("-x + y;", "-x + y;"),
+            ("x = (y <= z);", "x = (y <= z);"),
             // Remove unneeded
             ("(x * y) * z;", "x * y * z;"),
             ("(x / y) / z;", "x / y / z;"),
-            ("x ** (y ** z);", "x ** y ** z;"),
-            ("(x ** (y ** z));", "x ** y ** z;"),
+            ("x ** (y ** z);", "x ** (y ** z);"),
+            ("(x ** (y ** z));", "x ** (y ** z);"),
             // Observe associativity
             ("x * (y * z);", "x * (y * z);"),
             ("x / (y / z);", "x / (y / z);"),
-            ("(x ** y) ** z;", "(x ** y) ** z;"),
-            ("((x ** y) ** z);", "(x ** y) ** z;"),
+            ("(x ** y) ** z;", "x ** y ** z;"),
+            ("((x ** y) ** z);", "x ** y ** z;"),
             // Don't remove needed
             ("(x + y) * z;", "(x + y) * z;"),
             ("((x + y) * z);", "(x + y) * z;"),
+            ("-(x + y);", "-(x + y);"),
             // Don't add extra
             ("x + y + z;", "x + y + z;"),
             ("x * y * z;", "x * y * z;"),
