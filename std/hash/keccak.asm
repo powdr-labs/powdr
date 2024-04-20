@@ -42,13 +42,12 @@ let theta_bc = |s, st, i|
     std::array::fold([st[i + 5], st[i + 10], st[i + 15]], (s, st[i]), xor);
 
 // ln 57 - 62
-let theta_st = |s, st| map_enumerated_stateful(st, s, |s1, idx, elem| {
-    let i = idx % 5;
-    let j = idx / 5;
-    let (s2, r) = rotl64(theta_bc(s1, st, (i + 1) % 5), 1);
-    let t = xor(theta_bc(s2, st, (i + 4) % 5), r);
-    xor(t, elem)
-});
+let theta_st = |s, st| {
+    let (s2, bc) = new_array_stateful(5, s, |s1, i| theta_bc(s1, st, i));
+    let _ = std::debug::println(gate_to_string(bc[0]));
+    let (s4, bc_rot) = new_array_stateful(5, s2, |s3, i| xor(rotl64((s3, bc[(i + 1) % 5]), 1), bc[(i + 4) % 5]));
+    map_enumerated_stateful(st, s4, |s5, idx, elem| xor((s5, bc_rot[idx % 5]), elem))
+};
 
 // ln 66 - 72
 // rho pi
@@ -103,6 +102,8 @@ let xor = |(s, a), b| (s + 1, Gate::Xor(a, b)); // TODO create ID
 let and_not = |(s, a), b| (s + 1, Gate::AndNot(a, b));
 let rotl64 = |(s, a), n| (s + 1, Gate::Rotl(a, n));
 
+// TODO this is wrong because it counts multiplicities, i.e.
+// it counts the size of the circuit expanded to a tree.
 let gate_count: Gate -> int = |g| match g {
     Gate::Input(_) => 1,
     Gate::Constant(_) => 1,
@@ -119,6 +120,16 @@ let gate_to_string: Gate -> string = |g| match g {
     Gate::Rotl(a, _) => "rotl(" + gate_to_string(a) + ")",
 };
 
+let eval = |inputs, g| match g {
+    Gate::Input(i) => inputs[i],
+    Gate::Constant(k) => k,
+    Gate::Xor(a, b) => eval(inputs, a) ^ eval(inputs, b),
+    Gate::AndNot(a, b) => (eval(inputs, a) ^ 0xffffffffffffffff) & eval(inputs, b),
+    Gate::Rotl(a, k) => {
+        let x = eval(inputs, a);
+        ((x << k) | (x >> k)) & 0xffffffffffffffff
+    }
+};
 
 machine Main { 
     let x;
