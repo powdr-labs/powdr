@@ -106,7 +106,7 @@ let<T1, T2> option_map: Option<T1>, (T1 -> T2) -> Option<T2> = |x, f| match x {
 };
 
 enum BTreeNode<K, V> {
-    N(K, V, Option<BTreeNode>, Option<BTreeNode>)
+    N(K, V, int, Option<BTreeNode>, Option<BTreeNode>)
 }
 
 enum CmpResult {
@@ -117,13 +117,70 @@ enum CmpResult {
 
 // TODO cmp should be stored together with the tree
 let<K, V> btree_find: BTreeNode<K, V>, (K, K -> CmpResult), K -> Option<V> = |node, cmp, needle| match node {
-    BTreeNode::N(key, value, left, right) => match cmp(needle, key) {
-        Less => option_map(left, |l| btree_find(l, cmp, needle)),
-        Equal => Option::Some(value),
-        Greater => option_map(right, |r| btree_find(r, cmp, needle)),
+    BTreeNode::N(key, value, _, left, right) => match cmp(needle, key) {
+        CmpResult::Less => option_map(left, |l| btree_find(l, cmp, needle)),
+        CmpResult::Equal => Option::Some(value),
+        CmpResult::Greater => option_map(right, |r| btree_find(r, cmp, needle)),
     }
 };
 
+// TODO the rotations below are only simple rotations, but we also need
+// to implement more complicated rotations.
+
+let btree_insert = |node, cmp, k, v| match node {
+    Option::None => Option::Some(BTreeNode::N(k, v, 1, Option::None, Option::None)),
+    Option::Some(BTreeNode::N(key, value, depth, left, right)) => Option::Some(match cmp(k, key) {
+        CmpResult::Less => {
+            let new_left = btree_insert(left, cmp, k, v);
+
+            let left_depth = btree_node_depth(new_left);
+            let right_depth = btree_node_depth(right)
+            if left_depth >= right_depth + 2 {
+                match new_left {
+                    Option::Some(BTreeNode::N(l_k, l_v, l_d, l_left, l_right)) =>
+                        update_depth(Option::Some(BTreeNode::N(l_k, l_v, l_d, l_left, Option::Some(
+                            update_depth(Option::Some(BTreeNode::N(key, value, l_right, right)))
+                        )))),
+                    Option::None => std::check::panic(),
+                }
+            } else {
+                Option::Some(BTreeNode::N(key, value, max(left_depth, right_depth) + 1, new_left, right)))
+            }
+        },
+        CmpResult::Equal => Option::Some(BTreeNode::N(k, v, depth, left, right)),
+        CmpResult::Greater => {
+            let new_right = btree_insert(right, cmp, k, v);
+
+            let left_depth = btree_node_depth(left);
+            let right_depth = btree_node_depth(new_right)
+            if right_depth >= left_depth + 2 {
+                match new_right {
+                    Option::Some(BTreeNode::N(l_k, l_v, l_d, l_left, l_right)) =>
+                        update_depth(Option::Some(BTreeNode::N(l_k, l_v, l_d, l_left, Option::Some(
+                            update_depth(Option::Some(BTreeNode::N(key, value, l_right, right)))
+                        )))),
+                    Option::None => std::check::panic(),
+                }
+            } else {
+                Option::Some(BTreeNode::N(key, value, max(left_depth, right_depth) + 1, new_right, right)))
+            }
+        },
+    })
+};
+
+let btree_node_depth = |node| match node {
+    Option::None => 0,
+    Option::Some(BTreeNode::N(_, _, depth, _, _)) => depth,
+};
+
+let update_depth = |node| match node {
+    Option::None => Option::None,
+    Option::Some(BTreeNode::N(k, v, _, l, r)) => {
+        let dl = btree_node_depth(l);
+        let dr = btree_node_depth(r);
+        Option::Some(BTreeNode::N(k, v, max(dl, dr) + 1, l, r))
+    }
+};
 
 /*
 
