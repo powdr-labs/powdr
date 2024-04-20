@@ -274,18 +274,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 _ => None,
             },
             Pattern::Tuple(items) => match v.as_ref() {
-                Value::Tuple(values) => {
-                    assert_eq!(values.len(), items.len());
-                    values
-                        .iter()
-                        .zip(items)
-                        .try_fold(vec![], |mut vars, (e, p)| {
-                            Value::try_match_pattern(e, p).map(|v| {
-                                vars.extend(v);
-                                vars
-                            })
-                        })
-                }
+                Value::Tuple(values) => Value::try_match_pattern_list(values, items),
                 _ => unreachable!(),
             },
             Pattern::Array(items) => {
@@ -321,7 +310,36 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     })
             }
             Pattern::Variable(_) => Some(vec![v.clone()]),
+            Pattern::Enum(name, fields_pattern) => {
+                let Value::Enum(n, data) = v.as_ref() else {
+                    panic!()
+                };
+                if name.name() != n {
+                    return None;
+                }
+                if let Some(fields) = fields_pattern {
+                    Value::try_match_pattern_list(data.as_ref().unwrap(), fields)
+                } else {
+                    Some(vec![])
+                }
+            }
         }
+    }
+
+    fn try_match_pattern_list<'b>(
+        values: &[Arc<Value<'b, T>>],
+        patterns: &[Pattern],
+    ) -> Option<Vec<Arc<Value<'b, T>>>> {
+        assert_eq!(values.len(), patterns.len());
+        patterns
+            .iter()
+            .zip(values.iter())
+            .try_fold(vec![], |mut vars, (p, e)| {
+                Value::try_match_pattern(e, p).map(|v| {
+                    vars.extend(v);
+                    vars
+                })
+            })
     }
 }
 
@@ -388,7 +406,7 @@ impl<'a, T: Display> Display for Value<'a, T> {
 
 #[derive(Clone, Debug)]
 pub struct Closure<'a, T> {
-    pub lambda: &'a LambdaExpression<Reference>,
+    pub lambda: &'a LambdaExpression<Expression>,
     pub environment: Vec<Arc<Value<'a, T>>>,
     pub type_args: HashMap<String, Type>,
 }
@@ -901,14 +919,12 @@ mod internal {
                 Err(EvalError::FailedAssertion(msg))?
             }
             BuiltinFunction::Print => {
-                let msg = match arguments.pop().unwrap().as_ref() {
-                    Value::String(msg) => msg.clone(),
-                    v => panic!(
-                        "Expected string for std::debug::print, but got {v}: {}",
-                        v.type_formatted()
-                    ),
-                };
-                print!("{msg}");
+                let msg = arguments.pop().unwrap();
+                if let Value::String(s) = msg.as_ref() {
+                    print!("{s}");
+                } else {
+                    print!("{msg}");
+                }
                 Value::Array(Default::default()).into()
             }
             BuiltinFunction::ToExpr => {
@@ -1028,7 +1044,7 @@ mod test {
     }
 
     #[test]
-    pub fn arrays_and_strings() {
+    fn arrays_and_strings() {
         let src = r#"namespace Main(16);
             let words = ["the", "quick", "brown", "fox"];
             let translate = |w| match w {
@@ -1046,7 +1062,7 @@ mod test {
     }
 
     #[test]
-    pub fn fibonacci() {
+    fn fibonacci() {
         let src = r#"namespace Main(16);
             let fib: int -> int = |i| match i {
                 0 => 0,
@@ -1062,7 +1078,7 @@ mod test {
     }
 
     #[test]
-    pub fn capturing() {
+    fn capturing() {
         let src = r#"namespace Main(16);
             let f: int, (int -> int) -> (int -> int) = |n, g| match n { 99 => |i| n, 1 => g };
             let result = f(1, f(99, |x| x + 3000))(0);
@@ -1076,7 +1092,7 @@ mod test {
     }
 
     #[test]
-    pub fn array_len() {
+    fn array_len() {
         let src = r#"
             let N: int = 2;
             namespace std::array(N);
@@ -1092,7 +1108,7 @@ mod test {
 
     #[test]
     #[should_panic = r#"FailedAssertion("this text")"#]
-    pub fn panic_complex() {
+    fn panic_complex() {
         let src = r#"
             constant %N = 2;
             namespace std::check(%N);
@@ -1107,7 +1123,7 @@ mod test {
 
     #[test]
     #[should_panic = r#"FailedAssertion("text")"#]
-    pub fn panic_string() {
+    fn panic_string() {
         let src = r#"
             constant %N = 2;
             namespace std::check(%N);
@@ -1119,7 +1135,7 @@ mod test {
     }
 
     #[test]
-    pub fn hex_number_outside_field() {
+    fn hex_number_outside_field() {
         // This tests that the parser does not lose precision when parsing large integers.
         let src = r#"
             let N: int = 0x9999999999999999999999999999999;
@@ -1128,7 +1144,7 @@ mod test {
     }
 
     #[test]
-    pub fn decimal_number_outside_field() {
+    fn decimal_number_outside_field() {
         // This tests that the parser does not lose precision when parsing large integers.
         let src = r#"
             let N: int = 9999999999999999999999999999999;
@@ -1138,7 +1154,7 @@ mod test {
 
     #[test]
     #[should_panic = "Number literal 9999999999999999999999999999999 is too large for field element."]
-    pub fn decimal_number_outside_field_for_fe() {
+    fn decimal_number_outside_field_for_fe() {
         let src = r#"
             let N: fe = 9999999999999999999999999999999;
         "#;
@@ -1146,7 +1162,7 @@ mod test {
     }
 
     #[test]
-    pub fn zero_power_zero() {
+    fn zero_power_zero() {
         let src = r#"
         let zpz_int: int = 0**0;
         let zpz_fe: fe = 0**0;
@@ -1156,7 +1172,7 @@ mod test {
     }
 
     #[test]
-    pub fn debug_print() {
+    fn debug_print() {
         let src = r#"
             namespace std::debug(8);
             let print = 2;
@@ -1166,7 +1182,22 @@ mod test {
     }
 
     #[test]
-    pub fn local_vars() {
+    fn debug_print_complex() {
+        let src = r#"
+            namespace std::debug(8);
+            let print = 2;
+            let t: fe = 9;
+            let x: int = 2;
+            let N = {
+                let _ = std::debug::print((t, [x, 3], "test output\n"));
+                std::debug::print("\n")
+            };
+        "#;
+        parse_and_evaluate_symbol(src, "std::debug::N");
+    }
+
+    #[test]
+    fn local_vars() {
         let src = r#"
             let f: int -> int = |i| {
                 let x = i + 1;
@@ -1180,7 +1211,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_pattern() {
+    fn match_pattern() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [] => 0,
@@ -1200,7 +1231,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_pattern_complex() {
+    fn match_pattern_complex() {
         let src = r#"
             let f: ((int, int), int[]) -> int = |q| match q {
                 ((1, _), [x, 4]) => 1 + x,
@@ -1227,7 +1258,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array() {
+    fn match_skip_array() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [x, .., y] => x + y,
@@ -1243,7 +1274,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array_2() {
+    fn match_skip_array_2() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [.., y] => y,
@@ -1258,7 +1289,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array_3() {
+    fn match_skip_array_3() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [.., x, y] => x,
@@ -1273,7 +1304,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array_4() {
+    fn match_skip_array_4() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [x, y, ..] => y,
@@ -1288,7 +1319,7 @@ mod test {
     }
 
     #[test]
-    pub fn unpack_fun() {
+    fn unpack_fun() {
         let src = r#"
             let t: (int, fe, int), int -> int[] = |(x, _, y), z| [x, y, z];
             let x: int[] = t((1, 2, 3), 4);
@@ -1297,7 +1328,7 @@ mod test {
     }
 
     #[test]
-    pub fn unpack_let() {
+    fn unpack_let() {
         let src = r#"
             let x: int[] = {
                 let (a, (_, b), (c, _, _, d, _)) = (1, ((), 3), (4, (), (), 7, ()));
@@ -1307,6 +1338,30 @@ mod test {
         assert_eq!(
             parse_and_evaluate_symbol(src, "x"),
             "[1, 3, 4, 7]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_enum() {
+        let src = r#"
+            enum X {
+                A,
+                B(),
+                C(int, int),
+                D(int, X)
+            }
+            let f = |x| match x {
+                X::A => 1,
+                X::B() => 2,
+                X::C(a, b) => a + b,
+                X::D(0, X::A) => 10001,
+                X::D(c, y) => c + f(y),
+            };
+            let t = [f(X::A), f(X::B()), f(X::C(3, 4)), f(X::D(0, X::A)), f(X::D(0, X::B())), f(X::D(100, X::C(4, 5)))];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[1, 2, 7, 10001, 2, 109]".to_string()
         );
     }
 }

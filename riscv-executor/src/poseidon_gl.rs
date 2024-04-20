@@ -84,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn test_poseidon_gl() {
+    fn poseidon_gl_function() {
         // See test vectors at:
         // https://github.com/0xPolygonHermez/zkevm-testvectors/blob/main/poseidon/raw-hash.json
         let inputs: Vec<u64> = vec![0; 12];

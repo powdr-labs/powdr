@@ -21,7 +21,7 @@ pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
 
 #[cfg(feature = "halo2")]
 #[test]
-fn test_invalid_witness() {
+fn invalid_witness() {
     let f = "pil/trivial.pil";
     let witness = vec![("main.w".to_string(), vec![0; 4])];
     assert_proofs_fail_for_invalid_witnesses(f, &witness);
@@ -30,7 +30,7 @@ fn test_invalid_witness() {
 #[cfg(feature = "halo2")]
 #[test]
 #[should_panic = "Number not included: F3G { cube: [Fr(0x0000000000000000), Fr(0x0000000000000000), Fr(0x0000000000000000)], dim: 3 }"]
-fn test_lookup_with_selector() {
+fn lookup_with_selector() {
     // witness[0] and witness[2] have to be in {2, 4}
 
     // Valid witness
@@ -58,7 +58,7 @@ fn test_lookup_with_selector() {
 #[cfg(feature = "halo2")]
 #[test]
 #[should_panic = "assertion failed: check_val._eq(&F::one())"]
-fn test_permutation_with_selector() {
+fn permutation_with_selector() {
     // witness[0] and witness[2] have to be in {2, 4}
 
     // Valid witness
@@ -84,7 +84,7 @@ fn test_permutation_with_selector() {
 }
 
 #[test]
-fn test_fibonacci() {
+fn fibonacci() {
     let f = "pil/fibonacci.pil";
     verify_pil(f, Default::default());
     test_halo2(f, Default::default());
@@ -92,13 +92,13 @@ fn test_fibonacci() {
 }
 
 #[test]
-fn test_permutation_via_challenges() {
+fn permutation_via_challenges() {
     let f = "pil/permutation_via_challenges.pil";
     test_halo2(f, Default::default());
 }
 
 #[test]
-fn test_fibonacci_invalid_witness() {
+fn fibonacci_invalid_witness() {
     let f = "pil/fibonacci.pil";
 
     // Changed one value and then continued.
@@ -121,7 +121,7 @@ fn test_fibonacci_invalid_witness() {
 }
 
 #[test]
-fn test_constant_in_identity() {
+fn constant_in_identity() {
     let f = "pil/constant_in_identity.pil";
     verify_pil(f, Default::default());
     test_halo2(f, Default::default());
@@ -138,27 +138,27 @@ fn fib_arrays() {
 
 #[test]
 #[should_panic = "Witness generation failed."]
-fn test_external_witgen_fails_if_none_provided() {
+fn external_witgen_fails_if_none_provided() {
     let f = "pil/external_witgen.pil";
     verify_pil(f, Default::default());
 }
 
 #[test]
-fn test_external_witgen_a_provided() {
+fn external_witgen_a_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.a".to_string(), vec![GoldilocksField::from(3); 16])];
     verify_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
-fn test_external_witgen_b_provided() {
+fn external_witgen_b_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.b".to_string(), vec![GoldilocksField::from(4); 16])];
     verify_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
-fn test_external_witgen_both_provided() {
+fn external_witgen_both_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![
         ("main.a".to_string(), vec![GoldilocksField::from(3); 16]),
@@ -169,7 +169,7 @@ fn test_external_witgen_both_provided() {
 
 #[test]
 #[should_panic = "Witness generation failed."]
-fn test_external_witgen_fails_on_conflicting_external_witness() {
+fn external_witgen_fails_on_conflicting_external_witness() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![
         ("main.a".to_string(), vec![GoldilocksField::from(3); 16]),
@@ -180,7 +180,7 @@ fn test_external_witgen_fails_on_conflicting_external_witness() {
 }
 
 #[test]
-fn test_sum_via_witness_query() {
+fn sum_via_witness_query() {
     verify_pil(
         "pil/sum_via_witness_query.pil",
         // Only 3 inputs -> Checks that if we return "None", the system still tries to figure it out on its own.
@@ -191,7 +191,7 @@ fn test_sum_via_witness_query() {
 }
 
 #[test]
-fn test_witness_lookup() {
+fn witness_lookup() {
     let f = "pil/witness_lookup.pil";
     let inputs = [3, 5, 2, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]
         .into_iter()
@@ -204,7 +204,7 @@ fn test_witness_lookup() {
 
 #[test]
 #[should_panic(expected = "Witness generation failed.")]
-fn test_underdetermined_zero_no_solution() {
+fn underdetermined_zero_no_solution() {
     verify_pil(
         "pil/underdetermined_zero_no_solution.pil",
         Default::default(),
@@ -212,7 +212,7 @@ fn test_underdetermined_zero_no_solution() {
 }
 
 #[test]
-fn test_pair_lookup() {
+fn pair_lookup() {
     let f = "pil/pair_lookup.pil";
     verify_pil(f, Default::default());
     // halo2 would take too long for this
@@ -220,7 +220,7 @@ fn test_pair_lookup() {
 }
 
 #[test]
-fn test_block_lookup_or() {
+fn block_lookup_or() {
     let f = "pil/block_lookup_or.pil";
     verify_pil(f, Default::default());
     // halo2 would take too long for this
@@ -228,7 +228,7 @@ fn test_block_lookup_or() {
 }
 
 #[test]
-fn test_block_lookup_or_permutation() {
+fn block_lookup_or_permutation() {
     let f = "pil/block_lookup_or_permutation.pil";
     verify_pil(f, Default::default());
     test_halo2(f, Default::default());
@@ -236,7 +236,7 @@ fn test_block_lookup_or_permutation() {
 }
 
 #[test]
-fn test_halo_without_lookup() {
+fn halo_without_lookup() {
     let f = "pil/halo_without_lookup.pil";
     verify_pil(f, Default::default());
     test_halo2(f, Default::default());
@@ -244,35 +244,35 @@ fn test_halo_without_lookup() {
 }
 
 #[test]
-fn test_simple_div() {
+fn simple_div() {
     let f = "pil/simple_div.pil";
     verify_pil(f, Default::default());
     // starky would take too long for this in debug mode
 }
 
 #[test]
-fn test_single_line_blocks() {
+fn single_line_blocks() {
     let f = "pil/single_line_blocks.pil";
     verify_pil(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
 #[test]
-fn test_two_block_machine_functions() {
+fn two_block_machine_functions() {
     let f = "pil/two_block_machine_functions.pil";
     verify_pil(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
 #[test]
-fn test_fixed_columns() {
+fn fixed_columns() {
     let f = "pil/fixed_columns.pil";
     verify_pil(f, Default::default());
     // Starky requires at least one witness column, this test has none.
 }
 
 #[test]
-fn test_witness_via_let() {
+fn witness_via_let() {
     verify_pil("pil/witness_via_let.pil", Default::default());
 }
 

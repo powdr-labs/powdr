@@ -6,9 +6,6 @@ use pretty_assertions::assert_eq;
 
 #[test]
 fn parse_print_analyzed() {
-    // Re-add this line once we can parse the turbofish operator.
-    //    col witness X_free_value(__i) query match std::prover::eval(T.pc) { 0 => std::prover::Query::Input(1), 3 => std::prover::Query::Input(std::convert::int::<fe>(std::prover::eval(T.CNT) + 1)), 7 => std::prover::Query::Input(0), };
-
     // This is rather a test for the Display trait than for the analyzer.
     let input = r#"constant %N = 65536;
 public P = T.pc(2);
@@ -52,6 +49,7 @@ namespace T(65536);
     T.A' = (((T.first_step' * 0) + (T.reg_write_X_A * T.X)) + ((1 - (T.first_step' + T.reg_write_X_A)) * T.A));
     col witness X_free_value(__i) query match std::prover::eval(T.pc) {
         0 => std::prover::Query::Input(1),
+        3 => std::prover::Query::Input(std::convert::int::<fe>((std::prover::eval(T.CNT) + 1))),
         7 => std::prover::Query::Input(0),
     };
     col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
@@ -357,7 +355,7 @@ fn constraint_but_expected_expression() {
 }
 
 #[test]
-#[should_panic = "Symbol not found: T"]
+#[should_panic = "Type symbol not found: T"]
 fn used_undeclared_type_var() {
     let input = r#"let x: T = 8;"#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
@@ -373,7 +371,7 @@ fn declared_unused_type_var() {
 }
 
 #[test]
-#[should_panic = "Symbol not found: T"]
+#[should_panic = "Type symbol not found: T"]
 fn double_used_undeclared_type_var() {
     let input = r#"let<K> x: T = 8;"#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
@@ -543,7 +541,7 @@ fn let_inside_block_scoping_separate() {
 }
 
 #[test]
-#[should_panic = "Symbol not found: w"]
+#[should_panic = "Value symbol not found: w"]
 fn let_inside_block_scoping_limited() {
     let input = "
     namespace Main(8);
@@ -682,17 +680,6 @@ fn single_ellipsis() {
         [..] => 3,
         [.., 1] => 9,
         [7, 8, ..] => 2,
-        _ => -1,
-    });
-";
-    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
-}
-
-#[test]
-#[should_panic = "Only one \"..\"-item allowed in array pattern"]
-fn multi_ellipsis() {
-    let input = "    let t: int[] -> int = (|i| match i {
-        [1, .., 3, ..] => 2,
         _ => -1,
     });
 ";

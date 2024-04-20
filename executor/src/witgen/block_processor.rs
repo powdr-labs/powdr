@@ -115,11 +115,10 @@ mod tests {
     use crate::{
         constant_evaluator::generate,
         witgen::{
-            data_structures::{column_map::FixedColumnMap, finalizable_data::FinalizableData},
-            global_constraints::GlobalConstraints,
+            data_structures::finalizable_data::FinalizableData,
             identity_processor::Machines,
             machines::FixedLookup,
-            rows::{RowFactory, RowIndex},
+            rows::{Row, RowIndex},
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
             unused_query_callback, FixedData, MutableState, QueryCallback,
         },
@@ -151,17 +150,10 @@ mod tests {
             .collect::<Vec<_>>();
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default());
 
-        // No global range constraints
-        let global_range_constraints = GlobalConstraints {
-            witness_constraints: fixed_data.witness_map_with(None),
-            fixed_constraints: FixedColumnMap::new(None, fixed_data.fixed_cols.len()),
-        };
-
         // No submachines
-        let mut fixed_lookup = FixedLookup::new(global_range_constraints.clone());
+        let mut fixed_lookup = FixedLookup::new(fixed_data.global_range_constraints().clone());
         let mut machines = [];
 
-        let row_factory = RowFactory::new(&fixed_data, global_range_constraints);
         let columns = (0..fixed_data.witness_cols.len())
             .map(move |i| PolyID {
                 id: i as u64,
@@ -171,7 +163,7 @@ mod tests {
         let data = FinalizableData::with_initial_rows_in_progress(
             &columns,
             (0..fixed_data.degree)
-                .map(|i| row_factory.fresh_row(RowIndex::from_degree(i, fixed_data.degree))),
+                .map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, fixed_data.degree))),
         );
 
         let mut mutable_state = MutableState {
@@ -225,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fibonacci() {
+    fn fibonacci() {
         let src = r#"
             constant %N = 8;
 

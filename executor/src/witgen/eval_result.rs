@@ -159,7 +159,7 @@ pub type EvalResult<'a, T, K = &'a AlgebraicReference> = Result<EvalValue<K, T>,
 #[derive(Clone, PartialEq)]
 pub enum EvalError<T: FieldElement> {
     /// We ran out of rows
-    RowsExhausted,
+    RowsExhausted(String),
     /// A constraint that cannot be satisfied (i.e. 2 = 1).
     ConstraintUnsatisfiable(String),
     /// Conflicting bit- or range constraints in an equation, i.e. for X = 0x100, where X is known to be at most 0xff.
@@ -218,7 +218,9 @@ impl<T: FieldElement> fmt::Display for EvalError<T> {
             EvalError::InvalidDivision => {
                 write!(f, "A division pattern was recognized but the range constraints are conflicting with the solution.",)
             }
-            EvalError::RowsExhausted => write!(f, "Table rows exhausted"),
+            EvalError::RowsExhausted(machine_name) => {
+                write!(f, "Table rows exhausted for machine {machine_name}")
+            }
             EvalError::FixedLookupFailed(input_assignment) => {
                 let query = input_assignment
                     .iter()

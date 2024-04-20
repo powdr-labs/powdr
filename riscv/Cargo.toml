@@ -11,6 +11,7 @@ repository = { workspace = true }
 [features]
 default = [] # complex-tests is disabled by default
 complex-tests = []
+estark-polygon = ["powdr-pipeline/estark-polygon"]
 
 [dependencies]
 powdr-ast = { path = "../ast" }

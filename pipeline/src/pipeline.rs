@@ -2,7 +2,7 @@ use std::{
     borrow::Borrow,
     fmt::Display,
     fs,
-    io::{self, BufReader, BufWriter},
+    io::{self, BufReader},
     marker::Send,
     path::{Path, PathBuf},
     sync::Arc,
@@ -23,12 +23,12 @@ use powdr_executor::{
         chain_callbacks, unused_query_callback, QueryCallback, WitgenCallback, WitnessGenerator,
     },
 };
-use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
+use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement};
 use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
     inputs_to_query_callback, serde_data_to_query_callback,
-    util::{try_read_poly_set, write_or_panic, FixedPolySet, WitnessPolySet},
+    util::{try_read_poly_set, FixedPolySet, WitnessPolySet},
 };
 
 type Columns<T> = Vec<(String, Vec<T>)>;
@@ -172,7 +172,7 @@ where
 ///
 /// let mut pipeline = Pipeline::<GoldilocksField>::default()
 ///   .from_file(resolve_test_file("pil/fibonacci.pil"))
-///   .with_backend(BackendType::PilStarkCli);
+///   .with_backend(BackendType::EStarkDump);
 ///
 /// // Get the result
 /// let proof = pipeline.compute_proof().unwrap();
@@ -372,7 +372,7 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn read_constants(mut self, directory: &Path) -> Self {
         let pil = self.compute_optimized_pil().unwrap();
 
-        let fixed = try_read_poly_set::<FixedPolySet, T>(&pil, directory, self.name())
+        let fixed = try_read_poly_set::<FixedPolySet, T>(&pil, directory)
             .map(|(fixed, degree_fixed)| {
                 assert_eq!(pil.degree.unwrap(), degree_fixed);
                 fixed
@@ -392,7 +392,7 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn read_witness(mut self, directory: &Path) -> Self {
         let pil = self.compute_optimized_pil().unwrap();
 
-        let witness = try_read_poly_set::<WitnessPolySet, T>(&pil, directory, self.name())
+        let witness = try_read_poly_set::<WitnessPolySet, T>(&pil, directory)
             .map(|(witness, degree_witness)| {
                 assert_eq!(pil.degree.unwrap(), degree_witness);
                 witness
@@ -486,24 +486,11 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
-    fn maybe_write_constants(&self, constants: &[(String, Vec<T>)]) -> Result<(), Vec<String>> {
-        if let Some(path) = self.path_if_should_write(|name| format!("{name}_constants.bin"))? {
-            let writer = BufWriter::new(fs::File::create(path).unwrap());
-            write_or_panic(writer, |writer| write_polys_file(writer, constants));
-        }
-        Ok(())
-    }
-
     fn maybe_write_witness(
         &self,
         fixed: &[(String, Vec<T>)],
         witness: &[(String, Vec<T>)],
     ) -> Result<(), Vec<String>> {
-        if let Some(path) = self.path_if_should_write(|name| format!("{name}_commits.bin"))? {
-            let file = BufWriter::new(fs::File::create(path).unwrap());
-            write_or_panic(file, |file| write_polys_file(file, witness));
-        }
-
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
                 let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
@@ -791,7 +778,6 @@ impl<T: FieldElement> Pipeline<T> {
 
         let start = Instant::now();
         let fixed_cols = constant_evaluator::generate(&pil);
-        self.maybe_write_constants(&fixed_cols)?;
         self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
         self.artifact.fixed_cols = Some(Arc::new(fixed_cols));
