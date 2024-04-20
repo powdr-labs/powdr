@@ -159,7 +159,7 @@ mod tests {
 
         // No submachines
         let mut fixed_lookup = FixedLookup::new(global_range_constraints.clone());
-        let mut machines = vec![];
+        let mut machines = [];
 
         let row_factory = RowFactory::new(&fixed_data, global_range_constraints);
         let columns = (0..fixed_data.witness_cols.len())
@@ -225,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fibonacci() {
+    fn fibonacci() {
         let src = r#"
             constant %N = 8;
 

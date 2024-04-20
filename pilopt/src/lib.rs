@@ -86,18 +86,10 @@ trait ReferencedSymbols {
 impl ReferencedSymbols for FunctionValueDefinition {
     fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
         match self {
-            FunctionValueDefinition::TypeDeclaration(EnumDeclaration { name: _, variants }) => {
-                Box::new(
-                    variants
-                        .iter()
-                        .flat_map(|v| &v.fields)
-                        .flat_map(|t| t.iter())
-                        .flat_map(|t| t.symbols()),
-                )
-            }
-            FunctionValueDefinition::TypeConstructor(type_name, _) => {
-                // This the type constructor of an enum variant, it references the enum itself.
-                Box::new(once(type_name.into()))
+            FunctionValueDefinition::TypeDeclaration(enum_decl) => enum_decl.symbols(),
+            FunctionValueDefinition::TypeConstructor(enum_decl, _) => {
+                // This is the type constructor of an enum variant, it references the enum itself.
+                Box::new(once(enum_decl.into()))
             }
             FunctionValueDefinition::Expression(TypedExpression {
                 type_scheme: Some(type_scheme),
@@ -108,6 +100,18 @@ impl ReferencedSymbols for FunctionValueDefinition {
     }
 }
 
+impl ReferencedSymbols for EnumDeclaration {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        Box::new(
+            self.variants
+                .iter()
+                .flat_map(|v| &v.fields)
+                .flat_map(|t| t.iter())
+                .flat_map(|t| t.symbols()),
+        )
+    }
+}
+
 impl ReferencedSymbols for Expression {
     fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
         Box::new(
@@ -115,10 +119,10 @@ impl ReferencedSymbols for Expression {
                 .flat_map(|e| match e {
                     Expression::Reference(Reference::Poly(PolynomialReference {
                         name,
-                        generic_args,
+                        type_args,
                         poly_id: _,
                     })) => Some(
-                        generic_args
+                        type_args
                             .iter()
                             .flat_map(|t| t.iter())
                             .flat_map(|t| t.symbols())
@@ -191,9 +195,7 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .iter()
         .filter(|(p, _)| !p.is_array())
         .filter_map(|(poly, definition)| {
-            let Some(definition) = definition else {
-                return None;
-            };
+            let definition = definition.as_ref()?;
             let value = constant_value(definition)?;
             log::debug!(
                 "Determined fixed column {} to be constant {value}. Removing.",
@@ -418,7 +420,7 @@ fn substitute_polynomial_references<T: FieldElement>(
         if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             poly_id: Some(poly_id),
-            generic_args: _,
+            type_args: _,
         })) = e
         {
             if let Some(value) = substitutions.get(poly_id) {

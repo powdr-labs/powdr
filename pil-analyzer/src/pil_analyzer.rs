@@ -5,10 +5,11 @@ use std::iter::once;
 use std::path::{Path, PathBuf};
 
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
-
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
-use powdr_ast::parsed::{FunctionKind, LambdaExpression, PILFile, PilStatement};
+use powdr_ast::parsed::{
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+};
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
@@ -51,10 +52,11 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
 
 #[derive(Default)]
 struct PILAnalyzer {
-    /// The set of all known symbols. If the flag is true, the symbol is a type name.
-    known_symbols: HashMap<String, bool>,
+    /// Known symbols by name and category, determined in the first step.
+    known_symbols: HashMap<String, SymbolCategory>,
     current_namespace: AbsoluteSymbolPath,
     polynomial_degree: Option<DegreeType>,
+    /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
     identities: Vec<Identity<Expression>>,
@@ -193,7 +195,7 @@ impl PILAnalyzer {
 
                         let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = value
                         else {
-                            panic!("Invalid value for query funciton")
+                            panic!("Invalid value for query function")
                         };
 
                         expressions.push((e, query_type.clone().into()));
@@ -227,16 +229,14 @@ impl PILAnalyzer {
             })
             .collect();
         // Collect all expressions in identities.
+        let statement_type = ExpectedType {
+            ty: Type::Constr,
+            allow_array: true,
+        };
         for id in &mut self.identities {
             if id.kind == IdentityKind::Polynomial {
                 // At statement level, we allow constr or constr[].
-                expressions.push((
-                    id.expression_for_poly_id_mut(),
-                    ExpectedType {
-                        ty: Type::Constr,
-                        allow_array: true,
-                    },
-                ));
+                expressions.push((id.expression_for_poly_id_mut(), statement_type.clone()));
             } else {
                 for part in [&mut id.left, &mut id.right] {
                     if let Some(selector) = &mut part.selector {
@@ -248,7 +248,7 @@ impl PILAnalyzer {
                 }
             }
         }
-        let inferred_types = infer_types(definitions, &mut expressions)
+        let inferred_types = infer_types(definitions, &mut expressions, &statement_type)
             .map_err(|e| {
                 eprintln!("\nError during type inference:\n{e}");
                 e
@@ -286,23 +286,26 @@ impl PILAnalyzer {
             PilStatement::Include(_, _) => unreachable!(),
             _ => {
                 let names = statement
-                    .symbol_definition_names()
-                    .map(|(name, is_type)| (self.driver().resolve_decl(name), is_type))
-                    .chain(
-                        statement
-                            .defined_contained_names()
-                            .map(|(name, inner, is_type)| {
-                                (
-                                    self.driver()
-                                        .resolve_namespaced_decl(&[name, inner])
-                                        .to_dotted_string(),
-                                    is_type,
-                                )
-                            }),
-                    )
+                    .symbol_definition_names_and_contained()
+                    .map(|(name, sub_name, symbol_category)| {
+                        (
+                            match sub_name {
+                                None => self.driver().resolve_decl(name),
+                                Some(sub_name) => self
+                                    .driver()
+                                    .resolve_namespaced_decl(&[name, sub_name])
+                                    .to_dotted_string(),
+                            },
+                            symbol_category,
+                        )
+                    })
                     .collect::<Vec<_>>();
-                for (name, is_type) in names {
-                    if self.known_symbols.insert(name.clone(), is_type).is_some() {
+                for (name, symbol_kind) in names {
+                    if self
+                        .known_symbols
+                        .insert(name.clone(), symbol_kind)
+                        .is_some()
+                    {
                         panic!("Duplicate symbol definition: {name}");
                     }
                 }
@@ -350,24 +353,27 @@ impl PILAnalyzer {
         }
     }
 
-    fn handle_namespace(&mut self, name: SymbolPath, degree: ::powdr_ast::parsed::Expression) {
-        let degree = ExpressionProcessor::new(self.driver()).process_expression(degree);
-        // TODO we should maybe implement a separate evaluator that is able to run before type checking
-        // and is field-independent (only uses integers)?
-        let namespace_degree: u64 = u64::try_from(
-            evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
-                .unwrap()
-                .try_to_integer()
-                .unwrap(),
-        )
-        .unwrap();
-        if let Some(degree) = self.polynomial_degree {
-            assert_eq!(
-                degree, namespace_degree,
-                "all namespaces must have the same degree"
-            );
-        } else {
-            self.polynomial_degree = Some(namespace_degree);
+    fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::Expression>) {
+        if let Some(degree) = degree {
+            let degree = ExpressionProcessor::new(self.driver(), &Default::default())
+                .process_expression(degree);
+            // TODO we should maybe implement a separate evaluator that is able to run before type checking
+            // and is field-independent (only uses integers)?
+            let namespace_degree: u64 = u64::try_from(
+                evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
+                    .unwrap()
+                    .try_to_integer()
+                    .unwrap(),
+            )
+            .unwrap();
+            if let Some(degree) = self.polynomial_degree {
+                assert_eq!(
+                    degree, namespace_degree,
+                    "all namespaces must have the same degree"
+                );
+            } else {
+                self.polynomial_degree = Some(namespace_degree);
+            }
         }
         self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }
@@ -394,25 +400,14 @@ impl<'a> AnalysisDriver for Driver<'a> {
             })
     }
 
-    fn resolve_ref(&self, path: &SymbolPath, is_type: bool) -> String {
+    fn try_resolve_ref(&self, path: &SymbolPath) -> Option<(String, SymbolCategory)> {
         // Try to resolve the name starting at the current namespace and then
         // go up level by level until the root.
 
-        self.0
-            .current_namespace
-            .iter_to_root()
-            .find_map(|prefix| {
-                let path = prefix.join(path.clone()).to_dotted_string();
-                self.0.known_symbols.get(&path).map(|t| {
-                    if *t && !is_type {
-                        panic!("Expected value but got type: {path}");
-                    } else if !t && is_type {
-                        panic!("Expected type but got value: {path}");
-                    }
-                    path
-                })
-            })
-            .unwrap_or_else(|| panic!("Symbol not found: {}", path.to_dotted_string()))
+        self.0.current_namespace.iter_to_root().find_map(|prefix| {
+            let path = prefix.join(path.clone()).to_dotted_string();
+            self.0.known_symbols.get(&path).map(|cat| (path, *cat))
+        })
     }
 
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)> {

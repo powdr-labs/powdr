@@ -32,7 +32,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
 
     let mut errors = vec![];
 
-    let mut pil = process_definitions(&main_degree, graph.definitions);
+    let mut pil = process_definitions(graph.definitions);
 
     for (location, object) in graph.objects.into_iter() {
         if let Some(degree) = object.degree {
@@ -48,7 +48,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
-            main_degree.clone(),
+            Some(main_degree.clone()),
         ));
 
         pil.extend(object.pil);
@@ -91,7 +91,6 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
 
 // Extract the utilities and sort them into namespaces where possible.
 fn process_definitions(
-    main_degree: &Expression,
     definitions: BTreeMap<AbsoluteSymbolPath, TypeOrExpression>,
 ) -> Vec<PilStatement> {
     let mut current_namespace = Default::default();
@@ -126,7 +125,7 @@ fn process_definitions(
                     PilStatement::Namespace(
                         SourceRef::unknown(),
                         namespace.relative_to(&AbsoluteSymbolPath::default()),
-                        main_degree.clone(),
+                        None,
                     ),
                     statement,
                 ]
@@ -272,10 +271,10 @@ mod test {
             .into_iter()
             .collect(),
         };
-        // a test over a pil file `f` checking if all namespaces have degree `n`
+        // a test over a pil file `f` checking if all namespaces have degree `n` (if they are set)
         let all_namespaces_have_degree = |f: PILFile, n: u64| {
             f.0.iter().all(|s| match s {
-                powdr_ast::parsed::PilStatement::Namespace(_, _, e) => {
+                powdr_ast::parsed::PilStatement::Namespace(_, _, Some(e)) => {
                     *e == Expression::Number(n.into(), None)
                 }
                 _ => true,
@@ -578,7 +577,7 @@ machine Machine {
 
     #[test]
     #[should_panic(expected = "Number passed to unsigned parameter is negative or too large")]
-    pub fn negative_for_unsigned() {
+    fn negative_for_unsigned() {
         let source = r#"
 machine NegativeForUnsigned {
     reg pc[@pc];
@@ -596,7 +595,7 @@ machine NegativeForUnsigned {
     }
 
     #[test]
-    pub fn instr_external_generated_pil() {
+    fn instr_external_generated_pil() {
         let asm = r"
 machine SubVM(latch, operation_id) {
     operation add5<0> x -> y;
@@ -676,7 +675,7 @@ namespace main_vm(1024);
     }
 
     #[test]
-    pub fn permutation_instructions() {
+    fn permutation_instructions() {
         let expected = r#"namespace main(65536);
     pol commit _operation_id(i) query std::prover::Query::Hint(13);
     pol constant _block_enforcer_last_step = [0]* + [1];

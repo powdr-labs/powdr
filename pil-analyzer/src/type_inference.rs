@@ -22,13 +22,15 @@ use crate::{
 
 /// Infers types on all definitions and checks type-correctness for isolated
 /// expressions (from identities and arrays) where the expected type is given.
+/// The parameter `statement_type` is the expected type for expressions at statement level.
 /// Sets the generic arguments for references and the literal types in all expressions.
 /// Returns the types for symbols without explicit type.
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
+    statement_type: &ExpectedType,
 ) -> Result<Vec<(String, Type)>, String> {
-    TypeChecker::default().infer_types(definitions, expressions)
+    TypeChecker::new(statement_type).infer_types(definitions, expressions)
 }
 
 /// A type to expect and a flag that says if arrays of that type are also fine.
@@ -47,19 +49,33 @@ impl From<Type> for ExpectedType {
     }
 }
 
-#[derive(Default)]
-struct TypeChecker {
+struct TypeChecker<'a> {
+    /// The expected type for expressions at statement level in block expressions.
+    statement_type: &'a ExpectedType,
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
     /// Declared types for all symbols. Contains the unmodified type scheme for symbols
     /// with generic types and newly created type variables for symbols without declared type.
     declared_types: HashMap<String, TypeScheme>,
+    /// Current mapping of declared type vars to type. Reset before checking each definition.
+    declared_type_vars: HashMap<String, Type>,
     unifier: Unifier,
     /// Last used type variable index.
     last_type_var: usize,
 }
 
-impl TypeChecker {
+impl<'a> TypeChecker<'a> {
+    pub fn new(statement_type: &'a ExpectedType) -> Self {
+        Self {
+            statement_type,
+            local_var_types: Default::default(),
+            declared_types: Default::default(),
+            declared_type_vars: Default::default(),
+            unifier: Default::default(),
+            last_type_var: Default::default(),
+        }
+    }
+
     /// Infers and checks types for all provided definitions and expressions and
     /// returns the types for symbols without explicit type.
     pub fn infer_types(
@@ -68,7 +84,7 @@ impl TypeChecker {
         expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<Vec<(String, Type)>, String> {
         let type_var_mapping = self.infer_types_inner(&mut definitions, expressions)?;
-        self.update_generic_args(&mut definitions, expressions, &type_var_mapping)?;
+        self.update_type_args(&mut definitions, expressions, &type_var_mapping)?;
         Ok(definitions
             .into_iter()
             .filter(|(_, (ty, _))| ty.is_none())
@@ -120,8 +136,14 @@ impl TypeChecker {
 
             let declared_type = self.declared_types[&name].clone();
             let result = if declared_type.vars.is_empty() {
+                self.declared_type_vars.clear();
                 self.process_concrete_symbol(&name, declared_type.ty.clone(), value)
             } else {
+                self.declared_type_vars = declared_type
+                    .vars
+                    .vars()
+                    .map(|v| (v.clone(), self.new_type_var()))
+                    .collect();
                 self.infer_type_of_expression(value).map(|ty| {
                     inferred_types.insert(name.to_string(), ty);
                 })
@@ -132,6 +154,7 @@ impl TypeChecker {
                 ));
             }
         }
+        self.declared_type_vars.clear();
 
         self.check_expressions(expressions)?;
 
@@ -278,7 +301,7 @@ impl TypeChecker {
     /// Updates generic arguments and literal annotations with the proper resolved types.
     /// `type_var_mapping` is a mapping (for each generic symbol) from
     /// the type variable names used by the type checker to those from the declaration.
-    fn update_generic_args(
+    fn update_type_args(
         &mut self,
         definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
         expressions: &mut [(&mut Expression, ExpectedType)],
@@ -292,7 +315,7 @@ impl TypeChecker {
                 let empty_mapping = Default::default();
                 let var_mapping = type_var_mapping.get(name).unwrap_or(&empty_mapping);
                 expr.post_visit_expressions_mut(&mut |e| {
-                    if let Err(e) = self.update_generic_args_for_expression(e, var_mapping) {
+                    if let Err(e) = self.update_type_args_for_expression(e, var_mapping) {
                         // TODO cannot borrow the value here for printing it.
                         // We should fix this properly by using source references.
                         errors.push(format!(
@@ -305,7 +328,7 @@ impl TypeChecker {
         for (expr, _) in expressions {
             expr.post_visit_expressions_mut(&mut |e| {
                 // There should be no generic types in identities.
-                if let Err(e) = self.update_generic_args_for_expression(e, &Default::default()) {
+                if let Err(e) = self.update_type_args_for_expression(e, &Default::default()) {
                     // TODO cannot borrow the expression here for printing it.
                     // We should fix this properly by using source references.
                     errors.push(format!(
@@ -322,7 +345,7 @@ impl TypeChecker {
     }
 
     /// Updates the type annotations in the literals and the generic arguments.
-    fn update_generic_args_for_expression(
+    fn update_type_args_for_expression(
         &self,
         e: &mut Expression,
         type_var_mapping: &HashMap<String, Type>,
@@ -358,9 +381,9 @@ impl TypeChecker {
             Expression::Reference(Reference::Poly(PolynomialReference {
                 name,
                 poly_id: _,
-                generic_args,
+                type_args,
             })) => {
-                for ty in generic_args.as_mut().unwrap() {
+                for ty in type_args.as_mut().unwrap() {
                     // Apply regular substitution obtained from unification.
                     self.substitute(ty);
                     // Now rename remaining type vars to match the declaration scheme.
@@ -439,12 +462,25 @@ impl TypeChecker {
             Expression::Reference(Reference::Poly(PolynomialReference {
                 name,
                 poly_id: _,
-                generic_args,
+                type_args,
             })) => {
-                // The generic args (some of them) could be pre-filled by the parser, but we do not yet support that.
-                assert!(generic_args.is_none());
-                let (ty, gen_args) = self.instantiate_scheme(self.declared_types[name].clone());
-                *generic_args = Some(gen_args);
+                let (ty, args) = self.instantiate_scheme(self.declared_types[name].clone());
+                if let Some(requested_type_args) = type_args {
+                    if requested_type_args.len() != args.len() {
+                        return Err(format!(
+                            "Expected {} type arguments for symbol {name}, but got {}: {}",
+                            args.len(),
+                            requested_type_args.len(),
+                            requested_type_args.iter().join(", ")
+                        ));
+                    }
+                    for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
+                        requested.substitute_type_vars(&self.declared_type_vars);
+                        self.unifier
+                            .unify_types(requested.clone(), inferred.clone())?;
+                    }
+                }
+                *type_args = Some(args);
                 type_for_reference(&ty)
             }
             Expression::PublicReference(_) => Type::Expr,
@@ -476,14 +512,16 @@ impl TypeChecker {
                 params,
                 body,
             }) => {
-                let param_types = (0..params.len())
-                    .map(|_| self.new_type_var())
-                    .collect::<Vec<_>>();
                 let old_len = self.local_var_types.len();
-                self.local_var_types.extend(param_types.clone());
-                let body_type_result = self.infer_type_of_expression(body);
+                let result = params
+                    .iter()
+                    .map(|p| self.infer_type_of_pattern(p))
+                    .collect::<Result<Vec<_>, _>>()
+                    .and_then(|param_types| {
+                        Ok((param_types, self.infer_type_of_expression(body)?))
+                    });
                 self.local_var_types.truncate(old_len);
-                let body_type = body_type_result?;
+                let (param_types, body_type) = result?;
                 Type::Function(FunctionType {
                     params: param_types,
                     value: Box::new(body_type),
@@ -560,35 +598,27 @@ impl TypeChecker {
                 result
             }
             Expression::BlockExpression(statements, expr) => {
-                let mut local_var_count = 0;
+                let original_var_count = self.local_var_types.len();
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
-                            name: _,
+                            pattern,
                             value,
                         }) => {
-                            let var_type = if let Some(value) = value {
+                            let value_type = if let Some(value) = value {
                                 self.infer_type_of_expression(value)?
                             } else {
                                 Type::Expr
                             };
-                            self.local_var_types.push(var_type);
-                            local_var_count += 1;
+                            self.expect_type_of_pattern(&value_type, pattern)?;
                         }
                         StatementInsideBlock::Expression(expr) => {
-                            self.expect_type_with_flexibility(
-                                &ExpectedType {
-                                    ty: Type::Constr,
-                                    allow_array: true,
-                                },
-                                expr,
-                            )?;
+                            self.expect_type_with_flexibility(self.statement_type, expr)?;
                         }
                     }
                 }
                 let result = self.infer_type_of_expression(expr);
-                self.local_var_types
-                    .truncate(self.local_var_types.len() - local_var_count);
+                self.local_var_types.truncate(original_var_count);
                 result?
             }
         })
@@ -710,6 +740,58 @@ impl TypeChecker {
                 let ty = self.new_type_var();
                 self.local_var_types.push(ty.clone());
                 ty
+            }
+            Pattern::Enum(name, data) => {
+                let (ty, gen_args) =
+                    self.instantiate_scheme(self.declared_types[&name.to_dotted_string()].clone());
+                if !gen_args.is_empty() {
+                    unimplemented!("Generic enums are not yet supported.");
+                }
+                let ty = type_for_reference(&ty);
+
+                match data {
+                    Some(data) => {
+                        let Type::Function(FunctionType { params, value }) = ty else {
+                            if matches!(ty, Type::NamedType(_)) {
+                                return Err(format!("Enum variant {name} does not have fields, but is used with parentheses in {pattern}."));
+                            } else {
+                                return Err(format!(
+                                    "Expected enum variant for pattern {pattern} but got {ty}"
+                                ));
+                            }
+                        };
+                        if !matches!(value.as_ref(), Type::NamedType(_)) {
+                            return Err(format!(
+                                "Expected enum variant for pattern {pattern} but got {value}"
+                            ));
+                        }
+                        if params.len() != data.len() {
+                            return Err(format!(
+                                "Invalid number of data fields for enum variant {name}. Expected {} but got {}.",
+                                params.len(),
+                                data.len()
+                            ));
+                        }
+                        params
+                            .iter()
+                            .zip(data)
+                            .try_for_each(|(ty, pat)| self.expect_type_of_pattern(ty, pat))?;
+                        (*value).clone()
+                    }
+                    None => {
+                        if let Type::NamedType(_) = ty {
+                            ty
+                        } else if matches!(ty, Type::Function(_)) {
+                            return Err(format!(
+                                "Expected enum variant for pattern {pattern} but got {ty} - maybe you forgot the parentheses?"
+                            ));
+                        } else {
+                            return Err(format!(
+                                "Expected enum variant for pattern {pattern} but got {ty}"
+                            ));
+                        }
+                    }
+                }
             }
         })
     }

@@ -25,6 +25,7 @@ use powdr_ast::{
     parsed::{asm::DebugDirective, Expression, FunctionCall},
 };
 use powdr_number::{FieldElement, LargeInt};
+use powdr_riscv_syscalls::SYSCALL_REGISTERS;
 
 pub mod poseidon_gl;
 
@@ -729,12 +730,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "poseidon_gl" => {
                 assert!(args.is_empty());
                 let inputs = (0..12)
-                    .map(|i| self.proc.get_reg(format!("P{}", i).as_str()).into_fe())
+                    .map(|i| self.proc.get_reg(SYSCALL_REGISTERS[i]).into_fe())
                     .collect::<Vec<_>>();
                 let result = poseidon_gl::poseidon_gl(&inputs);
                 (0..4).for_each(|i| {
                     self.proc
-                        .set_reg(format!("P{}", i).as_str(), Elem::Field(result[i]))
+                        .set_reg(SYSCALL_REGISTERS[i], Elem::Field(result[i]))
                 });
                 vec![]
             }

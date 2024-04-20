@@ -262,7 +262,7 @@ mod test {
     }
 
     #[test]
-    fn test_update() {
+    fn update() {
         let mut tree = MerkleTree::<GoldilocksField, 3, 8>::new();
         let mut data = [[0; 8]; 4];
 
@@ -312,7 +312,7 @@ mod test {
     }
 
     #[test]
-    fn test_get() {
+    fn get() {
         let g = GoldilocksField::from;
         let mut tree = MerkleTree::<GoldilocksField, 3, 8>::new();
         tree.update(

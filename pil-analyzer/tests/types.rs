@@ -24,7 +24,7 @@ fn type_check(input: &str, expected: &[(&str, &str, &str)]) {
 fn type_scheme_simplify_type_vars_basic() {
     let ts = parse_type_scheme("A, B, C", "B -> (C -> (A, B))").simplify_type_vars();
     assert_eq!(
-        format_type_scheme_around_name("x", &Some(ts)),
+        format_type_scheme_around_name(&"x", &Some(ts)),
         "<T1, T2, T3> x: T2 -> (T3 -> (T1, T2))"
     );
 }
@@ -34,7 +34,7 @@ fn type_scheme_simplify_type_vars() {
     // Test conflicts between the old and new names.
     let ts = parse_type_scheme("T2: FromLiteral + Sum, T1", "T2 -> T1[]").simplify_type_vars();
     assert_eq!(
-        format_type_scheme_around_name("x", &Some(ts)),
+        format_type_scheme_around_name(&"x", &Some(ts)),
         "<T1: FromLiteral + Sum, T2> x: T1 -> T2[]"
     );
 }
@@ -317,7 +317,7 @@ fn enum_constr_is_function() {
 }
 
 #[test]
-#[should_panic = "Expected value but got type: X"]
+#[should_panic = "Expected symbol of kind Value but got Type: X"]
 fn enum_is_not_constr() {
     let input = "
     enum X { A, B(int), C(string[], int) }
@@ -334,6 +334,78 @@ fn query_with_wrong_type() {
 }
 
 #[test]
+#[should_panic = "Type int[] does not satisfy trait"]
+fn wrong_type_args() {
+    let input = "
+        let<T: FromLiteral + Mul + Add> bn: T, T -> T = |a, b| a * 0x100000000 + b;
+        let t: int = bn::<int[]>(5, 6);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Type symbol not found: T"]
+fn specialization_non_declared_type_var() {
+    let input = "
+        let<T: FromLiteral> x: T = 1;
+        let t: int = x::<T>;
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Expected 0 type arguments for symbol x, but got 1: int[]"]
+fn specialization_of_non_generic_symbol() {
+    let input = "
+        let x: int = 1;
+        let t: int = x::<int[]>;
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn specialization_of_non_generic_symbol2() {
+    let input = "
+        let x: int = 1;
+        let t: int = x::<>;
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn partial_specialization() {
+    let input = "
+        let<T1, T2> fold: int, (int -> T1), T2, (T2, T1 -> T2) -> T2 = |length, f, initial, folder|
+            if length <= 0 {
+                initial
+            } else {
+                folder(fold((length - 1), f, initial, folder), f((length - 1)))
+            };
+        let<T> fold_to_int_arr: int, (int -> T), int[], (int[], T -> int[]) -> int[] = fold::<T, int[]>;
+        let<T> fold_int: int, (int -> int), T, (T, int -> T) -> T = fold::<int, T>;
+        let y = fold_to_int_arr(4, |i| i, [], |acc, x| acc + [x]);
+        let z = fold_int(4, |i| i, 0, |acc, x| acc + x);
+    ";
+    type_check(input, &[("y", "", "int[]"), ("z", "", "int")]);
+}
+
+#[test]
+fn partial_specialization2() {
+    let input = "
+        let<T1, T2> fold: int, (int -> T1), T2, (T2, T1 -> T2) -> T2 = |length, f, initial, folder|
+            if length <= 0 {
+                initial
+            } else {
+                folder(fold((length - 1), f, initial, folder), f((length - 1)))
+            };
+        // This just forces the two type vars to be the same.
+        let<T> fold_to_same: int, (int -> T), T, (T, T -> T) -> T = fold::<T, T>;
+        let y = fold_to_same(4, |i| i, 0, |acc, x| acc + x);
+    ";
+    type_check(input, &[("y", "", "int")]);
+}
+
+#[test]
 fn type_from_pattern() {
     let input = "
     let r: int -> int = |i| i;
@@ -344,4 +416,68 @@ fn type_from_pattern() {
     };
     ";
     type_check(input, &[("f", "", "(int, int[]) -> int")]);
+}
+
+#[test]
+fn enum_pattern() {
+    let input = "
+    enum X { A(int[], int), B, C(int) }
+    let f = |q| match q {
+        X::A([x, ..], _) => |i| X::B,
+        X::B => |i| q,
+        X::C(_) => X::C,
+        x => |i| x,
+    };
+    ";
+    type_check(input, &[("f", "", "X -> (int -> X)")]);
+}
+
+#[test]
+#[should_panic = "Only one \"..\"-item allowed in array pattern"]
+fn multi_ellipsis() {
+    let input = "    let t: int[] -> int = (|i| match i {
+        [1, .., 3, ..] => 2,
+        _ => -1,
+    });
+";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Expected enum variant for pattern X::A but got int -> X - maybe you forgot the parentheses?"]
+fn enum_no_paren_for_paren() {
+    let input = "
+    enum X { A(int) }
+    let f = |q| match q {
+        X::A => 2,
+        _ => 3,
+    };
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Enum variant X::A does not have fields, but is used with parentheses in X::A()"]
+fn enum_paren_for_no_paren() {
+    let input = "
+    enum X { A }
+    let f = |q| match q {
+        X::A() => 2,
+        _ => 3,
+    };
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Invalid number of data fields for enum variant X::A. Expected 1 but got 2."]
+fn enum_too_many_fields() {
+    let input = "
+    enum X { A(int) }
+    let f = |q| match q {
+        X::A(_, _) => 2,
+        _ => 3,
+    };
+    ";
+    type_check(input, &[]);
 }

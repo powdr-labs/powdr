@@ -355,7 +355,7 @@ mod test {
     }
 
     #[test]
-    fn test_propagate_constraints() {
+    fn constraints_propagation() {
         let pil_source = r"
 namespace Global(2**20);
     col fixed BYTE(i) { i & 0xff };
@@ -425,7 +425,7 @@ namespace Global(2**20);
     }
 
     #[test]
-    fn test_no_remove_identity() {
+    fn no_remove_identity() {
         // There used to be a bug where the lookup would be removed because the code
         // incorrectly determined it to be a pure range constraint, but it would actually not
         // be able to derive the full constraint.

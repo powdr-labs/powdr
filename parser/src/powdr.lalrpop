@@ -60,6 +60,19 @@ Part: Part = {
     <name:Identifier> => Part::Named(name),
 }
 
+// Same as SymbolPath plus we allow "::<...>" at the end.
+GenericSymbolPath: (SymbolPath, Option<Vec<Type<Expression>>>) = {
+    // If we "inline" SymbolPath here, we get an ambiguity error.
+    <abs:"::"?> <parts:( <Part> "::" )*> <end:Part> <types:("::" "<" <TypeTermList> ">")?>  => (
+        SymbolPath::from_parts([
+            abs.map(|_| vec![Part::Named(String::new())]).unwrap_or_default(),
+            parts,
+            vec![end],
+        ].concat()),
+        types
+    ),
+}
+
 /// Same as SymbolPath except that we do not allow 'int' and 'fe' to be parsed as identifiers.
 TypeSymbolPath: SymbolPath = {
     <abs:"::"?> <parts:( <TypeSymbolPathPart> "::" )*> <end:TypeSymbolPathPart>  => {
@@ -108,7 +121,7 @@ Include: PilStatement = {
 };
 
 Namespace: PilStatement = {
-    <start:@L> "namespace" <name:SymbolPath> "(" <pol_degree:Expression> ")" ";" => PilStatement::Namespace(ctx.source_ref(start), name, pol_degree)
+    <start:@L> "namespace" <name:SymbolPath> <pol_degree:("(" <Expression> ")")?> ";" => PilStatement::Namespace(ctx.source_ref(start), name, pol_degree)
 }
 
 LetStatement: PilStatement = {
@@ -146,9 +159,8 @@ FunctionDefinition: FunctionDefinition = {
     "=" <ArrayLiteralExpression> => FunctionDefinition::Array(<>),
 }
 
-ParameterList: Vec<String> = {
-    <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list },
-    => vec![]
+ParameterList: Vec<Pattern> = {
+    PatternList
 }
 
 ArrayLiteralExpression: ArrayExpression = {
@@ -558,7 +570,7 @@ Term: Box<Expression> = {
     IndexAccess => Box::new(Expression::IndexAccess(<>)),
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
     ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference::from_identifier(<>))),
-    NamespacedPolynomialReference => Box::new(Expression::Reference(<>)),
+    GenericReference => Box::new(Expression::Reference(<>)),
     PublicIdentifier => Box::new(Expression::PublicReference(<>)),
     Number => Box::new(Expression::Number(<>.into(), None)),
     StringLiteral => Box::new(Expression::String(<>)),
@@ -583,6 +595,11 @@ FunctionCall: FunctionCall = {
 NamespacedPolynomialReference: NamespacedPolynomialReference = {
     <SymbolPath> => <>.into(),
     <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
+}
+
+GenericReference: NamespacedPolynomialReference = {
+    <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
+    <path:GenericSymbolPath> => NamespacedPolynomialReference{path: path.0, type_args: path.1},
 }
 
 MatchExpression: Box<Expression> = {
@@ -615,7 +632,7 @@ BracedExpression: Box<Expression> = {
 }
 
 StatementInsideBlock: StatementInsideBlock = {
-    "let" <name:Identifier> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
+    "let" <pattern:Pattern> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
     <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
 
@@ -628,8 +645,13 @@ Pattern: Pattern = {
     StringLiteral => Pattern::String(<>),
     TuplePattern,
     ArrayPattern,
-    Identifier => Pattern::Variable(<>),
-    //EnumPattern,
+    // We never parse Pattern::Variable directly. Instead, we
+    // parse all identifiers (and symbol paths) as Pattern::Enum.
+    // At symbol resolution stage, single identifiers that do not
+    // exist in the current scope are then turned into Pattern::Variable
+    // to allow `match x { (y, None) => ... }` to bind the first component
+    // to `y` and match the enum variant `None` at the same time.
+    EnumPattern,
 }
 
 PatternIncludingEllipsis: Pattern = {
@@ -647,6 +669,14 @@ ArrayPattern: Pattern = {
     "[" <mut items:(<PatternIncludingEllipsis> ",")*> <last:PatternIncludingEllipsis> "]" => Pattern::Array({items.push(last); items})
 }
 
+EnumPattern: Pattern = {
+    <SymbolPath> <( "(" <PatternList> ")" )?> => Pattern::Enum(<>)
+}
+
+PatternList: Vec<Pattern> = {
+    <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
+    => vec![]
+}
 
 // ---------------------------- Type Declarations -----------------------------
 

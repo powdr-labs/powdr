@@ -376,9 +376,7 @@ where
             assignments.combine(EvalValue::complete(vec![(
                 *i,
                 Constraint::Assignment(
-                    ((offset & mask).to_arbitrary_integer() / coeff.to_arbitrary_integer())
-                        .try_into()
-                        .unwrap(),
+                    ((offset & mask).to_arbitrary_integer() / coeff.to_arbitrary_integer()).into(),
                 ),
             )]));
             offset &= !mask;
@@ -626,7 +624,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_affine_assign() {
+    fn affine_assign() {
         let mut a = AffineExpression::<_, GoldilocksField>::ManyVars(convert(vec![2, 3]), 3.into());
         a.assign(0, 3.into());
         assert_eq!(
@@ -646,7 +644,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_affine_neg() {
+    fn affine_neg() {
         let a = AffineExpression::ManyVars(convert(vec![1, 2]), 9.into());
         assert_eq!(
             -a,
@@ -661,7 +659,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_affine_add() {
+    fn affine_add() {
         let a = AffineExpression::<_, GoldilocksField>::ManyVars(convert(vec![1, 2]), 3.into());
         let b = AffineExpression::ManyVars(convert(vec![11]), 13.into());
         assert_eq!(
@@ -672,7 +670,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_affine_add_with_ref_key() {
+    fn affine_add_with_ref_key() {
         let names = ["abc", "def", "ghi"];
         let a = AffineExpression::from_variable_id(names[0])
             + GoldilocksField::from(2) * AffineExpression::from_variable_id(names[1])
@@ -685,7 +683,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_affine_clean() {
+    fn affine_clean() {
         let a = AffineExpression::<_, GoldilocksField>::ManyVars(convert(vec![1, 2]), 3.into());
         let b = AffineExpression::ManyVars(convert(vec![11, 80]), 13.into());
         assert_eq!(
@@ -697,7 +695,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_affine_clean_long() {
+    fn affine_clean_long() {
         let a = AffineExpression::<_, GoldilocksField>::ManyVars(
             convert(vec![1, 2, 4, 9, 8]),
             3.into(),
@@ -715,7 +713,7 @@ mod test {
     }
 
     #[test]
-    pub fn equality() {
+    fn equality() {
         let a = AffineExpression::<_, GoldilocksField>::ManyVars(convert(vec![1, 2]), 3.into());
         let b = AffineExpression::ManyVars(convert(vec![1, 2, 3]), 13.into());
         assert_eq!(a.clone() + b.clone(), b.clone() + a.clone());
@@ -729,7 +727,7 @@ mod test {
     }
 
     #[test]
-    pub fn derive_constraints() {
+    fn derive_constraints() {
         let expr = AffineExpression::from_variable_id(1)
             - AffineExpression::from_variable_id(2) * 16.into()
             - AffineExpression::from_variable_id(3);
@@ -801,7 +799,7 @@ mod test {
     }
 
     #[test]
-    pub fn solve_through_constraints_success() {
+    fn solve_through_constraints_success() {
         let value: GoldilocksField = 0x1504u32.into();
         let expr = AffineExpression::from(value)
             - AffineExpression::from_variable_id(2) * 256.into()
@@ -826,7 +824,7 @@ mod test {
     }
 
     #[test]
-    pub fn solve_through_constraints_conflict() {
+    fn solve_through_constraints_conflict() {
         let value: GoldilocksField = 0x1554u32.into();
         let expr = AffineExpression::from(value)
             - AffineExpression::from_variable_id(2) * 256.into()
@@ -846,7 +844,7 @@ mod test {
     }
 
     #[test]
-    pub fn transfer_range_constraints() {
+    fn transfer_range_constraints() {
         // x2 * 0x100 + x3 - x1 - 200 = 0,
         // x2: & 0xff
         // x3: & 0xf
@@ -883,7 +881,7 @@ mod test {
     }
 
     #[test]
-    pub fn solve_division() {
+    fn solve_division() {
         // 3 * x1 + x2 - 14 = 0
         let expr = AffineExpression::from_variable_id(1) * 3.into()
             + AffineExpression::from_variable_id(2)
@@ -909,7 +907,7 @@ mod test {
     }
 
     #[test]
-    pub fn overflowing_division() {
+    fn overflowing_division() {
         // -3 * x1 + x2 - 2 = 0
         // where x1 in [0, 1] and x2 in [0, 7]
         // This equation has two solutions: x1 = 0, x2 = 2 and x1 = 1, x2 = 5.
@@ -942,7 +940,7 @@ mod test {
     }
 
     #[test]
-    pub fn solve_is_zero() {
+    fn solve_is_zero() {
         // 1 - (3 * inv) - is_zero = 0
         // 1 - (3 * x2) - x1 = 0
         // x1 in [0, 1]

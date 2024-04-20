@@ -1,6 +1,8 @@
 #![no_std]
 
-use powdr_riscv_runtime::{coprocessors::get_data_serde, print};
+use powdr_riscv_runtime::input::get_data_serde;
+use powdr_riscv_runtime::print;
+
 use revm::{
     db::{CacheDB, EmptyDB},
     primitives::{

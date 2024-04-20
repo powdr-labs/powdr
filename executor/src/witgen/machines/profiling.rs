@@ -12,10 +12,10 @@ enum Event {
 
 thread_local! {
     /// The event log is a list of (event, <ID>, time) tuples.
-    static EVENT_LOG: RefCell<Vec<(Event, usize, Instant)>> = RefCell::new(Vec::new());
+    static EVENT_LOG: RefCell<Vec<(Event, usize, Instant)>> = const { RefCell::new(Vec::new()) };
     /// Maps a machine name (assumed to be globally unique) to an ID.
     /// This is done so that we can use a usize in the event log.
-    static NAME_TO_ID: RefCell<BTreeMap<String, usize>> = RefCell::new(BTreeMap::new());
+    static NAME_TO_ID: RefCell<BTreeMap<String, usize>> = const { RefCell::new(BTreeMap::new()) };
 }
 
 /// Returns the ID for a given machine name, creating a new one if necessary.

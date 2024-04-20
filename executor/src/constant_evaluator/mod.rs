@@ -142,13 +142,13 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
     fn lookup(
         &mut self,
         name: &'a str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        let cache_key = (name.to_string(), generic_args.clone());
+        let cache_key = (name.to_string(), type_args.clone());
         if let Some(v) = self.cache.read().unwrap().get(&cache_key) {
             return Ok(v.clone());
         }
-        let result = Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)?;
+        let result = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
         self.cache
             .write()
             .unwrap()
@@ -172,7 +172,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_last() {
+    fn last() {
         let src = r#"
             let N = 8;
             namespace F(N);
@@ -188,7 +188,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_counter() {
+    fn counter() {
         let src = r#"
             constant %N = 8;
             namespace F(%N);
@@ -207,7 +207,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_xor() {
+    fn xor() {
         let src = r#"
             constant %N = 8;
             namespace F(%N);
@@ -226,7 +226,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_match() {
+    fn match_expression() {
         let src = r#"
             constant %N = 8;
             namespace F(%N);
@@ -247,7 +247,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_if() {
+    fn if_expression() {
         let src = r#"
             constant %N = 8;
             namespace F(%N);
@@ -263,7 +263,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_macro() {
+    fn macro_directive() {
         let src = r#"
             constant %N = 8;
             namespace F(%N);
@@ -283,7 +283,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_poly_call() {
+    fn poly_call() {
         let src = r#"
             let N = 10;
             namespace std::convert(N);
@@ -328,7 +328,7 @@ mod test {
     }
 
     #[test]
-    pub fn test_arrays() {
+    fn arrays() {
         let src = r#"
             let N: int = 10;
             let n: fe = 10;
@@ -363,7 +363,7 @@ mod test {
     }
 
     #[test]
-    pub fn repetition_front() {
+    fn repetition_front() {
         let src = r#"
             constant %N = 10;
             namespace F(%N);
@@ -383,7 +383,7 @@ mod test {
     }
 
     #[test]
-    pub fn comparisons() {
+    fn comparisons() {
         let src = r#"
             let N: int = 6;
             namespace std::convert(N);
@@ -456,7 +456,7 @@ mod test {
 
     #[test]
     #[should_panic = "got `expr` when calling function F.w"]
-    pub fn calling_witness() {
+    fn calling_witness() {
         let src = r#"
             constant %N = 10;
             namespace F(%N);
@@ -469,8 +469,8 @@ mod test {
     }
 
     #[test]
-    #[should_panic = "Symbol not found: w"]
-    pub fn symbol_not_found() {
+    #[should_panic = "Value symbol not found: w"]
+    fn symbol_not_found() {
         let src = r#"
             constant %N = 10;
             namespace F(%N);
@@ -483,7 +483,7 @@ mod test {
 
     #[test]
     #[should_panic = "got `expr` when calling function F.y"]
-    pub fn forward_reference_to_array() {
+    fn forward_reference_to_array() {
         let src = r#"
             constant %N = 10;
             namespace F(%N);
@@ -496,7 +496,7 @@ mod test {
     }
 
     #[test]
-    pub fn forward_reference_to_function() {
+    fn forward_reference_to_function() {
         let src = r#"
             constant %N = 4;
             namespace F(%N);
@@ -519,7 +519,7 @@ mod test {
     }
 
     #[test]
-    pub fn bigint_arith() {
+    fn bigint_arith() {
         let src = r#"
             constant %N = 4;
             namespace std::convert(%N);
@@ -538,7 +538,7 @@ mod test {
     }
 
     #[test]
-    pub fn modulo_negative() {
+    fn modulo_negative() {
         let src = r#"
             constant %N = 4;
             namespace std::convert(%N);
@@ -560,7 +560,7 @@ mod test {
     }
 
     #[test]
-    pub fn arrays_of_fixed() {
+    fn arrays_of_fixed() {
         let src = r#"
             namespace F(4);
                 let x: fe -> (int -> fe) = |k| |i| std::convert::fe(i) + k;
@@ -582,7 +582,7 @@ mod test {
     }
 
     #[test]
-    pub fn generic_cache() {
+    fn generic_cache() {
         // Tests that the evaluation cache stores symbols with their
         // generic arguments.
         let src = r#"

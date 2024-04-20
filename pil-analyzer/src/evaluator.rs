@@ -39,10 +39,10 @@ pub fn evaluate<'a, T: FieldElement>(
 /// and values for the generic type parameters.
 pub fn evaluate_generic<'a, 'b, T: FieldElement>(
     expr: &'a Expression,
-    generic_args: &'b HashMap<String, Type>,
+    type_args: &'b HashMap<String, Type>,
     symbols: &mut impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    internal::evaluate(expr, &[], generic_args, symbols)
+    internal::evaluate(expr, &[], type_args, symbols)
 }
 
 /// Evaluates a function call.
@@ -57,7 +57,7 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
         Value::Closure(Closure {
             lambda,
             environment,
-            generic_args,
+            type_args,
         }) => {
             if lambda.params.len() != arguments.len() {
                 Err(EvalError::TypeError(format!(
@@ -68,14 +68,23 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
 
                 )))?
             }
+            let matched_arguments =
+                arguments
+                    .iter()
+                    .zip(&lambda.params)
+                    .flat_map(|(arg, pattern)| {
+                        Value::try_match_pattern(arg, pattern).unwrap_or_else(|| {
+                            panic!("Irrefutable pattern did not match: {pattern} = {arg}")
+                        })
+                    });
 
             let local_vars = environment
                 .iter()
                 .cloned()
-                .chain(arguments)
+                .chain(matched_arguments)
                 .collect::<Vec<_>>();
 
-            internal::evaluate(&lambda.body, &local_vars, generic_args, symbols)
+            internal::evaluate(&lambda.body, &local_vars, type_args, symbols)
         }
         e => Err(EvalError::TypeError(format!(
             "Expected function but got {e}"
@@ -85,7 +94,7 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
 
 /// Turns an optional type scheme and a list of generic type arguments into a mapping
 /// from type name to type.
-pub fn generic_arg_mapping(
+pub fn type_arg_mapping(
     type_scheme: &Option<TypeScheme>,
     args: Option<Vec<Type>>,
 ) -> HashMap<String, Type> {
@@ -265,18 +274,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 _ => None,
             },
             Pattern::Tuple(items) => match v.as_ref() {
-                Value::Tuple(values) => {
-                    assert_eq!(values.len(), items.len());
-                    values
-                        .iter()
-                        .zip(items)
-                        .try_fold(vec![], |mut vars, (e, p)| {
-                            Value::try_match_pattern(e, p).map(|v| {
-                                vars.extend(v);
-                                vars
-                            })
-                        })
-                }
+                Value::Tuple(values) => Value::try_match_pattern_list(values, items),
                 _ => unreachable!(),
             },
             Pattern::Array(items) => {
@@ -312,7 +310,36 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     })
             }
             Pattern::Variable(_) => Some(vec![v.clone()]),
+            Pattern::Enum(name, fields_pattern) => {
+                let Value::Enum(n, data) = v.as_ref() else {
+                    panic!()
+                };
+                if name.name() != n {
+                    return None;
+                }
+                if let Some(fields) = fields_pattern {
+                    Value::try_match_pattern_list(data.as_ref().unwrap(), fields)
+                } else {
+                    Some(vec![])
+                }
+            }
         }
+    }
+
+    fn try_match_pattern_list<'b>(
+        values: &[Arc<Value<'b, T>>],
+        patterns: &[Pattern],
+    ) -> Option<Vec<Arc<Value<'b, T>>>> {
+        assert_eq!(values.len(), patterns.len());
+        patterns
+            .iter()
+            .zip(values.iter())
+            .try_fold(vec![], |mut vars, (p, e)| {
+                Value::try_match_pattern(e, p).map(|v| {
+                    vars.extend(v);
+                    vars
+                })
+            })
     }
 }
 
@@ -379,9 +406,9 @@ impl<'a, T: Display> Display for Value<'a, T> {
 
 #[derive(Clone, Debug)]
 pub struct Closure<'a, T> {
-    pub lambda: &'a LambdaExpression<Reference>,
+    pub lambda: &'a LambdaExpression<Expression>,
     pub environment: Vec<Arc<Value<'a, T>>>,
-    pub generic_args: HashMap<String, Type>,
+    pub type_args: HashMap<String, Type>,
 }
 
 impl<'a, T: Display> Display for Closure<'a, T> {
@@ -411,7 +438,7 @@ impl<'a> Definitions<'a> {
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
         name: &str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = name.to_string();
@@ -448,8 +475,8 @@ impl<'a> Definitions<'a> {
                     e: value,
                     type_scheme,
                 })) => {
-                    let generic_args = generic_arg_mapping(type_scheme, generic_args);
-                    evaluate_generic(value, &generic_args, symbols)?
+                    let type_args = type_arg_mapping(type_scheme, type_args);
+                    evaluate_generic(value, &type_args, symbols)?
                 }
                 Some(FunctionValueDefinition::TypeConstructor(_type_name, variant)) => {
                     if variant.fields.is_none() {
@@ -470,9 +497,9 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     fn lookup(
         &mut self,
         name: &str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Self::lookup_with_symbols(self.0, name, generic_args, self)
+        Self::lookup_with_symbols(self.0, name, type_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -490,7 +517,7 @@ pub trait SymbolLookup<'a, T> {
     fn lookup(
         &mut self,
         name: &'a str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError>;
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -537,20 +564,20 @@ mod internal {
     pub fn evaluate<'a, 'b, T: FieldElement>(
         expr: &'a Expression,
         locals: &[Arc<Value<'a, T>>],
-        generic_args: &'b HashMap<String, Type>,
+        type_args: &'b HashMap<String, Type>,
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(match expr {
             Expression::Reference(reference) => {
-                evaluate_reference(reference, locals, generic_args, symbols)?
+                evaluate_reference(reference, locals, type_args, symbols)?
             }
             Expression::PublicReference(name) => symbols.lookup_public_reference(name)?,
-            Expression::Number(n, ty) => evaluate_literal(n.clone(), ty, generic_args)?,
+            Expression::Number(n, ty) => evaluate_literal(n.clone(), ty, type_args)?,
             Expression::String(s) => Value::String(s.clone()).into(),
             Expression::Tuple(items) => Value::Tuple(
                 items
                     .iter()
-                    .map(|e| evaluate(e, locals, generic_args, symbols))
+                    .map(|e| evaluate(e, locals, type_args, symbols))
                     .collect::<Result<_, _>>()?,
             )
             .into(),
@@ -558,17 +585,17 @@ mod internal {
                 elements
                     .items
                     .iter()
-                    .map(|e| evaluate(e, locals, generic_args, symbols))
+                    .map(|e| evaluate(e, locals, type_args, symbols))
                     .collect::<Result<_, _>>()?,
             ))
             .into(),
             Expression::BinaryOperation(left, op, right) => {
-                let left = evaluate(left, locals, generic_args, symbols)?;
-                let right = evaluate(right, locals, generic_args, symbols)?;
+                let left = evaluate(left, locals, type_args, symbols)?;
+                let right = evaluate(right, locals, type_args, symbols)?;
                 evaluate_binary_operation(&left, *op, &right)?
             }
             Expression::UnaryOperation(op, expr) => {
-                match (op, evaluate(expr, locals, generic_args, symbols)?.as_ref()) {
+                match (op, evaluate(expr, locals, type_args, symbols)?.as_ref()) {
                     (UnaryOperator::Minus, Value::FieldElement(e)) => {
                         Value::FieldElement(-*e).into()
                     }
@@ -608,14 +635,14 @@ mod internal {
                 Value::from(Closure {
                     lambda,
                     environment: locals.to_vec(),
-                    generic_args: generic_args.clone(),
+                    type_args: type_args.clone(),
                 })
                 .into()
             }
             Expression::IndexAccess(index_access) => {
-                match evaluate(&index_access.array, locals, generic_args, symbols)?.as_ref() {
+                match evaluate(&index_access.array, locals, type_args, symbols)?.as_ref() {
                     Value::Array(elements) => {
-                        match evaluate(&index_access.index, locals, generic_args,symbols)?.as_ref() {
+                        match evaluate(&index_access.index, locals, type_args,symbols)?.as_ref() {
                             Value::Integer(index)
                                 if index.is_negative()
                                     || *index >= (elements.len() as u64).into() =>
@@ -641,15 +668,15 @@ mod internal {
                 function,
                 arguments,
             }) => {
-                let function = evaluate(function, locals, generic_args, symbols)?;
+                let function = evaluate(function, locals, type_args, symbols)?;
                 let arguments = arguments
                     .iter()
-                    .map(|a| evaluate(a, locals, generic_args, symbols))
+                    .map(|a| evaluate(a, locals, type_args, symbols))
                     .collect::<Result<Vec<_>, _>>()?;
                 evaluate_function_call(function, arguments, symbols)?
             }
             Expression::MatchExpression(scrutinee, arms) => {
-                let v = evaluate(scrutinee, locals, generic_args, symbols)?;
+                let v = evaluate(scrutinee, locals, type_args, symbols)?;
                 let (vars, body) = arms
                     .iter()
                     .find_map(|MatchArm { pattern, value }| {
@@ -658,10 +685,10 @@ mod internal {
                     .ok_or_else(EvalError::NoMatch)?;
                 let mut locals = locals.to_vec();
                 locals.extend(vars);
-                evaluate(body, &locals, generic_args, symbols)?
+                evaluate(body, &locals, type_args, symbols)?
             }
             Expression::IfExpression(if_expr) => {
-                let cond = evaluate(&if_expr.condition, locals, generic_args, symbols)?;
+                let cond = evaluate(&if_expr.condition, locals, type_args, symbols)?;
                 let condition = match cond.as_ref() {
                     Value::Bool(b) => Ok(b),
                     x => Err(EvalError::TypeError(format!(
@@ -673,30 +700,37 @@ mod internal {
                 } else {
                     &if_expr.else_body
                 };
-                evaluate(body.as_ref(), locals, generic_args, symbols)?
+                evaluate(body.as_ref(), locals, type_args, symbols)?
             }
             Expression::BlockExpression(statements, expr) => {
                 let mut locals = locals.to_vec();
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
-                            name,
+                            pattern,
                             value,
                         }) => {
                             let value = if let Some(value) = value {
-                                evaluate(value, &locals, generic_args, symbols)?
+                                evaluate(value, &locals, type_args, symbols)?
                             } else {
+                                let Pattern::Variable(name) = pattern else {
+                                    unreachable!()
+                                };
                                 symbols.new_witness_column(name, SourceRef::unknown())?
                             };
-                            locals.push(value);
+                            locals.extend(
+                                Value::try_match_pattern(&value, pattern).unwrap_or_else(|| {
+                                    panic!("Irrefutable pattern did not match: {pattern} = {value}")
+                                }),
+                            );
                         }
                         StatementInsideBlock::Expression(expr) => {
-                            let result = evaluate(expr, &locals, generic_args, symbols)?;
+                            let result = evaluate(expr, &locals, type_args, symbols)?;
                             symbols.add_constraints(result, SourceRef::unknown())?;
                         }
                     }
                 }
-                evaluate(expr, &locals, generic_args, symbols)?
+                evaluate(expr, &locals, type_args, symbols)?
             }
             Expression::FreeInput(_) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
@@ -707,10 +741,10 @@ mod internal {
     fn evaluate_literal<'a, T: FieldElement>(
         n: BigUint,
         ty: &Option<Type<u64>>,
-        generic_args: &HashMap<String, Type>,
+        type_args: &HashMap<String, Type>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let ty = if let Some(Type::TypeVar(tv)) = ty {
-            match &generic_args[tv] {
+            match &type_args[tv] {
                 Type::Fe => Type::Fe,
                 Type::Int => Type::Int,
                 Type::Expr => Type::Expr,
@@ -742,7 +776,7 @@ mod internal {
     fn evaluate_reference<'a, T: FieldElement>(
         reference: &'a Reference,
         locals: &[Arc<Value<'a, T>>],
-        generic_args: &HashMap<String, Type>,
+        type_args: &HashMap<String, Type>,
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(match reference {
@@ -752,13 +786,13 @@ mod internal {
                 if let Some((_, b)) = BUILTINS.iter().find(|(n, _)| (n == &poly.name)) {
                     Value::BuiltinFunction(*b).into()
                 } else {
-                    let generic_args = poly.generic_args.clone().map(|mut ga| {
+                    let type_args = poly.type_args.clone().map(|mut ga| {
                         for ty in &mut ga {
-                            ty.substitute_type_vars(generic_args);
+                            ty.substitute_type_vars(type_args);
                         }
                         ga
                     });
-                    symbols.lookup(&poly.name, generic_args)?
+                    symbols.lookup(&poly.name, type_args)?
                 }
             }
         })
@@ -885,14 +919,12 @@ mod internal {
                 Err(EvalError::FailedAssertion(msg))?
             }
             BuiltinFunction::Print => {
-                let msg = match arguments.pop().unwrap().as_ref() {
-                    Value::String(msg) => msg.clone(),
-                    v => panic!(
-                        "Expected string for std::debug::print, but got {v}: {}",
-                        v.type_formatted()
-                    ),
-                };
-                print!("{msg}");
+                let msg = arguments.pop().unwrap();
+                if let Value::String(s) = msg.as_ref() {
+                    print!("{s}");
+                } else {
+                    print!("{msg}");
+                }
                 Value::Array(Default::default()).into()
             }
             BuiltinFunction::ToExpr => {
@@ -1012,7 +1044,7 @@ mod test {
     }
 
     #[test]
-    pub fn arrays_and_strings() {
+    fn arrays_and_strings() {
         let src = r#"namespace Main(16);
             let words = ["the", "quick", "brown", "fox"];
             let translate = |w| match w {
@@ -1030,7 +1062,7 @@ mod test {
     }
 
     #[test]
-    pub fn fibonacci() {
+    fn fibonacci() {
         let src = r#"namespace Main(16);
             let fib: int -> int = |i| match i {
                 0 => 0,
@@ -1046,7 +1078,7 @@ mod test {
     }
 
     #[test]
-    pub fn capturing() {
+    fn capturing() {
         let src = r#"namespace Main(16);
             let f: int, (int -> int) -> (int -> int) = |n, g| match n { 99 => |i| n, 1 => g };
             let result = f(1, f(99, |x| x + 3000))(0);
@@ -1060,7 +1092,7 @@ mod test {
     }
 
     #[test]
-    pub fn array_len() {
+    fn array_len() {
         let src = r#"
             let N: int = 2;
             namespace std::array(N);
@@ -1076,7 +1108,7 @@ mod test {
 
     #[test]
     #[should_panic = r#"FailedAssertion("this text")"#]
-    pub fn panic_complex() {
+    fn panic_complex() {
         let src = r#"
             constant %N = 2;
             namespace std::check(%N);
@@ -1091,7 +1123,7 @@ mod test {
 
     #[test]
     #[should_panic = r#"FailedAssertion("text")"#]
-    pub fn panic_string() {
+    fn panic_string() {
         let src = r#"
             constant %N = 2;
             namespace std::check(%N);
@@ -1103,7 +1135,7 @@ mod test {
     }
 
     #[test]
-    pub fn hex_number_outside_field() {
+    fn hex_number_outside_field() {
         // This tests that the parser does not lose precision when parsing large integers.
         let src = r#"
             let N: int = 0x9999999999999999999999999999999;
@@ -1112,7 +1144,7 @@ mod test {
     }
 
     #[test]
-    pub fn decimal_number_outside_field() {
+    fn decimal_number_outside_field() {
         // This tests that the parser does not lose precision when parsing large integers.
         let src = r#"
             let N: int = 9999999999999999999999999999999;
@@ -1122,7 +1154,7 @@ mod test {
 
     #[test]
     #[should_panic = "Number literal 9999999999999999999999999999999 is too large for field element."]
-    pub fn decimal_number_outside_field_for_fe() {
+    fn decimal_number_outside_field_for_fe() {
         let src = r#"
             let N: fe = 9999999999999999999999999999999;
         "#;
@@ -1130,7 +1162,7 @@ mod test {
     }
 
     #[test]
-    pub fn zero_power_zero() {
+    fn zero_power_zero() {
         let src = r#"
         let zpz_int: int = 0**0;
         let zpz_fe: fe = 0**0;
@@ -1140,7 +1172,7 @@ mod test {
     }
 
     #[test]
-    pub fn debug_print() {
+    fn debug_print() {
         let src = r#"
             namespace std::debug(8);
             let print = 2;
@@ -1150,7 +1182,22 @@ mod test {
     }
 
     #[test]
-    pub fn local_vars() {
+    fn debug_print_complex() {
+        let src = r#"
+            namespace std::debug(8);
+            let print = 2;
+            let t: fe = 9;
+            let x: int = 2;
+            let N = {
+                let _ = std::debug::print((t, [x, 3], "test output\n"));
+                std::debug::print("\n")
+            };
+        "#;
+        parse_and_evaluate_symbol(src, "std::debug::N");
+    }
+
+    #[test]
+    fn local_vars() {
         let src = r#"
             let f: int -> int = |i| {
                 let x = i + 1;
@@ -1164,7 +1211,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_pattern() {
+    fn match_pattern() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [] => 0,
@@ -1184,7 +1231,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_pattern_complex() {
+    fn match_pattern_complex() {
         let src = r#"
             let f: ((int, int), int[]) -> int = |q| match q {
                 ((1, _), [x, 4]) => 1 + x,
@@ -1211,7 +1258,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array() {
+    fn match_skip_array() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [x, .., y] => x + y,
@@ -1227,7 +1274,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array_2() {
+    fn match_skip_array_2() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [.., y] => y,
@@ -1242,7 +1289,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array_3() {
+    fn match_skip_array_3() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [.., x, y] => x,
@@ -1257,7 +1304,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array_4() {
+    fn match_skip_array_4() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [x, y, ..] => y,
@@ -1268,6 +1315,53 @@ mod test {
         assert_eq!(
             parse_and_evaluate_symbol(src, "t"),
             "[99, 99, 2, 2, 2]".to_string()
+        );
+    }
+
+    #[test]
+    fn unpack_fun() {
+        let src = r#"
+            let t: (int, fe, int), int -> int[] = |(x, _, y), z| [x, y, z];
+            let x: int[] = t((1, 2, 3), 4);
+        "#;
+        assert_eq!(parse_and_evaluate_symbol(src, "x"), "[1, 3, 4]".to_string());
+    }
+
+    #[test]
+    fn unpack_let() {
+        let src = r#"
+            let x: int[] = {
+                let (a, (_, b), (c, _, _, d, _)) = (1, ((), 3), (4, (), (), 7, ()));
+                [a, b, c, d]
+            };
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "x"),
+            "[1, 3, 4, 7]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn match_enum() {
+        let src = r#"
+            enum X {
+                A,
+                B(),
+                C(int, int),
+                D(int, X)
+            }
+            let f = |x| match x {
+                X::A => 1,
+                X::B() => 2,
+                X::C(a, b) => a + b,
+                X::D(0, X::A) => 10001,
+                X::D(c, y) => c + f(y),
+            };
+            let t = [f(X::A), f(X::B()), f(X::C(3, 4)), f(X::D(0, X::A)), f(X::D(0, X::B())), f(X::D(100, X::C(4, 5)))];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[1, 2, 7, 10001, 2, 109]".to_string()
         );
     }
 }

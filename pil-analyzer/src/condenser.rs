@@ -256,16 +256,12 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 
     /// Returns the witness columns generated since the last call to this function.
     pub fn extract_new_witness_columns(&mut self) -> Vec<Symbol> {
-        let mut new_witnesses = vec![];
-        std::mem::swap(&mut self.new_witnesses, &mut new_witnesses);
-        new_witnesses
+        std::mem::take(&mut self.new_witnesses)
     }
 
     /// Returns the new constraints generated since the last call to this function.
     pub fn extract_new_constraints(&mut self) -> Vec<IdentityWithoutID<AlgebraicExpression<T>>> {
-        let mut new_constraints = vec![];
-        std::mem::swap(&mut self.new_constraints, &mut new_constraints);
-        new_constraints
+        std::mem::take(&mut self.new_constraints)
     }
 
     fn condense_selected_expressions(
@@ -321,16 +317,16 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn lookup(
         &mut self,
         name: &'a str,
-        generic_args: Option<Vec<Type>>,
+        type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         // Cache already computed values.
         // Note that the cache is essential because otherwise
         // we re-evaluate simple values, which users would not expect.
-        let cache_key = (name.to_string(), generic_args.clone());
+        let cache_key = (name.to_string(), type_args.clone());
         if let Some(v) = self.symbol_values.get(&cache_key) {
             return Ok(v.clone());
         }
-        let value = Definitions::lookup_with_symbols(self.symbols, name, generic_args, self)?;
+        let value = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
         self.symbol_values
             .entry(cache_key)
             .or_insert_with(|| value.clone());

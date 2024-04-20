@@ -16,6 +16,7 @@ powdr-parser-util = { path = "../parser-util" }
 lazy_static = "1.4.0"
 lalrpop-util = {version = "^0.19", features = ["lexer"]}
 num-traits = "0.2.15"
+derive_more = "0.99.17"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
