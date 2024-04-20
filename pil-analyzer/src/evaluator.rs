@@ -343,12 +343,13 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 9] = [
+const BUILTINS: [(&str, BuiltinFunction); 10] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
     ("std::convert::fe", BuiltinFunction::ToFe),
     ("std::convert::int", BuiltinFunction::ToInt),
+    ("std::convert::to_string", BuiltinFunction::ToString),
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prover::challenge", BuiltinFunction::Challenge),
@@ -373,6 +374,7 @@ pub enum BuiltinFunction {
     ToInt,
     /// std::convert::fe: int/fe -> fe, converts int to fe
     ToFe,
+    ToString,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
@@ -890,6 +892,7 @@ mod internal {
             BuiltinFunction::ToExpr => 1,
             BuiltinFunction::ToFe => 1,
             BuiltinFunction::ToInt => 1,
+            BuiltinFunction::ToString => 1,
             BuiltinFunction::Challenge => 2,
             BuiltinFunction::Eval => 1,
         };
@@ -938,6 +941,14 @@ mod internal {
             BuiltinFunction::ToFe => {
                 let arg = arguments.pop().unwrap();
                 Value::FieldElement(arg.try_to_field_element()?).into()
+            }
+            BuiltinFunction::ToString => {
+                let arg = arguments.pop().unwrap();
+                if let Value::String(_) = arg.as_ref() {
+                    arg
+                } else {
+                    Value::String(arg.to_string()).into()
+                }
             }
             BuiltinFunction::Modulus => {
                 Value::Integer(T::modulus().to_arbitrary_integer().into()).into()
