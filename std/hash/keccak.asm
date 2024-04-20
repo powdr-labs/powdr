@@ -95,6 +95,28 @@ enum Gate {
     Rotl(Gate, int)
 }
 
+enum Option<T> {
+    None,
+    Some(T),
+}
+
+enum BTreeNode<K, V> {
+    N(K, V, Option<BTreeNode>, Option<BTreeNode>)
+}
+
+let btree_find = |node, needle| match node {
+    BTreeNode::N(key, value, left, right) =>
+        if key == needle {
+            Option::Some(value)
+        } else {
+        }
+};
+
+/*
+
+
+*/
+
 let size_overhead = 2; // we need two edges to store one word
 
 let input: int, int -> (int, Gate) = |s, i| (s + size_overhead, Gate::Input(i));
