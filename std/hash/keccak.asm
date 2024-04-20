@@ -44,7 +44,6 @@ let theta_bc = |s, st, i|
 // ln 57 - 62
 let theta_st = |s, st| {
     let (s2, bc) = new_array_stateful(5, s, |s1, i| theta_bc(s1, st, i));
-    let _ = std::debug::println(gate_to_string(bc[0]));
     let (s4, bc_rot) = new_array_stateful(5, s2, |s3, i| xor(rotl64((s3, bc[(i + 1) % 5]), 1), bc[(i + 4) % 5]));
     map_enumerated_stateful(st, s4, |s5, idx, elem| xor((s5, bc_rot[idx % 5]), elem))
 };
@@ -56,7 +55,6 @@ let rho_pi = |s, st, i| {
     rotl64((s, st[PI[p]]), RHO[i])
 };
 
-// TODO add the same helper for map_enumerated
 let new_array_stateful = |l, s, f| std::utils::fold(l, |i| i, (s, []), |(s1, res), i| {
     let (s2, x) = f(s1, i);
     (s2, res + [x])
@@ -83,7 +81,7 @@ let iota: (int, Gate[]), int -> (int, Gate[]) = |(s, st), r| map_enumerated_stat
 
 // ln 51 - 87
 let r_loop = |(s, st)| {
-    let (s_f, g) = utils::fold(24, |i| i, (s, st), |(s2, st2), r| iota(chi(rho_pi_rearrange(rho_pi_loop(theta_st(s2, st)))), r));
+    let (s_f, g) = utils::fold(24, |i| i, (s, st), |(s2, st2), r| iota(chi(rho_pi_rearrange(rho_pi_loop(theta_st(s2, st2)))), r));
     let _ = std::debug::println("Gates:");
     let _ = std::debug::println(s_f);
     g
@@ -97,10 +95,13 @@ enum Gate {
     Rotl(Gate, int)
 }
 
-let input: int, int -> (int, Gate) = |s, i| (s + 1, Gate::Input(i));
-let xor = |(s, a), b| (s + 1, Gate::Xor(a, b)); // TODO create ID
-let and_not = |(s, a), b| (s + 1, Gate::AndNot(a, b));
-let rotl64 = |(s, a), n| (s + 1, Gate::Rotl(a, n));
+let size_overhead = 2; // we need two edges to store one word
+
+let input: int, int -> (int, Gate) = |s, i| (s + size_overhead, Gate::Input(i));
+let xor = |(s, a), b| (s + size_overhead, Gate::Xor(a, b)); // TODO create ID
+let and_not = |(s, a), b| (s + size_overhead, Gate::AndNot(a, b));
+let rotl64 = |(s, a), n| (s, Gate::Rotl(a, n)); // TODO not sure about the overhead
+
 
 // TODO this is wrong because it counts multiplicities, i.e.
 // it counts the size of the circuit expanded to a tree.
@@ -113,8 +114,8 @@ let gate_count: Gate -> int = |g| match g {
 };
 
 let gate_to_string: Gate -> string = |g| match g {
-    Gate::Input(_) => "input",
-    Gate::Constant(_) => "const",
+    Gate::Input(i) => "input_" + std::convert::to_string(i),
+    Gate::Constant(k) => std::convert::to_string(k),
     Gate::Xor(a, b) => "(" + gate_to_string(a) + " ^ " + gate_to_string(b) + ")",
     Gate::AndNot(a, b) => "(~" + gate_to_string(a) + " & " + gate_to_string(b) + ")",
     Gate::Rotl(a, _) => "rotl(" + gate_to_string(a) + ")",
