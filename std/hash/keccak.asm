@@ -100,17 +100,30 @@ enum Option<T> {
     Some(T),
 }
 
+let<T1, T2> option_map: Option<T1>, (T1 -> T2) -> Option<T2> = |x, f| match x {
+    Option::Some(v) => Option::Some(f(v)),
+    Option::None => Option::None
+};
+
 enum BTreeNode<K, V> {
     N(K, V, Option<BTreeNode>, Option<BTreeNode>)
 }
 
-let btree_find = |node, needle| match node {
-    BTreeNode::N(key, value, left, right) =>
-        if key == needle {
-            Option::Some(value)
-        } else {
-        }
+enum CmpResult {
+    Less,
+    Equal,
+    Greater,
+}
+
+// TODO cmp should be stored together with the tree
+let<K, V> btree_find: BTreeNode<K, V>, (K, K -> CmpResult), K -> Option<V> = |node, cmp, needle| match node {
+    BTreeNode::N(key, value, left, right) => match cmp(needle, key) {
+        Less => option_map(left, |l| btree_find(l, cmp, needle)),
+        Equal => Option::Some(value),
+        Greater => option_map(right, |r| btree_find(r, cmp, needle)),
+    }
 };
+
 
 /*
 
