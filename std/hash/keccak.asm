@@ -38,44 +38,57 @@ let RC = std::array::map([
 
 // Note that neither t nor bc is needed as they are both helper variables
 // ln 52 - 55
-let theta_bc = |st, i| xor(xor(xor(xor(st[i], st[i + 5]), st[i + 10]), st[i + 15]), st[i + 20]);
+let theta_bc = |s, st, i|
+    std::array::fold([st[i + 5], st[i + 10], st[i + 15]], (s, st[i]), xor);
 
 // ln 57 - 62
-let theta_st = |st| array::map_enumerated(st, |idx, elem| { // int[25] -> int[25]
+let theta_st = |s, st| map_enumerated_stateful(st, s, |s1, idx, elem| {
     let i = idx % 5;
     let j = idx / 5;
-    let t = xor(theta_bc(st, (i + 4) % 5), rotl64(theta_bc(st, (i + 1) % 5), 1));
-    let _ = std::debug::println("===========\n\n=========\n\n");
-    let _ = std::debug::println(gate_count(t));
-    xor(elem, t)
+    let (s2, r) = rotl64(theta_bc(s1, st, (i + 1) % 5), 1);
+    let t = xor(theta_bc(s2, st, (i + 4) % 5), r);
+    xor(t, elem)
 });
 
 // ln 66 - 72
 // rho pi
-let rho_pi = |st, i| { // int[25], int -> int
+let rho_pi = |s, st, i| {
     let p = if i == 0 { 23 } else { i - 1 };
-    rotl64(st[PI[p]], RHO[i])
+    rotl64((s, st[PI[p]]), RHO[i])
 };
-// collect st_j
-let rho_pi_loop = |st| array::new(25, |i| if i == 0 { st[0] } else { rho_pi(st, i - 1) } ); // int[25] -> int[25]
-// rearrange st_j
-let rho_pi_rearrange = |st| array::new(25, |i| st[PI_INVERSE[i]]); // int[25] -> int[25]
 
-// ln 74 - 83
+// TODO add the same helper for map_enumerated
+let new_array_stateful = |l, s, f| std::utils::fold(l, |i| i, (s, []), |(s1, res), i| {
+    let (s2, x) = f(s1, i);
+    (s2, res + [x])
+});
+
+let map_enumerated_stateful = |arr, s, f|
+    new_array_stateful(std::array::len(arr), s, |s1, i| f(s1, i, arr[i]));
+
+// collect st_j
+let rho_pi_loop = |(s, st)| new_array_stateful(25, s, |s1, i| if i == 0 { (s1, st[0]) } else { rho_pi(s1, st, i - 1) } );
+// rearrange st_j
+let rho_pi_rearrange = |(s, st)| (s, array::new(25, |i| st[PI_INVERSE[i]]));
+
 // chi
-// TODO: make sure that modulus has the same precedence as multiplication
-let chi = |st| array::map_enumerated(st, |idx, elem| { // int[25] -> int[25]
+let chi = |(s, st)| map_enumerated_stateful(st, s, |s1, idx, elem| {
     let i = idx / 5;
     let j = idx % 5;
-    xor(st[idx], and(not(st[i * 5 + (j + 1) % 5]), st[i * 5 + (j + 2) % 5]))
+    xor(and(not((s1, st[i * 5 + (j + 1) % 5])), st[i * 5 + (j + 2) % 5]), st[idx])
 });
 
 // ln 85 - 86
 // iota
-let iota = |st, r| array::map_enumerated(st, |idx, elem| if idx == 0 { xor(elem, RC[r]) } else { elem } ); // int[25], int -> int[25]
+let iota: (int, Gate[]), int -> (int, Gate[]) = |(s, st), r| map_enumerated_stateful(st, s, |s1, idx, elem| if idx == 0 { xor((s1, elem), RC[r]) } else { (s1, elem) } ); // int[25], int -> int[25]
 
 // ln 51 - 87
-let r_loop = |st| utils::fold(24, |i| i, st, |acc, r| iota(chi(rho_pi_rearrange(rho_pi_loop(theta_st(acc)))), r) ); // int[25] -> int[25]
+let r_loop = |(s, st)| {
+    let (s_f, g) = utils::fold(24, |i| i, (s, st), |(s2, st2), r| iota(chi(rho_pi_rearrange(rho_pi_loop(theta_st(s2, st)))), r));
+    let _ = std::debug::println("Gates:");
+    let _ = std::debug::println(s_f);
+    g
+};
 
 enum Gate {
     Input(int),
@@ -83,14 +96,14 @@ enum Gate {
     Xor(Gate, Gate),
     And(Gate, Gate),
     Not(Gate),
-    Rotl(Gate, int),
+    Rotl(Gate, int)
 }
 
-let input = |i| Gate::Input(i);
-let and = |a, b| Gate::And(a, b);
-let xor = |a, b| Gate::Xor(a, b);
-let not = |a| Gate::Not(a);
-let rotl64 = |a, n| Gate::Rotl(a, n);
+let input: int, int -> (int, Gate) = |s, i| (s + 1, Gate::Input(i));
+let and = |(s, a), b| (s + 1, Gate::And(a, b));
+let xor = |(s, a), b| (s + 1, Gate::Xor(a, b)); // TODO create ID
+let not = |(s, a)| (s + 1, Gate::Not(a));
+let rotl64 = |(s, a), n| (s + 1, Gate::Rotl(a, n));
 
 let gate_count: Gate -> int = |g| match g {
     Gate::Input(_) => 1,
@@ -114,7 +127,7 @@ let gate_to_string: Gate -> string = |g| match g {
 machine Main { 
     let x;
 
-    let inputs = std::array::new(25, |i| input(i));
+    let inputs = new_array_stateful(25, 0, |s, i| input(s, i));
     let circuit = r_loop(inputs);
     std::debug::println("Gate count:");
     std::debug::println(std::array::sum(std::array::map(circuit, |g| gate_count(g))));
