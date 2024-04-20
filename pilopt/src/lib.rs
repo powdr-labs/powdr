@@ -89,7 +89,7 @@ impl ReferencedSymbols for FunctionValueDefinition {
             FunctionValueDefinition::TypeDeclaration(enum_decl) => enum_decl.symbols(),
             FunctionValueDefinition::TypeConstructor(enum_decl, _) => {
                 // This is the type constructor of an enum variant, it references the enum itself.
-                Box::new(once(enum_decl.into()))
+                Box::new(once(enum_decl.name.as_str().into()))
             }
             FunctionValueDefinition::Expression(TypedExpression {
                 type_scheme: Some(type_scheme),

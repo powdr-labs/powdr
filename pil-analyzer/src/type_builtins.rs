@@ -140,6 +140,6 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
         Type::Array(_) => &["Add"],
         Type::Tuple(_) => &[],
         Type::Function(_) => &[],
-        Type::TypeVar(_) | Type::NamedType(_) => unreachable!(),
+        Type::TypeVar(_) | Type::NamedType(_, _) => unreachable!(),
     }
 }

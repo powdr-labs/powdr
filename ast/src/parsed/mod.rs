@@ -9,6 +9,7 @@ use std::{
     collections::BTreeSet,
     iter::{empty, once},
     ops,
+    str::FromStr,
 };
 
 use derive_more::Display;
@@ -18,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use self::{
     asm::{Part, SymbolPath},
-    types::{FunctionType, Type, TypeScheme},
+    types::{FunctionType, Type, TypeBounds, TypeScheme},
     visitor::Children,
 };
 use crate::SourceRef;
@@ -128,7 +129,7 @@ impl PilStatement {
             | PilStatement::LetStatement(_, name, _, _) => {
                 Box::new(once((name, None, SymbolCategory::Value)))
             }
-            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants }) => Box::new(
+            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants, .. }) => Box::new(
                 once((name, None, SymbolCategory::Type)).chain(
                     variants
                         .iter()
@@ -224,6 +225,7 @@ impl Children<Expression> for PilStatement {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EnumDeclaration<E = u64> {
     pub name: String,
+    pub type_vars: TypeBounds,
     pub variants: Vec<EnumVariant<E>>,
 }
 
@@ -253,15 +255,24 @@ pub struct EnumVariant<E = u64> {
 
 impl<E: Clone> EnumVariant<E> {
     /// Returns the type of the constructor function for this variant
-    /// given the name of the enum type.
-    pub fn constructor_type(&self, type_name: SymbolPath) -> Type<E> {
-        match &self.fields {
-            None => Type::NamedType(type_name),
+    /// given the enum type.
+    pub fn constructor_type(&self, enum_decl: &EnumDeclaration) -> TypeScheme<E> {
+        let name = SymbolPath::from_str(&enum_decl.name).unwrap();
+        let vars = enum_decl.type_vars.clone();
+        let generic_args =
+            (!vars.is_empty()).then(|| vars.vars().cloned().map(Type::TypeVar).collect::<Vec<_>>());
+
+        let named_type = Type::NamedType(name, generic_args);
+
+        let ty = match &self.fields {
+            None => named_type,
             Some(fields) => Type::Function(FunctionType {
                 params: (*fields).clone(),
-                value: Box::new(Type::NamedType(type_name)),
+                value: named_type.into(),
             }),
-        }
+        };
+
+        TypeScheme { vars, ty }
     }
 }
 
