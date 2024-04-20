@@ -75,7 +75,7 @@ let rho_pi_rearrange = |(s, st)| (s, array::new(25, |i| st[PI_INVERSE[i]]));
 let chi = |(s, st)| map_enumerated_stateful(st, s, |s1, idx, elem| {
     let i = idx / 5;
     let j = idx % 5;
-    xor(and(not((s1, st[i * 5 + (j + 1) % 5])), st[i * 5 + (j + 2) % 5]), st[idx])
+    xor(and_not((s, st[i * 5 + (j + 1) % 5]), st[i * 5 + (j + 2) % 5]), st[idx])
 });
 
 // ln 85 - 86
@@ -94,23 +94,20 @@ enum Gate {
     Input(int),
     Constant(int),
     Xor(Gate, Gate),
-    And(Gate, Gate),
-    Not(Gate),
+    AndNot(Gate, Gate),
     Rotl(Gate, int)
 }
 
 let input: int, int -> (int, Gate) = |s, i| (s + 1, Gate::Input(i));
-let and = |(s, a), b| (s + 1, Gate::And(a, b));
 let xor = |(s, a), b| (s + 1, Gate::Xor(a, b)); // TODO create ID
-let not = |(s, a)| (s + 1, Gate::Not(a));
+let and_not = |(s, a), b| (s + 1, Gate::AndNot(a, b));
 let rotl64 = |(s, a), n| (s + 1, Gate::Rotl(a, n));
 
 let gate_count: Gate -> int = |g| match g {
     Gate::Input(_) => 1,
     Gate::Constant(_) => 1,
-    Gate::Xor(a, b) => gate_count(a) + gate_count(b),
-    Gate::And(a, b) => gate_count(a) + gate_count(b),
-    Gate::Not(a) => gate_count(a) + 1,
+    Gate::Xor(a, b) => gate_count(a) + gate_count(b) + 1,
+    Gate::AndNot(a, b) => gate_count(a) + gate_count(b) + 1,
     Gate::Rotl(a, _) => gate_count(a) + 1,
 };
 
@@ -118,8 +115,7 @@ let gate_to_string: Gate -> string = |g| match g {
     Gate::Input(_) => "input",
     Gate::Constant(_) => "const",
     Gate::Xor(a, b) => "(" + gate_to_string(a) + " ^ " + gate_to_string(b) + ")",
-    Gate::And(a, b) => "(" + gate_to_string(a) + " & " + gate_to_string(b) + ")",
-    Gate::Not(a) => "~" + gate_to_string(a),
+    Gate::AndNot(a, b) => "(~" + gate_to_string(a) + " & " + gate_to_string(b) + ")",
     Gate::Rotl(a, _) => "rotl(" + gate_to_string(a) + ")",
 };
 
@@ -131,4 +127,5 @@ machine Main {
     let circuit = r_loop(inputs);
     std::debug::println("Gate count:");
     std::debug::println(std::array::sum(std::array::map(circuit, |g| gate_count(g))));
+    std::debug::println(gate_to_string(circuit[1]));
 }
