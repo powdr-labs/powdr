@@ -16,9 +16,16 @@ mod test {
     #[test]
     fn test_parentheses_simple() {
         let test_cases: Vec<TestCase> = vec![
+            // Complete line
+            ("let t = ((x + y) * z);", "let t = (x + y) * z;"),
+            // Don't add extra
             ("-x + y * !z;", "-x + y * !z;"),
             ("x = (y <= z);", "x = (y <= z);"),
+            ("x + y + z;", "x + y + z;"),
+            ("x * y * z;", "x * y * z;"),
+            ("x / y / z;", "x / y / z;"),
             // Remove unneeded
+            ("(-x) + y * (!z);", "-x + y * !z;"),
             ("(x * y) * z;", "x * y * z;"),
             ("(x / y) / z;", "x / y / z;"),
             ("x ** (y ** z);", "x ** (y ** z);"),
@@ -32,10 +39,6 @@ mod test {
             ("(x + y) * z;", "(x + y) * z;"),
             ("((x + y) * z);", "(x + y) * z;"),
             ("-(x + y);", "-(x + y);"),
-            // Don't add extra
-            ("x + y + z;", "x + y + z;"),
-            ("x * y * z;", "x * y * z;"),
-            ("x / y / z;", "x / y / z;"),
         ];
 
         for test_case in test_cases {
