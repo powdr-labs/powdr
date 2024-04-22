@@ -918,10 +918,9 @@ impl<T: FieldElement> Pipeline<T> {
 
         let proof = match backend.prove(&witness, existing_proof, witgen_callback) {
             Ok(proof) => proof,
-            Err(powdr_backend::Error::BackendError(e)) => {
+            Err(e) => {
                 return Err(vec![e.to_string()]);
             }
-            _ => panic!(),
         };
 
         drop(backend);

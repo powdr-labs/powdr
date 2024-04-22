@@ -5,5 +5,5 @@ pub(crate) mod circuit_builder;
 pub(crate) mod mock_prover;
 pub(crate) mod prover;
 
-pub use mock_prover::mock_prove;
+pub use mock_prover::*;
 pub use prover::*;

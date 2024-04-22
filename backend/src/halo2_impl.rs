@@ -3,7 +3,9 @@ use std::{io, path::Path};
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_halo2::{generate_setup, Halo2Prover, Params, ProofType};
+use powdr_halo2::{
+    generate_setup, read_verification_key, Halo2Mock, Halo2Prover, Params, ProofType,
+};
 use powdr_number::{DegreeType, FieldElement};
 
 pub(crate) struct Halo2ProverFactory;
@@ -19,16 +21,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
         verification_app_key: Option<&mut dyn io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
-        let proof_type = match options.as_str() {
-            "" | "poseidon" => ProofType::Poseidon,
-            "snark_single" => ProofType::SnarkSingle,
-            "snark_aggr" => ProofType::SnarkAggr,
-            _ => {
-                return Err(Error::BackendError(format!(
-                    "Invalid proof type: {options}"
-                )))
-            }
-        };
+        let proof_type = ProofType::from(options);
         let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup, proof_type)?);
         if let Some(vk) = verification_key {
             halo2.add_verification_key(vk);
@@ -113,27 +106,18 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
         fixed: &'a [(String, Vec<F>)],
         _output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
-        verification_key: Option<&mut dyn io::Read>,
+        _verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
-        _options: BackendOptions,
+        options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         if setup.is_some() {
             return Err(Error::NoSetupAvailable);
         }
-        if verification_key.is_some() {
-            return Err(Error::NoVerificationAvailable);
-        }
-        if verification_app_key.is_some() {
-            return Err(Error::NoAggregationAvailable);
-        }
+        let vkey = verification_app_key
+            .map(|vkey_file| read_verification_key(&ProofType::from(options), pil, vkey_file));
 
-        Ok(Box::new(Halo2Mock { pil, fixed }))
+        Ok(Box::new(Halo2Mock::new(pil, fixed, setup, vkey).unwrap()))
     }
-}
-
-pub struct Halo2Mock<'a, F: FieldElement> {
-    pil: &'a Analyzed<F>,
-    fixed: &'a [(String, Vec<F>)],
 }
 
 impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<'a, T> {
@@ -143,11 +127,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<'a, T> {
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Proof, Error> {
-        if prev_proof.is_some() {
-            return Err(Error::NoAggregationAvailable);
-        }
-
-        powdr_halo2::mock_prove(self.pil, self.fixed, witness, witgen_callback)
+        self.prove(witness, prev_proof, witgen_callback)
             .map_err(Error::BackendError)?;
 
         Ok(vec![])

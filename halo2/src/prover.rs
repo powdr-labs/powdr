@@ -58,6 +58,17 @@ pub enum ProofType {
     SnarkAggr,
 }
 
+impl From<String> for ProofType {
+    fn from(s: String) -> Self {
+        match s.as_str() {
+            "" | "poseidon" => Self::Poseidon,
+            "snark_single" => Self::SnarkSingle,
+            "snark_aggr" => Self::SnarkAggr,
+            _ => panic!("Invalid proof type: {s}"),
+        }
+    }
+}
+
 /// Create a halo2 proof for a given PIL, fixed column values and witness column
 /// values. We use KZG ([GWC variant](https://eprint.iacr.org/2019/953)) and
 /// Keccak256
@@ -78,7 +89,29 @@ pub struct Halo2Prover<'a, F> {
     proof_type: ProofType,
 }
 
-fn degree_bits(degree: DegreeType) -> u32 {
+pub fn read_verification_key<F: FieldElement>(
+    proof_type: &ProofType,
+    pil: &Analyzed<F>,
+    mut vkey: &mut dyn io::Read,
+) -> VerifyingKey<G1Affine> {
+    match proof_type {
+        ProofType::Poseidon | ProofType::SnarkSingle => {
+            VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PowdrCircuit<F>>(
+                &mut vkey,
+                SerdeFormat::Processed,
+                pil.clone().into(),
+            )
+            .unwrap()
+        }
+        ProofType::SnarkAggr => VerifyingKey::<G1Affine>::read::<
+            &mut dyn io::Read,
+            aggregation::AggregationCircuit,
+        >(&mut vkey, SerdeFormat::Processed, ())
+        .unwrap(),
+    }
+}
+
+pub fn degree_bits(degree: DegreeType) -> u32 {
     DegreeType::BITS - degree.leading_zeros() + 1
 }
 
@@ -338,22 +371,8 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         Ok(proof)
     }
 
-    pub fn add_verification_key(&mut self, mut vkey: &mut dyn io::Read) {
-        let vkey = match self.proof_type {
-            ProofType::Poseidon | ProofType::SnarkSingle => {
-                VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PowdrCircuit<F>>(
-                    &mut vkey,
-                    SerdeFormat::Processed,
-                    self.analyzed.clone().into(),
-                )
-                .unwrap()
-            }
-            ProofType::SnarkAggr => VerifyingKey::<G1Affine>::read::<
-                &mut dyn io::Read,
-                aggregation::AggregationCircuit,
-            >(&mut vkey, SerdeFormat::Processed, ())
-            .unwrap(),
-        };
+    pub fn add_verification_key(&mut self, vkey: &mut dyn io::Read) {
+        let vkey = read_verification_key(&self.proof_type, self.analyzed, vkey);
         self.vkey = Some(vkey);
     }
 
