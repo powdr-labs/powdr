@@ -632,9 +632,13 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     .push(evaluate_literal(n.clone(), ty, &self.type_args)?)
             }
             Expression::String(s) => self.value_stack.push(Value::String(s.clone()).into()),
+            Expression::BinaryOperation(l, _, r) => {
+                self.op_stack.push(Operation::Combine(expr, 2));
+                self.op_stack.push(Operation::Expand(r));
+                self.expand(l)?;
+            }
             Expression::Tuple(_)
             | Expression::ArrayLiteral(_)
-            | Expression::BinaryOperation(_, _, _)
             | Expression::UnaryOperation(_, _)
             | Expression::IndexAccess(_)
             | Expression::FunctionCall(_) => {
