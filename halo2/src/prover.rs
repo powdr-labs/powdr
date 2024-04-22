@@ -268,10 +268,8 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let circuit_app = PowdrCircuit::new(self.analyzed, self.fixed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
-        let publics = vec![circuit_app.instance_column()];
 
-        assert_eq!(publics.len(), 1);
-        if !publics[0].is_empty() {
+        if circuit_app.has_publics() {
             unimplemented!("Public inputs are not supported yet");
         }
 
@@ -322,7 +320,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             &vk_aggr,
             &self.params,
             &proof,
-            &publics,
+            &agg_circuit_with_proof.instances(),
         ) {
             Ok(_) => {}
             Err(e) => {
@@ -350,14 +348,11 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
                 )
                 .unwrap()
             }
-            ProofType::SnarkAggr => {
-                VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, aggregation::AggregationCircuit>(
-                    &mut vkey,
-                    SerdeFormat::Processed,
-                    ()
-                )
-                .unwrap()
-            }
+            ProofType::SnarkAggr => VerifyingKey::<G1Affine>::read::<
+                &mut dyn io::Read,
+                aggregation::AggregationCircuit,
+            >(&mut vkey, SerdeFormat::Processed, ())
+            .unwrap(),
         };
         self.vkey = Some(vkey);
     }
