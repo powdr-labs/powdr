@@ -17,7 +17,7 @@ pub(crate) fn u32_to_be(from: &[u32; 8], to: &mut [u8; 32]) {
     }
 }
 
-/// Calculate `a*b + c = hi*2**256 + lo` for 256 bit values.
+/// Calculate `a*b + c = hi*2**256 + lo` for 256 bit values (as u8 big-endian arrays).
 /// Returns `(hi, lo)`.
 pub fn affine_256_u8_be(mut a: [u8; 32], mut b: [u8; 32], c: [u8; 32]) -> ([u8; 32], [u8; 32]) {
     let mut a1: [u32; 8] = Default::default();
@@ -41,7 +41,21 @@ pub fn affine_256_u8_be(mut a: [u8; 32], mut b: [u8; 32], c: [u8; 32]) -> ([u8; 
     (a, b)
 }
 
-/// Calculate `a*b + c = hi*2**256 + lo` for 256 bit values.
+/// Calculate `a*b + c = hi*2**256 + lo` for 256 bit values (as u8 little-endian arrays).
+/// Returns `(hi, lo)`.
+pub fn affine_256_u8_le(mut a: [u8; 32], mut b: [u8; 32], c: [u8; 32]) -> ([u8; 32], [u8; 32]) {
+    unsafe {
+        asm!("ecall",
+             in("a0") a.as_mut_ptr() as *mut [u32; 8],
+             in("a1") b.as_mut_ptr() as *mut [u32; 8],
+             in("a2") c.as_ptr() as *const [u32; 8],
+             in("t0") u32::from(Syscall::Affine256));
+    }
+
+    (a, b)
+}
+
+/// Calculate `a*b + c = hi*2**256 + lo` for 256 bit values (as u32 little-endian arrays).
 /// Returns `(hi, lo)`.
 pub fn affine_256_u32_le(
     mut a: [u32; 8],
