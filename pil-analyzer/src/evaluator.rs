@@ -15,8 +15,8 @@ use powdr_ast::{
     parsed::{
         display::quote,
         types::{Type, TypeScheme},
-        BinaryOperator, IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern,
-        StatementInsideBlock, UnaryOperator,
+        ArrayLiteral, BinaryOperator, FunctionCall, IfExpression, IndexAccess, LambdaExpression,
+        LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock, UnaryOperator,
     },
     SourceRef,
 };
@@ -632,22 +632,26 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     .push(evaluate_literal(n.clone(), ty, &self.type_args)?)
             }
             Expression::String(s) => self.value_stack.push(Value::String(s.clone()).into()),
+            Expression::Tuple(items) => {
+                self.op_stack.push(Operation::Combine(expr, items.len()));
+                self.op_stack
+                    .extend(items.iter().rev().map(Operation::Expand));
+                // TODO we could directly call expand on the last argument.
+            }
+            Expression::ArrayLiteral(ArrayLiteral { items }) => {
+                self.op_stack.push(Operation::Combine(expr, items.len()));
+                self.op_stack
+                    .extend(items.iter().rev().map(Operation::Expand));
+                // TODO we could directly call expand on the last argument.
+            }
             Expression::BinaryOperation(l, _, r) => {
                 self.op_stack.push(Operation::Combine(expr, 2));
                 self.op_stack.push(Operation::Expand(r));
                 self.expand(l)?;
             }
-            Expression::Tuple(_)
-            | Expression::ArrayLiteral(_)
-            | Expression::UnaryOperation(_, _)
-            | Expression::IndexAccess(_)
-            | Expression::FunctionCall(_) => {
-                let children_count = expr.children().count();
-                self.op_stack.push(Operation::Combine(expr, children_count));
-                self.op_stack.extend(expr.children().map(Operation::Expand));
-                // reverse the newly added items
-                let op_stack_len = self.op_stack.len();
-                self.op_stack[op_stack_len - children_count..].reverse();
+            Expression::UnaryOperation(_, inner) => {
+                self.op_stack.push(Operation::Combine(expr, 1));
+                self.expand(inner)?;
             }
             Expression::LambdaExpression(lambda) => {
                 // TODO only copy the part of the environment that is actually referenced?
@@ -659,6 +663,21 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     })
                     .into(),
                 )
+            }
+            Expression::IndexAccess(IndexAccess { array, index }) => {
+                self.op_stack.push(Operation::Combine(expr, 2));
+                self.op_stack.push(Operation::Expand(index));
+                self.expand(array)?;
+            }
+            Expression::FunctionCall(FunctionCall {
+                function,
+                arguments,
+            }) => {
+                self.op_stack
+                    .push(Operation::Combine(expr, 1 + arguments.len()));
+                self.op_stack
+                    .extend(arguments.iter().rev().map(Operation::Expand));
+                self.expand(function)?;
             }
             Expression::MatchExpression(condition, _)
             | Expression::IfExpression(IfExpression { condition, .. }) => {
