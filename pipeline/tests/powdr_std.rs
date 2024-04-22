@@ -55,6 +55,12 @@ fn memory_test() {
 }
 
 #[test]
+fn permutation_via_challenges() {
+    let f = "std/permutation_via_challenges.asm";
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn write_once_memory_test() {
     let f = "std/write_once_memory_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();

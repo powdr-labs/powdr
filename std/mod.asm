@@ -8,6 +8,7 @@ mod field;
 mod hash;
 mod math;
 mod memory;
+mod permutation;
 mod prover;
 mod shift;
 mod split;
