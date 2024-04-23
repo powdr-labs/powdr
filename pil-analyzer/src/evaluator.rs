@@ -516,11 +516,12 @@ pub trait SymbolLookup<'a, T> {
     }
 }
 
+/// Operations to be performed by the evaluator.
 enum Operation<'a, T> {
     /// Expand a complex expression or evaluate a leaf expression.
     Expand(&'a Expression),
-    /// An non-leaf expression that has been expanded and can be evaluated
-    /// as soon as its sub-expressions have been evaluated.
+    /// Evaluate an expanded non-leaf expression once all its
+    /// sub-expressions have been evaluated.
     /// The second field is the number of children.
     Combine(&'a Expression, usize),
     /// Truncate the local variables to a given length
@@ -533,10 +534,10 @@ enum Operation<'a, T> {
     AddConstraint(),
 }
 
-// We use a non-recursive algorithm to evaluate potentially recursive expressions.
-// This allows arbitrarily deep recursion in PIL on a physical machine with limited stack.
-// SymbolLookup might still do regular recursive calls into the evaluator,
-// but this is very limited.
+/// We use a non-recursive algorithm to evaluate potentially recursive expressions.
+/// This allows arbitrarily deep recursion in PIL on a physical machine with limited stack.
+/// SymbolLookup might still do regular recursive calls into the evaluator,
+/// but this is very limited.
 struct Evaluator<'a, 'b, T, S: SymbolLookup<'a, T>> {
     symbols: &'b mut S,
     local_vars: Vec<Arc<Value<'a, T>>>,
@@ -577,6 +578,8 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
         ev.evaluate()
     }
 
+    /// The main evaluation loop. Repeatedly takes the topmost element from the
+    /// operation stack and performs the operation until the operation stack is empty.
     fn evaluate(&mut self) -> Result<Arc<Value<'a, T>>, EvalError> {
         while let Some(op) = self.op_stack.pop() {
             match op {
@@ -618,6 +621,8 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
         Ok(self.value_stack.pop().unwrap())
     }
 
+    /// Evaluate a leaf expression or expand a complex expression.
+    /// Modifies the operation and value stack.
     fn expand(&mut self, expr: &'a Expression) -> Result<(), EvalError> {
         match expr {
             Expression::Reference(reference) => {
@@ -681,7 +686,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             }
             Expression::MatchExpression(condition, _)
             | Expression::IfExpression(IfExpression { condition, .. }) => {
-                // Only return the scrutinee / condition for now, we do not want to evaluate all arms.
+                // Only handle the scrutinee / condition for now, we do not want to evaluate all arms.
                 self.op_stack.extend([Operation::Combine(expr, 1)]);
                 self.expand(condition)?;
             }
@@ -733,6 +738,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
         })
     }
 
+    /// Evaluate a complex expression given the values for all sub-expressions.
     fn combine(
         &mut self,
         expr: &'a Expression,
@@ -790,29 +796,27 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 let [array, index] = inner_values.as_slice() else {
                     panic!()
                 };
-                match array.as_ref() {
-                        Value::Array(elements) => {
-                            match index.as_ref() {
-                                Value::Integer(index)
-                                    if index.is_negative()
-                                        || *index >= (elements.len() as u64).into() =>
-                                {
-                                    Err(EvalError::OutOfBounds(format!(
-                                        "Index access out of bounds: Tried to access element {index} of array of size {} in: {expr}.",
-                                        elements.len()
-                                    )))?
-                                }
-                                Value::Integer(index) => {
-                                    elements[usize::try_from(index).unwrap()].clone()
-                                }
-                                index => Err(EvalError::TypeError(format!(
-                                        "Expected integer for array index access but got {index}: {}",
-                                        index.type_formatted()
-                                )))?,
-                            }
-                        }
-                        e => return Err(EvalError::TypeError(format!("Expected array, but got {e}"))),
+                let Value::Array(elements) = array.as_ref() else {
+                    panic!()
+                };
+                match index.as_ref() {
+                    Value::Integer(index)
+                        if index.is_negative()
+                            || *index >= (elements.len() as u64).into() =>
+                    {
+                        Err(EvalError::OutOfBounds(format!(
+                            "Index access out of bounds: Tried to access element {index} of array of size {} in: {expr}.",
+                            elements.len()
+                        )))?
                     }
+                    Value::Integer(index) => {
+                        elements[usize::try_from(index).unwrap()].clone()
+                    }
+                    index => Err(EvalError::TypeError(format!(
+                            "Expected integer for array index access but got {index}: {}",
+                            index.type_formatted()
+                    )))?,
+                }
             }
             Expression::FunctionCall(_) => {
                 let [function, arguments @ ..] = inner_values.as_slice() else {
