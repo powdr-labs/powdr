@@ -101,11 +101,11 @@ let chi: int[] -> int[] = |st| array::map_enumerated(st, |idx, elem| { // int[25
 let iota: int[], int -> int[] = |st, r| array::map_enumerated(st, |idx, elem| if idx == 0 { xor(elem, RC[r]) } else { elem } ); // int[25], int -> int[25]
 
 // ln 51 - 87
-let r_loop: int[] -> int[] = |st| utils::fold(24, |i| i, st, |acc, r| iota(chi(rho_pi_rearrange(rho_pi_loop(theta_st(acc)))), r) ); // int[25] -> int[25]
+let keccakf_inner: int[] -> int[] = |st| utils::fold(24, |i| i, st, |acc, r| iota(chi(rho_pi_rearrange(rho_pi_loop(theta_st(acc)))), r) ); // int[25] -> int[25]
 
 // ln 42 - 94
 // compression function
-let keccakf: int[] -> int[] = |st| swap_u64_loop(r_loop(swap_u64_loop(st))); // int[25] -> int[25]
+let keccakf: int[] -> int[] = |st| swap_u64_loop(keccakf_inner(swap_u64_loop(st))); // int[25] -> int[25]
 
 // ln 96 - 141
 // TODO: to_bytes and from_bytes are implemented below but I'm not sure if we have existing helper functions to use

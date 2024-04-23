@@ -499,7 +499,7 @@ fn keccak() {
         }
     }
 
-    // Test r_loop
+    // Test keccakf_inner
     let padded_endianness_swapped_input: Vec<u64> = vec![
         0x73657461726b6f7a,
         0x1,
@@ -528,13 +528,13 @@ fn keccak() {
         0x0,
     ];
 
-    let r_loop_result = evaluate_function(
+    let keccakf_inner_result = evaluate_function(
         &analyzed,
-        "r_loop",
+        "keccakf_inner",
         vec![Arc::new(array_argument(padded_endianness_swapped_input))],
     );
 
-    let r_loop_expected: Vec<u64> = vec![
+    let keccakf_inner_expected: Vec<u64> = vec![
         0xb6dc406d97d185ca,
         0x836e59c6c8ec3bca,
         0x6a01cf85414f77c0,
@@ -562,7 +562,7 @@ fn keccak() {
         0xdf84d5da988117d2,
     ];
 
-    compare_integer_array_evaluations(&r_loop_result, &array_argument(r_loop_expected));
+    compare_integer_array_evaluations(&keccakf_inner_result, &array_argument(keccakf_inner_expected));
 
     // Test keccakf
     let padded_input: Vec<u64> = vec![
