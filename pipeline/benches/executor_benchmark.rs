@@ -153,12 +153,8 @@ fn evaluator_benchmark(c: &mut Criterion) {
     }
 
     let sort_analyzed: Analyzed<GoldilocksField> = {
-        // airgen needs a main machine.
-        let code = "
-            let sort_int: int[] -> int[] = |x| std::array::sort(x, |a, b| a < b);
-            machine Main { }
-        "
-        .to_string();
+        let code =
+            "let sort_int: int[] -> int[] = |x| std::array::sort(x, |a, b| a < b);".to_string();
         let mut pipeline = Pipeline::default().from_asm_string(code, None);
         pipeline.compute_analyzed_pil().unwrap().clone()
     };
