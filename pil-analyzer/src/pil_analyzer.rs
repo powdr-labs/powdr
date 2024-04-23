@@ -5,10 +5,11 @@ use std::iter::once;
 use std::path::{Path, PathBuf};
 
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
-use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::types::{Type, TypeScheme};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+    self, ArrayLiteral, FunctionCall, FunctionKind, IndexAccess, LambdaExpression, MatchArm,
+    PILFile, Pattern, PilStatement, SymbolCategory,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
@@ -46,6 +47,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     analyzer.side_effect_check();
+    analyzer.match_exhaustiveness_check();
     analyzer.type_check();
     analyzer.condense::<T>()
 }
@@ -172,6 +174,62 @@ impl PILAnalyzer {
                 })
                 .unwrap_or_else(|err| panic!("Error checking side-effects of identity {id}: {err}"))
         }
+    }
+
+    pub fn match_exhaustiveness_check(&self) {
+        for (name, (symbol, value)) in &self.definitions {
+            let Some(value) = value else { continue };
+
+            for ch in value.children() {
+                if let Expression::MatchExpression(match_expr, arms) = ch {
+                    let match_exhaustiveness = self.is_exhaustive_match(match_expr, arms);
+                    if !match_exhaustiveness {
+                        panic!("Match expression in {name} is not exhaustive");
+                    }
+                }
+            }
+        }
+
+        for id in &self.identities {}
+    }
+
+    fn is_exhaustive_match(
+        &self,
+        match_expr: &Expression,
+        arms: &Vec<MatchArm<Expression>>,
+    ) -> bool {
+        true
+
+        /*
+        match match_expr {
+            Expression::Reference(_)
+            | Expression::PublicReference(_)
+            | Expression::LambdaExpression(_)
+            | Expression::IfExpression(_)
+            | Expression::MatchExpression(_, _)
+            | Expression::BlockExpression(_, _)
+            | Expression::FreeInput(_) => unreachable!(), // TODO some of then need to be checked
+
+            Expression::Number(_, _)
+            | Expression::String(_)
+            | Expression::BinaryOperation(_, _, _)
+            | Expression::UnaryOperation(_, _) => {
+                arms.iter().any(|arm| arm.pattern == Pattern::CatchAll)
+            }
+            Expression::Tuple(v) => {
+                self.tuple_match_exhaustiveness(v.iter(), arms.iter().map(|arm| &arm.pattern))
+            }
+            Expression::ArrayLiteral(ArrayLiteral { items }) => {
+                self.array_match_exhaustiveness(items.iter(), arms.iter().map(|arm| &arm.pattern))
+            }
+
+            Expression::FunctionCall(FunctionCall {
+                function,
+                arguments,
+            }) => {}
+            Expression::IndexAccess(IndexAccess { array, index }) => {}
+        }
+         */
     }
 
     pub fn type_check(&mut self) {
