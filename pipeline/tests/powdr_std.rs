@@ -1,8 +1,6 @@
-use std::{sync::Arc};
-
+use std::sync::Arc;
 
 use powdr_number::{BigInt, GoldilocksField};
-
 
 use powdr_pipeline::test_util::{
     evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof, std_analyzed,
@@ -208,6 +206,7 @@ fn ff_inv_big() {
 fn keccakf() {
     use powdr_pil_analyzer::evaluator::Value;
 
+    // Helper
     fn compare_integer_array_evaluations<T>(this: &Value<T>, other: &Value<T>) {
         if let (Value::Array(ref this), Value::Array(ref other)) = (this, other) {
             assert_eq!(this.len(), other.len());
@@ -225,12 +224,93 @@ fn keccakf() {
         }
     }
 
+    // Test keccakf
+    let analyzed = std_analyzed::<GoldilocksField>();
+
+    let keccakf_input: Vec<u64> = vec![
+        0x7a6f6b7261746573,
+        0x0100000000000000,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x80,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+    ];
+
+    let keccakf_result = evaluate_function(
+        &analyzed,
+        "test_data::std::keccak::keccakf",
+        vec![Arc::new(Value::Array(
+            keccakf_input
+                .iter()
+                .map(|x| Arc::new(Value::Integer(BigInt::from(*x))))
+                .collect(),
+        ))],
+    );
+
+    let keccakf_expected: Vec<u64> = vec![
+        0xca85d1976d40dcb6,
+        0xca3becc8c6596e83,
+        0xc0774f4185cf016a,
+        0x5834f5856a37f39,
+        0xba0c0d950a14adc8,
+        0x3f846cb384c5ac3d,
+        0x468175ad6f468a42,
+        0x4cafafcfb0f98aa6,
+        0xa9f23a0867a5bbff,
+        0xa451805931d680b8,
+        0x95723ea91d443f68,
+        0xc6171b64d2425bbb,
+        0x3c446420dc07ecf4,
+        0x8b3f9597fb9e9521,
+        0x76583338b6e9c531,
+        0xed63f92b1de095aa,
+        0x28d8ec8d4b7b1182,
+        0x7ff5471d8755a2e2,
+        0x3b6dbf811c279b65,
+        0xee978bd9e3150b68,
+        0xd975088c68a1158,
+        0xe60713259e1fa4ad,
+        0x5593221f9a52a0f9,
+        0x7fe926809d3dcf17,
+        0xd2178198dad584df,
+    ];
+
+    compare_integer_array_evaluations(
+        &keccakf_result,
+        &Value::Array(
+            keccakf_expected
+                .iter()
+                .map(|x| Arc::new(Value::Integer(BigInt::from(*x))))
+                .collect(),
+        ),
+    );
+
+    // Helper for testing full keccak
     fn test_main(input: Vec<i32>, expected: Vec<i32>) {
         let analyzed = std_analyzed::<GoldilocksField>();
 
         let result = evaluate_function(
             &analyzed,
-            "std::hash::keccak::main",
+            "test_data::std::keccak::main",
             vec![
                 Arc::new(Value::Integer(BigInt::from(32))), // W = 32 (output bytes)
                 Arc::new(Value::Array(
@@ -254,6 +334,7 @@ fn keccakf() {
         );
     }
 
+    // Test full keccak
     let input = vec![
         // The following three test vectors are from Zokrates
         // https://github.com/Zokrates/ZoKrates/blob/develop/zokrates_stdlib/tests/tests/hashes/keccak/keccak.zok
