@@ -14,8 +14,8 @@ machine Main {
     col witness b1(i) query Query::Hint(fe(7 - i));
     col witness b2(i) query Query::Hint(fe(7 - i + 42));
 
-    // TODO: Functions currently cannot add witness columns, so we have to manually
-    // create it here and pass it to permutation(). 
+    // TODO: Functions currently cannot add witness columns at later stages,
+    // so we have to manually create it here and pass it to permutation(). 
     col witness stage(1) z;
     permutation(z, first_four, [a1, a2], 1 - first_four, [b1, b2]);
 }
