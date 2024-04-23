@@ -633,15 +633,19 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::String(s) => self.value_stack.push(Value::String(s.clone()).into()),
             Expression::Tuple(items) => {
                 self.op_stack.push(Operation::Combine(expr));
-                self.op_stack
-                    .extend(items.iter().rev().map(Operation::Expand));
-                // TODO we could directly call expand on the last argument.
+                if !items.is_empty() {
+                    self.op_stack
+                        .extend(items.iter().skip(1).rev().map(Operation::Expand));
+                    self.expand(&items[0])?;
+                }
             }
             Expression::ArrayLiteral(ArrayLiteral { items }) => {
                 self.op_stack.push(Operation::Combine(expr));
-                self.op_stack
-                    .extend(items.iter().rev().map(Operation::Expand));
-                // TODO we could directly call expand on the last argument.
+                if !items.is_empty() {
+                    self.op_stack
+                        .extend(items.iter().skip(1).rev().map(Operation::Expand));
+                    self.expand(&items[0])?;
+                }
             }
             Expression::BinaryOperation(l, _, r) => {
                 self.op_stack.push(Operation::Combine(expr));
