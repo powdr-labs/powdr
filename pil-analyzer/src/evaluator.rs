@@ -621,7 +621,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
         Ok(self.value_stack.pop().unwrap())
     }
 
-    /// Evaluate a leaf expression or expand a complex expression.
+    /// Evaluates a leaf expression or expands a complex expression.
     /// Modifies the operation and value stack.
     fn expand(&mut self, expr: &'a Expression) -> Result<(), EvalError> {
         match expr {
