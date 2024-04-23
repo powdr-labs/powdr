@@ -163,7 +163,7 @@ fn evaluator_benchmark(c: &mut Criterion) {
         pipeline.compute_analyzed_pil().unwrap().clone()
     };
 
-    for l in [20, 1000, 10000, 100000] {
+    for l in [33, 100, 300, 900, 2700] {
         let input = Arc::new(Value::Array(
             (0..l)
                 .rev()
