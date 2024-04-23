@@ -521,7 +521,7 @@ fn keccak() {
 
     let r_loop_result = evaluate_function(
         &analyzed,
-        "keccakf",
+        "r_loop",
         vec![Arc::new(Value::Array(
             padded_input
                 .iter()
@@ -531,31 +531,31 @@ fn keccak() {
     );
 
     let r_loop_expected: Vec<u64> = vec![
-        0x5b11e3eac0fc2626,
-        0xa5ec13c219f981ed,
-        0x39a2e6147ce428b3,
-        0x8283bd0073b916,
-        0x379a1a64f336f47e,
-        0xbd84da6ad1ba099e,
-        0x15fbc97443874726,
-        0x78f62b9c362f04a2,
-        0xacea8e05d5758f61,
-        0xf3ed8245254ce8bb,
-        0x894c0d4f4675d2c6,
-        0xeb648cdd613dbb2c,
-        0x3f6487a1febcd446,
-        0xa84f8aa675309ecc,
-        0x2f28376ba6c284fb,
-        0xea5b4a0e6ffbc90e,
-        0x5545fb20e195d141,
-        0x2332a6d657b54a44,
-        0x6d644de6bdac3a11,
-        0xc10e7baa770d6343,
-        0x93dfbb4ddf5c0d88,
-        0x7c448f54308c6286,
-        0x2d46f60e96385d5,
-        0xd0b5998195737e89,
-        0x88ed4169da11942e,
+        0xb6dc406d97d185ca,
+        0x836e59c6c8ec3bca,
+        0x6a01cf85414f77c0,
+        0x397fa356584f8305,
+        0xc8ad140a950d0cba,
+        0x3dacc584b36c843f,
+        0x428a466fad758146,
+        0xa68af9b0cfafaf4c,
+        0xffbba567083af2a9,
+        0xb880d631598051a4,
+        0x683f441da93e7295,
+        0xbb5b42d2641b17c6,
+        0xf4ec07dc2064443c,
+        0x21959efb97953f8b,
+        0x31c5e9b638335876,
+        0xaa95e01d2bf963ed,
+        0x82117b4b8decd828,
+        0xe2a255871d47f57f,
+        0x659b271c81bf6d3b,
+        0x680b15e3d98b97ee,
+        0x58118ac68850970d,
+        0xada41f9e251307e6,
+        0xf9a0529a1f229355,
+        0x17cf3d9d8026e97f,
+        0xdf84d5da988117d2,
     ];
 
     compare_integer_array_evaluations(
