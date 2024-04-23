@@ -13,6 +13,7 @@ use std::{
 };
 
 use derive_more::Display;
+use itertools::Itertools;
 use powdr_number::{BigInt, BigUint, DegreeType};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -912,6 +913,98 @@ impl Pattern {
                 items == &vec![Pattern::Ellipsis]
             }
             Pattern::Tuple(p) => p.iter().all(|p| p.is_irrefutable()),
+        }
+    }
+
+    fn specialize(&self, constructor: &Self) -> Option<Self> {
+        match (constructor, self) {
+            (Pattern::CatchAll, _) => Some(self.clone()),
+            (Pattern::Ellipsis, _) => Some(self.clone()),
+
+            (Pattern::Number(_), Pattern::Number(x)) => Some(Pattern::Number(x.clone())),
+            (Pattern::String(_), Pattern::String(s)) => Some(Pattern::String(s.clone())),
+
+            (Pattern::Tuple(cons_patterns), Pattern::Tuple(patterns)) => {
+                let specialized: Vec<Pattern> = cons_patterns
+                    .iter()
+                    .zip_longest(patterns.iter())
+                    .map(|zip_result| match zip_result {
+                        itertools::EitherOrBoth::Both(con, pat) => pat.specialize(con),
+                        itertools::EitherOrBoth::Left(con) => Some(con.clone()),
+                        itertools::EitherOrBoth::Right(_) => Some(Pattern::CatchAll),
+                    })
+                    .collect::<Option<Vec<Pattern>>>()?;
+                Some(Pattern::Tuple(specialized))
+            }
+
+            (Pattern::Array(cons_patterns), Pattern::Array(patterns)) => {
+                let mut specialized = Vec::new();
+                //let mut pat_iter = patterns.iter().peekable();
+
+                // I'm sure there's a more elegant way to do this
+                let mut pre_ellipsis = Vec::new();
+                let mut post_ellipsis = Vec::new();
+                let mut seen_ellipsis = false;
+
+                for pat in patterns {
+                    match pat {
+                        Pattern::Ellipsis => seen_ellipsis = true,
+                        _ if !seen_ellipsis => pre_ellipsis.push(pat),
+                        _ if seen_ellipsis => post_ellipsis.push(pat),
+                        _ => {}
+                    }
+                }
+
+                let mut cons_iter = cons_patterns.iter().peekable();
+
+                for pat in pre_ellipsis.iter() {
+                    if let Some(cons) = cons_iter.next() {
+                        if let Some(s) = pat.specialize(cons) {
+                            specialized.push(s);
+                        } else {
+                            return None;
+                        }
+                    }
+                }
+
+                let skip_count = cons_patterns.len() - pre_ellipsis.len() - post_ellipsis.len();
+                for _ in 0..skip_count {
+                    specialized.push(Pattern::CatchAll);
+                    cons_iter.next();
+                }
+
+                for pat in post_ellipsis.iter() {
+                    if let Some(cons) = cons_iter.next() {
+                        if let Some(s) = pat.specialize(cons) {
+                            specialized.push(s);
+                        } else {
+                            return None;
+                        }
+                    }
+                }
+
+                Some(Pattern::Array(specialized))
+            }
+            (Pattern::Variable(_), Pattern::Variable(var)) => Some(Pattern::Variable(var.clone())),
+
+            (
+                Pattern::Enum(cons_name, Some(cons_patterns)),
+                Pattern::Enum(name, Some(patterns)),
+            ) if cons_name == name => {
+                let specialized: Vec<Pattern> = cons_patterns
+                    .iter()
+                    .zip_longest(patterns.iter())
+                    .map(|zip_result| match zip_result {
+                        itertools::EitherOrBoth::Both(con, pat) => pat.specialize(con),
+                        itertools::EitherOrBoth::Left(con) => Some(con.clone()),
+                        itertools::EitherOrBoth::Right(_) => Some(Pattern::CatchAll),
+                    })
+                    .collect::<Option<Vec<Pattern>>>()?;
+                Some(Pattern::Enum(cons_name.clone(), Some(specialized)))
+            }
+
+            // Catch-all case: No specialization possible
+            _ => None,
         }
     }
 }
