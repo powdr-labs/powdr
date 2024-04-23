@@ -124,7 +124,6 @@ fn evaluator_benchmark(c: &mut Criterion) {
     });
 
     let sqrt_analyzed: Analyzed<GoldilocksField> = {
-        // airgen needs a main machine.
         let code = "
             let sqrt: int -> int = |x| sqrt_rec(x, x);
             let sqrt_rec: int, int -> int = |y, x|
@@ -133,7 +132,6 @@ fn evaluator_benchmark(c: &mut Criterion) {
                 } else {
                     sqrt_rec((y + x / y) / 2, x)
                 };
-            machine Main { }
         "
         .to_string();
         let mut pipeline = Pipeline::default().from_asm_string(code, None);
