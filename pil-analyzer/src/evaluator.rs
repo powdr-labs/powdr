@@ -584,12 +584,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
         while let Some(op) = self.op_stack.pop() {
             match op {
                 Operation::Expand(expr) => self.expand(expr)?,
-                Operation::Combine(expr, children) => {
-                    let inner_values = self
-                        .value_stack
-                        .split_off(self.value_stack.len() - children);
-                    self.combine(expr, inner_values)?
-                }
+                Operation::Combine(expr, children) => self.combine(expr, children)?,
                 Operation::TruncateLocals(len) => self.local_vars.truncate(len),
                 Operation::SetEnvironment(new_locals, new_type_args) => {
                     self.local_vars = new_locals;
@@ -739,24 +734,27 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
     }
 
     /// Evaluate a complex expression given the values for all sub-expressions.
-    fn combine(
-        &mut self,
-        expr: &'a Expression,
-        inner_values: Vec<Arc<Value<'a, T>>>,
-    ) -> Result<(), EvalError> {
+    fn combine(&mut self, expr: &'a Expression, children: usize) -> Result<(), EvalError> {
         let value = match expr {
-            Expression::Tuple(_) => Value::Tuple(inner_values).into(),
-            Expression::ArrayLiteral(_) => Value::Array(inner_values).into(),
+            Expression::Tuple(_) => {
+                let inner_values = self
+                    .value_stack
+                    .split_off(self.value_stack.len() - children);
+                Value::Tuple(inner_values).into()
+            }
+            Expression::ArrayLiteral(_) => {
+                let inner_values = self
+                    .value_stack
+                    .split_off(self.value_stack.len() - children);
+                Value::Array(inner_values).into()
+            }
             Expression::BinaryOperation(_, op, _) => {
-                let [left, right] = inner_values.as_slice() else {
-                    panic!()
-                };
-                evaluate_binary_operation(left, *op, right)?
+                let right = self.value_stack.pop().unwrap();
+                let left = self.value_stack.pop().unwrap();
+                evaluate_binary_operation(&left, *op, &right)?
             }
             Expression::UnaryOperation(op, _) => {
-                let [inner] = inner_values.as_slice() else {
-                    panic!()
-                };
+                let inner = self.value_stack.pop().unwrap();
                 match (op, inner.as_ref()) {
                     (UnaryOperator::Minus, Value::FieldElement(e)) => {
                         Value::FieldElement(-*e).into()
@@ -793,9 +791,8 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 }
             }
             Expression::IndexAccess(_) => {
-                let [array, index] = inner_values.as_slice() else {
-                    panic!()
-                };
+                let index = self.value_stack.pop().unwrap();
+                let array = self.value_stack.pop().unwrap();
                 let Value::Array(elements) = array.as_ref() else {
                     panic!()
                 };
@@ -819,19 +816,18 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 }
             }
             Expression::FunctionCall(_) => {
-                let [function, arguments @ ..] = inner_values.as_slice() else {
-                    panic!()
-                };
-                return self.combine_function_call(function.clone(), arguments.to_vec());
+                let arguments = self
+                    .value_stack
+                    .split_off(self.value_stack.len() - (children - 1));
+                let function = self.value_stack.pop().unwrap();
+                return self.combine_function_call(function, arguments);
             }
             Expression::MatchExpression(_, arms) => {
-                let [v] = inner_values.as_slice() else {
-                    panic!()
-                };
+                let v = self.value_stack.pop().unwrap();
                 let (vars, body) = arms
                     .iter()
                     .find_map(|MatchArm { pattern, value }| {
-                        Value::try_match_pattern(v, pattern).map(|vars| (vars, value))
+                        Value::try_match_pattern(&v, pattern).map(|vars| (vars, value))
                     })
                     .ok_or_else(EvalError::NoMatch)?;
                 if !vars.is_empty() {
@@ -844,8 +840,8 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::IfExpression(IfExpression {
                 body, else_body, ..
             }) => {
-                assert_eq!(inner_values.len(), 1);
-                let condition = match inner_values[0].as_ref() {
+                let v = self.value_stack.pop().unwrap();
+                let condition = match v.as_ref() {
                     Value::Bool(b) => Ok(b),
                     x => Err(EvalError::TypeError(format!(
                         "Expected boolean value but got {x}"
