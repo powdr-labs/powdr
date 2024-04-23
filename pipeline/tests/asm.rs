@@ -473,6 +473,15 @@ fn keccak() {
     let analyzed = pipeline.compute_analyzed_pil().unwrap().clone();
 
     // Helper
+    fn array_argument<T>(values: Vec<u64>) -> Value<'static, T> {
+        Value::Array(
+            values
+                .iter()
+                .map(|x| Arc::new(Value::Integer(BigInt::from(*x))))
+                .collect(),
+        )
+    }
+
     fn compare_integer_array_evaluations<T>(this: &Value<T>, other: &Value<T>) {
         if let (Value::Array(ref this), Value::Array(ref other)) = (this, other) {
             assert_eq!(this.len(), other.len());
@@ -491,7 +500,7 @@ fn keccak() {
     }
 
     // Test r_loop
-    let padded_input: Vec<u64> = vec![
+    let padded_endianness_swapped_input: Vec<u64> = vec![
         0x73657461726b6f7a,
         0x1,
         0x0,
@@ -522,12 +531,7 @@ fn keccak() {
     let r_loop_result = evaluate_function(
         &analyzed,
         "r_loop",
-        vec![Arc::new(Value::Array(
-            padded_input
-                .iter()
-                .map(|x| Arc::new(Value::Integer(BigInt::from(*x))))
-                .collect(),
-        ))],
+        vec![Arc::new(array_argument(padded_endianness_swapped_input))],
     );
 
     let r_loop_expected: Vec<u64> = vec![
@@ -558,18 +562,10 @@ fn keccak() {
         0xdf84d5da988117d2,
     ];
 
-    compare_integer_array_evaluations(
-        &r_loop_result,
-        &Value::Array(
-            r_loop_expected
-                .iter()
-                .map(|x| Arc::new(Value::Integer(BigInt::from(*x))))
-                .collect(),
-        ),
-    );
+    compare_integer_array_evaluations(&r_loop_result, &array_argument(r_loop_expected));
 
     // Test keccakf
-    let padded_endianness_swapped_input: Vec<u64> = vec![
+    let padded_input: Vec<u64> = vec![
         0x7a6f6b7261746573,
         0x0100000000000000,
         0x0,
@@ -600,12 +596,7 @@ fn keccak() {
     let keccakf_result = evaluate_function(
         &analyzed,
         "keccakf",
-        vec![Arc::new(Value::Array(
-            padded_endianness_swapped_input
-                .iter()
-                .map(|x| Arc::new(Value::Integer(BigInt::from(*x))))
-                .collect(),
-        ))],
+        vec![Arc::new(array_argument(padded_input))],
     );
 
     let keccakf_expected: Vec<u64> = vec![
@@ -636,15 +627,7 @@ fn keccak() {
         0xd2178198dad584df,
     ];
 
-    compare_integer_array_evaluations(
-        &keccakf_result,
-        &Value::Array(
-            keccakf_expected
-                .iter()
-                .map(|x| Arc::new(Value::Integer(BigInt::from(*x))))
-                .collect(),
-        ),
-    );
+    compare_integer_array_evaluations(&keccakf_result, &array_argument(keccakf_expected));
 
     // Helper for testing full keccak
     fn test_main(analyzed: &Analyzed<GoldilocksField>, input: Vec<i32>, expected: Vec<i32>) {
@@ -665,12 +648,7 @@ fn keccak() {
 
         compare_integer_array_evaluations(
             &result,
-            &Value::Array(
-                expected
-                    .iter()
-                    .map(|x| Arc::new(Value::Integer(BigInt::from(*x))))
-                    .collect(),
-            ),
+            &array_argument(expected.iter().map(|x| *x as u64).collect()),
         );
     }
 
