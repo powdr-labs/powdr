@@ -293,14 +293,13 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let pk_aggr = keygen_pk(&self.params, vk_aggr.clone(), &agg_circuit).unwrap();
 
         log::info!("Generating compressed snark verifier...");
-        /*
+
         let deployment_code = aggregation::gen_aggregation_evm_verifier(
             &self.params,
             &pk_aggr.get_vk(),
             aggregation::AggregationCircuit::num_instance(),
             aggregation::AggregationCircuit::accumulator_indices(),
         );
-        */
 
         log::info!("Generating aggregated proof...");
         let start = Instant::now();
@@ -316,6 +315,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let duration = start.elapsed();
         log::info!("Time taken: {:?}", duration);
 
+        println!("Publics: {:?}", &agg_circuit_with_proof.instances());
         match self.verify_inner::<_, EvmTranscript<G1Affine, _, _, _>>(
             &vk_aggr,
             &self.params,
@@ -328,10 +328,8 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             }
         }
 
-        /*
         log::info!("Verifying aggregated proof in the EVM...");
         evm_verify(deployment_code, agg_circuit_with_proof.instances(), &proof);
-        */
 
         log::info!("Proof aggregation done.");
 
