@@ -356,7 +356,7 @@ impl<'a, T: Display> Display for Value<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Bool(b) => write!(f, "{b}"),
-            Value::Integer(x) => write!(f, "{:#x}", x),
+            Value::Integer(x) => write!(f, "{x}"),
             Value::FieldElement(x) => write!(f, "{x}"),
             Value::String(s) => write!(f, "{}", quote(s)),
             Value::Tuple(items) => write!(f, "({})", items.iter().format(", ")),
