@@ -1,9 +1,9 @@
-use std::sync::Arc;
+
 
 use powdr_number::{BigInt, GoldilocksField};
 
 use powdr_pipeline::test_util::{
-    evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof, std_analyzed,
+    evaluate_integer_function, gen_estark_proof, gen_halo2_proof, std_analyzed,
     test_halo2, verify_test_file,
 };
 use test_log::test;
