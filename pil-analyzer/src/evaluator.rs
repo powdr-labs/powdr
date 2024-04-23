@@ -531,7 +531,7 @@ enum Operation<'a, T> {
     /// Evaluate a let statement, adding matched pattern variables to the local variables.
     LetStatement(&'a LetStatementInsideBlock<Expression>),
     /// Add a constraint to the constraint set.
-    AddConstraint(),
+    AddConstraint,
 }
 
 /// We use a non-recursive algorithm to evaluate potentially recursive expressions.
