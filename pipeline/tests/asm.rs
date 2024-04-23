@@ -464,10 +464,7 @@ fn keccak() {
     use std::{fs, sync::Arc};
 
     // Set up the file to test
-    let code_path = String::from(format!(
-        "{}/../test_data/asm/keccak.asm",
-        env!("CARGO_MANIFEST_DIR"),
-    ));
+    let code_path = format!("{}/../test_data/asm/keccak.asm", env!("CARGO_MANIFEST_DIR"),);
     let code = fs::read_to_string(code_path).unwrap();
     let mut pipeline = Pipeline::<GoldilocksField>::default().from_asm_string(code, None);
     let analyzed = pipeline.compute_analyzed_pil().unwrap().clone();
@@ -562,7 +559,10 @@ fn keccak() {
         0xdf84d5da988117d2,
     ];
 
-    compare_integer_array_evaluations(&keccakf_inner_result, &array_argument(keccakf_inner_expected));
+    compare_integer_array_evaluations(
+        &keccakf_inner_result,
+        &array_argument(keccakf_inner_expected),
+    );
 
     // Test keccakf
     let padded_input: Vec<u64> = vec![
@@ -632,7 +632,7 @@ fn keccak() {
     // Helper for testing full keccak
     fn test_main(analyzed: &Analyzed<GoldilocksField>, input: Vec<i32>, expected: Vec<i32>) {
         let result = evaluate_function(
-            &analyzed,
+            analyzed,
             "main",
             vec![
                 Arc::new(Value::Integer(BigInt::from(32))), // W = 32 (output bytes)
