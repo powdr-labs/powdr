@@ -522,8 +522,7 @@ enum Operation<'a, T> {
     Expand(&'a Expression),
     /// Evaluate an expanded non-leaf expression once all its
     /// sub-expressions have been evaluated.
-    /// The second field is the number of children.
-    Combine(&'a Expression, usize),
+    Combine(&'a Expression),
     /// Truncate the local variables to a given length
     TruncateLocals(usize),
     /// Replace the environment (local variables and type args).
@@ -584,7 +583,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
         while let Some(op) = self.op_stack.pop() {
             match op {
                 Operation::Expand(expr) => self.expand(expr)?,
-                Operation::Combine(expr, children) => self.combine(expr, children)?,
+                Operation::Combine(expr) => self.combine(expr)?,
                 Operation::TruncateLocals(len) => self.local_vars.truncate(len),
                 Operation::SetEnvironment(new_locals, new_type_args) => {
                     self.local_vars = new_locals;
@@ -633,24 +632,24 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             }
             Expression::String(s) => self.value_stack.push(Value::String(s.clone()).into()),
             Expression::Tuple(items) => {
-                self.op_stack.push(Operation::Combine(expr, items.len()));
+                self.op_stack.push(Operation::Combine(expr));
                 self.op_stack
                     .extend(items.iter().rev().map(Operation::Expand));
                 // TODO we could directly call expand on the last argument.
             }
             Expression::ArrayLiteral(ArrayLiteral { items }) => {
-                self.op_stack.push(Operation::Combine(expr, items.len()));
+                self.op_stack.push(Operation::Combine(expr));
                 self.op_stack
                     .extend(items.iter().rev().map(Operation::Expand));
                 // TODO we could directly call expand on the last argument.
             }
             Expression::BinaryOperation(l, _, r) => {
-                self.op_stack.push(Operation::Combine(expr, 2));
+                self.op_stack.push(Operation::Combine(expr));
                 self.op_stack.push(Operation::Expand(r));
                 self.expand(l)?;
             }
             Expression::UnaryOperation(_, inner) => {
-                self.op_stack.push(Operation::Combine(expr, 1));
+                self.op_stack.push(Operation::Combine(expr));
                 self.expand(inner)?;
             }
             Expression::LambdaExpression(lambda) => {
@@ -665,7 +664,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 )
             }
             Expression::IndexAccess(IndexAccess { array, index }) => {
-                self.op_stack.push(Operation::Combine(expr, 2));
+                self.op_stack.push(Operation::Combine(expr));
                 self.op_stack.push(Operation::Expand(index));
                 self.expand(array)?;
             }
@@ -673,8 +672,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 function,
                 arguments,
             }) => {
-                self.op_stack
-                    .push(Operation::Combine(expr, 1 + arguments.len()));
+                self.op_stack.push(Operation::Combine(expr));
                 self.op_stack
                     .extend(arguments.iter().rev().map(Operation::Expand));
                 self.expand(function)?;
@@ -682,7 +680,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::MatchExpression(condition, _)
             | Expression::IfExpression(IfExpression { condition, .. }) => {
                 // Only handle the scrutinee / condition for now, we do not want to evaluate all arms.
-                self.op_stack.extend([Operation::Combine(expr, 1)]);
+                self.op_stack.push(Operation::Combine(expr));
                 self.expand(condition)?;
             }
             Expression::BlockExpression(statements, expr) => {
@@ -734,18 +732,18 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
     }
 
     /// Evaluate a complex expression given the values for all sub-expressions.
-    fn combine(&mut self, expr: &'a Expression, children: usize) -> Result<(), EvalError> {
+    fn combine(&mut self, expr: &'a Expression) -> Result<(), EvalError> {
         let value = match expr {
-            Expression::Tuple(_) => {
+            Expression::Tuple(items) => {
                 let inner_values = self
                     .value_stack
-                    .split_off(self.value_stack.len() - children);
+                    .split_off(self.value_stack.len() - items.len());
                 Value::Tuple(inner_values).into()
             }
-            Expression::ArrayLiteral(_) => {
+            Expression::ArrayLiteral(ArrayLiteral { items }) => {
                 let inner_values = self
                     .value_stack
-                    .split_off(self.value_stack.len() - children);
+                    .split_off(self.value_stack.len() - items.len());
                 Value::Array(inner_values).into()
             }
             Expression::BinaryOperation(_, op, _) => {
@@ -815,10 +813,10 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     )))?,
                 }
             }
-            Expression::FunctionCall(_) => {
+            Expression::FunctionCall(FunctionCall { arguments, .. }) => {
                 let arguments = self
                     .value_stack
-                    .split_off(self.value_stack.len() - (children - 1));
+                    .split_off(self.value_stack.len() - arguments.len());
                 let function = self.value_stack.pop().unwrap();
                 return self.combine_function_call(function, arguments);
             }
