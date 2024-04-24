@@ -4,6 +4,7 @@ use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
 
+use itertools::Itertools;
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
@@ -223,6 +224,69 @@ impl PILAnalyzer {
 
     fn constructors_from_patterns(&self, patterns: &[Pattern]) -> Vec<Pattern> {
         patterns.to_vec()
+    }
+
+    pub fn unspecialize(data: &[Pattern], constructor: &Pattern) -> Option<Vec<Pattern>> {
+        match (data, constructor) {
+            ([], _) => Some(vec![constructor.clone()]),
+            (data, Pattern::CatchAll) => Some(vec![data[0]]),
+            (data, Pattern::Variable(_)) => {
+                if let Pattern::Variable(v) = data[0] {
+                    Some(vec![Pattern::Variable(v.clone())])
+                } else {
+                    None
+                }
+            }
+            (data, Pattern::Number(_)) => {
+                if let Pattern::Number(n) = data[0] {
+                    Some(vec![Pattern::Number(n.clone())])
+                } else {
+                    None
+                }
+            }
+            (data, Pattern::String(_)) => {
+                if let Pattern::String(s) = data[0] {
+                    Some(vec![Pattern::String(s.clone())])
+                } else {
+                    None
+                }
+            }
+            (data, Pattern::Tuple(cons_patterns)) => {
+                let length = cons_patterns.len();
+                if data.len() >= length {
+                    Some(vec![Pattern::Tuple(
+                        data.iter().take(length).cloned().collect::<Vec<Pattern>>(),
+                    )])
+                } else {
+                    None
+                }
+            }
+            (data, Pattern::Array(cons_patterns)) => {
+                let length = cons_patterns.len();
+                if data.len() >= length {
+                    Some(vec![Pattern::Array(
+                        data.iter().take(length).cloned().collect::<Vec<Pattern>>(),
+                    )])
+                } else {
+                    None
+                }
+            }
+            (data, Pattern::Enum(path1, patterns1)) => match patterns1 {
+                Some(patterns1) => {
+                    let length = patterns1.len();
+                    if data.len() >= length {
+                        Some(vec![Pattern::Enum(
+                            path1.clone(),
+                            Some(data.iter().take(length).cloned().collect::<Vec<Pattern>>()),
+                        )])
+                    } else {
+                        None
+                    }
+                }
+                None => Some(vec![Pattern::Enum(path1.clone(), None)]),
+            },
+            _ => unreachable!("Unspecialize with invalid pattern"),
+        }
     }
 
     pub fn usefulness2(
