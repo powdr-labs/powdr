@@ -400,7 +400,6 @@ impl Machine {
                         MachineStatement::Pil(_, statement) => {
                             Box::new(statement.symbol_definition_names().map(|(s, _)| s))
                         }
-                        MachineStatement::CallSelectors(_, name) => Box::new(once(name)),
                         MachineStatement::Submachine(_, _, _)
                         | MachineStatement::InstructionDeclaration(_, _, _)
                         | MachineStatement::LinkDeclaration(_, _)
@@ -408,7 +407,8 @@ impl Machine {
                         | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
                     }
                 })
-                .chain(self.arguments.names()),
+                .chain(self.arguments.names())
+                .chain(self.properties.names()),
         )
     }
 }
@@ -443,7 +443,11 @@ pub struct MachineProperties {
     pub call_selectors: Option<String>,
 }
 
-impl MachineProperties {}
+impl MachineProperties {
+    pub fn names(&self) -> impl Iterator<Item = &String> {
+        self.call_selectors.iter()
+    }
+}
 
 impl TryFrom<Vec<(String, Expression)>> for MachineProperties {
     type Error = &'static str;
@@ -560,7 +564,6 @@ pub struct Instruction {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement {
-    CallSelectors(SourceRef, String),
     Pil(SourceRef, PilStatement),
     Submachine(SourceRef, SymbolPath, String),
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),

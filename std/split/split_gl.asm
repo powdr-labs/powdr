@@ -4,12 +4,10 @@ use std::prover::Query;
 // Splits an arbitrary field element into two u32s, on the Goldilocks field.
 machine SplitGL with
     latch: RESET,
-{
-
-    operation split in_acc -> output_low, output_high;
-
     // Allow this machine to be connected via a permutation
-    call_selectors sel;
+    call_selectors: sel,
+{
+    operation split in_acc -> output_low, output_high;
 
     // Latch and operation ID
     col fixed RESET(i) { if i % 8 == 7 { 1 } else { 0 } };

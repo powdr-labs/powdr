@@ -280,7 +280,6 @@ MachineArguments: MachineArguments = {
 }
 
 MachineStatement: MachineStatement = {
-    CallSelectors,
     Submachine,
     RegisterDeclaration,
     InstructionDeclaration,
@@ -292,10 +291,6 @@ MachineStatement: MachineStatement = {
 
 PilStatementInMachine: MachineStatement = {
     <start:@L> <stmt:PilStatement> => MachineStatement::Pil(ctx.source_ref(start), stmt)
-}
-
-CallSelectors: MachineStatement = {
-    <start:@L> "call_selectors" <id:Identifier> ";" => MachineStatement::CallSelectors(ctx.source_ref(start), id)
 }
 
 Submachine: MachineStatement = {

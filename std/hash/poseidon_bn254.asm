@@ -8,6 +8,8 @@ use std::utils::unchanged_until;
 machine PoseidonBN254 with
     latch: FIRSTBLOCK,
     operation_id: operation_id,
+    // Allow this machine to be connected via a permutation
+    call_selectors: sel,
 {
 
     // Hashes two "rate" elements and one "capacity" element to one field element
@@ -16,9 +18,6 @@ machine PoseidonBN254 with
     // set to a constant, where different constants can be used to define different
     // hash functions.
     operation poseidon_permutation<0> state[0], state[1], state[2] -> output[0];
-
-    // Allow this machine to be connected via a permutation
-    call_selectors sel;
 
     col witness operation_id;
 

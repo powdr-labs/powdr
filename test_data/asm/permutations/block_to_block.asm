@@ -1,11 +1,11 @@
 machine Binary with
     latch: latch,
     operation_id: operation_id,
+    call_selectors: sel,
 {
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
     operation or<0> A, B -> C;
-    call_selectors sel;
 
     col witness operation_id;
     col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
@@ -34,11 +34,11 @@ machine Binary with
 machine Binary4 with
     latch: latch,
     operation_id: operation_id,
+    call_selectors: sel,
 {
     Binary bin;
 
     operation or4<0> A, B, C, D -> E;
-    call_selectors sel;
 
     // Permutation links to Binary machine.
     // Only enable the links in rows that have been 'used' by a call into this machine.

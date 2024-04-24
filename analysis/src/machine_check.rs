@@ -41,7 +41,6 @@ impl TypeChecker {
     ) -> Result<Machine, Vec<String>> {
         let mut errors = vec![];
 
-        let mut call_selectors = None;
         let mut registers = vec![];
         let mut pil = vec![];
         let mut instructions = vec![];
@@ -51,15 +50,6 @@ impl TypeChecker {
 
         for s in machine.statements {
             match s {
-                MachineStatement::CallSelectors(_, sel) => {
-                    if let Some(other_sel) = &call_selectors {
-                        errors.push(format!(
-                            "Machine {ctx} already has call_selectors ({other_sel})"
-                        ));
-                    } else {
-                        call_selectors = Some(sel);
-                    }
-                }
                 MachineStatement::RegisterDeclaration(source, name, flag) => {
                     let ty = match flag {
                         Some(RegisterFlag::IsAssignment) => RegisterTy::Assignment,
@@ -179,6 +169,7 @@ impl TypeChecker {
         let degree = machine.properties.degree;
         let latch = machine.properties.latch;
         let operation_id = machine.properties.operation_id;
+        let call_selectors = machine.properties.call_selectors;
 
         if !registers.iter().any(|r| r.ty.is_pc()) {
             let operation_count = callable.operation_definitions().count();
@@ -501,10 +492,8 @@ machine Arith with latch: latch {
     #[test]
     fn virtual_machine_has_no_call_selectors() {
         let src = r#"
-machine Main {
+machine Main with call_selectors: sel {
    reg pc[@pc];
-
-   call_selectors sel;
 }
 "#;
         expect_check_str(
