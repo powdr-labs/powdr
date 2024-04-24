@@ -8,7 +8,7 @@ mod field;
 mod hash;
 mod math;
 mod memory;
-mod permutation;
+mod protocols;
 mod prover;
 mod shift;
 mod split;

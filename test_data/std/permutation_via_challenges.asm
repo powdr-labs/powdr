@@ -1,6 +1,6 @@
 use std::prover::Query;
 use std::convert::fe;
-use std::permutation::permutation;
+use std::protocols::permutation::permutation;
 
 machine Main {
     degree 8;
