@@ -198,25 +198,37 @@ impl PILAnalyzer {
     pub fn usefulness(&self, patterns: &[Pattern], new_pattern: &Pattern) -> Vec<Pattern> {
         let mut witnesses = Vec::new();
 
-        if patterns.is_empty() {
+        if patterns.is_empty() || patterns.iter().any(|p| p.is_fully_catch_all()) {
             return vec![];
         }
 
-        let constructors = self.constructors_from_patterns(patterns);
+        let mut expanded_patterns = patterns.to_vec();
+        expanded_patterns.push(new_pattern.clone());
+        let constructors = self.constructors_from_patterns(expanded_patterns.as_slice());
 
         for constructor in &constructors {
             let specialized_new_pattern = new_pattern.specialize(&constructor);
-            if specialized_new_pattern.is_some() {
-                let specialized_results = patterns
-                    .iter()
-                    .filter_map(|pattern| pattern.specialize(&constructor))
-                    .flatten()
-                    .collect::<Vec<_>>();
+            match specialized_new_pattern {
+                Some(v) => {
+                    if v.len() > 0 {
+                        let specialized_results = patterns
+                            .iter()
+                            .filter_map(|pattern| pattern.specialize(&constructor))
+                            .flatten()
+                            .collect::<Vec<_>>();
 
-                let specialized_usefull =
-                    self.usefulness(&specialized_results, &specialized_new_pattern.unwrap()[0]);
+                        let specialized_usefull = self.usefulness(&specialized_results, &v[0]);
 
-                witnesses.extend(specialized_usefull);
+                        for witness in specialized_usefull {
+                            if let Some(v) = Self::unspecialize(&[witness], &constructor) {
+                                witnesses.extend(v);
+                            }
+                        }
+                    } else {
+                        witnesses.push(constructor.clone());
+                    }
+                }
+                None => continue,
             }
         }
         witnesses
@@ -229,23 +241,23 @@ impl PILAnalyzer {
     pub fn unspecialize(data: &[Pattern], constructor: &Pattern) -> Option<Vec<Pattern>> {
         match (data, constructor) {
             ([], _) => Some(vec![constructor.clone()]),
-            (data, Pattern::CatchAll) => Some(vec![data[0]]),
+            (data, Pattern::CatchAll) => Some(vec![data[0].clone()]),
             (data, Pattern::Variable(_)) => {
-                if let Pattern::Variable(v) = data[0] {
+                if let Pattern::Variable(v) = &data[0] {
                     Some(vec![Pattern::Variable(v.clone())])
                 } else {
                     None
                 }
             }
             (data, Pattern::Number(_)) => {
-                if let Pattern::Number(n) = data[0] {
+                if let Pattern::Number(n) = &data[0] {
                     Some(vec![Pattern::Number(n.clone())])
                 } else {
                     None
                 }
             }
             (data, Pattern::String(_)) => {
-                if let Pattern::String(s) = data[0] {
+                if let Pattern::String(s) = &data[0] {
                     Some(vec![Pattern::String(s.clone())])
                 } else {
                     None
@@ -287,38 +299,6 @@ impl PILAnalyzer {
             },
             _ => unreachable!("Unspecialize with invalid pattern"),
         }
-    }
-
-    pub fn usefulness2(
-        &self,
-        patterns: &[Pattern],
-        new_pattern: &Pattern,
-        constructors: &[Pattern],
-    ) -> Vec<Pattern> {
-        let mut witnesses = Vec::new();
-        let mut is_useful = false;
-
-        for constructor in constructors {
-            let specialized_new_pattern = new_pattern.specialize(constructor);
-            let specialized_existing = patterns
-                .iter()
-                .map(|p| p.specialize(constructor))
-                .collect::<Vec<_>>();
-
-            if specialized_new_pattern.is_some()
-                && specialized_existing
-                    .iter()
-                    .all(|e| e != &specialized_new_pattern)
-            {
-                is_useful = true;
-            }
-        }
-
-        if is_useful {
-            witnesses.push(new_pattern.clone());
-        }
-
-        witnesses
     }
 
     pub fn type_check(&mut self) {
@@ -577,24 +557,18 @@ mod tests {
         let new_pattern = Pattern::CatchAll;
         let witnesses = analyzer.usefulness(&patterns, &new_pattern);
         println!("{:?}", witnesses);
-        //assert_eq!(witnesses.len(), 1);
-        //assert_eq!(witnesses[0], new_pattern);
+        assert_eq!(witnesses.len(), 1);
+        assert_eq!(witnesses[0], new_pattern);
     }
 
     #[test]
     fn test_basic_usefullness_complete() {
         let analyzer = PILAnalyzer::default();
 
-        let patterns = vec![
-            Pattern::String("A".to_string()),
-            Pattern::String("B".to_string()),
-            Pattern::CatchAll,
-        ];
-        let new_pattern = Pattern::String("C".to_string());
+        let patterns = vec![Pattern::String("A".to_string()), Pattern::CatchAll];
+        let new_pattern = Pattern::String("B".to_string());
         let witnesses = analyzer.usefulness(&patterns, &new_pattern);
-        println!("{:?}", witnesses);
-        //assert_eq!(witnesses.len(), 1);
-        //assert_eq!(witnesses[0], new_pattern);
+        assert_eq!(witnesses.len(), 0);
     }
 
     #[test]
@@ -605,9 +579,8 @@ mod tests {
         let new_pattern = Pattern::String("B".to_string());
 
         let witnesses = analyzer.usefulness(&patterns, &new_pattern);
-        println!("{:?}", witnesses);
-        //assert_eq!(witnesses.len(), 1);
-        //assert_eq!(witnesses[0], new_pattern);
+        assert_eq!(witnesses.len(), 1);
+        assert_eq!(witnesses[0], new_pattern);
     }
 
     #[test]
@@ -621,7 +594,6 @@ mod tests {
         ];
         let new_pattern = Pattern::CatchAll;
         let witnesses = analyzer.usefulness(&patterns, &new_pattern);
-        println!("{:?}", witnesses);
-        //assert_eq!(witnesses.len(), 0);
+        assert_eq!(witnesses.len(), 0);
     }
 }

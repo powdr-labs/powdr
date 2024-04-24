@@ -916,13 +916,25 @@ impl Pattern {
         }
     }
 
+    pub fn is_fully_catch_all(&self) -> bool {
+        match self {
+            Pattern::CatchAll => true,
+            Pattern::Tuple(patterns) | Pattern::Array(patterns) => {
+                patterns.iter().all(|pattern| pattern.is_fully_catch_all())
+            }
+            Pattern::Enum(_, Some(patterns)) => {
+                patterns.iter().all(|pattern| pattern.is_fully_catch_all())
+            }
+            _ => false,
+        }
+    }
+
     // Specialize a pattern based on a "constructor" pattern passed as a parameter.
     // Based on https://doc.rust-lang.org/nightly/nightly-rustc/rustc_pattern_analysis/usefulness/index.html#specialization.
-    // Constructors are represented with patterns where their values are omitted.
     pub fn specialize(&self, constructor: &Self) -> Option<Vec<Self>> {
         match (constructor, self) {
-            (Pattern::CatchAll, _) => None,
-            (_, Pattern::CatchAll) => Some([Pattern::CatchAll].to_vec()),
+            //(Pattern::CatchAll, _) => Some([].to_vec()),
+            (Pattern::CatchAll, Pattern::CatchAll) => Some([].to_vec()),
 
             (Pattern::Number(y), Pattern::Number(x)) => {
                 if y == x {
@@ -942,18 +954,6 @@ impl Pattern {
             (Pattern::Tuple(cons_patterns), Pattern::Tuple(patterns))
                 if cons_patterns.len() == patterns.len() =>
             {
-                //let mut specialized = Vec::new();
-
-                /*for (cons, pat) in cons_patterns.iter().zip(patterns.iter()) {
-                    if let Some(s) = pat.specialize(cons) {
-                        specialized.extend(s);
-                    }
-                }
-                if specialized.len() == 1 {
-                    Some([specialized.pop().unwrap()].to_vec())
-                } else {
-                    Some(specialized)
-                }*/
                 Some(patterns.to_vec())
             }
             (Pattern::Array(cons_patterns), Pattern::Array(patterns)) => {
@@ -1008,13 +1008,6 @@ impl Pattern {
                             //Not sure this is necessary
                             return None;
                         }
-                        /*let mut specialized = Vec::new();
-                        for (pat1, pat2) in p1.iter().zip(p2.iter()) {
-                            match pat2.specialize(pat1) {
-                                Some(spec) => specialized.extend(spec),
-                                None => return None,
-                            }
-                        }*/
                         let pats = patterns2.as_ref().unwrap();
                         Some(pats.clone())
                     }
@@ -1166,7 +1159,7 @@ mod test {
     }
 
     #[test]
-    fn test_specialize_enum_different_name() {
+    fn test_specialize_enum_different_symbolpath() {
         let cons = Pattern::Enum(
             SymbolPath::from_str("Foo1").unwrap(),
             Some(vec![
