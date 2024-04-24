@@ -228,6 +228,22 @@ fn sum_serde() {
     );
 }
 
+#[ignore = "Too slow"]
+#[test]
+fn two_sums_serde() {
+    let case = "two_sums_serde";
+
+    let data1: Vec<u32> = vec![1, 2, 8, 5];
+    let data2 = data1.clone();
+
+    verify_riscv_crate_with_data(
+        case,
+        vec![],
+        &Runtime::base(),
+        vec![(42, data1), (43, data2)],
+    );
+}
+
 #[test]
 #[ignore = "Too slow"]
 #[should_panic(
