@@ -296,7 +296,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
 
         let deployment_code = aggregation::gen_aggregation_evm_verifier(
             &self.params,
-            &pk_aggr.get_vk(),
+            &vk_aggr,
             aggregation::AggregationCircuit::num_instance(),
             aggregation::AggregationCircuit::accumulator_indices(),
         );
@@ -568,6 +568,10 @@ fn gen_proof<
 
 fn evm_verify(deployment_code: Vec<u8>, instances: Vec<Vec<Fr>>, proof: &[u8]) {
     let calldata = encode_calldata_snark_verifier(&instances, proof);
+    let hex_string: String = calldata.iter()
+        .map(|byte| format!("{:02X}", byte))
+        .collect();
+    println!("Calldata:\n{hex_string}\n");
     let gas_cost = deploy_and_call(deployment_code, calldata).unwrap();
     log::info!("Gas cost: {gas_cost}");
 }
