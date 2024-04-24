@@ -122,7 +122,7 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
             "Neg",
             "Eq",
         ],
-        Type::String => &["ToString", "Add"],
+        Type::String => &["ToString", "Add", "Eq"],
         Type::Expr => &[
             "ToString",
             "FromLiteral",

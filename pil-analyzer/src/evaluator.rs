@@ -955,6 +955,10 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
         (Value::String(l), BinaryOperator::Add, Value::String(r)) => {
             Value::String(l.clone() + r).into()
         }
+        (Value::String(l), BinaryOperator::Equal, Value::String(r)) => Value::Bool(l == r).into(),
+        (Value::String(l), BinaryOperator::NotEqual, Value::String(r)) => {
+            Value::Bool(l != r).into()
+        }
         (Value::Bool(l), BinaryOperator::LogicalOr, Value::Bool(r)) => Value::Bool(*l || *r).into(),
         (Value::Bool(l), BinaryOperator::LogicalAnd, Value::Bool(r)) => {
             Value::Bool(*l && *r).into()
@@ -1537,5 +1541,23 @@ mod test {
             let x = r[7];
         "#;
         assert_eq!(parse_and_evaluate_symbol(src, "x"), "9992".to_string());
+    }
+
+    #[test]
+    pub fn string_eq() {
+        let src = r#"
+            let yes = "abc" != "def";
+            let no = "abc" == "def";
+            let yes2 = "abc" == "abc";
+            let no2 = "abc" != "abc";
+            let yes3 = "ab" != "abc";
+            let no3 = "ab" == "abc";
+        "#;
+        assert_eq!(parse_and_evaluate_symbol(src, "yes"), "true".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "yes2"), "true".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "yes3"), "true".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "no"), "false".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "no2"), "false".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "no3"), "false".to_string());
     }
 }
