@@ -554,15 +554,17 @@ impl<T: FieldElement> Pipeline<T> {
             self.artifact.parsed_asm_file = Some({
                 let (path, asm_string) = self.compute_asm_string()?;
                 let path = path.clone();
+                let path_str = path.as_ref().map(|p| p.to_str().unwrap());
 
-                let parsed_asm = powdr_parser::parse_asm(None, asm_string).unwrap_or_else(|err| {
-                    match path.as_ref() {
-                        Some(path) => eprintln!("Error parsing .asm file: {}", path.display()),
-                        None => eprintln!("Error parsing .asm file:"),
-                    }
-                    err.output_to_stderr();
-                    panic!();
-                });
+                let parsed_asm =
+                    powdr_parser::parse_asm(path_str, asm_string).unwrap_or_else(|err| {
+                        eprintln!(
+                            "Error parsing .asm file:{}",
+                            path_str.map(|p| format!(" {p}")).unwrap_or_default()
+                        );
+                        err.output_to_stderr();
+                        panic!();
+                    });
 
                 (path.clone(), parsed_asm)
             });
