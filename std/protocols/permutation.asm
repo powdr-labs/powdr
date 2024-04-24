@@ -9,11 +9,11 @@ let is_first: col = |i| if i == 0 { 1 } else { 0 };
 
 // Get two phase-2 challenges to use in all permutation arguments.
 // Note that this assumes that globally no other challenge of these IDs is used.
-let alpha: expr = challenge(0, 1);
-let beta: expr = challenge(0, 2);
+let alpha1: expr = challenge(0, 1);
+let alpha2: expr = challenge(0, 2);
 
-// Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
-let compress_expression_array = |expr_array| fold(expr_array, 0, |acc, el| alpha * acc + el);
+let beta1: expr = challenge(0, 3);
+let beta2: expr = challenge(0, 4);
 
 // Adds constraints that enforce that lhs is a permutation of rhs
 // Arguments:
@@ -24,19 +24,55 @@ let compress_expression_array = |expr_array| fold(expr_array, 0, |acc, el| alpha
 // - rhs: An array of expressions
 let permutation = |acc, lhs_selector, lhs, rhs_selector, rhs| {
 
+    let GOLDILOCKS_PRIME = 2**64 - 2**32 + 1;
     let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
-    let _ = assert(modulus() > 2**100, || "This implementation assumes a large field");
+    let _ = assert(modulus() > 2**100 || modulus() == GOLDILOCKS_PRIME, || "No implementation on this small field");
+    let _ = assert(len(acc) == 2, || "Expected 2 accumulators");
 
-    let lhs_folded = lhs_selector * compress_expression_array(lhs);
-    let rhs_folded = rhs_selector * compress_expression_array(rhs);
+    // On the Goldilocks field, we evaluate the polynomial on the F_{p^2} extension field
+    // modulo the irreducible polynomial x^2 - 7.
+    // TODO: This is always true, to test that phase-2 witgen works
+    let needs_extension = modulus() != 42;
+    // let needs_extension = modulus() == GOLDILOCKS_PRIME;
+
+    // On the extension field, we'll need two field elements to represent the challenge.
+    // If we don't need an extension field, we can simply set the second component to 0,
+    // in which case the operations below effectively only operate on the first component.
+    let alpha = if needs_extension {[alpha1, alpha2]} else {[alpha1, 0]};
+    let beta = if needs_extension {[beta1, beta2]} else {[beta1, 0]};
+
+    // Define operations on extension field elements, which are array of length 2.
+    // Addition and subtraction is just performed element-wise.
+    // Multiplication works by multiplying out the two input polynomials and using the fact
+    // that x^2 == 7 (mod x^2 - 7) to get rid of the x^2 terms.
+    let add_ext = |a, b| [a[0] + b[0], a[1] - b[1]];
+    let sub_ext = |a, b| [a[0] - b[0], a[1] - b[1]];
+    let mul_ext = |a, b| [a[0] * b[0] + 7 * a[1] * b[1], a[1] * b[0] + a[0] * b[1]];
+    let next_ext = |a| [a[0]', a[1]'];
+
+    // Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
+    let compress_expression_array = |expr_array| fold(expr_array, [0, 0], |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), [el, 0]));
+
+    let lhs_folded = mul_ext([lhs_selector, 0], compress_expression_array(lhs));
+    let rhs_folded = mul_ext([rhs_selector, 0], compress_expression_array(rhs));
+
+    // Update rule:
+    // acc' = acc * (beta - lhs_folded) / (beta - rhs_folded)
+    // => (beta - rhs_folded) * acc' - (beta - lhs_folded) * acc = 0
+    let update_expr = sub_ext(
+        mul_ext(sub_ext(beta, rhs_folded), next_ext(acc)),
+        mul_ext(sub_ext(beta, lhs_folded), acc)
+    );
 
     [
         // First and last z needs to be 1
         // (because of wrapping, the z[0] and z[N] are the same)
-        is_first * (acc - 1) = 0,
+        is_first * (acc[0] - 1) = 0,
+        is_first * acc[1] = 0,
 
         // Update rule:
         // acc' = acc * (beta - lhs_folded) / (beta - rhs_folded)
-        (beta - rhs_folded) * acc' = acc * (beta - lhs_folded)
+        update_expr[0] = 0,
+        update_expr[1] = 0
     ]
 };
