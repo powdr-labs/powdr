@@ -496,10 +496,10 @@ fn keccak() {
         }
     }
 
-    // Test keccakf_inner
-    let padded_endianness_swapped_input: Vec<u64> = vec![
-        0x73657461726b6f7a,
-        0x1,
+    // Test vectors for keccakf_inner and keccakf
+    let padded_input: Vec<u64> = vec![
+        0x7a6f6b7261746573,
+        0x0100000000000000,
         0x0,
         0x0,
         0x0,
@@ -514,7 +514,7 @@ fn keccak() {
         0x0,
         0x0,
         0x0,
-        0x8000000000000000,
+        0x80,
         0x0,
         0x0,
         0x0,
@@ -525,6 +525,9 @@ fn keccak() {
         0x0,
     ];
 
+    let padded_endianness_swapped_input = padded_input.iter().map(|x| x.swap_bytes()).collect();
+
+    // Test keccakf_inner
     let keccakf_inner_result = evaluate_function(
         &analyzed,
         "keccakf_inner",
@@ -561,76 +564,25 @@ fn keccak() {
 
     compare_integer_array_evaluations(
         &keccakf_inner_result,
-        &array_argument(keccakf_inner_expected),
+        &array_argument(keccakf_inner_expected.clone()),
     );
 
     // Test keccakf
-    let padded_input: Vec<u64> = vec![
-        0x7a6f6b7261746573,
-        0x0100000000000000,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x80,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-        0x0,
-    ];
-
     let keccakf_result = evaluate_function(
         &analyzed,
         "keccakf",
         vec![Arc::new(array_argument(padded_input))],
     );
 
-    let keccakf_expected: Vec<u64> = vec![
-        0xca85d1976d40dcb6,
-        0xca3becc8c6596e83,
-        0xc0774f4185cf016a,
-        0x5834f5856a37f39,
-        0xba0c0d950a14adc8,
-        0x3f846cb384c5ac3d,
-        0x468175ad6f468a42,
-        0x4cafafcfb0f98aa6,
-        0xa9f23a0867a5bbff,
-        0xa451805931d680b8,
-        0x95723ea91d443f68,
-        0xc6171b64d2425bbb,
-        0x3c446420dc07ecf4,
-        0x8b3f9597fb9e9521,
-        0x76583338b6e9c531,
-        0xed63f92b1de095aa,
-        0x28d8ec8d4b7b1182,
-        0x7ff5471d8755a2e2,
-        0x3b6dbf811c279b65,
-        0xee978bd9e3150b68,
-        0xd975088c68a1158,
-        0xe60713259e1fa4ad,
-        0x5593221f9a52a0f9,
-        0x7fe926809d3dcf17,
-        0xd2178198dad584df,
-    ];
+    let keccakf_expected = keccakf_inner_expected
+        .iter()
+        .map(|x| x.swap_bytes())
+        .collect();
 
     compare_integer_array_evaluations(&keccakf_result, &array_argument(keccakf_expected));
 
     // Helper for testing full keccak
-    fn test_main(analyzed: &Analyzed<GoldilocksField>, input: Vec<i32>, expected: Vec<i32>) {
+    fn test_main(analyzed: &Analyzed<GoldilocksField>, input: Vec<u8>, expected: Vec<u8>) {
         let result = evaluate_function(
             analyzed,
             "main",
@@ -653,7 +605,7 @@ fn keccak() {
     }
 
     // Test full keccak
-    let input = vec![
+    let input: Vec<Vec<u8>> = vec![
         // The following three test vectors are from Zokrates
         // https://github.com/Zokrates/ZoKrates/blob/develop/zokrates_stdlib/tests/tests/hashes/keccak/keccak.zok
         vec![0x7a, 0x6f, 0x6b, 0x72, 0x61, 0x74, 0x65, 0x73],
@@ -669,43 +621,21 @@ fn keccak() {
         [0x00; 256].to_vec(),
     ];
 
-    let expected = vec![
-        // ca85d1976d40dcb6ca3becc8c6596e83c0774f4185cf016a05834f5856a37f39
-        [
-            0xca, 0x85, 0xd1, 0x97, 0x6d, 0x40, 0xdc, 0xb6, 0xca, 0x3b, 0xec, 0xc8, 0xc6, 0x59,
-            0x6e, 0x83, 0xc0, 0x77, 0x4f, 0x41, 0x85, 0xcf, 0x01, 0x6a, 0x05, 0x83, 0x4f, 0x58,
-            0x56, 0xa3, 0x7f, 0x39,
-        ]
-        .to_vec(),
-        // 723e2ae02ca8d8fb45dca21e5f6369c4f124da72f217dca5e657a4bbc69b917d
-        [
-            0x72, 0x3e, 0x2a, 0xe0, 0x2c, 0xa8, 0xd8, 0xfb, 0x45, 0xdc, 0xa2, 0x1e, 0x5f, 0x63,
-            0x69, 0xc4, 0xf1, 0x24, 0xda, 0x72, 0xf2, 0x17, 0xdc, 0xa5, 0xe6, 0x57, 0xa4, 0xbb,
-            0xc6, 0x9b, 0x91, 0x7d,
-        ]
-        .to_vec(),
-        // e60d5160227cb1b8dc8547deb9c6a2c5e6c3306a1c1a55611a73ed2c2324bfc0
-        [
-            0xe6, 0x0d, 0x51, 0x60, 0x22, 0x7c, 0xb1, 0xb8, 0xdc, 0x85, 0x47, 0xde, 0xb9, 0xc6,
-            0xa2, 0xc5, 0xe6, 0xc3, 0x30, 0x6a, 0x1c, 0xa1, 0x55, 0x61, 0x1a, 0x73, 0xed, 0x2c,
-            0x23, 0x24, 0xbf, 0xc0,
-        ]
-        .to_vec(),
-        // cf54f48e5701fed7b85fa015ff3def02604863f68c585fcf6af54a86d42e1046
-        [
-            0xcf, 0x54, 0xf4, 0x8e, 0x57, 0x01, 0xfe, 0xd7, 0xb8, 0x5f, 0xa0, 0x15, 0xff, 0x3d,
-            0xef, 0x02, 0x60, 0x48, 0x63, 0xf6, 0x8c, 0x58, 0x5f, 0xcf, 0x6a, 0xf5, 0x4a, 0x86,
-            0xd4, 0x2e, 0x10, 0x46,
-        ]
-        .to_vec(),
-        // d397b3b043d87fcd6fad1291ff0bfd16401c274896d8c63a923727f077b8e0b5
-        [
-            0xd3, 0x97, 0xb3, 0xb0, 0x43, 0xd8, 0x7f, 0xcd, 0x6f, 0xad, 0x12, 0x91, 0xff, 0x0b,
-            0xfd, 0x16, 0x40, 0x1c, 0x27, 0x48, 0x96, 0xd8, 0xc6, 0x3a, 0x92, 0x37, 0x27, 0xf0,
-            0x77, 0xb8, 0xe0, 0xb5,
-        ]
-        .to_vec(),
-    ];
+    let expected: Vec<Vec<u8>> = vec![
+        "ca85d1976d40dcb6ca3becc8c6596e83c0774f4185cf016a05834f5856a37f39",
+        "723e2ae02ca8d8fb45dca21e5f6369c4f124da72f217dca5e657a4bbc69b917d",
+        "e60d5160227cb1b8dc8547deb9c6a2c5e6c3306a1ca155611a73ed2c2324bfc0",
+        "cf54f48e5701fed7b85fa015ff3def02604863f68c585fcf6af54a86d42e1046",
+        "d397b3b043d87fcd6fad1291ff0bfd16401c274896d8c63a923727f077b8e0b5",
+    ]
+    .into_iter()
+    .map(|x| {
+        (0..x.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&x[i..i + 2], 16).unwrap())
+            .collect()
+    })
+    .collect();
 
     input
         .into_iter()
