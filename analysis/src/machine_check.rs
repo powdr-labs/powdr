@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
-        DegreeStatement, FunctionBody, FunctionStatements, FunctionSymbol, Instruction,
+        FunctionBody, FunctionStatements, FunctionSymbol, Instruction,
         InstructionDefinitionStatement, InstructionStatement, Item, LabelStatement,
         LinkDefinitionStatement, Machine, OperationSymbol, RegisterDeclarationStatement,
         RegisterTy, Return, SubmachineDeclaration,
@@ -41,7 +41,6 @@ impl TypeChecker {
     ) -> Result<Machine, Vec<String>> {
         let mut errors = vec![];
 
-        let mut degree = None;
         let mut call_selectors = None;
         let mut registers = vec![];
         let mut pil = vec![];
@@ -52,11 +51,6 @@ impl TypeChecker {
 
         for s in machine.statements {
             match s {
-                MachineStatement::Degree(_, degree_value) => {
-                    degree = Some(DegreeStatement {
-                        degree: degree_value,
-                    });
-                }
                 MachineStatement::CallSelectors(_, sel) => {
                     if let Some(other_sel) = &call_selectors {
                         errors.push(format!(
@@ -182,6 +176,7 @@ impl TypeChecker {
             }
         }
 
+        let degree = machine.properties.degree;
         let latch = machine.properties.latch;
         let operation_id = machine.properties.operation_id;
 

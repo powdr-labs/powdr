@@ -1,14 +1,12 @@
 use std::shift::Shift;
 
 
-machine Main {
+machine Main with degree: 65536 {
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];
     reg X2[<=];
     reg A;
-
-    degree 65536;
 
     Shift shift;
 

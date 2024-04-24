@@ -39,18 +39,26 @@ impl Display for ModuleStatement {
                         arguments: MachineArguments(args),
                         properties:
                             MachineProperties {
+                                degree,
                                 latch,
                                 operation_id,
+                                call_selectors,
                             },
                         ..
                     },
                 ) => {
                     let args = args.iter().join(", ");
-                    let props = latch
+                    let props = degree
                         .as_ref()
-                        .map(|s| format!("latch: {s}"))
+                        .map(|s| format!("degree: {s}"))
                         .into_iter()
+                        .chain(latch.as_ref().map(|s| format!("latch: {s}")))
                         .chain(operation_id.as_ref().map(|s| format!("operation_id: {s}")))
+                        .chain(
+                            call_selectors
+                                .as_ref()
+                                .map(|s| format!("call_selectors: {s}")),
+                        )
                         .join(", ");
                     match (args.is_empty(), props.is_empty()) {
                         (true, true) => write!(f, "machine {name} {m}"),
@@ -172,7 +180,6 @@ impl Display for CallableRef {
 impl Display for MachineStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            MachineStatement::Degree(_, degree) => write!(f, "degree {};", degree),
             MachineStatement::CallSelectors(_, sel) => write!(f, "call_selectors {};", sel),
             MachineStatement::Pil(_, statement) => write!(f, "{statement}"),
             MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),

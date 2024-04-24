@@ -260,10 +260,14 @@ MachineDefinition: SymbolDefinition = {
 }
 
 MachineProperties: MachineProperties = {
-    <mut list:( <Param> "," )*> <end:Param> ","? =>? {
+    <mut list:( <MachineProperty> "," )*> <end:MachineProperty> ","? =>? {
         list.push(end);
         MachineProperties::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
     }
+}
+
+MachineProperty: (String, Expression) = {
+    <name:Identifier> ":" <value:Expression> => (name, value),
 }
 
 MachineArguments: MachineArguments = {
@@ -276,7 +280,6 @@ MachineArguments: MachineArguments = {
 }
 
 MachineStatement: MachineStatement = {
-    Degree,
     CallSelectors,
     Submachine,
     RegisterDeclaration,
@@ -289,10 +292,6 @@ MachineStatement: MachineStatement = {
 
 PilStatementInMachine: MachineStatement = {
     <start:@L> <stmt:PilStatement> => MachineStatement::Pil(ctx.source_ref(start), stmt)
-}
-
-Degree: MachineStatement = {
-    <start:@L> "degree" <deg:Expression> ";" => MachineStatement::Degree(ctx.source_ref(start), deg)
 }
 
 CallSelectors: MachineStatement = {

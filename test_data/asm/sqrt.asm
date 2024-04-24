@@ -38,9 +38,7 @@ machine Sqrt with
 }
 
 
-machine Main {
-    degree 8;
-
+machine Main with degree: 8 {
     Sqrt sqrt;
 
     reg pc[@pc];

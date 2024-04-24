@@ -1,7 +1,7 @@
 use std::split::split_bn254::SplitBN254;
 
 
-machine Main {
+machine Main with degree: 65536 {
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];
@@ -20,8 +20,6 @@ machine Main {
     reg A6;
     reg A7;
     reg A8;
-
-    degree 65536;
 
     SplitBN254 split_machine;
 

@@ -25,10 +25,7 @@ The pipeline accepts both kinds of machines, and they are represented by the sam
 We go through the pipeline using the following program as an example:
 
 ```
-machine Main {
-
-    degree 16;
-
+machine Main with degree: 16 {
     DifferentSignatures sub;
 
     reg pc[@pc];
@@ -374,9 +371,7 @@ machine DifferentSignatures with latch: instr_return, operation_id: _operation_i
 
 
 }
-machine Main with latch: instr_return, operation_id: _operation_id {
-        degree 16;
-
+machine Main with degree: 16, latch: instr_return, operation_id: _operation_id {
         operation main<2>;
 
         constraints {

@@ -33,9 +33,7 @@ machine Binary with
     {A_byte, B_byte, C_byte} in {P_A, P_B, P_C};
 }
 
-machine Main {
-    degree 65536;
-
+machine Main with degree: 65536 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

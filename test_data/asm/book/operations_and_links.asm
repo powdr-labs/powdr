@@ -1,5 +1,4 @@
-machine Main {
-    degree 256;
+machine Main with degree: 256 {
     Add4 adder;
 
     reg pc[@pc];

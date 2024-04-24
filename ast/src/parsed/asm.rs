@@ -401,8 +401,7 @@ impl Machine {
                             Box::new(statement.symbol_definition_names().map(|(s, _)| s))
                         }
                         MachineStatement::CallSelectors(_, name) => Box::new(once(name)),
-                        MachineStatement::Degree(_, _)
-                        | MachineStatement::Submachine(_, _, _)
+                        MachineStatement::Submachine(_, _, _)
                         | MachineStatement::InstructionDeclaration(_, _, _)
                         | MachineStatement::LinkDeclaration(_, _)
                         | MachineStatement::FunctionDeclaration(_, _, _, _)
@@ -438,36 +437,62 @@ impl TryFrom<Vec<Param>> for MachineArguments {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
 pub struct MachineProperties {
+    pub degree: Option<Expression>,
     pub latch: Option<String>,
     pub operation_id: Option<String>,
+    pub call_selectors: Option<String>,
 }
 
 impl MachineProperties {}
 
-impl TryFrom<Vec<Param>> for MachineProperties {
+impl TryFrom<Vec<(String, Expression)>> for MachineProperties {
     type Error = &'static str;
 
-    fn try_from(prop_list: Vec<Param>) -> std::result::Result<Self, Self::Error> {
+    fn try_from(prop_list: Vec<(String, Expression)>) -> std::result::Result<Self, Self::Error> {
         let mut props: Self = Default::default();
-        for param in prop_list {
-            match param.name.as_str() {
+        for (name, value) in prop_list {
+            match name.as_str() {
+                "degree" => {
+                    if props.degree.is_some() {
+                        return Err("`degree` already defined");
+                    };
+                    props.degree = Some(value);
+                }
                 "latch" => {
                     if props.latch.is_some() {
-                        return Err("latch already defined");
+                        return Err("`latch` already defined");
                     };
-                    if param.ty.is_none() {
-                        return Err("invalid machine latch");
+                    if let Expression::Reference(r) = value {
+                        if let Some(id) = r.try_to_identifier() {
+                            props.latch = Some(id.clone());
+                            continue;
+                        }
                     };
-                    props.latch = param.ty;
+                    return Err("`latch` machine property expects a column name");
                 }
                 "operation_id" => {
                     if props.operation_id.is_some() {
-                        return Err("operation_id already defined");
+                        return Err("`operation_id` already defined");
                     };
-                    if param.ty.is_none() {
-                        return Err("invalid machine operation_id");
+                    if let Expression::Reference(r) = value {
+                        if let Some(id) = r.try_to_identifier() {
+                            props.operation_id = Some(id.clone());
+                            continue;
+                        }
                     };
-                    props.operation_id = param.ty;
+                    return Err("`operation_id` machine property expects a column name");
+                }
+                "call_selectors" => {
+                    if props.call_selectors.is_some() {
+                        return Err("`call_selectors` already defined");
+                    };
+                    if let Expression::Reference(r) = value {
+                        if let Some(id) = r.try_to_identifier() {
+                            props.call_selectors = Some(id.clone());
+                            continue;
+                        }
+                    };
+                    return Err("`call_selectors` machine property expects a column name");
                 }
                 _ => {
                     return Err("unknown machine property");
@@ -536,7 +561,6 @@ pub struct Instruction {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement {
     CallSelectors(SourceRef, String),
-    Degree(SourceRef, Expression),
     Pil(SourceRef, PilStatement),
     Submachine(SourceRef, SymbolPath, String),
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),

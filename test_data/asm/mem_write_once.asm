@@ -15,10 +15,7 @@ machine WriteOnceMemory with
     let v2;
 }
 
-machine Main {
-
-    degree 256;
-
+machine Main with degree: 256 {
     reg pc[@pc];
     reg X1[<=];
     reg X2[<=];

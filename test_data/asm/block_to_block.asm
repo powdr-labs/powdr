@@ -1,11 +1,9 @@
 // calls a constrained machine from a constrained machine
 machine Arith with
+    degree: 8,
     latch: latch,
     operation_id: operation_id
 {
-
-    degree 8;
-
     operation add<0> x, y -> z;
 
     col fixed operation_id = [0]*;
@@ -17,12 +15,10 @@ machine Arith with
 }
 
 machine Main with
+    degree: 8,
     latch: latch,
     operation_id: operation_id
 {
-
-    degree 8;
-
     Arith arith;
 
     // return `3*x + 3*y`, adding twice locally and twice externally

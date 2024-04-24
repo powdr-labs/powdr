@@ -17,10 +17,10 @@ use crate::{
 
 use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
-    DebugDirective, DegreeStatement, FunctionBody, FunctionStatement, FunctionStatements,
-    Incompatible, IncompatibleSet, Instruction, InstructionDefinitionStatement,
-    InstructionStatement, Item, LabelStatement, LinkDefinitionStatement, Machine,
-    RegisterDeclarationStatement, RegisterTy, Return, Rom, SubmachineDeclaration,
+    DebugDirective, FunctionBody, FunctionStatement, FunctionStatements, Incompatible,
+    IncompatibleSet, Instruction, InstructionDefinitionStatement, InstructionStatement, Item,
+    LabelStatement, LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy,
+    Return, Rom, SubmachineDeclaration,
 };
 
 impl Display for AnalysisASMFile {
@@ -71,16 +71,36 @@ impl Display for AnalysisASMFile {
 
 impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match (&self.latch, &self.operation_id) {
-            (Some(latch), Some(operation_id)) => write!(f, "({latch}, {operation_id})"),
-            (None, None) => write!(f, ""),
-            (Some(latch), None) => write!(f, "({latch}, _)"),
-            (None, Some(operation_id)) => write!(f, "(_, {operation_id})"),
-        }?;
+        let props = self
+            .degree
+            .as_ref()
+            .map(|s| format!("degree: {s}"))
+            .into_iter()
+            .chain(self.latch.as_ref().map(|s| format!("latch: {s}")))
+            .chain(
+                self.operation_id
+                    .as_ref()
+                    .map(|s| format!("operation_id: {s}")),
+            )
+            // .chain(self.call_selectors
+            //         .as_ref()
+            //         .map(|s| format!("call_selectors: {s}")),
+            // )
+            .join(", ");
+        if !props.is_empty() {
+            write!(f, " with {props}")?;
+        }
+
+        // match (&self.latch, &self.operation_id) {
+        //     (Some(latch), Some(operation_id)) => write!(f, "({latch}, {operation_id})"),
+        //     (None, None) => write!(f, ""),
+        //     (Some(latch), None) => write!(f, "({latch}, _)"),
+        //     (None, Some(operation_id)) => write!(f, "(_, {operation_id})"),
+        // }?;
 
         writeln!(f, " {{")?;
 
-        write_items_indented(f, &self.degree)?;
+        // write_items_indented(f, &self.degree)?;
         write_items_indented(f, &self.submachines)?;
         write_items_indented(f, &self.registers)?;
         write_items_indented(f, &self.instructions)?;
@@ -115,12 +135,6 @@ impl Display for Rom {
         writeln!(f, "rom {{")?;
         writeln!(f, "{}", indent(&self.statements, 1))?;
         write!(f, "}}")
-    }
-}
-
-impl Display for DegreeStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "degree {};", self.degree)
     }
 }
 

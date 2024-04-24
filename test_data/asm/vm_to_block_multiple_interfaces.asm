@@ -1,12 +1,10 @@
 // calls two functions in a submachine whose interface is different: one is `x, y, z` while the other one is `z, x, y`
 
 machine Arith with
+    degree: 8,
     latch: latch,
     operation_id: operation_id
 {
-
-    degree 8;
-
     operation add<0> x, y -> z;
 
     operation sub<1> z, x -> y;
@@ -19,10 +17,7 @@ machine Arith with
     z = x + y;
 }
 
-machine Main {
-
-    degree 8;
-
+machine Main with degree: 8 {
     Arith arith;
 
     reg pc[@pc];
