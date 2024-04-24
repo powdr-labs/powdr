@@ -942,31 +942,29 @@ impl Pattern {
             (Pattern::Tuple(cons_patterns), Pattern::Tuple(patterns))
                 if cons_patterns.len() == patterns.len() =>
             {
-                let mut specialized = Vec::new();
+                //let mut specialized = Vec::new();
 
-                for (cons, pat) in cons_patterns.iter().zip(patterns.iter()) {
+                /*for (cons, pat) in cons_patterns.iter().zip(patterns.iter()) {
                     if let Some(s) = pat.specialize(cons) {
                         specialized.extend(s);
-                    } else {
-                        return None;
                     }
                 }
                 if specialized.len() == 1 {
                     Some([specialized.pop().unwrap()].to_vec())
                 } else {
                     Some(specialized)
-                }
+                }*/
+                Some(patterns.to_vec())
             }
             (Pattern::Array(cons_patterns), Pattern::Array(patterns)) => {
                 let mut specialized = Vec::new();
 
-                // I'm sure there's a more elegant way to do this
                 let mut pre_ellipsis = Vec::new();
                 let mut post_ellipsis = Vec::new();
                 let mut seen_ellipsis = false;
 
                 for pat in patterns {
-                    match pat {
+                    match *pat {
                         Pattern::Ellipsis => seen_ellipsis = true,
                         _ if !seen_ellipsis => pre_ellipsis.push(pat),
                         _ if seen_ellipsis => post_ellipsis.push(pat),
@@ -976,13 +974,9 @@ impl Pattern {
 
                 let mut cons_iter = cons_patterns.iter().peekable();
 
-                for pat in pre_ellipsis.iter() {
-                    if let Some(cons) = cons_iter.next() {
-                        if let Some(s) = pat.specialize(cons) {
-                            specialized.extend(s);
-                        } else {
-                            return None;
-                        }
+                for pat in pre_ellipsis.iter().copied() {
+                    if let Some(_) = cons_iter.next() {
+                        specialized.push(pat.clone());
                     }
                 }
 
@@ -992,21 +986,13 @@ impl Pattern {
                     cons_iter.next();
                 }
 
-                for pat in post_ellipsis.iter() {
-                    if let Some(cons) = cons_iter.next() {
-                        if let Some(s) = pat.specialize(cons) {
-                            specialized.extend(s);
-                        } else {
-                            return None;
-                        }
+                for pat in post_ellipsis {
+                    if let Some(_) = cons_iter.next() {
+                        specialized.push(pat.clone());
                     }
                 }
 
-                if specialized.len() == 1 {
-                    Some([specialized.pop().unwrap()].to_vec())
-                } else {
-                    Some(specialized)
-                }
+                Some(specialized.clone())
             }
             (Pattern::Variable(_), Pattern::Variable(var)) => {
                 Some([Pattern::Variable(var.clone())].to_vec())
@@ -1019,16 +1005,18 @@ impl Pattern {
                 match (patterns1, patterns2) {
                     (Some(p1), Some(p2)) => {
                         if p1.len() != p2.len() {
+                            //Not sure this is necessary
                             return None;
                         }
-                        let mut specialized = Vec::new();
+                        /*let mut specialized = Vec::new();
                         for (pat1, pat2) in p1.iter().zip(p2.iter()) {
                             match pat2.specialize(pat1) {
                                 Some(spec) => specialized.extend(spec),
                                 None => return None,
                             }
-                        }
-                        Some(specialized)
+                        }*/
+                        let pats = patterns2.as_ref().unwrap();
+                        Some(pats.clone())
                     }
 
                     (None, _) => None,
@@ -1075,32 +1063,44 @@ pub struct TypedExpression<Ref = NamespacedPolynomialReference, E = Expression<R
 
 #[cfg(test)]
 mod test {
+    use std::iter::zip;
+
     use super::*;
 
     #[test]
     fn test_specialize_catchall() {
         let cons = Pattern::Tuple(vec![
-            Pattern::Number(0.into()),
+            Pattern::Number(1.into()),
             Pattern::Variable("x".to_string()),
-            Pattern::CatchAll,
         ]);
 
         let pat = Pattern::Tuple(vec![
             Pattern::Number(1.into()),
             Pattern::Variable("y".to_string()),
-            Pattern::Number(2.into()),
         ]);
 
         let specialized = pat.specialize(&cons);
-
-        /*assert_eq!(
+        assert_eq!(
             specialized,
-            Some(Pattern::Tuple(vec![
-                Pattern::Number(1.into()),
-                Pattern::Variable("y".to_string()),
-                Pattern::Number(2.into()),
-            ]))
-        );*/
+            Some(
+                [
+                    Pattern::Number(1.into()),
+                    Pattern::Variable("y".to_string())
+                ]
+                .to_vec()
+            )
+        );
+
+        let mut inners = Vec::new();
+        for (con, spe) in zip(cons.children(), specialized.unwrap().iter()) {
+            let inner = spe.specialize(con);
+            if inner.is_some() {
+                let value = inner.unwrap();
+                inners.extend(value);
+            }
+        }
+
+        assert_eq!(inners, vec![Pattern::Variable("y".to_string())]);
     }
 
     #[test]
@@ -1120,19 +1120,53 @@ mod test {
 
         let specialized = pat.specialize(&cons);
 
-        /*assert_eq!(
+        assert_eq!(
             specialized,
-            Some(Pattern::Array(vec![
+            Some(vec![
                 Pattern::Number(1.into()),
                 Pattern::CatchAll,
                 Pattern::CatchAll,
                 Pattern::Number(2.into()),
-            ]))
-        );*/
+            ])
+        );
     }
 
     #[test]
     fn test_specialize_enum() {
+        let cons = Pattern::Enum(
+            SymbolPath::from_str("Foo").unwrap(),
+            Some(vec![
+                Pattern::Number(0.into()),
+                Pattern::Variable("x".to_string()),
+                Pattern::CatchAll,
+            ]),
+        );
+
+        let pat = Pattern::Enum(
+            SymbolPath::from_str("Foo").unwrap(),
+            Some(vec![
+                Pattern::Variable("x".to_string()),
+                Pattern::Variable("y".to_string()),
+                Pattern::Variable("z".to_string()),
+            ]),
+        );
+
+        let specialized = pat.specialize(&cons);
+        assert_eq!(
+            specialized,
+            Some(
+                [
+                    Pattern::Variable("x".to_string()),
+                    Pattern::Variable("y".to_string()),
+                    Pattern::Variable("z".to_string())
+                ]
+                .to_vec()
+            )
+        );
+    }
+
+    #[test]
+    fn test_specialize_enum_different_name() {
         let cons = Pattern::Enum(
             SymbolPath::from_str("Foo1").unwrap(),
             Some(vec![
@@ -1152,17 +1186,6 @@ mod test {
         );
 
         let specialized = pat.specialize(&cons);
-
-        /*assert_eq!(
-            specialized,
-            Some(Pattern::Enum(
-                SymbolPath::from_str("Foo").unwrap(),
-                Some(vec![
-                    Pattern::Variable("x".to_string()),
-                    Pattern::Variable("y".to_string()),
-                    Pattern::Variable("z".to_string()),
-                ])
-            ))
-        );*/
+        assert_eq!(specialized, None);
     }
 }
