@@ -5,11 +5,10 @@ use std::iter::once;
 use std::path::{Path, PathBuf};
 
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
-use powdr_ast::parsed::types::{Type, TypeScheme};
+use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
-    self, ArrayLiteral, FunctionCall, FunctionKind, IndexAccess, LambdaExpression, MatchArm,
-    PILFile, Pattern, PilStatement, SymbolCategory,
+    self, FunctionKind, LambdaExpression, PILFile, Pattern, PilStatement, SymbolCategory,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
@@ -47,7 +46,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     analyzer.side_effect_check();
-    analyzer.match_exhaustiveness_check();
+    //analyzer.match_exhaustiveness_check();
     analyzer.type_check();
     analyzer.condense::<T>()
 }
@@ -176,60 +175,86 @@ impl PILAnalyzer {
         }
     }
 
-    pub fn match_exhaustiveness_check(&self) {
+    /*pub fn match_exhaustiveness_check(&self) {
         for (name, (symbol, value)) in &self.definitions {
             let Some(value) = value else { continue };
 
-            for ch in value.children() {
-                if let Expression::MatchExpression(match_expr, arms) = ch {
-                    let match_exhaustiveness = self.is_exhaustive_match(match_expr, arms);
-                    if !match_exhaustiveness {
-                        panic!("Match expression in {name} is not exhaustive");
-                    }
+            if let &FunctionValueDefinition::Expression(TypedExpression { e, type_scheme }) = value
+            {
+                if let Expression::MatchExpression(match_expr, arms) = e {
+                    let patterns = arms.iter().map(|arm| &arm.pattern).collect::<Vec<_>>();
+                    //let match_exhaustiveness = self.is_exhaustive_match(patterns);
+                    //if !match_exhaustiveness {
+                    //    panic!("Match expression in {name} is not exhaustive");
+                    //}
                 }
             }
         }
 
         for id in &self.identities {}
+    }*/
+
+    pub fn usefulness(&self, patterns: &[Pattern], new_pattern: &Pattern) -> Vec<Pattern> {
+        let mut witnesses = Vec::new();
+
+        if patterns.is_empty() {
+            return vec![];
+        }
+
+        let constructors = self.constructors_from_patterns(patterns);
+
+        for constructor in &constructors {
+            let specialized_new_pattern = new_pattern.specialize(&constructor);
+            if specialized_new_pattern.is_some() {
+                let specialized_results = patterns
+                    .iter()
+                    .filter_map(|pattern| pattern.specialize(&constructor))
+                    .flatten()
+                    .collect::<Vec<_>>();
+
+                let specialized_usefull =
+                    self.usefulness(&specialized_results, &specialized_new_pattern.unwrap()[0]);
+
+                witnesses.extend(specialized_usefull);
+            }
+        }
+        witnesses
     }
 
-    fn is_exhaustive_match(
+    fn constructors_from_patterns(&self, patterns: &[Pattern]) -> Vec<Pattern> {
+        patterns.to_vec()
+    }
+
+    pub fn usefulness2(
         &self,
-        match_expr: &Expression,
-        arms: &Vec<MatchArm<Expression>>,
-    ) -> bool {
-        true
+        patterns: &[Pattern],
+        new_pattern: &Pattern,
+        constructors: &[Pattern],
+    ) -> Vec<Pattern> {
+        let mut witnesses = Vec::new();
+        let mut is_useful = false;
 
-        /*
-        match match_expr {
-            Expression::Reference(_)
-            | Expression::PublicReference(_)
-            | Expression::LambdaExpression(_)
-            | Expression::IfExpression(_)
-            | Expression::MatchExpression(_, _)
-            | Expression::BlockExpression(_, _)
-            | Expression::FreeInput(_) => unreachable!(), // TODO some of then need to be checked
+        for constructor in constructors {
+            let specialized_new_pattern = new_pattern.specialize(constructor);
+            let specialized_existing = patterns
+                .iter()
+                .map(|p| p.specialize(constructor))
+                .collect::<Vec<_>>();
 
-            Expression::Number(_, _)
-            | Expression::String(_)
-            | Expression::BinaryOperation(_, _, _)
-            | Expression::UnaryOperation(_, _) => {
-                arms.iter().any(|arm| arm.pattern == Pattern::CatchAll)
+            if specialized_new_pattern.is_some()
+                && specialized_existing
+                    .iter()
+                    .all(|e| e != &specialized_new_pattern)
+            {
+                is_useful = true;
             }
-            Expression::Tuple(v) => {
-                self.tuple_match_exhaustiveness(v.iter(), arms.iter().map(|arm| &arm.pattern))
-            }
-            Expression::ArrayLiteral(ArrayLiteral { items }) => {
-                self.array_match_exhaustiveness(items.iter(), arms.iter().map(|arm| &arm.pattern))
-            }
-
-            Expression::FunctionCall(FunctionCall {
-                function,
-                arguments,
-            }) => {}
-            Expression::IndexAccess(IndexAccess { array, index }) => {}
         }
-         */
+
+        if is_useful {
+            witnesses.push(new_pattern.clone());
+        }
+
+        witnesses
     }
 
     pub fn type_check(&mut self) {
@@ -470,5 +495,69 @@ impl<'a> AnalysisDriver for Driver<'a> {
 
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)> {
         &self.0.definitions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_basic_usefullness() {
+        let analyzer = PILAnalyzer::default();
+
+        let patterns = vec![
+            Pattern::String("A".to_string()),
+            Pattern::String("B".to_string()),
+        ];
+        let new_pattern = Pattern::CatchAll;
+        let witnesses = analyzer.usefulness(&patterns, &new_pattern);
+        println!("{:?}", witnesses);
+        //assert_eq!(witnesses.len(), 1);
+        //assert_eq!(witnesses[0], new_pattern);
+    }
+
+    #[test]
+    fn test_basic_usefullness_complete() {
+        let analyzer = PILAnalyzer::default();
+
+        let patterns = vec![
+            Pattern::String("A".to_string()),
+            Pattern::String("B".to_string()),
+            Pattern::CatchAll,
+        ];
+        let new_pattern = Pattern::String("C".to_string());
+        let witnesses = analyzer.usefulness(&patterns, &new_pattern);
+        println!("{:?}", witnesses);
+        //assert_eq!(witnesses.len(), 1);
+        //assert_eq!(witnesses[0], new_pattern);
+    }
+
+    #[test]
+    fn test_basic_usefullness2() {
+        let analyzer = PILAnalyzer::default();
+
+        let patterns = vec![Pattern::String("A".to_string())];
+        let new_pattern = Pattern::String("B".to_string());
+
+        let witnesses = analyzer.usefulness(&patterns, &new_pattern);
+        println!("{:?}", witnesses);
+        //assert_eq!(witnesses.len(), 1);
+        //assert_eq!(witnesses[0], new_pattern);
+    }
+
+    #[test]
+    fn test_basic_usefulness3() {
+        let analyzer = PILAnalyzer::default();
+
+        let patterns = vec![
+            Pattern::Array(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]),
+            Pattern::Array(vec![Pattern::Number(1.into()), Pattern::Number(3.into())]),
+            Pattern::Array(vec![Pattern::CatchAll, Pattern::CatchAll]),
+        ];
+        let new_pattern = Pattern::CatchAll;
+        let witnesses = analyzer.usefulness(&patterns, &new_pattern);
+        println!("{:?}", witnesses);
+        //assert_eq!(witnesses.len(), 0);
     }
 }
