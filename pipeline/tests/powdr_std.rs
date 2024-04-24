@@ -250,3 +250,8 @@ fn sort() {
         assert_eq!(input_sorted, result);
     }
 }
+#[test]
+fn btree() {
+    let f = "std/btree_test.asm";
+    verify_test_file(f, Default::default(), vec![]).unwrap();
+}

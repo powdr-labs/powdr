@@ -1,6 +1,7 @@
 mod arith;
 mod array;
 mod binary;
+mod btree;
 mod check;
 mod convert;
 mod debug;
