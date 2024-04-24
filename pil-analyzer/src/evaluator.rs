@@ -1550,10 +1550,14 @@ mod test {
             let no = "abc" == "def";
             let yes2 = "abc" == "abc";
             let no2 = "abc" != "abc";
+            let yes3 = "ab" != "abc";
+            let no3 = "ab" == "abc";
         "#;
         assert_eq!(parse_and_evaluate_symbol(src, "yes"), "true".to_string());
         assert_eq!(parse_and_evaluate_symbol(src, "yes2"), "true".to_string());
-        assert_eq!(parse_and_evaluate_symbol(src, "no"), "true".to_string());
-        assert_eq!(parse_and_evaluate_symbol(src, "no2"), "true".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "yes3"), "true".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "no"), "false".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "no2"), "false".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "no3"), "false".to_string());
     }
 }
