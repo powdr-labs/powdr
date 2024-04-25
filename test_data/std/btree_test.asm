@@ -1,6 +1,6 @@
 use std::btree::new;
 use std::btree::insert;
-use std::btree::search;
+use std::btree::get;
 use std::btree::CmpResult;
 use std::btree::BTree;
 use std::utils::Option;
@@ -66,7 +66,7 @@ let print_btree: BTree<int, string>, int -> () = |n, indent| match n {
 };
 
 let expect: BTree<int, string>, int, string -> constr[] = |b_tree, k, v|
-    match search(b_tree, k, cmp) {
+    match get(b_tree, k, cmp) {
         Option::Some(x) => std::check::assert(x == v, || ""),
         _ => std::check::assert(false, || ""),
     };

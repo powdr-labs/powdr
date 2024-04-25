@@ -26,7 +26,7 @@ enum CmpResult {
 let<K, V> new: -> BTree<K, V> = || BTree::Leaf([]);
 
 /// Returns Some(v) if v is the value corresponding to key `k` or None otherwise.
-let<K, V> search: BTree<K, V>, K, (K, K -> CmpResult) -> Option<V> = internal::search::<K, V>;
+let<K, V> get: BTree<K, V>, K, (K, K -> CmpResult) -> Option<V> = internal::get::<K, V>;
 
 /// Inserts the key-value-pair (k, v) into the BTree and returns the updated BTree.
 let<K, V> insert: BTree<K, V>, (K, V), (K, K -> CmpResult) -> BTree<K, V> =
@@ -44,7 +44,7 @@ mod internal {
     use std::array::find_map;
     use std::array::find_map_enumerated;
 
-    let <K, V> search: BTree<K, V>, K, (K, K -> CmpResult) -> Option<V> = |b_tree, k, cmp| match b_tree {
+    let <K, V> get: BTree<K, V>, K, (K, K -> CmpResult) -> Option<V> = |b_tree, k, cmp| match b_tree {
         BTree::Inner(items, children) => match search_in_node(items, k, cmp) {
             NodeSearchResult::InNode(i) => Option::Some(value_of_item(items[i])),
             NodeSearchResult::InChild(i) => search(children[i], k, cmp),
