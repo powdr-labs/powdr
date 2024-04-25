@@ -11,7 +11,10 @@ instr add X, Y -> Z {
 }
 
 // ANCHOR: submachine
-machine SubMachine(latch, operation_id) {
+machine SubMachine with
+    latch: latch,
+    operation_id: operation_id
+{
     col witness operation_id;
     col fixed latch = [1]*;
 

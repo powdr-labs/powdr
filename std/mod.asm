@@ -1,15 +1,10 @@
-mod arith;
 mod array;
-mod binary;
 mod check;
 mod convert;
 mod debug;
 mod field;
-mod hash;
+mod machines;
 mod math;
-mod memory;
+mod protocols;
 mod prover;
-mod shift;
-mod split;
 mod utils;
-mod write_once_memory;

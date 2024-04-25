@@ -1,8 +1,14 @@
+use std::sync::Arc;
+
 use powdr_number::{BigInt, GoldilocksField};
 
-use powdr_pipeline::test_util::{
-    evaluate_integer_function, gen_estark_proof, gen_halo2_proof, std_analyzed, test_halo2,
-    verify_test_file,
+use powdr_pil_analyzer::evaluator::Value;
+use powdr_pipeline::{
+    test_util::{
+        evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof,
+        std_analyzed, test_halo2, verify_test_file,
+    },
+    Pipeline,
 };
 use test_log::test;
 
@@ -51,6 +57,12 @@ fn memory_test() {
     let f = "std/memory_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
+    test_halo2(f, Default::default());
+}
+
+#[test]
+fn permutation_via_challenges() {
+    let f = "std/permutation_via_challenges.asm";
     test_halo2(f, Default::default());
 }
 
@@ -198,4 +210,49 @@ fn ff_inv_big() {
         vec![x.clone(), modulus.clone()],
     );
     assert_eq!((result * x) % modulus, 1.into());
+}
+
+#[test]
+fn sort() {
+    let test_inputs = vec![
+        vec![],
+        vec![1],
+        vec![0, 0],
+        vec![1, 2],
+        vec![2, 1],
+        vec![3, 2, 1],
+        vec![0, 0, -1],
+        vec![0, 0, -1, 0, 0, -1, -1, 2],
+        vec![8, 0, 9, 20, 23, 88, 14, -9],
+    ];
+    let code =
+        "let test_sort: int[] -> int[] = |x| std::array::sort(x, |a, b| a < b); machine Main { }"
+            .to_string();
+    let mut pipeline = Pipeline::<GoldilocksField>::default().from_asm_string(code, None);
+    let analyzed = pipeline.compute_analyzed_pil().unwrap().clone();
+    for input in test_inputs {
+        let mut input_sorted = input.clone();
+        input_sorted.sort();
+        let result = evaluate_function(
+            &analyzed,
+            "test_sort",
+            vec![Arc::new(Value::Array(
+                input
+                    .into_iter()
+                    .map(|x| Arc::new(Value::Integer(x.into())))
+                    .collect(),
+            ))],
+        );
+        let Value::Array(result) = result else {
+            panic!("Expected array")
+        };
+        let result: Vec<i32> = result
+            .into_iter()
+            .map(|x| match x.as_ref() {
+                Value::Integer(x) => x.try_into().unwrap(),
+                _ => panic!("Expected integer"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(input_sorted, result);
+    }
 }

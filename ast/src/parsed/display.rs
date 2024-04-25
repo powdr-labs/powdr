@@ -36,24 +36,41 @@ impl Display for ModuleStatement {
             ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => match value {
                 SymbolValue::Machine(
                     m @ Machine {
-                        arguments:
-                            MachineArguments {
+                        arguments: MachineArguments(args),
+                        properties:
+                            MachineProperties {
+                                degree,
                                 latch,
                                 operation_id,
+                                call_selectors,
                             },
                         ..
                     },
                 ) => {
-                    if let (None, None) = (latch, operation_id) {
-                        write!(f, "machine {name} {m}")
-                    } else {
-                        write!(
-                            f,
-                            "machine {name}({}, {}) {m}",
-                            latch.as_deref().unwrap_or("_"),
-                            operation_id.as_deref().unwrap_or("_"),
+                    let args = args.iter().join(", ");
+                    let props = degree
+                        .as_ref()
+                        .map(|s| format!("degree: {s}"))
+                        .into_iter()
+                        .chain(latch.as_ref().map(|s| format!("latch: {s}")))
+                        .chain(operation_id.as_ref().map(|s| format!("operation_id: {s}")))
+                        .chain(
+                            call_selectors
+                                .as_ref()
+                                .map(|s| format!("call_selectors: {s}")),
                         )
-                    }
+                        .join(", ");
+                    let props = if props.is_empty() {
+                        props
+                    } else {
+                        format!(" with {props}")
+                    };
+                    let args = if args.is_empty() {
+                        args
+                    } else {
+                        format!("({args})")
+                    };
+                    write!(f, "machine {name}{args}{props} {m}")
                 }
                 SymbolValue::Import(i) => {
                     write!(f, "{i} as {name};")
@@ -168,8 +185,6 @@ impl Display for CallableRef {
 impl Display for MachineStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            MachineStatement::Degree(_, degree) => write!(f, "degree {};", degree),
-            MachineStatement::CallSelectors(_, sel) => write!(f, "call_selectors {};", sel),
             MachineStatement::Pil(_, statement) => write!(f, "{statement}"),
             MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),
             MachineStatement::RegisterDeclaration(_, name, flag) => write!(

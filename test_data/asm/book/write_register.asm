@@ -1,7 +1,4 @@
-machine Machine {
-
-    degree 8;
-
+machine Machine with degree: 8 {
     reg pc[@pc];
     reg X[<=];
 // ANCHOR: declaration

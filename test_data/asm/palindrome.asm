@@ -4,9 +4,7 @@
 use std::prover::Query;
 use std::convert::int;
 
-machine Palindrome {
-    degree 1024;
-
+machine Palindrome with degree: 1024 {
     reg pc[@pc];
     reg X[<=];
     reg A;

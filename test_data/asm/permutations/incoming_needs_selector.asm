@@ -1,4 +1,6 @@
-machine Binary(latch, _) {
+machine Binary with
+    latch: latch
+{
     // fails because incoming permutation links to block machine requires call_selectors
     operation add A, B -> C;
     col fixed latch = [1]*;
@@ -10,9 +12,7 @@ machine Binary(latch, _) {
     C = A + B;
 }
 
-machine Main {
-    degree 65536;
-
+machine Main with degree: 65536 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
