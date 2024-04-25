@@ -5,5 +5,6 @@ mod debug;
 mod field;
 mod machines;
 mod math;
+mod protocols;
 mod prover;
 mod utils;
