@@ -9,7 +9,7 @@ use super::memory_merkle_tree::MerkleTree;
 pub const MEMORY_SIZE_LOG: usize = 32;
 
 /// Page size is 1KB
-pub const PAGE_SIZE_BYTES_LOG: usize = 10;
+pub const PAGE_SIZE_BYTES_LOG: usize = 11;
 
 /// 32-Bit architecture -> 4 bytes per word
 pub const BYTES_PER_WORD: usize = 4;
