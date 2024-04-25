@@ -1,4 +1,4 @@
-use std::hash::poseidon_bn254::PoseidonBN254;
+use std::machines::hash::poseidon_bn254::PoseidonBN254;
 
 machine Main with degree: 512 {
     reg pc[@pc];

@@ -1,4 +1,4 @@
-use std::memory::Memory;
+use std::machines::memory::Memory;
 
 machine Main with degree: 65536 {
     reg pc[@pc];

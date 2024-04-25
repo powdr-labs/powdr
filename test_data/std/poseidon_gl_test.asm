@@ -1,4 +1,4 @@
-use std::hash::poseidon_gl::PoseidonGL;
+use std::machines::hash::poseidon_gl::PoseidonGL;
 
 machine Main with degree: 256 {
     reg pc[@pc];

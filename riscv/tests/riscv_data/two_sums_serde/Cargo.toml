@@ -1,5 +1,5 @@
 [package]
-name = "sum_serde"
+name = "two_sums_serde"
 version = "0.1.0"
 edition = "2021"
 

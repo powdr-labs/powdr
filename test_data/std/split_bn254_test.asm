@@ -1,4 +1,4 @@
-use std::split::split_bn254::SplitBN254;
+use std::machines::split::split_bn254::SplitBN254;
 
 
 machine Main with degree: 65536 {
