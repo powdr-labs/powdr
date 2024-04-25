@@ -13,7 +13,6 @@ use std::{
 };
 
 use derive_more::Display;
-use itertools::Itertools;
 use powdr_number::{BigInt, BigUint, DegreeType};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

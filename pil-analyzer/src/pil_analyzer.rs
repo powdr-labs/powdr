@@ -4,7 +4,6 @@ use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
 
-use itertools::Itertools;
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
@@ -47,7 +46,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     analyzer.side_effect_check();
-    //analyzer.match_exhaustiveness_check();
+    analyzer.match_exhaustiveness_check();
     analyzer.type_check();
     analyzer.condense::<T>()
 }
@@ -177,13 +176,13 @@ impl PILAnalyzer {
     }
 
     pub fn match_exhaustiveness_check(&self) {
-        for (name, (symbol, value)) in &self.definitions {
+        for (name, (_, value)) in &self.definitions {
             let Some(value) = value else { continue };
             let patterns = match value {
                 FunctionValueDefinition::Expression(TypedExpression { e, .. }) => {
-                    if let Expression::MatchExpression(exp, arms) = e {
+                    if let Expression::MatchExpression(_, arms) = e {
                         arms.iter()
-                            .map(|(arm)| arm.pattern.clone())
+                            .map(|arm| arm.pattern.clone())
                             .collect::<Vec<_>>()
                     } else {
                         continue;
@@ -207,7 +206,7 @@ impl PILAnalyzer {
 
         let mut expanded_patterns = patterns.to_vec();
         expanded_patterns.push(new_pattern.clone());
-        let constructors = self.constructors_from_patterns(expanded_patterns.as_slice());
+        let constructors = expanded_patterns.clone(); //self.constructors_from_patterns(expanded_patterns.as_slice());
 
         for constructor in &constructors {
             let specialized_new_pattern = new_pattern.specialize(&constructor);
@@ -237,9 +236,9 @@ impl PILAnalyzer {
         witnesses
     }
 
-    fn constructors_from_patterns(&self, patterns: &[Pattern]) -> Vec<Pattern> {
-        patterns.to_vec()
-    }
+    //fn constructors_from_patterns(&self, patterns: &[Pattern]) -> Vec<Pattern> {
+    //    patterns.to_vec()
+    //}
 
     fn unspecialize(data: &[Pattern], constructor: &Pattern) -> Option<Vec<Pattern>> {
         match (data, constructor) {
