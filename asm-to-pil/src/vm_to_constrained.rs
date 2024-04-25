@@ -11,9 +11,10 @@ use powdr_ast::{
     parsed::{
         asm::{CallableRef, InstructionBody, InstructionParams},
         build::{self, absolute_reference, direct_reference, next_reference},
+        pattern::Pattern,
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
-        FunctionKind, LambdaExpression, MatchArm, Pattern, PilStatement, PolynomialName,
+        FunctionKind, LambdaExpression, MatchArm, PilStatement, PolynomialName,
         SelectedExpressions, UnaryOperator,
     },
     SourceRef,

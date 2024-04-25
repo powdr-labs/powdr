@@ -12,11 +12,12 @@ use powdr_ast::parsed::{
         SymbolDefinition, SymbolValue, SymbolValueRef,
     },
     folder::Folder,
+    pattern::Pattern,
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, PilStatement,
-    StatementInsideBlock, TypedExpression,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, PilStatement, StatementInsideBlock,
+    TypedExpression,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths

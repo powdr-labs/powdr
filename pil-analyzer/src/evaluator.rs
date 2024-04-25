@@ -12,8 +12,9 @@ use powdr_ast::{
     },
     parsed::{
         display::quote,
+        pattern::Pattern,
         types::{Type, TypeScheme},
-        BinaryOperator, FunctionCall, LambdaExpression, MatchArm, Pattern, UnaryOperator,
+        BinaryOperator, FunctionCall, LambdaExpression, MatchArm, UnaryOperator,
     },
     SourceRef,
 };

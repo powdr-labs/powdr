@@ -1,6 +1,6 @@
 use std::str::FromStr;
 use std::collections::BTreeSet;
-use powdr_ast::parsed::{*, asm::*, types::*};
+use powdr_ast::parsed::{*, asm::*, types::*, pattern::*};
 use powdr_number::{BigInt, BigUint};
 use crate::{ParserContext, unescape_string};
 

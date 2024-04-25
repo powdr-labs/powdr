@@ -5,10 +5,11 @@ use std::iter::once;
 use std::path::{Path, PathBuf};
 
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
+use powdr_ast::parsed::pattern::Pattern;
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, Pattern, PilStatement, SymbolCategory,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
@@ -222,7 +223,7 @@ impl PILAnalyzer {
                         let specialized_usefull = Self::usefulness(&specialized_results, &v[0]);
 
                         for witness in specialized_usefull {
-                            if let Some(v) = Self::unspecialize(&[witness], constructor) {
+                            if let Some(v) = constructor.unspecialize(&[witness]) {
                                 witnesses.extend(v);
                             }
                         }
@@ -239,69 +240,6 @@ impl PILAnalyzer {
     //fn constructors_from_patterns(&self, patterns: &[Pattern]) -> Vec<Pattern> {
     //    patterns.to_vec()
     //}
-
-    fn unspecialize(data: &[Pattern], constructor: &Pattern) -> Option<Vec<Pattern>> {
-        match (data, constructor) {
-            ([], _) => Some(vec![constructor.clone()]),
-            (data, Pattern::CatchAll) => Some(vec![data[0].clone()]),
-            (data, Pattern::Variable(_)) => {
-                if let Pattern::Variable(v) = &data[0] {
-                    Some(vec![Pattern::Variable(v.clone())])
-                } else {
-                    None
-                }
-            }
-            (data, Pattern::Number(_)) => {
-                if let Pattern::Number(n) = &data[0] {
-                    Some(vec![Pattern::Number(n.clone())])
-                } else {
-                    None
-                }
-            }
-            (data, Pattern::String(_)) => {
-                if let Pattern::String(s) = &data[0] {
-                    Some(vec![Pattern::String(s.clone())])
-                } else {
-                    None
-                }
-            }
-            (data, Pattern::Tuple(cons_patterns)) => {
-                let length = cons_patterns.len();
-                if data.len() >= length {
-                    Some(vec![Pattern::Tuple(
-                        data.iter().take(length).cloned().collect::<Vec<Pattern>>(),
-                    )])
-                } else {
-                    None
-                }
-            }
-            (data, Pattern::Array(cons_patterns)) => {
-                let length = cons_patterns.len();
-                if data.len() >= length {
-                    Some(vec![Pattern::Array(
-                        data.iter().take(length).cloned().collect::<Vec<Pattern>>(),
-                    )])
-                } else {
-                    None
-                }
-            }
-            (data, Pattern::Enum(path1, patterns1)) => match patterns1 {
-                Some(patterns1) => {
-                    let length = patterns1.len();
-                    if data.len() >= length {
-                        Some(vec![Pattern::Enum(
-                            path1.clone(),
-                            Some(data.iter().take(length).cloned().collect::<Vec<Pattern>>()),
-                        )])
-                    } else {
-                        None
-                    }
-                }
-                None => Some(vec![Pattern::Enum(path1.clone(), None)]),
-            },
-            _ => unreachable!("Unspecialize with invalid pattern"),
-        }
-    }
 
     pub fn type_check(&mut self) {
         let query_type: Type = parse_type("int -> std::prover::Query").unwrap().into();
@@ -546,6 +484,7 @@ impl<'a> AnalysisDriver for Driver<'a> {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
@@ -594,6 +533,59 @@ mod tests {
             Pattern::Array(vec![Pattern::CatchAll, Pattern::CatchAll]),
         ];
         let new_pattern = Pattern::CatchAll;
+        let witnesses = PILAnalyzer::usefulness(&patterns, &new_pattern);
+        assert_eq!(witnesses.len(), 1);
+        assert_eq!(witnesses[0], new_pattern);
+    }
+
+    #[test]
+    fn test_usefullness_ellipsis_in_arms() {
+        let patterns = vec![
+            Pattern::Array(vec![
+                Pattern::Number(1.into()),
+                Pattern::Number(2.into()),
+                Pattern::Number(3.into()),
+                Pattern::Number(4.into()),
+            ]),
+            Pattern::Array(vec![
+                Pattern::Number(2.into()),
+                Pattern::Number(2.into()),
+                Pattern::Number(3.into()),
+                Pattern::Number(3.into()),
+            ]),
+            Pattern::Array(vec![
+                Pattern::Number(1.into()),
+                Pattern::Ellipsis,
+                Pattern::Number(4.into()),
+            ]),
+        ];
+        let new_pattern = Pattern::CatchAll;
+        let witnesses = PILAnalyzer::usefulness(&patterns, &new_pattern);
+        assert_eq!(witnesses.len(), 1);
+        assert_eq!(witnesses[0], new_pattern);
+    }
+
+    #[test]
+    fn test_usefullness_ellipsis_new_pattern() {
+        let patterns = vec![
+            Pattern::Array(vec![
+                Pattern::Number(1.into()),
+                Pattern::Number(2.into()),
+                Pattern::Number(3.into()),
+                Pattern::Number(4.into()),
+            ]),
+            Pattern::Array(vec![
+                Pattern::Number(2.into()),
+                Pattern::Number(2.into()),
+                Pattern::Number(3.into()),
+                Pattern::Number(3.into()),
+            ]),
+        ];
+        let new_pattern = Pattern::Array(vec![
+            Pattern::Number(1.into()),
+            Pattern::Ellipsis,
+            Pattern::Number(4.into()),
+        ]);
         let witnesses = PILAnalyzer::usefulness(&patterns, &new_pattern);
         assert_eq!(witnesses.len(), 1);
         assert_eq!(witnesses[0], new_pattern);
