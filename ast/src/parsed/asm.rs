@@ -457,52 +457,33 @@ impl TryFrom<Vec<(String, Expression)>> for MachineProperties {
         for (name, value) in prop_list {
             match name.as_str() {
                 "degree" => {
-                    if props.degree.is_some() {
+                    if props.degree.replace(value).is_some() {
                         return Err(format!("`{name}` already defined"));
-                    };
-                    props.degree = Some(value);
+                    }
                 }
                 "latch" => {
-                    if props.latch.is_some() {
+                    let id = value.try_to_identifier().ok_or_else(|| {
+                        format!("`{name}` machine property expects a local column name")
+                    })?;
+                    if props.latch.replace(id.clone()).is_some() {
                         return Err(format!("`{name}` already defined"));
-                    };
-                    if let Expression::Reference(r) = value {
-                        if let Some(id) = r.try_to_identifier() {
-                            props.latch = Some(id.clone());
-                            continue;
-                        }
-                    };
-                    return Err(format!(
-                        "`{name}` machine property expects a local column name"
-                    ));
+                    }
                 }
                 "operation_id" => {
-                    if props.operation_id.is_some() {
+                    let id = value.try_to_identifier().ok_or_else(|| {
+                        format!("`{name}` machine property expects a local column name")
+                    })?;
+                    if props.operation_id.replace(id.clone()).is_some() {
                         return Err(format!("`{name}` already defined"));
-                    };
-                    if let Expression::Reference(r) = value {
-                        if let Some(id) = r.try_to_identifier() {
-                            props.operation_id = Some(id.clone());
-                            continue;
-                        }
-                    };
-                    return Err(format!(
-                        "`{name}` machine property expects a local column name"
-                    ));
+                    }
                 }
                 "call_selectors" => {
-                    if props.call_selectors.is_some() {
+                    let id = value.try_to_identifier().ok_or_else(|| {
+                        format!("`{name}` machine property expects a new column name")
+                    })?;
+                    if props.call_selectors.replace(id.clone()).is_some() {
                         return Err(format!("`{name}` already defined"));
-                    };
-                    if let Expression::Reference(r) = value {
-                        if let Some(id) = r.try_to_identifier() {
-                            props.call_selectors = Some(id.clone());
-                            continue;
-                        }
-                    };
-                    return Err(format!(
-                        "`{name}` machine property expects a new column name"
-                    ));
+                    }
                 }
                 _ => {
                     return Err(format!("unknown machine property `{name}`"));
