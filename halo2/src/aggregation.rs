@@ -36,6 +36,7 @@ use snark_verifier::{
     util::arithmetic::{fe_to_limbs, PrimeField},
     verifier::{self, plonk::PlonkProtocol, SnarkVerifier},
 };
+use snark_verifier::pcs::AccumulationDecider;
 
 use itertools::Itertools;
 use rand::rngs::OsRng;
@@ -251,6 +252,11 @@ impl AggregationCircuit {
             (accumulator, transcript.finalize())
         };
 
+        As::decide(
+            &(params.get_g()[0], params.g2(), params.s_g2()).into(),
+            accumulator.clone(),
+        )
+            .expect("Aggregated proof should be valid");
         let KzgAccumulator { lhs, rhs } = accumulator;
         let instances = [lhs.x, lhs.y, rhs.x, rhs.y]
             .map(fe_to_limbs::<_, _, LIMBS, BITS>)
