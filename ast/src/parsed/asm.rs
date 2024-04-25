@@ -407,8 +407,8 @@ impl Machine {
                         | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
                     }
                 })
-                .chain(self.arguments.names())
-                .chain(self.properties.names()),
+                .chain(self.arguments.defined_names())
+                .chain(self.properties.defined_names()),
         )
     }
 }
@@ -417,7 +417,7 @@ impl Machine {
 pub struct MachineArguments(pub Vec<Param>);
 
 impl MachineArguments {
-    pub fn names(&self) -> impl Iterator<Item = &String> {
+    pub fn defined_names(&self) -> impl Iterator<Item = &String> {
         self.0.iter().map(|p| &p.name)
     }
 }
@@ -444,7 +444,7 @@ pub struct MachineProperties {
 }
 
 impl MachineProperties {
-    pub fn names(&self) -> impl Iterator<Item = &String> {
+    pub fn defined_names(&self) -> impl Iterator<Item = &String> {
         self.call_selectors.iter()
     }
 }
@@ -472,7 +472,7 @@ impl TryFrom<Vec<(String, Expression)>> for MachineProperties {
                             continue;
                         }
                     };
-                    return Err("`latch` machine property expects a column name");
+                    return Err("`latch` machine property expects a local column name");
                 }
                 "operation_id" => {
                     if props.operation_id.is_some() {
@@ -484,7 +484,7 @@ impl TryFrom<Vec<(String, Expression)>> for MachineProperties {
                             continue;
                         }
                     };
-                    return Err("`operation_id` machine property expects a column name");
+                    return Err("`operation_id` machine property expects a local column name");
                 }
                 "call_selectors" => {
                     if props.call_selectors.is_some() {
@@ -496,7 +496,7 @@ impl TryFrom<Vec<(String, Expression)>> for MachineProperties {
                             continue;
                         }
                     };
-                    return Err("`call_selectors` machine property expects a column name");
+                    return Err("`call_selectors` machine property expects a new column name");
                 }
                 _ => {
                     return Err("unknown machine property");

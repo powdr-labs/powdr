@@ -14,8 +14,8 @@ use powdr_ast::{
         self,
         asm::{
             self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
-            InstructionBody, LinkDeclaration, MachineStatement, ModuleStatement, RegisterFlag,
-            SymbolDefinition,
+            InstructionBody, LinkDeclaration, MachineProperties, MachineStatement, ModuleStatement,
+            RegisterFlag, SymbolDefinition,
         },
     },
 };
@@ -166,10 +166,12 @@ impl TypeChecker {
             }
         }
 
-        let degree = machine.properties.degree;
-        let latch = machine.properties.latch;
-        let operation_id = machine.properties.operation_id;
-        let call_selectors = machine.properties.call_selectors;
+        let MachineProperties {
+            degree,
+            latch,
+            operation_id,
+            call_selectors,
+        } = machine.properties;
 
         if !registers.iter().any(|r| r.ty.is_pc()) {
             let operation_count = callable.operation_definitions().count();
