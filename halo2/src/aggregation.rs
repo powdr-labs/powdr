@@ -402,6 +402,6 @@ pub fn gen_aggregation_evm_verifier(
     accumulator_indices: Vec<(usize, usize)>,
 ) -> Vec<u8> {
     let sol = gen_aggregation_solidity_verifier(params, vk, num_instance, accumulator_indices);
-    println!("Sol code:\n{sol}\n");
+    //println!("Sol code:\n{sol}\n");
     evm::compile_solidity(&sol)
 }

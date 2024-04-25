@@ -1,5 +1,5 @@
 use halo2_proofs::{
-    halo2curves::bn256::{Bn256, Fr, G1Affine},
+    halo2curves::{ff::Field, bn256::{Bn256, Fr, G1Affine}},
     plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ProvingKey, VerifyingKey},
     poly::{
         commitment::ParamsProver,
@@ -282,7 +282,8 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let protocol_app = compile(
             &params_app,
             &self.vkey_app.as_ref().unwrap(),
-            Config::kzg().with_num_instance(vec![]),
+            //Config::kzg().with_num_instance(vec![]),
+            Config::kzg().with_num_instance(vec![0]),
         );
         let empty_snark = aggregation::Snark::new_without_witness(protocol_app.clone());
         let agg_circuit =
@@ -304,7 +305,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         log::info!("Generating aggregated proof...");
         let start = Instant::now();
 
-        let snark = aggregation::Snark::new(protocol_app, vec![], proof);
+        let snark = aggregation::Snark::new(protocol_app, vec![vec![]], proof);
         let agg_circuit_with_proof = aggregation::AggregationCircuit::new(&self.params, [snark]);
         let proof = gen_proof::<_, _, EvmTranscript<G1Affine, _, _, _>>(
             &self.params,
@@ -396,7 +397,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let protocol_app = compile(
             &params_app,
             vkey_app,
-            Config::kzg().with_num_instance(vec![]),
+            Config::kzg().with_num_instance(vec![0]),
         );
         let empty_snark = aggregation::Snark::new_without_witness(protocol_app.clone());
         let agg_circuit =
