@@ -2,9 +2,7 @@ use std::prover::Query;
 use std::convert::fe;
 use std::protocols::permutation::permutation;
 
-machine Main {
-    degree 8;
-
+machine Main with degree: 8 {
     col fixed first_four = [1, 1, 1, 1, 0, 0, 0, 0];
 
     // Two pairs of witness columns, claimed to be permutations of one another

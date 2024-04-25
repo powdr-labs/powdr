@@ -5,14 +5,15 @@ use std::array;
 
 // A read/write memory, similar to that of Polygon:
 // https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/mem.pil
-machine Memory(LATCH, m_is_write) {
-
+machine Memory with
+    latch: LATCH,
+    operation_id: m_is_write,
+    call_selectors: selectors,
+{
     // lower bound degree is 65536
 
     operation mload<0> m_addr, m_step -> m_value;
     operation mstore<1> m_addr, m_step, m_value ->;
-
-    call_selectors selectors;
 
     let LATCH = 1;
 

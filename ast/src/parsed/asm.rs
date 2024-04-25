@@ -384,6 +384,7 @@ impl Display for Part {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Machine {
     pub arguments: MachineArguments,
+    pub properties: MachineProperties,
     pub statements: Vec<MachineStatement>,
 }
 
@@ -399,23 +400,111 @@ impl Machine {
                         MachineStatement::Pil(_, statement) => {
                             Box::new(statement.symbol_definition_names().map(|(s, _)| s))
                         }
-                        MachineStatement::CallSelectors(_, name) => Box::new(once(name)),
-                        MachineStatement::Degree(_, _)
-                        | MachineStatement::Submachine(_, _, _)
+                        MachineStatement::Submachine(_, _, _)
                         | MachineStatement::InstructionDeclaration(_, _, _)
                         | MachineStatement::LinkDeclaration(_, _)
                         | MachineStatement::FunctionDeclaration(_, _, _, _)
                         | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
                     }
-                }),
+                })
+                .chain(self.arguments.defined_names())
+                .chain(self.properties.defined_names()),
         )
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
-pub struct MachineArguments {
+pub struct MachineArguments(pub Vec<Param>);
+
+impl MachineArguments {
+    pub fn defined_names(&self) -> impl Iterator<Item = &String> {
+        self.0.iter().map(|p| &p.name)
+    }
+}
+
+impl TryFrom<Vec<Param>> for MachineArguments {
+    type Error = &'static str;
+
+    fn try_from(params: Vec<Param>) -> std::result::Result<Self, Self::Error> {
+        for p in &params {
+            if p.index.is_some() || p.ty.is_none() || p.name.is_empty() {
+                return Err("invalid machine argument");
+            }
+        }
+        Ok(MachineArguments(params))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
+pub struct MachineProperties {
+    pub degree: Option<Expression>,
     pub latch: Option<String>,
     pub operation_id: Option<String>,
+    pub call_selectors: Option<String>,
+}
+
+impl MachineProperties {
+    pub fn defined_names(&self) -> impl Iterator<Item = &String> {
+        self.call_selectors.iter()
+    }
+}
+
+impl TryFrom<Vec<(String, Expression)>> for MachineProperties {
+    type Error = &'static str;
+
+    fn try_from(prop_list: Vec<(String, Expression)>) -> std::result::Result<Self, Self::Error> {
+        let mut props: Self = Default::default();
+        for (name, value) in prop_list {
+            match name.as_str() {
+                "degree" => {
+                    if props.degree.is_some() {
+                        return Err("`degree` already defined");
+                    };
+                    props.degree = Some(value);
+                }
+                "latch" => {
+                    if props.latch.is_some() {
+                        return Err("`latch` already defined");
+                    };
+                    if let Expression::Reference(r) = value {
+                        if let Some(id) = r.try_to_identifier() {
+                            props.latch = Some(id.clone());
+                            continue;
+                        }
+                    };
+                    return Err("`latch` machine property expects a local column name");
+                }
+                "operation_id" => {
+                    if props.operation_id.is_some() {
+                        return Err("`operation_id` already defined");
+                    };
+                    if let Expression::Reference(r) = value {
+                        if let Some(id) = r.try_to_identifier() {
+                            props.operation_id = Some(id.clone());
+                            continue;
+                        }
+                    };
+                    return Err("`operation_id` machine property expects a local column name");
+                }
+                "call_selectors" => {
+                    if props.call_selectors.is_some() {
+                        return Err("`call_selectors` already defined");
+                    };
+                    if let Expression::Reference(r) = value {
+                        if let Some(id) = r.try_to_identifier() {
+                            props.call_selectors = Some(id.clone());
+                            continue;
+                        }
+                    };
+                    return Err("`call_selectors` machine property expects a new column name");
+                }
+                _ => {
+                    return Err("unknown machine property");
+                }
+            }
+        }
+        Ok(props)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
@@ -475,8 +564,6 @@ pub struct Instruction {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement {
-    CallSelectors(SourceRef, String),
-    Degree(SourceRef, Expression),
     Pil(SourceRef, PilStatement),
     Submachine(SourceRef, SymbolPath, String),
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),

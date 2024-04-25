@@ -14,7 +14,10 @@ machine SubVM {
     }
 }
 
-machine AddVM(latch, operation_id) {
+machine AddVM with
+    latch: latch,
+    operation_id: operation_id
+{
     operation add<0> x,y -> z;
 
     col witness operation_id;
@@ -27,10 +30,7 @@ machine AddVM(latch, operation_id) {
     z = y + x;
 }
 
-machine Main {
-
-    degree 256;
-
+machine Main with degree: 256 {
     SubVM subvm;
     AddVM addvm;
 

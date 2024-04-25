@@ -1,7 +1,4 @@
-machine Main {
-
-    degree 256;
-
+machine Main with degree: 256 {
     Pow pow;
 
     reg pc[@pc];

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
-        DegreeStatement, FunctionBody, FunctionStatements, FunctionSymbol, Instruction,
+        FunctionBody, FunctionStatements, FunctionSymbol, Instruction,
         InstructionDefinitionStatement, InstructionStatement, Item, LabelStatement,
         LinkDefinitionStatement, Machine, OperationSymbol, RegisterDeclarationStatement,
         RegisterTy, Return, SubmachineDeclaration,
@@ -14,8 +14,8 @@ use powdr_ast::{
         self,
         asm::{
             self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
-            InstructionBody, LinkDeclaration, MachineStatement, ModuleStatement, RegisterFlag,
-            SymbolDefinition,
+            InstructionBody, LinkDeclaration, MachineProperties, MachineStatement, ModuleStatement,
+            RegisterFlag, SymbolDefinition,
         },
     },
 };
@@ -41,8 +41,6 @@ impl TypeChecker {
     ) -> Result<Machine, Vec<String>> {
         let mut errors = vec![];
 
-        let mut degree = None;
-        let mut call_selectors = None;
         let mut registers = vec![];
         let mut pil = vec![];
         let mut instructions = vec![];
@@ -52,20 +50,6 @@ impl TypeChecker {
 
         for s in machine.statements {
             match s {
-                MachineStatement::Degree(_, degree_value) => {
-                    degree = Some(DegreeStatement {
-                        degree: degree_value,
-                    });
-                }
-                MachineStatement::CallSelectors(_, sel) => {
-                    if let Some(other_sel) = &call_selectors {
-                        errors.push(format!(
-                            "Machine {ctx} already has call_selectors ({other_sel})"
-                        ));
-                    } else {
-                        call_selectors = Some(sel);
-                    }
-                }
                 MachineStatement::RegisterDeclaration(source, name, flag) => {
                     let ty = match flag {
                         Some(RegisterFlag::IsAssignment) => RegisterTy::Assignment,
@@ -182,8 +166,12 @@ impl TypeChecker {
             }
         }
 
-        let latch = machine.arguments.latch;
-        let operation_id = machine.arguments.operation_id;
+        let MachineProperties {
+            degree,
+            latch,
+            operation_id,
+            call_selectors,
+        } = machine.properties;
 
         if !registers.iter().any(|r| r.ty.is_pc()) {
             let operation_count = callable.operation_definitions().count();
@@ -425,7 +413,7 @@ mod tests {
         let src = r#"
         mod A {
         }
-        machine M(l, i) {
+        machine M with latch: l, operation_id: i {
             A a;
         }"#;
         expect_check_str(
@@ -439,7 +427,7 @@ mod tests {
     #[test]
     fn constrained_machine_has_no_registers() {
         let src = r#"
-machine Main(latch, id) {
+machine Main with latch: latch, operation_id: id {
    reg A;
 }
 "#;
@@ -473,7 +461,7 @@ machine Main {
     #[test]
     fn multiple_ops_need_op_id() {
         let src = r#"
-machine Arith(latch, _) {
+machine Arith with latch: latch {
    operation add a, b -> c;
    operation sub a, b -> c;
 }
@@ -484,7 +472,7 @@ machine Arith(latch, _) {
     #[test]
     fn id_column_requires_op_id() {
         let src = r#"
-machine Arith(latch, id) {
+machine Arith with latch: latch, operation_id: id  {
    operation add a, b -> c;
    operation sub a, b -> c;
 }
@@ -496,7 +484,7 @@ machine Arith(latch, id) {
     #[test]
     fn id_op_id_requires_id_column() {
         let src = r#"
-machine Arith(latch, _) {
+machine Arith with latch: latch {
    operation add<0> a, b -> c;
 }
 "#;
@@ -506,10 +494,8 @@ machine Arith(latch, _) {
     #[test]
     fn virtual_machine_has_no_call_selectors() {
         let src = r#"
-machine Main {
+machine Main with call_selectors: sel {
    reg pc[@pc];
-
-   call_selectors sel;
 }
 "#;
         expect_check_str(

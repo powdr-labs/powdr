@@ -1,6 +1,4 @@
-machine MultiAssign {
-    degree 16;
-
+machine MultiAssign with degree: 16 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

@@ -240,8 +240,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let length = program
         .machines()
         .fold(None, |acc, (_, m)| acc.or(m.degree.clone()))
-        .unwrap()
-        .degree;
+        .unwrap();
 
     let length: usize = match length {
         Expression::Number(length, None) => length.try_into().unwrap(),
