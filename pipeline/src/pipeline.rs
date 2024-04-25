@@ -28,7 +28,7 @@ use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement};
 use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
-    inputs_to_query_callback, serde_data_to_query_callback,
+    handle_simple_queries_callback, inputs_to_query_callback, serde_data_to_query_callback,
     util::{try_read_poly_set, FixedPolySet, WitnessPolySet},
 };
 
@@ -137,10 +137,9 @@ where
             pilo: false,
             arguments: Arguments::default(),
         }
-        // We add empty prover inputs by default to always have basic support
-        // to hints, print, etc.
-        // Newer prover inputs can be added on top and will overwrite this one.
-        .with_prover_inputs(vec![])
+        // We add the basic callback functionalities
+        // to support PrintChar and Hint.
+        .add_query_callback(Arc::new(handle_simple_queries_callback()))
     }
 }
 
@@ -554,15 +553,17 @@ impl<T: FieldElement> Pipeline<T> {
             self.artifact.parsed_asm_file = Some({
                 let (path, asm_string) = self.compute_asm_string()?;
                 let path = path.clone();
+                let path_str = path.as_ref().map(|p| p.to_str().unwrap());
 
-                let parsed_asm = powdr_parser::parse_asm(None, asm_string).unwrap_or_else(|err| {
-                    match path.as_ref() {
-                        Some(path) => eprintln!("Error parsing .asm file: {}", path.display()),
-                        None => eprintln!("Error parsing .asm file:"),
-                    }
-                    err.output_to_stderr();
-                    panic!();
-                });
+                let parsed_asm =
+                    powdr_parser::parse_asm(path_str, asm_string).unwrap_or_else(|err| {
+                        eprintln!(
+                            "Error parsing .asm file:{}",
+                            path_str.map(|p| format!(" {p}")).unwrap_or_default()
+                        );
+                        err.output_to_stderr();
+                        panic!();
+                    });
 
                 (path.clone(), parsed_asm)
             });

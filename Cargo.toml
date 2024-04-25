@@ -45,3 +45,7 @@ overflow-checks = true
 panic = 'unwind'
 incremental = true         # This is true because target is cached
 codegen-units = 256
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true

@@ -177,9 +177,7 @@ pub fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 /// Returns the analyzed PIL containing only the std library.
 pub fn std_analyzed<T: FieldElement>() -> Analyzed<T> {
-    // airgen needs a main machine.
-    let code = "machine Main { }".to_string();
-    let mut pipeline = Pipeline::default().from_asm_string(code, None);
+    let mut pipeline = Pipeline::default().from_asm_string(String::new(), None);
     pipeline.compute_analyzed_pil().unwrap().clone()
 }
 

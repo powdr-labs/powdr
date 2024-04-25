@@ -134,6 +134,10 @@ fn sanity_check(program: &AnalysisASMFile) {
         .iter()
         .map(|s| s.to_string())
         .collect::<BTreeSet<_>>();
+    // FIXME: Currently, continuations don't support a Runtime with extra
+    // registers. This has not been fixed because extra registers will not be
+    // needed once we support accessing the memory machine from multiple
+    // machines. This comment can be removed then.
     assert_eq!(machine_registers, expected_registers);
 }
 

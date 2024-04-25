@@ -12,6 +12,7 @@ use std::{
     str::FromStr,
 };
 
+use auto_enums::auto_enum;
 use derive_more::Display;
 use powdr_number::{BigInt, BigUint, DegreeType};
 use schemars::JsonSchema;
@@ -427,43 +428,40 @@ impl<R> Expression<R> {
     /// This specifically does not implement Children because otherwise it would
     /// have a wrong implementation of ExpressionVisitable (which is implemented
     /// generically for all types that implement Children<Expr>).
-    pub fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+    #[auto_enum(Iterator)]
+    pub fn children(&self) -> impl Iterator<Item = &Expression<R>> + '_ {
         match self {
             Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
-                Box::new(empty())
+                empty()
             }
-            Expression::Number(_, _) => Box::new(empty()),
-            Expression::Tuple(v) => Box::new(v.iter()),
-            Expression::LambdaExpression(LambdaExpression { body, .. }) => {
-                Box::new(once(body.as_ref()))
-            }
-            Expression::ArrayLiteral(ArrayLiteral { items }) => Box::new(items.iter()),
+            Expression::Number(_, _) => empty(),
+            Expression::Tuple(v) => v.iter(),
+            Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_ref()),
+            Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter(),
             Expression::BinaryOperation(left, _, right) => {
-                Box::new([left.as_ref(), right.as_ref()].into_iter())
+                [left.as_ref(), right.as_ref()].into_iter()
             }
-            Expression::UnaryOperation(_, e) => Box::new(once(e.as_ref())),
+            Expression::UnaryOperation(_, e) => once(e.as_ref()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
-                Box::new([array.as_ref(), index.as_ref()].into_iter())
+                [array.as_ref(), index.as_ref()].into_iter()
             }
             Expression::FunctionCall(FunctionCall {
                 function,
                 arguments,
-            }) => Box::new(once(function.as_ref()).chain(arguments.iter())),
-            Expression::FreeInput(e) => Box::new(once(e.as_ref())),
+            }) => once(function.as_ref()).chain(arguments.iter()),
+            Expression::FreeInput(e) => once(e.as_ref()),
             Expression::MatchExpression(e, arms) => {
-                Box::new(once(e.as_ref()).chain(arms.iter().flat_map(|arm| arm.children())))
+                once(e.as_ref()).chain(arms.iter().flat_map(|arm| arm.children()))
             }
             Expression::IfExpression(IfExpression {
                 condition,
                 body,
                 else_body,
-            }) => Box::new([condition, body, else_body].into_iter().map(|e| e.as_ref())),
-            Expression::BlockExpression(statements, expr) => Box::new(
-                statements
-                    .iter()
-                    .flat_map(|s| s.children())
-                    .chain(once(expr.as_ref())),
-            ),
+            }) => [condition, body, else_body].into_iter().map(|e| e.as_ref()),
+            Expression::BlockExpression(statements, expr) => statements
+                .iter()
+                .flat_map(|s| s.children())
+                .chain(once(expr.as_ref())),
         }
     }
 
@@ -471,43 +469,40 @@ impl<R> Expression<R> {
     /// This specifically does not implement Children because otherwise it would
     /// have a wrong implementation of ExpressionVisitable (which is implemented
     /// generically for all types that implement Children<Expr>).
-    pub fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+    #[auto_enum(Iterator)]
+    pub fn children_mut(&mut self) -> impl Iterator<Item = &mut Expression<R>> + '_ {
         match self {
             Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
-                Box::new(empty())
+                empty()
             }
-            Expression::Number(_, _) => Box::new(empty()),
-            Expression::Tuple(v) => Box::new(v.iter_mut()),
-            Expression::LambdaExpression(LambdaExpression { body, .. }) => {
-                Box::new(once(body.as_mut()))
-            }
-            Expression::ArrayLiteral(ArrayLiteral { items }) => Box::new(items.iter_mut()),
+            Expression::Number(_, _) => empty(),
+            Expression::Tuple(v) => v.iter_mut(),
+            Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_mut()),
+            Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter_mut(),
             Expression::BinaryOperation(left, _, right) => {
-                Box::new([left.as_mut(), right.as_mut()].into_iter())
+                [left.as_mut(), right.as_mut()].into_iter()
             }
-            Expression::UnaryOperation(_, e) => Box::new(once(e.as_mut())),
+            Expression::UnaryOperation(_, e) => once(e.as_mut()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
-                Box::new([array.as_mut(), index.as_mut()].into_iter())
+                [array.as_mut(), index.as_mut()].into_iter()
             }
             Expression::FunctionCall(FunctionCall {
                 function,
                 arguments,
-            }) => Box::new(once(function.as_mut()).chain(arguments.iter_mut())),
-            Expression::FreeInput(e) => Box::new(once(e.as_mut())),
+            }) => once(function.as_mut()).chain(arguments.iter_mut()),
+            Expression::FreeInput(e) => once(e.as_mut()),
             Expression::MatchExpression(e, arms) => {
-                Box::new(once(e.as_mut()).chain(arms.iter_mut().flat_map(|arm| arm.children_mut())))
+                once(e.as_mut()).chain(arms.iter_mut().flat_map(|arm| arm.children_mut()))
             }
             Expression::IfExpression(IfExpression {
                 condition,
                 body,
                 else_body,
-            }) => Box::new([condition, body, else_body].into_iter().map(|e| e.as_mut())),
-            Expression::BlockExpression(statements, expr) => Box::new(
-                statements
-                    .iter_mut()
-                    .flat_map(|s| s.children_mut())
-                    .chain(once(expr.as_mut())),
-            ),
+            }) => [condition, body, else_body].into_iter().map(|e| e.as_mut()),
+            Expression::BlockExpression(statements, expr) => statements
+                .iter_mut()
+                .flat_map(|s| s.children_mut())
+                .chain(once(expr.as_mut())),
         }
     }
 }
