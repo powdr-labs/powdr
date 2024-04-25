@@ -973,9 +973,9 @@ impl Pattern {
 
                 let mut cons_iter = cons_patterns.iter().peekable();
 
-                for pat in pre_ellipsis.iter().copied() {
-                    if let Some(_) = cons_iter.next() {
-                        specialized.push(pat.clone());
+                for pat in pre_ellipsis.iter() {
+                    if cons_iter.next().is_some() {
+                        specialized.push((*pat).clone());
                     }
                 }
 
@@ -986,7 +986,7 @@ impl Pattern {
                 }
 
                 for pat in post_ellipsis {
-                    if let Some(_) = cons_iter.next() {
+                    if cons_iter.next().is_some() {
                         specialized.push(pat.clone());
                     }
                 }
