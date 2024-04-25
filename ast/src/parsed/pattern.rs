@@ -2,10 +2,7 @@ use powdr_number::BigInt;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use std::{
-    iter::{empty, once},
-    str::FromStr,
-};
+use std::iter::{empty, once};
 
 use super::{asm::SymbolPath, visitor::Children};
 
@@ -304,7 +301,7 @@ mod test {
     #[test]
     fn test_specialize_enum() {
         let cons = Pattern::Enum(
-            SymbolPath::from_str("Foo").unwrap(),
+            SymbolPath::from_identifier("Foo".to_string()),
             Some(vec![
                 Pattern::Number(0.into()),
                 Pattern::Variable("x".to_string()),
@@ -313,7 +310,7 @@ mod test {
         );
 
         let pat = Pattern::Enum(
-            SymbolPath::from_str("Foo").unwrap(),
+            SymbolPath::from_identifier("Foo".to_string()),
             Some(vec![
                 Pattern::Variable("x".to_string()),
                 Pattern::Variable("y".to_string()),
@@ -338,7 +335,7 @@ mod test {
     #[test]
     fn test_specialize_enum_different_symbolpath() {
         let cons = Pattern::Enum(
-            SymbolPath::from_str("Foo1").unwrap(),
+            SymbolPath::from_identifier("Foo1".to_string()),
             Some(vec![
                 Pattern::Number(0.into()),
                 Pattern::Variable("x".to_string()),
@@ -347,7 +344,7 @@ mod test {
         );
 
         let pat = Pattern::Enum(
-            SymbolPath::from_str("Foo").unwrap(),
+            SymbolPath::from_identifier("Foo".to_string()),
             Some(vec![
                 Pattern::Variable("x".to_string()),
                 Pattern::Variable("y".to_string()),

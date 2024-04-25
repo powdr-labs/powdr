@@ -17,7 +17,7 @@ use powdr_ast::{
         pattern::Pattern,
         types::{Type, TypeScheme},
         ArrayLiteral, BinaryOperator, FunctionCall, IfExpression, IndexAccess, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock, UnaryOperator,
+        LetStatementInsideBlock, MatchArm, StatementInsideBlock, UnaryOperator,
     },
     SourceRef,
 };
