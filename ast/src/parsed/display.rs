@@ -60,12 +60,17 @@ impl Display for ModuleStatement {
                                 .map(|s| format!("call_selectors: {s}")),
                         )
                         .join(", ");
-                    match (args.is_empty(), props.is_empty()) {
-                        (true, true) => write!(f, "machine {name} {m}"),
-                        (true, false) => write!(f, "machine {name} with {props} {m}"),
-                        (false, true) => write!(f, "machine {name}({args}) {m}"),
-                        (false, false) => write!(f, "machine {name}({args}) with {props} {m}"),
-                    }
+                    let props = if props.is_empty() {
+                        props
+                    } else {
+                        format!(" with {props}")
+                    };
+                    let args = if args.is_empty() {
+                        args
+                    } else {
+                        format!("({args})")
+                    };
+                    write!(f, "machine {name}{args}{props} {m}")
                 }
                 SymbolValue::Import(i) => {
                     write!(f, "{i} as {name};")

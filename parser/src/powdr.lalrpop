@@ -255,8 +255,7 @@ GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
 // ---------------------------- ASM part -----------------------------
 
 MachineDefinition: SymbolDefinition = {
-    "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, properties: Default::default(), statements}.into() },
-    "machine" <name:Identifier> <arguments:MachineArguments> "with" <properties:MachineProperties> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, properties, statements}.into() },
+    "machine" <name:Identifier> <arguments:MachineArguments> <properties:("with" <MachineProperties>)?> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, properties: properties.unwrap_or_default(), statements}.into() },
 }
 
 MachineProperties: MachineProperties = {
