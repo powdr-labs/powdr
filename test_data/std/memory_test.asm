@@ -1,4 +1,4 @@
-use std::memory::Memory;
+use std::machines::memory::Memory;
 
 machine Main {
     reg pc[@pc];

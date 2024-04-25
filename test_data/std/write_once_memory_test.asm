@@ -1,4 +1,4 @@
-use std::write_once_memory::WriteOnceMemory;
+use std::machines::write_once_memory::WriteOnceMemory;
 
 machine Main {
 

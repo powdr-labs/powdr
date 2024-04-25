@@ -86,7 +86,7 @@ impl Runtime {
         // Base submachines
         // TODO: can/should the memory machine be part of the runtime also?
         r.add_submachine(
-            "std::binary::Binary",
+            "std::machines::binary::Binary",
             None,
             "binary",
             [
@@ -99,7 +99,7 @@ impl Runtime {
         );
 
         r.add_submachine(
-            "std::shift::Shift",
+            "std::machines::shift::Shift",
             None,
             "shift",
             [
@@ -111,7 +111,7 @@ impl Runtime {
         );
 
         r.add_submachine(
-            "std::split::split_gl::SplitGL",
+            "std::machines::split::split_gl::SplitGL",
             None,
             "split_gl",
             ["instr split_gl Z -> X, Y ~ split_gl.split;"],
@@ -150,7 +150,7 @@ impl Runtime {
 
     pub fn with_poseidon(mut self) -> Self {
         self.add_submachine(
-            "std::hash::poseidon_gl::PoseidonGL",
+            "std::machines::hash::poseidon_gl::PoseidonGL",
             None,
             "poseidon_gl",
             [format!(
@@ -191,7 +191,7 @@ impl Runtime {
 
     pub fn with_arith(mut self) -> Self {
         self.add_submachine(
-            "std::arith::Arith",
+            "std::machines::arith::Arith",
             None,
             "arith",
             [

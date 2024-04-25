@@ -1,4 +1,4 @@
-use std::binary::Binary;
+use std::machines::binary::Binary;
 
 
 machine Main {

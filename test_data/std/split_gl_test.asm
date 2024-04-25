@@ -1,4 +1,4 @@
-use std::split::split_gl::SplitGL;
+use std::machines::split::split_gl::SplitGL;
 
 
 machine Main {

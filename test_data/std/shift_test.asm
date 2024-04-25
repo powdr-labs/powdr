@@ -1,4 +1,4 @@
-use std::shift::Shift;
+use std::machines::shift::Shift;
 
 
 machine Main {
