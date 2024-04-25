@@ -348,10 +348,10 @@ fn create_proving_and_verification_key(
 
     format!("
         public:
-        class ProvingKey : public ProvingKey_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>, CommitmentKey> {{
+        class ProvingKey : public ProvingKeyAvm_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>, CommitmentKey> {{
             public:
             // Expose constructors on the base class
-            using Base = ProvingKey_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>, CommitmentKey>;
+            using Base = ProvingKeyAvm_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>, CommitmentKey>;
             using Base::Base;
 
             {get_to_be_shifted}
