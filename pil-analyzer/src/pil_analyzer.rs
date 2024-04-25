@@ -566,7 +566,6 @@ mod tests {
         ];
         let new_pattern = Pattern::CatchAll;
         let witnesses = PILAnalyzer::usefulness(&patterns, &new_pattern);
-        println!("{:?}", witnesses);
         assert_eq!(witnesses.len(), 1);
         assert_eq!(witnesses[0], new_pattern);
     }
