@@ -915,19 +915,6 @@ impl Pattern {
         }
     }
 
-    pub fn is_fully_catch_all(&self) -> bool {
-        match self {
-            Pattern::CatchAll => true,
-            Pattern::Tuple(patterns) | Pattern::Array(patterns) => {
-                patterns.iter().all(|pattern| pattern.is_fully_catch_all())
-            }
-            Pattern::Enum(_, Some(patterns)) => {
-                patterns.iter().all(|pattern| pattern.is_fully_catch_all())
-            }
-            _ => false,
-        }
-    }
-
     // Specialize a pattern based on a "constructor" pattern passed as a parameter.
     // Based on https://doc.rust-lang.org/nightly/nightly-rustc/rustc_pattern_analysis/usefulness/index.html#specialization.
     pub fn specialize(&self, constructor: &Self) -> Option<Vec<Self>> {

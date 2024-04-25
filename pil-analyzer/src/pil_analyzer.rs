@@ -200,7 +200,7 @@ impl PILAnalyzer {
     pub fn usefulness(patterns: &[Pattern], new_pattern: &Pattern) -> Vec<Pattern> {
         let mut witnesses = Vec::new();
 
-        if patterns.is_empty() || patterns.iter().any(|p| p.is_fully_catch_all()) {
+        if patterns.is_empty() || patterns.iter().any(|p| p.is_irrefutable()) {
             return vec![];
         }
 
@@ -595,6 +595,7 @@ mod tests {
         ];
         let new_pattern = Pattern::CatchAll;
         let witnesses = PILAnalyzer::usefulness(&patterns, &new_pattern);
-        assert_eq!(witnesses.len(), 0);
+        assert_eq!(witnesses.len(), 1);
+        assert_eq!(witnesses[0], new_pattern);
     }
 }
