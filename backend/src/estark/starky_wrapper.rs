@@ -1,5 +1,5 @@
-use std::io;
 use std::time::Instant;
+use std::{borrow::Cow, io};
 
 use crate::{Backend, BackendFactory, Error};
 use powdr_ast::analyzed::Analyzed;
@@ -41,7 +41,10 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
 
         let params = create_stark_struct(pil.degree());
 
-        let (pil_json, fixed) = first_step_fixup(pil, fixed);
+        let (pil_json, patched_fixed) = first_step_fixup(pil, fixed);
+
+        let fixed = patched_fixed.map_or_else(|| Cow::Borrowed(fixed), Cow::Owned);
+
         let const_pols = to_starky_pols_array(&fixed, &pil_json, PolKind::Constant);
 
         let setup = if let Some(vkey) = verification_key {
@@ -73,8 +76,8 @@ fn create_stark_setup(
     .unwrap()
 }
 
-pub struct EStark<F: FieldElement> {
-    fixed: Vec<(String, Vec<F>)>,
+pub struct EStark<'a, F: FieldElement> {
+    fixed: Cow<'a, [(String, Vec<F>)]>,
     pil_json: PIL,
     params: StarkStruct,
     // eSTARK calls it setup, but it works similarly to a verification key and depends only on the
@@ -82,7 +85,7 @@ pub struct EStark<F: FieldElement> {
     setup: StarkSetup<MerkleTreeGL>,
 }
 
-impl<F: FieldElement> EStark<F> {
+impl<'a, F: FieldElement> EStark<'a, F> {
     fn verify_stark_with_publics(
         &self,
         proof: &StarkProof<MerkleTreeGL>,
@@ -114,7 +117,7 @@ impl<F: FieldElement> EStark<F> {
     }
 }
 
-impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
+impl<'a, F: FieldElement> Backend<'a, F> for EStark<'a, F> {
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
         let proof: StarkProof<MerkleTreeGL> =
             serde_json::from_str(&String::from_utf8(proof.to_vec()).unwrap()).unwrap();
