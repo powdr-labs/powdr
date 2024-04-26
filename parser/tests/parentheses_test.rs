@@ -41,9 +41,9 @@ mod test {
             ("((x + y) * z);", "(x + y) * z;"),
             ("-(x + y);", "-(x + y);"),
             // function call
-            // ("(a + b)(2);", "(a + b)(2);"),
+            ("(a + b)(2);", "(a + b)(2);"),
             // // Index access
-            // ("(a + b)[2];", "(a + b)[2];"),
+            ("(a + b)[2];", "(a + b)[2];"),
         ];
 
         for test_case in test_cases {

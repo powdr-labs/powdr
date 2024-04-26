@@ -306,18 +306,6 @@ impl<T: Display> Display for Params<T> {
     }
 }
 
-impl<E: Display> Display for IndexAccess<E> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}[{}]", self.array, self.index)
-    }
-}
-
-impl<E: Display> Display for FunctionCall<E> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}({})", self.function, format_list(&self.arguments))
-    }
-}
-
 impl<E: Display> Display for MatchArm<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} => {},", self.pattern, self.value,)
@@ -647,6 +635,36 @@ impl<E: Display> Expression<E> {
 
         write!(f, "{} {} {}", left_string, op, right_string)
     }
+    pub fn format_func_call(
+        fun_call: &FunctionCall<Expression<E>>,
+        f: &mut Formatter<'_>,
+    ) -> Result {
+        if let None = fun_call.function.precedence() {
+            write!(
+                f,
+                "{}({})",
+                fun_call.function,
+                format_list(&fun_call.arguments)
+            )
+        } else {
+            write!(
+                f,
+                "({})({})",
+                fun_call.function,
+                format_list(&fun_call.arguments)
+            )
+        }
+    }
+    pub fn format_index_access(
+        index_access: &IndexAccess<Expression<E>>,
+        f: &mut Formatter<'_>,
+    ) -> Result {
+        if let None = index_access.array.precedence() {
+            write!(f, "{}[{}]", index_access.array, index_access.index)
+        } else {
+            write!(f, "({})[{}]", index_access.array, index_access.index)
+        }
+    }
 }
 
 impl<Ref: Display> Display for Expression<Ref> {
@@ -663,8 +681,10 @@ impl<Ref: Display> Display for Expression<Ref> {
                 Expression::format_binary_operation(left, op, right, f)
             }
             Expression::UnaryOperation(op, exp) => self.format_unary_operation(op, exp, f),
-            Expression::IndexAccess(index_access) => write!(f, "{index_access}"),
-            Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
+            Expression::IndexAccess(index_access) => {
+                Expression::format_index_access(index_access, f)
+            }
+            Expression::FunctionCall(fun_call) => Expression::format_func_call(fun_call, f),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
             Expression::MatchExpression(scrutinee, arms) => {
                 writeln!(f, "match {scrutinee} {{")?;
