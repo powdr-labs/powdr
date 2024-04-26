@@ -40,7 +40,11 @@ let spaces: int -> string = |n|
     if n == 0 {
         ""
     } else {
-        spaces(n - 1) + " "
+        let s = spaces(n / 2);
+        match n % 2 {
+            0 => s + s,
+            1 => s + s +  " ",
+        }
     };
 let print_item: (int, string), int -> () = |(k, v), indent| {
     let _ = print(spaces(indent * 4));
