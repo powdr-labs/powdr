@@ -19,16 +19,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
         verification_app_key: Option<&mut dyn io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
-        let proof_type = match options.as_str() {
-            "" | "poseidon" => ProofType::Poseidon,
-            "snark_single" => ProofType::SnarkSingle,
-            "snark_aggr" => ProofType::SnarkAggr,
-            _ => {
-                return Err(Error::BackendError(format!(
-                    "Invalid proof type: {options}"
-                )))
-            }
-        };
+        let proof_type = ProofType::from(options);
         let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup, proof_type)?);
         if let Some(vk) = verification_key {
             halo2.add_verification_key(vk);
@@ -91,9 +82,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
 
     fn export_ethereum_verifier(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         match self.proof_type() {
-            ProofType::Poseidon => Err(Error::BackendError(
-                "Ethereum verifier is only supported for snark_single and snark_aggr".to_string(),
-            )),
+            ProofType::Poseidon => Err(Error::NoEthereumVerifierAvailable),
             ProofType::SnarkSingle | ProofType::SnarkAggr => {
                 match self.export_ethereum_verifier_snark(output) {
                     Ok(_) => Ok(()),

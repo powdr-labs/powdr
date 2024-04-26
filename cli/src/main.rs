@@ -206,8 +206,8 @@ enum Commands {
         #[arg(long)]
         params: Option<String>,
 
-        /// Backend options. Halo2: "poseidon" or "snark". EStark and PilStarkCLI: "stark_gl", "stark_bn" or
-        /// "snark_bn".
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
         #[arg(long)]
         backend_options: Option<String>,
 
@@ -279,8 +279,8 @@ enum Commands {
         #[arg(long)]
         params: Option<String>,
 
-        /// Backend options. Halo2: "poseidon" or "snark". EStark and PilStarkCLI: "stark_gl", "stark_bn" or
-        /// "snark_bn".
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
         #[arg(long)]
         backend_options: Option<String>,
 
@@ -330,8 +330,8 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         backend: BackendType,
 
-        /// Backend options. Halo2: "poseidon" or "snark". EStark and PilStarkCLI: "stark_gl", "stark_bn" or
-        /// "snark_bn".
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
         #[arg(long)]
         backend_options: Option<String>,
 
@@ -373,8 +373,8 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         backend: BackendType,
 
-        /// Backend options. Halo2: "poseidon" or "snark". EStark and PilStarkCLI: "stark_gl", "stark_bn" or
-        /// "snark_bn".
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
         #[arg(long)]
         backend_options: Option<String>,
 
@@ -416,8 +416,8 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         backend: BackendType,
 
-        /// Backend options. Halo2: "poseidon" or "snark". EStark and PilStarkCLI: "stark_gl", "stark_bn" or
-        /// "snark_bn".
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
         #[arg(long)]
         backend_options: Option<String>,
 
@@ -452,8 +452,8 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         backend: BackendType,
 
-        /// Backend options. Halo2: "poseidon" or "snark". EStark and PilStarkCLI: "stark_gl", "stark_bn" or
-        /// "snark_bn".
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
         #[arg(long)]
         backend_options: Option<String>,
 
@@ -796,7 +796,7 @@ fn verification_key<T: FieldElement>(
         .with_vkey_app_file(vkey_app.map(PathBuf::from))
         .with_backend(*backend_type, backend_options);
 
-    println!("Generating verification key...");
+    log::info!("Generating verification key...");
     let vkey_file = BufWriter::new(fs::File::create(dir.join("vkey.bin")).unwrap());
     write_or_panic(vkey_file, |w| pipeline.export_verification_key(w))?;
     log::info!("Wrote vkey.bin.");

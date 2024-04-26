@@ -18,9 +18,10 @@ use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, KnownField};
 
 // We use two different EVM verifier libraries.
-// 1. snark_verifier: supports single snark verification as well as aggregated proof verification.
-// However the generated smart contract code size is larger than the limit on Ethereum. This is mitigated in (2).
-// 2. halo2_solidity_verifier: supports single snark verification only. The generated smart contract
+// 1. snark_verifier: supports single SNARK verification as well as aggregated proof verification.
+// However the generated smart contract code size is often larger than the limit on Ethereum for complex programs.
+// This is mitigated in (2).
+// 2. halo2_solidity_verifier: supports single SNARK verification only. The generated smart contract
 // code size is reasonable.
 
 use snark_verifier::{
@@ -58,6 +59,17 @@ pub enum ProofType {
     SnarkAggr,
 }
 
+impl From<String> for ProofType {
+    fn from(s: String) -> Self {
+        match s.as_str() {
+            "" | "poseidon" => Self::Poseidon,
+            "snark_single" => Self::SnarkSingle,
+            "snark_aggr" => Self::SnarkAggr,
+            _ => panic!("Invalid proof type: {s}"),
+        }
+    }
+}
+
 /// Create a halo2 proof for a given PIL, fixed column values and witness column
 /// values. We use KZG ([GWC variant](https://eprint.iacr.org/2019/953)) and
 /// Keccak256
@@ -83,7 +95,7 @@ fn degree_bits(degree: DegreeType) -> u32 {
 }
 
 pub fn generate_setup(size: DegreeType) -> ParamsKZG<Bn256> {
-    // Halo2 does not like degree < 4, so we enforce a minimum of 4 here.
+    // Halo2 does not like degree < 2^4, so we enforce a minimum of 2^4 here.
     // Soundness is fine is we use a larger degree.
     // Performance is also fine if we have to raise it to 4 since it's still quite small.
     ParamsKZG::<Bn256>::new(std::cmp::max(4, degree_bits(size)))
@@ -101,15 +113,9 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let mut params = setup
             .map(|mut setup| ParamsKZG::<Bn256>::read(&mut setup))
             .transpose()?
-            /*
-            .map(|mut params| {
-                params.downsize(degree_bits(analyzed.degree()));
-                params
-            })
-            */
             .unwrap_or_else(|| generate_setup(analyzed.degree()));
 
-        if matches!(proof_type, ProofType::Poseidon) {
+        if matches!(proof_type, ProofType::Poseidon | ProofType::SnarkSingle) {
             params.downsize(degree_bits(analyzed.degree()));
         }
 
@@ -131,6 +137,49 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         self.params.write(output)
     }
 
+    fn prove<
+        E: EncodedChallenge<G1Affine>,
+        TW: TranscriptWriterBuffer<Vec<u8>, G1Affine, E>,
+        TR: TranscriptReadBuffer<Cursor<Vec<u8>>, G1Affine, E>,
+    >(
+        &self,
+        witness: &[(String, Vec<F>)],
+        witgen_callback: WitgenCallback<F>,
+    ) -> Result<Vec<u8>, String> {
+        log::info!("Starting proof generation...");
+
+        let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
+            .with_witgen_callback(witgen_callback)
+            .with_witness(witness);
+        let publics = vec![circuit.instance_column()];
+
+        log::info!("Generating PK for snark...");
+        let vk = match self.vkey {
+            Some(ref vk) => vk.clone(),
+            None => keygen_vk(&self.params, &circuit).unwrap(),
+        };
+        let pk = keygen_pk(&self.params, vk.clone(), &circuit).unwrap();
+
+        log::info!("Generating proof...");
+        let start = Instant::now();
+
+        let proof = gen_proof::<_, _, TW>(&self.params, &pk, circuit, &publics)?;
+
+        let duration = start.elapsed();
+        log::info!("Time taken: {:?}", duration);
+
+        match self.verify_inner::<_, TR>(&vk, &self.params, &proof, &publics) {
+            Ok(_) => {}
+            Err(e) => {
+                return Err(e.to_string());
+            }
+        }
+
+        log::info!("Proof generation done.");
+
+        Ok(proof)
+    }
+
     /// Generate a single proof for a given PIL using Poseidon transcripts.
     /// One or more of these proofs can be aggregated by `prove_snark_aggr`.
     pub fn prove_poseidon(
@@ -140,6 +189,9 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     ) -> Result<Vec<u8>, String> {
         assert!(matches!(self.proof_type, ProofType::Poseidon));
 
+        self.prove::<_, aggregation::PoseidonTranscript<NativeLoader, _>,  aggregation::PoseidonTranscript<NativeLoader, _>>(witness, witgen_callback)
+
+        /*
         log::info!("Starting proof generation...");
 
         let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
@@ -182,6 +234,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         log::info!("Proof generation done.");
 
         Ok(proof)
+        */
     }
 
     /// Generate a single proof for a given PIL using Keccak transcripts.
