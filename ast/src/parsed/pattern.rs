@@ -23,6 +23,10 @@ impl PatternTuple {
         self.patterns[0].is_irrefutable()
     }
 
+    /// Specialize a pattern tuple based on a "constructor" pattern tuple passed as a parameter.
+    /// Based on https://doc.rust-lang.org/nightly/nightly-rustc/rustc_pattern_analysis/usefulness/index.html#specialization.
+    /// If the constructor is shared with the pattern, specialize the pattern removing
+    /// "one layer" (the constructor) and returning internal patterns.
     pub fn specialize(&self, constructor: &PatternTuple) -> Option<PatternTuple> {
         if self.patterns.is_empty() || self.patterns.len() != constructor.patterns.len() {
             return None;
@@ -42,6 +46,10 @@ impl PatternTuple {
         }
     }
 
+    /// Unspecialize a pattern tuple based on a "constructor" pattern tuple passed as a parameter.
+    /// Based on https://doc.rust-lang.org/nightly/nightly-rustc/rustc_pattern_analysis/usefulness/index.html##undoing-specialization.
+    /// Construct a pattern based in the constructor using the values in the tuple as parameters
+    /// If the constructor takes fewer parameters than there are in the tuple, the tuple is extended with the remaining parameters.
     pub fn unspecialize(&self, tuple: PatternTuple) -> Option<PatternTuple> {
         if self.patterns.is_empty() {
             return None;
@@ -107,9 +115,9 @@ impl PatternTuple {
                     }
                 }
 
-                Pattern::Enum(_path1, _patterns1) => {
-                    todo!("Enum")
-                }
+                Pattern::Enum(path1, _) => Some(PatternTuple {
+                    patterns: vec![Pattern::Enum(path1.clone(), Some(tuple.patterns))],
+                }),
                 _ => None,
             }
         }
@@ -157,8 +165,10 @@ impl Pattern {
         }
     }
 
-    // Specialize a pattern based on a "constructor" pattern passed as a parameter.
-    // Based on https://doc.rust-lang.org/nightly/nightly-rustc/rustc_pattern_analysis/usefulness/index.html#specialization.
+    /// Specialize a pattern based on a "constructor" pattern passed as a parameter.
+    /// Based on https://doc.rust-lang.org/nightly/nightly-rustc/rustc_pattern_analysis/usefulness/index.html#specialization.
+    /// If the constructor is shared with the pattern, specialize the pattern removing
+    /// "one layer" (the constructor) and returning internal patterns.
     pub fn specialize(&self, constructor: &Self) -> Option<PatternTuple> {
         match (constructor, self) {
             (_, Pattern::CatchAll) => Some(PatternTuple { patterns: vec![] }),
@@ -210,25 +220,18 @@ impl Pattern {
             }),
 
             (Pattern::Enum(path1, patterns1), Pattern::Enum(path2, patterns2)) => {
-                // TODO Rewrite
                 if path1 != path2 {
                     return None;
                 }
                 match (patterns1, patterns2) {
-                    (Some(p1), Some(p2)) => {
-                        if p1.len() != p2.len() {
-                            //Not sure this is necessary
-                            return None;
-                        }
+                    (Some(_), Some(_)) => {
                         let pats = patterns2.as_ref().unwrap();
                         Some(PatternTuple {
                             patterns: pats.clone(),
                         })
                     }
 
-                    (None, _) => None,
-
-                    (Some(_), None) => None,
+                    _ => None,
                 }
             }
             _ => None,
@@ -341,6 +344,67 @@ mod test {
                     Pattern::Number(2.into()),
                 ]
                 .to_vec()
+            })
+        );
+    }
+
+    #[test]
+    fn test_specialize_enum() {
+        let cons = Pattern::Enum(
+            SymbolPath::from_identifier("Foo".to_string()),
+            Some(vec![Pattern::Number(1.into())]),
+        );
+
+        let pat = Pattern::Enum(
+            SymbolPath::from_identifier("Foo".to_string()),
+            Some(vec![Pattern::Number(2.into())]),
+        );
+
+        let specialized = pat.specialize(&cons);
+
+        assert_eq!(
+            specialized,
+            Some(PatternTuple {
+                patterns: [Pattern::Number(2.into())].to_vec()
+            })
+        );
+    }
+
+    #[test]
+    fn test_specialize_different_enums() {
+        let cons = Pattern::Enum(
+            SymbolPath::from_identifier("Foo".to_string()),
+            Some(vec![Pattern::Number(1.into())]),
+        );
+
+        let pat = Pattern::Enum(
+            SymbolPath::from_identifier("Foo2".to_string()),
+            Some(vec![Pattern::Number(2.into())]),
+        );
+
+        let specialized = pat.specialize(&cons);
+
+        assert_eq!(specialized, None);
+    }
+
+    #[test]
+    fn test_specialize_different_arity_variants() {
+        let cons = Pattern::Enum(
+            SymbolPath::from_identifier("Foo".to_string()),
+            Some(vec![Pattern::Number(1.into())]),
+        );
+
+        let pat = Pattern::Enum(
+            SymbolPath::from_identifier("Foo".to_string()),
+            Some(vec![Pattern::Number(2.into()), Pattern::Number(3.into())]),
+        );
+
+        let specialized = pat.specialize(&cons);
+
+        assert_eq!(
+            specialized,
+            Some(PatternTuple {
+                patterns: [Pattern::Number(2.into()), Pattern::Number(3.into())].to_vec()
             })
         );
     }
