@@ -17,7 +17,7 @@ use starky::{
     types::{StarkStruct, PIL},
 };
 
-use super::{ProofType, create_stark_struct, first_step_fixup};
+use super::{create_stark_struct, first_step_fixup, ProofType};
 
 pub struct Factory;
 

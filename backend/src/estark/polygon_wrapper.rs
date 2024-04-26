@@ -4,7 +4,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 
-use crate::{Backend, BackendFactory, Error, Proof};
+use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 use super::EStarkFilesCommon;
 
@@ -18,6 +18,8 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         output_dir: Option<&'a Path>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
+        verification_app_key: Option<&mut dyn std::io::Read>,
+        options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         Ok(Box::new(PolygonBackend(EStarkFilesCommon::create(
             analyzed,
@@ -25,6 +27,8 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
             output_dir,
             setup,
             verification_key,
+            verification_app_key,
+            options,
         )?)))
     }
 }

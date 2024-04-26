@@ -102,6 +102,7 @@ struct EStarkFilesCommon<'a, F: FieldElement> {
     pil: PIL,
     fixed: Vec<(String, Vec<F>)>,
     output_dir: Option<&'a Path>,
+    proof_type: ProofType,
 }
 
 fn buffered_write_file<R>(
@@ -139,6 +140,8 @@ impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
         output_dir: Option<&'a Path>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
+        verification_app_key: Option<&mut dyn std::io::Read>,
+        options: BackendOptions,
     ) -> Result<Self, Error> {
         if setup.is_some() {
             return Err(Error::NoSetupAvailable);
@@ -146,15 +149,21 @@ impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
         if verification_key.is_some() {
             return Err(Error::NoVerificationAvailable);
         }
+        if verification_app_key.is_some() {
+            return Err(Error::NoAggregationAvailable);
+        }
 
         // Pre-process the PIL and fixed columns.
         let (pil, fixed) = first_step_fixup(analyzed, fixed);
+
+        let proof_type: ProofType = ProofType::from(options);
 
         Ok(EStarkFilesCommon {
             degree: analyzed.degree(),
             pil,
             fixed,
             output_dir,
+            proof_type,
         })
     }
 }
@@ -189,8 +198,16 @@ impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
         write_polys_bin(&paths.commits, witness)?;
 
         // Write the stark struct JSON.
+        let hash_type = match self.proof_type {
+            ProofType::StarkGL => "GL",
+            ProofType::StarkBN => "BN",
+            ProofType::SnarkBN => "BN",
+        };
         log::info!("Writing {}.", paths.stark_struct.to_string_lossy());
-        write_json_file(&paths.stark_struct, &create_stark_struct(self.degree))?;
+        write_json_file(
+            &paths.stark_struct,
+            &create_stark_struct(self.degree, hash_type),
+        )?;
 
         // Write the constraints in JSON.
         log::info!("Writing {}.", paths.contraints.to_string_lossy());
@@ -210,6 +227,8 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
         output_dir: Option<&'a Path>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
+        verification_app_key: Option<&mut dyn std::io::Read>,
+        options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         Ok(Box::new(DumpBackend(EStarkFilesCommon::create(
             analyzed,
@@ -217,6 +236,8 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
             output_dir,
             setup,
             verification_key,
+            verification_app_key,
+            options,
         )?)))
     }
 }
