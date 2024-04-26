@@ -99,19 +99,36 @@ mod internal {
     };
     let<K, V> split_leaf: (K, V)[] -> InsertResult<K, V> = |items| {
         let split = (std::array::len(items) - 1) / 2;
-        let left = sub_array(items, 0, split);
-        let right = sub_array(items, split + 1, std::array::len(items) - split - 1);
-        InsertResult::Split(items[split], BTree::Leaf(left), BTree::Leaf(right))
+        let (left, center, right) = array_split_pivot(items, split);
+        InsertResult::Split(center, BTree::Leaf(left), BTree::Leaf(right))
+    };
+    /// Splits an array into left and right part. The element at index i is
+    /// not part of either and returned separately.
+    let<T> array_split_pivot: T[], int -> (T[], T, T[]) = |arr, i| {
+        let left = sub_array(arr, 0, i);
+        let right = sub_array(arr, i + 1, std::array::len(arr) - i - 1);
+        (left, arr[i], right)
+
+    };
+    /// Split an array into a sub-array of length l and the rest.
+    let<T> array_split: T[], int -> (T[], T[]) = |arr, l| {
+        let left = sub_array(arr, 0, l);
+        let right = sub_array(arr, l, std::array::len(arr) - l);
+        (left, right)
+
+    };
+    /// Inserts x at index i, shifting instead of replacing.
+    let<T> array_insert_at: T[], int, T -> T[] = |arr, i, x| {
+        let (left, right) = array_split(arr, i);
+        left + [x] + right
     };
     let<K, V> insert_into_inner:
         (K, V)[], BTree<K, V>[], (K, V), int, BTree<K, V>, BTree<K, V> -> InsertResult<K, V> =
         |items, children, (k, v), i, left, right| {
-            let new_items = sub_array(items, 0, i) + [(k, v)] + sub_array(items, i, std::array::len(items) - i);
+            let new_items = array_insert_at(items, i, (k, v));
             // We replace the old children[i] by [left, right]
-            let new_children =
-                sub_array(children, 0, i) +
-                [left, right] +
-                sub_array(children, i + 1, std::array::len(children) - i - 1);
+            let (children_left, _, children_right) = array_split_pivot(children, i);
+            let new_children = children_left + [left, right] + children_right;
             if std::array::len(new_items) <= super::max_items {
                 InsertResult::Updated(BTree::Inner(new_items, new_children))
             } else {
@@ -120,12 +137,10 @@ mod internal {
         };
     let<K, V> split_inner: (K, V)[], BTree<K, V>[] -> InsertResult<K, V> = |items, children| {
         let split = (std::array::len(items) - 1) / 2;
-        let left_items = sub_array(items, 0, split);
-        let left_children = sub_array(children, 0, split + 1);
-        let right_items = sub_array(items, split + 1, std::array::len(items) - split - 1);
-        let right_children = sub_array(children, split + 1, std::array::len(children) - split - 1);
+        let (left_items, push_up, right_items) = array_split_pivot(items, split);
+        let (left_children, right_children) = array_split(children, split + 1);
         InsertResult::Split(
-            items[split],
+            push_up,
             BTree::Inner(left_items, left_children),
             BTree::Inner(right_items, right_children)
         )
