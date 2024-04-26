@@ -90,7 +90,7 @@ mod internal {
                 }
         };
     let<K, V> insert_into_leaf: (K, V)[], (K, V), (K, K -> CmpResult) -> InsertResult<K, V> = |items, (k, v), cmp| {
-        let (new_items, _) = items_insert(items, (k, v), cmp);
+        let new_items = items_insert(items, (k, v), cmp);
         if std::array::len(new_items) <= super::max_items {
             InsertResult::Updated(BTree::Leaf(new_items))
         } else {
@@ -130,22 +130,27 @@ mod internal {
             BTree::Inner(right_items, right_children)
         )
     };
+    let one: int = 1;
+    let true: bool = one == 1;
+    let false: bool = !true;
     /// Inserts (k, v) into the sorted list items.
-    /// Returns the new list and the insert position.
-    let<K, V> items_insert: (K, V)[], (K, V), (K, K -> CmpResult) -> ((K, V)[], int) = |items, (k, v), cmp| {
-        let (new_items, ins_pos) = std::array::fold(items, ([], Option::None), |(acc, insert_pos), (key, value)|
-            match insert_pos {
-                Option::Some(_) => (acc + [(key, value)], insert_pos),
-                Option::None => match cmp(k, key) {
-                    CmpResult::Less => (acc + [(k, v), (key, value)], Option::Some(std::array::len(acc))),
-                    CmpResult::Equal => (acc + [(k, v)], Option::Some(std::array::len(acc))),
-                    CmpResult::Greater => (acc + [(key, value)], insert_pos),
+    /// Returns the new list.
+    let<K, V> items_insert: (K, V)[], (K, V), (K, K -> CmpResult) -> (K, V)[] = |items, (k, v), cmp| {
+        let (new_items, ins) = std::array::fold(items, ([], false), |(acc, inserted), (key, value)|
+            if inserted {
+                (acc + [(key, value)], inserted)
+            } else {
+                match cmp(k, key) {
+                    CmpResult::Less => (acc + [(k, v), (key, value)], true),
+                    CmpResult::Equal => (acc + [(k, v)], true),
+                    CmpResult::Greater => (acc + [(key, value)], false),
                 }
             }
         );
-        match ins_pos {
-            Option::Some(i) => (new_items, i),
-            Option::None => (new_items + [(k, v)], std::array::len(new_items)),
+        if ins {
+            new_items
+        } else {
+            new_items + [(k, v)]
         }
     };
         
