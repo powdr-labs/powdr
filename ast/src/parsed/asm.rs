@@ -119,7 +119,7 @@ pub struct Import {
 /// It can contain the special word `super`, which goes up a level.
 /// If it does not start with `::`, it is relative.
 #[derive(
-    Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+    Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema, Hash,
 )]
 pub struct SymbolPath {
     /// The parts between each `::`.
@@ -354,7 +354,9 @@ impl Display for AbsoluteSymbolPath {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub enum Part {
     Super,
     Named(String),

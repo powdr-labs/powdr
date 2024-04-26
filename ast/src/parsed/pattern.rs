@@ -6,7 +6,7 @@ use std::iter::{empty, once};
 
 use super::{asm::SymbolPath, visitor::Children};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PatternTuple {
     pub patterns: Vec<Pattern>,
 }
@@ -116,7 +116,9 @@ impl PatternTuple {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub enum Pattern {
     CatchAll, // "_", matches a single value
     Ellipsis, // "..", matches a series of values, only valid inside array patterns
@@ -159,9 +161,9 @@ impl Pattern {
     // Based on https://doc.rust-lang.org/nightly/nightly-rustc/rustc_pattern_analysis/usefulness/index.html#specialization.
     pub fn specialize(&self, constructor: &Self) -> Option<PatternTuple> {
         match (constructor, self) {
-            //(Pattern::CatchAll, _) => Some([].to_vec()),
-            (Pattern::CatchAll, Pattern::CatchAll) => Some(PatternTuple { patterns: vec![] }),
-
+            (_, Pattern::CatchAll) => Some(PatternTuple { patterns: vec![] }),
+            (Pattern::CatchAll, _) => None,
+            //(Pattern::CatchAll, Pattern::CatchAll) => Some(PatternTuple { patterns: vec![] }),
             (Pattern::Number(y), Pattern::Number(x)) => {
                 (y == x).then_some(PatternTuple { patterns: vec![] })
             }
