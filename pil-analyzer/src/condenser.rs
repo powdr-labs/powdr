@@ -346,9 +346,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     }
 
     fn degree(&self) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        let degree = self
-            .degree
-            .ok_or_else(|| evaluator::EvalError::DataNotAvailable)?;
+        let degree = self.degree.ok_or(evaluator::EvalError::DataNotAvailable)?;
         Ok(Value::Integer(degree.into()).into())
     }
 
