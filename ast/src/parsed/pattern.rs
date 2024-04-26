@@ -107,7 +107,7 @@ impl PatternTuple {
                     }
                 }
 
-                Pattern::Enum(path1, patterns1) => {
+                Pattern::Enum(_path1, _patterns1) => {
                     todo!("Enum")
                 }
                 _ => None,
@@ -272,12 +272,13 @@ impl Children<Pattern> for Pattern {
 
 #[cfg(test)]
 mod test {
+
     use std::iter::zip;
 
     use super::*;
 
     #[test]
-    fn test_specialize_catchall() {
+    fn test_specialize_double() {
         let cons = Pattern::Tuple(vec![
             Pattern::Number(1.into()),
             Pattern::Variable("x".to_string()),
@@ -289,28 +290,28 @@ mod test {
         ]);
 
         let specialized = pat.specialize(&cons);
-        /*assert_eq!(
+        assert_eq!(
             specialized,
-            Some(
-                [
+            Some(PatternTuple {
+                patterns: [
                     Pattern::Number(1.into()),
                     Pattern::Variable("y".to_string())
                 ]
                 .to_vec()
-            )
+            })
         );
 
         let mut inners = Vec::new();
-        for (con, spe) in zip(cons.children(), specialized.unwrap().iter()) {
+        for (con, spe) in zip(cons.children(), specialized.unwrap().patterns) {
             let inner = spe.specialize(con);
-            if inner.is_some() {
-                let value = inner.unwrap();
-                inners.extend(value);
+            if let Some(value) = inner {
+                if !value.is_empty() {
+                    inners.push(value);
+                }
             }
         }
 
-        assert_eq!(inners, vec![Pattern::Variable("y".to_string())]);
-        */
+        assert_eq!(inners, vec![Pattern::Variable("y".to_string()).into()]);
     }
 
     #[test]
@@ -330,72 +331,17 @@ mod test {
 
         let specialized = pat.specialize(&cons);
 
-        /*assert_eq!(
+        assert_eq!(
             specialized,
-            Some(vec![
-                Pattern::Number(1.into()),
-                Pattern::CatchAll,
-                Pattern::CatchAll,
-                Pattern::Number(2.into()),
-            ])
-        );*/
-    }
-
-    #[test]
-    fn test_specialize_enum() {
-        let cons = Pattern::Enum(
-            SymbolPath::from_identifier("Foo".to_string()),
-            Some(vec![
-                Pattern::Number(0.into()),
-                Pattern::Variable("x".to_string()),
-                Pattern::CatchAll,
-            ]),
-        );
-
-        let pat = Pattern::Enum(
-            SymbolPath::from_identifier("Foo".to_string()),
-            Some(vec![
-                Pattern::Variable("x".to_string()),
-                Pattern::Variable("y".to_string()),
-                Pattern::Variable("z".to_string()),
-            ]),
-        );
-
-        let specialized = pat.specialize(&cons);
-        /*assert_eq!(
-            specialized,
-            Some(
-                [
-                    Pattern::Variable("x".to_string()),
-                    Pattern::Variable("y".to_string()),
-                    Pattern::Variable("z".to_string())
+            Some(PatternTuple {
+                patterns: [
+                    Pattern::Number(1.into()),
+                    Pattern::CatchAll,
+                    Pattern::CatchAll,
+                    Pattern::Number(2.into()),
                 ]
                 .to_vec()
-            )
-        );*/
-    }
-
-    #[test]
-    fn test_specialize_enum_different_symbolpath() {
-        let cons = Pattern::Enum(
-            SymbolPath::from_identifier("Foo1".to_string()),
-            Some(vec![
-                Pattern::Number(0.into()),
-                Pattern::Variable("x".to_string()),
-                Pattern::CatchAll,
-            ]),
+            })
         );
-
-        let pat = Pattern::Enum(
-            SymbolPath::from_identifier("Foo".to_string()),
-            Some(vec![
-                Pattern::Variable("x".to_string()),
-                Pattern::Variable("y".to_string()),
-                Pattern::Variable("z".to_string()),
-            ]),
-        );
-
-        let specialized = pat.specialize(&cons);
-        //assert_eq!(specialized, None);
     }
 }

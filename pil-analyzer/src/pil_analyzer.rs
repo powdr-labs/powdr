@@ -642,4 +642,28 @@ mod tests {
         assert_eq!(witnesses.len(), 1);
         assert_eq!(witnesses[0], new_pattern);
     }
+
+    #[test]
+    fn test_usefullness_enums() {
+        let patterns = vec![Pattern::Enum(
+            SymbolPath::from_identifier("A".to_string()),
+            Some(vec![
+                Pattern::Number(1.into()),
+                Pattern::Number(2.into()),
+                Pattern::Number(3.into()),
+                Pattern::Number(4.into()),
+            ]),
+        )
+        .into()];
+        let new_pattern: PatternTuple = Pattern::Tuple(vec![
+            Pattern::Number(1.into()),
+            Pattern::Number(2.into()),
+            Pattern::CatchAll,
+            Pattern::Number(4.into()),
+        ])
+        .into();
+        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
+        assert_eq!(witnesses.len(), 1);
+        assert_eq!(witnesses[0], new_pattern);
+    }
 }
