@@ -50,22 +50,22 @@ mod test {
             test_paren(&test_case);
         }
     }
-    // #[test]
-    // fn test_lambda_ex_parentheses() {
-    //     let test_cases: Vec<TestCase> = vec![
-    //         // Complete line
-    //         // ("let x = 1 + |i| i + 2;","let x = 1 + |i| i + 2;"),
-    //         ("let x = 1 + (|i| i) + 2;", "let x = 1 + (|i| i) + 2;"),
-    //         ("let x = 1 + |i| (i + 2);", "let x = 1 + |i| (i + 2);"),
-    //         ("let x = (1 + |i| i) + 2;", "let x = (1 + |i| i) + 2;"),
-    //         ("let x = (1 + |i| (i + 2));", "let x = (1 + |i| (i + 2));"),
-    //         ("let x = (1 + |i| i + 2);", "let x = (1 + |i| i + 2);"),
-    //     ];
+    #[test]
+    fn test_lambda_ex_parentheses() {
+        let test_cases: Vec<TestCase> = vec![
+            // ("let x = 1 + |i| i + 2;", "let x = 1 + |i| i + 2;"),
+            ("let x = 1 + (|i| i) + 2;", "let x = 1 + (|i| i) + 2;"),
+            ("let x = (1 + (|i| i)) + 2;", "let x = 1 + (|i| i) + 2;"),
+            // ("let x = 1 + |i| (i + 2);", "let x = 1 + |i| (i + 2);"),
+            // ("let x = (1 + |i| i) + 2;", "let x = (1 + |i| i) + 2;"),
+            // ("let x = (1 + |i| (i + 2));", "let x = (1 + |i| (i + 2));"),
+            // ("let x = (1 + |i| i + 2);", "let x = (1 + |i| i + 2);"),
+        ];
 
-    //     for test_case in test_cases {
-    //         test_paren(&test_case);
-    //     }
-    // }
+        for test_case in test_cases {
+            test_paren(&test_case);
+        }
+    }
 
     #[test]
     fn test_parentheses_complex() {

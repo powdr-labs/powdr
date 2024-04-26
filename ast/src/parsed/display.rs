@@ -557,7 +557,7 @@ impl<E: Display> Expression<E> {
         match self {
             Expression::UnaryOperation(op, _) => Some(op.precedence()),
             Expression::BinaryOperation(_, op, _) => Some(op.precedence()),
-            Expression::LambdaExpression(e) => Some(e.precedence()),
+            // Expression::LambdaExpression(e) => Some(e.precedence()),
             _ => None,
         }
     }
