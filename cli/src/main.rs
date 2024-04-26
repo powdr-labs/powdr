@@ -1146,6 +1146,7 @@ mod test {
             force: false,
             pilo: false,
             prove_with: Some(BackendType::EStarkDump),
+            params: None,
             backend_options: Some("stark_gl".to_string()),
             export_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,
