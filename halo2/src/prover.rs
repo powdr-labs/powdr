@@ -145,7 +145,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         &self,
         witness: &[(String, Vec<F>)],
         witgen_callback: WitgenCallback<F>,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<(Vec<u8>, Vec<Vec<Fr>>), String> {
         log::info!("Starting proof generation...");
 
         let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
@@ -177,7 +177,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
 
         log::info!("Proof generation done.");
 
-        Ok(proof)
+        Ok((proof, publics))
     }
 
     /// Generate a single proof for a given PIL using Poseidon transcripts.
@@ -189,52 +189,8 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     ) -> Result<Vec<u8>, String> {
         assert!(matches!(self.proof_type, ProofType::Poseidon));
 
-        self.prove::<_, aggregation::PoseidonTranscript<NativeLoader, _>,  aggregation::PoseidonTranscript<NativeLoader, _>>(witness, witgen_callback)
-
-        /*
-        log::info!("Starting proof generation...");
-
-        let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
-            .with_witgen_callback(witgen_callback)
-            .with_witness(witness);
-        let publics = vec![circuit.instance_column()];
-
-        log::info!("Generating PK for snark...");
-        let vk = match self.vkey {
-            Some(ref vk) => vk.clone(),
-            None => keygen_vk(&self.params, &circuit).unwrap(),
-        };
-        let pk = keygen_pk(&self.params, vk.clone(), &circuit).unwrap();
-
-        log::info!("Generating proof...");
-        let start = Instant::now();
-
-        let proof = gen_proof::<_, _, aggregation::PoseidonTranscript<NativeLoader, _>>(
-            &self.params,
-            &pk,
-            circuit,
-            &publics,
-        )?;
-
-        let duration = start.elapsed();
-        log::info!("Time taken: {:?}", duration);
-
-        match self.verify_inner::<_, aggregation::PoseidonTranscript<NativeLoader, _>>(
-            &vk,
-            &self.params,
-            &proof,
-            &publics,
-        ) {
-            Ok(_) => {}
-            Err(e) => {
-                return Err(e.to_string());
-            }
-        }
-
-        log::info!("Proof generation done.");
-
-        Ok(proof)
-        */
+        let proof = self.prove::<_, aggregation::PoseidonTranscript<NativeLoader, _>,  aggregation::PoseidonTranscript<NativeLoader, _>>(witness, witgen_callback)?;
+        Ok(proof.0)
     }
 
     /// Generate a single proof for a given PIL using Keccak transcripts.
@@ -246,44 +202,10 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     ) -> Result<Vec<u8>, String> {
         assert!(matches!(self.proof_type, ProofType::SnarkSingle));
 
-        log::info!("Starting proof generation...");
-
-        let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
-            .with_witgen_callback(witgen_callback)
-            .with_witness(witness);
-        let publics = vec![circuit.instance_column()];
-
-        log::info!("Generating PK for snark...");
-        let vk = match self.vkey {
-            Some(ref vk) => vk.clone(),
-            None => keygen_vk(&self.params, &circuit).unwrap(),
-        };
-        let pk = keygen_pk(&self.params, vk.clone(), &circuit).unwrap();
-
-        log::info!("Generating proof...");
-        let start = Instant::now();
-
-        let proof = gen_proof::<_, _, EvmTranscript<_, _, _, _>>(
-            &self.params,
-            &pk,
-            circuit.clone(),
-            &publics,
+        let proof = self.prove::<_, EvmTranscript<_, _, _, _>, EvmTranscript<G1Affine, _, _, _>>(
+            witness,
+            witgen_callback,
         )?;
-
-        let duration = start.elapsed();
-        log::info!("Time taken: {:?}", duration);
-
-        match self.verify_inner::<_, EvmTranscript<G1Affine, _, _, _>>(
-            &vk,
-            &self.params,
-            &proof,
-            &publics,
-        ) {
-            Ok(_) => {}
-            Err(e) => {
-                return Err(e.to_string());
-            }
-        }
 
         log::info!("Verifying SNARK in the EVM...");
 
@@ -294,14 +216,14 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let mut evm = Evm::default();
         let verifier_address = evm.create(verifier_creation_code);
 
-        let calldata = encode_calldata(None, &proof, &publics[0]);
+        let calldata = encode_calldata(None, &proof.0, &proof.1[0]);
 
         let (_gas_cost, output) = evm.call(verifier_address, calldata);
         assert_eq!(output, [vec![0; 31], vec![1]].concat());
 
-        log::info!("Proof generation done.");
+        log::info!("EVM verification done.");
 
-        Ok(proof)
+        Ok(proof.0)
     }
 
     /// Generate a recursive proof that compresses one or more Poseidon proofs.
@@ -322,6 +244,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
+        // TODO Support publics in the app snark
         if circuit_app.has_publics() {
             unimplemented!("Public inputs are not supported yet");
         }
@@ -335,6 +258,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let protocol_app = compile(
             &params_app,
             self.vkey_app.as_ref().unwrap(),
+            // TODO change this once we accept publics in the app snark
             Config::kzg().with_num_instance(vec![0]),
         );
         let empty_snark = aggregation::Snark::new_without_witness(protocol_app.clone());
@@ -357,6 +281,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         log::info!("Generating aggregated proof...");
         let start = Instant::now();
 
+        // TODO change this once we accept publics in the app snark
         let snark = aggregation::Snark::new(protocol_app, vec![vec![]], proof);
         let agg_circuit_with_proof = aggregation::AggregationCircuit::new(&self.params, [snark]);
         let proof = gen_proof::<_, _, EvmTranscript<G1Affine, _, _, _>>(
@@ -497,9 +422,14 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         }
     }
 
-    pub fn verify_poseidon(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), String> {
-        assert!(matches!(self.proof_type, ProofType::Poseidon));
-
+    fn verify_common<
+        E: EncodedChallenge<G1Affine>,
+        TR: TranscriptReadBuffer<Cursor<Vec<u8>>, G1Affine, E>,
+    >(
+        &self,
+        proof: &[u8],
+        instances: &[Vec<F>],
+    ) -> Result<(), String> {
         let instances = instances
             .iter()
             .map(|instance| {
@@ -510,12 +440,12 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             })
             .collect_vec();
 
-        self.verify_inner::<_, aggregation::PoseidonTranscript<NativeLoader, _>>(
-            self.vkey.as_ref().unwrap(),
-            &self.params,
-            proof,
-            &instances,
-        )
+        self.verify_inner::<_, TR>(self.vkey.as_ref().unwrap(), &self.params, proof, &instances)
+    }
+
+    pub fn verify_poseidon(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), String> {
+        assert!(matches!(self.proof_type, ProofType::Poseidon));
+        self.verify_common::<_, aggregation::PoseidonTranscript<NativeLoader, _>>(proof, instances)
     }
 
     pub fn verify_snark(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), String> {
@@ -523,23 +453,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             self.proof_type,
             ProofType::SnarkSingle | ProofType::SnarkAggr
         ));
-
-        let instances = instances
-            .iter()
-            .map(|instance| {
-                instance
-                    .iter()
-                    .map(|x| convert_field(*x))
-                    .collect::<Vec<_>>()
-            })
-            .collect_vec();
-
-        self.verify_inner::<_, EvmTranscript<G1Affine, _, _, _>>(
-            self.vkey.as_ref().unwrap(),
-            &self.params,
-            proof,
-            &instances,
-        )
+        self.verify_common::<_, EvmTranscript<G1Affine, _, _, _>>(proof, instances)
     }
 
     fn assert_field_is_bn254() {
