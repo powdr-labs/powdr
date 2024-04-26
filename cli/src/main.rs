@@ -1170,6 +1170,7 @@ mod test {
                 backend_options: None,
                 proof: None,
                 vkey: None,
+                vkey_app: None,
                 params: None,
             };
             run_command(prove_command);
