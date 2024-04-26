@@ -6,6 +6,15 @@ let<T> len: T[] -> int = [];
 /// Evaluates to the array [f(0), f(1), ..., f(length - 1)].
 let<T> new: int, (int -> T) -> T[] = |length, f| std::utils::fold(length, f, [], |acc, e| (acc + [e]));
 
+/// Returns a new array equal to arr except that the element at index i is x.
+let<T> set_element: T[], int, T -> T[] = |arr, i, x| {
+    std::check::assert(i < len(arr));
+    map_enumerated(arr, |j, y| if i == j { x } else { y })
+};
+
+/// Returns a new array of length l containing the elements of arr starting at index start.
+let<T> sub_array: T[], int, int -> T[] = |arr, start, l| std::array::new(len, |i| arr[start + i]);
+
 /// Evaluates to the array [f(arr[0]), f(arr[1]), ..., f(arr[len(arr) - 1])].
 let<T1, T2> map: T1[], (T1 -> T2) -> T2[] = |arr, f| new(len(arr), |i| f(arr[i]));
 

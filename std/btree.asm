@@ -43,11 +43,12 @@ mod internal {
     use std::utils::unwrap_or_else;
     use std::array::find_map;
     use std::array::find_map_enumerated;
+    use std::array::sub_array;
 
     let <K, V> get: BTree<K, V>, K, (K, K -> CmpResult) -> Option<V> = |b_tree, k, cmp| match b_tree {
         BTree::Inner(items, children) => match search_in_node(items, k, cmp) {
             NodeSearchResult::InNode(i) => Option::Some(value_of_item(items[i])),
-            NodeSearchResult::InChild(i) => search(children[i], k, cmp),
+            NodeSearchResult::InChild(i) => get(children[i], k, cmp),
         },
         BTree::Leaf(items) => find_map(items, |(key, value)| match cmp(k, key) {
             CmpResult::Equal => Option::Some(value),
@@ -80,9 +81,9 @@ mod internal {
             BTree::Leaf(items) => insert_into_leaf(items, (k, v), cmp),
             BTree::Inner(items, children) =>
                 match search_in_node(items, k, cmp) {
-                    NodeSearchResult::InNode(i) => InsertResult::Updated(BTree::Inner(array_set(items, i, (k, v)), children)),
+                    NodeSearchResult::InNode(i) => InsertResult::Updated(BTree::Inner(std::array::set_element(items, i, (k, v)), children)),
                     NodeSearchResult::InChild(i) => match insert(children[i], (k, v), cmp) {
-                        InsertResult::Updated(child) => InsertResult::Updated(BTree::Inner(items, array_set(children, i, child))),
+                        InsertResult::Updated(child) => InsertResult::Updated(BTree::Inner(items, std::array::set_element(children, i, child))),
                         InsertResult::Split((k1, v1), left, right) =>
                             insert_into_inner(items, children, (k1, v1), i, left, right),
                     }                    
@@ -148,6 +149,4 @@ mod internal {
         }
     };
         
-    let<T> array_set: T[], int, T -> T[] = |arr, i, x| std::array::map_enumerated(arr, |j, y| if i == j { x } else { y });
-    let<T> sub_array: T[], int, int -> T[] = |arr, start, len| std::array::new(len, |i| arr[start + i]);
 }
