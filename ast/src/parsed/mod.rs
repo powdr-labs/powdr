@@ -637,58 +637,71 @@ pub enum BinaryOperatorAssociativity {
     RequireParentheses,
 }
 
-const UNARY_EXPRESSION_PRIORITY_OFFSET: ExpressionPrecedence = 0; // All unary operators have the same precedence.
-const BINARY_EXPRESSION_PRIORITY_OFFSET: ExpressionPrecedence = 10; // Binary operators will have a lower precedence than unary operators.
+trait Precedence {
+    fn precedence(&self) -> ExpressionPrecedence;
+}
 
-impl UnaryOperator {
-    pub fn precedence(&self) -> ExpressionPrecedence {
+impl<E> Precedence for LambdaExpression<E> {
+    fn precedence(&self) -> ExpressionPrecedence {
+        13
+    }
+}
+
+impl Precedence for UnaryOperator {
+    fn precedence(&self) -> ExpressionPrecedence {
         use UnaryOperator::*;
-        UNARY_EXPRESSION_PRIORITY_OFFSET
-            + match self {
-                Minus | LogicalNot => 1,
-                Next => 2,
-            }
+        match self {
+            // NOTE: Any modification must be done with care to not overlap with BinaryOperator's precedence
+            Next => 1,
+            Minus | LogicalNot => 2,
+        }
+    }
+}
+
+impl Precedence for BinaryOperator {
+    fn precedence(&self) -> ExpressionPrecedence {
+        use BinaryOperator::*;
+        match self {
+            // NOTE: Any modification must be done with care to not overlap with LambdaExpression's precedence
+            // Unary Oprators
+            // **
+            Pow => 3,
+            // * / %
+            Mul | Div | Mod => 4,
+            // + -
+            Add | Sub => 5,
+            // << >>
+            ShiftLeft | ShiftRight => 6,
+            // &
+            BinaryAnd => 7,
+            // ^
+            BinaryXor => 8,
+            // |
+            BinaryOr => 9,
+            // = += -= *= /= %= &= |= ^= <<= >>=
+            Identity => 10,
+            // == != < > <= >=
+            Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => 10,
+            // &&
+            LogicalAnd => 11,
+            // ||
+            LogicalOr => 12,
+            // .. ..=
+            // ??
+        }
     }
 }
 
 impl BinaryOperator {
-    pub fn precedence(&self) -> ExpressionPrecedence {
-        use BinaryOperator::*;
-        BINARY_EXPRESSION_PRIORITY_OFFSET
-            + match self {
-                // Unary - * ! & &mut
-                Pow => 2,
-                // * / %
-                Mul | Div | Mod => 3,
-                // + -
-                Add | Sub => 4,
-                // << >>
-                ShiftLeft | ShiftRight => 5,
-                // &
-                BinaryAnd => 6,
-                // ^
-                BinaryXor => 7,
-                // |
-                BinaryOr => 8,
-                // == != < > <= >=
-                Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => 9,
-                // &&
-                LogicalAnd => 10,
-                // ||
-                LogicalOr => 11,
-                // .. ..=
-                // ??
-                // = += -= *= /= %= &= |= ^= <<= >>=
-                Identity => 12,
-            }
-    }
-
     pub fn associativity(&self) -> BinaryOperatorAssociativity {
         use BinaryOperator::*;
         use BinaryOperatorAssociativity::*;
         match self {
-            Identity => Right,
-            Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => RequireParentheses,
+            Identity | Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => {
+                RequireParentheses
+            }
+            Pow => Right,
+
             // .. ..= => RequireParentheses,
             _ => Left,
         }

@@ -14,13 +14,14 @@ mod test {
     }
 
     #[test]
-    fn test_parentheses_simple() {
+    fn test_binary_op_parentheses() {
         let test_cases: Vec<TestCase> = vec![
             // Complete line
             ("let t = ((x + y) * z);", "let t = (x + y) * z;"),
             // Don't add extra
             ("-x + y * !z;", "-x + y * !z;"),
             ("x = (y <= z);", "x = (y <= z);"),
+            ("(x = y) <= z;", "(x = y) <= z;"),
             ("x + y + z;", "x + y + z;"),
             ("x * y * z;", "x * y * z;"),
             ("x / y / z;", "x / y / z;"),
@@ -28,23 +29,43 @@ mod test {
             ("(-x) + y * (!z);", "-x + y * !z;"),
             ("(x * y) * z;", "x * y * z;"),
             ("(x / y) / z;", "x / y / z;"),
-            ("x ** (y ** z);", "x ** (y ** z);"),
-            ("(x ** (y ** z));", "x ** (y ** z);"),
+            ("x ** (y ** z);", "x ** y ** z;"),
+            ("(x ** (y ** z));", "x ** y ** z;"),
             // Observe associativity
             ("x * (y * z);", "x * (y * z);"),
             ("x / (y / z);", "x / (y / z);"),
-            ("(x ** y) ** z;", "x ** y ** z;"),
-            ("((x ** y) ** z);", "x ** y ** z;"),
+            ("x ** (y ** z);", "x ** y ** z;"),
+            ("(x ** (y ** z));", "x ** y ** z;"),
             // Don't remove needed
             ("(x + y) * z;", "(x + y) * z;"),
             ("((x + y) * z);", "(x + y) * z;"),
             ("-(x + y);", "-(x + y);"),
+            // function call
+            // ("(a + b)(2);", "(a + b)(2);"),
+            // // Index access
+            // ("(a + b)[2];", "(a + b)[2];"),
         ];
 
         for test_case in test_cases {
             test_paren(&test_case);
         }
     }
+    // #[test]
+    // fn test_lambda_ex_parentheses() {
+    //     let test_cases: Vec<TestCase> = vec![
+    //         // Complete line
+    //         // ("let x = 1 + |i| i + 2;","let x = 1 + |i| i + 2;"),
+    //         ("let x = 1 + (|i| i) + 2;", "let x = 1 + (|i| i) + 2;"),
+    //         ("let x = 1 + |i| (i + 2);", "let x = 1 + |i| (i + 2);"),
+    //         ("let x = (1 + |i| i) + 2;", "let x = (1 + |i| i) + 2;"),
+    //         ("let x = (1 + |i| (i + 2));", "let x = (1 + |i| (i + 2));"),
+    //         ("let x = (1 + |i| i + 2);", "let x = (1 + |i| i + 2);"),
+    //     ];
+
+    //     for test_case in test_cases {
+    //         test_paren(&test_case);
+    //     }
+    // }
 
     #[test]
     fn test_parentheses_complex() {
