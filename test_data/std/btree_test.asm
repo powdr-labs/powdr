@@ -62,7 +62,12 @@ let print_btree: BTree<int, string>, int -> () = |n, indent| match n {
         });
         ()
     },
-    BTree::Leaf(items) => { let _ =std::array::map(items, |(k, v)| { let _ = print_item((k, v), indent); ()  }); ()}
+    BTree::Leaf(items) => {
+        let _ = std::array::map(items, |(k, v)| {
+            print_item((k, v), indent)
+        });
+        ()
+    }
 };
 
 let expect: BTree<int, string>, int, string -> constr[] = |b_tree, k, v|
