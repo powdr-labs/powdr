@@ -1057,6 +1057,7 @@ fn run<F: FieldElement>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn read_and_prove<T: FieldElement>(
     file: &Path,
     dir: &Path,
@@ -1080,6 +1081,7 @@ fn read_and_prove<T: FieldElement>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn read_and_verify<T: FieldElement>(
     file: &Path,
     dir: &Path,

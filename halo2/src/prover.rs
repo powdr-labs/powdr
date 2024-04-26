@@ -1,5 +1,5 @@
 use halo2_proofs::{
-    halo2curves::{ff::Field, bn256::{Bn256, Fr, G1Affine}},
+    halo2curves::bn256::{Bn256, Fr, G1Affine},
     plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ProvingKey, VerifyingKey},
     poly::{
         commitment::ParamsProver,
@@ -281,8 +281,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         log::info!("Generating circuit for compression snark...");
         let protocol_app = compile(
             &params_app,
-            &self.vkey_app.as_ref().unwrap(),
-            //Config::kzg().with_num_instance(vec![]),
+            self.vkey_app.as_ref().unwrap(),
             Config::kzg().with_num_instance(vec![0]),
         );
         let empty_snark = aggregation::Snark::new_without_witness(protocol_app.clone());
@@ -316,7 +315,6 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let duration = start.elapsed();
         log::info!("Time taken: {:?}", duration);
 
-        println!("Publics: {:?}", &agg_circuit_with_proof.instances());
         match self.verify_inner::<_, EvmTranscript<G1Affine, _, _, _>>(
             &vk_aggr,
             &self.params,
@@ -569,10 +567,6 @@ fn gen_proof<
 
 fn evm_verify(deployment_code: Vec<u8>, instances: Vec<Vec<Fr>>, proof: &[u8]) {
     let calldata = encode_calldata_snark_verifier(&instances, proof);
-    let hex_string: String = calldata.iter()
-        .map(|byte| format!("{:02X}", byte))
-        .collect();
-    println!("Calldata:\n{hex_string}\n");
     let gas_cost = deploy_and_call(deployment_code, calldata).unwrap();
     log::info!("Gas cost: {gas_cost}");
 }

@@ -83,6 +83,7 @@ pub type Proof = Vec<u8>;
 /// Dynamic interface for a backend factory.
 pub trait BackendFactory<F: FieldElement> {
     /// Create a new backend object.
+    #[allow(clippy::too_many_arguments)]
     fn create<'a>(
         &self,
         pil: &'a Analyzed<F>,

@@ -15,6 +15,7 @@ use halo2_wrong_ecc::{
     },
     EccConfig,
 };
+use snark_verifier::pcs::AccumulationDecider;
 use snark_verifier::{
     loader::{
         self,
@@ -36,7 +37,6 @@ use snark_verifier::{
     util::arithmetic::{fe_to_limbs, PrimeField},
     verifier::{self, plonk::PlonkProtocol, SnarkVerifier},
 };
-use snark_verifier::pcs::AccumulationDecider;
 
 use itertools::Itertools;
 use rand::rngs::OsRng;
@@ -256,7 +256,7 @@ impl AggregationCircuit {
             &(params.get_g()[0], params.g2(), params.s_g2()).into(),
             accumulator.clone(),
         )
-            .expect("Aggregated proof should be valid");
+        .expect("Aggregated proof should be valid");
         let KzgAccumulator { lhs, rhs } = accumulator;
         let instances = [lhs.x, lhs.y, rhs.x, rhs.y]
             .map(fe_to_limbs::<_, _, LIMBS, BITS>)
@@ -402,6 +402,5 @@ pub fn gen_aggregation_evm_verifier(
     accumulator_indices: Vec<(usize, usize)>,
 ) -> Vec<u8> {
     let sol = gen_aggregation_solidity_verifier(params, vk, num_instance, accumulator_indices);
-    //println!("Sol code:\n{sol}\n");
     evm::compile_solidity(&sol)
 }
