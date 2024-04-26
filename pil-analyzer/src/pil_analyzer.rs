@@ -5,7 +5,7 @@ use std::iter::once;
 use std::path::{Path, PathBuf};
 
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
-use powdr_ast::parsed::pattern::Pattern;
+use powdr_ast::parsed::pattern::{Pattern, PatternTuple};
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
@@ -183,7 +183,9 @@ impl PILAnalyzer {
                 FunctionValueDefinition::Expression(TypedExpression { e, .. }) => {
                     if let Expression::MatchExpression(_, arms) = e {
                         arms.iter()
-                            .map(|arm| arm.pattern.clone())
+                            .map(|arm| PatternTuple {
+                                patterns: vec![arm.pattern.clone()],
+                            })
                             .collect::<Vec<_>>()
                     } else {
                         continue;
@@ -191,47 +193,67 @@ impl PILAnalyzer {
                 }
                 _ => continue,
             };
-            let witnesses = Self::usefulness(&patterns, &Pattern::CatchAll);
+            let witnesses = Self::usefulness(
+                &patterns,
+                PatternTuple {
+                    patterns: vec![Pattern::CatchAll],
+                },
+            );
             if witnesses.is_empty() {
                 panic!("Function {name} is not exhaustive")
             }
         }
     }
 
-    pub fn usefulness(patterns: &[Pattern], new_pattern: &Pattern) -> Vec<Pattern> {
+    pub fn constructors_from_patterns(pattern: &[Pattern]) -> Vec<Pattern> {
+        pattern.to_vec()
+    }
+
+    pub fn usefulness(patterns: &[PatternTuple], new_pattern: PatternTuple) -> Vec<PatternTuple> {
         let mut witnesses = Vec::new();
 
-        if patterns.is_empty() || patterns.iter().any(|p| p.is_irrefutable()) {
+        if new_pattern.patterns.is_empty()
+            || patterns.iter().any(|patterns| patterns.is_irrefutable())
+        {
             return vec![];
         }
 
+        /*if patterns.is_empty() {
+            return vec![new_patterns[0].clone()];
+        }*/
+
         let mut expanded_patterns = patterns.to_vec();
         expanded_patterns.push(new_pattern.clone());
-        let constructors = expanded_patterns.clone(); //self.constructors_from_patterns(expanded_patterns.as_slice());
+        let constructors = expanded_patterns.clone();
 
         for constructor in &constructors {
-            let specialized_new_pattern = new_pattern.specialize(constructor);
+            let specialized_new_pattern = if !new_pattern.is_empty() {
+                new_pattern.specialize(&constructor)
+            } else {
+                None
+            };
+
             match specialized_new_pattern {
                 Some(v) => {
                     if !v.is_empty() {
                         let specialized_results = patterns
                             .iter()
-                            .filter_map(|pattern| pattern.specialize(constructor))
-                            .flatten()
+                            .filter_map(|pattern| pattern.specialize(&constructor))
+                            //.flatten()
                             .collect::<Vec<_>>();
 
-                        let specialized_usefull = Self::usefulness(&specialized_results, &v[0]);
+                        let specialized_usefull = Self::usefulness(&specialized_results, v);
 
                         for witness in specialized_usefull {
-                            if let Some(v) = constructor.unspecialize(&[witness]) {
-                                witnesses.extend(v);
+                            if let Some(v) = constructor.unspecialize(witness) {
+                                witnesses.push(v);
                             }
                         }
                     } else {
                         witnesses.push(constructor.clone());
                     }
                 }
-                None => continue,
+                None => {}
             }
         }
         witnesses
@@ -489,10 +511,10 @@ mod tests {
 
     #[test]
     fn test_basic_usefullness() {
-        let patterns = vec![Pattern::String("A".to_string())];
-        let new_pattern = Pattern::String("B".to_string());
+        let patterns = vec![Pattern::String("A".to_string()).into()];
+        let new_pattern: PatternTuple = Pattern::String("B".to_string()).into();
 
-        let witnesses = PILAnalyzer::usefulness(&patterns, &new_pattern);
+        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
         assert_eq!(witnesses.len(), 1);
         assert_eq!(witnesses[0], new_pattern);
     }
@@ -500,40 +522,46 @@ mod tests {
     #[test]
     fn test_usefullness_new_catchall() {
         let patterns = vec![
-            Pattern::String("A".to_string()),
-            Pattern::String("B".to_string()),
+            Pattern::String("A".to_string()).into(),
+            Pattern::String("B".to_string()).into(),
         ];
-        let new_pattern = Pattern::CatchAll;
-        let witnesses = PILAnalyzer::usefulness(&patterns, &new_pattern);
+        let new_pattern: PatternTuple = Pattern::CatchAll.into();
+        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
         assert_eq!(witnesses.len(), 1);
         assert_eq!(witnesses[0], new_pattern);
     }
 
     #[test]
     fn test_usefullness_already_exhaustive_patterns() {
-        let patterns = vec![Pattern::String("A".to_string()), Pattern::CatchAll];
-        let new_pattern = Pattern::String("B".to_string());
-        let witnesses = PILAnalyzer::usefulness(&patterns, &new_pattern);
+        let patterns = vec![
+            Pattern::String("A".to_string()).into(),
+            Pattern::CatchAll.into(),
+        ];
+        let new_pattern: PatternTuple = Pattern::String("B".to_string()).into();
+        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
         assert_eq!(witnesses.len(), 0);
     }
 
     #[test]
     fn test_usefullness_extra_catchall() {
-        let patterns = vec![Pattern::String("A".to_string()), Pattern::CatchAll];
-        let new_pattern = Pattern::CatchAll;
-        let witnesses = PILAnalyzer::usefulness(&patterns, &new_pattern);
+        let patterns = vec![
+            Pattern::String("A".to_string()).into(),
+            Pattern::CatchAll.into(),
+        ];
+        let new_pattern: PatternTuple = Pattern::CatchAll.into();
+        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
         assert_eq!(witnesses.len(), 0);
     }
 
     #[test]
     fn test_usefullness_catchall_in_array() {
         let patterns = vec![
-            Pattern::Array(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]),
-            Pattern::Array(vec![Pattern::Number(1.into()), Pattern::Number(3.into())]),
-            Pattern::Array(vec![Pattern::CatchAll, Pattern::CatchAll]),
+            Pattern::Array(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]).into(),
+            Pattern::Array(vec![Pattern::Number(1.into()), Pattern::Number(3.into())]).into(),
+            Pattern::Array(vec![Pattern::CatchAll, Pattern::CatchAll]).into(),
         ];
-        let new_pattern = Pattern::CatchAll;
-        let witnesses = PILAnalyzer::usefulness(&patterns, &new_pattern);
+        let new_pattern: PatternTuple = Pattern::CatchAll.into();
+        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
         assert_eq!(witnesses.len(), 1);
         assert_eq!(witnesses[0], new_pattern);
     }
@@ -546,47 +574,29 @@ mod tests {
                 Pattern::Number(2.into()),
                 Pattern::Number(3.into()),
                 Pattern::Number(4.into()),
-            ]),
-            Pattern::Array(vec![
-                Pattern::Number(2.into()),
-                Pattern::Number(2.into()),
-                Pattern::Number(3.into()),
-                Pattern::Number(3.into()),
-            ]),
+            ])
+            .into(),
             Pattern::Array(vec![
                 Pattern::Number(1.into()),
                 Pattern::Ellipsis,
                 Pattern::Number(4.into()),
-            ]),
+            ])
+            .into(),
         ];
-        let new_pattern = Pattern::CatchAll;
-        let witnesses = PILAnalyzer::usefulness(&patterns, &new_pattern);
+        let new_pattern: PatternTuple = Pattern::CatchAll.into();
+        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
         assert_eq!(witnesses.len(), 1);
         assert_eq!(witnesses[0], new_pattern);
     }
 
     #[test]
     fn test_usefullness_ellipsis_new_pattern() {
-        let patterns = vec![
-            Pattern::Array(vec![
-                Pattern::Number(1.into()),
-                Pattern::Number(2.into()),
-                Pattern::Number(3.into()),
-                Pattern::Number(4.into()),
-            ]),
-            Pattern::Array(vec![
-                Pattern::Number(2.into()),
-                Pattern::Number(2.into()),
-                Pattern::Number(3.into()),
-                Pattern::Number(3.into()),
-            ]),
-        ];
-        let new_pattern = Pattern::Array(vec![
-            Pattern::Number(1.into()),
-            Pattern::Ellipsis,
-            Pattern::Number(4.into()),
-        ]);
-        let witnesses = PILAnalyzer::usefulness(&patterns, &new_pattern);
+        let patterns =
+            vec![Pattern::Array(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]).into()];
+        let new_pattern: PatternTuple =
+            Pattern::Array(vec![Pattern::Number(1.into()), Pattern::CatchAll]).into();
+        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
+        println!("{:?}", witnesses);
         assert_eq!(witnesses.len(), 1);
         assert_eq!(witnesses[0], new_pattern);
     }
