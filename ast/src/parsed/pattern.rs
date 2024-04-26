@@ -49,9 +49,9 @@ impl PatternTuple {
 
         let constructor = self.patterns.first().unwrap();
         if tuple.patterns.is_empty() {
-            return Some(PatternTuple {
+            Some(PatternTuple {
                 patterns: vec![constructor.clone()],
-            });
+            })
         } else {
             match constructor {
                 Pattern::CatchAll => {

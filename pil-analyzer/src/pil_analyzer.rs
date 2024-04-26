@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
 use powdr_ast::parsed::pattern::{Pattern, PatternTuple};
 use powdr_ast::parsed::types::Type;
-use powdr_ast::parsed::visitor::Children;
+use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
 };
@@ -47,8 +47,8 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     analyzer.side_effect_check();
-    analyzer.match_exhaustiveness_check();
     analyzer.type_check();
+    analyzer.match_exhaustiveness_check();
     analyzer.condense::<T>()
 }
 
@@ -179,28 +179,45 @@ impl PILAnalyzer {
     pub fn match_exhaustiveness_check(&self) {
         for (name, (_, value)) in &self.definitions {
             let Some(value) = value else { continue };
-            let patterns = match value {
-                FunctionValueDefinition::Expression(TypedExpression { e, .. }) => {
-                    if let Expression::MatchExpression(_, arms) = e {
-                        arms.iter()
-                            .map(|arm| PatternTuple {
-                                patterns: vec![arm.pattern.clone()],
-                            })
-                            .collect::<Vec<_>>()
-                    } else {
-                        continue;
-                    }
+            for e in value.all_children() {
+                let patterns = if let Expression::MatchExpression(_, arms) = e {
+                    arms.iter()
+                        .map(|arm| PatternTuple {
+                            patterns: vec![arm.pattern.clone()],
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    continue;
+                };
+                let witnesses = Self::usefulness(&patterns, Pattern::CatchAll.into());
+                if witnesses.is_empty() {
+                    panic!("Function {name} is not exhaustive")
                 }
-                _ => continue,
-            };
-            let witnesses = Self::usefulness(
-                &patterns,
-                PatternTuple {
-                    patterns: vec![Pattern::CatchAll],
-                },
-            );
-            if witnesses.is_empty() {
-                panic!("Function {name} is not exhaustive")
+            }
+        }
+
+        for id in &self.identities {
+            let patterns = id
+                .all_children()
+                .filter_map(|e| {
+                    if let Expression::MatchExpression(_, arms) = e {
+                        Some(
+                            arms.iter()
+                                .map(|arm| PatternTuple {
+                                    patterns: vec![arm.pattern.clone()],
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            for patterns in patterns {
+                let witnesses = Self::usefulness(&patterns, Pattern::CatchAll.into());
+                if witnesses.is_empty() {
+                    panic!("Identity is not exhaustive")
+                }
             }
         }
     }
