@@ -52,8 +52,8 @@ let print_item: (int, string), int -> () = |(k, v), indent| {
 
 let print_btree: BTree<int, string>, int -> () = |n, indent| match n {
     BTree::Inner(items, children) => {
-        let _ = std::array::new(std::array::len(children), |i| {
-            let _ = print_btree(children[i], indent + 1);
+        let _ = std::array::map_enumerated(children, |i, child| {
+            let _ = print_btree(child, indent + 1);
             if i < std::array::len(items) {
                 print_item(items[i], indent)
             } else {
