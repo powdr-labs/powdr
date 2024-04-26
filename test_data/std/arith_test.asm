@@ -1,8 +1,6 @@
-use std::arith::Arith;
+use std::machines::arith::Arith;
 
-machine Main{
-    degree 65536;
-
+machine Main with degree: 65536 {
     reg pc[@pc];
     reg A0[<=];
     reg A1[<=];

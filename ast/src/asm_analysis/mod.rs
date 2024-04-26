@@ -527,11 +527,6 @@ pub struct OperationSymbol {
 }
 
 #[derive(Clone, Debug)]
-pub struct DegreeStatement {
-    pub degree: Expression,
-}
-
-#[derive(Clone, Debug)]
 pub enum FunctionStatement {
     Assignment(AssignmentStatement),
     Instruction(InstructionStatement),
@@ -687,7 +682,7 @@ impl Item {
 #[derive(Clone, Default, Debug)]
 pub struct Machine {
     /// The degree if any, i.e. the number of rows in instances of this machine type
-    pub degree: Option<DegreeStatement>,
+    pub degree: Option<Expression>,
     /// The latch, i.e. the boolean column whose values must be 1 in order for this machine to be accessed. Must be defined in one of the constraint blocks of this machine.
     pub latch: Option<String>,
     /// The operation id, i.e. the column whose values determine which operation is being invoked in the current block. Must be defined in one of the constraint blocks of this machine.

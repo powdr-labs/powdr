@@ -56,11 +56,12 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConst
 /// Determines global constraints on witness and fixed columns.
 /// Removes identities that only serve to create range constraints from
 /// the identities vector and returns the remaining identities.
+/// Returns fixed data with the global constraints & the retained identities.
 /// TODO at some point, we should check that they still hold.
-pub fn determine_global_constraints<'a, T: FieldElement>(
-    fixed_data: &'a FixedData<T>,
+pub fn set_global_constraints<'a, T: FieldElement>(
+    fixed_data: FixedData<T>,
     identities: impl IntoIterator<Item = &'a Identity<Expression<T>>>,
-) -> (GlobalConstraints<T>, Vec<&'a Identity<Expression<T>>>) {
+) -> (FixedData<T>, Vec<&'a Identity<Expression<T>>>) {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
     // but also have one row for each possible value.
@@ -119,11 +120,13 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
         }
     }
 
+    let global_constraints = GlobalConstraints {
+        witness_constraints,
+        fixed_constraints,
+    };
+
     (
-        GlobalConstraints {
-            witness_constraints,
-            fixed_constraints,
-        },
+        fixed_data.with_global_range_constraints(global_constraints),
         retained_identities,
     )
 }
@@ -355,7 +358,7 @@ mod test {
     }
 
     #[test]
-    fn test_propagate_constraints() {
+    fn constraints_propagation() {
         let pil_source = r"
 namespace Global(2**20);
     col fixed BYTE(i) { i & 0xff };
@@ -425,7 +428,7 @@ namespace Global(2**20);
     }
 
     #[test]
-    fn test_no_remove_identity() {
+    fn no_remove_identity() {
         // There used to be a bug where the lookup would be removed because the code
         // incorrectly determined it to be a pure range constraint, but it would actually not
         // be able to derive the full constraint.

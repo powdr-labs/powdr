@@ -23,3 +23,68 @@ let<T: Add + FromLiteral> sum: T[] -> T = |arr| fold(arr, 0, |a, b| a + b);
 /// Zips two arrays
 /// TODO: Assert that lengths are equal when expressions are supported.
 let<T1, T2, T3> zip: T1[], T2[], (T1, T2 -> T3) -> T3[] = |array1, array2, fn| new(len(array1), |i| fn(array1[i], array2[i]));
+
+
+let<T> sort: T[], (T, T -> bool) -> T[] = |arr, lt| internal::sort(to_slice(arr), lt);
+
+// TODO turn this into a struct once we have structs.
+enum Slice<T> {
+    // data, start, len
+    S(T[], int, int)
+}
+
+let<T> to_slice: T[] -> Slice<T> = |x| Slice::S(x, 0, len(x));
+let<T> to_array: Slice<T> -> T[] = |s| match s {
+    Slice::S(arr, start, l) => if start == 0 && l == len(arr) {
+        arr
+    } else {
+        std::array::new(l, |i| arr[start + i])
+    }
+};
+let<T> split_slice_half: Slice<T> -> (Slice<T>, Slice<T>) = |s| match s {
+    Slice::S(arr, start, l) => {
+        let half_len = l / 2;
+        (
+            Slice::S(arr, start, half_len),
+            Slice::S(arr, start + half_len, l - half_len)
+        )
+    }
+};
+let<T> slice_pop: Slice<T> -> (Slice<T>, std::utils::Option<T>) = |s| match s {
+    Slice::S(_, _, 0) => (s, std::utils::Option::None),
+    Slice::S(arr, start, l) => (Slice::S(arr, start, l - 1), std::utils::Option::Some(arr[start + l - 1])),
+};
+
+mod internal {
+    use std::utils::Option;
+    use super::Slice;
+    use super::split_slice_half;
+    use super::slice_pop;
+    use super::to_slice;
+    use super::to_array;
+
+    let<T> sort: Slice<T>, (T, T -> bool) -> T[] = |slice, lt| match slice {
+        Slice::S(_, _, 0) => [],
+        Slice::S(_, _, 1) => to_array(slice),
+        s => {
+            let (left, right) = split_slice_half(s);
+            let left_sorted = to_slice(sort(left, lt));
+            let right_sorted = to_slice(sort(right, lt));
+            merge(left_sorted, right_sorted, lt)
+        }
+    };
+
+    /// Merge part of merge sort. We merge right-to-left because this is
+    /// more efficient to concatenate arrays.
+    let<T> merge: Slice<T>, Slice<T>, (T, T -> bool) -> T[] = |left, right, lt|
+        match (slice_pop(left), slice_pop(right)) {
+            ((_, Option::None), _) => to_array(right),
+            (_, (_, Option::None)) => to_array(left),
+            ((l_short, Option::Some(l_last)), (r_short, Option::Some(r_last))) =>
+                if lt(l_last, r_last) {
+                    merge(left, r_short, lt) + [r_last]
+                } else {
+                    merge(l_short, right, lt) + [l_last]
+                }
+        };
+}

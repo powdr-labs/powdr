@@ -1126,9 +1126,10 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 mod test {
     use crate::{run_command, Commands, CsvRenderModeCLI, FieldArgument};
     use powdr_backend::BackendType;
+    use test_log::test;
 
     #[test]
-    fn test_simple_sum() {
+    fn simple_sum() {
         let output_dir = tempfile::tempdir().unwrap();
         let output_dir_str = output_dir.path().to_string_lossy().to_string();
 
@@ -1144,7 +1145,7 @@ mod test {
             inputs: "3,2,1,2".into(),
             force: false,
             pilo: false,
-            prove_with: Some(BackendType::PilStarkCli),
+            prove_with: Some(BackendType::EStarkDump),
             backend_options: Some("stark_gl".to_string()),
             export_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,

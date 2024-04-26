@@ -160,8 +160,7 @@ FunctionDefinition: FunctionDefinition = {
 }
 
 ParameterList: Vec<Pattern> = {
-    <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
-    => vec![]
+    PatternList
 }
 
 ArrayLiteralExpression: ArrayExpression = {
@@ -256,20 +255,30 @@ GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
 // ---------------------------- ASM part -----------------------------
 
 MachineDefinition: SymbolDefinition = {
-    "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, statements}.into() }
+    "machine" <name:Identifier> <arguments:MachineArguments> <properties:("with" <MachineProperties>)?> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, properties: properties.unwrap_or_default(), statements}.into() },
+}
+
+MachineProperties: MachineProperties = {
+    <mut list:( <MachineProperty> "," )*> <end:MachineProperty> ","? =>? {
+        list.push(end);
+        MachineProperties::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
+    }
+}
+
+MachineProperty: (String, Expression) = {
+    <name:Identifier> ":" <value:Expression> => (name, value),
 }
 
 MachineArguments: MachineArguments = {
-    "(" "_" "," "_" ")" => MachineArguments::default(),
-    "(" <latch:Identifier> "," "_" ")" => MachineArguments { latch: Some(latch), operation_id: None },
-    "(" "_" "," <operation_id:Identifier> ")" => MachineArguments { latch: None, operation_id: Some(operation_id) },
-    "(" <latch:Identifier> "," <operation_id:Identifier> ")" => MachineArguments { latch: Some(latch), operation_id: Some(operation_id) },
     => MachineArguments::default(),
+    "(" ")" => MachineArguments::default(),
+    "(" <mut list:( <Param> "," )*> <end:Param> ","? ")" =>? {
+        list.push(end);
+        MachineArguments::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
+    }
 }
 
 MachineStatement: MachineStatement = {
-    Degree,
-    CallSelectors,
     Submachine,
     RegisterDeclaration,
     InstructionDeclaration,
@@ -281,14 +290,6 @@ MachineStatement: MachineStatement = {
 
 PilStatementInMachine: MachineStatement = {
     <start:@L> <stmt:PilStatement> => MachineStatement::Pil(ctx.source_ref(start), stmt)
-}
-
-Degree: MachineStatement = {
-    <start:@L> "degree" <deg:Expression> ";" => MachineStatement::Degree(ctx.source_ref(start), deg)
-}
-
-CallSelectors: MachineStatement = {
-    <start:@L> "call_selectors" <id:Identifier> ";" => MachineStatement::CallSelectors(ctx.source_ref(start), id)
 }
 
 Submachine: MachineStatement = {
@@ -646,8 +647,13 @@ Pattern: Pattern = {
     StringLiteral => Pattern::String(<>),
     TuplePattern,
     ArrayPattern,
-    Identifier => Pattern::Variable(<>),
-    //EnumPattern,
+    // We never parse Pattern::Variable directly. Instead, we
+    // parse all identifiers (and symbol paths) as Pattern::Enum.
+    // At symbol resolution stage, single identifiers that do not
+    // exist in the current scope are then turned into Pattern::Variable
+    // to allow `match x { (y, None) => ... }` to bind the first component
+    // to `y` and match the enum variant `None` at the same time.
+    EnumPattern,
 }
 
 PatternIncludingEllipsis: Pattern = {
@@ -665,11 +671,20 @@ ArrayPattern: Pattern = {
     "[" <mut items:(<PatternIncludingEllipsis> ",")*> <last:PatternIncludingEllipsis> "]" => Pattern::Array({items.push(last); items})
 }
 
+EnumPattern: Pattern = {
+    <SymbolPath> <( "(" <PatternList> ")" )?> => Pattern::Enum(<>)
+}
+
+PatternList: Vec<Pattern> = {
+    <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
+    => vec![]
+}
 
 // ---------------------------- Type Declarations -----------------------------
 
 EnumDeclaration: EnumDeclaration<Expression> = {
-    "enum" <name:Identifier> "{" <variants:EnumVariants> "}" => EnumDeclaration{<>}
+    "enum" <name:Identifier> <type_vars:("<" <TypeVarBounds> ">")?> "{" <variants:EnumVariants> "}"
+        => EnumDeclaration{name, type_vars: type_vars.unwrap_or_default(), variants}
 }
 
 EnumVariants: Vec<EnumVariant<Expression>> = {
@@ -700,7 +715,7 @@ TypeTermBox: Box<Type<Expression>> = {
 TypeTerm: Type<Expression> = {
     // The parser parses all identifiers as NamedTypes, some are translated
     // to TypeVars later.
-    TypeSymbolPath => Type::NamedType(<>),
+    TypeSymbolPath ("<" <TypeTermList> ">")? => Type::NamedType(<>),
     "!" => Type::Bottom,
     "bool" => Type::Bool,
     "int" => Type::Int,

@@ -1,5 +1,4 @@
-machine Main {
-    degree 256;
+machine Main with degree: 256 {
     Add4 adder;
 
     reg pc[@pc];
@@ -23,7 +22,10 @@ machine Main {
 }
 
 // ANCHOR: links
-machine Add4(latch, operation_id) {
+machine Add4 with
+    latch: latch,
+    operation_id: operation_id
+{
     Add adder;
 
     operation add4<0> x, y, z, w -> r;
@@ -49,7 +51,9 @@ machine Add4(latch, operation_id) {
 }
 
 // ANCHOR: one_operation
-machine Add(latch, _) {
+machine Add with
+    latch: latch
+{
     // operation name, with column names as inputs and outputs
     operation add a, b -> c;
 
@@ -67,7 +71,10 @@ machine Add(latch, _) {
 
 // ANCHOR: many_operations
 // machine declaration must include an operation id column name
-machine AddSub(latch, op_id) {
+machine AddSub with
+    latch: latch,
+    operation_id: op_id
+{
     // each operation has its own unique operation id
     operation add<0> a, b -> c;
     operation sub<1> a, b -> c;

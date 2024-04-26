@@ -15,6 +15,14 @@ let<T1, T2>
 /// Evaluates to f(0) + f(1) + ... + f(length - 1).
 let<T: Add + FromLiteral> sum: int, (int -> T) -> T = |length, f| fold(length, f, 0, |acc, e| (acc + e));
 
+let<T: Ord> max: T, T -> T = |a, b| if a < b { b } else { a };
+let<T: Ord> min: T, T -> T = |a, b| if a < b { a } else { b };
+
+enum Option<T> {
+    None,
+    Some(T)
+}
+
 /// Evaluates to a constraint that forces the witness column `c` to stay constant
 /// until `latch` is 1. In the row following the row where `latch` is 1,
 /// `c` is allowed to change.

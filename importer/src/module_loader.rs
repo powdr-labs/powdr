@@ -56,7 +56,7 @@ impl Folder for Loader {
                         )),
                     }
                     .map(|(file, path)| {
-                        powdr_parser::parse_module(None, &file)
+                        powdr_parser::parse_module(Some(&file_path.display().to_string()), &file)
                             .map(|res| (res, path))
                             .unwrap_or_else(|err| {
                                 eprintln!(

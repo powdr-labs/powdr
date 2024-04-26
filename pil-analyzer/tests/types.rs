@@ -317,7 +317,7 @@ fn enum_constr_is_function() {
 }
 
 #[test]
-#[should_panic = "Expected value but got type: X"]
+#[should_panic = "Expected symbol of kind Value but got Type: X"]
 fn enum_is_not_constr() {
     let input = "
     enum X { A, B(int), C(string[], int) }
@@ -344,7 +344,7 @@ fn wrong_type_args() {
 }
 
 #[test]
-#[should_panic = "Symbol not found: T"]
+#[should_panic = "Type symbol not found: T"]
 fn specialization_non_declared_type_var() {
     let input = "
         let<T: FromLiteral> x: T = 1;
@@ -406,6 +406,41 @@ fn partial_specialization2() {
 }
 
 #[test]
+fn generic_enum() {
+    let input = "
+        enum Option<T> {
+            Some(T),
+            None
+        }
+        let<T1, T2> map: Option<T1>, (T1 -> T2) -> Option<T2> = |o, f| match o {
+            Option::Some(x) => Option::Some(f(x)),
+            Option::None => Option::None
+        };
+        let<T> unwrap_or_else: Option<T>, (-> T) -> T = |o, default| match o {
+            Option::Some(x) => x,
+            Option::None => default()
+        };
+        let t = Option::Some(3);
+        let u = map(t, |x| x + 1);
+        let k: int = unwrap_or_else(u, || 7);
+    ";
+    type_check(input, &[("t", "", "Option<int>")]);
+}
+
+#[test]
+#[should_panic = "Inferred type scheme: <T> x: Option<T>"]
+fn simple_none() {
+    let input = "
+        enum Option<T> {
+            Some(T),
+            None
+        }
+        let x = Option::None;
+    ";
+    type_check(input, &[("x", "", "Option<int>")]);
+}
+
+#[test]
 fn type_from_pattern() {
     let input = "
     let r: int -> int = |i| i;
@@ -416,4 +451,68 @@ fn type_from_pattern() {
     };
     ";
     type_check(input, &[("f", "", "(int, int[]) -> int")]);
+}
+
+#[test]
+fn enum_pattern() {
+    let input = "
+    enum X { A(int[], int), B, C(int) }
+    let f = |q| match q {
+        X::A([x, ..], _) => |i| X::B,
+        X::B => |i| q,
+        X::C(_) => X::C,
+        x => |i| x,
+    };
+    ";
+    type_check(input, &[("f", "", "X -> (int -> X)")]);
+}
+
+#[test]
+#[should_panic = "Only one \"..\"-item allowed in array pattern"]
+fn multi_ellipsis() {
+    let input = "    let t: int[] -> int = (|i| match i {
+        [1, .., 3, ..] => 2,
+        _ => -1,
+    });
+";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Expected enum variant for pattern X::A but got int -> X - maybe you forgot the parentheses?"]
+fn enum_no_paren_for_paren() {
+    let input = "
+    enum X { A(int) }
+    let f = |q| match q {
+        X::A => 2,
+        _ => 3,
+    };
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Enum variant X::A does not have fields, but is used with parentheses in X::A()"]
+fn enum_paren_for_no_paren() {
+    let input = "
+    enum X { A }
+    let f = |q| match q {
+        X::A() => 2,
+        _ => 3,
+    };
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Invalid number of data fields for enum variant X::A. Expected 1 but got 2."]
+fn enum_too_many_fields() {
+    let input = "
+    enum X { A(int) }
+    let f = |q| match q {
+        X::A(_, _) => 2,
+        _ => 3,
+    };
+    ";
+    type_check(input, &[]);
 }

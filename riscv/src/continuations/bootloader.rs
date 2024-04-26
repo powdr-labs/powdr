@@ -8,8 +8,8 @@ use super::memory_merkle_tree::MerkleTree;
 /// 32-Bit architecture -> 2^32 bytes of addressable memory
 pub const MEMORY_SIZE_LOG: usize = 32;
 
-/// Page size is 1KB
-pub const PAGE_SIZE_BYTES_LOG: usize = 10;
+/// Page size is 2KB
+pub const PAGE_SIZE_BYTES_LOG: usize = 11;
 
 /// 32-Bit architecture -> 4 bytes per word
 pub const BYTES_PER_WORD: usize = 4;
@@ -52,20 +52,13 @@ pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
     // ============== bootloader-specific instructions =======================
     // Write-once memory
-    let BOOTLOADER_INPUT_ADDRESS: col = |i| i;
-    let bootloader_input_value;
-    // Loads a value. If the cell is empty, the prover can choose a value.
-    instr load_bootloader_input X -> Y { {X, Y} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value} }
-    instr assert_bootloader_input X, Y { {X, Y} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value} }
+    std::machines::write_once_memory::WriteOnceMemory bootloader_inputs;
 
-    let tmp_bootloader_value;
+    instr load_bootloader_input X -> Y = bootloader_inputs.access X, Y ->;
+    instr assert_bootloader_input X, Y -> = bootloader_inputs.access X, Y ->;
 
-    // Sets the PC to the bootloader input at the provided index if it is nonzero
-    instr jump_to_bootloader_input X {
-        // TODO: Putting {X, pc'} on the left-hand side should work, but this leads to a wrong PC update rule.
-        {X, tmp_bootloader_value} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value},
-        pc' = tmp_bootloader_value
-    }
+    // Sets the PC to the bootloader input at the provided index
+    instr jump_to_bootloader_input X = bootloader_inputs.access X, pc' ->;
 
     // ============== Shutdown routine constraints =======================
     // Insert a `jump_to_shutdown_routine` witness column, which will let the prover indicate that
@@ -80,22 +73,22 @@ pub fn bootloader_preamble() -> String {
     for (i, reg) in REGISTER_NAMES.iter().enumerate() {
         let reg = reg.strip_prefix("main.").unwrap();
         preamble.push_str(&format!(
-            "    public initial_{reg} = bootloader_input_value({i});\n"
+            "    public initial_{reg} = main_bootloader_inputs.value({i});\n"
         ));
     }
     for (i, reg) in REGISTER_NAMES.iter().enumerate() {
         let reg = reg.strip_prefix("main.").unwrap();
         preamble.push_str(&format!(
-            "    public final_{reg} = bootloader_input_value({});\n",
+            "    public final_{reg} = main_bootloader_inputs.value({});\n",
             i + REGISTER_NAMES.len()
         ));
     }
     preamble.push_str(&format!(
         r#"
-    public initial_memory_hash_1 = bootloader_input_value({});
-    public initial_memory_hash_2 = bootloader_input_value({});
-    public initial_memory_hash_3 = bootloader_input_value({});
-    public initial_memory_hash_4 = bootloader_input_value({});
+    public initial_memory_hash_1 = main_bootloader_inputs.value({});
+    public initial_memory_hash_2 = main_bootloader_inputs.value({});
+    public initial_memory_hash_3 = main_bootloader_inputs.value({});
+    public initial_memory_hash_4 = main_bootloader_inputs.value({});
 "#,
         MEMORY_HASH_START_INDEX,
         MEMORY_HASH_START_INDEX + 1,
@@ -104,10 +97,10 @@ pub fn bootloader_preamble() -> String {
     ));
     preamble.push_str(&format!(
         r#"
-    public final_memory_hash_1 = bootloader_input_value({});
-    public final_memory_hash_2 = bootloader_input_value({});
-    public final_memory_hash_3 = bootloader_input_value({});
-    public final_memory_hash_4 = bootloader_input_value({});
+    public final_memory_hash_1 = main_bootloader_inputs.value({});
+    public final_memory_hash_2 = main_bootloader_inputs.value({});
+    public final_memory_hash_3 = main_bootloader_inputs.value({});
+    public final_memory_hash_4 = main_bootloader_inputs.value({});
 "#,
         MEMORY_HASH_START_INDEX + 4,
         MEMORY_HASH_START_INDEX + 5,

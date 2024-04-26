@@ -36,7 +36,7 @@ mod test {
     use test_log::test;
 
     #[test]
-    fn test_log2_exact() {
+    fn log2_exact_function() {
         assert_eq!(log2_exact(0u32.into()), None);
         assert_eq!(log2_exact(1u32.into()), Some(0));
         assert_eq!(log2_exact(2u32.into()), Some(1));

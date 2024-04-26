@@ -1,8 +1,8 @@
 #![deny(clippy::print_stdout)]
 
+mod estark;
 #[cfg(feature = "halo2")]
 mod halo2_impl;
-mod pilstark;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -18,10 +18,13 @@ pub enum BackendType {
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2-mock")]
     Halo2Mock,
-    #[strum(serialize = "estark")]
-    EStark,
-    #[strum(serialize = "pil-stark-cli")]
-    PilStarkCli,
+    #[cfg(feature = "estark-polygon")]
+    #[strum(serialize = "estark-polygon")]
+    EStarkPolygon,
+    #[strum(serialize = "estark-starky")]
+    EStarkStarky,
+    #[strum(serialize = "estark-dump")]
+    EStarkDump,
 }
 
 pub type BackendOptions = String;
@@ -35,16 +38,22 @@ impl BackendType {
         const HALO2_FACTORY: halo2_impl::Halo2ProverFactory = halo2_impl::Halo2ProverFactory;
         #[cfg(feature = "halo2")]
         const HALO2_MOCK_FACTORY: halo2_impl::Halo2MockFactory = halo2_impl::Halo2MockFactory;
-        const ESTARK_FACTORY: pilstark::estark::EStarkFactory = pilstark::estark::EStarkFactory;
-        const PIL_STARK_CLI_FACTORY: pilstark::PilStarkCliFactory = pilstark::PilStarkCliFactory;
+        #[cfg(feature = "estark-polygon")]
+        const ESTARK_POLYGON_FACTORY: estark::polygon_wrapper::Factory =
+            estark::polygon_wrapper::Factory;
+        const ESTARK_STARKY_FACTORY: estark::starky_wrapper::Factory =
+            estark::starky_wrapper::Factory;
+        const ESTARK_DUMP_FACTORY: estark::DumpFactory = estark::DumpFactory;
 
         match self {
             #[cfg(feature = "halo2")]
             BackendType::Halo2 => &HALO2_FACTORY,
             #[cfg(feature = "halo2")]
             BackendType::Halo2Mock => &HALO2_MOCK_FACTORY,
-            BackendType::EStark => &ESTARK_FACTORY,
-            BackendType::PilStarkCli => &PIL_STARK_CLI_FACTORY,
+            #[cfg(feature = "estark-polygon")]
+            BackendType::EStarkPolygon => &ESTARK_POLYGON_FACTORY,
+            BackendType::EStarkStarky => &ESTARK_STARKY_FACTORY,
+            BackendType::EStarkDump => &ESTARK_DUMP_FACTORY,
         }
     }
 }

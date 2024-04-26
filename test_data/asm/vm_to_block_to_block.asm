@@ -1,7 +1,8 @@
-machine Inc(latch, operation_id) {
-
-    degree 8;
-
+machine Inc with
+    degree: 8,
+    latch: latch,
+    operation_id: operation_id
+{
     operation inc<0> x -> y;
 
     col witness operation_id;
@@ -11,10 +12,11 @@ machine Inc(latch, operation_id) {
     y = x + 1;
 }
 
-machine Assert1(latch, operation_id) {
-
-    degree 8;
-
+machine Assert1 with
+    degree: 8,
+    latch: latch,
+    operation_id: operation_id
+{
     Inc inc;
 
     operation assert1<0> x ->;
@@ -30,10 +32,7 @@ machine Assert1(latch, operation_id) {
     y = 2;
 }
 
-machine Main {
-
-    degree 8;
-
+machine Main with degree: 8 {
     Assert1 assert1;
 
     reg pc[@pc];
