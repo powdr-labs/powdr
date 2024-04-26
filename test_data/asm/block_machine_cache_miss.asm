@@ -1,8 +1,8 @@
-
-machine Arith(latch, operation_id) {
-
-    degree 8;
-
+machine Arith with
+    degree: 8,
+    latch: latch,
+    operation_id: operation_id
+{
     operation double<0> x -> y;
     operation square<1> x -> y;
 
@@ -27,10 +27,7 @@ machine Arith(latch, operation_id) {
     operation_id {x, y} in {X, SQUARE};
 }
 
-machine Main {
-
-    degree 8;
-
+machine Main with degree: 8 {
     Arith arith;
 
     reg pc[@pc];

@@ -1244,7 +1244,6 @@ mod test {
     fn instr_external_lhs_not_assignment_reg() {
         let asm = r"
 machine Main {
-  degree 8;
   reg pc[@pc];
   reg A;
 
@@ -1263,7 +1262,6 @@ machine Main {
     fn instr_external_lhs_register_not_used() {
         let asm = r"
 machine Main {
-  degree 8;
   reg pc[@pc];
   reg X[<=];
   reg Y[<=];
@@ -1284,7 +1282,6 @@ machine Main {
     fn instr_external_rhs_register_not_on_lhs() {
         let asm = r"
 machine Main {
-  degree 8;
   reg pc[@pc];
   reg X[<=];
   reg Y[<=];

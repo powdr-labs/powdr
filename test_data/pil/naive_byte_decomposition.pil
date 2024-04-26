@@ -1,6 +1,6 @@
 // This test is doing byte decomposition for 64-Bit values naively.
 // While this works on fields > 64 Bits (e.g. BN254), it is not sound on smaller fields
-// (e.g. Goldilocks). On those fields, the machines in `std::split` should be used.
+// (e.g. Goldilocks). On those fields, the machines in `std::machines::split` should be used.
 // The point of this test is to make sure that witgen also fails in this case.
 
 namespace Main(256);

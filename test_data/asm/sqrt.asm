@@ -1,6 +1,9 @@
 use std::prover::Query;
 
-machine Sqrt(latch, operation_id) {
+machine Sqrt with
+    latch: latch,
+    operation_id: operation_id,
+{
 
     operation sqrt<0> x -> y;
 
@@ -35,9 +38,7 @@ machine Sqrt(latch, operation_id) {
 }
 
 
-machine Main {
-    degree 8;
-
+machine Main with degree: 8 {
     Sqrt sqrt;
 
     reg pc[@pc];

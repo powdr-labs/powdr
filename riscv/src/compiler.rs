@@ -252,7 +252,8 @@ pub fn compile<T: FieldElement>(
 
     riscv_machine(
         runtime,
-        &preamble::<T>(degree, runtime, with_bootloader),
+        degree,
+        &preamble::<T>(runtime, with_bootloader),
         initial_mem,
         program,
     )
@@ -404,6 +405,7 @@ fn substitute_symbols_with_values(
 
 fn riscv_machine(
     runtime: &Runtime,
+    degree: u64,
     preamble: &str,
     initial_memory: Vec<String>,
     program: Vec<String>,
@@ -411,7 +413,7 @@ fn riscv_machine(
     format!(
         r#"
 {}
-machine Main {{
+machine Main with degree: {degree} {{
 {}
 
 {}
@@ -437,7 +439,7 @@ let initial_memory: (fe, fe)[] = [
     )
 }
 
-fn preamble<T: FieldElement>(degree: u64, runtime: &Runtime, with_bootloader: bool) -> String {
+fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
         bootloader_preamble()
     } else {
@@ -453,8 +455,7 @@ fn preamble<T: FieldElement>(degree: u64, runtime: &Runtime, with_bootloader: bo
 
     let mul_instruction = mul_instruction::<T>(runtime);
 
-    format!("degree {degree};")
-        + &r#"
+    r#"
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -466,7 +467,6 @@ fn preamble<T: FieldElement>(degree: u64, runtime: &Runtime, with_bootloader: bo
     reg tmp4;
     reg lr_sc_reservation;
 "#
-        .to_owned()
         .to_string()
         // risc-v x* registers
         + &(0..32)
