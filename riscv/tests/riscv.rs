@@ -4,7 +4,7 @@ use common::verify_riscv_asm_string;
 use mktemp::Temp;
 use powdr_backend::BackendType;
 use powdr_number::{FieldElement, GoldilocksField};
-use powdr_pipeline::{verify::verify, Pipeline};
+use powdr_pipeline::{verify::verify_with_paths, Pipeline};
 use std::path::PathBuf;
 use test_log::test;
 
@@ -36,7 +36,20 @@ pub fn test_continuations(case: &str) {
         // computing the constants file.
         let mut pipeline = pipeline.with_backend(BackendType::EStarkDump);
         pipeline.compute_proof().unwrap();
-        verify(pipeline.output_dir().unwrap()).unwrap();
+
+        let chunk_dir = pipeline.output_dir().unwrap();
+        let parent_dir = chunk_dir.parent().unwrap();
+
+        let chunk_dir = chunk_dir.to_str().unwrap();
+        let parent_dir = parent_dir.to_str().unwrap();
+
+        verify_with_paths(
+            format!("{}/constants.bin", parent_dir),
+            format!("{}/commits.bin", chunk_dir),
+            format!("{}/constraints.json", chunk_dir),
+        )
+        .unwrap();
+
         Ok(())
     };
     let bootloader_inputs = rust_continuations_dry_run(&mut pipeline);
