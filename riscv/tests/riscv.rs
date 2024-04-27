@@ -44,7 +44,7 @@ pub fn test_continuations(case: &str) {
         let parent_dir = parent_dir.to_str().unwrap();
 
         verify_with_paths(
-            format!("{}/constants.bin", parent_dir),
+            format!("{}/constants_estark.bin", parent_dir),
             format!("{}/commits.bin", chunk_dir),
             format!("{}/constraints.json", chunk_dir),
         )

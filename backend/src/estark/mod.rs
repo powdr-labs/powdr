@@ -4,6 +4,7 @@ pub mod polygon_wrapper;
 pub mod starky_wrapper;
 
 use std::{
+    fs::hard_link,
     iter::{once, repeat},
     path::{Path, PathBuf},
 };
@@ -141,22 +142,19 @@ struct ProverInputFilePaths {
 impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
     /// Write the files in the EStark Polygon format.
     fn write_files(&self, output_dir: &Path) -> Result<ProverInputFilePaths, Error> {
-        let constants_name = if self.patched_constants.is_some() {
-            "constants_estark.bin"
-        } else {
-            "constants.bin"
-        };
-
         let paths = ProverInputFilePaths {
-            constants: output_dir.join(constants_name),
+            constants: output_dir.join("constants_estark.bin"),
             stark_struct: output_dir.join("starkstruct.json"),
             contraints: output_dir.join("constraints.json"),
         };
 
-        // Write the constants, if they were patched.
+        // If they were patched, write them. Otherwise, just hardlink.
         if let Some(patched_constants) = &self.patched_constants {
             log::info!("Writing {}.", paths.constants.to_string_lossy());
             write_polys_file(&paths.constants, patched_constants)?;
+        } else {
+            log::info!("Hardlinking constants.bin to constants_estark.bin.");
+            hard_link(output_dir.join("constants.bin"), &paths.constants)?;
         }
 
         // Write the stark struct JSON.
