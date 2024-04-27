@@ -1,4 +1,7 @@
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    collections::{BTreeSet, HashMap},
+    fs::create_dir_all,
+};
 
 use powdr_ast::{
     asm_analysis::{AnalysisASMFile, RegisterTy},
@@ -80,6 +83,7 @@ where
                 let pipeline = if let Some(parent_dir) = pipeline.output_dir() {
                     let force_overwrite = pipeline.force_overwrite();
                     let chunk_dir = parent_dir.join(format!("chunk_{}", i));
+                    create_dir_all(&chunk_dir).unwrap();
                     pipeline.with_output(chunk_dir, force_overwrite)
                 } else {
                     pipeline
