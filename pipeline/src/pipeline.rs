@@ -276,11 +276,6 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn with_name(mut self, name: String) -> Self {
-        self.name = Some(name);
-        self
-    }
-
     pub fn with_pil_object(mut self) -> Self {
         self.pilo = true;
         self
@@ -918,6 +913,10 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn output_dir(&self) -> Option<&Path> {
         self.output_dir.as_ref().map(|p| p.as_ref())
+    }
+
+    pub fn force_overwrite(&self) -> bool {
+        self.force_overwrite
     }
 
     pub fn name(&self) -> &str {
