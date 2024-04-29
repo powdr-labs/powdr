@@ -47,17 +47,12 @@ impl PatternTuple {
         }
 
         let first = self.patterns.first().unwrap();
-
-        let mut patterns = self.patterns.clone();
-        let rest = patterns.drain(1..).collect::<Vec<Pattern>>();
         let specialized = first.specialize(&constructor.patterns[0]);
-        match specialized {
-            Some(PatternTuple { mut patterns }) => {
-                patterns.extend(rest);
-                Some(PatternTuple { patterns })
-            }
-            None => None,
-        }
+        specialized.map(|PatternTuple { mut patterns }| {
+            let rest = &self.patterns[1..];
+            patterns.extend(rest.iter().cloned());
+            PatternTuple { patterns }
+        })
     }
 
     /// Unspecialize a pattern tuple based on a "constructor" pattern tuple passed as a parameter.

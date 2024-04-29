@@ -440,7 +440,9 @@ impl PILAnalyzer {
             };
 
             if let Some(v) = specialized_new_pattern {
-                if !v.is_empty() {
+                if v.is_empty() {
+                    witnesses.insert(new_pattern.clone());
+                } else {
                     let specialized_results = patterns
                         .iter()
                         .filter_map(|pattern| pattern.specialize(constructor))
@@ -453,8 +455,6 @@ impl PILAnalyzer {
                             .into_iter()
                             .flat_map(|witness| constructor.unspecialize(witness)),
                     );
-                } else {
-                    witnesses.insert(new_pattern.clone());
                 }
             }
         }
