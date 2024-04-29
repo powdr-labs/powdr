@@ -178,54 +178,38 @@ impl PILAnalyzer {
 
     /// Check that all match expressions are exhaustive.
     pub fn match_exhaustiveness_check(&self) {
-        for (name, (_, value)) in &self.definitions {
-            let Some(value) = value else { continue };
-            for e in value.all_children() {
-                let patterns = if let Expression::MatchExpression(_, arms) = e {
-                    arms.iter()
-                        .map(|arm| PatternTuple {
-                            patterns: vec![arm.pattern.clone()],
-                        })
-                        .collect::<Vec<_>>()
+        let all_matches = self
+            .definitions
+            .iter()
+            .filter_map(|(_, (_, value))| value.as_ref())
+            .flat_map(|value| value.all_children())
+            .chain(self.identities.iter().flat_map(|id| id.all_children()))
+            .filter_map(|e| {
+                if let Expression::MatchExpression(ref match_expr, arms) = e {
+                    Some((
+                        match_expr,
+                        arms.iter()
+                            .map(|arm| PatternTuple {
+                                patterns: vec![arm.pattern.clone()],
+                            })
+                            .collect::<Vec<_>>(),
+                    ))
                 } else {
-                    continue;
-                };
-                let witnesses = Self::usefulness(&patterns, Pattern::CatchAll.into());
-                if witnesses.is_empty() {
-                    panic!("Function {name} is not exhaustive")
+                    None
                 }
-            }
-        }
+            });
 
-        for id in &self.identities {
-            let patterns = id
-                .all_children()
-                .filter_map(|e| {
-                    if let Expression::MatchExpression(_, arms) = e {
-                        Some(
-                            arms.iter()
-                                .map(|arm| PatternTuple {
-                                    patterns: vec![arm.pattern.clone()],
-                                })
-                                .collect::<Vec<_>>(),
-                        )
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-            for patterns in patterns {
-                let witnesses = Self::usefulness(&patterns, Pattern::CatchAll.into());
-                if witnesses.is_empty() {
-                    panic!("Identity is not exhaustive")
-                }
+        for (match_expr, patterns) in all_matches {
+            let witnesses = Self::usefulness(&patterns, Pattern::CatchAll.into());
+            if witnesses.is_empty() {
+                panic!("Found non-exhaustive match expression: {:?}", match_expr);
             }
         }
     }
 
     /// Check if a new pattern is useful in a set of patterns.
     /// A pattern is useful if it is not covered by the other patterns.
-    /// If a pattern is useful, it is returned as a witness.
+    /// If a pattern is useful, it's returned as a witness.
     pub fn usefulness(patterns: &[PatternTuple], new_pattern: PatternTuple) -> Vec<PatternTuple> {
         let mut witnesses = HashSet::new();
 
