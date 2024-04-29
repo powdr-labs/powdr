@@ -13,7 +13,7 @@ enum Query {
     Hint(fe),
     /// Query a prover input element by index and data id.
     DataIdentifier(int, int),
-    /// This value is not (newly) constrained by the query.
+    /// This value is not (additionally) constrained by the query.
     Unconstrained,
 }
 
