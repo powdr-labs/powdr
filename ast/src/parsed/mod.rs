@@ -375,6 +375,16 @@ impl<Ref> Expression<Ref> {
     }
 }
 
+impl Expression<NamespacedPolynomialReference> {
+    pub fn try_to_identifier(&self) -> Option<&String> {
+        if let Expression::Reference(r) = self {
+            r.try_to_identifier()
+        } else {
+            None
+        }
+    }
+}
+
 impl From<u32> for Expression {
     fn from(value: u32) -> Self {
         Expression::Number(value.into(), None)
