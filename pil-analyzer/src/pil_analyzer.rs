@@ -207,52 +207,6 @@ impl PILAnalyzer {
         }
     }
 
-    /// Check if a new pattern is useful in a set of patterns.
-    /// A pattern is useful if it is not covered by the other patterns.
-    /// If a pattern is useful, it's returned as a witness.
-    pub fn usefulness(patterns: &[PatternTuple], new_pattern: PatternTuple) -> Vec<PatternTuple> {
-        let mut witnesses = HashSet::new();
-
-        if new_pattern.patterns.is_empty()
-            || patterns.iter().any(|patterns| patterns.is_irrefutable())
-            || patterns.contains(&new_pattern)
-        {
-            return vec![];
-        }
-
-        let mut expanded_patterns = patterns.to_vec();
-        expanded_patterns.push(new_pattern.clone());
-        let constructors = expanded_patterns.clone();
-
-        for constructor in &constructors {
-            let specialized_new_pattern = if !new_pattern.is_empty() {
-                new_pattern.specialize(constructor)
-            } else {
-                None
-            };
-
-            if let Some(v) = specialized_new_pattern {
-                if !v.is_empty() {
-                    let specialized_results = patterns
-                        .iter()
-                        .filter_map(|pattern| pattern.specialize(constructor))
-                        .collect::<Vec<_>>();
-
-                    let specialized_usefull = Self::usefulness(&specialized_results, v);
-
-                    witnesses.extend(
-                        specialized_usefull
-                            .into_iter()
-                            .flat_map(|witness| constructor.unspecialize(witness)),
-                    );
-                } else {
-                    witnesses.insert(new_pattern.clone());
-                }
-            }
-        }
-        witnesses.into_iter().collect()
-    }
-
     pub fn type_check(&mut self) {
         let query_type: Type = parse_type("int -> std::prover::Query").unwrap().into();
         let mut expressions = vec![];
@@ -459,6 +413,52 @@ impl PILAnalyzer {
 
     fn driver(&self) -> Driver {
         Driver(self)
+    }
+
+    /// Check if a new pattern is useful in a set of patterns.
+    /// A pattern is useful if it is not covered by the other patterns.
+    /// If a pattern is useful, it's returned as a witness.
+    pub fn usefulness(patterns: &[PatternTuple], new_pattern: PatternTuple) -> Vec<PatternTuple> {
+        let mut witnesses = HashSet::new();
+
+        if new_pattern.patterns.is_empty()
+            || patterns.iter().any(|patterns| patterns.is_irrefutable())
+            || patterns.contains(&new_pattern)
+        {
+            return vec![];
+        }
+
+        let mut expanded_patterns = patterns.to_vec();
+        expanded_patterns.push(new_pattern.clone());
+        let constructors = expanded_patterns.clone();
+
+        for constructor in &constructors {
+            let specialized_new_pattern = if new_pattern.is_empty() {
+                None
+            } else {
+                new_pattern.specialize(constructor)
+            };
+
+            if let Some(v) = specialized_new_pattern {
+                if !v.is_empty() {
+                    let specialized_results = patterns
+                        .iter()
+                        .filter_map(|pattern| pattern.specialize(constructor))
+                        .collect::<Vec<_>>();
+
+                    let specialized_usefull = Self::usefulness(&specialized_results, v);
+
+                    witnesses.extend(
+                        specialized_usefull
+                            .into_iter()
+                            .flat_map(|witness| constructor.unspecialize(witness)),
+                    );
+                } else {
+                    witnesses.insert(new_pattern.clone());
+                }
+            }
+        }
+        witnesses.into_iter().collect()
     }
 }
 
