@@ -1,4 +1,7 @@
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    collections::{BTreeSet, HashMap},
+    fs::create_dir_all,
+};
 
 use powdr_ast::{
     asm_analysis::{AnalysisASMFile, RegisterTy},
@@ -77,8 +80,14 @@ where
             |(i, (bootloader_inputs, start_of_shutdown_routine))| -> Result<(), E> {
                 log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
                 let pipeline = pipeline.clone();
-                let name = format!("{}_chunk_{}", pipeline.name(), i);
-                let pipeline = pipeline.with_name(name);
+                let pipeline = if let Some(parent_dir) = pipeline.output_dir() {
+                    let force_overwrite = pipeline.force_overwrite();
+                    let chunk_dir = parent_dir.join(format!("chunk_{}", i));
+                    create_dir_all(&chunk_dir).unwrap();
+                    pipeline.with_output(chunk_dir, force_overwrite)
+                } else {
+                    pipeline
+                };
                 // The `jump_to_shutdown_routine` column indicates when the execution should jump to the shutdown routine.
                 // In that row, the normal PC update is ignored and the PC is set to the address of the shutdown routine.
                 // In other words, it should be a one-hot encoding of `start_of_shutdown_routine`.

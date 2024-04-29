@@ -40,7 +40,8 @@ struct PolygonBackend<'a, F: FieldElement>(EStarkFilesCommon<'a, F>);
 impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<'a, F> {
     fn prove(
         &self,
-        witness: &[(String, Vec<F>)],
+        // Witness is taken from file written by the pipeline.
+        _witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
         // TODO: Implement challenges
         _witgen_callback: WitgenCallback<F>,
@@ -57,14 +58,16 @@ impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<'a, F> {
             tmp_dir.as_path()
         };
 
-        let input_paths = self.0.write_files(output_dir, witness)?;
+        let input_paths = self.0.write_files(output_dir)?;
+
+        let commits_path = output_dir.join("commits.bin");
 
         // Generate the proof.
         let proof_paths = pil_stark_prover::generate_proof(
             &input_paths.contraints,
             &input_paths.stark_struct,
             &input_paths.constants,
-            &input_paths.commits,
+            &commits_path,
             output_dir,
         )
         .map_err(|e| Error::BackendError(e.to_string()))?;
