@@ -135,7 +135,6 @@ impl<'a, F: FieldElement> EStark<'a, F> {
         }
     }
 
-impl<'a, F: FieldElement> Backend<'a, F> for EStark<'a, F> {
     fn prove_stark_gl(
         &self,
         witness: &[(String, Vec<F>)],
@@ -186,7 +185,9 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<'a, F> {
             Err(e) => Err(e),
         }
     }
+}
 
+impl<'a, F: FieldElement> Backend<'a, F> for EStark<'a, F> {
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
         match self.proof_type {
             ProofType::StarkGL => {

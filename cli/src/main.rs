@@ -820,8 +820,11 @@ fn export_verifier<T: FieldElement>(
         .with_vkey_file(vkey.map(PathBuf::from))
         .with_backend(*backend_type, backend_options);
 
-    let verifier_file = BufWriter::new(fs::File::create(dir.join("verifier.sol")).unwrap());
-    write_or_panic(verifier_file, |w| pipeline.export_ethereum_verifier(w))?;
+    buffered_write_file(&dir.join("verifier.sol"), |w| {
+        pipeline.export_ethereum_verifier(w).unwrap()
+    })
+    .unwrap();
+
     log::info!("Wrote verifier.sol.");
 
     Ok(())
