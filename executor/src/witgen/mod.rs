@@ -157,6 +157,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             self.fixed_col_values,
             self.external_witness_values,
             self.challenges,
+            self.stage,
         );
         let identities = self
             .analyzed
@@ -284,33 +285,37 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         fixed_col_values: &'a [(String, Vec<T>)],
         external_witness_values: &'a [(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
+        stage: u8,
     ) -> Self {
         let mut external_witness_values = external_witness_values
             .iter()
             .map(|(name, values)| (name.clone(), values))
             .collect::<BTreeMap<_, _>>();
 
-        let witness_cols =
-            WitnessColumnMap::from(analyzed.committed_polys_in_source_order().iter().flat_map(
-                |(poly, value)| {
-                    poly.array_elements()
-                        .map(|(name, poly_id)| {
-                            let external_values = external_witness_values.remove(name.as_str());
-                            if let Some(external_values) = &external_values {
-                                if external_values.len() != analyzed.degree() as usize {
-                                    log::debug!(
-                                        "External witness values for column {} were only partially provided \
-                                         (length is {} but the degree is {})",
-                                        name,
-                                        external_values.len(),
-                                        analyzed.degree()
-                                    );
+        let witness_cols = 
+                WitnessColumnMap::from(analyzed.committed_polys_in_source_order().iter().flat_map(
+                    |(poly, value)| {
+                        poly.array_elements()
+                            .map(|(name, poly_id)| {
+                                let external_values = external_witness_values.remove(name.as_str());
+                                if let Some(external_values) = &external_values {
+                                    if external_values.len() != analyzed.degree() as usize {
+                                        log::debug!(
+                                            "External witness values for column {} were only partially provided \
+                                            (length is {} but the degree is {})",
+                                            name,
+                                            external_values.len(),
+                                            analyzed.degree()
+                                        );
+                                    }
                                 }
-                            }
-                            WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
-                        })
-                        .collect::<Vec<_>>()
-                },
+                                // Remove any hint for witness columns of a later stage
+                                // (because it might reference a challenge that is not available yet)
+                                let value = if poly.stage.unwrap_or_default() <= stage.into() {  value.as_ref()} else { None };
+                                WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
+                            })
+                            .collect::<Vec<_>>()
+                    },
             ));
 
         if !external_witness_values.is_empty() {
@@ -428,7 +433,7 @@ impl<'a, T> WitnessColumn<'a, T> {
     pub fn new(
         id: usize,
         name: &str,
-        value: &'a Option<FunctionValueDefinition>,
+        value: Option<&'a FunctionValueDefinition>,
         external_values: Option<&'a Vec<T>>,
     ) -> WitnessColumn<'a, T> {
         let query = if let Some(FunctionValueDefinition::Expression(TypedExpression {
