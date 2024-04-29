@@ -22,6 +22,13 @@ impl PatternTuple {
         self.patterns.is_empty()
     }
 
+    /// Check for irrefutable patterns in pattern tuples. Since pattern tuples can contain
+    /// internal patterns, irrefutability only applies in cases of unique patterns (len == 1).
+
+    /// Example:
+    /// If (_, _) was obtained from specialization, it is not true that the pattern is irrefutable
+    ///  because having more than one element implies that the evaluation is performed on internal patterns.
+    /// If on the other hand the pattern is (Pattern::Tuple(_,_), ), irrefutability applies in the standard way.
     pub fn is_irrefutable(&self) -> bool {
         if self.patterns.len() == 1 {
             self.patterns[0].is_irrefutable()
