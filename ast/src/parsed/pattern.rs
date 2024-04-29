@@ -17,10 +17,12 @@ impl PatternTuple {
     }
 
     pub fn is_irrefutable(&self) -> bool {
-        if self.patterns.len() != 1 {
-            return false;
+        if self.patterns.len() == 1 {
+            self.patterns[0].is_irrefutable()
+        } else {
+            false;
         }
-        self.patterns[0].is_irrefutable()
+
     }
 
     /// Specialize a pattern tuple based on a "constructor" pattern tuple passed as a parameter.
