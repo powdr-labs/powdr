@@ -837,7 +837,6 @@ mod tests {
         let input_path = PathBuf::from("./test_data/")
             .join(path)
             .with_extension("asm");
-        println!("Input: {input_path:?}");
         let input_str = std::fs::read_to_string(input_path).unwrap();
         let parsed = powdr_parser::parse_asm(None, &input_str).unwrap();
 
