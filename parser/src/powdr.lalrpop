@@ -6,6 +6,10 @@ use crate::{ParserContext, unescape_string};
 
 grammar(ctx: &ParserContext);
 
+extern {
+    type Error = String;
+}
+
 match {
     r"\s*" => { },
     r"//[^\n\r]*[\n\r]*" => { }, // Skip `// comments`

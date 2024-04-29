@@ -34,43 +34,8 @@ impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => match value {
-                SymbolValue::Machine(
-                    m @ Machine {
-                        arguments: MachineArguments(args),
-                        properties:
-                            MachineProperties {
-                                degree,
-                                latch,
-                                operation_id,
-                                call_selectors,
-                            },
-                        ..
-                    },
-                ) => {
-                    let args = args.iter().join(", ");
-                    let props = degree
-                        .as_ref()
-                        .map(|s| format!("degree: {s}"))
-                        .into_iter()
-                        .chain(latch.as_ref().map(|s| format!("latch: {s}")))
-                        .chain(operation_id.as_ref().map(|s| format!("operation_id: {s}")))
-                        .chain(
-                            call_selectors
-                                .as_ref()
-                                .map(|s| format!("call_selectors: {s}")),
-                        )
-                        .join(", ");
-                    let props = if props.is_empty() {
-                        props
-                    } else {
-                        format!(" with {props}")
-                    };
-                    let args = if args.is_empty() {
-                        args
-                    } else {
-                        format!("({args})")
-                    };
-                    write!(f, "machine {name}{args}{props} {m}")
+                SymbolValue::Machine(m) => {
+                    write!(f, "machine {name}{m}")
                 }
                 SymbolValue::Import(i) => {
                     write!(f, "{i} as {name};")
@@ -115,9 +80,45 @@ impl Display for Import {
 
 impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "{{")?;
+        writeln!(f, "{}{} {{", &self.arguments, &self.properties)?;
         write_items_indented(f, &self.statements)?;
         write!(f, "}}")
+    }
+}
+
+impl Display for MachineArguments {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let args = self.0.iter().join(", ");
+        if !args.is_empty() {
+            write!(f, "({args})")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for MachineProperties {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let props = self
+            .degree
+            .as_ref()
+            .map(|s| format!("degree: {s}"))
+            .into_iter()
+            .chain(self.latch.as_ref().map(|s| format!("latch: {s}")))
+            .chain(
+                self.operation_id
+                    .as_ref()
+                    .map(|s| format!("operation_id: {s}")),
+            )
+            .chain(
+                self.call_selectors
+                    .as_ref()
+                    .map(|s| format!("call_selectors: {s}")),
+            )
+            .join(", ");
+        if !props.is_empty() {
+            write!(f, " with {props}")?;
+        }
+        Ok(())
     }
 }
 

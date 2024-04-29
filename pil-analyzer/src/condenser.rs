@@ -36,7 +36,7 @@ pub fn condense<T: FieldElement>(
     identities: &[Identity<Expression>],
     source_order: Vec<StatementIdentifier>,
 ) -> Analyzed<T> {
-    let mut condenser = Condenser::new(&definitions);
+    let mut condenser = Condenser::new(&definitions, degree);
 
     // Counter needed to re-assign identity IDs.
     let mut counters = Counters::default();
@@ -155,6 +155,7 @@ pub fn condense<T: FieldElement>(
 type SymbolCacheKey = (String, Option<Vec<Type>>);
 
 pub struct Condenser<'a, T> {
+    degree: Option<DegreeType>,
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Evaluation cache.
@@ -205,7 +206,10 @@ impl<Expr> IdentityWithoutID<Expr> {
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
-    pub fn new(symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
+    pub fn new(
+        symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+        degree: Option<DegreeType>,
+    ) -> Self {
         let next_witness_id = symbols
             .values()
             .filter_map(|(sym, _)| match sym.kind {
@@ -217,6 +221,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             .max()
             .unwrap_or_default();
         Self {
+            degree,
             symbols,
             symbol_values: Default::default(),
             namespace: Default::default(),
@@ -338,6 +343,11 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         name: &str,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         Definitions(self.symbols).lookup_public_reference(name)
+    }
+
+    fn degree(&self) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+        let degree = self.degree.ok_or(evaluator::EvalError::DataNotAvailable)?;
+        Ok(Value::Integer(degree.into()).into())
     }
 
     fn new_witness_column(
