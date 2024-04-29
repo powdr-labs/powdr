@@ -168,6 +168,7 @@ impl Pattern {
 
     /// Return true if the pattern is irrefutable, i.e. matches all possible values of its type.
     pub fn is_irrefutable(&self) -> bool {
+        // TODO This should also return true for enum variants that are the only ones in the enum
         match self {
             Pattern::Ellipsis => unreachable!(),
             Pattern::CatchAll | Pattern::Variable(_) => true,
@@ -184,6 +185,7 @@ impl Pattern {
     /// Based on https://doc.rust-lang.org/nightly/nightly-rustc/rustc_pattern_analysis/usefulness/index.html#specialization.
     /// If the constructor is shared with the pattern, specialize the pattern removing
     /// "one layer" (the constructor) and returning internal patterns.
+    /// Return None if the pattern can't be specialized using the constructor.
     pub fn specialize(&self, constructor: &Self) -> Option<PatternTuple> {
         match (constructor, self) {
             (_, Pattern::CatchAll) => Some(PatternTuple { patterns: vec![] }),
