@@ -240,11 +240,11 @@ impl PILAnalyzer {
 
                     let specialized_usefull = Self::usefulness(&specialized_results, v);
 
-                    for witness in specialized_usefull {
-                        if let Some(v) = constructor.unspecialize(witness) {
-                            witnesses.insert(v);
-                        }
-                    }
+                    witnesses.extend(
+                        specialized_usefull
+                            .into_iter()
+                            .flat_map(|witness| constructor.unspecialize(witness)),
+                    );
                 } else {
                     witnesses.insert(new_pattern.clone());
                 }
