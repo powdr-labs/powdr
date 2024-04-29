@@ -4,7 +4,7 @@ use common::verify_riscv_asm_string;
 use mktemp::Temp;
 use powdr_backend::BackendType;
 use powdr_number::{FieldElement, GoldilocksField};
-use powdr_pipeline::{verify::verify_with_paths, Pipeline};
+use powdr_pipeline::{verify::verify, Pipeline};
 use std::path::PathBuf;
 use test_log::test;
 
@@ -36,19 +36,7 @@ pub fn test_continuations(case: &str) {
         // computing the constants file.
         let mut pipeline = pipeline.with_backend(BackendType::EStarkDump);
         pipeline.compute_proof().unwrap();
-
-        let chunk_dir = pipeline.output_dir().unwrap();
-        let parent_dir = chunk_dir.parent().unwrap();
-
-        let chunk_dir = chunk_dir.to_str().unwrap();
-        let parent_dir = parent_dir.to_str().unwrap();
-
-        verify_with_paths(
-            format!("{}/constants_estark.bin", parent_dir),
-            format!("{}/commits.bin", chunk_dir),
-            format!("{}/constraints.json", chunk_dir),
-        )
-        .unwrap();
+        verify(pipeline.output_dir().unwrap()).unwrap();
 
         Ok(())
     };

@@ -895,7 +895,7 @@ impl<T: FieldElement> Pipeline<T> {
             Err(powdr_backend::Error::BackendError(e)) => {
                 return Err(vec![e.to_string()]);
             }
-            _ => panic!(),
+            Err(e) => panic!("{}", e),
         };
 
         drop(backend);
@@ -915,7 +915,7 @@ impl<T: FieldElement> Pipeline<T> {
         self.output_dir.as_ref().map(|p| p.as_ref())
     }
 
-    pub fn force_overwrite(&self) -> bool {
+    pub fn is_force_overwrite(&self) -> bool {
         self.force_overwrite
     }
 
