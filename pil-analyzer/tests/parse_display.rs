@@ -51,6 +51,7 @@ namespace T(65536);
         0 => std::prover::Query::Input(1),
         3 => std::prover::Query::Input(std::convert::int::<fe>((std::prover::eval(T.CNT) + 1))),
         7 => std::prover::Query::Input(0),
+        _ => std::prover::Query::Unconstrained,
     };
     col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
