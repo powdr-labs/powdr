@@ -6,6 +6,12 @@ use std::iter::{empty, once};
 
 use super::{asm::SymbolPath, visitor::Children};
 
+/// When a pattern is specialised, in some cases the algorithm will return
+/// a list of its internal patterns. PatternTuple works as a wrapper that makes these
+/// patterns identifiable and implements the specialisation in tuples following
+/// rustc[1] implementation.
+///
+/// [1] https://doc.rust-lang.org/nightly/nightly-rustc/rustc_pattern_analysis/usefulness/index.html#specialization
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PatternTuple {
     pub patterns: Vec<Pattern>,
@@ -20,9 +26,8 @@ impl PatternTuple {
         if self.patterns.len() == 1 {
             self.patterns[0].is_irrefutable()
         } else {
-            false;
+            false
         }
-
     }
 
     /// Specialize a pattern tuple based on a "constructor" pattern tuple passed as a parameter.
