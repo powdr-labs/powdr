@@ -41,6 +41,7 @@ impl PatternTuple {
     /// Based on https://doc.rust-lang.org/nightly/nightly-rustc/rustc_pattern_analysis/usefulness/index.html#specialization.
     /// If the constructor is shared with the pattern, specialize the pattern removing
     /// "one layer" (the constructor) and returning internal patterns.
+    /// Return None if the pattern can't be specialized with the constructor or if the pattern is empty.
     pub fn specialize(&self, constructor: &PatternTuple) -> Option<PatternTuple> {
         if self.patterns.is_empty() || self.patterns.len() != constructor.patterns.len() {
             return None;
@@ -59,7 +60,8 @@ impl PatternTuple {
     /// Based on https://doc.rust-lang.org/nightly/nightly-rustc/rustc_pattern_analysis/usefulness/index.html##undoing-specialization.
     /// Construct a pattern based in the constructor using the values in the tuple as parameters
     /// If the constructor takes fewer parameters than there are in the tuple, the tuple is extended with the remaining parameters.
-    pub fn unspecialize(&self, tuple: PatternTuple) -> Option<PatternTuple> {
+    /// Return None if the pattern can't be specialized with the constructor or if the pattern is empty.
+    pub fn unspecialize(&self, mut tuple: PatternTuple) -> Option<PatternTuple> {
         if self.patterns.is_empty() {
             return None;
         }
@@ -72,24 +74,28 @@ impl PatternTuple {
         } else {
             match constructor {
                 Pattern::CatchAll => {
-                    let mut patterns = tuple.patterns.clone();
-                    patterns.insert(0, Pattern::CatchAll);
-                    Some(PatternTuple { patterns })
+                    tuple.patterns.insert(0, Pattern::CatchAll);
+                    Some(PatternTuple {
+                        patterns: tuple.patterns,
+                    })
                 }
                 Pattern::Number(n) => {
-                    let mut patterns = tuple.patterns.clone();
-                    patterns.insert(0, Pattern::Number(n.clone()));
-                    Some(PatternTuple { patterns })
+                    tuple.patterns.insert(0, Pattern::Number(n.clone()));
+                    Some(PatternTuple {
+                        patterns: tuple.patterns,
+                    })
                 }
                 Pattern::String(s) => {
-                    let mut patterns = tuple.patterns.clone();
-                    patterns.insert(0, Pattern::String(s.clone()));
-                    Some(PatternTuple { patterns })
+                    tuple.patterns.insert(0, Pattern::String(s.clone()));
+                    Some(PatternTuple {
+                        patterns: tuple.patterns,
+                    })
                 }
                 Pattern::Variable(v) => {
-                    let mut patterns = tuple.patterns.clone();
-                    patterns.insert(0, Pattern::Variable(v.clone()));
-                    Some(PatternTuple { patterns })
+                    tuple.patterns.insert(0, Pattern::Variable(v.clone()));
+                    Some(PatternTuple {
+                        patterns: tuple.patterns,
+                    })
                 }
                 Pattern::Tuple(cons_patterns) => {
                     let length = cons_patterns.len();
