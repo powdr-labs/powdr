@@ -15,6 +15,7 @@ namespace std::prover(65536);
     let eval: expr -> fe = [];
     enum Query {
         Input(int),
+        Unconstrained,
     }
 namespace std::convert(65536);
     let int = [];
