@@ -646,6 +646,7 @@ fn keccak() {
         });
 }
 
+#[test]
 fn connect_no_witgen() {
     let f = "asm/connect_no_witgen.asm";
     let i = [];
