@@ -6,18 +6,17 @@ This crate is where most of the compilation pipeline lives. It takes a parse tre
 
 We define two types of machines: virtual machines and constrained machines. Constrained machines are the lower level kind of machine. They have a notion of blocks through a latch and an operation_id. Virtual machines are a higher level type of machines. For each machine type, we provide the elements which appear in that type.
 
-|              | Virtual | Constrained |
-| ------------ | ------- | ----------- |
-| pc           | yes     | no          |
-| registers    | yes     | no          |
-| functions    | yes     | no          |
-| instructions | yes     | no          |
-| latch        | no      | yes         |
-| operation_id | no      | yes         |
-| constraints  | yes     | yes         |
-| links        | yes     | yes         |
-| submachines  | yes     | yes         |
-
+|                         | Virtual | Constrained |
+|-------------------------|---------|-------------|
+| pc                      | yes     | no          |
+| registers               | yes     | no          |
+| functions               | yes     | no          |
+| instructions            | yes     | no          |
+| latch                   | no      | yes         |
+| operation_id            | no      | yes         |
+| constraints             | yes     | yes         |
+| links                   | yes     | yes         |
+| submachines             | yes     | yes         |
 The pipeline accepts both kinds of machines, and they are represented by the same type `Machine`. Some steps are specific to virtual machines. They can still be applied to constrained machines and must have no effect. In the process, virtual machines get reduced to constrained machines by encoding their high-level elements into constrained machines elements.
 
 ## Pipeline
@@ -99,7 +98,6 @@ ASM to PIL has two steps: ROM generation and reduction to constrained.
 ##### ROM generation
 
 Rom generation generates a single ROM for each virtual machine using the following process:
-
 - Find the maximum number of inputs among all functions. Introduce as many input registers. Do the same for outputs, introducing output registers
 - Replace references to the function arguments by references to these input registers.
 - Pad all return statements with zeroes up to the number of output registers.
@@ -134,7 +132,6 @@ rom {
 ```
 
 For `Main`:
-
 ```
 rom {
         _start:
@@ -157,14 +154,12 @@ rom {
 ##### VM to constrained
 
 Once we have the ROM for a machine, we reduce it to constraints. Some parts of this process are specific to our dispatcher implementation:
-
 - All input registers are unconstrained when `_reset` is on, allowing to pass inputs.
 - `return` is treated as an instruction even though it is not declared as such
 
 As a result, we obtain a constrained machine for each original virtual machine. The `operation_id` and `latch` are set using respectively the location of the machine functions inside the ROM and the instruction flag of `return`.
 
 The diff for our example program is as follows:
-
 ```diff
 -machine DifferentSignatures {
 // registers are removed and encoded as constraints
@@ -324,7 +319,6 @@ We add an identical block of constraints for each machine type. For example, for
 Airgen takes machines which are only left with constraints and external instructions and instantiates them as a tree of AIR objects. Objects can point to each other using links, which encode the interaction between different machines.
 
 The final program after analysis is the following:
-
 ```
 machine DifferentSignatures with latch: instr_return, operation_id: _operation_id {
         operation identity<2> _input_0 -> _output_0;
