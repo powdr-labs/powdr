@@ -259,7 +259,7 @@ impl PILAnalyzer {
             .collect();
         // Collect all expressions in identities.
         let statement_type = ExpectedType {
-            ty: Type::NamedType(SymbolPath::from_str("constraint").unwrap()),
+            ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
             allow_array: true,
         };
         for id in &mut self.identities {
