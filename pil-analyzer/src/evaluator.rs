@@ -136,7 +136,6 @@ pub enum Value<'a, T> {
     Enum(&'a str, Option<Vec<Arc<Self>>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
-    Identity(AlgebraicExpression<T>, AlgebraicExpression<T>),
 }
 
 impl<'a, T: FieldElement> From<T> for Value<'a, T> {
@@ -214,7 +213,6 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::Enum(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
-            Value::Identity(_, _) => "constr".to_string(),
         }
     }
 
@@ -367,7 +365,6 @@ impl<'a, T: Display> Display for Value<'a, T> {
             }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
-            Value::Identity(left, right) => write!(f, "{left} = {right}"),
         }
     }
 }

@@ -384,6 +384,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         constraints: Arc<Value<'a, T>>,
         source: SourceRef,
     ) -> Result<(), evaluator::EvalError> {
+        // TODO also handle the lookups and so on.
         let identities: Box<dyn Iterator<Item = _>> = match constraints.as_ref() {
             Value::Enum("Identity", Some(fields)) => {
                 let [left, right] = &fields[..] else {

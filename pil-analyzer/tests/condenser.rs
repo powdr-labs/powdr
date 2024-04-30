@@ -81,7 +81,7 @@ fn create_constraints() {
     y = x_is_zero + 2;
     "#;
     let expected = r#"namespace N(16);
-    let force_bool: expr -> Constr = (|c| ((c * (1 - c)) = 0));
+    let force_bool: expr -> std::prelude::Constr = (|c| ((c * (1 - c)) = 0));
     let new_bool: -> expr = (constr || {
         let x;
         N.force_bool(x);
