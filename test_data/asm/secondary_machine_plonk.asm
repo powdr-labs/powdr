@@ -1,7 +1,6 @@
-machine Main {
-
-    degree 256;
-
+machine Main with
+    degree: 256
+{
     Pythagoras pythagoras;
 
     reg pc[@pc];
@@ -33,7 +32,9 @@ machine Main {
     }
 }
 
-machine Pythagoras(latch, _) {
+machine Pythagoras with
+    latch: latch
+{
 
     operation c_squared a, b -> c;
 
