@@ -682,10 +682,8 @@ impl Precedence for BinaryOperator {
             BinaryXor => 8,
             // |
             BinaryOr => 9,
-            // = += -= *= /= %= &= |= ^= <<= >>=
-            Identity => 10,
-            // == != < > <= >=
-            Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => 10,
+            // = == != < > <= >=
+            Identity | Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => 10,
             // &&
             LogicalAnd => 11,
             // ||
