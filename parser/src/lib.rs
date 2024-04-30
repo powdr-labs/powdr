@@ -403,8 +403,8 @@ mod test {
         let input = r#"
     constant %N = 16;
 namespace Fibonacci(%N);
-    constant %last_row = (%N - 1);
-    let bool: expr -> expr = (|X| (X * (1 - X)));
+    constant %last_row = %N - 1;
+    let bool: expr -> expr = (|X| X * (1 - X));
     let one_hot = (|i, which| match i {
         which => 1,
         _ => 0,
@@ -412,9 +412,9 @@ namespace Fibonacci(%N);
     pol constant ISLAST(i) { one_hot(i, %last_row) };
     pol commit arr[8];
     pol commit x, y;
-    { (x + 2), y' } in { ISLAST, 7 };
-    y { (x + 2), y' } is ISLAST { ISLAST, 7 };
-    (((x - 2) * y) = 8);
+    { x + 2, y' } in { ISLAST, 7 };
+    y { x + 2, y' } is ISLAST { ISLAST, 7 };
+    (x - 2) * y = 8;
     public out = y(%last_row);"#;
         let printed = format!("{}", parse(Some("input"), input).unwrap());
         assert_eq!(input.trim(), printed.trim());
@@ -429,7 +429,8 @@ namespace Fibonacci(%N);
 
     #[test]
     fn reparse_arrays() {
-        let input = "    pol commit y[3];\n    ((y - 2) = 0);\n    ((y[2] - 2) = 0);\n    public out = y[1](2);";
+        let input =
+            "    pol commit y[3];\n    y - 2 = 0;\n    y[2] - 2 = 0;\n    public out = y[1](2);";
         let printed = format!("{}", parse(Some("input"), input).unwrap());
         assert_eq!(input.trim(), printed.trim());
     }
@@ -443,7 +444,7 @@ namespace Fibonacci(%N);
 
     #[test]
     fn array_literals() {
-        let input = r#"let x = [[1], [2], [(3 + 7)]];"#;
+        let input = r#"let x = [[1], [2], [3 + 7]];"#;
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(input.trim(), printed.trim());
     }
@@ -511,7 +512,7 @@ namespace N(2);
     fn type_args() {
         let input = r#"
 namespace N(2);
-    let<T: Ord> max: T, T -> T = (|a, b| if (a < b) { b } else { a });
+    let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
     let<T1, T2> left: T1, T2 -> T1 = (|a, b| a);
     let seven = max::<int>(3, 7);
     let five = left::<int, fe[]>(5, [7]);
@@ -525,12 +526,12 @@ namespace N(2);
     fn type_args_with_space() {
         let input = r#"
 namespace N(2);
-    let<T: Ord> max: T, T -> T = (|a, b| if (a < b) { b } else { a });
+    let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
     let seven = max :: <int>(3, 7);
 "#;
         let expected = r#"
 namespace N(2);
-    let<T: Ord> max: T, T -> T = (|a, b| if (a < b) { b } else { a });
+    let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
     let seven = max::<int>(3, 7);
 "#;
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());

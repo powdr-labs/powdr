@@ -6,17 +6,17 @@ This crate is where most of the compilation pipeline lives. It takes a parse tre
 
 We define two types of machines: virtual machines and constrained machines. Constrained machines are the lower level kind of machine. They have a notion of blocks through a latch and an operation_id. Virtual machines are a higher level type of machines. For each machine type, we provide the elements which appear in that type.
 
-|                         | Virtual | Constrained |
-|-------------------------|---------|-------------|
-| pc                      | yes     | no          |
-| registers               | yes     | no          |
-| functions               | yes     | no          |
-| instructions            | yes     | no          |
-| latch                   | no      | yes         |
-| operation_id            | no      | yes         |
-| constraints             | yes     | yes         |
-| links                   | yes     | yes         |
-| submachines             | yes     | yes         |
+|              | Virtual | Constrained |
+| ------------ | ------- | ----------- |
+| pc           | yes     | no          |
+| registers    | yes     | no          |
+| functions    | yes     | no          |
+| instructions | yes     | no          |
+| latch        | no      | yes         |
+| operation_id | no      | yes         |
+| constraints  | yes     | yes         |
+| links        | yes     | yes         |
+| submachines  | yes     | yes         |
 
 The pipeline accepts both kinds of machines, and they are represented by the same type `Machine`. Some steps are specific to virtual machines. They can still be applied to constrained machines and must have no effect. In the process, virtual machines get reduced to constrained machines by encoding their high-level elements into constrained machines elements.
 
@@ -99,6 +99,7 @@ ASM to PIL has two steps: ROM generation and reduction to constrained.
 ##### ROM generation
 
 Rom generation generates a single ROM for each virtual machine using the following process:
+
 - Find the maximum number of inputs among all functions. Introduce as many input registers. Do the same for outputs, introducing output registers
 - Replace references to the function arguments by references to these input registers.
 - Pad all return statements with zeroes up to the number of output registers.
@@ -133,6 +134,7 @@ rom {
 ```
 
 For `Main`:
+
 ```
 rom {
         _start:
@@ -155,12 +157,14 @@ rom {
 ##### VM to constrained
 
 Once we have the ROM for a machine, we reduce it to constraints. Some parts of this process are specific to our dispatcher implementation:
+
 - All input registers are unconstrained when `_reset` is on, allowing to pass inputs.
 - `return` is treated as an instruction even though it is not declared as such
 
 As a result, we obtain a constrained machine for each original virtual machine. The `operation_id` and `latch` are set using respectively the location of the machine functions inside the ROM and the instruction flag of `return`.
 
 The diff for our example program is as follows:
+
 ```diff
 -machine DifferentSignatures {
 // registers are removed and encoded as constraints
@@ -200,7 +204,7 @@ The diff for our example program is as follows:
 +               _output_0 = ((((read__output_0_pc * pc) + (read__output_0__input_0 * _input_0)) + _output_0_const) + (_output_0_read_free * _output_0_free_value));
 +               pol constant first_step = [1] + [0]*;
 +               ((1 - instr__reset) * _input_0') = ((1 - instr__reset) * _input_0);
-+               pc' = ((1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1))));
++               pc' = (1 - first_step') * (instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1));
 +               pol constant p_line = [0, 1, 2, 3, 4, 5] + [5]*;
 +               pol commit _output_0_free_value;
 +               pol constant p__output_0_const = [0, 0, 0, 0, 1, 0] + [0]*;
@@ -305,6 +309,7 @@ The diff for our example program is as follows:
 This step takes constrained machines and enforces that the `operation_id` can only change if the `latch` is on. This defines blocks of computation which can be created based on the functions exposed by each machine.
 
 We add an identical block of constraints for each machine type. For example, for the `Main` machine:
+
 ```diff
 +       constraints {
 +               pol constant _block_enforcer_last_step = [0]* + [1];
@@ -319,6 +324,7 @@ We add an identical block of constraints for each machine type. For example, for
 Airgen takes machines which are only left with constraints and external instructions and instantiates them as a tree of AIR objects. Objects can point to each other using links, which encode the interaction between different machines.
 
 The final program after analysis is the following:
+
 ```
 machine DifferentSignatures with latch: instr_return, operation_id: _operation_id {
         operation identity<2> _input_0 -> _output_0;
