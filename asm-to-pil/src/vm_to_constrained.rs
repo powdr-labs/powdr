@@ -980,7 +980,7 @@ impl<T: FieldElement> VMConverter<T> {
                     let mut prover_query_arms = prover_query_arms;
                     prover_query_arms.push(MatchArm {
                         pattern: Pattern::CatchAll,
-                        value: absolute_reference("::std::prover::Query::Unconstrained"),
+                        value: absolute_reference("::std::prover::Query::None"),
                     });
 
                     FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression {
