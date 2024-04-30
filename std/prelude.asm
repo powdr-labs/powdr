@@ -7,3 +7,6 @@ use std::utils::Option;
 use std::convert::expr as to_expr;
 use std::convert::fe as to_fe;
 use std::convert::int as to_int;
+
+let true: bool = "" == "";
+let false: bool = !true;
