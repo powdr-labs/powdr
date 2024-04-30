@@ -4,7 +4,7 @@ use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
 
-use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
+use powdr_ast::parsed::asm::{parse_absolute_path, AbsoluteSymbolPath, SymbolPath};
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
@@ -401,11 +401,16 @@ impl<'a> AnalysisDriver for Driver<'a> {
     fn try_resolve_ref(&self, path: &SymbolPath) -> Option<(String, SymbolCategory)> {
         // Try to resolve the name starting at the current namespace and then
         // go up level by level until the root.
+        // If this does not work, try resolving inside std::prelude.
 
-        self.0.current_namespace.iter_to_root().find_map(|prefix| {
-            let path = prefix.join(path.clone()).to_dotted_string();
-            self.0.known_symbols.get(&path).map(|cat| (path, *cat))
-        })
+        self.0
+            .current_namespace
+            .iter_to_root()
+            .chain(once(parse_absolute_path("::std::prelude")))
+            .find_map(|prefix| {
+                let path = prefix.join(path.clone()).to_dotted_string();
+                self.0.known_symbols.get(&path).map(|cat| (path, *cat))
+            })
     }
 
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)> {

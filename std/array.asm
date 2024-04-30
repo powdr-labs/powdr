@@ -81,13 +81,12 @@ let<T> split_slice_half: Slice<T> -> (Slice<T>, Slice<T>) = |s| match s {
         )
     }
 };
-let<T> slice_pop: Slice<T> -> (Slice<T>, std::utils::Option<T>) = |s| match s {
-    Slice::S(_, _, 0) => (s, std::utils::Option::None),
-    Slice::S(arr, start, l) => (Slice::S(arr, start, l - 1), std::utils::Option::Some(arr[start + l - 1])),
+let<T> slice_pop: Slice<T> -> (Slice<T>, Option<T>) = |s| match s {
+    Slice::S(_, _, 0) => (s, Option::None),
+    Slice::S(arr, start, l) => (Slice::S(arr, start, l - 1), Option::Some(arr[start + l - 1])),
 };
 
 mod internal {
-    use std::utils::Option;
     use super::Slice;
     use super::split_slice_half;
     use super::slice_pop;
