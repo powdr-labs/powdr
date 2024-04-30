@@ -117,6 +117,7 @@ lazy_static! {
         ("std::debug::print", FunctionKind::Pure),
         ("std::field::modulus", FunctionKind::Pure),
         ("std::prover::challenge", FunctionKind::Constr), // strictly, only new_challenge would need "constr"
+        ("std::prover::degree", FunctionKind::Pure),
         ("std::prover::eval", FunctionKind::Query),
     ]
     .into_iter()

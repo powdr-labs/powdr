@@ -108,3 +108,44 @@ fn create_constrainst() {
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
 }
+
+#[test]
+pub fn degree() {
+    let input = r#"
+        namespace std::convert;
+            let expr = [];
+        namespace std::prover;
+            let degree = [];
+        namespace Main(8);
+            let d = std::prover::degree();
+            let w;
+            w = std::convert::expr(d);
+    "#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace std::convert(8);
+    let expr = [];
+namespace std::prover(8);
+    let degree = [];
+namespace Main(8);
+    let d: int = std::prover::degree();
+    col witness w;
+    Main.w = 8;
+"#;
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+#[should_panic = "Error: DataNotAvailable"]
+pub fn degree_unset() {
+    let input = r#"
+        namespace std::convert;
+            let expr = [];
+        namespace std::prover;
+            let degree = [];
+        namespace Main;
+            let d = std::prover::degree();
+            let w;
+            w = std::convert::expr(d);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}

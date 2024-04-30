@@ -152,6 +152,16 @@ The first argument is the proof stage and the second is the identifier of the ch
 If you want two challenges to be different, you have to choose different IDs.
 
 
+### Degree
+
+```rust
+let std::prover::degree: -> int
+```
+
+Returns the current number of rows / the length of the witness columns, also
+known as the degree.
+
+
 ## Operators
 
 The following operators are supported by powdr-pil with their respective signatures.
