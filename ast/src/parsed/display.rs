@@ -194,7 +194,13 @@ impl Display for MachineStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             MachineStatement::Pil(_, statement) => write!(f, "{statement}"),
-            MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),
+            MachineStatement::Submachine(_, ty, name, args) => {
+                let mut args = args.iter().join(", ");
+                if !args.is_empty() {
+                    args = format!("({args})");
+                }
+                write!(f, "{ty} {name}{args};")
+            }
             MachineStatement::RegisterDeclaration(_, name, flag) => write!(
                 f,
                 "reg {}{};",

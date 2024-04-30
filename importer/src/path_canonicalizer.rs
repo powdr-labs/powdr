@@ -112,9 +112,12 @@ impl<'a> Folder for Canonicalizer<'a> {
     fn fold_machine(&mut self, mut machine: Machine) -> Result<Machine, Self::Error> {
         for s in &mut machine.statements {
             match s {
-                MachineStatement::Submachine(_, path, _) => {
+                MachineStatement::Submachine(_, path, _, args) => {
                     let p = self.path.clone().join(path.clone());
                     *path = self.paths.get(&p).cloned().unwrap().into();
+                    for expr in args {
+                        canonicalize_inside_expression(expr, &self.path, self.paths);
+                    }
                 }
                 MachineStatement::Pil(_start, statement) => {
                     if let PilStatement::LetStatement(_, _, Some(type_scheme), expr) = statement {
@@ -571,10 +574,17 @@ fn check_machine(
             return Err(format!("Duplicate name `{name}` in machine `{location}`"));
         }
     }
+    for param in &m.arguments.0 {
+        let path: SymbolPath = param.ty.as_ref().unwrap().parse()?;
+        check_path(module_location.clone().join(path), state)?
+    }
     for statement in &m.statements {
         match statement {
-            MachineStatement::Submachine(_, path, _) => {
-                check_path(module_location.clone().join(path.clone()), state)?
+            MachineStatement::Submachine(_, path, _, args) => {
+                check_path(module_location.clone().join(path.clone()), state)?;
+                args.iter().try_for_each(|expr| {
+                    check_expression(&module_location, expr, state, &local_variables)
+                })?
             }
             MachineStatement::FunctionDeclaration(_, _, _, statements) => statements
                 .iter()

@@ -400,7 +400,7 @@ impl Machine {
                         MachineStatement::Pil(_, statement) => {
                             Box::new(statement.symbol_definition_names().map(|(s, _)| s))
                         }
-                        MachineStatement::Submachine(_, _, _)
+                        MachineStatement::Submachine(_, _, _, _)
                         | MachineStatement::InstructionDeclaration(_, _, _)
                         | MachineStatement::LinkDeclaration(_, _)
                         | MachineStatement::FunctionDeclaration(_, _, _, _)
@@ -552,7 +552,7 @@ pub struct Instruction {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement {
     Pil(SourceRef, PilStatement),
-    Submachine(SourceRef, SymbolPath, String),
+    Submachine(SourceRef, SymbolPath, String, Vec<Expression>),
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),
     InstructionDeclaration(SourceRef, String, Instruction),
     LinkDeclaration(SourceRef, LinkDeclaration),

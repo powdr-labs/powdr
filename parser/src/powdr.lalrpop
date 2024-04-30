@@ -297,7 +297,7 @@ PilStatementInMachine: MachineStatement = {
 }
 
 Submachine: MachineStatement = {
-    <start:@L> <path:SymbolPath> <id:Identifier> ";" => MachineStatement::Submachine(ctx.source_ref(start), path, id)
+    <start:@L> <path:SymbolPath> <id:Identifier> <args:("(" <ExpressionList> ")")?> ";" => MachineStatement::Submachine(ctx.source_ref(start), path, id, args.unwrap_or_default()),
 }
 
 pub RegisterDeclaration: MachineStatement = {
@@ -365,7 +365,7 @@ ParamList: Vec<Param> = {
 }
 
 Param: Param = {
-    <name: Identifier> <index:("[" <Number> "]")?> <ty:(":" <Identifier>)?> => Param{<>}
+    <name: Identifier> <index:("[" <Number> "]")?> <ty:(":" <SymbolPath>)?> => Param{name, index, ty: ty.map(|s| s.to_string())}
 }
 
 FunctionDeclaration: MachineStatement = {

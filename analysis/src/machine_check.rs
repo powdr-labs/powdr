@@ -87,10 +87,11 @@ impl TypeChecker {
                 MachineStatement::Pil(_source, statement) => {
                     pil.push(statement);
                 }
-                MachineStatement::Submachine(_, ty, name) => {
+                MachineStatement::Submachine(_, ty, name, args) => {
                     submachines.push(SubmachineDeclaration {
                         name,
                         ty: AbsoluteSymbolPath::default().join(ty),
+                        args,
                     });
                 }
                 MachineStatement::FunctionDeclaration(source, name, params, statements) => {
@@ -271,6 +272,7 @@ impl TypeChecker {
             latch,
             operation_id,
             call_selectors,
+            arguments: machine.arguments,
             pc: registers
                 .iter()
                 .enumerate()
