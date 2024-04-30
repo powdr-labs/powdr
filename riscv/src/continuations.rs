@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap},
-    fs::create_dir_all,
+    fs::{create_dir_all, hard_link},
 };
 
 use powdr_ast::{
@@ -81,9 +81,18 @@ where
                 log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
                 let pipeline = pipeline.clone();
                 let pipeline = if let Some(parent_dir) = pipeline.output_dir() {
-                    let force_overwrite = pipeline.force_overwrite();
+                    let force_overwrite = pipeline.is_force_overwrite();
+
                     let chunk_dir = parent_dir.join(format!("chunk_{}", i));
                     create_dir_all(&chunk_dir).unwrap();
+
+                    // Hardlink constants.bin so that chunk dir will be self sufficient
+                    hard_link(
+                        parent_dir.join("constants.bin"),
+                        chunk_dir.join("constants.bin"),
+                    )
+                    .unwrap();
+
                     pipeline.with_output(chunk_dir, force_overwrite)
                 } else {
                     pipeline

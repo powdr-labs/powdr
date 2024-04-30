@@ -702,3 +702,20 @@ namespace T(8);
     assert_eq!(analyzed.degree, Some(8));
     assert_eq!(expected, analyzed.to_string());
 }
+
+#[test]
+fn find_in_prelude() {
+    let input = "namespace std::prelude;
+    let y: int = 7;
+namespace T(8);
+    let k = y;
+";
+    let expected = "namespace std::prelude(8);
+    let y: int = 7;
+namespace T(8);
+    let k: int = std::prelude::y;
+";
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.degree, Some(8));
+    assert_eq!(expected, analyzed.to_string());
+}
