@@ -352,7 +352,7 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     BlockExpression(Vec<StatementInsideBlock<Self>>, Box<Self>),
 }
 
-pub type ExpressionPrecedence = u16;
+pub type ExpressionPrecedence = u64;
 
 impl<Ref> Expression<Ref> {
     pub fn new_binary(left: Self, op: BinaryOperator, right: Self) -> Self {
@@ -649,12 +649,6 @@ pub enum BinaryOperatorAssociativity {
 
 trait Precedence {
     fn precedence(&self) -> ExpressionPrecedence;
-}
-
-impl<E> Precedence for LambdaExpression<E> {
-    fn precedence(&self) -> ExpressionPrecedence {
-        13
-    }
 }
 
 impl Precedence for UnaryOperator {

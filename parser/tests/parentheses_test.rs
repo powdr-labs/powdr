@@ -53,13 +53,14 @@ mod test {
     #[test]
     fn test_lambda_ex_parentheses() {
         let test_cases: Vec<TestCase> = vec![
-            // ("let x = 1 + |i| i + 2;", "let x = 1 + |i| i + 2;"),
+            ("let x = 1 + (|i| i + 2);", "let x = 1 + (|i| i + 2);"),
             ("let x = 1 + (|i| i) + 2;", "let x = 1 + (|i| i) + 2;"),
+            ("let x = 1 + (|i| (i + 2));", "let x = 1 + (|i| i + 2);"),
             ("let x = (1 + (|i| i)) + 2;", "let x = 1 + (|i| i) + 2;"),
-            // ("let x = 1 + |i| (i + 2);", "let x = 1 + |i| (i + 2);"),
-            // ("let x = (1 + |i| i) + 2;", "let x = (1 + |i| i) + 2;"),
-            // ("let x = (1 + |i| (i + 2));", "let x = (1 + |i| (i + 2));"),
-            // ("let x = (1 + |i| i + 2);", "let x = (1 + |i| i + 2);"),
+            ("let x = (1 + (|i| (i + 2)));", "let x = 1 + (|i| i + 2);"),
+            ("let x = (1 + (|i| i + 2));", "let x = 1 + (|i| i + 2);"),
+            // Index access
+            ("(|i| i)[j];", "(|i| i)[j];"),
         ];
 
         for test_case in test_cases {
