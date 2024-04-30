@@ -7,9 +7,9 @@ use std::{
 
 use powdr_ast::parsed::{
     asm::{
-        ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Instruction, InstructionBody,
-        LinkDeclaration, Machine, MachineStatement, Module, ModuleRef, ModuleStatement,
-        SymbolDefinition, SymbolValue, SymbolValueRef,
+        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Instruction,
+        InstructionBody, LinkDeclaration, Machine, MachineStatement, Module, ModuleRef,
+        ModuleStatement, SymbolDefinition, SymbolPath, SymbolValue, SymbolValueRef,
     },
     folder::Folder,
     types::{Type, TypeScheme},
@@ -346,6 +346,32 @@ impl PathDependencyChain {
     }
 }
 
+/// Tries to resolve a symbol at a given absolute location. If it does not resolve,
+/// tries to resolve it relative to std::prelude.
+fn check_path_try_prelude(
+    location: AbsoluteSymbolPath,
+    symbol: SymbolPath,
+    state: &mut State<'_>,
+) -> Result<(), String> {
+    let path_to_check = location.join(symbol.clone());
+    match check_path(path_to_check.clone(), state) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            match check_path_internal(
+                parse_absolute_path("::std::prelude").join(symbol),
+                state,
+                Default::default(),
+            ) {
+                Ok((canonical_path, _, _)) => {
+                    state.paths.insert(path_to_check, canonical_path);
+                    Ok(())
+                }
+                Err(_) => Err(error),
+            }
+        }
+    }
+}
+
 /// Checks a relative path in the context of an absolute path, if successful returning an updated state containing the absolute path
 ///
 /// # Panics
@@ -618,7 +644,7 @@ fn check_expression(
                     return Ok(());
                 }
             }
-            check_path(location.clone().join(reference.path.clone()), state)
+            check_path_try_prelude(location.clone(), reference.path.clone(), state)
         }
         Expression::PublicReference(_) | Expression::Number(_, _) | Expression::String(_) => Ok(()),
         Expression::Tuple(items) | Expression::ArrayLiteral(ArrayLiteral { items }) => {
@@ -722,7 +748,7 @@ fn check_pattern<'b>(
                     return Ok(Box::new(once(identifier.clone())));
                 }
             }
-            check_path(location.clone().join(name.clone()), state)?
+            check_path_try_prelude(location.clone(), name.clone(), state)?
         }
         _ => {}
     }
@@ -794,7 +820,7 @@ fn check_type(
                 continue;
             }
         }
-        check_path(location.clone().join(p.clone()), state)?
+        check_path_try_prelude(location.clone(), p.clone(), state)?
     }
     ty.children()
         .try_for_each(|e| check_expression(location, e, state, local_variables))
@@ -933,5 +959,18 @@ mod tests {
     #[test]
     fn import_after_usage() {
         expect("import_after_usage", Ok(()))
+    }
+
+    #[test]
+    fn simple_prelude_ref() {
+        expect("simple_prelude_ref", Ok(()))
+    }
+
+    #[test]
+    fn prelude_non_local() {
+        expect(
+            "prelude_non_local",
+            Err("symbol not found in `::module`: `x`"),
+        )
     }
 }

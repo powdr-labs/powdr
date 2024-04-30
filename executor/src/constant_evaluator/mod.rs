@@ -51,6 +51,7 @@ fn generate_values<T: FieldElement>(
     let symbols = CachedSymbols {
         symbols: &analyzed.definitions,
         cache: Arc::new(RwLock::new(Default::default())),
+        degree,
     };
     let result = match body {
         FunctionValueDefinition::Expression(TypedExpression { e, type_scheme }) => {
@@ -136,6 +137,7 @@ type SymbolCache<'a, T> = BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>
 pub struct CachedSymbols<'a, T> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     cache: Arc<RwLock<SymbolCache<'a, T>>>,
+    degree: DegreeType,
 }
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
@@ -155,6 +157,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
             .entry(cache_key)
             .or_insert_with(|| result.clone());
         Ok(result)
+    }
+
+    fn degree(&self) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+        Ok(Value::Integer(self.degree.into()).into())
     }
 }
 
