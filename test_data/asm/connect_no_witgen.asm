@@ -17,7 +17,7 @@ machine Empty {
     let f: col = |i| i / 2;
     w = f;
 
-    // TODO we should also check that the degree is equal to 1024
+    std::check::assert(std::prover::degree() == 1024, || "Degree is not 1024");
     std::check::assert(omega ** 512 != 1, || "");
     std::check::assert(omega ** 1024 == 1, || "");
 
