@@ -29,5 +29,5 @@ Examples:
 Name lookup is performed as follows:
 
 Lookup is performed starting from the current namespace, going up to the root component by component
-and the first match is used. If the lookups all fail, a last attempt is done
+where the first match is used. If all lookups fail, a last attempt is done
 inside the ``std::prelude`` namespace.
