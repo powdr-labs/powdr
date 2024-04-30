@@ -4,8 +4,7 @@ pub mod polygon_wrapper;
 pub mod starky_wrapper;
 
 use std::{
-    fs::File,
-    io::{self, BufWriter, Write},
+    fs::hard_link,
     iter::{once, repeat},
     path::{Path, PathBuf},
 };
@@ -14,7 +13,7 @@ use crate::{Backend, BackendFactory, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{write_polys_file, DegreeType, FieldElement};
+use powdr_number::{buffered_write_file, write_polys_file, DegreeType, FieldElement};
 use serde::Serialize;
 use starky::types::{StarkStruct, Step, PIL};
 
@@ -38,6 +37,8 @@ fn create_stark_struct(degree: DegreeType) -> StarkStruct {
     }
 }
 
+type PatchedConstants<F> = Vec<(String, Vec<F>)>;
+
 /// eStark provers require a fixed column with the equivalent semantics to
 /// Polygon zkEVM's `L1` column. Powdr generated PIL will always have
 /// `main.first_step`, but directly given PIL may not have it. This is a fixup
@@ -47,13 +48,12 @@ fn create_stark_struct(degree: DegreeType) -> StarkStruct {
 fn first_step_fixup<'a, F: FieldElement>(
     pil: &'a Analyzed<F>,
     fixed: &'a [(String, Vec<F>)],
-) -> (PIL, Vec<(String, Vec<F>)>) {
+) -> (PIL, Option<PatchedConstants<F>>) {
     let degree = pil.degree();
 
     let mut pil: PIL = json_exporter::export(pil);
 
-    let mut fixed = fixed.to_vec();
-    if !fixed.iter().any(|(k, _)| k == "main.first_step") {
+    let patched_constants = if !fixed.iter().any(|(k, _)| k == "main.first_step") {
         use starky::types::Reference;
         pil.nConstants += 1;
         pil.references.insert(
@@ -68,49 +68,40 @@ fn first_step_fixup<'a, F: FieldElement>(
                 len: None,
             },
         );
-        fixed.push((
-            "main.first_step".to_string(),
-            once(F::one())
-                .chain(repeat(F::zero()))
-                .take(degree as usize)
-                .collect(),
-        ));
-    }
 
-    (pil, fixed)
+        Some(
+            fixed
+                .iter()
+                .cloned()
+                .chain(once((
+                    "main.first_step".to_string(),
+                    once(F::one())
+                        .chain(repeat(F::zero()))
+                        .take(degree as usize)
+                        .collect(),
+                )))
+                .collect(),
+        )
+    } else {
+        None
+    };
+
+    (pil, patched_constants)
 }
 
 struct EStarkFilesCommon<'a, F: FieldElement> {
     degree: DegreeType,
     pil: PIL,
-    fixed: Vec<(String, Vec<F>)>,
+    /// If this field is present, it means the constants were patched with
+    /// "main.first_step" column and must be written again to a file.
+    patched_constants: Option<Vec<(String, Vec<F>)>>,
     output_dir: Option<&'a Path>,
-}
-
-fn buffered_write_file<R>(
-    path: &Path,
-    do_write: impl FnOnce(&mut BufWriter<File>) -> R,
-) -> Result<R, io::Error> {
-    let mut writer = BufWriter::new(File::create(path)?);
-    let result = do_write(&mut writer);
-    writer.flush()?;
-
-    Ok(result)
 }
 
 fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), Error> {
     buffered_write_file(path, |writer| {
         serde_json::to_writer(writer, data).map_err(|e| e.to_string())
     })??;
-
-    Ok(())
-}
-
-fn write_polys_bin<F: FieldElement>(
-    path: &Path,
-    constants: &[(String, Vec<F>)],
-) -> Result<(), Error> {
-    buffered_write_file(path, |writer| write_polys_file(writer, constants))??;
 
     Ok(())
 }
@@ -131,12 +122,12 @@ impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
         }
 
         // Pre-process the PIL and fixed columns.
-        let (pil, fixed) = first_step_fixup(analyzed, fixed);
+        let (pil, patched_constants) = first_step_fixup(analyzed, fixed);
 
         Ok(EStarkFilesCommon {
             degree: analyzed.degree(),
             pil,
-            fixed,
+            patched_constants,
             output_dir,
         })
     }
@@ -144,32 +135,27 @@ impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
 
 struct ProverInputFilePaths {
     constants: PathBuf,
-    commits: PathBuf,
     stark_struct: PathBuf,
     contraints: PathBuf,
 }
 
 impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
     /// Write the files in the EStark Polygon format.
-    fn write_files(
-        &self,
-        output_dir: &Path,
-        witness: &[(String, Vec<F>)],
-    ) -> Result<ProverInputFilePaths, Error> {
+    fn write_files(&self, output_dir: &Path) -> Result<ProverInputFilePaths, Error> {
         let paths = ProverInputFilePaths {
-            constants: output_dir.join("constants.bin"),
-            commits: output_dir.join("commits.bin"),
+            constants: output_dir.join("constants_estark.bin"),
             stark_struct: output_dir.join("starkstruct.json"),
             contraints: output_dir.join("constraints.json"),
         };
 
-        // Write the constants.
-        log::info!("Writing {}.", paths.constants.to_string_lossy());
-        write_polys_bin(&paths.constants, &self.fixed)?;
-
-        // Write the commits.
-        log::info!("Writing {}.", paths.commits.to_string_lossy());
-        write_polys_bin(&paths.commits, witness)?;
+        // If they were patched, write them. Otherwise, just hardlink.
+        if let Some(patched_constants) = &self.patched_constants {
+            log::info!("Writing {}.", paths.constants.to_string_lossy());
+            write_polys_file(&paths.constants, patched_constants)?;
+        } else {
+            log::info!("Hardlinking constants.bin to constants_estark.bin.");
+            hard_link(output_dir.join("constants.bin"), &paths.constants)?;
+        }
 
         // Write the stark struct JSON.
         log::info!("Writing {}.", paths.stark_struct.to_string_lossy());
@@ -210,7 +196,7 @@ struct DumpBackend<'a, F: FieldElement>(EStarkFilesCommon<'a, F>);
 impl<'a, F: FieldElement> Backend<'a, F> for DumpBackend<'a, F> {
     fn prove(
         &self,
-        witness: &[(String, Vec<F>)],
+        _witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
         // TODO: Implement challenges
         _witgen_callback: WitgenCallback<F>,
@@ -224,7 +210,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for DumpBackend<'a, F> {
             .output_dir
             .ok_or(Error::BackendError("output_dir is None".to_owned()))?;
 
-        self.0.write_files(output_dir, witness)?;
+        self.0.write_files(output_dir)?;
 
         Ok(Vec::new())
     }
