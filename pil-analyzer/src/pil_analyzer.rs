@@ -5,6 +5,7 @@ use std::iter::once;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use itertools::Itertools;
 use powdr_ast::parsed::asm::{parse_absolute_path, AbsoluteSymbolPath, SymbolPath};
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
@@ -149,19 +150,28 @@ impl PILAnalyzer {
     /// Adds core types if they are not present in the input.
     /// These need to be present because the type checker relies on them.
     fn core_types_if_not_present(&self) -> Option<PILFile> {
-        (!self.known_symbols.contains_key("std::prelude::Constr")).then(|| {
-            parse(
-                None,
-                "namespace std::prelude;
-    enum Constr {
-        Identity(expr, expr),
-        Plookup(expr, expr[], expr, expr[]),
-        Permutation(expr, expr[], expr, expr[]),
-        Connection(expr[], expr[])
-    }",
-            )
-            .unwrap()
-        })
+        let missing_symbols = ["Constr", "Option"]
+            .into_iter()
+            .filter(|symbol| {
+                !self
+                    .known_symbols
+                    .contains_key(&format!("std::prelude::{symbol}"))
+            })
+            .map(|symbol| match symbol {
+                "Constr" => {
+                    "enum Constr {
+    Identity(expr, expr),
+    Plookup(Option<expr>, expr[], Option<expr>, expr[]),
+    Permutation(Option<expr>, expr[], Option<expr>, expr[]),
+    Connection(expr[], expr[])
+}"
+                }
+                "Option" => "enum Option<T> { None, Some(T) }",
+                _ => unreachable!(),
+            })
+            .join("\n");
+        (!missing_symbols.is_empty())
+            .then(|| parse(None, &format!("namespace std::prelude;\n{missing_symbols}")).unwrap())
     }
 
     /// Check that query and constr functions are used in the correct contexts.

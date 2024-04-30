@@ -16,9 +16,9 @@ enum Constr {
     /// A polynomial identity.
     Identity(expr, expr),
     /// A (polynomial) lookup constraint with selectors.
-    Plookup(expr, expr[], expr, expr[]),
+    Plookup(Option<expr>, expr[], Option<expr>, expr[]),
     /// A permutation constraint with selectors.
-    Permutation(expr, expr[], expr, expr[]),
+    Permutation(Option<expr>, expr[], Option<expr>, expr[]),
     /// A connection constraint (copy constraint).
     Connection(expr[], expr[])
 }

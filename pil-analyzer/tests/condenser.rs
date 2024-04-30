@@ -149,3 +149,28 @@ pub fn degree_unset() {
     "#;
     analyze_string::<GoldilocksField>(input);
 }
+
+#[test]
+pub fn constructed_constraints() {
+    let input = r#"
+        namespace Main(1024);
+            let x;
+            let y;
+            let z;
+            Constr::Identity(x, y);
+            Constr::Plookup(Option::Some(1), [x, 3], Option::None, [y, z]);
+            Constr::Permutation(Option::None, [x, 3], Option::Some(x), [y, z]);
+            Constr::Connection([x, y], [z, 3]);
+    "#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace Main(1024);
+    col witness x;
+    col witness y;
+    col witness z;
+    Main.x = Main.y;
+    1 { Main.x, 3 } in { Main.y, Main.z };
+    { Main.x, 3 } is Main.x { Main.y, Main.z };
+    { Main.x, Main.y } connect { Main.z, 3 };
+"#;
+    assert_eq!(formatted, expected);
+}
