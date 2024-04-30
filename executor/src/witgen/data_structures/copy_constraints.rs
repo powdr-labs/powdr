@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 #[cfg(test)]
 use std::collections::BTreeSet;
 
+#[cfg(test)]
 use itertools::Itertools;
 
 /// Global copy constraints, represented as a graph on all cells. Each node has one outgoing edge
@@ -21,6 +22,7 @@ impl<CellId: Ord + Copy> Default for CopyConstraints<CellId> {
 
 impl<CellId: Ord + Copy> CopyConstraints<CellId> {
     /// Creates a new set of copy constraints from a list of pairs of cells that should be equal.
+    #[cfg(test)]
     pub fn new(constraint_pairs: &[(CellId, CellId)]) -> Self {
         let mut copy_constraints = CopyConstraints::default();
         for &(a, b) in constraint_pairs {
@@ -29,6 +31,7 @@ impl<CellId: Ord + Copy> CopyConstraints<CellId> {
         copy_constraints
     }
 
+    #[cfg(test)]
     fn add_copy_constraint(&mut self, a: CellId, b: CellId) {
         if self.are_connected(a, b) {
             // The algorithm below does not work if the two cells are already connected.
@@ -56,6 +59,7 @@ impl<CellId: Ord + Copy> CopyConstraints<CellId> {
         self.edges.is_empty()
     }
 
+    #[cfg(test)]
     fn are_connected(&self, a: CellId, b: CellId) -> bool {
         self.iter_equivalence_class(a).contains(&b)
     }
