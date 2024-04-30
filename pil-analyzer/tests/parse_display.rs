@@ -313,16 +313,16 @@ fn function_type_display() {
 #[test]
 fn expr_and_identity() {
     let input = r#"namespace N(16);
-    let f: expr, expr -> constraint[] = |x, y| [x = y];
-    let g: expr -> constraint[] = |x| [x = 0];
+    let f: expr, expr -> Constr[] = |x, y| [x = y];
+    let g: expr -> Constr[] = |x| [x = 0];
     let x: col;
     let y: col;
     f(x, y);
     g((x));
     "#;
     let expected = r#"namespace N(16);
-    let f: expr, expr -> constraint[] = (|x, y| [(x = y)]);
-    let g: expr -> constraint[] = (|x| [(x = 0)]);
+    let f: expr, expr -> Constr[] = (|x, y| [(x = y)]);
+    let g: expr -> Constr[] = (|x| [(x = 0)]);
     col witness x;
     col witness y;
     N.x = N.y;

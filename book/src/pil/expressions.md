@@ -108,7 +108,7 @@ Note that you can always create constraints and return them from a function, eve
 Example:
 
 ```rust
-let constrain_to_bool: expr -> constr = |x| { x * (x - 1) = 0 };
+let constrain_to_bool: expr -> Constr = |x| x * (x - 1) = 0;
 ```
 
 
@@ -201,5 +201,5 @@ let square_of = query |x| { let v = std::prover::eval(x); v * v };
 let new_bool = constr |x| { let x = new_wit(); x * (x - 1) = 0; x };
 // This is a pure function that only returns a constraint, but does not add it
 // to the global set of constraints.
-let constrain_to_bool: expr -> constr = |x| x * (x - 1) = 0;
+let constrain_to_bool: expr -> Constr = |x| x * (x - 1) = 0;
 ```

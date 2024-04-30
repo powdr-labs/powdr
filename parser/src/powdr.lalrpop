@@ -727,7 +727,6 @@ TypeTerm: Type<Expression> = {
     "string" => Type::String,
     "col" => Type::Col,
     "expr" => Type::Expr,
-    "constr" => Type::Constr,
     <base:TypeTerm> "[" <length:Expression?> "]" => Type::Array(ArrayType{base: Box::new(base), length}),
     "(" <mut items:( <TypeTerm> "," )+> <end:TypeTerm> ")" => { items.push(end); Type::Tuple(TupleType{items}) },
     "(" ")" => Type::Tuple(TupleType{items: vec![]}),

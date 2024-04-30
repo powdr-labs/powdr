@@ -731,7 +731,6 @@ impl<E: Display> Display for Type<E> {
             Type::String => write!(f, "string"),
             Type::Col => write!(f, "col"),
             Type::Expr => write!(f, "expr"),
-            Type::Constr => write!(f, "constr"),
             Type::Array(array) => write!(f, "{array}"),
             Type::Tuple(tuple) => write!(f, "{tuple}"),
             Type::Function(fun) => write!(f, "{fun}"),

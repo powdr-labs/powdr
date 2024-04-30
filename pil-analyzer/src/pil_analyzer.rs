@@ -128,7 +128,7 @@ impl PILAnalyzer {
             }
         }
 
-        if let Some(core) = self.core_if_not_present() {
+        if let Some(core) = self.core_types_if_not_present() {
             self.current_namespace = Default::default();
             for statement in &core.0 {
                 for (name, _) in self.collect_names(statement) {
@@ -146,12 +146,14 @@ impl PILAnalyzer {
         }
     }
 
-    /// Adds core types and built-in functions if they are not present in the input.
-    fn core_if_not_present(&self) -> Option<PILFile> {
-        (!self.known_symbols.contains_key("constraint")).then(|| {
+    /// Adds core types if they are not present in the input.
+    /// These need to be present because the type checker relies on them.
+    fn core_types_if_not_present(&self) -> Option<PILFile> {
+        (!self.known_symbols.contains_key("std::prelude::Constr")).then(|| {
             parse(
                 None,
-                "enum constraint {
+                "namespace std::prelude;
+    enum Constr {
         Identity(expr, expr),
         Plookup(expr, expr[], expr, expr[]),
         Permutation(expr, expr[], expr, expr[]),
@@ -202,8 +204,6 @@ impl PILAnalyzer {
     }
 
     pub fn type_check(&mut self) {
-        // TODO also add Query to core?
-
         let query_type: Type = parse_type("int -> std::prover::Query").unwrap().into();
         let mut expressions = vec![];
         // Collect all definitions with their types and expressions.
@@ -264,7 +264,7 @@ impl PILAnalyzer {
         };
         for id in &mut self.identities {
             if id.kind == IdentityKind::Polynomial {
-                // At statement level, we allow constr or constr[].
+                // At statement level, we allow Constr or Constr[].
                 expressions.push((id.expression_for_poly_id_mut(), statement_type.clone()));
             } else {
                 for part in [&mut id.left, &mut id.right] {

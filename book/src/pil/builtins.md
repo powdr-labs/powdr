@@ -79,7 +79,7 @@ If the argument is already an expr, it is returned without modification.
 ### Printing
 
 ```rust
-let std::debug::print: string -> constr[]
+let std::debug::print: string -> Constr[]
 ```
 
 This function takes a string and prints it on the standard output during evaluation, as a side-effect of its evaluation.
@@ -191,7 +191,7 @@ let<T: Ord> <: T, T -> bool
 let<T: Eq> ==: T, T -> bool
 let<T: Eq> !=: T, T -> bool
 
-let =: expr, expr -> constr
+let =: expr, expr -> Constr
 let ': expr -> expr
 
 let ||: bool, bool -> bool
