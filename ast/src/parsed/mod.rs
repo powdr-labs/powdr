@@ -2,6 +2,7 @@ pub mod asm;
 pub mod build;
 pub mod display;
 pub mod folder;
+pub mod pattern;
 pub mod types;
 pub mod visitor;
 
@@ -14,12 +15,13 @@ use std::{
 
 use auto_enums::auto_enum;
 use derive_more::Display;
-use powdr_number::{BigInt, BigUint, DegreeType};
+use powdr_number::{BigUint, DegreeType};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use self::{
     asm::{Part, SymbolPath},
+    pattern::Pattern,
     types::{FunctionType, Type, TypeBounds, TypeScheme},
     visitor::Children,
 };
@@ -877,72 +879,6 @@ impl Children<Expression> for ArrayExpression {
             ArrayExpression::Concat(left, right) => {
                 Box::new(left.children_mut().chain(right.children_mut()))
             }
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub enum Pattern {
-    CatchAll, // "_", matches a single value
-    Ellipsis, // "..", matches a series of values, only valid inside array patterns
-    #[schemars(skip)]
-    Number(BigInt),
-    String(String),
-    Tuple(Vec<Pattern>),
-    Array(Vec<Pattern>),
-    // A pattern that binds a variable. Variable references are parsed as
-    // Enum and are then re-mapped to Variable if they do not reference
-    // an enum variant.
-    Variable(String),
-    Enum(SymbolPath, Option<Vec<Pattern>>),
-}
-
-impl Pattern {
-    /// Returns an iterator over all variables in this pattern.
-    pub fn variables(&self) -> Box<dyn Iterator<Item = &String> + '_> {
-        match self {
-            Pattern::Variable(v) => Box::new(once(v)),
-            _ => Box::new(self.children().flat_map(|p| p.variables())),
-        }
-    }
-
-    /// Return true if the pattern is irrefutable, i.e. matches all possible values of its type.
-    pub fn is_irrefutable(&self) -> bool {
-        match self {
-            Pattern::Ellipsis => unreachable!(),
-            Pattern::CatchAll | Pattern::Variable(_) => true,
-            Pattern::Number(_) | Pattern::String(_) | Pattern::Enum(_, _) => false,
-            Pattern::Array(items) => {
-                // Only "[..]"" is irrefutable
-                items == &vec![Pattern::Ellipsis]
-            }
-            Pattern::Tuple(p) => p.iter().all(|p| p.is_irrefutable()),
-        }
-    }
-}
-
-impl Children<Pattern> for Pattern {
-    fn children(&self) -> Box<dyn Iterator<Item = &Pattern> + '_> {
-        match self {
-            Pattern::CatchAll
-            | Pattern::Ellipsis
-            | Pattern::Number(_)
-            | Pattern::String(_)
-            | Pattern::Variable(_) => Box::new(empty()),
-            Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter()),
-            Pattern::Enum(_, fields) => Box::new(fields.iter().flatten()),
-        }
-    }
-
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Pattern> + '_> {
-        match self {
-            Pattern::CatchAll
-            | Pattern::Ellipsis
-            | Pattern::Number(_)
-            | Pattern::String(_)
-            | Pattern::Variable(_) => Box::new(empty()),
-            Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter_mut()),
-            Pattern::Enum(_, fields) => Box::new(fields.iter_mut().flatten()),
         }
     }
 }

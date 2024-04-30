@@ -7,8 +7,8 @@ use std::{
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
-        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, NamespacedPolynomialReference, Pattern,
+        self, asm::SymbolPath, pattern::Pattern, ArrayExpression, ArrayLiteral, IfExpression,
+        LambdaExpression, LetStatementInsideBlock, MatchArm, NamespacedPolynomialReference,
         SelectedExpressions, StatementInsideBlock, SymbolCategory,
     },
 };

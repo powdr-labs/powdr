@@ -47,8 +47,6 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             Ok(query) => query,
             Err(e) => {
                 return match e {
-                    // TODO this mechanism should be replaced by a proper Option datatype.
-                    EvalError::NoMatch() => Ok(EvalValue::complete(vec![])),
                     EvalError::DataNotAvailable => {
                         Ok(EvalValue::incomplete(IncompleteCause::DataNotYetAvailable))
                     }

@@ -505,6 +505,7 @@ namespace main_sub(16);
         2 => std::prover::Query::Input(1),
         4 => std::prover::Query::Input(std::convert::int((std::prover::eval(CNT) + 1))),
         7 => std::prover::Query::Input(0),
+        _ => std::prover::Query::Unconstrained,
     };
     pol constant p_X_const = [0]*;
     pol constant p_X_read_free = [0, 0, 1, 0, 1, 0, 0, 18446744069414584320, 0, 0, 0] + [0]*;

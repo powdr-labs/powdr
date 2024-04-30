@@ -14,9 +14,10 @@ use powdr_ast::{
     },
     parsed::{
         display::quote,
+        pattern::Pattern,
         types::{Type, TypeScheme},
         ArrayLiteral, BinaryOperator, FunctionCall, IfExpression, IndexAccess, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock, UnaryOperator,
+        LetStatementInsideBlock, MatchArm, StatementInsideBlock, UnaryOperator,
     },
     SourceRef,
 };

@@ -5,10 +5,11 @@ use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference},
     parsed::{
         display::format_type_scheme_around_name,
+        pattern::Pattern,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
         ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock,
-        MatchArm, Pattern, StatementInsideBlock,
+        MatchArm, StatementInsideBlock,
     },
 };
 

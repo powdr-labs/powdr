@@ -11,9 +11,10 @@ use powdr_ast::{
     parsed::{
         asm::{CallableRef, InstructionBody, InstructionParams},
         build::{self, absolute_reference, direct_reference, next_reference},
+        pattern::Pattern,
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
-        FunctionKind, LambdaExpression, MatchArm, Pattern, PilStatement, PolynomialName,
+        FunctionKind, LambdaExpression, MatchArm, PilStatement, PolynomialName,
         SelectedExpressions, UnaryOperator,
     },
     SourceRef,
@@ -977,6 +978,12 @@ impl<T: FieldElement> VMConverter<T> {
                 let free_value = format!("{reg}_free_value");
                 let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
+                    let mut prover_query_arms = prover_query_arms;
+                    prover_query_arms.push(MatchArm {
+                        pattern: Pattern::CatchAll,
+                        value: absolute_reference("::std::prover::Query::Unconstrained"),
+                    });
+
                     FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression {
                         kind: FunctionKind::Query,
                         params: vec![Pattern::Variable("__i".to_string())],
