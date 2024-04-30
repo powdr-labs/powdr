@@ -13,14 +13,14 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
         &self,
         pil: &'a Analyzed<F>,
         fixed: &'a [(String, Vec<F>)],
-        _output_dir: Option<&'a Path>,
+        output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         let proof_type = ProofType::from(options);
-        let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup, proof_type)?);
+        let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup, proof_type, output_dir)?);
         if let Some(vk) = verification_key {
             halo2.add_verification_key(vk);
         }

@@ -8,7 +8,7 @@ use env_logger::{Builder, Target};
 use log::LevelFilter;
 use powdr_backend::BackendType;
 use powdr_number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
-use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
+use powdr_number::{BigUint, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::Pipeline;
 use powdr_riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use powdr_riscv::{compile_riscv_asm, compile_rust};
@@ -511,7 +511,7 @@ fn split_inputs<T: FieldElement>(inputs: &str) -> Vec<T> {
         .split(',')
         .map(|x| x.trim())
         .filter(|x| !x.is_empty())
-        .map(|x| x.parse::<u64>().unwrap().into())
+        .map(|x| x.parse::<BigUint>().unwrap().into())
         .collect()
 }
 

@@ -1,5 +1,6 @@
 use halo2_proofs::{
     halo2curves::bn256::{Bn256, Fr, G1Affine},
+    halo2curves::ff::PrimeField,
     plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ProvingKey, VerifyingKey},
     poly::{
         commitment::ParamsProver,
@@ -15,7 +16,7 @@ use halo2_proofs::{
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement, KnownField};
+use powdr_number::{buffered_write_file, DegreeType, FieldElement, KnownField};
 
 // We use two different EVM verifier libraries.
 // 1. snark_verifier: supports single SNARK verification as well as aggregated proof verification.
@@ -43,8 +44,10 @@ use crate::{
 
 use itertools::Itertools;
 use rand::rngs::OsRng;
+use serde::Serialize;
 use std::{
     io::{self, Cursor},
+    path::Path,
     time::Instant,
 };
 
@@ -88,10 +91,22 @@ pub struct Halo2Prover<'a, F> {
     // the vkey of the "poseidon" proof.
     vkey_app: Option<VerifyingKey<G1Affine>>,
     proof_type: ProofType,
+    output_dir: Option<&'a Path>,
 }
 
 fn degree_bits(degree: DegreeType) -> u32 {
     DegreeType::BITS - degree.leading_zeros() + 1
+}
+
+// TODO move to `backend` and sync with the similar function in estark
+fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), String> {
+    buffered_write_file(path, |writer| {
+        serde_json::to_writer(writer, data).map_err(|e| e.to_string())
+    })
+    .unwrap()
+    .unwrap();
+
+    Ok(())
 }
 
 pub fn generate_setup(size: DegreeType) -> ParamsKZG<Bn256> {
@@ -107,6 +122,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         fixed: &'a [(String, Vec<F>)],
         setup: Option<&mut dyn io::Read>,
         proof_type: ProofType,
+        output_dir: Option<&'a Path>,
     ) -> Result<Self, io::Error> {
         Self::assert_field_is_bn254();
 
@@ -126,6 +142,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             vkey: None,
             vkey_app: None,
             proof_type,
+            output_dir,
         })
     }
 
@@ -284,11 +301,12 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         // TODO change this once we accept publics in the app snark
         let snark = aggregation::Snark::new(protocol_app, vec![vec![]], proof);
         let agg_circuit_with_proof = aggregation::AggregationCircuit::new(&self.params, [snark]);
+        let agg_instances = agg_circuit_with_proof.instances();
         let proof = gen_proof::<_, _, EvmTranscript<G1Affine, _, _, _>>(
             &self.params,
             &pk_aggr,
             agg_circuit_with_proof.clone(),
-            &agg_circuit_with_proof.instances(),
+            &agg_instances,
         )?;
         let duration = start.elapsed();
         log::info!("Time taken: {:?}", duration);
@@ -306,7 +324,17 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         }
 
         log::info!("Verifying aggregated proof in the EVM...");
-        evm_verify(deployment_code, agg_circuit_with_proof.instances(), &proof);
+        evm_verify(deployment_code, agg_instances.clone(), &proof);
+
+        let output_dir = self.output_dir.ok_or("output_dir is None".to_owned())?;
+        let publics_path = output_dir.join("publics_aggr.json");
+        let publics_str: Vec<String> = agg_instances[0]
+            .clone()
+            .into_iter()
+            .map(|x| F::from_bytes_le(&x.to_repr()).to_string())
+            .collect();
+        write_json_file(publics_path.as_path(), &publics_str).unwrap();
+        log::info!("Wrote publics_aggr.bin.");
 
         log::info!("Proof aggregation done.");
 

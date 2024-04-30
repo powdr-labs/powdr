@@ -116,6 +116,7 @@ struct EStarkFilesCommon<'a, F: FieldElement> {
     proof_type: ProofType,
 }
 
+// TODO move to `backend` and sync with the similar function in halo2
 fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), Error> {
     buffered_write_file(path, |writer| {
         serde_json::to_writer(writer, data).map_err(|e| e.to_string())
