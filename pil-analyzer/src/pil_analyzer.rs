@@ -189,7 +189,7 @@ impl PILAnalyzer {
                 SymbolKind::Other() => match value {
                     // Otherwise, just take the kind of the lambda expression.
                     FunctionValueDefinition::Expression(TypedExpression { type_scheme: _, e }) => {
-                        if let Expression::LambdaExpression(LambdaExpression { kind, .. }) = e {
+                        if let Expression::LambdaExpression(_, LambdaExpression { kind, .. }) = e {
                             *kind
                         } else {
                             FunctionKind::Constr

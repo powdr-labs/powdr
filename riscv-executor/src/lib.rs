@@ -22,7 +22,9 @@ use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
     },
-    parsed::{asm::DebugDirective, Expression, FunctionCall},
+    parsed::{
+        asm::DebugDirective, BinaryOperation, Expression, FunctionCall, Number, UnaryOperation,
+    },
 };
 use powdr_number::{FieldElement, LargeInt};
 use powdr_riscv_syscalls::SYSCALL_REGISTERS;
@@ -820,7 +822,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
     fn eval_expression(&mut self, expression: &Expression) -> Vec<Elem<F>> {
         match expression {
-            Expression::Reference(r) => {
+            Expression::Reference(_, r) => {
                 // an identifier looks like this:
                 let name = r.try_to_identifier().unwrap();
 
@@ -833,27 +835,27 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .unwrap_or_else(|| self.proc.get_reg(name.as_str()));
                 vec![val]
             }
-            Expression::PublicReference(_) => todo!(),
-            Expression::Number(n, _) => {
+            Expression::PublicReference(_, _) => todo!(),
+            Expression::Number(_, Number { value: n, type_: _ }) => {
                 let unsigned: u32 = n
                     .try_into()
                     .unwrap_or_else(|_| panic!("Value does not fit in 32 bits."));
 
                 vec![unsigned.into()]
             }
-            Expression::String(_) => todo!(),
-            Expression::Tuple(_) => todo!(),
-            Expression::LambdaExpression(_) => todo!(),
-            Expression::ArrayLiteral(_) => todo!(),
-            Expression::BinaryOperation(l, op, r) => {
-                let l = &self.eval_expression(l)[0];
-                let r = &self.eval_expression(r)[0];
+            Expression::String(_, _) => todo!(),
+            Expression::Tuple(_, _) => todo!(),
+            Expression::LambdaExpression(_, _) => todo!(),
+            Expression::ArrayLiteral(_, _) => todo!(),
+            Expression::BinaryOperation(_, BinaryOperation { left, op, right }) => {
+                let left = &self.eval_expression(left)[0];
+                let right = &self.eval_expression(right)[0];
 
-                let result = match (l, r) {
-                    (Elem::Binary(l), Elem::Binary(r)) => match op {
-                        powdr_ast::parsed::BinaryOperator::Add => Elem::Binary(l + r),
-                        powdr_ast::parsed::BinaryOperator::Sub => Elem::Binary(l - r),
-                        powdr_ast::parsed::BinaryOperator::Mul => match l.checked_mul(*r) {
+                let result = match (left, right) {
+                    (Elem::Binary(left), Elem::Binary(right)) => match op {
+                        powdr_ast::parsed::BinaryOperator::Add => Elem::Binary(left + right),
+                        powdr_ast::parsed::BinaryOperator::Sub => Elem::Binary(left - right),
+                        powdr_ast::parsed::BinaryOperator::Mul => match left.checked_mul(*right) {
                             // Multiplication is a special case as the input for
                             // poseidon_gl requires field multiplication. So,
                             // if native multiplication overflows, we use field
@@ -864,30 +866,30 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                             // arithmetic we have to use.
                             Some(v) => Elem::Binary(v),
                             None => {
-                                let l = F::from(*l);
-                                let r = F::from(*r);
-                                Elem::Field(l * r)
+                                let left = F::from(*left);
+                                let right = F::from(*right);
+                                Elem::Field(left * right)
                             }
                         },
-                        powdr_ast::parsed::BinaryOperator::Div => Elem::Binary(l / r),
-                        powdr_ast::parsed::BinaryOperator::Mod => Elem::Binary(l % r),
+                        powdr_ast::parsed::BinaryOperator::Div => Elem::Binary(left / right),
+                        powdr_ast::parsed::BinaryOperator::Mod => Elem::Binary(left % right),
                         powdr_ast::parsed::BinaryOperator::Pow => {
-                            Elem::Binary(l.pow(u32::try_from(*r).unwrap()))
+                            Elem::Binary(left.pow(u32::try_from(*right).unwrap()))
                         }
                         _ => todo!(),
                     },
-                    (Elem::Field(l), Elem::Field(r)) => {
+                    (Elem::Field(left), Elem::Field(right)) => {
                         let result = match op {
                             // We need to subtract field elements in the bootloader:
-                            powdr_ast::parsed::BinaryOperator::Sub => *l - *r,
+                            powdr_ast::parsed::BinaryOperator::Sub => *left - *right,
                             _ => todo!(),
                         };
                         Elem::Field(result)
                     }
-                    (Elem::Binary(l), Elem::Field(r)) => {
+                    (Elem::Binary(left), Elem::Field(right)) => {
                         // We need to add a field element to a binary when calling poseidon_gl:
                         let result = match op {
-                            powdr_ast::parsed::BinaryOperator::Add => F::from(*l) + *r,
+                            powdr_ast::parsed::BinaryOperator::Add => F::from(*left) + *right,
                             _ => todo!(),
                         };
                         Elem::Field(result)
@@ -897,7 +899,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![result]
             }
-            Expression::UnaryOperation(op, arg) => {
+            Expression::UnaryOperation(_, UnaryOperation { op, e: arg }) => {
                 let arg = self.eval_expression(arg)[0].bin();
                 let result = match op {
                     powdr_ast::parsed::UnaryOperator::Minus => -arg,
@@ -907,18 +909,21 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![Elem::Binary(result)]
             }
-            Expression::FunctionCall(FunctionCall {
-                function,
-                arguments,
-            }) => match function.as_ref() {
-                Expression::Reference(f) if f.to_string() == "std::prover::eval" => {
+            Expression::FunctionCall(
+                _,
+                FunctionCall {
+                    function,
+                    arguments,
+                },
+            ) => match function.as_ref() {
+                Expression::Reference(_, f) if f.to_string() == "std::prover::eval" => {
                     self.eval_expression(&arguments[0])
                 }
-                Expression::Reference(f) if f.to_string() == "std::convert::int" => {
+                Expression::Reference(_, f) if f.to_string() == "std::convert::int" => {
                     // whatever. we don't need to convert anything
                     self.eval_expression(&arguments[0])
                 }
-                Expression::Reference(f) => {
+                Expression::Reference(_, f) => {
                     self.exec_instruction(f.try_to_identifier().unwrap(), arguments)
                 }
                 _ => {
@@ -928,15 +933,18 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     )
                 }
             },
-            Expression::FreeInput(expr) => {
-                let Expression::FunctionCall(FunctionCall {
-                    function,
-                    arguments,
-                }) = expr.as_ref()
+            Expression::FreeInput(_, expr) => {
+                let Expression::FunctionCall(
+                    _,
+                    FunctionCall {
+                        function,
+                        arguments,
+                    },
+                ) = expr.as_ref()
                 else {
                     panic!("Free input does not match pattern: {expr}");
                 };
-                let Expression::Reference(f) = function.as_ref() else {
+                let Expression::Reference(_, f) = function.as_ref() else {
                     panic!("Free input does not match pattern: {expr}");
                 };
                 let variant = f
@@ -957,9 +965,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
             }
             Expression::MatchExpression(_, _) => todo!(),
-            Expression::IfExpression(_) => panic!(),
+            Expression::IfExpression(_, _) => panic!(),
             Expression::BlockExpression(_, _) => panic!(),
-            Expression::IndexAccess(_) => todo!(),
+            Expression::IndexAccess(_, _) => todo!(),
         }
     }
 }

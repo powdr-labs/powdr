@@ -8,8 +8,9 @@ use powdr_ast::{
     analyzed::{Analyzed, Expression, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
-        IndexAccess,
+        IndexAccess, Number,
     },
+    SourceRef,
 };
 use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
@@ -69,10 +70,19 @@ fn generate_values<T: FieldElement>(
             };
             let index_expr;
             let e = if let Some(index) = index {
-                index_expr = Expression::IndexAccess(IndexAccess {
-                    array: e.clone().into(),
-                    index: Box::new(Expression::Number(index.into(), None)),
-                });
+                index_expr = Expression::IndexAccess(
+                    SourceRef::unknown(),
+                    IndexAccess {
+                        array: e.clone().into(),
+                        index: Box::new(Expression::Number(
+                            SourceRef::unknown(),
+                            Number {
+                                value: index.into(),
+                                type_: None,
+                            },
+                        )),
+                    },
+                );
                 &index_expr
             } else {
                 e

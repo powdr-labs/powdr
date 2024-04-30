@@ -129,8 +129,12 @@ pub fn unescape_string(s: &str) -> String {
 mod test {
     use super::*;
     use powdr_ast::parsed::{
-        asm::ASMProgram, build::direct_reference, PILFile, PilStatement, PolynomialName,
-        SelectedExpressions,
+        self,
+        asm::{ASMProgram, MachineProperties},
+        build::direct_reference,
+        visitor::Children,
+        FunctionDefinition, LambdaExpression, PILFile, PilStatement, PolynomialName,
+        SelectedExpressions, StatementInsideBlock,
     };
     use powdr_parser_util::UnwrapErrToStderr;
     use pretty_assertions::assert_eq;
@@ -200,22 +204,27 @@ mod test {
     fn simple_plookup() {
         let input = "f in g;";
         let ctx = ParserContext::new(None, input);
-        let parsed = powdr::PILFileParser::new().parse(&ctx, "f in g;").unwrap();
+        let mut parsed = powdr::PILFileParser::new().parse(&ctx, "f in g;").unwrap();
+        let mut drf = direct_reference("f");
+        let mut drg = direct_reference("g");
+        pil_expression_clear_source_ref(&mut drf);
+        pil_expression_clear_source_ref(&mut drg);
+        pil_clear_source_refs(&mut parsed);
         assert_eq!(
             parsed,
             PILFile(vec![PilStatement::PlookupIdentity(
                 SourceRef {
                     file: None,
-                    line: 1,
+                    line: 0,
                     col: 0,
                 },
                 SelectedExpressions {
                     selector: None,
-                    expressions: vec![direct_reference("f")]
+                    expressions: vec![drf]
                 },
                 SelectedExpressions {
                     selector: None,
-                    expressions: vec![direct_reference("g")]
+                    expressions: vec![drg]
                 }
             )])
         );
@@ -249,20 +258,164 @@ mod test {
 
     fn pil_statement_clear_source_ref(stmt: &mut PilStatement) {
         match stmt {
-            PilStatement::Include(s, _)
-            | PilStatement::Namespace(s, _, _)
-            | PilStatement::LetStatement(s, _, _, _)
-            | PilStatement::PolynomialDefinition(s, _, _)
-            | PilStatement::PublicDeclaration(s, _, _, _, _)
-            | PilStatement::PolynomialConstantDeclaration(s, _)
-            | PilStatement::PolynomialConstantDefinition(s, _, _)
-            | PilStatement::PolynomialCommitDeclaration(s, _, _, _)
-            | PilStatement::PlookupIdentity(s, _, _)
-            | PilStatement::PermutationIdentity(s, _, _)
-            | PilStatement::ConnectIdentity(s, _, _)
-            | PilStatement::ConstantDefinition(s, _, _)
-            | PilStatement::Expression(s, _)
-            | PilStatement::EnumDeclaration(s, _) => *s = SourceRef::unknown(),
+            PilStatement::Include(s, _) => *s = SourceRef::unknown(),
+            PilStatement::PolynomialConstantDefinition(s, _, v) => {
+                *s = SourceRef::unknown();
+                v.children_mut().for_each(pil_expression_clear_source_ref);
+            }
+            PilStatement::PolynomialConstantDeclaration(s, v) => {
+                *s = SourceRef::unknown();
+                v.iter_mut().for_each(|p| {
+                    if let Some(ref mut array_size) = p.array_size {
+                        pil_expression_clear_source_ref(array_size);
+                    }
+                });
+            }
+            PilStatement::PolynomialCommitDeclaration(s, _, v, ofc) => {
+                *s = SourceRef::unknown();
+                v.iter_mut().for_each(|p| {
+                    if let Some(ref mut array_size) = p.array_size {
+                        pil_expression_clear_source_ref(array_size);
+                    }
+                });
+                if let Some(FunctionDefinition::Expression(e)) = ofc {
+                    pil_expression_clear_source_ref(e)
+                }
+            }
+
+            PilStatement::Namespace(s, _, e) => {
+                if let Some(e) = e {
+                    pil_expression_clear_source_ref(e);
+                }
+                *s = SourceRef::unknown();
+            }
+            PilStatement::LetStatement(s, _, te, e) => {
+                if let Some(te) = te {
+                    te.ty
+                        .children_mut()
+                        .for_each(pil_expression_clear_source_ref);
+                }
+                if let Some(e) = e {
+                    pil_expression_clear_source_ref(e);
+                }
+                *s = SourceRef::unknown();
+            }
+            PilStatement::PolynomialDefinition(s, _, e)
+            | PilStatement::ConstantDefinition(s, _, e) => {
+                pil_expression_clear_source_ref(e);
+                *s = SourceRef::unknown();
+            }
+            PilStatement::PublicDeclaration(s, _, _, oe, e) => {
+                pil_expression_clear_source_ref(e);
+                if let Some(oe) = oe {
+                    pil_expression_clear_source_ref(oe);
+                }
+                *s = SourceRef::unknown();
+            }
+            PilStatement::PlookupIdentity(s, se1, se2)
+            | PilStatement::PermutationIdentity(s, se1, se2) => {
+                if let Some(exp) = se1.selector.as_mut() {
+                    pil_expression_clear_source_ref(exp);
+                }
+                if let Some(exp) = se2.selector.as_mut() {
+                    pil_expression_clear_source_ref(exp);
+                }
+                se1.expressions
+                    .iter_mut()
+                    .chain(se2.expressions.iter_mut())
+                    .for_each(pil_expression_clear_source_ref);
+                *s = SourceRef::unknown();
+            }
+            PilStatement::ConnectIdentity(s, v1, v2) => {
+                v1.iter_mut()
+                    .chain(v2.iter_mut())
+                    .for_each(pil_expression_clear_source_ref);
+                *s = SourceRef::unknown();
+            }
+            PilStatement::EnumDeclaration(s, _en) => {
+                *s = SourceRef::unknown();
+            }
+            PilStatement::Expression(s, e) => {
+                pil_expression_clear_source_ref(e);
+                for co in e.children_mut() {
+                    pil_expression_clear_source_ref(co);
+                }
+                *s = SourceRef::unknown();
+            }
+        }
+    }
+
+    fn pil_expression_clear_source_ref(expr: &mut parsed::Expression) {
+        match expr {
+            parsed::Expression::Reference(s, _)
+            | parsed::Expression::PublicReference(s, _)
+            | parsed::Expression::Number(s, _)
+            | parsed::Expression::String(s, _) => *s = SourceRef::unknown(),
+            parsed::Expression::FreeInput(s, e) => {
+                *s = SourceRef::unknown();
+                pil_expression_clear_source_ref(e);
+            }
+            parsed::Expression::LambdaExpression(s, le) => {
+                *s = SourceRef::unknown();
+                let LambdaExpression { body, .. } = le;
+
+                pil_expression_clear_source_ref(body);
+            }
+            parsed::Expression::BinaryOperation(s, bo) => {
+                *s = SourceRef::unknown();
+                pil_expression_clear_source_ref(&mut bo.left);
+                pil_expression_clear_source_ref(&mut bo.right);
+            }
+            parsed::Expression::UnaryOperation(s, uo) => {
+                *s = SourceRef::unknown();
+                pil_expression_clear_source_ref(&mut uo.e);
+            }
+            parsed::Expression::IndexAccess(s, ia) => {
+                *s = SourceRef::unknown();
+                pil_expression_clear_source_ref(&mut ia.array);
+                pil_expression_clear_source_ref(&mut ia.index);
+            }
+            parsed::Expression::ArrayLiteral(s, a) => {
+                *s = SourceRef::unknown();
+                a.items.iter_mut().for_each(pil_expression_clear_source_ref);
+            }
+            parsed::Expression::Tuple(s, t) => {
+                *s = SourceRef::unknown();
+                t.iter_mut().for_each(pil_expression_clear_source_ref);
+            }
+            parsed::Expression::MatchExpression(s, me) => {
+                *s = SourceRef::unknown();
+                pil_expression_clear_source_ref(&mut me.e);
+                me.arms.iter_mut().for_each(|arm| {
+                    pil_expression_clear_source_ref(&mut arm.value);
+                });
+            }
+            parsed::Expression::FunctionCall(s, fc) => {
+                *s = SourceRef::unknown();
+                fc.arguments
+                    .iter_mut()
+                    .for_each(pil_expression_clear_source_ref);
+                pil_expression_clear_source_ref(&mut fc.function);
+            }
+            parsed::Expression::IfExpression(s, ie) => {
+                *s = SourceRef::unknown();
+                pil_expression_clear_source_ref(&mut ie.condition);
+                pil_expression_clear_source_ref(&mut ie.body);
+                pil_expression_clear_source_ref(&mut ie.else_body);
+            }
+            parsed::Expression::BlockExpression(s, be) => {
+                *s = SourceRef::unknown();
+                be.statements.iter_mut().for_each(|s| match s {
+                    StatementInsideBlock::Expression(e) => pil_expression_clear_source_ref(e),
+                    StatementInsideBlock::LetStatement(lt) => {
+                        if let Some(expr) = lt.value.as_mut() {
+                            pil_expression_clear_source_ref(expr)
+                        }
+                    }
+                });
+
+                pil_expression_clear_source_ref(&mut be.expr);
+            }
         }
     }
 
@@ -277,8 +430,17 @@ mod test {
             match stmt {
                 MachineStatement::Submachine(s, _, _)
                 | MachineStatement::RegisterDeclaration(s, _, _)
-                | MachineStatement::OperationDeclaration(s, _, _, _)
-                | MachineStatement::LinkDeclaration(s, _) => {
+                | MachineStatement::OperationDeclaration(s, _, _, _) => {
+                    *s = SourceRef::unknown();
+                }
+                MachineStatement::LinkDeclaration(s, lk) => {
+                    pil_expression_clear_source_ref(&mut lk.flag);
+                    lk.to
+                        .params
+                        .inputs
+                        .iter_mut()
+                        .chain(lk.to.params.outputs.iter_mut())
+                        .for_each(pil_expression_clear_source_ref);
                     *s = SourceRef::unknown();
                 }
                 MachineStatement::Pil(s, stmt) => {
@@ -287,21 +449,38 @@ mod test {
                 }
                 MachineStatement::InstructionDeclaration(s, _, Instruction { body, .. }) => {
                     *s = SourceRef::unknown();
-                    if let InstructionBody::Local(statements) = body {
-                        statements
+                    match body {
+                        InstructionBody::Local(statements) => statements
                             .iter_mut()
-                            .for_each(pil_statement_clear_source_ref)
+                            .for_each(pil_statement_clear_source_ref),
+                        InstructionBody::CallablePlookup(cf)
+                        | InstructionBody::CallablePermutation(cf) => {
+                            cf.params
+                                .inputs
+                                .iter_mut()
+                                .chain(cf.params.outputs.iter_mut())
+                                .for_each(pil_expression_clear_source_ref);
+                        }
                     }
                 }
                 MachineStatement::FunctionDeclaration(s, _, _, statements) => {
                     *s = SourceRef::unknown();
                     for statement in statements {
                         match statement {
-                            FunctionStatement::Assignment(s, _, _, _)
-                            | FunctionStatement::Instruction(s, _, _)
-                            | FunctionStatement::Label(s, _)
-                            | FunctionStatement::DebugDirective(s, _)
-                            | FunctionStatement::Return(s, _) => *s = SourceRef::unknown(),
+                            FunctionStatement::Label(s, _)
+                            | FunctionStatement::DebugDirective(s, _) => *s = SourceRef::unknown(),
+                            FunctionStatement::Return(s, v) => {
+                                *s = SourceRef::unknown();
+                                v.iter_mut().for_each(pil_expression_clear_source_ref);
+                            }
+                            FunctionStatement::Instruction(s, _, v) => {
+                                *s = SourceRef::unknown();
+                                v.iter_mut().for_each(pil_expression_clear_source_ref);
+                            }
+                            FunctionStatement::Assignment(s, _, _, e) => {
+                                *s = SourceRef::unknown();
+                                pil_expression_clear_source_ref(e)
+                            }
                         }
                     }
                 }
@@ -311,15 +490,26 @@ mod test {
         fn clear_module_stmt(stmt: &mut ModuleStatement) {
             let ModuleStatement::SymbolDefinition(SymbolDefinition { value, .. }) = stmt;
             match value {
-                SymbolValue::Machine(Machine { statements, .. }) => {
-                    statements.iter_mut().for_each(clear_machine_stmt)
+                SymbolValue::Machine(Machine {
+                    properties,
+                    statements,
+                    ..
+                }) => {
+                    statements.iter_mut().for_each(clear_machine_stmt);
+                    let MachineProperties { degree, .. } = properties;
+
+                    if let Some(degree) = degree {
+                        pil_expression_clear_source_ref(degree);
+                    }
                 }
                 SymbolValue::Module(Module::Local(ASMModule { statements })) => {
                     statements.iter_mut().for_each(clear_module_stmt);
                 }
+                SymbolValue::Expression(e) => {
+                    pil_expression_clear_source_ref(&mut e.e);
+                }
                 SymbolValue::Module(Module::External(_))
                 | SymbolValue::Import(_)
-                | SymbolValue::Expression(_)
                 | SymbolValue::TypeDeclaration(_) => (),
             }
         }

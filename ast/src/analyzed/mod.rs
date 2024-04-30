@@ -251,7 +251,7 @@ impl<T> Analyzed<T> {
                 poly.id = replacements[&poly_id].id;
             });
         let visitor = &mut |expr: &mut Expression| {
-            if let Expression::Reference(Reference::Poly(poly)) = expr {
+            if let Expression::Reference(_, Reference::Poly(poly)) = expr {
                 poly.poly_id = poly.poly_id.map(|poly_id| replacements[&poly_id]);
             }
         };

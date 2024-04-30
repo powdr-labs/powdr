@@ -7,9 +7,10 @@ use std::{
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
-        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, NamespacedPolynomialReference, Pattern,
-        SelectedExpressions, StatementInsideBlock, SymbolCategory,
+        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BinaryOperation, BlockExpression,
+        IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
+        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
+        SymbolCategory, UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
@@ -85,62 +86,103 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     pub fn process_expression(&mut self, expr: parsed::Expression) -> Expression {
         use parsed::Expression as PExpression;
         match expr {
-            PExpression::Reference(poly) => Expression::Reference(self.process_reference(poly)),
-            PExpression::PublicReference(name) => Expression::PublicReference(name),
-            PExpression::Number(n, t) => Expression::Number(n, t),
-            PExpression::String(value) => Expression::String(value),
-            PExpression::Tuple(items) => Expression::Tuple(self.process_expressions(items)),
-            PExpression::ArrayLiteral(ArrayLiteral { items }) => {
-                Expression::ArrayLiteral(ArrayLiteral {
-                    items: self.process_expressions(items),
-                })
+            PExpression::Reference(source_ref, poly) => {
+                Expression::Reference(source_ref, self.process_reference(poly))
             }
-            PExpression::LambdaExpression(lambda_expression) => {
-                Expression::LambdaExpression(self.process_lambda_expression(lambda_expression))
+            PExpression::PublicReference(source_ref, name) => {
+                Expression::PublicReference(source_ref, name)
             }
-            PExpression::BinaryOperation(left, op, right) => Expression::BinaryOperation(
-                Box::new(self.process_expression(*left)),
-                op,
-                Box::new(self.process_expression(*right)),
-            ),
-            PExpression::UnaryOperation(op, value) => {
-                Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
+            PExpression::Number(source_ref, Number { value, type_ }) => {
+                Expression::Number(source_ref, Number { value, type_ })
             }
-            PExpression::IndexAccess(index_access) => {
-                Expression::IndexAccess(parsed::IndexAccess {
+            PExpression::String(source_ref, value) => Expression::String(source_ref, value),
+            PExpression::Tuple(source_ref, items) => {
+                Expression::Tuple(source_ref, self.process_expressions(items))
+            }
+            PExpression::ArrayLiteral(source_ref, ArrayLiteral { items }) => {
+                Expression::ArrayLiteral(
+                    source_ref,
+                    ArrayLiteral {
+                        items: self.process_expressions(items),
+                    },
+                )
+            }
+            PExpression::LambdaExpression(source_ref, lambda_expression) => {
+                Expression::LambdaExpression(
+                    source_ref,
+                    self.process_lambda_expression(lambda_expression),
+                )
+            }
+            PExpression::BinaryOperation(source_ref, BinaryOperation { left, op, right }) => {
+                Expression::BinaryOperation(
+                    source_ref,
+                    BinaryOperation {
+                        left: Box::new(self.process_expression(*left)),
+                        op,
+                        right: Box::new(self.process_expression(*right)),
+                    },
+                )
+            }
+            PExpression::UnaryOperation(source_ref, UnaryOperation { op, e }) => {
+                Expression::UnaryOperation(
+                    source_ref,
+                    UnaryOperation {
+                        op,
+                        e: Box::new(self.process_expression(*e)),
+                    },
+                )
+            }
+            PExpression::IndexAccess(source_ref, index_access) => Expression::IndexAccess(
+                source_ref,
+                parsed::IndexAccess {
                     array: Box::new(self.process_expression(*index_access.array)),
                     index: Box::new(self.process_expression(*index_access.index)),
-                })
-            }
-            PExpression::FunctionCall(c) => Expression::FunctionCall(parsed::FunctionCall {
-                function: Box::new(self.process_expression(*c.function)),
-                arguments: self.process_expressions(c.arguments),
-            }),
-            PExpression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
-                Box::new(self.process_expression(*scrutinee)),
-                arms.into_iter()
-                    .map(|MatchArm { pattern, value }| {
-                        let vars = self.save_local_variables();
-                        let pattern = self.process_pattern(pattern);
-                        let value = self.process_expression(value);
-                        self.reset_local_variables(vars);
-                        MatchArm { pattern, value }
-                    })
-                    .collect(),
+                },
             ),
-            PExpression::IfExpression(IfExpression {
-                condition,
-                body,
-                else_body,
-            }) => Expression::IfExpression(IfExpression {
-                condition: Box::new(self.process_expression(*condition)),
-                body: Box::new(self.process_expression(*body)),
-                else_body: Box::new(self.process_expression(*else_body)),
-            }),
-            PExpression::BlockExpression(statements, expr) => {
-                self.process_block_expression(statements, *expr)
+            PExpression::FunctionCall(source_ref, c) => Expression::FunctionCall(
+                source_ref,
+                parsed::FunctionCall {
+                    function: Box::new(self.process_expression(*c.function)),
+                    arguments: self.process_expressions(c.arguments),
+                },
+            ),
+            PExpression::MatchExpression(source_ref, MatchExpression { e, arms }) => {
+                Expression::MatchExpression(
+                    source_ref,
+                    MatchExpression {
+                        e: Box::new(self.process_expression(*e)),
+                        arms: arms
+                            .into_iter()
+                            .map(|MatchArm { pattern, value }| {
+                                let vars = self.save_local_variables();
+                                let pattern = self.process_pattern(pattern);
+                                let value = self.process_expression(value);
+                                self.reset_local_variables(vars);
+                                MatchArm { pattern, value }
+                            })
+                            .collect(),
+                    },
+                )
             }
-            PExpression::FreeInput(_) => panic!(),
+            PExpression::IfExpression(
+                source_ref,
+                IfExpression {
+                    condition,
+                    body,
+                    else_body,
+                },
+            ) => Expression::IfExpression(
+                source_ref,
+                IfExpression {
+                    condition: Box::new(self.process_expression(*condition)),
+                    body: Box::new(self.process_expression(*body)),
+                    else_body: Box::new(self.process_expression(*else_body)),
+                },
+            ),
+            PExpression::BlockExpression(source_ref, BlockExpression { statements, expr }) => {
+                self.process_block_expression(statements, *expr, source_ref)
+            }
+            PExpression::FreeInput(_, _) => panic!(),
         }
     }
 
@@ -252,6 +294,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         &mut self,
         statements: Vec<StatementInsideBlock>,
         expr: ::powdr_ast::parsed::Expression,
+        source_ref: powdr_ast::SourceRef,
     ) -> Expression {
         let vars = self.save_local_variables();
 
@@ -277,7 +320,13 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
         let processed_expr = self.process_expression(expr);
         self.reset_local_variables(vars);
-        Expression::BlockExpression(processed_statements, Box::new(processed_expr))
+        Expression::BlockExpression(
+            source_ref,
+            BlockExpression {
+                statements: processed_statements,
+                expr: Box::new(processed_expr),
+            },
+        )
     }
 
     pub fn process_namespaced_polynomial_reference(

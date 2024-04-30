@@ -1,6 +1,8 @@
 use std::{collections::HashSet, str::FromStr};
 
-use powdr_ast::parsed::{asm::SymbolPath, types::Type, visitor::Children, Expression};
+use powdr_ast::parsed::{
+    asm::SymbolPath, types::Type, visitor::Children, Expression, Number, SourceInfo,
+};
 
 use crate::{evaluator::EvalError, untyped_evaluator, AnalysisDriver};
 
@@ -36,11 +38,18 @@ impl<'a, D: AnalysisDriver> TypeProcessor<'a, D> {
         // Any expression inside a type name has to be an array length,
         // so we expect an integer that fits u64.
         t.children_mut().try_for_each(|e: &mut Expression| {
+            let source_ref = e.get_source_mut().clone();
             let v = untyped_evaluator::evaluate_expression_to_int(self.driver, e.clone())?;
             let v_u64: u64 = v.clone().try_into().map_err(|_| {
                 EvalError::TypeError(format!("Number too large, expected u64, but got {v}"))
             })?;
-            *e = Expression::Number(v_u64.into(), None);
+            *e = Expression::Number(
+                source_ref,
+                Number {
+                    value: v_u64.into(),
+                    type_: None,
+                },
+            );
             Ok(())
         })?;
         Ok(t.into())

@@ -435,10 +435,13 @@ impl<'a, T> WitnessColumn<'a, T> {
     ) -> WitnessColumn<'a, T> {
         let query = if let Some(FunctionValueDefinition::Expression(TypedExpression {
             e:
-                query @ Expression::LambdaExpression(LambdaExpression {
-                    kind: FunctionKind::Query,
-                    ..
-                }),
+                query @ Expression::LambdaExpression(
+                    _,
+                    LambdaExpression {
+                        kind: FunctionKind::Query,
+                        ..
+                    },
+                ),
             ..
         })) = value
         {

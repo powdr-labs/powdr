@@ -1,10 +1,11 @@
 use powdr_number::BigUint;
 
-use crate::parsed::Expression;
+use crate::{parsed::Expression, SourceRef};
 
 use super::{
     asm::{parse_absolute_path, Part, SymbolPath},
-    BinaryOperator, IndexAccess, NamespacedPolynomialReference, UnaryOperator,
+    BinaryOperation, BinaryOperator, IndexAccess, NamespacedPolynomialReference, SourceInfo,
+    UnaryOperator,
 };
 
 pub fn absolute_reference(name: &str) -> Expression {
@@ -25,20 +26,42 @@ pub fn namespaced_reference<S: Into<String>>(namespace: String, name: S) -> Expr
 }
 
 pub fn next_reference<S: Into<String>>(name: S) -> Expression {
-    Expression::UnaryOperation(UnaryOperator::Next, Box::new(direct_reference(name)))
+    Expression::UnaryOperation(
+        SourceRef::unknown(),
+        super::UnaryOperation {
+            op: UnaryOperator::Next,
+            e: Box::new(direct_reference(name)),
+        },
+    )
 }
 
 /// Returns an index access operation to expr if the index is Some, otherwise returns expr itself.
 pub fn index_access(expr: Expression, index: Option<BigUint>) -> Expression {
     match index {
-        Some(i) => Expression::IndexAccess(IndexAccess {
-            array: Box::new(expr),
-            index: Box::new(Expression::Number(i, None)),
-        }),
+        Some(i) => Expression::IndexAccess(
+            expr.get_source().clone(),
+            IndexAccess {
+                array: Box::new(expr.clone()),
+                index: Box::new(Expression::Number(
+                    SourceRef::unknown(),
+                    super::Number {
+                        value: i,
+                        type_: None,
+                    },
+                )),
+            },
+        ),
         None => expr,
     }
 }
 
 pub fn identity(lhs: Expression, rhs: Expression) -> Expression {
-    Expression::BinaryOperation(Box::new(lhs), BinaryOperator::Identity, Box::new(rhs))
+    Expression::BinaryOperation(
+        lhs.get_source().clone(),
+        BinaryOperation {
+            left: Box::new(lhs.clone()),
+            op: BinaryOperator::Identity,
+            right: Box::new(rhs),
+        },
+    )
 }

@@ -334,27 +334,137 @@ impl<Expr> Children<Expr> for SelectedExpressions<Expr> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Expression<Ref = NamespacedPolynomialReference> {
-    Reference(Ref),
-    PublicReference(String),
-    // A number literal and its type.
-    Number(#[schemars(skip)] BigUint, Option<Type>),
-    String(String),
-    Tuple(Vec<Self>),
-    LambdaExpression(LambdaExpression<Self>),
-    ArrayLiteral(ArrayLiteral<Self>),
-    BinaryOperation(Box<Self>, BinaryOperator, Box<Self>),
-    UnaryOperation(UnaryOperator, Box<Self>),
-    IndexAccess(IndexAccess<Self>),
-    FunctionCall(FunctionCall<Self>),
-    FreeInput(Box<Self>),
-    MatchExpression(Box<Self>, Vec<MatchArm<Self>>),
-    IfExpression(IfExpression<Self>),
-    BlockExpression(Vec<StatementInsideBlock<Self>>, Box<Self>),
+    Reference(SourceRef, Ref),
+    PublicReference(SourceRef, String),
+    Number(SourceRef, Number),
+    String(SourceRef, String),
+    Tuple(SourceRef, Vec<Self>),
+    LambdaExpression(SourceRef, LambdaExpression<Self>),
+    ArrayLiteral(SourceRef, ArrayLiteral<Self>),
+    BinaryOperation(SourceRef, BinaryOperation<Self>),
+    UnaryOperation(SourceRef, UnaryOperation<Self>),
+    IndexAccess(SourceRef, IndexAccess<Self>),
+    FunctionCall(SourceRef, FunctionCall<Self>),
+    FreeInput(SourceRef, Box<Self>),
+    MatchExpression(SourceRef, MatchExpression<Self>),
+    IfExpression(SourceRef, IfExpression<Self>),
+    BlockExpression(SourceRef, BlockExpression<Self>),
+}
+
+pub trait SourceInfo {
+    fn get_source(&self) -> &SourceRef;
+    fn get_source_mut(&mut self) -> &mut SourceRef;
+    fn set_source(&mut self, source: SourceRef);
+}
+
+impl<E> SourceInfo for Expression<E> {
+    fn get_source(&self) -> &SourceRef {
+        use Expression::*;
+        match self {
+            Reference(src, _) => src,
+            PublicReference(src, _) => src,
+            Number(src, _) => src,
+            String(src, _) => src,
+            Tuple(src, _) => src,
+            LambdaExpression(src, _) => src,
+            ArrayLiteral(src, _) => src,
+            BinaryOperation(src, _) => src,
+            UnaryOperation(src, _) => src,
+            IndexAccess(src, _) => src,
+            FunctionCall(src, _) => src,
+            FreeInput(src, _) => src,
+            MatchExpression(src, _) => src,
+            IfExpression(src, _) => src,
+            BlockExpression(src, _) => src,
+        }
+    }
+
+    fn get_source_mut(&mut self) -> &mut SourceRef {
+        use Expression::*;
+        match self {
+            Reference(src, _) => src,
+            PublicReference(src, _) => src,
+            Number(src, _) => src,
+            String(src, _) => src,
+            Tuple(src, _) => src,
+            LambdaExpression(src, _) => src,
+            ArrayLiteral(src, _) => src,
+            BinaryOperation(src, _) => src,
+            UnaryOperation(src, _) => src,
+            IndexAccess(src, _) => src,
+            FunctionCall(src, _) => src,
+            FreeInput(src, _) => src,
+            MatchExpression(src, _) => src,
+            IfExpression(src, _) => src,
+            BlockExpression(src, _) => src,
+        }
+    }
+
+    fn set_source(&mut self, new_src: SourceRef) {
+        use Expression::*;
+        match self {
+            Reference(src, _) => *src = new_src,
+            PublicReference(src, _) => *src = new_src,
+            Number(src, _) => *src = new_src,
+            String(src, _) => *src = new_src,
+            Tuple(src, _) => *src = new_src,
+            LambdaExpression(src, _) => *src = new_src,
+            ArrayLiteral(src, _) => *src = new_src,
+            BinaryOperation(src, _) => *src = new_src,
+            UnaryOperation(src, _) => *src = new_src,
+            IndexAccess(src, _) => *src = new_src,
+            FunctionCall(src, _) => *src = new_src,
+            FreeInput(src, _) => *src = new_src,
+            MatchExpression(src, _) => *src = new_src,
+            IfExpression(src, _) => *src = new_src,
+            BlockExpression(src, _) => *src = new_src,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct Number {
+    #[schemars(skip)]
+    pub value: BigUint,
+    pub type_: Option<Type>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BinaryOperation<E = Expression<NamespacedPolynomialReference>> {
+    pub left: Box<E>,
+    pub op: BinaryOperator,
+    pub right: Box<E>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UnaryOperation<E = Expression<NamespacedPolynomialReference>> {
+    pub op: UnaryOperator,
+    pub e: Box<E>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MatchExpression<E = Expression<NamespacedPolynomialReference>> {
+    pub e: Box<E>,
+    pub arms: Vec<MatchArm<E>>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BlockExpression<E = Expression<NamespacedPolynomialReference>> {
+    pub statements: Vec<StatementInsideBlock<E>>,
+    pub expr: Box<E>,
 }
 
 impl<Ref> Expression<Ref> {
     pub fn new_binary(left: Self, op: BinaryOperator, right: Self) -> Self {
-        Expression::BinaryOperation(Box::new(left), op, Box::new(right))
+        let source_ref = left.get_source().clone();
+        Expression::BinaryOperation(
+            source_ref,
+            BinaryOperation {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            },
+        )
     }
 
     /// Visits this expression and all of its sub-expressions and returns true
@@ -375,7 +485,7 @@ impl<Ref> Expression<Ref> {
 
 impl Expression<NamespacedPolynomialReference> {
     pub fn try_to_identifier(&self) -> Option<&String> {
-        if let Expression::Reference(r) = self {
+        if let Expression::Reference(_, r) = self {
             r.try_to_identifier()
         } else {
             None
@@ -385,13 +495,19 @@ impl Expression<NamespacedPolynomialReference> {
 
 impl From<u32> for Expression {
     fn from(value: u32) -> Self {
-        Expression::Number(value.into(), None)
+        Expression::Number(
+            SourceRef::unknown(),
+            Number {
+                value: value.into(),
+                type_: None,
+            },
+        )
     }
 }
 
 impl From<BigUint> for Expression {
     fn from(value: BigUint) -> Self {
-        Expression::Number(value, None)
+        Expression::Number(SourceRef::unknown(), Number { value, type_: None })
     }
 }
 
@@ -420,14 +536,21 @@ impl<Ref> ops::Mul for Expression<Ref> {
 
 impl<Ref> std::iter::Sum for Expression<Ref> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.reduce(|a, b| a + b)
-            .unwrap_or_else(|| Expression::Number(0u32.into(), None))
+        iter.reduce(|a, b| a + b).unwrap_or_else(|| {
+            Expression::Number(
+                SourceRef::unknown(),
+                Number {
+                    value: 0u32.into(),
+                    type_: None,
+                },
+            )
+        })
     }
 }
 
 impl From<NamespacedPolynomialReference> for Expression {
     fn from(value: NamespacedPolynomialReference) -> Self {
-        Self::Reference(value)
+        Self::Reference(SourceRef::unknown(), value)
     }
 }
 
@@ -439,34 +562,40 @@ impl<R> Expression<R> {
     #[auto_enum(Iterator)]
     pub fn children(&self) -> impl Iterator<Item = &Expression<R>> + '_ {
         match self {
-            Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
-                empty()
-            }
+            Expression::Reference(_, _)
+            | Expression::PublicReference(_, _)
+            | Expression::String(_, _) => empty(),
             Expression::Number(_, _) => empty(),
-            Expression::Tuple(v) => v.iter(),
-            Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_ref()),
-            Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter(),
-            Expression::BinaryOperation(left, _, right) => {
+            Expression::Tuple(_, v) => v.iter(),
+            Expression::LambdaExpression(_, LambdaExpression { body, .. }) => once(body.as_ref()),
+            Expression::ArrayLiteral(_, ArrayLiteral { items }) => items.iter(),
+            Expression::BinaryOperation(_, BinaryOperation { left, op: _, right }) => {
                 [left.as_ref(), right.as_ref()].into_iter()
             }
-            Expression::UnaryOperation(_, e) => once(e.as_ref()),
-            Expression::IndexAccess(IndexAccess { array, index }) => {
+            Expression::UnaryOperation(_, UnaryOperation { op: _, e }) => once(e.as_ref()),
+            Expression::IndexAccess(_, IndexAccess { array, index }) => {
                 [array.as_ref(), index.as_ref()].into_iter()
             }
-            Expression::FunctionCall(FunctionCall {
-                function,
-                arguments,
-            }) => once(function.as_ref()).chain(arguments.iter()),
-            Expression::FreeInput(e) => once(e.as_ref()),
-            Expression::MatchExpression(e, arms) => {
+            Expression::FunctionCall(
+                _,
+                FunctionCall {
+                    function,
+                    arguments,
+                },
+            ) => once(function.as_ref()).chain(arguments.iter()),
+            Expression::FreeInput(_, e) => once(e.as_ref()),
+            Expression::MatchExpression(_, MatchExpression { e, arms }) => {
                 once(e.as_ref()).chain(arms.iter().flat_map(|arm| arm.children()))
             }
-            Expression::IfExpression(IfExpression {
-                condition,
-                body,
-                else_body,
-            }) => [condition, body, else_body].into_iter().map(|e| e.as_ref()),
-            Expression::BlockExpression(statements, expr) => statements
+            Expression::IfExpression(
+                _,
+                IfExpression {
+                    condition,
+                    body,
+                    else_body,
+                },
+            ) => [condition, body, else_body].into_iter().map(|e| e.as_ref()),
+            Expression::BlockExpression(_, BlockExpression { statements, expr }) => statements
                 .iter()
                 .flat_map(|s| s.children())
                 .chain(once(expr.as_ref())),
@@ -480,34 +609,40 @@ impl<R> Expression<R> {
     #[auto_enum(Iterator)]
     pub fn children_mut(&mut self) -> impl Iterator<Item = &mut Expression<R>> + '_ {
         match self {
-            Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
-                empty()
-            }
+            Expression::Reference(_, _)
+            | Expression::PublicReference(_, _)
+            | Expression::String(_, _) => empty(),
             Expression::Number(_, _) => empty(),
-            Expression::Tuple(v) => v.iter_mut(),
-            Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_mut()),
-            Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter_mut(),
-            Expression::BinaryOperation(left, _, right) => {
+            Expression::Tuple(_, v) => v.iter_mut(),
+            Expression::LambdaExpression(_, LambdaExpression { body, .. }) => once(body.as_mut()),
+            Expression::ArrayLiteral(_, ArrayLiteral { items }) => items.iter_mut(),
+            Expression::BinaryOperation(_, BinaryOperation { left, op: _, right }) => {
                 [left.as_mut(), right.as_mut()].into_iter()
             }
-            Expression::UnaryOperation(_, e) => once(e.as_mut()),
-            Expression::IndexAccess(IndexAccess { array, index }) => {
+            Expression::UnaryOperation(_, UnaryOperation { op: _, e }) => once(e.as_mut()),
+            Expression::IndexAccess(_, IndexAccess { array, index }) => {
                 [array.as_mut(), index.as_mut()].into_iter()
             }
-            Expression::FunctionCall(FunctionCall {
-                function,
-                arguments,
-            }) => once(function.as_mut()).chain(arguments.iter_mut()),
-            Expression::FreeInput(e) => once(e.as_mut()),
-            Expression::MatchExpression(e, arms) => {
+            Expression::FunctionCall(
+                _,
+                FunctionCall {
+                    function,
+                    arguments,
+                },
+            ) => once(function.as_mut()).chain(arguments.iter_mut()),
+            Expression::FreeInput(_, e) => once(e.as_mut()),
+            Expression::MatchExpression(_, MatchExpression { e, arms }) => {
                 once(e.as_mut()).chain(arms.iter_mut().flat_map(|arm| arm.children_mut()))
             }
-            Expression::IfExpression(IfExpression {
-                condition,
-                body,
-                else_body,
-            }) => [condition, body, else_body].into_iter().map(|e| e.as_mut()),
-            Expression::BlockExpression(statements, expr) => statements
+            Expression::IfExpression(
+                _,
+                IfExpression {
+                    condition,
+                    body,
+                    else_body,
+                },
+            ) => [condition, body, else_body].into_iter().map(|e| e.as_mut()),
+            Expression::BlockExpression(_, BlockExpression { statements, expr }) => statements
                 .iter_mut()
                 .flat_map(|s| s.children_mut())
                 .chain(once(expr.as_mut())),
@@ -805,7 +940,13 @@ impl ArrayExpression {
     }
 
     pub fn pad_with_zeroes(self) -> Self {
-        self.pad_with(Expression::Number(0u32.into(), None))
+        self.pad_with(Expression::Number(
+            SourceRef::unknown(),
+            Number {
+                value: 0u32.into(),
+                type_: None,
+            },
+        ))
     }
 
     fn last(&self) -> Option<&Expression> {
