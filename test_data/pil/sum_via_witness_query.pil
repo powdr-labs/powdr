@@ -3,7 +3,7 @@ let N: int = 4;
 namespace std::prover(N);
     enum Query {
         Input(int),
-        Unconstrained,
+        None,
     }
 
 namespace Sum(N);
@@ -19,7 +19,7 @@ namespace Sum(N);
         1 => std::prover::Query::Input(1),
         2 => std::prover::Query::Input(2),
         // No response in the case of i == 3
-        _ => std::prover::Query::Unconstrained,
+        _ => std::prover::Query::None,
     };
     col witness sum;
 

@@ -14,7 +14,7 @@ enum Query {
     /// Query a prover input element by index and data id.
     DataIdentifier(int, int),
     /// This value is not (additionally) constrained by the query.
-    Unconstrained,
+    None,
 }
 
 /// Constructs a challenge object.

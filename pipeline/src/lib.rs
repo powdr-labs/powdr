@@ -60,7 +60,7 @@ pub fn serde_data_to_query_callback<T: FieldElement, S: serde::Serialize + Send 
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
-            "Unconstrained" => Ok(None),
+            "None" => Ok(None),
             "DataIdentifier" => {
                 let [index, cb_channel] = data[..] else {
                     panic!()
@@ -92,7 +92,7 @@ pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCa
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
-            "Unconstrained" => Ok(None),
+            "None" => Ok(None),
             "Input" => {
                 assert_eq!(data.len(), 1);
                 access_element("prover inputs", &inputs, data[0])
@@ -107,7 +107,7 @@ pub fn handle_simple_queries_callback<'a, T: FieldElement>() -> impl QueryCallba
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
-            "Unconstrained" => Ok(None),
+            "None" => Ok(None),
             "PrintChar" => {
                 assert_eq!(data.len(), 1);
                 print!(
