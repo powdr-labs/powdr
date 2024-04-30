@@ -5,7 +5,9 @@
 // A typical use-case would be to pass the `value` column as an "external"
 // witness. This way the prover can provide some input vector and the program
 // can read the same input multiple times.
-machine WriteOnceMemory(LATCH, _) {
+machine WriteOnceMemory with
+	latch: LATCH
+{
 
     // Accesses the memory cell at the given address. This can be used
     // both for reading and writing, e.g.:

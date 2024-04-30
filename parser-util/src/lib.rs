@@ -32,7 +32,7 @@ impl<'a> ParseError<'a> {
 }
 
 pub fn handle_parse_error<'a>(
-    err: lalrpop_util::ParseError<usize, lalrpop_util::lexer::Token, &str>,
+    err: lalrpop_util::ParseError<usize, lalrpop_util::lexer::Token, String>,
     file_name: Option<&str>,
     input: &'a str,
 ) -> ParseError<'a> {

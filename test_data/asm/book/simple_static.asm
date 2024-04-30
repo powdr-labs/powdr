@@ -1,7 +1,8 @@
-machine SimpleStatic(latch, operation_id) {
-
-    degree 8;
-
+machine SimpleStatic with
+    degree: 8,
+    latch: latch,
+    operation_id: operation_id
+{
     operation power_4<0> x -> y;
 
     col fixed operation_id = [0]*;

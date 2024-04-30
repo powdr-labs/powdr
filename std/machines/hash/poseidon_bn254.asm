@@ -5,7 +5,12 @@ use std::utils::unchanged_until;
 // Note that this relies on the trace table being non-wrapping, so it will
 // only work with the Halo2 backend (which is the only backend that supports
 // the BN254 curve).
-machine PoseidonBN254(FIRSTBLOCK, operation_id) {
+machine PoseidonBN254 with
+    latch: FIRSTBLOCK,
+    operation_id: operation_id,
+    // Allow this machine to be connected via a permutation
+    call_selectors: sel,
+{
 
     // Hashes two "rate" elements and one "capacity" element to one field element
     // by applying the Poseidon permutation and returning the first rate element.
@@ -14,14 +19,11 @@ machine PoseidonBN254(FIRSTBLOCK, operation_id) {
     // hash functions.
     operation poseidon_permutation<0> state[0], state[1], state[2] -> output[0];
 
-    // Allow this machine to be connected via a permutation
-    call_selectors sel;
-
     col witness operation_id;
 
     // Using parameters from https://eprint.iacr.org/2019/458.pdf
     // See https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/poseidonperm_x5_254_3.sage
-    
+
     // The PIL is heavily inspired by Polygon's Poseidon PIL:
     // https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil
 

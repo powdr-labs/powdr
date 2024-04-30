@@ -37,6 +37,7 @@ pub fn test_continuations(case: &str) {
         let mut pipeline = pipeline.with_backend(BackendType::EStarkDump);
         pipeline.compute_proof().unwrap();
         verify(pipeline.output_dir().unwrap()).unwrap();
+
         Ok(())
     };
     let bootloader_inputs = rust_continuations_dry_run(&mut pipeline);
