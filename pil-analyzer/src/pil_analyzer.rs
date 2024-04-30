@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use itertools::Itertools;
-use powdr_ast::parsed::asm::{parse_absolute_path, AbsoluteSymbolPath, SymbolPath};
+use powdr_ast::parsed::asm::{
+    parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
+};
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
@@ -18,7 +20,7 @@ use powdr_ast::analyzed::{
     type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
     PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
 };
-use powdr_parser::{parse, parse_type};
+use powdr_parser::{parse, parse_module, parse_type};
 
 use crate::type_inference::{infer_types, ExpectedType};
 use crate::{side_effect_checker, AnalysisDriver};
@@ -150,6 +152,8 @@ impl PILAnalyzer {
     /// Adds core types if they are not present in the input.
     /// These need to be present because the type checker relies on them.
     fn core_types_if_not_present(&self) -> Option<PILFile> {
+        // We are extracting some specific symbols from the prelude file.
+        let prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../std/prelude.asm"));
         let missing_symbols = ["Constr", "Option"]
             .into_iter()
             .filter(|symbol| {
@@ -157,21 +161,20 @@ impl PILAnalyzer {
                     .known_symbols
                     .contains_key(&format!("std::prelude::{symbol}"))
             })
-            .map(|symbol| match symbol {
-                "Constr" => {
-                    "enum Constr {
-    Identity(expr, expr),
-    Plookup(Option<expr>, expr[], Option<expr>, expr[]),
-    Permutation(Option<expr>, expr[], Option<expr>, expr[]),
-    Connection(expr[], expr[])
-}"
-                }
-                "Option" => "enum Option<T> { None, Some(T) }",
-                _ => unreachable!(),
-            })
-            .join("\n");
-        (!missing_symbols.is_empty())
-            .then(|| parse(None, &format!("namespace std::prelude;\n{missing_symbols}")).unwrap())
+            .collect::<Vec<_>>();
+        (!missing_symbols.is_empty()).then(|| {
+            let module = parse_module(None, prelude).unwrap();
+            let missing_symbols = module
+                .statements
+                .into_iter()
+                .filter_map(|s| match s {
+                    ModuleStatement::SymbolDefinition(s) => missing_symbols
+                        .contains(&s.name.as_str())
+                        .then_some(format!("{s}")),
+                })
+                .join("\n");
+            parse(None, &format!("namespace std::prelude;\n{missing_symbols}")).unwrap()
+        })
     }
 
     /// Check that query and constr functions are used in the correct contexts.

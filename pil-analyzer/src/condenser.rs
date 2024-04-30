@@ -412,8 +412,8 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 }
 
-fn to_constraint<'a, T: FieldElement>(
-    constraint: &Value<'a, T>,
+fn to_constraint<T: FieldElement>(
+    constraint: &Value<'_, T>,
     source: SourceRef,
 ) -> IdentityWithoutID<AlgebraicExpression<T>> {
     match constraint {
@@ -467,7 +467,7 @@ fn to_selected_exprs<'a, T: Clone>(
     }
 }
 
-fn to_option_expr<'a, T: Clone>(value: &Value<'a, T>) -> Option<AlgebraicExpression<T>> {
+fn to_option_expr<T: Clone>(value: &Value<'_, T>) -> Option<AlgebraicExpression<T>> {
     match value {
         Value::Enum("None", None) => None,
         Value::Enum("Some", Some(fields)) => {
@@ -478,14 +478,14 @@ fn to_option_expr<'a, T: Clone>(value: &Value<'a, T>) -> Option<AlgebraicExpress
     }
 }
 
-fn to_vec_expr<'a, T: Clone>(value: &Value<'a, T>) -> Vec<AlgebraicExpression<T>> {
+fn to_vec_expr<T: Clone>(value: &Value<'_, T>) -> Vec<AlgebraicExpression<T>> {
     match value {
         Value::Array(items) => items.iter().map(|item| to_expr(item)).collect(),
         _ => panic!(),
     }
 }
 
-fn to_expr<'a, T: Clone>(value: &Value<'a, T>) -> AlgebraicExpression<T> {
+fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
     if let Value::Expression(expr) = value {
         (*expr).clone()
     } else {

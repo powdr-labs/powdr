@@ -18,11 +18,6 @@ let<T: Add + FromLiteral> sum: int, (int -> T) -> T = |length, f| fold(length, f
 let<T: Ord> max: T, T -> T = |a, b| if a < b { b } else { a };
 let<T: Ord> min: T, T -> T = |a, b| if a < b { a } else { b };
 
-enum Option<T> {
-    None,
-    Some(T)
-}
-
 /// Returns x for Some(x) and f() otherwise.
 let<T> unwrap_or_else: Option<T>, (-> T) -> T = |o, f| match o {
     Option::None => f(),
