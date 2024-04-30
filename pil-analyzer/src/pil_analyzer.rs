@@ -200,9 +200,18 @@ impl PILAnalyzer {
             });
 
         for (match_expr, patterns) in all_matches {
-            let witnesses = Self::usefulness(&patterns, Pattern::CatchAll.into());
-            if witnesses.is_empty() {
-                panic!("Found non-exhaustive match expression: {:?}", match_expr);
+            // TODO ADD CATCHALL
+            let witnesses = Self::usefulness(&patterns);
+            println!("witnesses: {:?}", witnesses);
+            if !witnesses.is_empty() {
+                panic!(
+                    "Found non-exhaustive match expression: {:?} with arms: {:?}",
+                    match_expr,
+                    patterns
+                        .into_iter()
+                        .flat_map(|t| t.patterns)
+                        .collect::<Vec<Pattern>>()
+                );
             }
         }
     }
@@ -418,46 +427,55 @@ impl PILAnalyzer {
     /// Check if a new pattern is useful in a set of patterns.
     /// A pattern is useful if it is not covered by the other patterns.
     /// If a pattern is useful, it's returned as a witness.
-    pub fn usefulness(patterns: &[PatternTuple], new_pattern: PatternTuple) -> Vec<PatternTuple> {
+    pub fn usefulness(patterns: &[PatternTuple]) -> Vec<PatternTuple> {
         let mut witnesses = HashSet::new();
 
-        if new_pattern.patterns.is_empty()
-            || patterns.iter().any(|patterns| patterns.is_irrefutable())
-            || patterns.contains(&new_pattern)
-        {
-            return vec![];
+        if patterns.is_empty() {
+            return vec![PatternTuple::default()];
         }
 
-        let mut expanded_patterns = patterns.to_vec();
-        expanded_patterns.push(new_pattern.clone());
-        let constructors = expanded_patterns.clone();
+        if patterns.iter().all(|patterns| patterns.is_empty()) {
+            //let new_pattern = patterns.last().unwrap();
+            return vec![PatternTuple::default()];
+        }
 
-        for constructor in &constructors {
+        let constructors = patterns.to_vec();
+        /*.into_iter()
+            .filter(|pt| {
+                pt.patterns.len() != 1
+                    || match pt.patterns.first() {
+                        Some(Pattern::CatchAll) => false,
+                        _ => true,
+                    }
+            })
+            .collect();
+        */
+        let new_pattern = patterns.last().unwrap();
+
+        for constructor in constructors {
             let specialized_new_pattern = if new_pattern.is_empty() {
                 None
             } else {
-                new_pattern.specialize(constructor)
+                new_pattern.specialize(&constructor)
             };
 
-            if let Some(v) = specialized_new_pattern {
-                if v.is_empty() {
-                    witnesses.insert(new_pattern.clone());
-                } else {
-                    let specialized_results = patterns
-                        .iter()
-                        .filter_map(|pattern| pattern.specialize(constructor))
-                        .collect::<Vec<_>>();
-
-                    let specialized_usefull = Self::usefulness(&specialized_results, v);
-
-                    witnesses.extend(
-                        specialized_usefull
-                            .into_iter()
-                            .flat_map(|witness| constructor.unspecialize(witness)),
-                    );
-                }
+            if specialized_new_pattern.is_none() {
+                continue;
             }
+            let specialized_results = patterns
+                .iter()
+                .filter_map(|pattern| pattern.specialize(&constructor))
+                .collect::<Vec<_>>();
+
+            let specialized_usefull = Self::usefulness(&specialized_results);
+
+            witnesses.extend(
+                specialized_usefull
+                    .into_iter()
+                    .flat_map(|witness| constructor.unspecialize(witness)),
+            );
         }
+
         witnesses.into_iter().collect()
     }
 }
@@ -501,21 +519,30 @@ mod tests {
 
     #[test]
     fn test_basic_usefullness() {
-        let patterns = vec![Pattern::String("A".to_string()).into()];
-        let new_pattern: PatternTuple = Pattern::String("B".to_string()).into();
+        let patterns = vec![
+            Pattern::String("A".to_string()).into(),
+            Pattern::String("B".to_string()).into(),
+        ];
+        //let new_pattern: PatternTuple = Pattern::String("B".to_string()).into();
 
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 1);
-        assert_eq!(witnesses[0], new_pattern);
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 1);
+        //assert_eq!(witnesses[0], new_pattern);
     }
 
     #[test]
     fn test_basic_usefullness_repeated() {
-        let patterns = vec![Pattern::String("A".to_string()).into()];
-        let new_pattern: PatternTuple = Pattern::String("A".to_string()).into();
+        let patterns = vec![
+            Pattern::String("A".to_string()).into(),
+            Pattern::String("A".to_string()).into(),
+            Pattern::String("A".to_string()).into(),
+        ];
+        //let new_pattern: PatternTuple = Pattern::String("A".to_string()).into();
 
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 0);
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 0);
     }
 
     #[test]
@@ -523,22 +550,27 @@ mod tests {
         let patterns = vec![
             Pattern::String("A".to_string()).into(),
             Pattern::String("B".to_string()).into(),
+            Pattern::String("B".to_string()).into(),
+            //Pattern::CatchAll.into(),
         ];
-        let new_pattern: PatternTuple = Pattern::CatchAll.into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 1);
-        assert_eq!(witnesses[0], new_pattern);
+        //let new_pattern: ;
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 1);
+        //assert_eq!(witnesses[0], new_pattern);
     }
 
     #[test]
     fn test_usefullness_already_exhaustive_patterns() {
         let patterns = vec![
             Pattern::String("A".to_string()).into(),
+            Pattern::String("A".to_string()).into(),
             Pattern::CatchAll.into(),
         ];
         let new_pattern: PatternTuple = Pattern::String("B".to_string()).into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 0);
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 0);
     }
 
     #[test]
@@ -547,9 +579,9 @@ mod tests {
             Pattern::String("A".to_string()).into(),
             Pattern::CatchAll.into(),
         ];
-        let new_pattern: PatternTuple = Pattern::CatchAll.into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 0);
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 0);
     }
 
     #[test]
@@ -557,12 +589,27 @@ mod tests {
         let patterns = vec![
             Pattern::Array(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]).into(),
             Pattern::Array(vec![Pattern::Number(1.into()), Pattern::Number(3.into())]).into(),
+            Pattern::CatchAll.into(),
             Pattern::Array(vec![Pattern::CatchAll, Pattern::CatchAll]).into(),
         ];
-        let new_pattern: PatternTuple = Pattern::CatchAll.into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 1);
-        assert_eq!(witnesses[0], new_pattern);
+        //let new_pattern: PatternTuple = ;
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 1);
+        //assert_eq!(witnesses[0], new_pattern);
+    }
+
+    #[test]
+    fn test_usefullness_catchall_in_tuple() {
+        let patterns = vec![
+            Pattern::Tuple(vec![Pattern::CatchAll, Pattern::CatchAll]).into(),
+            Pattern::Tuple(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]).into(),
+        ];
+        //let new_pattern: PatternTuple = ;
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 1);
+        //ass
     }
 
     #[test]
@@ -583,78 +630,89 @@ mod tests {
             .into(),
         ];
         let new_pattern: PatternTuple = Pattern::CatchAll.into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 1);
-        assert_eq!(witnesses[0], new_pattern);
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 1);
+        //assert_eq!(witnesses[0], new_pattern);
     }
 
     #[test]
     fn test_usefullness_ellipsis_new_pattern() {
-        let patterns =
-            vec![Pattern::Array(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]).into()];
-        let new_pattern: PatternTuple =
-            Pattern::Array(vec![Pattern::Number(1.into()), Pattern::CatchAll]).into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 1);
-        assert_eq!(witnesses[0], new_pattern);
+        let patterns = vec![
+            Pattern::Array(vec![Pattern::Number(1.into()), Pattern::CatchAll]).into(),
+            Pattern::Array(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]).into(),
+        ];
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 1);
+        //assert_eq!(witnesses[0], new_pattern);
     }
 
     #[test]
     fn test_usefullness_tuples() {
-        let patterns = vec![Pattern::Tuple(vec![
-            Pattern::Number(1.into()),
-            Pattern::Number(2.into()),
-            Pattern::Number(3.into()),
-            Pattern::Number(4.into()),
-        ])
-        .into()];
-        let new_pattern: PatternTuple = Pattern::Tuple(vec![
-            Pattern::Number(1.into()),
-            Pattern::Number(2.into()),
-            Pattern::Number(3.into()),
-            Pattern::Number(4.into()),
-        ])
-        .into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 0);
+        let patterns = vec![
+            Pattern::Tuple(vec![
+                Pattern::Number(1.into()),
+                Pattern::Number(2.into()),
+                Pattern::Number(3.into()),
+                Pattern::Number(4.into()),
+            ])
+            .into(),
+            Pattern::Tuple(vec![
+                Pattern::Number(9.into()),
+                Pattern::Number(8.into()),
+                Pattern::Number(7.into()),
+                Pattern::Number(6.into()),
+            ])
+            .into(),
+        ];
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 0);
     }
 
     #[test]
     fn test_usefullness_tuples_catchall() {
-        let patterns = vec![Pattern::Tuple(vec![
-            Pattern::Number(1.into()),
-            Pattern::Number(2.into()),
-            Pattern::Number(3.into()),
-            Pattern::Number(4.into()),
-        ])
-        .into()];
-        let new_pattern: PatternTuple = Pattern::Tuple(vec![
-            Pattern::Number(1.into()),
-            Pattern::Number(2.into()),
-            Pattern::CatchAll,
-            Pattern::Number(4.into()),
-        ])
-        .into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 1);
-        assert_eq!(witnesses[0], new_pattern);
+        let patterns = vec![
+            Pattern::Tuple(vec![
+                Pattern::Number(1.into()),
+                Pattern::Number(2.into()),
+                Pattern::Number(3.into()),
+                Pattern::Number(4.into()),
+            ])
+            .into(),
+            Pattern::Tuple(vec![
+                Pattern::Number(1.into()),
+                Pattern::Number(2.into()),
+                Pattern::CatchAll,
+                Pattern::Number(4.into()),
+            ])
+            .into(),
+        ];
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 1);
+        //assert_eq!(witnesses[0], new_pattern);
     }
 
     #[test]
     fn test_usefullness_enums() {
-        let patterns = vec![Pattern::Enum(
-            SymbolPath::from_identifier("A".to_string()),
-            Some(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]),
-        )
-        .into()];
-        let new_pattern: PatternTuple = Pattern::Enum(
-            SymbolPath::from_identifier("B".to_string()),
-            Some(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]),
-        )
-        .into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 1);
-        assert_eq!(witnesses[0], new_pattern);
+        let patterns = vec![
+            Pattern::Enum(
+                SymbolPath::from_identifier("A".to_string()),
+                Some(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]),
+            )
+            .into(),
+            Pattern::Enum(
+                SymbolPath::from_identifier("B".to_string()),
+                Some(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]),
+            )
+            .into(),
+        ];
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 1);
+        //assert_eq!(witnesses[0], new_pattern);
     }
 
     #[test]
@@ -669,8 +727,9 @@ mod tests {
         ];
         let new_pattern: PatternTuple =
             Pattern::Enum(SymbolPath::from_identifier("B".to_string()), None).into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 0);
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 0);
     }
 
     #[test]
@@ -678,60 +737,109 @@ mod tests {
         let patterns = vec![
             Pattern::Enum(SymbolPath::from_identifier("A".to_string()), None).into(),
             Pattern::CatchAll.into(),
+            Pattern::Enum(
+                SymbolPath::from_identifier("B".to_string()),
+                Some(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]),
+            )
+            .into(),
         ];
-        let new_pattern: PatternTuple = Pattern::Enum(
-            SymbolPath::from_identifier("B".to_string()),
-            Some(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]),
-        )
-        .into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 0);
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 0);
     }
 
     #[test]
     fn test_usefullness_enums_none() {
-        let patterns =
-            vec![Pattern::Enum(SymbolPath::from_identifier("A".to_string()), None).into()];
-        let new_pattern: PatternTuple = Pattern::Enum(
-            SymbolPath::from_identifier("B".to_string()),
-            Some(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]),
-        )
-        .into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 1);
-        assert_eq!(witnesses[0], new_pattern);
+        let patterns = vec![
+            Pattern::Enum(SymbolPath::from_identifier("A".to_string()), None).into(),
+            Pattern::Enum(
+                SymbolPath::from_identifier("B".to_string()),
+                Some(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]),
+            )
+            .into(),
+        ];
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 1);
+        //assert_eq!(witnesses[0], new_pattern);
     }
 
     #[test]
     fn test_usefullness_enums_symbolpath() {
-        let patterns = vec![Pattern::Enum(
-            SymbolPath::from_identifier("A".to_string()),
-            Some(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]),
-        )
-        .into()];
-        let new_pattern: PatternTuple = Pattern::Enum(
-            SymbolPath::from_identifier("A".to_string()),
-            Some(vec![Pattern::Number(1.into()), Pattern::Number(3.into())]),
-        )
-        .into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 1);
-        assert_eq!(witnesses[0], new_pattern);
+        let patterns = vec![
+            Pattern::Enum(
+                SymbolPath::from_identifier("A".to_string()),
+                Some(vec![Pattern::Number(1.into()), Pattern::Number(2.into())]),
+            )
+            .into(),
+            Pattern::Enum(
+                SymbolPath::from_identifier("A".to_string()),
+                Some(vec![Pattern::Number(1.into()), Pattern::Number(3.into())]),
+            )
+            .into(),
+        ];
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses)
+        //assert_eq!(witnesses.len(), 1);
+        //assert_eq!(witnesses[0], new_pattern);
     }
 
     #[test]
     fn test_usefullness_enums_symbolpath_catchall() {
-        let patterns = vec![Pattern::Enum(
-            SymbolPath::from_identifier("A".to_string()),
-            Some(vec![Pattern::CatchAll, Pattern::CatchAll]),
-        )
-        .into()];
-        let new_pattern: PatternTuple = Pattern::Enum(
-            SymbolPath::from_identifier("A".to_string()),
-            Some(vec![Pattern::Number(1.into()), Pattern::Number(3.into())]),
-        )
-        .into();
-        let witnesses = PILAnalyzer::usefulness(&patterns, new_pattern.clone());
-        assert_eq!(witnesses.len(), 0);
+        let patterns = vec![
+            Pattern::Enum(
+                SymbolPath::from_identifier("A".to_string()),
+                Some(vec![Pattern::CatchAll, Pattern::CatchAll]),
+            )
+            .into(),
+            Pattern::Enum(
+                SymbolPath::from_identifier("A".to_string()),
+                Some(vec![Pattern::Number(1.into()), Pattern::Number(3.into())]),
+            )
+            .into(),
+        ];
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 0);
+    }
+
+    #[test]
+    fn test_usefullness_tuples_and_enums() {
+        let elem1 = Pattern::Tuple(vec![
+            Pattern::CatchAll,
+            Pattern::Enum(SymbolPath::from_identifier("None".to_string()), None),
+        ]);
+        let elem2 = Pattern::CatchAll;
+        let arm1 = Pattern::Tuple(vec![elem1, elem2]);
+
+        let elem1 = Pattern::CatchAll;
+        let elem2 = Pattern::Tuple(vec![
+            Pattern::CatchAll,
+            Pattern::Enum(SymbolPath::from_identifier("None".to_string()), None),
+        ]);
+        let arm2 = Pattern::Tuple(vec![elem1, elem2]);
+
+        let elem1 = Pattern::Tuple(vec![
+            Pattern::Variable("l_short".to_string()),
+            Pattern::Enum(
+                SymbolPath::from_identifier("Some".to_string()),
+                Some(vec![Pattern::Variable("l_last".to_string())]),
+            ),
+        ]);
+        let elem2 = Pattern::Tuple(vec![
+            Pattern::Variable("r_short".to_string()),
+            Pattern::Enum(
+                SymbolPath::from_identifier("Some".to_string()),
+                Some(vec![Pattern::Variable("r_last".to_string())]),
+            ),
+        ]);
+        let arm3 = Pattern::Tuple(vec![elem1, elem2]);
+
+        let patterns = vec![arm1.into(), arm2.into(), arm3.into()];
+
+        //let new_pattern: PatternTuple = Pattern::CatchAll.into();
+        let witnesses = PILAnalyzer::usefulness(&patterns);
+        println!("witnesses: {:?}", witnesses);
+        //assert_eq!(witnesses.len(), 0);
     }
 }

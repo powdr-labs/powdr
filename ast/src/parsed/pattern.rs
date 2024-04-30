@@ -27,8 +27,8 @@ impl PatternTuple {
 
     /// Example:
     /// If (_, _) was obtained from specialization, it is not true that the pattern is irrefutable
-    ///  because having more than one element implies that the evaluation is performed on internal patterns.
-    /// If on the other hand the pattern is (Pattern::Tuple(_,_), ), irrefutability applies in the standard way.
+    /// because having more than one element implies that the evaluation is performed on internal patterns.
+    /// If, on the other hand, the pattern tuple is `(Pattern::Tuple(_,_), )``, irrefutability applies in the standard way.
     pub fn is_irrefutable(&self) -> bool {
         if self.patterns.len() == 1 {
             self.patterns[0].is_irrefutable()
@@ -139,6 +139,12 @@ impl PatternTuple {
     }
 }
 
+impl Default for PatternTuple {
+    fn default() -> Self {
+        PatternTuple { patterns: vec![] }
+    }
+}
+
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
 )]
@@ -190,7 +196,6 @@ impl Pattern {
         match (constructor, self) {
             (_, Pattern::CatchAll) => Some(PatternTuple { patterns: vec![] }),
             (Pattern::CatchAll, _) => None,
-            //(Pattern::CatchAll, Pattern::CatchAll) => Some(PatternTuple { patterns: vec![] }),
             (Pattern::Number(y), Pattern::Number(x)) => {
                 (y == x).then_some(PatternTuple { patterns: vec![] })
             }
@@ -232,8 +237,8 @@ impl Pattern {
                     patterns: constructors,
                 })
             }
-            (Pattern::Variable(_), Pattern::Variable(var)) => Some(PatternTuple {
-                patterns: [Pattern::Variable(var.clone())].to_vec(),
+            (_, Pattern::Variable(var)) => Some(PatternTuple {
+                patterns: [].to_vec(),
             }),
 
             (Pattern::Enum(path1, patterns1), Pattern::Enum(path2, patterns2)) => {
@@ -241,14 +246,13 @@ impl Pattern {
                     return None;
                 }
                 match (patterns1, patterns2) {
-                    (Some(_), Some(_)) => {
+                    (_, Some(_)) => {
                         let pats = patterns2.as_ref().unwrap();
                         Some(PatternTuple {
                             patterns: pats.clone(),
                         })
                     }
-
-                    _ => None,
+                    (_, None) => Some(PatternTuple { patterns: vec![] }),
                 }
             }
             _ => None,
