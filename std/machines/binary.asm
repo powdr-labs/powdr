@@ -2,7 +2,12 @@ use std::convert::int;
 use std::utils::cross_product;
 use std::utils::unchanged_until;
 
-machine Binary(latch, operation_id) {
+machine Binary with
+    latch: latch,
+    operation_id: operation_id,
+    // Allow this machine to be connected via a permutation
+    call_selectors: sel,
+{
 
     // lower bound degree is 262144
 
@@ -11,9 +16,6 @@ machine Binary(latch, operation_id) {
     operation or<1> A, B -> C;
 
     operation xor<2> A, B -> C;
-
-    // Allow this machine to be connected via a permutation
-    call_selectors sel;
 
     col witness operation_id;
     unchanged_until(operation_id, latch);

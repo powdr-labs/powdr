@@ -1,4 +1,7 @@
-machine Other(latch, operation_id) {
+machine Other with
+    latch: latch,
+    operation_id: operation_id
+{
     operation nothing<0>;
 
     col fixed latch = [1]*;

@@ -126,7 +126,7 @@ jobs:
     - name: Unpack EStarkPolygon built dependencies
       run: tar --zstd -xf pil-stark-prover-deps.tar.zst
     - name: Run EStark Polygon test
-      run: cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E "test(=test_vec_median_estark_polygon)"
+      run: cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E "test(=vec_median_estark_polygon)"
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
 

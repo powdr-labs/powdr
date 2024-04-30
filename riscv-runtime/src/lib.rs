@@ -12,6 +12,8 @@ use core::panic::PanicInfo;
 use crate::fmt::print_str;
 
 mod allocator;
+pub mod arith;
+pub mod ec;
 pub mod fmt;
 pub mod hash;
 pub mod input;

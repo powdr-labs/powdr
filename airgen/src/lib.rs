@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 
 use powdr_ast::{
     asm_analysis::{AnalysisASMFile, Item, LinkDefinitionStatement, SubmachineDeclaration},
-    object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph, TypeOrExpression},
+    object::{
+        Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph, TypeOrExpression,
+    },
     parsed::{
         asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef},
         PilStatement,
@@ -28,6 +30,22 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
 
     // we start from the main machine
     let main_ty = match non_std_machines.len() {
+        0 => {
+            // There is no machine. Create an empty main machine but retain
+            // all PIL utility definitions.
+            let main = Machine {
+                location: main_location.clone(),
+                latch: None,
+                operation_id: None,
+                call_selectors: None,
+            };
+            return PILGraph {
+                main,
+                entry_points: Default::default(),
+                objects: [(main_location, Default::default())].into(),
+                definitions: utility_functions(input),
+            };
+        }
         // if there is a single machine, treat it as main
         1 => (*non_std_machines.keys().next().unwrap()).clone(),
         // otherwise, use the machine called `MAIN`
@@ -118,8 +136,16 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         })
         .collect();
 
-    // Extract all the pil utility definitions
-    let definitions = input
+    PILGraph {
+        main,
+        entry_points,
+        objects,
+        definitions: utility_functions(input),
+    }
+}
+
+fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, TypeOrExpression> {
+    asm_file
         .items
         .into_iter()
         .filter_map(|(n, v)| match v {
@@ -127,14 +153,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
             Item::TypeDeclaration(type_decl) => Some((n, TypeOrExpression::Type(type_decl))),
             _ => None,
         })
-        .collect();
-
-    PILGraph {
-        main,
-        entry_points,
-        objects,
-        definitions,
-    }
+        .collect()
 }
 
 struct ASMPILConverter<'a> {
@@ -182,7 +201,7 @@ impl<'a> ASMPILConverter<'a> {
             panic!();
         };
 
-        let degree = input.degree.map(|s| s.degree);
+        let degree = input.degree;
 
         self.submachines = input.submachines;
 

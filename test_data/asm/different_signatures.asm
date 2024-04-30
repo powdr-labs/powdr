@@ -1,7 +1,4 @@
-machine Main {
-
-    degree 16;
-
+machine Main with degree: 16 {
     DifferentSignatures sub;
 
     reg pc[@pc];
