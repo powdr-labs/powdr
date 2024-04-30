@@ -7,6 +7,7 @@
 - [Hello World using the CLI](./hello_world.md)
 - [Hello World using powdr as a library](./powdr_crate.md)
 - [Hello World verified on Ethereum - CLI](./hello_world_ethereum.md)
+- [Hello World verified on Ethereum via proof aggregation - CLI](./hello_world_ethereum_aggregation.md)
 
 # Reference Guide
 <!-- markdown-link-check-disable-next-line -->

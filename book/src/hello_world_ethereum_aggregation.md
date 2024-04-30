@@ -1,11 +1,11 @@
 # Hello World on Ethereum via proof aggregation
 
-This example is yet another variation of the previous `Hello World` (TODO
-link), still targeting verification on Ethereum but supporting more complex
+This example is yet another variation of the previous [Hello World on Ethereum](./hello_world_ethereum.md)
+example, still targeting verification on Ethereum but supporting more complex
 programs. As noted in the previous section, complex programs can lead to large
 Solidity verifiers that exceed the contract size limit on Ethereum. One
 solution to that problem is to create proofs using the Poseidon transcript, as
-we did in the first example (TODO put link/ref here), and then use proof
+we did in the [first example](./hello_world.md), and then use proof
 recursion to create a proof that we know we will be able to verify on Ethereum.
 
 A recursive SNARK works by generating a proof for a circuit that verifies
@@ -30,7 +30,7 @@ powdr setup 22 --backend halo2 --field bn254
 ```
 
 We can re-use the new large `params.bin` for both initial and recursive proofs.
-Let's start by re-computing our Poseidon proof like in the first example (TODO: link),
+Let's start by re-computing our Poseidon proof like in the [first example](./hello_world.md),
 but using our new setup file:
 ```console
 powdr pil test_data/asm/book/hello_world.asm --field bn254 --inputs 0 --prove-with halo2 --backend-options "poseidon" -f --params params.bin
