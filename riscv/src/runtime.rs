@@ -158,11 +158,11 @@ impl Runtime {
                 instr_register_params(0, 25, 25) // 25 registers for the states, covered by 26 registers of riscv
             )], 
             0,
-            // init call
-            // TODO: why init call calls keccakf? similar to poseidon
-            std::iter::once("keccakf;".to_string())
-                // zero out output register
-                .chain(std::iter::once(format!("{} <=X= 0;", reg(0)))),
+            // zero out output registers
+            // TODO: I did this similar to what poseidon did, 
+            // but I'm concerned that any preexisting values in the registers aren't saved.
+            // Can I simply leave this blank?
+            (0..25).map(|i| format!("{} <=X= 0;", reg(i))),
         );
         
         // The keccakf syscall has a single argument passed on x10, the
