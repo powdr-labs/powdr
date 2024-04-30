@@ -156,15 +156,15 @@ impl Runtime {
             [format!(
                 "instr keccakf ~ keccakf.keccakf {};", // operation
                 instr_register_params(0, 25, 25) // 25 registers for the states, covered by 26 registers of riscv
-            )], 
+            )],
             0,
             // zero out output registers
-            // TODO: I did this similar to what poseidon did, 
+            // TODO: I did this similar to what poseidon did,
             // but I'm concerned that any preexisting values in the registers aren't saved.
             // Can I simply leave this blank?
             (0..25).map(|i| format!("{} <=X= 0;", reg(i))),
         );
-        
+
         // The keccakf syscall has a single argument passed on x10, the
         // memory address of the 25 field element input array.
         let implementation =
