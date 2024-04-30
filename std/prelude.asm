@@ -17,8 +17,8 @@ enum Option<T> {
 enum Constr {
     /// A polynomial identity.
     Identity(expr, expr),
-    /// A (polynomial) lookup constraint with selectors.
-    Plookup(Option<expr>, expr[], Option<expr>, expr[]),
+    /// A lookup constraint with selectors.
+    Lookup(Option<expr>, expr[], Option<expr>, expr[]),
     /// A permutation constraint with selectors.
     Permutation(Option<expr>, expr[], Option<expr>, expr[]),
     /// A connection constraint (copy constraint).

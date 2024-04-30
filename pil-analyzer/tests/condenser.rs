@@ -158,7 +158,7 @@ pub fn constructed_constraints() {
             let y;
             let z;
             Constr::Identity(x, y);
-            Constr::Plookup(Option::Some(1), [x, 3], Option::None, [y, z]);
+            Constr::Lookup(Option::Some(1), [x, 3], Option::None, [y, z]);
             Constr::Permutation(Option::None, [x, 3], Option::Some(x), [y, z]);
             Constr::Connection([x, y], [z, 3]);
     "#;

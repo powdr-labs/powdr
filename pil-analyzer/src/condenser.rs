@@ -424,9 +424,9 @@ fn to_constraint<T: FieldElement>(
                 to_expr(&fields[0]) - to_expr(&fields[1]),
             )
         }
-        Value::Enum(kind @ "Plookup" | kind @ "Permutation", Some(fields)) => {
+        Value::Enum(kind @ "Lookup" | kind @ "Permutation", Some(fields)) => {
             assert_eq!(fields.len(), 4);
-            let kind = if *kind == "Plookup" {
+            let kind = if *kind == "Lookup" {
                 IdentityKind::Plookup
             } else {
                 IdentityKind::Permutation
