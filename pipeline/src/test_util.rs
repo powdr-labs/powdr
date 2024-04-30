@@ -1,6 +1,5 @@
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
-use powdr_executor::witgen::extract_publics;
 use powdr_number::{buffered_write_file, BigInt, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::path::PathBuf;
