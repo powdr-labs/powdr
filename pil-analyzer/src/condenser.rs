@@ -3,7 +3,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    iter::{self, once},
+    iter::once,
     str::FromStr,
     sync::Arc,
 };
@@ -384,8 +384,24 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         constraints: Arc<Value<'a, T>>,
         source: SourceRef,
     ) -> Result<(), evaluator::EvalError> {
+        match constraints.as_ref() {
+            Value::Array(items) => items
+                .iter()
+                .cloned()
+                .try_for_each(|item| self.add_constraint(item, source.clone())),
+            _ => self.add_constraint(constraints, source),
+        }
+    }
+}
+
+impl<'a, T: FieldElement> Condenser<'a, T> {
+    fn add_constraint(
+        &mut self,
+        constraint: Arc<Value<'a, T>>,
+        source: SourceRef,
+    ) -> Result<(), evaluator::EvalError> {
         // TODO also handle the lookups and so on.
-        let identities: Box<dyn Iterator<Item = _>> = match constraints.as_ref() {
+        match constraint.as_ref() {
             Value::Enum("Identity", Some(fields)) => {
                 let [left, right] = &fields[..] else {
                     panic!();
@@ -396,27 +412,17 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                 let Value::Expression(right) = right.as_ref() else {
                     panic!()
                 };
-                Box::new(iter::once((left, right)))
+                self.new_constraints
+                    .push(IdentityWithoutID::from_polynomial_identity(
+                        source,
+                        left.clone() - right.clone(),
+                    ));
             }
-            Value::Identity(left, right) => Box::new(iter::once((left, right))),
-            Value::Array(items) => Box::new(items.iter().map(|item| match item.as_ref() {
-                Value::Identity(left, right) => (left, right),
-                _ => panic!("Expected constraint, but got {item}"),
-            })),
-            _ => panic!("Expected constraint but got {constraints}"),
-        };
-        for (left, right) in identities {
-            self.new_constraints
-                .push(IdentityWithoutID::from_polynomial_identity(
-                    source.clone(),
-                    left.clone() - right.clone(),
-                ));
+            _ => panic!("Expected constraint but got {constraint}"),
         }
         Ok(())
     }
-}
 
-impl<'a, T> Condenser<'a, T> {
     fn find_unused_name(&self, name: &str) -> String {
         once(None)
             .chain((1..).map(Some))
