@@ -18,7 +18,7 @@ The expression language allows the following operators, in order of increased pr
 - lambda functions: ``|params| body``. Examples: ``|i| i`` (the identity), ``|a, b| a + b`` (sum)
 - ``||`` - logical or
 - ``&&`` - logical and
-- ``<``, ``<=``, ``==``, ``!=``, ``>=``, ``>`` - comparisons
+- ``<``, ``<=``, ``==``, ``!=``, ``>=``, ``>`` - comparisons and ``=`` - identity operator
 - ``|`` - bitwise or
 - ``^`` - bitwise xor
 - ``&`` - bitwise and
