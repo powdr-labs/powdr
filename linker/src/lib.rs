@@ -615,7 +615,7 @@ machine NegativeForUnsigned {
     #[test]
     fn instr_external_generated_pil() {
         let asm = r"
-machine SubVM(latch, operation_id) {
+machine SubVM with latch: latch, operation_id: operation_id {
     operation add5<0> x -> y;
 
     col witness operation_id;

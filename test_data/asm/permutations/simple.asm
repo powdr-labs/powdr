@@ -1,10 +1,13 @@
-machine Binary(latch, operation_id) {
+machine Binary with
+    latch: latch,
+    operation_id: operation_id,
+    call_selectors: sel,
+{
     operation or<0> A, B -> C;
     col witness operation_id;
     col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
 
     // check that we can reference the call_selectors
-    call_selectors sel;
     let sum_sel = std::array::sum(sel);
 
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
@@ -30,9 +33,7 @@ machine Binary(latch, operation_id) {
     {A_byte, B_byte, C_byte} in {P_A, P_B, P_C};
 }
 
-machine Main {
-    degree 65536;
-
+machine Main with degree: 65536 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

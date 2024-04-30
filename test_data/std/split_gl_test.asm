@@ -1,15 +1,13 @@
 use std::machines::split::split_gl::SplitGL;
 
 
-machine Main {
+machine Main with degree: 65536 {
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];
     reg X2[<=];
     reg low;
     reg high;
-
-    degree 65536;
 
     SplitGL split_machine;
 

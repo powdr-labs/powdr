@@ -3,10 +3,7 @@ use std::machines::write_once_memory::WriteOnceMemory;
 // Uses a simple write-once memory, but without an mstore operation.
 // As a result, this only works if the content of the `value` column has
 // been provided externally.
-machine Main {
-
-    degree 256;
-
+machine Main with degree: 256 {
     WriteOnceMemory memory;
 
     reg pc[@pc];

@@ -1,7 +1,9 @@
 // Write-once memory with key (ADDR1, ADDR2) and value (v1, v2)
 // This is similar to std::machines::write_once_memory::WriteOnceMemory, but has
 // two address and value columns.
-machine WriteOnceMemory(LATCH, _) {
+machine WriteOnceMemory with
+    latch: LATCH
+{
 
     operation access ADDR1, ADDR2, v1, v2 ->;
 
@@ -13,10 +15,7 @@ machine WriteOnceMemory(LATCH, _) {
     let v2;
 }
 
-machine Main {
-
-    degree 256;
-
+machine Main with degree: 256 {
     reg pc[@pc];
     reg X1[<=];
     reg X2[<=];
