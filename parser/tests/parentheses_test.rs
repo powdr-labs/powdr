@@ -45,6 +45,7 @@ mod test {
             ("(a + b)(2);", "(a + b)(2);"),
             // // Index access
             ("(a + b)[2];", "(a + b)[2];"),
+            ("(i < 7) && (6 >= -i);", "i < 7 && 6 >= -i;"),
         ];
 
         for test_case in test_cases {

@@ -637,25 +637,23 @@ impl<E: Display> Expression<E> {
         right: &Expression<E>,
         f: &mut Formatter<'_>,
     ) -> Result {
-        let use_left_parentheses = left.require_parentheses()
-            || match left.precedence() {
-                Some(left_precedence) => {
-                    left_precedence > op.precedence()
-                        || (left_precedence == op.precedence()
-                            && op.associativity() == BinaryOperatorAssociativity::Right)
-                }
-                None => false,
-            };
+        let use_left_parentheses = match left.precedence() {
+            Some(left_precedence) => {
+                left_precedence > op.precedence()
+                    || (left_precedence == op.precedence()
+                        && op.associativity() != BinaryOperatorAssociativity::Left)
+            }
+            None => false,
+        };
 
-        let use_right_parentheses = right.require_parentheses()
-            || match right.precedence() {
-                Some(right_precedence) => {
-                    right_precedence > op.precedence()
-                        || (right_precedence == op.precedence()
-                            && op.associativity() == BinaryOperatorAssociativity::Left)
-                }
-                None => false,
-            };
+        let use_right_parentheses = match right.precedence() {
+            Some(right_precedence) => {
+                right_precedence > op.precedence()
+                    || (right_precedence == op.precedence()
+                        && op.associativity() != BinaryOperatorAssociativity::Right)
+            }
+            None => false,
+        };
 
         let left_string = if use_left_parentheses {
             format!("({})", left)

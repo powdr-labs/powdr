@@ -21,7 +21,7 @@ namespace std::convert(65536);
 namespace T(65536);
     col fixed first_step = [1] + [0]*;
     col fixed line(i) { i };
-    let ops: int -> bool = (|i| (i < 7) && (6 >= -i));
+    let ops: int -> bool = (|i| i < 7 && 6 >= -i);
     col witness pc;
     col witness XInv;
     col witness XIsZero;
