@@ -7,7 +7,6 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::generator::Generator;
-use crate::witgen::global_constraints::GlobalConstraints;
 use crate::witgen::machines::write_once_memory::WriteOnceMemory;
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolyID};
@@ -28,9 +27,8 @@ pub struct ExtractionOutput<'a, T: FieldElement> {
 pub fn split_out_machines<'a, T: FieldElement>(
     fixed: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<Expression<T>>>,
-    global_range_constraints: &GlobalConstraints<T>,
 ) -> ExtractionOutput<'a, T> {
-    let fixed_lookup = FixedLookup::new(global_range_constraints.clone());
+    let fixed_lookup = FixedLookup::new(fixed.global_range_constraints().clone());
 
     let mut machines: Vec<KnownMachine<T>> = vec![];
 
@@ -126,7 +124,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
             fixed,
             &connecting_identities,
             &machine_witnesses,
-            global_range_constraints,
         ) {
             log::debug!("Detected machine: memory");
             machines.push(KnownMachine::DoubleSortedWitnesses(machine));
@@ -144,7 +141,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
             &connecting_identities,
             &machine_identities,
             &machine_witnesses,
-            global_range_constraints,
         ) {
             log::debug!("Detected machine: block");
             machines.push(KnownMachine::BlockMachine(machine));
@@ -175,7 +171,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 &connecting_identities,
                 machine_identities,
                 machine_witnesses,
-                global_range_constraints.clone(),
                 Some(latch),
             )));
         }

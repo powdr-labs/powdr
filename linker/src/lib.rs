@@ -338,6 +338,24 @@ mod test {
     }
 
     #[test]
+    fn compile_really_empty_vm() {
+        let expectation = r#"namespace main(1024);
+"#;
+
+        let graph = parse_analyze_and_compile::<GoldilocksField>("");
+        let pil = link(graph).unwrap();
+        assert_eq!(extract_main(&format!("{pil}")), expectation);
+    }
+
+    #[test]
+    fn compile_pil_without_machine() {
+        let input = "    let even = std::array::new(5, (|i| (2 * i)));";
+        let graph = parse_analyze_and_compile::<GoldilocksField>(input);
+        let pil = link(graph).unwrap().to_string();
+        assert_eq!(&pil[0..input.len()], input);
+    }
+
+    #[test]
     fn compile_different_signatures() {
         let expectation = r#"namespace main(16);
     pol commit _operation_id(i) query std::prover::Query::Hint(4);
@@ -577,7 +595,7 @@ machine Machine {
 
     #[test]
     #[should_panic(expected = "Number passed to unsigned parameter is negative or too large")]
-    pub fn negative_for_unsigned() {
+    fn negative_for_unsigned() {
         let source = r#"
 machine NegativeForUnsigned {
     reg pc[@pc];
@@ -595,9 +613,9 @@ machine NegativeForUnsigned {
     }
 
     #[test]
-    pub fn instr_external_generated_pil() {
+    fn instr_external_generated_pil() {
         let asm = r"
-machine SubVM(latch, operation_id) {
+machine SubVM with latch: latch, operation_id: operation_id {
     operation add5<0> x -> y;
 
     col witness operation_id;
@@ -675,7 +693,7 @@ namespace main_vm(1024);
     }
 
     #[test]
-    pub fn permutation_instructions() {
+    fn permutation_instructions() {
         let expected = r#"namespace main(65536);
     pol commit _operation_id(i) query std::prover::Query::Hint(13);
     pol constant _block_enforcer_last_step = [0]* + [1];

@@ -27,6 +27,7 @@ use powdr_ast::{
 use powdr_number::{FieldElement, LargeInt};
 use powdr_riscv_syscalls::SYSCALL_REGISTERS;
 
+pub mod arith;
 pub mod poseidon_gl;
 
 /// Initial value of the PC.
@@ -730,12 +731,84 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "poseidon_gl" => {
                 assert!(args.is_empty());
                 let inputs = (0..12)
-                    .map(|i| self.proc.get_reg(SYSCALL_REGISTERS[i]).into_fe())
+                    .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
                     .collect::<Vec<_>>();
                 let result = poseidon_gl::poseidon_gl(&inputs);
                 (0..4).for_each(|i| {
                     self.proc
-                        .set_reg(SYSCALL_REGISTERS[i], Elem::Field(result[i]))
+                        .set_reg(&register_by_idx(i), Elem::Field(result[i]))
+                });
+                vec![]
+            }
+            "affine_256" => {
+                assert!(args.is_empty());
+                // take input from registers
+                let x1 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 3)).into_fe())
+                    .collect::<Vec<_>>();
+                let y1 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 11)).into_fe())
+                    .collect::<Vec<_>>();
+                let x2 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 19)).into_fe())
+                    .collect::<Vec<_>>();
+                let result = arith::affine_256(&x1, &y1, &x2);
+                // store result in registers
+                (0..8).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i + 3), Elem::Field(result.0[i]))
+                });
+                (0..8).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i + 11), Elem::Field(result.1[i]))
+                });
+                vec![]
+            }
+            "ec_add" => {
+                assert!(args.is_empty());
+                // take input from registers
+                let x1 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 4)).into_fe())
+                    .collect::<Vec<_>>();
+                let y1 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 12)).into_fe())
+                    .collect::<Vec<_>>();
+                let x2 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 20)).into_fe())
+                    .collect::<Vec<_>>();
+                let y2 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 28)).into_fe())
+                    .collect::<Vec<_>>();
+                let result = arith::ec_add(&x1, &y1, &x2, &y2);
+                // store result in registers
+                (0..8).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i + 4), Elem::Field(result.0[i]))
+                });
+                (0..8).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i + 12), Elem::Field(result.1[i]))
+                });
+                vec![]
+            }
+            "ec_double" => {
+                assert!(args.is_empty());
+                // take input from registers
+                let x = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 2)).into_fe())
+                    .collect::<Vec<_>>();
+                let y = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 10)).into_fe())
+                    .collect::<Vec<_>>();
+                let result = arith::ec_double(&x, &y);
+                // store result in registers
+                (0..8).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i + 2), Elem::Field(result.0[i]))
+                });
+                (0..8).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i + 10), Elem::Field(result.1[i]))
                 });
                 vec![]
             }
@@ -1002,4 +1075,26 @@ pub fn execute<F: FieldElement>(
         usize::MAX,
         mode,
     )
+}
+
+/// FIXME: copied from `riscv/runtime.rs` instead of adding dependency.
+/// Helper function for register names used in submachine instruction params.
+fn register_by_idx(mut idx: usize) -> String {
+    // s0..11 callee saved registers
+    static SAVED_REGS: [&str; 12] = [
+        "x8", "x9", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
+    ];
+
+    // first, use syscall_registers
+    if idx < SYSCALL_REGISTERS.len() {
+        return SYSCALL_REGISTERS[idx].to_string();
+    }
+    idx -= SYSCALL_REGISTERS.len();
+    // second, callee saved registers
+    if idx < SAVED_REGS.len() {
+        return SAVED_REGS[idx].to_string();
+    }
+    idx -= SAVED_REGS.len();
+    // lastly, use extra submachine registers
+    format!("xtra{idx}")
 }

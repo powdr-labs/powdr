@@ -10,7 +10,8 @@ mod serialize;
 mod traits;
 
 pub use serialize::{
-    read_polys_csv_file, read_polys_file, write_polys_csv_file, write_polys_file, CsvRenderMode,
+    buffered_write_file, read_polys_csv_file, read_polys_file, write_polys_csv_file,
+    write_polys_file, CsvRenderMode,
 };
 
 pub use bn254::Bn254Field;
@@ -36,7 +37,7 @@ mod test {
     use test_log::test;
 
     #[test]
-    fn test_log2_exact() {
+    fn log2_exact_function() {
         assert_eq!(log2_exact(0u32.into()), None);
         assert_eq!(log2_exact(1u32.into()), Some(0));
         assert_eq!(log2_exact(2u32.into()), Some(1));

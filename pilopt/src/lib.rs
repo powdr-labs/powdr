@@ -86,18 +86,10 @@ trait ReferencedSymbols {
 impl ReferencedSymbols for FunctionValueDefinition {
     fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
         match self {
-            FunctionValueDefinition::TypeDeclaration(EnumDeclaration { name: _, variants }) => {
-                Box::new(
-                    variants
-                        .iter()
-                        .flat_map(|v| &v.fields)
-                        .flat_map(|t| t.iter())
-                        .flat_map(|t| t.symbols()),
-                )
-            }
-            FunctionValueDefinition::TypeConstructor(type_name, _) => {
-                // This the type constructor of an enum variant, it references the enum itself.
-                Box::new(once(type_name.into()))
+            FunctionValueDefinition::TypeDeclaration(enum_decl) => enum_decl.symbols(),
+            FunctionValueDefinition::TypeConstructor(enum_decl, _) => {
+                // This is the type constructor of an enum variant, it references the enum itself.
+                Box::new(once(enum_decl.name.as_str().into()))
             }
             FunctionValueDefinition::Expression(TypedExpression {
                 type_scheme: Some(type_scheme),
@@ -105,6 +97,18 @@ impl ReferencedSymbols for FunctionValueDefinition {
             }) => Box::new(type_scheme.ty.symbols().chain(e.symbols())),
             _ => Box::new(self.children().flat_map(|e| e.symbols())),
         }
+    }
+}
+
+impl ReferencedSymbols for EnumDeclaration {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        Box::new(
+            self.variants
+                .iter()
+                .flat_map(|v| &v.fields)
+                .flat_map(|t| t.iter())
+                .flat_map(|t| t.symbols()),
+        )
     }
 }
 

@@ -1,4 +1,8 @@
-use std::io::{Read, Write};
+use std::{
+    fs::File,
+    io::{self, BufWriter, Read, Write},
+    path::Path,
+};
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate};
 use csv::{Reader, Writer};
@@ -89,11 +93,34 @@ fn ceil_div(num: usize, div: usize) -> usize {
     (num + div - 1) / div
 }
 
-pub fn write_polys_file<T: FieldElement>(file: &mut impl Write, polys: &[(String, Vec<T>)]) {
+pub fn buffered_write_file<R>(
+    path: &Path,
+    do_write: impl FnOnce(&mut BufWriter<File>) -> R,
+) -> Result<R, io::Error> {
+    let mut writer = BufWriter::new(File::create(path)?);
+    let result = do_write(&mut writer);
+    writer.flush()?;
+
+    Ok(result)
+}
+
+pub fn write_polys_file<F: FieldElement>(
+    path: &Path,
+    polys: &[(String, Vec<F>)],
+) -> Result<(), io::Error> {
+    buffered_write_file(path, |writer| write_polys_stream(writer, polys))??;
+
+    Ok(())
+}
+
+fn write_polys_stream<T: FieldElement>(
+    file: &mut impl Write,
+    polys: &[(String, Vec<T>)],
+) -> Result<(), io::Error> {
     let width = ceil_div(T::BITS as usize, 64) * 8;
 
     if polys.is_empty() {
-        return;
+        return Ok(());
     }
 
     // TODO maybe the witness should have a proper type that
@@ -107,9 +134,11 @@ pub fn write_polys_file<T: FieldElement>(file: &mut impl Write, polys: &[(String
         for (_name, constant) in polys {
             let bytes = constant[i].to_bytes_le();
             assert_eq!(bytes.len(), width);
-            file.write_all(&bytes).unwrap();
+            file.write_all(&bytes)?;
         }
     }
+
+    Ok(())
 }
 
 pub fn read_polys_file<T: FieldElement>(
@@ -188,7 +217,7 @@ mod tests {
 
         let (polys, degree) = test_polys();
 
-        write_polys_file(&mut buf, &polys);
+        write_polys_stream(&mut buf, &polys).unwrap();
         let (read_polys, read_degree) = read_polys_file::<Bn254Field>(
             &mut Cursor::new(buf),
             &["a".to_string(), "b".to_string()],

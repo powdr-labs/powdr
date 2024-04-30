@@ -1,4 +1,7 @@
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    collections::{BTreeSet, HashMap},
+    fs::{create_dir_all, hard_link},
+};
 
 use powdr_ast::{
     asm_analysis::{AnalysisASMFile, RegisterTy},
@@ -77,8 +80,23 @@ where
             |(i, (bootloader_inputs, start_of_shutdown_routine))| -> Result<(), E> {
                 log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
                 let pipeline = pipeline.clone();
-                let name = format!("{}_chunk_{}", pipeline.name(), i);
-                let pipeline = pipeline.with_name(name);
+                let pipeline = if let Some(parent_dir) = pipeline.output_dir() {
+                    let force_overwrite = pipeline.is_force_overwrite();
+
+                    let chunk_dir = parent_dir.join(format!("chunk_{}", i));
+                    create_dir_all(&chunk_dir).unwrap();
+
+                    // Hardlink constants.bin so that chunk dir will be self sufficient
+                    hard_link(
+                        parent_dir.join("constants.bin"),
+                        chunk_dir.join("constants.bin"),
+                    )
+                    .unwrap();
+
+                    pipeline.with_output(chunk_dir, force_overwrite)
+                } else {
+                    pipeline
+                };
                 // The `jump_to_shutdown_routine` column indicates when the execution should jump to the shutdown routine.
                 // In that row, the normal PC update is ignored and the PC is set to the address of the shutdown routine.
                 // In other words, it should be a one-hot encoding of `start_of_shutdown_routine`.
@@ -86,7 +104,10 @@ where
                     .map(|i| (i == start_of_shutdown_routine - 1).into())
                     .collect();
                 let pipeline = pipeline.add_external_witness_values(vec![
-                    ("main.bootloader_input_value".to_string(), bootloader_inputs),
+                    (
+                        "main_bootloader_inputs.value".to_string(),
+                        bootloader_inputs,
+                    ),
                     (
                         "main.jump_to_shutdown_routine".to_string(),
                         jump_to_shutdown_routine,
@@ -131,6 +152,10 @@ fn sanity_check(program: &AnalysisASMFile) {
         .iter()
         .map(|s| s.to_string())
         .collect::<BTreeSet<_>>();
+    // FIXME: Currently, continuations don't support a Runtime with extra
+    // registers. This has not been fixed because extra registers will not be
+    // needed once we support accessing the memory machine from multiple
+    // machines. This comment can be removed then.
     assert_eq!(machine_registers, expected_registers);
 }
 
@@ -233,8 +258,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let length = program
         .machines()
         .fold(None, |acc, (_, m)| acc.or(m.degree.clone()))
-        .unwrap()
-        .degree;
+        .unwrap();
 
     let length: usize = match length {
         Expression::Number(length, None) => length.try_into().unwrap(),

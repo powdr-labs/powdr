@@ -275,9 +275,7 @@ mod test {
 
         fn clear_machine_stmt(stmt: &mut MachineStatement) {
             match stmt {
-                MachineStatement::Degree(s, _)
-                | MachineStatement::CallSelectors(s, _)
-                | MachineStatement::Submachine(s, _, _)
+                MachineStatement::Submachine(s, _, _)
                 | MachineStatement::RegisterDeclaration(s, _, _)
                 | MachineStatement::OperationDeclaration(s, _, _, _)
                 | MachineStatement::LinkDeclaration(s, _) => {

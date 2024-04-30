@@ -11,6 +11,8 @@
 
 For detailed documentation please visit [the powdr book](https://docs.powdr.org/).
 
+If you have any questions or want to contribute, feel free to write us in our [Matrix Chat](https://matrix.to/#/#powdr:matrix.org).
+
 *powdr* is a toolkit that helps build zkVMs and similar proof frameworks.
 
 It has two main components:
@@ -26,7 +28,7 @@ which is compiled to RISCV, then to powdr-asm and finally to powdr-PIL.
 *powdr*-pil can be used to generate proofs using multiple backends, such as:
 
 - Halo2: via [polyexen](https://github.com/Dhole/polyexen) and [snark-verifer](https://github.com/privacy-scaling-explorations/snark-verifier/)
-- eSTARK: via [Eigen's starky](https://github.com/0xEigenLabs/eigen-zkvm/)
+- eSTARK: via [Eigen's starky](https://github.com/0xEigenLabs/eigen-zkvm/) or via [our fork of Polygon's zkevm-prover](https://github.com/powdr-labs/zkevm-prover).
 - SuperNova: ongoing work (https://github.com/powdr-labs/powdr/pull/453)
 
 All stages are fully automatic, which means you do not need to write any

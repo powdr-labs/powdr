@@ -40,9 +40,10 @@ lazy_static! {
         ("std::convert::fe", ("T: FromLiteral", "T -> fe")),
         ("std::convert::int", ("T: FromLiteral", "T -> int")),
         ("std::convert::expr", ("T: FromLiteral", "T -> expr")),
-        ("std::debug::print", ("", "string -> constr[]")),
+        ("std::debug::print", ("T: ToString", "T -> constr[]")),
         ("std::field::modulus", ("", "-> int")),
         ("std::prover::challenge", ("", "int, int -> expr")),
+        ("std::prover::degree", ("", "-> int")),
         ("std::prover::eval", ("", "expr -> fe")),
     ]
     .into_iter()
@@ -98,8 +99,9 @@ pub fn unary_operator_scheme(op: UnaryOperator) -> TypeScheme {
 pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
     match ty {
         Type::Bottom => &[],
-        Type::Bool => &[],
+        Type::Bool => &["ToString"],
         Type::Int => &[
+            "ToString",
             "FromLiteral",
             "Add",
             "Sub",
@@ -111,6 +113,7 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
             "Eq",
         ],
         Type::Fe => &[
+            "ToString",
             "FromLiteral",
             "Add",
             "Sub",
@@ -120,8 +123,9 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
             "Neg",
             "Eq",
         ],
-        Type::String => &["Add"],
+        Type::String => &["ToString", "Add", "Eq"],
         Type::Expr => &[
+            "ToString",
             "FromLiteral",
             "Add",
             "Sub",
@@ -136,6 +140,6 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
         Type::Array(_) => &["Add"],
         Type::Tuple(_) => &[],
         Type::Function(_) => &[],
-        Type::TypeVar(_) | Type::NamedType(_) => unreachable!(),
+        Type::TypeVar(_) | Type::NamedType(_, _) => unreachable!(),
     }
 }

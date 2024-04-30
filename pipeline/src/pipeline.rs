@@ -2,7 +2,7 @@ use std::{
     borrow::Borrow,
     fmt::Display,
     fs,
-    io::{self, BufReader, BufWriter},
+    io::{self, BufReader},
     marker::Send,
     path::{Path, PathBuf},
     rc::Rc,
@@ -28,8 +28,8 @@ use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldE
 use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
-    inputs_to_query_callback, serde_data_to_query_callback,
-    util::{try_read_poly_set, write_or_panic, FixedPolySet, WitnessPolySet},
+    handle_simple_queries_callback, inputs_to_query_callback, serde_data_to_query_callback,
+    util::{try_read_poly_set, FixedPolySet, WitnessPolySet},
 };
 
 type Columns<T> = Vec<(String, Vec<T>)>;
@@ -137,10 +137,9 @@ where
             pilo: false,
             arguments: Arguments::default(),
         }
-        // We add empty prover inputs by default to always have basic support
-        // to hints, print, etc.
-        // Newer prover inputs can be added on top and will overwrite this one.
-        .with_prover_inputs(vec![])
+        // We add the basic callback functionalities
+        // to support PrintChar and Hint.
+        .add_query_callback(Arc::new(handle_simple_queries_callback()))
     }
 }
 
@@ -173,7 +172,7 @@ where
 ///
 /// let mut pipeline = Pipeline::<GoldilocksField>::default()
 ///   .from_file(resolve_test_file("pil/fibonacci.pil"))
-///   .with_backend(BackendType::PilStarkCli);
+///   .with_backend(BackendType::EStarkDump);
 ///
 /// // Get the result
 /// let proof = pipeline.compute_proof().unwrap();
@@ -277,11 +276,6 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn with_name(mut self, name: String) -> Self {
-        self.name = Some(name);
-        self
-    }
-
     pub fn with_pil_object(mut self) -> Self {
         self.pilo = true;
         self
@@ -373,7 +367,7 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn read_constants(mut self, directory: &Path) -> Self {
         let pil = self.compute_optimized_pil().unwrap();
 
-        let fixed = try_read_poly_set::<FixedPolySet, T>(&pil, directory, self.name())
+        let fixed = try_read_poly_set::<FixedPolySet, T>(&pil, directory)
             .map(|(fixed, degree_fixed)| {
                 assert_eq!(pil.degree.unwrap(), degree_fixed);
                 fixed
@@ -393,7 +387,7 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn read_witness(mut self, directory: &Path) -> Self {
         let pil = self.compute_optimized_pil().unwrap();
 
-        let witness = try_read_poly_set::<WitnessPolySet, T>(&pil, directory, self.name())
+        let witness = try_read_poly_set::<WitnessPolySet, T>(&pil, directory)
             .map(|(witness, degree_witness)| {
                 assert_eq!(pil.degree.unwrap(), degree_witness);
                 witness
@@ -488,9 +482,8 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     fn maybe_write_constants(&self, constants: &[(String, Vec<T>)]) -> Result<(), Vec<String>> {
-        if let Some(path) = self.path_if_should_write(|name| format!("{name}_constants.bin"))? {
-            let writer = BufWriter::new(fs::File::create(path).unwrap());
-            write_or_panic(writer, |writer| write_polys_file(writer, constants));
+        if let Some(path) = self.path_if_should_write(|_| "constants.bin".to_string())? {
+            write_polys_file(&path, constants).map_err(|e| vec![format!("{}", e)])?;
         }
         Ok(())
     }
@@ -500,9 +493,8 @@ impl<T: FieldElement> Pipeline<T> {
         fixed: &[(String, Vec<T>)],
         witness: &[(String, Vec<T>)],
     ) -> Result<(), Vec<String>> {
-        if let Some(path) = self.path_if_should_write(|name| format!("{name}_commits.bin"))? {
-            let file = BufWriter::new(fs::File::create(path).unwrap());
-            write_or_panic(file, |file| write_polys_file(file, witness));
+        if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
+            write_polys_file(&path, witness).map_err(|e| vec![format!("{}", e)])?;
         }
 
         if self.arguments.export_witness_csv {
@@ -567,15 +559,17 @@ impl<T: FieldElement> Pipeline<T> {
             self.artifact.parsed_asm_file = Some({
                 let (path, asm_string) = self.compute_asm_string()?;
                 let path = path.clone();
+                let path_str = path.as_ref().map(|p| p.to_str().unwrap());
 
-                let parsed_asm = powdr_parser::parse_asm(None, asm_string).unwrap_or_else(|err| {
-                    match path.as_ref() {
-                        Some(path) => eprintln!("Error parsing .asm file: {}", path.display()),
-                        None => eprintln!("Error parsing .asm file:"),
-                    }
-                    err.output_to_stderr();
-                    panic!();
-                });
+                let parsed_asm =
+                    powdr_parser::parse_asm(path_str, asm_string).unwrap_or_else(|err| {
+                        eprintln!(
+                            "Error parsing .asm file:{}",
+                            path_str.map(|p| format!(" {p}")).unwrap_or_default()
+                        );
+                        err.output_to_stderr();
+                        panic!();
+                    });
 
                 (path.clone(), parsed_asm)
             });
@@ -901,7 +895,7 @@ impl<T: FieldElement> Pipeline<T> {
             Err(powdr_backend::Error::BackendError(e)) => {
                 return Err(vec![e.to_string()]);
             }
-            _ => panic!(),
+            Err(e) => panic!("{}", e),
         };
 
         drop(backend);
@@ -919,6 +913,10 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn output_dir(&self) -> Option<&Path> {
         self.output_dir.as_ref().map(|p| p.as_ref())
+    }
+
+    pub fn is_force_overwrite(&self) -> bool {
+        self.force_overwrite
     }
 
     pub fn name(&self) -> &str {

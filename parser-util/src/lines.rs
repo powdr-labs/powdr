@@ -28,7 +28,7 @@ mod test {
     use test_log::test;
 
     #[test]
-    pub fn line_calc() {
+    fn line_calc() {
         let input = "abc\nde";
         let breaks = compute_line_starts(input);
         let line_col_pairs = (0..input.len())
@@ -41,7 +41,7 @@ mod test {
     }
 
     #[test]
-    pub fn line_calc_empty_start() {
+    fn line_calc_empty_start() {
         let input = "\nab\n\nc\nde\n";
         let breaks = compute_line_starts(input);
         let line_col_pairs = (0..input.len())

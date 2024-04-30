@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter, Result};
 use itertools::Itertools;
 
 use crate::{
+    indent,
     parsed::{BinaryOperator, UnaryOperator},
     write_indented_by, write_items, write_items_indented,
 };
@@ -33,26 +34,8 @@ impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => match value {
-                SymbolValue::Machine(
-                    m @ Machine {
-                        arguments:
-                            MachineArguments {
-                                latch,
-                                operation_id,
-                            },
-                        ..
-                    },
-                ) => {
-                    if let (None, None) = (latch, operation_id) {
-                        write!(f, "machine {name} {m}")
-                    } else {
-                        write!(
-                            f,
-                            "machine {name}({}, {}) {m}",
-                            latch.as_deref().unwrap_or("_"),
-                            operation_id.as_deref().unwrap_or("_"),
-                        )
-                    }
+                SymbolValue::Machine(m) => {
+                    write!(f, "machine {name}{m}")
                 }
                 SymbolValue::Import(i) => {
                     write!(f, "{i} as {name};")
@@ -97,9 +80,45 @@ impl Display for Import {
 
 impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "{{")?;
+        writeln!(f, "{}{} {{", &self.arguments, &self.properties)?;
         write_items_indented(f, &self.statements)?;
         write!(f, "}}")
+    }
+}
+
+impl Display for MachineArguments {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let args = self.0.iter().join(", ");
+        if !args.is_empty() {
+            write!(f, "({args})")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for MachineProperties {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let props = self
+            .degree
+            .as_ref()
+            .map(|s| format!("degree: {s}"))
+            .into_iter()
+            .chain(self.latch.as_ref().map(|s| format!("latch: {s}")))
+            .chain(
+                self.operation_id
+                    .as_ref()
+                    .map(|s| format!("operation_id: {s}")),
+            )
+            .chain(
+                self.call_selectors
+                    .as_ref()
+                    .map(|s| format!("call_selectors: {s}")),
+            )
+            .join(", ");
+        if !props.is_empty() {
+            write!(f, " with {props}")?;
+        }
+        Ok(())
     }
 }
 
@@ -167,8 +186,6 @@ impl Display for CallableRef {
 impl Display for MachineStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            MachineStatement::Degree(_, degree) => write!(f, "degree {};", degree),
-            MachineStatement::CallSelectors(_, sel) => write!(f, "call_selectors {};", sel),
             MachineStatement::Pil(_, statement) => write!(f, "{statement}"),
             MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),
             MachineStatement::RegisterDeclaration(_, name, flag) => write!(
@@ -305,24 +322,19 @@ impl<T: Display> Display for Params<T> {
     }
 }
 
-impl<Ref: Display> Display for IndexAccess<Ref> {
+impl<E: Display> Display for IndexAccess<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}[{}]", self.array, self.index)
     }
 }
 
-impl<Ref: Display> Display for FunctionCall<Ref> {
+impl<E: Display> Display for FunctionCall<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}({})",
-            self.function,
-            format_expressions(&self.arguments)
-        )
+        write!(f, "{}({})", self.function, format_list(&self.arguments))
     }
 }
 
-impl<Ref: Display> Display for MatchArm<Ref> {
+impl<E: Display> Display for MatchArm<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} => {},", self.pattern, self.value,)
     }
@@ -338,11 +350,19 @@ impl Display for Pattern {
             Pattern::Tuple(t) => write!(f, "({})", t.iter().format(", ")),
             Pattern::Array(a) => write!(f, "[{}]", a.iter().format(", ")),
             Pattern::Variable(v) => write!(f, "{v}"),
+            Pattern::Enum(name, fields) => write!(
+                f,
+                "{name}{}",
+                fields
+                    .as_ref()
+                    .map(|fields| format!("({})", fields.iter().format(", ")))
+                    .unwrap_or_default()
+            ),
         }
     }
 }
 
-impl<Ref: Display> Display for IfExpression<Ref> {
+impl<E: Display> Display for IfExpression<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -352,7 +372,7 @@ impl<Ref: Display> Display for IfExpression<Ref> {
     }
 }
 
-impl<Ref: Display> Display for StatementInsideBlock<Ref> {
+impl<E: Display> Display for StatementInsideBlock<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             StatementInsideBlock::LetStatement(s) => write!(f, "{s}"),
@@ -361,7 +381,7 @@ impl<Ref: Display> Display for StatementInsideBlock<Ref> {
     }
 }
 
-impl<Ref: Display> Display for LetStatementInsideBlock<Ref> {
+impl<E: Display> Display for LetStatementInsideBlock<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "let {}", self.pattern)?;
         if let Some(v) = &self.value {
@@ -462,8 +482,8 @@ impl Display for PilStatement {
                 f,
                 format!(
                     "{{ {} }} connect {{ {} }};",
-                    format_expressions(left),
-                    format_expressions(right)
+                    format_list(left),
+                    format_list(right)
                 ),
                 1,
             ),
@@ -480,10 +500,10 @@ impl Display for ArrayExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ArrayExpression::Value(expressions) => {
-                write!(f, "[{}]", format_expressions(expressions))
+                write!(f, "[{}]", format_list(expressions))
             }
             ArrayExpression::RepeatedValue(expressions) => {
-                write!(f, "[{}]*", format_expressions(expressions))
+                write!(f, "[{}]*", format_list(expressions))
             }
             ArrayExpression::Concat(left, right) => write!(f, "{left} + {right}"),
         }
@@ -502,7 +522,7 @@ impl Display for FunctionDefinition {
                 write!(
                     f,
                     "({}) {}{}",
-                    lambda.params.iter().format(", "),
+                    format_list(&lambda.params),
                     match lambda.kind {
                         FunctionKind::Pure => "".into(),
                         _ => format!("{} ", &lambda.kind),
@@ -520,9 +540,25 @@ impl Display for FunctionDefinition {
 
 impl<E: Display> Display for EnumDeclaration<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "enum {} {{", self.name)?;
-        write_items_indented(f, self.variants.iter())?;
-        write!(f, "}}")
+        write!(f, "{}", self.to_string_with_name(&self.name))
+    }
+}
+
+impl<E: Display> EnumDeclaration<E> {
+    /// Formats the enum declaration, exchanging its name by the provided one.
+    pub fn to_string_with_name(&self, name: &str) -> String {
+        let type_vars = if self.type_vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_vars)
+        };
+        format!(
+            "enum {name}{type_vars} {{\n{}}}",
+            indent(
+                self.variants.iter().map(|v| format!("{v},\n")).format(""),
+                1
+            )
+        )
     }
 }
 
@@ -536,12 +572,12 @@ impl<E: Display> Display for EnumVariant<E> {
                 fields.iter().map(format_type_with_parentheses).format(", ")
             )?;
         }
-        write!(f, ",")
+        Ok(())
     }
 }
 
-pub fn format_expressions<Ref: Display>(expressions: &[Expression<Ref>]) -> String {
-    format!("{}", expressions.iter().format(", "))
+fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
+    format!("{}", list.into_iter().format(", "))
 }
 
 impl<Ref: Display> Display for Expression<Ref> {
@@ -551,7 +587,7 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::PublicReference(name) => write!(f, ":{name}"),
             Expression::Number(value, _) => write!(f, "{value}"),
             Expression::String(value) => write!(f, "{}", quote(value)),
-            Expression::Tuple(items) => write!(f, "({})", format_expressions(items)),
+            Expression::Tuple(items) => write!(f, "({})", format_list(items)),
             Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
             Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
@@ -602,14 +638,14 @@ impl Display for PolynomialName {
 impl Display for NamespacedPolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if let Some(type_args) = &self.type_args {
-            write!(f, "{}::<{}>", self.path, type_args.iter().format(", "))
+            write!(f, "{}::<{}>", self.path, format_list(type_args))
         } else {
             write!(f, "{}", self.path.to_dotted_string())
         }
     }
 }
 
-impl<Ref: Display> Display for LambdaExpression<Ref> {
+impl<E: Display> Display for LambdaExpression<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -618,7 +654,7 @@ impl<Ref: Display> Display for LambdaExpression<Ref> {
                 FunctionKind::Pure => "".into(),
                 _ => format!("{} ", &self.kind),
             },
-            self.params.iter().format(", "),
+            format_list(&self.params),
             self.body
         )
     }
@@ -634,9 +670,9 @@ impl Display for FunctionKind {
     }
 }
 
-impl<Ref: Display> Display for ArrayLiteral<Ref> {
+impl<E: Display> Display for ArrayLiteral<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "[{}]", self.items.iter().format(", "))
+        write!(f, "[{}]", format_list(&self.items))
     }
 }
 
@@ -700,7 +736,10 @@ impl<E: Display> Display for Type<E> {
             Type::Tuple(tuple) => write!(f, "{tuple}"),
             Type::Function(fun) => write!(f, "{fun}"),
             Type::TypeVar(name) => write!(f, "{name}"),
-            Type::NamedType(name) => write!(f, "{name}"),
+            Type::NamedType(name, Some(args)) => {
+                write!(f, "{name}<{}>", args.iter().format(", "))
+            }
+            Type::NamedType(name, None) => write!(f, "{name}"),
         }
     }
 }

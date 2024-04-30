@@ -2,11 +2,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::once;
 
 use itertools::Itertools;
-use num_traits::Zero;
 
 use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineExpression;
-use crate::witgen::global_constraints::GlobalConstraints;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
@@ -46,7 +44,7 @@ fn split_column_name(name: &str) -> (&str, &str) {
 
 /// TODO make this generic
 
-pub struct DoubleSortedWitnesses<'a, T> {
+pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
     fixed: &'a FixedData<'a, T>,
     degree: DegreeType,
     //key_col: String,
@@ -84,7 +82,6 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         fixed_data: &'a FixedData<T>,
         connecting_identities: &[&Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
-        global_range_constraints: &GlobalConstraints<T>,
     ) -> Option<Self> {
         // get the namespaces and column names
         let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = witness_cols
@@ -138,12 +135,14 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             // the base of the two digits.
             let upper_poly_id =
                 fixed_data.try_column_by_name(&format!("{namespace}.{}", DIFF_COLUMNS[0]))?;
-            let upper_range_constraint =
-                global_range_constraints.witness_constraints[&upper_poly_id].as_ref()?;
+            let upper_range_constraint = fixed_data.global_range_constraints().witness_constraints
+                [&upper_poly_id]
+                .as_ref()?;
             let lower_poly_id =
                 fixed_data.try_column_by_name(&format!("{namespace}.{}", DIFF_COLUMNS[1]))?;
-            let lower_range_constraint =
-                global_range_constraints.witness_constraints[&lower_poly_id].as_ref()?;
+            let lower_range_constraint = fixed_data.global_range_constraints().witness_constraints
+                [&lower_poly_id]
+                .as_ref()?;
 
             let (min, max) = upper_range_constraint.range();
 
@@ -380,13 +379,6 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             addr.to_arbitrary_integer(),
             value_expr
         );
-        if !(addr.clone().to_arbitrary_integer() % 4u32).is_zero() {
-            panic!(
-                "Unaligned memory access: addr={:x}, step={step}, write: {is_write}, value: {}",
-                addr.to_arbitrary_integer(),
-                value_expr
-            );
-        }
 
         // TODO this does not check any of the failure modes
         let mut assignments = EvalValue::complete(vec![]);
