@@ -1,5 +1,3 @@
-use std::utils::Option;
-
 /// This is a BTree, which means that each node has
 /// up to `max_items` items and a number of children
 /// that is one more than the number of items.
@@ -39,7 +37,6 @@ mod internal {
     use super::BTree;
     use super::CmpResult;
 
-    use std::utils::Option;
     use std::utils::unwrap_or_else;
     use std::array::find_map;
     use std::array::find_map_enumerated;

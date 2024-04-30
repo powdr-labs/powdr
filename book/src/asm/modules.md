@@ -10,4 +10,4 @@ Note that a module can't be called `std`, as this name is reserved for the powdr
 
 Similar to Rust, any reference that cannot be resolved is looked up once more in `std::prelude`.
 This module exposes basic types and values such as `Option`, `true` and `false`.
-This means that you can use `Option` anywhere and do not have to use `std::utils::Option`.
+This means that you can use `Option` anywhere without prefix.

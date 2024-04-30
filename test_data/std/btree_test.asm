@@ -3,7 +3,6 @@ use std::btree::insert;
 use std::btree::get;
 use std::btree::CmpResult;
 use std::btree::BTree;
-use std::utils::Option;
 
 let cmp: int, int -> CmpResult = |a, b|
     if a < b {
