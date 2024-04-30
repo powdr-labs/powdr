@@ -96,7 +96,7 @@ even though we can verify it efficiently via powdr.
 There are two ways to enable verification on Ethereum:
 
 1. Use a different transcript when generating this proof. See section
-   `hello_world_ethereum` (TODO link) for the same example targeting EVM verification.
+   [Hello World on Ethereum](./hello_world_ethereum.md) for the same example targeting EVM verification.
 2. Use proof aggregation to compress the proof we just generated using a
    circuit that can be verified on Ethereum. See section
-   `hello_world_ethereum_aggregation` (TODO link) to learn how to do that.
+   [Hello World on Ethereum via proof aggregation](./hello_world_ethereum_aggregation.md) to learn how to do that.
