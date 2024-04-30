@@ -59,6 +59,7 @@ impl RowIndex {
         }
     }
 
+    /// Compute the current row index as usize, assuming index 0 is the given row offset.
     pub fn to_local(self, row_offset: &RowIndex) -> usize {
         let row_index = DegreeType::from(self);
         let row_offset = DegreeType::from(*row_offset);

@@ -1,4 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+#[cfg(test)]
+use std::collections::BTreeSet;
+
+use itertools::Itertools;
 
 /// Global copy constraints, represented as a graph on all cells. Each node has one outgoing edge
 /// that points to the next cell that should be equal to it, forming a set of cycles.
@@ -7,7 +11,6 @@ pub struct CopyConstraints<CellId> {
     edges: BTreeMap<CellId, CellId>,
 }
 
-// Can't derive Default if CellId doesn't implement Default :o
 impl<CellId: Ord + Copy> Default for CopyConstraints<CellId> {
     fn default() -> Self {
         Self {
@@ -17,6 +20,7 @@ impl<CellId: Ord + Copy> Default for CopyConstraints<CellId> {
 }
 
 impl<CellId: Ord + Copy> CopyConstraints<CellId> {
+    /// Creates a new set of copy constraints from a list of pairs of cells that should be equal.
     pub fn new(constraint_pairs: &[(CellId, CellId)]) -> Self {
         let mut copy_constraints = CopyConstraints::default();
         for &(a, b) in constraint_pairs {
@@ -26,7 +30,7 @@ impl<CellId: Ord + Copy> CopyConstraints<CellId> {
     }
 
     fn add_copy_constraint(&mut self, a: CellId, b: CellId) {
-        if self.is_connected(a, b) {
+        if self.are_connected(a, b) {
             // The algorithm below does not work if the two cells are already connected.
             // Note that this also filters out self-cycles.
             return;
@@ -37,8 +41,8 @@ impl<CellId: Ord + Copy> CopyConstraints<CellId> {
         // We want to change the edges such that a -> n_b and b -> n_a.
         // If a node does not have an entry in the edge list, its previous
         // and next nodes are the node itself.
-        let n_a = self.edges.get(&a).copied().unwrap_or(a);
-        let n_b = self.edges.get(&b).copied().unwrap_or(b);
+        let n_a = self.next(a);
+        let n_b = self.next(b);
         self.edges.insert(a, n_b);
         self.edges.insert(b, n_a);
     }
@@ -52,13 +56,8 @@ impl<CellId: Ord + Copy> CopyConstraints<CellId> {
         self.edges.is_empty()
     }
 
-    fn is_connected(&self, a: CellId, b: CellId) -> bool {
-        for cell in self.iter_equivalence_class(a) {
-            if cell == b {
-                return true;
-            }
-        }
-        false
+    fn are_connected(&self, a: CellId, b: CellId) -> bool {
+        self.iter_equivalence_class(a).contains(&b)
     }
 
     /// Returns an iterator over the equivalence class of the given cell. The first element is the
@@ -66,15 +65,11 @@ impl<CellId: Ord + Copy> CopyConstraints<CellId> {
     pub fn iter_equivalence_class(&self, start: CellId) -> impl Iterator<Item = CellId> + '_ {
         std::iter::successors(Some(start), move |&cell_ref| {
             let next = self.next(cell_ref);
-            if next == start {
-                None
-            } else {
-                Some(next)
-            }
+            (next != start).then_some(next)
         })
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     /// Returns all equivalence classes of size > 1.
     pub fn non_trivial_equivalence_classes(&self) -> BTreeSet<BTreeSet<CellId>> {
         let mut seen: BTreeSet<CellId> = BTreeSet::new();

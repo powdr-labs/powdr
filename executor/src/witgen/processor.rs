@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
+use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::{
     analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID},
     parsed::SelectedExpressions,
@@ -40,7 +41,10 @@ impl<'a, T: FieldElement> OuterQuery<'a, T> {
     }
 }
 
-pub fn make_copy_constraints<T: FieldElement>(
+// For now, detects whether we are running the Pythagoras example and hard-codes the copy constraints.
+// This can be removed once we read copy constraints from PIL, see:
+// https://github.com/powdr-labs/powdr/issues/1333
+fn make_copy_constraints<T: FieldElement>(
     fixed_data: &FixedData<T>,
     witness_cols: &HashSet<PolyID>,
 ) -> CopyConstraints<(PolyID, RowIndex)> {
@@ -409,10 +413,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                     RowUpdater::new(current, next, self.row_offset + row_index as u64);
                 row_updater.apply_update(poly, c);
                 progress = true;
-
-                if !self.copy_constraints.is_empty() {
-                    self.handle_copy_constraints(row_index, poly, c);
-                }
+                self.propagate_along_copy_constraints(row_index, poly, c);
             } else if let Constraint::Assignment(v) = c {
                 let left = &mut self.outer_query.as_mut().unwrap().left;
                 log::trace!("      => {} (outer) = {}", poly, v);
@@ -426,14 +427,17 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         progress
     }
 
-    fn handle_copy_constraints(
+    fn propagate_along_copy_constraints(
         &mut self,
         row_index: usize,
         poly: &AlgebraicReference,
         constraint: &Constraint<T>,
     ) {
+        if self.copy_constraints.is_empty() {
+            return;
+        }
         if let Constraint::Assignment(v) = constraint {
-            // If we we do an assignment, propagate the value to any other cell that is
+            // If we do an assignment, propagate the value to any other cell that is
             // copy-constrained to the current cell.
             let row = self.row_offset + row_index + poly.next as usize;
 
@@ -444,6 +448,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 .skip(1)
                 .collect::<Vec<_>>();
             for (other_poly, other_row) in others {
+                if other_poly.ptype != PolynomialType::Committed {
+                    unimplemented!(
+                        "Copy constraints to fixed columns are not yet supported (#1335)!"
+                    );
+                }
                 let expression = &self.fixed_data.witness_cols[&other_poly].expr;
                 let local_index = other_row.to_local(&self.row_offset);
                 self.set_value(local_index, expression, *v, || {
