@@ -27,3 +27,16 @@ pub fn poseidon_gl(data: [u64; 12]) -> [u64; 4] {
 
     poseidon_gl_unsafe(data)
 }
+
+/// Calls the keccakf machine
+pub fn keccakf(mut data: [u64; 25]) -> [u64; 25] {
+    unsafe {
+        asm!("ecall", in("a0") &mut data as *mut [u64; 25], in("t0") u32::from(Syscall::KeccakF));
+    }
+    data
+}
+
+/// Keccakf processes inputs and calls keccakf machine
+pub fn keccak(w: u64, input: Vec<u64>, delim: u64) {
+    
+}
