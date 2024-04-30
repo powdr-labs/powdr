@@ -148,6 +148,48 @@ impl Runtime {
         self.syscalls.contains_key(&s)
     }
 
+    pub fn with_keccak(mut self) -> Self {
+        self.add_submachine(
+            "test_data::asm::keccakf::KeccakF",
+            None,
+            "keccakf",
+            [format!(
+                "instr keccakf ~ keccakf.keccakf {};", // operation
+                instr_register_params(0, 25, 25) // 25 registers for the states, covered by 26 registers of riscv
+            )], 
+            0,
+            // init call
+            // TODO: why init call calls keccakf? similar to poseidon
+            std::iter::once("keccakf;".to_string())
+                // zero out output register
+                .chain(std::iter::once(format!("{} <=X= 0;", reg(0)))),
+        );
+        
+        // The keccakf syscall has a single argument passed on x10, the
+        // memory address of the 25 field element input array.
+        let implementation =
+            // The keccakf syscall uses x10 for input, we store it in tmp3 and
+            // reuse x10 as input to the keccakf machine instruction.
+            std::iter::once("tmp3 <=X= x10;".to_string())
+            // The keccakf instruction uses registers 0..25 as input/output.
+            // The memory field elements are loaded into these registers before calling the instruction.
+            // They might be in use by the riscv machine, so we save the registers on the stack.
+            .chain((0..25).flat_map(|i| push_register(&reg(i))))
+            .chain((0..25).flat_map(|i| load_gl_fe("tmp3", i as u32 * 8, &reg(i))))
+            .chain(std::iter::once("keccakf;".to_string()))
+            .chain((0..25).flat_map(|i| store_gl_fe("tmp3", i as u32 * 8, &reg(i))))
+            // After copying the result back into memory, we restore the original register values.
+            // Note that we spilled beyond SYSCALL_REGISTERS
+            .chain(
+                (0..25)
+                    .rev()
+                    .flat_map(|i| pop_register(&reg(i))),
+            );
+
+        self.add_syscall(Syscall::KeccakF, implementation);
+        self
+    }
+
     pub fn with_poseidon(mut self) -> Self {
         self.add_submachine(
             "std::machines::hash::poseidon_gl::PoseidonGL",
@@ -498,6 +540,7 @@ impl TryFrom<&[&str]> for Runtime {
             }
             match *name {
                 "poseidon_gl" => runtime = runtime.with_poseidon(),
+                "keccakf" => runtime = runtime.with_keccak(),
                 "arith" => runtime = runtime.with_arith(),
                 _ => return Err(format!("Invalid co-processor specified: {name}")),
             }
