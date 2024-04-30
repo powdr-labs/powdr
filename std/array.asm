@@ -6,6 +6,15 @@ let<T> len: T[] -> int = [];
 /// Evaluates to the array [f(0), f(1), ..., f(length - 1)].
 let<T> new: int, (int -> T) -> T[] = |length, f| std::utils::fold(length, f, [], |acc, e| (acc + [e]));
 
+/// Returns a new array equal to arr except that the element at index i is x.
+let<T> set_element: T[], int, T -> T[] = |arr, i, x| {
+    let _ = std::check::assert(i < len(arr), || "Index out of bounds");
+    map_enumerated(arr, |j, y| if i == j { x } else { y })
+};
+
+/// Returns a new array of length l containing the elements of arr starting at index start.
+let<T> sub_array: T[], int, int -> T[] = |arr, start, l| std::array::new(l, |i| arr[start + i]);
+
 /// Evaluates to the array [f(arr[0]), f(arr[1]), ..., f(arr[len(arr) - 1])].
 let<T1, T2> map: T1[], (T1 -> T2) -> T2[] = |arr, f| new(len(arr), |i| f(arr[i]));
 
@@ -24,6 +33,28 @@ let<T: Add + FromLiteral> sum: T[] -> T = |arr| fold(arr, 0, |a, b| a + b);
 /// TODO: Assert that lengths are equal when expressions are supported.
 let<T1, T2, T3> zip: T1[], T2[], (T1, T2 -> T3) -> T3[] = |array1, array2, fn| new(len(array1), |i| fn(array1[i], array2[i]));
 
+/// Returns f(i, arr[i]) for the first i where this is not None, or None if no such i exists.
+let<T1, T2> find_map_enumerated: T1[], (int, T1 -> std::utils::Option<T2>) -> std::utils::Option<T2> =
+    |arr, f| find_internal::find_map_enumerated(arr, 0, len(arr), f);
+/// Returns f(arr[i]) for the first i where this is not None, or None if no such i exists.
+let<T1, T2> find_map: T1[], (T1 -> std::utils::Option<T2>) -> std::utils::Option<T2> =
+    |arr, f| find_map_enumerated(arr, |_, x| f(x));
+
+/// Returns Some(i) for the first index i where f(arr[i]) is true, or None if no such i exists.
+let<T> find_index: T[], (T -> bool) -> std::utils::Option<int>
+    = |arr, f| find_map_enumerated(arr, |i, x| if f(x) { std::utils::Option::Some(i) } else { std::utils::Option::None });
+
+mod find_internal {
+    use std::utils::Option;
+
+    let<T1, T2> find_map_enumerated: T1[], int, int, (int, T1 -> Option<T2>) -> Option<T2> =
+        |arr, i, l, f| if i >= l { Option::None } else {
+            match f(i, arr[i]) {
+                Option::Some(x) => Option::Some(x),
+                Option::None => find_map_enumerated(arr, i + 1, l, f),
+            }
+        };
+}
 
 let<T> sort: T[], (T, T -> bool) -> T[] = |arr, lt| internal::sort(to_slice(arr), lt);
 

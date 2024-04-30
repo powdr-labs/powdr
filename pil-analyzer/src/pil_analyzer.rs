@@ -159,9 +159,7 @@ impl PILAnalyzer {
             value
                 .children()
                 .try_for_each(|e| side_effect_checker::check(&self.definitions, context, e))
-                .unwrap_or_else(|err| {
-                    panic!("Error checking side-effects of {name} {value}: {err}")
-                })
+                .unwrap_or_else(|err| panic!("Error checking side-effects of {name}: {err}"))
         }
 
         // for all identities, check that they call pure or constr functions
