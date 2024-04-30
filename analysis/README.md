@@ -17,6 +17,7 @@ We define two types of machines: virtual machines and constrained machines. Cons
 | constraints             | yes     | yes         |
 | links                   | yes     | yes         |
 | submachines             | yes     | yes         |
+
 The pipeline accepts both kinds of machines, and they are represented by the same type `Machine`. Some steps are specific to virtual machines. They can still be applied to constrained machines and must have no effect. In the process, virtual machines get reduced to constrained machines by encoding their high-level elements into constrained machines elements.
 
 ## Pipeline
@@ -304,7 +305,6 @@ The diff for our example program is as follows:
 This step takes constrained machines and enforces that the `operation_id` can only change if the `latch` is on. This defines blocks of computation which can be created based on the functions exposed by each machine.
 
 We add an identical block of constraints for each machine type. For example, for the `Main` machine:
-
 ```diff
 +       constraints {
 +               pol constant _block_enforcer_last_step = [0]* + [1];
