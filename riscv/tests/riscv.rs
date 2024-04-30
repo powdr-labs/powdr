@@ -4,7 +4,7 @@ use common::verify_riscv_asm_string;
 use mktemp::Temp;
 use powdr_backend::BackendType;
 use powdr_number::{FieldElement, GoldilocksField};
-use powdr_pipeline::{verify::verify_with_paths, Pipeline};
+use powdr_pipeline::{verify::verify, Pipeline};
 use std::path::PathBuf;
 use test_log::test;
 
