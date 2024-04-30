@@ -324,7 +324,7 @@ impl<T: Display> Display for Params<T> {
 
 impl<E: Display> Display for IndexAccess<Expression<E>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if let None = self.array.precedence() {
+        if self.array.precedence().is_none() {
             write!(f, "{}[{}]", self.array, self.index)
         } else {
             write!(f, "({})[{}]", self.array, self.index)
@@ -334,7 +334,7 @@ impl<E: Display> Display for IndexAccess<Expression<E>> {
 
 impl<E: Display> Display for FunctionCall<Expression<E>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if let None = self.function.precedence() {
+        if self.function.precedence().is_none() {
             write!(f, "{}({})", self.function, format_list(&self.arguments))
         } else {
             write!(f, "({})({})", self.function, format_list(&self.arguments))
@@ -609,7 +609,7 @@ impl<E: Display> Expression<E> {
     pub fn format_unary_operation(
         &self,
         op: &UnaryOperator,
-        exp: &Box<Expression<E>>,
+        exp: &Expression<E>,
         f: &mut Formatter<'_>,
     ) -> Result {
         let _exp_string = if let (Some(_precision), Some(_exp_precision)) =
@@ -632,9 +632,9 @@ impl<E: Display> Expression<E> {
     }
 
     pub fn format_binary_operation(
-        left: &Box<Expression<E>>,
+        left: &Expression<E>,
         op: &BinaryOperator,
-        right: &Box<Expression<E>>,
+        right: &Expression<E>,
         f: &mut Formatter<'_>,
     ) -> Result {
         let use_left_parentheses = left.require_parentheses()
