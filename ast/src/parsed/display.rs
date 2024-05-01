@@ -597,37 +597,25 @@ impl<E: Display> Expression<E> {
         }
     }
 
-    pub fn require_parentheses(&self) -> bool {
-        match self {
-            Expression::BinaryOperation(_, op, _) => {
-                op.associativity() == BinaryOperatorAssociativity::RequireParentheses
-            }
-            _ => false,
-        }
-    }
-
     pub fn format_unary_operation(
         &self,
         op: &UnaryOperator,
         exp: &Expression<E>,
         f: &mut Formatter<'_>,
     ) -> Result {
-        let _exp_string = if let (Some(_precision), Some(_exp_precision)) =
-            (self.precedence(), exp.precedence())
-        {
-            if _precision < _exp_precision {
-                format!("({})", exp)
-            } else {
-                format!("{}", exp)
+        let exp_string = match (self.precedence(), exp.precedence()) {
+            (Some(precedence), Some(inner_precedence)) if precedence < inner_precedence => {
+                format!("({exp})")
             }
-        } else {
-            format!("{}", exp)
+            _ => {
+                format!("{exp}")
+            }
         };
 
         if op.is_prefix() {
-            write!(f, "{}{}", op, _exp_string)
+            write!(f, "{}{}", op, exp_string)
         } else {
-            write!(f, "{}{}", _exp_string, op)
+            write!(f, "{}{}", exp_string, op)
         }
     }
 

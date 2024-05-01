@@ -89,6 +89,10 @@ mod test {
                 "instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
             ),
             (
+                "instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
+                "instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
+            ),
+            (
                 "pc' = (1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));",
                 "pc' = (1 - first_step') * (instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1));",
             )
