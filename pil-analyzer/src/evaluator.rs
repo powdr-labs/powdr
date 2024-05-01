@@ -136,7 +136,6 @@ pub enum Value<'a, T> {
     Enum(&'a str, Option<Vec<Arc<Self>>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
-    Identity(AlgebraicExpression<T>, AlgebraicExpression<T>),
 }
 
 impl<'a, T: FieldElement> From<T> for Value<'a, T> {
@@ -214,7 +213,6 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::Enum(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
-            Value::Identity(_, _) => "constr".to_string(),
         }
     }
 
@@ -367,7 +365,6 @@ impl<'a, T: Display> Display for Value<'a, T> {
             }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
-            Value::Identity(left, right) => write!(f, "{left} = {right}"),
         }
     }
 }
@@ -1006,8 +1003,8 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
                 }
             }
         }
-        (Value::Expression(l), BinaryOperator::Identity, Value::Expression(r)) => {
-            Value::Identity(l.clone(), r.clone()).into()
+        (l @ Value::Expression(_), BinaryOperator::Identity, r @ Value::Expression(_)) => {
+            Value::Enum("Identity", Some(vec![l.clone().into(), r.clone().into()])).into()
         }
         (Value::Expression(l), op, Value::Expression(r)) => match (l, r) {
             (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) => {

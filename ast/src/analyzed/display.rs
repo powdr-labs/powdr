@@ -41,6 +41,10 @@ impl<T: Display> Display for Analyzed<T> {
         for statement in &self.source_order {
             match statement {
                 StatementIdentifier::Definition(name) => {
+                    if self.auto_added_symbols.contains(name) {
+                        // Core symbol added automatically, no need to print.
+                        continue;
+                    }
                     if let Some((symbol, definition)) = self.definitions.get(name) {
                         if matches!(
                             definition,

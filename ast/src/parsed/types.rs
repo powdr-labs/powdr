@@ -27,8 +27,6 @@ pub enum Type<E = u64> {
     Col,
     /// Algebraic expression
     Expr,
-    /// Polynomial identity
-    Constr,
     Array(ArrayType<E>),
     Tuple(TupleType<E>),
     Function(FunctionType<E>),
@@ -50,8 +48,7 @@ impl<E> Type<E> {
             | Type::Fe
             | Type::String
             | Type::Col
-            | Type::Expr
-            | Type::Constr => true,
+            | Type::Expr => true,
             Type::Array(_)
             | Type::Tuple(_)
             | Type::Function(_)
@@ -238,7 +235,6 @@ impl<R: Display> From<Type<Expression<R>>> for Type<u64> {
             Type::String => Type::String,
             Type::Col => Type::Col,
             Type::Expr => Type::Expr,
-            Type::Constr => Type::Constr,
             Type::Array(a) => Type::Array(a.into()),
             Type::Tuple(t) => Type::Tuple(t.into()),
             Type::Function(f) => Type::Function(f.into()),
