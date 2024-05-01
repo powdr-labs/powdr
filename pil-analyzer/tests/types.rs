@@ -218,7 +218,7 @@ fn lambda() {
     let input = "
     let x: col[3];
     let y: col;
-    let set_equal: expr, expr -> constr = |a, b| a = b;
+    let set_equal: expr, expr -> Constr = |a, b| a = b;
     let<T1, T2> array_map: int, T1[], (T1 -> T2) -> T2[] = |n, a, f| if n == 0 { [] } else { array_map(n - 1, a, f) + [f(a[n - 1])] };
     array_map(3, x, |i| set_equal(i, y));
     ";

@@ -25,6 +25,16 @@ fn simple_sum_asm() {
 }
 
 #[test]
+#[should_panic = "Witness generation failed."]
+fn secondary_machine_plonk() {
+    // Currently fails because no copy constraints are expressed in PIL yet.
+    let f = "asm/secondary_machine_plonk.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn secondary_block_machine_add2() {
     let f = "asm/secondary_block_machine_add2.asm";
     verify_asm(f, Default::default());
