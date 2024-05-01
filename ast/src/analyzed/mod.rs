@@ -2,7 +2,7 @@ mod display;
 pub mod visitor;
 
 use std::cmp::max;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::iter;
@@ -40,6 +40,8 @@ pub struct Analyzed<T> {
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,
+    /// Symbols from the core that were added automatically but will not be printed.
+    pub auto_added_symbols: HashSet<String>,
 }
 
 impl<T> Analyzed<T> {
