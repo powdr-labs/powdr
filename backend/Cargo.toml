@@ -28,6 +28,7 @@ starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "3907aed
 pil-stark-prover = { git = "https://github.com/powdr-labs/pil-stark-prover.git", rev = "f0c7800564f78ed9414640317e905a777f43fd90", optional = true }
 mktemp = "0.5.0"
 
+
 [dev-dependencies]
 test-log = "0.2.12"
 env_logger = "0.10.0"
