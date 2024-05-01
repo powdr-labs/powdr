@@ -2,21 +2,21 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     convert::Infallible,
-    iter::once,
+    iter::{empty, once},
 };
 
 use powdr_ast::parsed::{
     asm::{
-        ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Instruction, InstructionBody,
-        LinkDeclaration, Machine, MachineStatement, Module, ModuleRef, ModuleStatement,
-        SymbolDefinition, SymbolValue, SymbolValueRef,
+        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Instruction,
+        InstructionBody, LinkDeclaration, Machine, MachineStatement, Module, ModuleRef,
+        ModuleStatement, SymbolDefinition, SymbolPath, SymbolValue, SymbolValueRef,
     },
     folder::Folder,
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, PilStatement, StatementInsideBlock,
-    TypedExpression,
+    LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, PilStatement,
+    StatementInsideBlock, TypedExpression,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -79,11 +79,8 @@ impl<'a> Folder for Canonicalizer<'a> {
                             },
                             SymbolValue::Expression(mut exp) => {
                                 if let Some(type_scheme) = &mut exp.type_scheme {
-                                    type_scheme
-                                        .ty
-                                        .map_to_type_vars(&type_scheme.vars.vars().collect());
-                                    canonicalize_inside_type(
-                                        &mut type_scheme.ty,
+                                    canonicalize_inside_type_scheme(
+                                        type_scheme,
                                         &self.path,
                                         self.paths,
                                     );
@@ -92,10 +89,13 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 Some(Ok(SymbolValue::Expression(exp)))
                             }
                             SymbolValue::TypeDeclaration(mut enum_decl) => {
+                                let type_vars = enum_decl.type_vars.vars().collect();
                                 for variant in &mut enum_decl.variants {
                                     if let Some(fields) = &mut variant.fields {
                                         for field in fields {
-                                            canonicalize_inside_type(field, &self.path, self.paths);
+                                            canonicalize_inside_type(
+                                                field, &type_vars, &self.path, self.paths,
+                                            );
                                         }
                                     }
                                 }
@@ -219,15 +219,65 @@ fn canonicalize_inside_expression(
     paths: &'_ PathMap,
 ) {
     e.pre_visit_expressions_mut(&mut |e| {
-        if let Expression::Reference(reference) = e {
-            // If resolving the reference fails, we assume it is a local variable that has been checked below.
-            if let Some(n) = paths.get(&path.clone().join(reference.path.clone())) {
-                *reference = n.relative_to(&Default::default()).into();
-            } else {
-                assert!(reference.path.try_to_identifier().is_some());
+        match e {
+            Expression::Reference(reference) => {
+                // If resolving the reference fails, we assume it is a local variable that has been checked below.
+                if let Some(n) = paths.get(&path.clone().join(reference.path.clone())) {
+                    *reference = n.relative_to(&Default::default()).into();
+                } else {
+                    assert!(reference.path.try_to_identifier().is_some());
+                }
             }
+            Expression::BlockExpression(statements, _expr) => {
+                for statement in statements {
+                    if let StatementInsideBlock::LetStatement(let_statement) = statement {
+                        canonicalize_inside_pattern(&mut let_statement.pattern, path, paths);
+                    }
+                }
+            }
+            Expression::LambdaExpression(lambda) => {
+                lambda.params.iter_mut().for_each(|p| {
+                    canonicalize_inside_pattern(p, path, paths);
+                });
+            }
+            Expression::MatchExpression(_, match_arms) => {
+                match_arms.iter_mut().for_each(|MatchArm { pattern, .. }| {
+                    canonicalize_inside_pattern(pattern, path, paths);
+                })
+            }
+            _ => {}
         }
     });
+}
+
+fn canonicalize_inside_pattern(
+    pattern: &mut Pattern,
+    path: &AbsoluteSymbolPath,
+    paths: &'_ PathMap,
+) {
+    match pattern {
+        Pattern::Enum(name, None) => {
+            // TODO Currently, we treat any identifier as a variable pattern.
+            // If done properly, single identifiers that resolve to enum values
+            // (like a single None) should not be treated as variables.
+            // This is planned to be fixed with the refactoring of path_canonicalizer,
+            // where we remove the two-step approach.
+            if let Some(name) = name.try_to_identifier() {
+                *pattern = Pattern::Variable(name.clone())
+            } else {
+                let abs = paths.get(&path.clone().join(name.clone())).unwrap();
+                *name = abs.relative_to(&Default::default()).clone();
+            }
+        }
+        Pattern::Enum(name, _fields) => {
+            let abs = paths.get(&path.clone().join(name.clone())).unwrap();
+            *name = abs.relative_to(&Default::default()).clone();
+        }
+        _ => {}
+    }
+    for p in pattern.children_mut() {
+        canonicalize_inside_pattern(p, path, paths)
+    }
 }
 
 fn canonicalize_inside_type_scheme(
@@ -235,17 +285,21 @@ fn canonicalize_inside_type_scheme(
     path: &AbsoluteSymbolPath,
     paths: &'_ PathMap,
 ) {
-    type_scheme
-        .ty
-        .map_to_type_vars(&type_scheme.vars.vars().collect());
-    canonicalize_inside_type(&mut type_scheme.ty, path, paths);
+    canonicalize_inside_type(
+        &mut type_scheme.ty,
+        &type_scheme.vars.vars().collect(),
+        path,
+        paths,
+    );
 }
 
 fn canonicalize_inside_type(
     ty: &mut Type<Expression>,
+    type_vars: &HashSet<&String>,
     path: &AbsoluteSymbolPath,
     paths: &'_ PathMap,
 ) {
+    ty.map_to_type_vars(type_vars);
     for p in ty.contained_named_types_mut() {
         let abs = paths.get(&path.clone().join(p.clone())).unwrap();
         *p = abs.relative_to(&Default::default()).clone();
@@ -287,6 +341,32 @@ impl PathDependencyChain {
             None => {
                 self.paths.push(path);
                 Ok(())
+            }
+        }
+    }
+}
+
+/// Tries to resolve a symbol at a given absolute location. If it does not resolve,
+/// tries to resolve it relative to std::prelude.
+fn check_path_try_prelude(
+    location: AbsoluteSymbolPath,
+    symbol: SymbolPath,
+    state: &mut State<'_>,
+) -> Result<(), String> {
+    let path_to_check = location.join(symbol.clone());
+    match check_path(path_to_check.clone(), state) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            match check_path_internal(
+                parse_absolute_path("::std::prelude").join(symbol),
+                state,
+                Default::default(),
+            ) {
+                Ok((canonical_path, _, _)) => {
+                    state.paths.insert(path_to_check, canonical_path);
+                    Ok(())
+                }
+                Err(_) => Err(error),
             }
         }
     }
@@ -564,7 +644,7 @@ fn check_expression(
                     return Ok(());
                 }
             }
-            check_path(location.clone().join(reference.path.clone()), state)
+            check_path_try_prelude(location.clone(), reference.path.clone(), state)
         }
         Expression::PublicReference(_) | Expression::Number(_, _) | Expression::String(_) => Ok(()),
         Expression::Tuple(items) | Expression::ArrayLiteral(ArrayLiteral { items }) => {
@@ -577,7 +657,7 @@ fn check_expression(
         }) => {
             // Add the local variables, ignore collisions.
             let mut local_variables = local_variables.clone();
-            local_variables.extend(params.iter().flat_map(|p| p.variables().cloned()));
+            local_variables.extend(check_patterns(location, params, state)?);
             check_expression(location, body, state, &local_variables)
         }
         Expression::BinaryOperation(a, _, b)
@@ -599,7 +679,7 @@ fn check_expression(
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
                 let mut local_variables = local_variables.clone();
-                local_variables.extend(pattern.variables().cloned());
+                local_variables.extend(check_pattern(location, pattern, state)?);
                 check_expression(location, value, state, &local_variables)
             })
         }
@@ -623,7 +703,7 @@ fn check_expression(
                         if let Some(value) = value {
                             check_expression(location, value, state, &local_variables)?;
                         }
-                        local_variables.extend(pattern.variables().cloned());
+                        local_variables.extend(check_pattern(location, pattern, state)?);
                     }
                     StatementInsideBlock::Expression(expr) => {
                         check_expression(location, expr, state, &local_variables)?;
@@ -646,14 +726,52 @@ fn check_expressions(
         .try_for_each(|e| check_expression(location, e, state, local_variables))
 }
 
+/// Checks paths in a pattern and returns the newly declared variables.
+/// Does not turn "wrongly parsed" enums into variables, that will be done
+/// in canonicalize_inside_pattern.
+fn check_pattern<'b>(
+    location: &AbsoluteSymbolPath,
+    pattern: &'b Pattern,
+    state: &mut State<'_>,
+) -> Result<Box<dyn Iterator<Item = String> + 'b>, String> {
+    match pattern {
+        Pattern::Variable(n) => return Ok(Box::new(once(n.clone()))),
+        Pattern::Enum(name, fields) => {
+            // The parser cannot distinguish between Enum and Variable patterns.
+            // So if "name" is a single identifier that does not resolve to an enum variant,
+            // it is a variable pattern.
+            // TODO we do not fully implement that here. Anything that is an identifier
+            // is mapped to a variable. It will be fixed with the refactoring of
+            // path_canonicalizer that removes the two-step approach.
+            if fields.is_none() {
+                if let Some(identifier) = name.try_to_identifier() {
+                    return Ok(Box::new(once(identifier.clone())));
+                }
+            }
+            check_path_try_prelude(location.clone(), name.clone(), state)?
+        }
+        _ => {}
+    }
+    check_patterns(location, pattern.children(), state)
+}
+
+fn check_patterns<'b>(
+    location: &AbsoluteSymbolPath,
+    patterns: impl IntoIterator<Item = &'b Pattern>,
+    state: &mut State<'_>,
+) -> Result<Box<dyn Iterator<Item = String> + 'b>, String> {
+    let mut result: Box<dyn Iterator<Item = String>> = Box::new(empty());
+    for p in patterns {
+        result = Box::new(result.chain(check_pattern(location, p, state)?));
+    }
+    Ok(result)
+}
+
 fn check_type_declaration(
     location: &AbsoluteSymbolPath,
     enum_decl: &EnumDeclaration<Expression>,
     state: &mut State<'_>,
 ) -> Result<(), String> {
-    // If we add generic types, the type variables need to be added
-    // in a way similar to local variables in expressions.
-
     enum_decl.variants.iter().try_fold(
         BTreeSet::default(),
         |mut acc, EnumVariant { name, .. }| {
@@ -663,20 +781,14 @@ fn check_type_declaration(
         },
     )?;
 
+    let type_vars = enum_decl.type_vars.vars().collect::<HashSet<_>>();
+
     enum_decl
         .variants
         .iter()
         .flat_map(|v| v.fields.iter())
         .flat_map(|v| v.iter())
-        .try_for_each(|ty| {
-            check_type(
-                location,
-                ty,
-                state,
-                &Default::default(),
-                &Default::default(),
-            )
-        })
+        .try_for_each(|ty| check_type(location, ty, state, &type_vars, &Default::default()))
 }
 
 fn check_type_scheme(
@@ -708,7 +820,7 @@ fn check_type(
                 continue;
             }
         }
-        check_path(location.clone().join(p.clone()), state)?
+        check_path_try_prelude(location.clone(), p.clone(), state)?
     }
     ty.children()
         .try_for_each(|e| check_expression(location, e, state, local_variables))
@@ -847,5 +959,18 @@ mod tests {
     #[test]
     fn import_after_usage() {
         expect("import_after_usage", Ok(()))
+    }
+
+    #[test]
+    fn simple_prelude_ref() {
+        expect("simple_prelude_ref", Ok(()))
+    }
+
+    #[test]
+    fn prelude_non_local() {
+        expect(
+            "prelude_non_local",
+            Err("symbol not found in `::module`: `x`"),
+        )
     }
 }

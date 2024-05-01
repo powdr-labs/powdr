@@ -1,7 +1,4 @@
-machine Main {
-
-    degree 256;
-
+machine Main with degree: 256 {
     Pythagoras pythagoras;
 
     reg pc[@pc];

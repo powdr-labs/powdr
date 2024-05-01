@@ -17,6 +17,10 @@ use crate::{Argument, Register, Statement, FunctionKind as FOp, Expression, map_
 
 grammar;
 
+extern {
+    type Error = String;
+}
+
 match {
     r"\s*" => { },
     r"#[^\n\r]*[\n\r]*" => { }, // Skip `# comments`

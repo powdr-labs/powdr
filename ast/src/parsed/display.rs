@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter, Result};
 use itertools::Itertools;
 
 use crate::{
+    indent,
     parsed::{BinaryOperator, UnaryOperator},
     write_indented_by, write_items, write_items_indented,
 };
@@ -33,26 +34,8 @@ impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => match value {
-                SymbolValue::Machine(
-                    m @ Machine {
-                        arguments:
-                            MachineArguments {
-                                latch,
-                                operation_id,
-                            },
-                        ..
-                    },
-                ) => {
-                    if let (None, None) = (latch, operation_id) {
-                        write!(f, "machine {name} {m}")
-                    } else {
-                        write!(
-                            f,
-                            "machine {name}({}, {}) {m}",
-                            latch.as_deref().unwrap_or("_"),
-                            operation_id.as_deref().unwrap_or("_"),
-                        )
-                    }
+                SymbolValue::Machine(m) => {
+                    write!(f, "machine {name}{m}")
                 }
                 SymbolValue::Import(i) => {
                     write!(f, "{i} as {name};")
@@ -97,9 +80,45 @@ impl Display for Import {
 
 impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "{{")?;
+        writeln!(f, "{}{} {{", &self.arguments, &self.properties)?;
         write_items_indented(f, &self.statements)?;
         write!(f, "}}")
+    }
+}
+
+impl Display for MachineArguments {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let args = self.0.iter().join(", ");
+        if !args.is_empty() {
+            write!(f, "({args})")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for MachineProperties {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let props = self
+            .degree
+            .as_ref()
+            .map(|s| format!("degree: {s}"))
+            .into_iter()
+            .chain(self.latch.as_ref().map(|s| format!("latch: {s}")))
+            .chain(
+                self.operation_id
+                    .as_ref()
+                    .map(|s| format!("operation_id: {s}")),
+            )
+            .chain(
+                self.call_selectors
+                    .as_ref()
+                    .map(|s| format!("call_selectors: {s}")),
+            )
+            .join(", ");
+        if !props.is_empty() {
+            write!(f, " with {props}")?;
+        }
+        Ok(())
     }
 }
 
@@ -167,8 +186,6 @@ impl Display for CallableRef {
 impl Display for MachineStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            MachineStatement::Degree(_, degree) => write!(f, "degree {};", degree),
-            MachineStatement::CallSelectors(_, sel) => write!(f, "call_selectors {};", sel),
             MachineStatement::Pil(_, statement) => write!(f, "{statement}"),
             MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),
             MachineStatement::RegisterDeclaration(_, name, flag) => write!(
@@ -333,6 +350,14 @@ impl Display for Pattern {
             Pattern::Tuple(t) => write!(f, "({})", t.iter().format(", ")),
             Pattern::Array(a) => write!(f, "[{}]", a.iter().format(", ")),
             Pattern::Variable(v) => write!(f, "{v}"),
+            Pattern::Enum(name, fields) => write!(
+                f,
+                "{name}{}",
+                fields
+                    .as_ref()
+                    .map(|fields| format!("({})", fields.iter().format(", ")))
+                    .unwrap_or_default()
+            ),
         }
     }
 }
@@ -515,9 +540,25 @@ impl Display for FunctionDefinition {
 
 impl<E: Display> Display for EnumDeclaration<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "enum {} {{", self.name)?;
-        write_items_indented(f, self.variants.iter())?;
-        write!(f, "}}")
+        write!(f, "{}", self.to_string_with_name(&self.name))
+    }
+}
+
+impl<E: Display> EnumDeclaration<E> {
+    /// Formats the enum declaration, exchanging its name by the provided one.
+    pub fn to_string_with_name(&self, name: &str) -> String {
+        let type_vars = if self.type_vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_vars)
+        };
+        format!(
+            "enum {name}{type_vars} {{\n{}}}",
+            indent(
+                self.variants.iter().map(|v| format!("{v},\n")).format(""),
+                1
+            )
+        )
     }
 }
 
@@ -531,7 +572,7 @@ impl<E: Display> Display for EnumVariant<E> {
                 fields.iter().map(format_type_with_parentheses).format(", ")
             )?;
         }
-        write!(f, ",")
+        Ok(())
     }
 }
 
@@ -695,7 +736,10 @@ impl<E: Display> Display for Type<E> {
             Type::Tuple(tuple) => write!(f, "{tuple}"),
             Type::Function(fun) => write!(f, "{fun}"),
             Type::TypeVar(name) => write!(f, "{name}"),
-            Type::NamedType(name) => write!(f, "{name}"),
+            Type::NamedType(name, Some(args)) => {
+                write!(f, "{name}<{}>", args.iter().format(", "))
+            }
+            Type::NamedType(name, None) => write!(f, "{name}"),
         }
     }
 }

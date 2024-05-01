@@ -15,7 +15,7 @@ use crate::witgen::IncompleteCause;
 use super::data_structures::finalizable_data::FinalizableData;
 use super::processor::{OuterQuery, Processor};
 
-use super::rows::{Row, RowFactory, RowIndex, UnknownStrategy};
+use super::rows::{Row, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
 
 /// Maximal period checked during loop detection.
@@ -57,7 +57,6 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     identities_without_next_ref: Vec<&'a Identity<Expression<T>>>,
     last_report: DegreeType,
     last_report_time: Instant,
-    row_factory: RowFactory<'a, T>,
     processor: Processor<'a, 'b, 'c, T, Q>,
     progress_bar: ProgressBar,
 }
@@ -69,7 +68,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         identities: &[&'a Identity<Expression<T>>],
         witnesses: &'c HashSet<PolyID>,
         data: FinalizableData<'a, T>,
-        row_factory: RowFactory<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
@@ -91,7 +89,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             fixed_data,
             identities_with_next_ref: identities_with_next,
             identities_without_next_ref: identities_without_next,
-            row_factory,
             last_report: 0,
             last_report_time: Instant::now(),
             processor,
@@ -238,8 +235,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         if row_index == self.processor.len() as DegreeType - 1 {
             self.processor.set_row(
                 self.processor.len(),
-                self.row_factory
-                    .fresh_row(RowIndex::from_degree(row_index, self.fixed_data.degree) + 1),
+                Row::fresh(
+                    self.fixed_data,
+                    RowIndex::from_degree(row_index, self.fixed_data.degree) + 1,
+                ),
             );
         }
     }

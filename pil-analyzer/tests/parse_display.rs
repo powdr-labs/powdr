@@ -15,6 +15,7 @@ namespace std::prover(65536);
     let eval: expr -> fe = [];
     enum Query {
         Input(int),
+        None,
     }
 namespace std::convert(65536);
     let int = [];
@@ -51,6 +52,7 @@ namespace T(65536);
         0 => std::prover::Query::Input(1),
         3 => std::prover::Query::Input(std::convert::int::<fe>((std::prover::eval(T.CNT) + 1))),
         7 => std::prover::Query::Input(0),
+        _ => std::prover::Query::None,
     };
     col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
@@ -355,7 +357,7 @@ fn constraint_but_expected_expression() {
 }
 
 #[test]
-#[should_panic = "Symbol not found: T"]
+#[should_panic = "Type symbol not found: T"]
 fn used_undeclared_type_var() {
     let input = r#"let x: T = 8;"#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
@@ -371,7 +373,7 @@ fn declared_unused_type_var() {
 }
 
 #[test]
-#[should_panic = "Symbol not found: T"]
+#[should_panic = "Type symbol not found: T"]
 fn double_used_undeclared_type_var() {
     let input = r#"let<K> x: T = 8;"#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
@@ -541,7 +543,7 @@ fn let_inside_block_scoping_separate() {
 }
 
 #[test]
-#[should_panic = "Symbol not found: w"]
+#[should_panic = "Value symbol not found: w"]
 fn let_inside_block_scoping_limited() {
     let input = "
     namespace Main(8);
@@ -687,17 +689,6 @@ fn single_ellipsis() {
 }
 
 #[test]
-#[should_panic = "Only one \"..\"-item allowed in array pattern"]
-fn multi_ellipsis() {
-    let input = "    let t: int[] -> int = (|i| match i {
-        [1, .., 3, ..] => 2,
-        _ => -1,
-    });
-";
-    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
-}
-
-#[test]
 fn namespace_no_degree() {
     let input = "namespace X;
     let y: int = 7;
@@ -708,6 +699,23 @@ namespace T(8);
     let y: int = 7;
 namespace T(8);
     let k: int = X.y;
+";
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.degree, Some(8));
+    assert_eq!(expected, analyzed.to_string());
+}
+
+#[test]
+fn find_in_prelude() {
+    let input = "namespace std::prelude;
+    let y: int = 7;
+namespace T(8);
+    let k = y;
+";
+    let expected = "namespace std::prelude(8);
+    let y: int = 7;
+namespace T(8);
+    let k: int = std::prelude::y;
 ";
     let analyzed = analyze_string::<GoldilocksField>(input);
     assert_eq!(analyzed.degree, Some(8));

@@ -1,11 +1,10 @@
-use std::io;
-use std::iter::{once, repeat};
 use std::time::Instant;
+use std::{borrow::Cow, io};
 
-use crate::{pilstark, Backend, BackendFactory, Error};
+use crate::{Backend, BackendFactory, Error};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement, GoldilocksField, LargeInt};
+use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 
 use starky::{
     merklehash::MerkleTreeGL,
@@ -15,12 +14,14 @@ use starky::{
     stark_verify::stark_verify,
     traits::FieldExtension,
     transcript::TranscriptGL,
-    types::{StarkStruct, Step, PIL},
+    types::{StarkStruct, PIL},
 };
 
-pub struct EStarkFactory;
+use super::{create_stark_struct, first_step_fixup};
 
-impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
+pub struct Factory;
+
+impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
         pil: &'a Analyzed<F>,
@@ -38,26 +39,12 @@ impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
             return Err(Error::NoSetupAvailable);
         }
 
-        let degree = pil.degree();
-        assert!(degree > 1);
-        let n_bits = (DegreeType::BITS - (degree - 1).leading_zeros()) as usize;
-        let n_bits_ext = n_bits + 1;
+        let params = create_stark_struct(pil.degree());
 
-        let steps = (2..=n_bits_ext)
-            .rev()
-            .step_by(4)
-            .map(|b| Step { nBits: b })
-            .collect();
+        let (pil_json, patched_fixed) = first_step_fixup(pil, fixed);
 
-        let params = StarkStruct {
-            nBits: n_bits,
-            nBitsExt: n_bits_ext,
-            nQueries: 2,
-            verificationHashType: "GL".to_owned(),
-            steps,
-        };
+        let fixed = patched_fixed.map_or_else(|| Cow::Borrowed(fixed), Cow::Owned);
 
-        let (pil_json, fixed) = pil_json(pil, fixed);
         let const_pols = to_starky_pols_array(&fixed, &pil_json, PolKind::Constant);
 
         let setup = if let Some(vkey) = verification_key {
@@ -75,49 +62,6 @@ impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
     }
 }
 
-fn pil_json<'a, F: FieldElement>(
-    pil: &'a Analyzed<F>,
-    fixed: &'a [(String, Vec<F>)],
-) -> (PIL, Vec<(String, Vec<F>)>) {
-    let degree = pil.degree();
-
-    let mut pil: PIL = pilstark::json_exporter::export(pil);
-
-    // TODO starky requires a fixed column with the equivalent
-    // semantics to Polygon zkEVM's `L1` column.
-    // It takes the name of that column via the API.
-    // Powdr generated PIL will always have `main.first_step`,
-    // but directly given PIL may not have it.
-    // This is a hack to inject such column if it doesn't exist.
-    // It should be eventually improved.
-    let mut fixed = fixed.to_vec();
-    if !fixed.iter().any(|(k, _)| k == "main.first_step") {
-        use starky::types::Reference;
-        pil.nConstants += 1;
-        pil.references.insert(
-            "main.first_step".to_string(),
-            Reference {
-                polType: None,
-                type_: "constP".to_string(),
-                id: fixed.len(),
-                polDeg: degree as usize,
-                isArray: false,
-                elementType: None,
-                len: None,
-            },
-        );
-        fixed.push((
-            "main.first_step".to_string(),
-            once(F::one())
-                .chain(repeat(F::zero()))
-                .take(degree as usize)
-                .collect(),
-        ));
-    }
-
-    (pil, fixed)
-}
-
 fn create_stark_setup(
     mut pil: PIL,
     const_pols: &PolsArray,
@@ -132,8 +76,8 @@ fn create_stark_setup(
     .unwrap()
 }
 
-pub struct EStark<F: FieldElement> {
-    fixed: Vec<(String, Vec<F>)>,
+pub struct EStark<'a, F: FieldElement> {
+    fixed: Cow<'a, [(String, Vec<F>)]>,
     pil_json: PIL,
     params: StarkStruct,
     // eSTARK calls it setup, but it works similarly to a verification key and depends only on the
@@ -141,7 +85,7 @@ pub struct EStark<F: FieldElement> {
     setup: StarkSetup<MerkleTreeGL>,
 }
 
-impl<F: FieldElement> EStark<F> {
+impl<'a, F: FieldElement> EStark<'a, F> {
     fn verify_stark_with_publics(
         &self,
         proof: &StarkProof<MerkleTreeGL>,
@@ -173,7 +117,7 @@ impl<F: FieldElement> EStark<F> {
     }
 }
 
-impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
+impl<'a, F: FieldElement> Backend<'a, F> for EStark<'a, F> {
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
         let proof: StarkProof<MerkleTreeGL> =
             serde_json::from_str(&String::from_utf8(proof.to_vec()).unwrap()).unwrap();

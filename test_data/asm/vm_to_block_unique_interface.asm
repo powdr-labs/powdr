@@ -1,4 +1,7 @@
-machine Binary(latch, operation_id) {
+machine Binary with
+    latch: latch,
+    operation_id: operation_id,
+{
 
     operation and<0> x, y -> z;
 
@@ -16,7 +19,10 @@ machine Binary(latch, operation_id) {
     { operation_id, x, y, z } in { P_FUNCTION, P_X, P_Y, P_Z };
 }
 
-machine Arith(latch, operation_id) {
+machine Arith with
+    latch: latch,
+    operation_id: operation_id,
+{
 
     operation add<0> x, y -> z;
 
@@ -30,10 +36,7 @@ machine Arith(latch, operation_id) {
     z = (1 - operation_id) * (x + y) + operation_id * (x - y);
 }
 
-machine Main {
-
-    degree 32;
-
+machine Main with degree: 32{
     Arith arith;
     Binary binary;
 

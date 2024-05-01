@@ -14,9 +14,8 @@ use crate::witgen::EvalValue;
 use super::affine_expression::AffineExpression;
 use super::block_processor::BlockProcessor;
 use super::data_structures::column_map::WitnessColumnMap;
-use super::global_constraints::GlobalConstraints;
 use super::machines::{FixedLookup, Machine};
-use super::rows::{Row, RowFactory, RowIndex};
+use super::rows::{Row, RowIndex};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
@@ -31,7 +30,6 @@ pub struct Generator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<Expression<T>>>,
     witnesses: HashSet<PolyID>,
-    global_range_constraints: GlobalConstraints<T>,
     data: FinalizableData<'a, T>,
     latch: Option<Expression<T>>,
     name: String,
@@ -115,7 +113,6 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         connecting_identities: &[&'a Identity<Expression<T>>],
         identities: Vec<&'a Identity<Expression<T>>>,
         witnesses: HashSet<PolyID>,
-        global_range_constraints: GlobalConstraints<T>,
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&witnesses);
@@ -128,7 +125,6 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             fixed_data,
             identities,
             witnesses,
-            global_range_constraints,
             data,
             latch,
         }
@@ -176,12 +172,17 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         // Note that using `BlockProcessor` instead of `VmProcessor` is more convenient here because
         // it does not assert that the row is "complete" afterwards (i.e., that all identities
         // are satisfied assuming 0 for unknown values).
-        let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.witnesses,
             [
-                row_factory.fresh_row(RowIndex::from_i64(-1, self.fixed_data.degree)),
-                row_factory.fresh_row(RowIndex::from_i64(0, self.fixed_data.degree)),
+                Row::fresh(
+                    self.fixed_data,
+                    RowIndex::from_i64(-1, self.fixed_data.degree),
+                ),
+                Row::fresh(
+                    self.fixed_data,
+                    RowIndex::from_i64(0, self.fixed_data.degree),
+                ),
             ]
             .into_iter(),
         );
@@ -223,7 +224,6 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         log::trace!(
             "Running main machine from row {row_offset} with the following initial values in the first row:\n{}", first_row.render_values(false, None)
         );
-        let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.witnesses,
             [first_row].into_iter(),
@@ -234,7 +234,6 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             &self.identities,
             &self.witnesses,
             data,
-            row_factory,
             mutable_state,
         );
         if let Some(outer_query) = outer_query {

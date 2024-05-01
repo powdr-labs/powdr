@@ -1,12 +1,10 @@
-use std::memory::Memory;
+use std::machines::memory::Memory;
 
-machine Main {
+machine Main with degree: 65536 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
     reg A;
-
-    degree 65536;
 
     col fixed STEP(i) { i };
     Memory memory;

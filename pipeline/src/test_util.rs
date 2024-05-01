@@ -1,15 +1,12 @@
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
-use powdr_executor::witgen::extract_publics;
-use powdr_number::{BigInt, Bn254Field, FieldElement, GoldilocksField};
+use powdr_number::{buffered_write_file, BigInt, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::path::PathBuf;
 
 use std::sync::Arc;
-use std::{fs::File, io::BufWriter};
 
 use crate::pipeline::Pipeline;
-use crate::util::write_or_panic;
 use crate::verify::verify;
 
 pub fn resolve_test_file(file_name: &str) -> PathBuf {
@@ -28,7 +25,7 @@ pub fn verify_test_file(
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
         .add_external_witness_values(external_witness_values);
-    verify_pipeline(pipeline)
+    verify_pipeline(pipeline, BackendType::EStarkDump)
 }
 
 pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
@@ -47,11 +44,14 @@ pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
         pipeline = pipeline.add_data_vec(&data);
     }
 
-    verify_pipeline(pipeline).unwrap();
+    verify_pipeline(pipeline, BackendType::EStarkDump).unwrap();
 }
 
-pub fn verify_pipeline(pipeline: Pipeline<GoldilocksField>) -> Result<(), String> {
-    let mut pipeline = pipeline.with_backend(BackendType::PilStarkCli);
+pub fn verify_pipeline(
+    pipeline: Pipeline<GoldilocksField>,
+    backend: BackendType,
+) -> Result<(), String> {
+    let mut pipeline = pipeline.with_backend(backend);
 
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
     if pipeline.output_dir().is_none() {
@@ -60,7 +60,7 @@ pub fn verify_pipeline(pipeline: Pipeline<GoldilocksField>) -> Result<(), String
 
     pipeline.compute_proof().unwrap();
 
-    verify(pipeline.output_dir().unwrap(), pipeline.name(), None)
+    verify(pipeline.output_dir().unwrap())
 }
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
@@ -69,19 +69,18 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         .with_tmp_output(&tmp_dir)
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(powdr_backend::BackendType::EStark);
+        .with_backend(powdr_backend::BackendType::EStarkStarky);
 
     pipeline.clone().compute_proof().unwrap();
 
     // Repeat the proof generation, but with an externally generated verification key
-    let pil = pipeline.compute_optimized_pil().unwrap();
 
     // Verification Key
     let vkey_file_path = tmp_dir.as_path().join("verification_key.bin");
-    let vkey_file = BufWriter::new(File::create(&vkey_file_path).unwrap());
-    write_or_panic(vkey_file, |writer| {
+    buffered_write_file(&vkey_file_path, |writer| {
         pipeline.export_verification_key(writer).unwrap()
-    });
+    })
+    .unwrap();
 
     // Create the proof before adding the vkey to the pipeline,
     // so that it's generated during the proof
@@ -89,7 +88,9 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
 
     let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
 
-    let publics: Vec<GoldilocksField> = extract_publics(&pipeline.witness().unwrap(), &pil)
+    let publics: Vec<GoldilocksField> = pipeline
+        .publics()
+        .unwrap()
         .iter()
         .map(|(_name, v)| *v)
         .collect();
@@ -139,21 +140,21 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 
     // Setup
     let setup_file_path = tmp_dir.as_path().join("params.bin");
-    let setup_file = BufWriter::new(File::create(&setup_file_path).unwrap());
-    write_or_panic(setup_file, |writer| {
+    buffered_write_file(&setup_file_path, |writer| {
         powdr_backend::BackendType::Halo2
             .factory::<Bn254Field>()
             .generate_setup(pil.degree(), writer)
             .unwrap()
-    });
+    })
+    .unwrap();
     let mut pipeline = pipeline.with_setup_file(Some(setup_file_path));
 
     // Verification Key
     let vkey_file_path = tmp_dir.as_path().join("verification_key.bin");
-    let vkey_file = BufWriter::new(File::create(&vkey_file_path).unwrap());
-    write_or_panic(vkey_file, |writer| {
+    buffered_write_file(&vkey_file_path, |writer| {
         pipeline.export_verification_key(writer).unwrap()
-    });
+    })
+    .unwrap();
 
     // Create the proof before adding the setup and vkey to the backend,
     // so that they're generated during the proof
@@ -161,7 +162,9 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 
     let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
 
-    let publics: Vec<Bn254Field> = extract_publics(&pipeline.witness().unwrap(), &pil)
+    let publics: Vec<Bn254Field> = pipeline
+        .publics()
+        .unwrap()
         .iter()
         .map(|(_name, v)| *v)
         .collect();
@@ -174,9 +177,7 @@ pub fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 /// Returns the analyzed PIL containing only the std library.
 pub fn std_analyzed<T: FieldElement>() -> Analyzed<T> {
-    // airgen needs a main machine.
-    let code = "machine Main { }".to_string();
-    let mut pipeline = Pipeline::default().from_asm_string(code, None);
+    let mut pipeline = Pipeline::default().from_asm_string(String::new(), None);
     pipeline.compute_analyzed_pil().unwrap().clone()
 }
 
@@ -228,7 +229,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
         .from_file(resolve_test_file(file_name))
         .set_witness(convert_witness(witness));
 
-    assert!(verify_pipeline(pipeline.clone()).is_err());
+    assert!(verify_pipeline(pipeline.clone(), BackendType::EStarkDump).is_err());
 }
 
 pub fn assert_proofs_fail_for_invalid_witnesses_estark(
@@ -241,7 +242,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_estark(
 
     assert!(pipeline
         .clone()
-        .with_backend(powdr_backend::BackendType::EStark)
+        .with_backend(powdr_backend::BackendType::EStarkStarky)
         .compute_proof()
         .is_err());
 }

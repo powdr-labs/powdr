@@ -7,13 +7,12 @@ use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use powdr_backend::BackendType;
-use powdr_number::{read_polys_csv_file, CsvRenderMode};
+use powdr_number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
-use powdr_pipeline::util::write_or_panic;
 use powdr_pipeline::Pipeline;
 use powdr_riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use powdr_riscv::{compile_riscv_asm, compile_rust};
-use std::io::{self, BufWriter};
+use std::io;
 use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
@@ -648,8 +647,10 @@ fn verification_key<T: FieldElement>(
         .with_setup_file(params.map(PathBuf::from))
         .with_backend(*backend_type);
 
-    let vkey_file = BufWriter::new(fs::File::create(dir.join("vkey.bin")).unwrap());
-    write_or_panic(vkey_file, |w| pipeline.export_verification_key(w))?;
+    buffered_write_file(&dir.join("vkey.bin"), |w| {
+        pipeline.export_verification_key(w).unwrap()
+    })
+    .unwrap();
     log::info!("Wrote vkey.bin.");
 
     Ok(())
@@ -658,13 +659,13 @@ fn verification_key<T: FieldElement>(
 fn setup<F: FieldElement>(size: u64, dir: String, backend_type: BackendType) {
     let dir = Path::new(&dir);
 
-    let params_file = BufWriter::new(fs::File::create(dir.join("params.bin")).unwrap());
-    write_or_panic(params_file, |writer| {
+    buffered_write_file(&dir.join("params.bin"), |writer| {
         backend_type
             .factory::<F>()
             .generate_setup(size, writer)
             .unwrap()
-    });
+    })
+    .unwrap();
     log::info!("Wrote params.bin.");
 }
 
@@ -912,9 +913,10 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 mod test {
     use crate::{run_command, Commands, CsvRenderModeCLI, FieldArgument};
     use powdr_backend::BackendType;
+    use test_log::test;
 
     #[test]
-    fn test_simple_sum() {
+    fn simple_sum() {
         let output_dir = tempfile::tempdir().unwrap();
         let output_dir_str = output_dir.path().to_string_lossy().to_string();
 
@@ -930,7 +932,7 @@ mod test {
             inputs: "3,2,1,2".into(),
             force: false,
             pilo: false,
-            prove_with: Some(BackendType::PilStarkCli),
+            prove_with: Some(BackendType::EStarkDump),
             export_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,
             just_execute: false,

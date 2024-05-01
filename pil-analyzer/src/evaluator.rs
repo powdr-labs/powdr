@@ -5,15 +5,18 @@ use std::{
 };
 
 use itertools::Itertools;
+use num_traits::Signed;
+
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, AlgebraicReference, Expression, FunctionValueDefinition, Reference,
-        Symbol, SymbolKind, TypedExpression,
+        AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, Challenge, Expression,
+        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
     },
     parsed::{
         display::quote,
         types::{Type, TypeScheme},
-        BinaryOperator, FunctionCall, LambdaExpression, MatchArm, Pattern, UnaryOperator,
+        ArrayLiteral, BinaryOperator, FunctionCall, IfExpression, IndexAccess, LambdaExpression,
+        LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock, UnaryOperator,
     },
     SourceRef,
 };
@@ -42,7 +45,7 @@ pub fn evaluate_generic<'a, 'b, T: FieldElement>(
     type_args: &'b HashMap<String, Type>,
     symbols: &mut impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    internal::evaluate(expr, &[], type_args, symbols)
+    Evaluator::evaluate_expression(symbols, expr, type_args.clone())
 }
 
 /// Evaluates a function call.
@@ -51,45 +54,7 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
     arguments: Vec<Arc<Value<'a, T>>>,
     symbols: &mut impl SymbolLookup<'a, T>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    match function.as_ref() {
-        Value::BuiltinFunction(b) => internal::evaluate_builtin_function(*b, arguments, symbols),
-        Value::TypeConstructor(name) => Ok(Value::Enum(name, Some(arguments)).into()),
-        Value::Closure(Closure {
-            lambda,
-            environment,
-            type_args,
-        }) => {
-            if lambda.params.len() != arguments.len() {
-                Err(EvalError::TypeError(format!(
-                    "Invalid function call: Supplied {} arguments to function that takes {} parameters.\nFunction: {lambda}\nArguments: {}",
-                    arguments.len(),
-                    lambda.params.len(),
-                    arguments.iter().format(", ")
-
-                )))?
-            }
-            let matched_arguments =
-                arguments
-                    .iter()
-                    .zip(&lambda.params)
-                    .flat_map(|(arg, pattern)| {
-                        Value::try_match_pattern(arg, pattern).unwrap_or_else(|| {
-                            panic!("Irrefutable pattern did not match: {pattern} = {arg}")
-                        })
-                    });
-
-            let local_vars = environment
-                .iter()
-                .cloned()
-                .chain(matched_arguments)
-                .collect::<Vec<_>>();
-
-            internal::evaluate(&lambda.body, &local_vars, type_args, symbols)
-        }
-        e => Err(EvalError::TypeError(format!(
-            "Expected function but got {e}"
-        ))),
-    }
+    Evaluator::evaluate_function_call(symbols, function, arguments, Default::default())
 }
 
 /// Turns an optional type scheme and a list of generic type arguments into a mapping
@@ -274,18 +239,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 _ => None,
             },
             Pattern::Tuple(items) => match v.as_ref() {
-                Value::Tuple(values) => {
-                    assert_eq!(values.len(), items.len());
-                    values
-                        .iter()
-                        .zip(items)
-                        .try_fold(vec![], |mut vars, (e, p)| {
-                            Value::try_match_pattern(e, p).map(|v| {
-                                vars.extend(v);
-                                vars
-                            })
-                        })
-                }
+                Value::Tuple(values) => Value::try_match_pattern_list(values, items),
                 _ => unreachable!(),
             },
             Pattern::Array(items) => {
@@ -321,11 +275,40 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     })
             }
             Pattern::Variable(_) => Some(vec![v.clone()]),
+            Pattern::Enum(name, fields_pattern) => {
+                let Value::Enum(n, data) = v.as_ref() else {
+                    panic!()
+                };
+                if name.name() != n {
+                    return None;
+                }
+                if let Some(fields) = fields_pattern {
+                    Value::try_match_pattern_list(data.as_ref().unwrap(), fields)
+                } else {
+                    Some(vec![])
+                }
+            }
         }
+    }
+
+    fn try_match_pattern_list<'b>(
+        values: &[Arc<Value<'b, T>>],
+        patterns: &[Pattern],
+    ) -> Option<Vec<Arc<Value<'b, T>>>> {
+        assert_eq!(values.len(), patterns.len());
+        patterns
+            .iter()
+            .zip(values.iter())
+            .try_fold(vec![], |mut vars, (p, e)| {
+                Value::try_match_pattern(e, p).map(|v| {
+                    vars.extend(v);
+                    vars
+                })
+            })
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 9] = [
+const BUILTINS: [(&str, BuiltinFunction); 10] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -334,6 +317,7 @@ const BUILTINS: [(&str, BuiltinFunction); 9] = [
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prover::challenge", BuiltinFunction::Challenge),
+    ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
 
@@ -357,6 +341,8 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
+    /// std::prover::degree: -> int, returns the current column length / degree.
+    Degree,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
     Eval,
 }
@@ -512,6 +498,12 @@ pub trait SymbolLookup<'a, T> {
         Err(EvalError::DataNotAvailable)
     }
 
+    fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "Cannot evaluate degree.".to_string(),
+        ))
+    }
+
     fn new_witness_column(
         &mut self,
         name: &str,
@@ -533,51 +525,248 @@ pub trait SymbolLookup<'a, T> {
     }
 }
 
-mod internal {
-    use num_traits::Signed;
-    use powdr_ast::{
-        analyzed::{AlgebraicBinaryOperator, Challenge},
-        parsed::{LetStatementInsideBlock, StatementInsideBlock},
-    };
-    use powdr_number::BigUint;
+/// Operations to be performed by the evaluator.
+enum Operation<'a, T> {
+    /// Expand a complex expression or evaluate a leaf expression.
+    Expand(&'a Expression),
+    /// Evaluate an expanded non-leaf expression once all its
+    /// sub-expressions have been evaluated.
+    Combine(&'a Expression),
+    /// Truncate the local variables to a given length
+    TruncateLocals(usize),
+    /// Replace the environment (local variables and type args).
+    SetEnvironment(Vec<Arc<Value<'a, T>>>, HashMap<String, Type>),
+    /// Evaluate a let statement, adding matched pattern variables to the local variables.
+    LetStatement(&'a LetStatementInsideBlock<Expression>),
+    /// Add a constraint to the constraint set.
+    AddConstraint,
+}
 
-    use super::*;
+/// We use a non-recursive algorithm to evaluate potentially recursive expressions.
+/// This allows arbitrarily deep recursion in PIL on a physical machine with limited stack.
+/// SymbolLookup might still do regular recursive calls into the evaluator,
+/// but this is very limited.
+struct Evaluator<'a, 'b, T, S: SymbolLookup<'a, T>> {
+    symbols: &'b mut S,
+    local_vars: Vec<Arc<Value<'a, T>>>,
+    type_args: HashMap<String, Type>,
+    op_stack: Vec<Operation<'a, T>>,
+    value_stack: Vec<Arc<Value<'a, T>>>,
+}
 
-    pub fn evaluate<'a, 'b, T: FieldElement>(
+impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
+    fn new(symbols: &'b mut S, type_args: HashMap<String, Type>) -> Self {
+        Self {
+            symbols,
+            local_vars: vec![],
+            type_args,
+            op_stack: vec![],
+            value_stack: vec![],
+        }
+    }
+
+    pub fn evaluate_expression(
+        symbols: &'b mut S,
         expr: &'a Expression,
-        locals: &[Arc<Value<'a, T>>],
-        type_args: &'b HashMap<String, Type>,
-        symbols: &mut impl SymbolLookup<'a, T>,
+        type_args: HashMap<String, Type>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Ok(match expr {
+        let mut ev = Self::new(symbols, type_args);
+        ev.expand(expr)?;
+        ev.evaluate()
+    }
+
+    pub fn evaluate_function_call(
+        symbols: &'b mut S,
+        function: Arc<Value<'a, T>>,
+        arguments: Vec<Arc<Value<'a, T>>>,
+        type_args: HashMap<String, Type>,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let mut ev = Self::new(symbols, type_args);
+        ev.combine_function_call(function, arguments)?;
+        ev.evaluate()
+    }
+
+    /// The main evaluation loop. Repeatedly takes the topmost element from the
+    /// operation stack and performs the operation until the operation stack is empty.
+    fn evaluate(&mut self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        while let Some(op) = self.op_stack.pop() {
+            match op {
+                Operation::Expand(expr) => self.expand(expr)?,
+                Operation::Combine(expr) => self.combine(expr)?,
+                Operation::TruncateLocals(len) => self.local_vars.truncate(len),
+                Operation::SetEnvironment(new_locals, new_type_args) => {
+                    self.local_vars = new_locals;
+                    self.type_args = new_type_args;
+                }
+                Operation::LetStatement(s) => {
+                    let value = if s.value.is_some() {
+                        self.value_stack.pop().unwrap()
+                    } else {
+                        let Pattern::Variable(name) = &s.pattern else {
+                            unreachable!()
+                        };
+                        self.symbols
+                            .new_witness_column(name, SourceRef::unknown())?
+                    };
+                    self.local_vars.extend(
+                        Value::try_match_pattern(&value, &s.pattern).unwrap_or_else(|| {
+                            panic!("Irrefutable pattern did not match: {} = {value}", s.pattern)
+                        }),
+                    );
+                }
+                Operation::AddConstraint => {
+                    let result = self.value_stack.pop().unwrap();
+                    self.symbols.add_constraints(result, SourceRef::unknown())?;
+                }
+            };
+        }
+        assert_eq!(self.value_stack.len(), 1);
+        Ok(self.value_stack.pop().unwrap())
+    }
+
+    /// Evaluates a leaf expression or expands a complex expression.
+    /// Modifies the operation and value stack.
+    fn expand(&mut self, expr: &'a Expression) -> Result<(), EvalError> {
+        match expr {
             Expression::Reference(reference) => {
-                evaluate_reference(reference, locals, type_args, symbols)?
+                let v = self.evaluate_reference(reference)?;
+                self.value_stack.push(v)
             }
-            Expression::PublicReference(name) => symbols.lookup_public_reference(name)?,
-            Expression::Number(n, ty) => evaluate_literal(n.clone(), ty, type_args)?,
-            Expression::String(s) => Value::String(s.clone()).into(),
-            Expression::Tuple(items) => Value::Tuple(
-                items
-                    .iter()
-                    .map(|e| evaluate(e, locals, type_args, symbols))
-                    .collect::<Result<_, _>>()?,
-            )
-            .into(),
-            Expression::ArrayLiteral(elements) => (Value::Array(
-                elements
-                    .items
-                    .iter()
-                    .map(|e| evaluate(e, locals, type_args, symbols))
-                    .collect::<Result<_, _>>()?,
-            ))
-            .into(),
-            Expression::BinaryOperation(left, op, right) => {
-                let left = evaluate(left, locals, type_args, symbols)?;
-                let right = evaluate(right, locals, type_args, symbols)?;
+            Expression::PublicReference(name) => self
+                .value_stack
+                .push(self.symbols.lookup_public_reference(name)?),
+            Expression::Number(n, ty) => {
+                self.value_stack
+                    .push(evaluate_literal(n.clone(), ty, &self.type_args)?)
+            }
+            Expression::String(s) => self.value_stack.push(Value::String(s.clone()).into()),
+            Expression::Tuple(items) => {
+                self.op_stack.push(Operation::Combine(expr));
+                if !items.is_empty() {
+                    self.op_stack
+                        .extend(items.iter().skip(1).rev().map(Operation::Expand));
+                    self.expand(&items[0])?;
+                }
+            }
+            Expression::ArrayLiteral(ArrayLiteral { items }) => {
+                self.op_stack.push(Operation::Combine(expr));
+                if !items.is_empty() {
+                    self.op_stack
+                        .extend(items.iter().skip(1).rev().map(Operation::Expand));
+                    self.expand(&items[0])?;
+                }
+            }
+            Expression::BinaryOperation(l, _, r) => {
+                self.op_stack.push(Operation::Combine(expr));
+                self.op_stack.push(Operation::Expand(r));
+                self.expand(l)?;
+            }
+            Expression::UnaryOperation(_, inner) => {
+                self.op_stack.push(Operation::Combine(expr));
+                self.expand(inner)?;
+            }
+            Expression::LambdaExpression(lambda) => {
+                // TODO only copy the part of the environment that is actually referenced?
+                self.value_stack.push(
+                    Value::from(Closure {
+                        lambda,
+                        environment: self.local_vars.to_vec(),
+                        type_args: self.type_args.clone(),
+                    })
+                    .into(),
+                )
+            }
+            Expression::IndexAccess(IndexAccess { array, index }) => {
+                self.op_stack.push(Operation::Combine(expr));
+                self.op_stack.push(Operation::Expand(index));
+                self.expand(array)?;
+            }
+            Expression::FunctionCall(FunctionCall {
+                function,
+                arguments,
+            }) => {
+                self.op_stack.push(Operation::Combine(expr));
+                self.op_stack
+                    .extend(arguments.iter().rev().map(Operation::Expand));
+                self.expand(function)?;
+            }
+            Expression::MatchExpression(condition, _)
+            | Expression::IfExpression(IfExpression { condition, .. }) => {
+                // Only handle the scrutinee / condition for now, we do not want to evaluate all arms.
+                self.op_stack.push(Operation::Combine(expr));
+                self.expand(condition)?;
+            }
+            Expression::BlockExpression(statements, expr) => {
+                self.op_stack
+                    .push(Operation::TruncateLocals(self.local_vars.len()));
+                self.op_stack.push(Operation::Expand(expr));
+                for s in statements.iter().rev() {
+                    match s {
+                        StatementInsideBlock::LetStatement(s) => {
+                            self.op_stack.push(Operation::LetStatement(s));
+                            if let Some(v) = &s.value {
+                                self.op_stack.push(Operation::Expand(v));
+                            }
+                        }
+                        StatementInsideBlock::Expression(expr) => {
+                            self.op_stack.push(Operation::AddConstraint);
+                            self.op_stack.push(Operation::Expand(expr));
+                        }
+                    }
+                }
+            }
+            Expression::FreeInput(_) => Err(EvalError::Unsupported(
+                "Cannot evaluate free input.".to_string(),
+            ))?,
+        };
+        Ok(())
+    }
+
+    fn evaluate_reference(
+        &mut self,
+        reference: &'a Reference,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Ok(match reference {
+            Reference::LocalVar(i, _name) => self.local_vars[*i as usize].clone(),
+            Reference::Poly(poly) => {
+                if let Some((_, b)) = BUILTINS.iter().find(|(n, _)| (n == &poly.name)) {
+                    Value::BuiltinFunction(*b).into()
+                } else {
+                    let type_args = poly.type_args.clone().map(|mut ta| {
+                        for ty in &mut ta {
+                            ty.substitute_type_vars(&self.type_args);
+                        }
+                        ta
+                    });
+                    self.symbols.lookup(&poly.name, type_args)?
+                }
+            }
+        })
+    }
+
+    /// Evaluate a complex expression given the values for all sub-expressions.
+    fn combine(&mut self, expr: &'a Expression) -> Result<(), EvalError> {
+        let value = match expr {
+            Expression::Tuple(items) => {
+                let inner_values = self
+                    .value_stack
+                    .split_off(self.value_stack.len() - items.len());
+                Value::Tuple(inner_values).into()
+            }
+            Expression::ArrayLiteral(ArrayLiteral { items }) => {
+                let inner_values = self
+                    .value_stack
+                    .split_off(self.value_stack.len() - items.len());
+                Value::Array(inner_values).into()
+            }
+            Expression::BinaryOperation(_, op, _) => {
+                let right = self.value_stack.pop().unwrap();
+                let left = self.value_stack.pop().unwrap();
                 evaluate_binary_operation(&left, *op, &right)?
             }
-            Expression::UnaryOperation(op, expr) => {
-                match (op, evaluate(expr, locals, type_args, symbols)?.as_ref()) {
+            Expression::UnaryOperation(op, _) => {
+                let inner = self.value_stack.pop().unwrap();
+                match (op, inner.as_ref()) {
                     (UnaryOperator::Minus, Value::FieldElement(e)) => {
                         Value::FieldElement(-*e).into()
                     }
@@ -612,346 +801,332 @@ mod internal {
                     )))?,
                 }
             }
-            Expression::LambdaExpression(lambda) => {
-                // TODO only copy the part of the environment that is actually referenced?
-                Value::from(Closure {
-                    lambda,
-                    environment: locals.to_vec(),
-                    type_args: type_args.clone(),
-                })
-                .into()
-            }
-            Expression::IndexAccess(index_access) => {
-                match evaluate(&index_access.array, locals, type_args, symbols)?.as_ref() {
-                    Value::Array(elements) => {
-                        match evaluate(&index_access.index, locals, type_args,symbols)?.as_ref() {
-                            Value::Integer(index)
-                                if index.is_negative()
-                                    || *index >= (elements.len() as u64).into() =>
-                            {
-                                Err(EvalError::OutOfBounds(format!(
-                                    "Index access out of bounds: Tried to access element {index} of array of size {} in: {expr}.",
-                                    elements.len()
-                                )))?
-                            }
-                            Value::Integer(index) => {
-                                elements[usize::try_from(index).unwrap()].clone()
-                            }
-                            index => Err(EvalError::TypeError(format!(
-                                    "Expected integer for array index access but got {index}: {}",
-                                    index.type_formatted()
-                            )))?,
-                        }
+            Expression::IndexAccess(_) => {
+                let index = self.value_stack.pop().unwrap();
+                let array = self.value_stack.pop().unwrap();
+                let Value::Array(elements) = array.as_ref() else {
+                    panic!()
+                };
+                match index.as_ref() {
+                    Value::Integer(index)
+                        if index.is_negative()
+                            || *index >= (elements.len() as u64).into() =>
+                    {
+                        Err(EvalError::OutOfBounds(format!(
+                            "Index access out of bounds: Tried to access element {index} of array of size {} in: {expr}.",
+                            elements.len()
+                        )))?
                     }
-                    e => Err(EvalError::TypeError(format!("Expected array, but got {e}")))?,
+                    Value::Integer(index) => {
+                        elements[usize::try_from(index).unwrap()].clone()
+                    }
+                    index => Err(EvalError::TypeError(format!(
+                            "Expected integer for array index access but got {index}: {}",
+                            index.type_formatted()
+                    )))?,
                 }
             }
-            Expression::FunctionCall(FunctionCall {
-                function,
-                arguments,
-            }) => {
-                let function = evaluate(function, locals, type_args, symbols)?;
-                let arguments = arguments
-                    .iter()
-                    .map(|a| evaluate(a, locals, type_args, symbols))
-                    .collect::<Result<Vec<_>, _>>()?;
-                evaluate_function_call(function, arguments, symbols)?
+            Expression::FunctionCall(FunctionCall { arguments, .. }) => {
+                let arguments = self
+                    .value_stack
+                    .split_off(self.value_stack.len() - arguments.len());
+                let function = self.value_stack.pop().unwrap();
+                return self.combine_function_call(function, arguments);
             }
-            Expression::MatchExpression(scrutinee, arms) => {
-                let v = evaluate(scrutinee, locals, type_args, symbols)?;
+            Expression::MatchExpression(_, arms) => {
+                let v = self.value_stack.pop().unwrap();
                 let (vars, body) = arms
                     .iter()
                     .find_map(|MatchArm { pattern, value }| {
                         Value::try_match_pattern(&v, pattern).map(|vars| (vars, value))
                     })
                     .ok_or_else(EvalError::NoMatch)?;
-                let mut locals = locals.to_vec();
-                locals.extend(vars);
-                evaluate(body, &locals, type_args, symbols)?
+                if !vars.is_empty() {
+                    self.op_stack
+                        .push(Operation::TruncateLocals(self.local_vars.len()));
+                    self.local_vars.extend(vars);
+                }
+                return self.expand(body);
             }
-            Expression::IfExpression(if_expr) => {
-                let cond = evaluate(&if_expr.condition, locals, type_args, symbols)?;
-                let condition = match cond.as_ref() {
+            Expression::IfExpression(IfExpression {
+                body, else_body, ..
+            }) => {
+                let v = self.value_stack.pop().unwrap();
+                let condition = match v.as_ref() {
                     Value::Bool(b) => Ok(b),
                     x => Err(EvalError::TypeError(format!(
                         "Expected boolean value but got {x}"
                     ))),
                 }?;
-                let body = if *condition {
-                    &if_expr.body
-                } else {
-                    &if_expr.else_body
-                };
-                evaluate(body.as_ref(), locals, type_args, symbols)?
+                let body = if *condition { body } else { else_body };
+                return self.expand(body);
             }
-            Expression::BlockExpression(statements, expr) => {
-                let mut locals = locals.to_vec();
-                for statement in statements {
-                    match statement {
-                        StatementInsideBlock::LetStatement(LetStatementInsideBlock {
-                            pattern,
-                            value,
-                        }) => {
-                            let value = if let Some(value) = value {
-                                evaluate(value, &locals, type_args, symbols)?
-                            } else {
-                                let Pattern::Variable(name) = pattern else {
-                                    unreachable!()
-                                };
-                                symbols.new_witness_column(name, SourceRef::unknown())?
-                            };
-                            locals.extend(
-                                Value::try_match_pattern(&value, pattern).unwrap_or_else(|| {
-                                    panic!("Irrefutable pattern did not match: {pattern} = {value}")
-                                }),
-                            );
-                        }
-                        StatementInsideBlock::Expression(expr) => {
-                            let result = evaluate(expr, &locals, type_args, symbols)?;
-                            symbols.add_constraints(result, SourceRef::unknown())?;
-                        }
-                    }
-                }
-                evaluate(expr, &locals, type_args, symbols)?
-            }
-            Expression::FreeInput(_) => Err(EvalError::Unsupported(
-                "Cannot evaluate free input.".to_string(),
-            ))?,
-        })
-    }
 
-    fn evaluate_literal<'a, T: FieldElement>(
-        n: BigUint,
-        ty: &Option<Type<u64>>,
-        type_args: &HashMap<String, Type>,
-    ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        let ty = if let Some(Type::TypeVar(tv)) = ty {
-            match &type_args[tv] {
-                Type::Fe => Type::Fe,
-                Type::Int => Type::Int,
-                Type::Expr => Type::Expr,
-                t => Err(EvalError::TypeError(format!(
-                    "Invalid type name for number literal: {t}"
-                )))?,
-            }
-        } else {
-            ty.as_ref().cloned().unwrap_or_else(|| Type::Int)
+            _ => unreachable!(),
         };
-        if ty == Type::Int {
-            return Ok(Value::Integer(n.into()).into());
-        }
-        let fe = T::checked_from(n.clone()).ok_or_else(|| {
-            EvalError::TypeError(format!(
-                "Number literal {n} is too large for field element."
-            ))
-        })?;
-        Ok((if ty == Type::Fe {
-            Value::FieldElement(fe)
-        } else if ty == Type::Expr {
-            AlgebraicExpression::Number(fe).into()
-        } else {
-            unreachable!();
-        })
-        .into())
+        self.value_stack.push(value);
+        Ok(())
     }
 
-    fn evaluate_reference<'a, T: FieldElement>(
-        reference: &'a Reference,
-        locals: &[Arc<Value<'a, T>>],
-        type_args: &HashMap<String, Type>,
-        symbols: &mut impl SymbolLookup<'a, T>,
-    ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Ok(match reference {
-            Reference::LocalVar(i, _name) => locals[*i as usize].clone(),
-
-            Reference::Poly(poly) => {
-                if let Some((_, b)) = BUILTINS.iter().find(|(n, _)| (n == &poly.name)) {
-                    Value::BuiltinFunction(*b).into()
-                } else {
-                    let type_args = poly.type_args.clone().map(|mut ga| {
-                        for ty in &mut ga {
-                            ty.substitute_type_vars(type_args);
-                        }
-                        ga
-                    });
-                    symbols.lookup(&poly.name, type_args)?
-                }
+    fn combine_function_call(
+        &mut self,
+        function: Arc<Value<'a, T>>,
+        arguments: Vec<Arc<Value<'a, T>>>,
+    ) -> Result<(), EvalError> {
+        match function.as_ref() {
+            Value::BuiltinFunction(b) => {
+                self.value_stack
+                    .push(evaluate_builtin_function(*b, arguments, self.symbols)?)
             }
-        })
+            Value::TypeConstructor(name) => self
+                .value_stack
+                .push(Value::Enum(name, Some(arguments)).into()),
+            Value::Closure(Closure {
+                lambda,
+                environment,
+                type_args,
+            }) => {
+                assert_eq!(lambda.params.len(), arguments.len());
+                let matched_arguments =
+                    arguments
+                        .iter()
+                        .zip(&lambda.params)
+                        .flat_map(|(arg, pattern)| {
+                            Value::try_match_pattern(arg, pattern).unwrap_or_else(|| {
+                                panic!("Irrefutable pattern did not match: {pattern} = {arg}")
+                            })
+                        });
+
+                let local_vars = environment
+                    .iter()
+                    .cloned()
+                    .chain(matched_arguments)
+                    .collect::<Vec<_>>();
+
+                self.op_stack.push(Operation::SetEnvironment(
+                    std::mem::take(&mut self.local_vars),
+                    std::mem::take(&mut self.type_args),
+                ));
+                self.local_vars = local_vars;
+                self.type_args = type_args.clone();
+                self.expand(&lambda.body)?;
+            }
+            e => panic!("Expected function but got {e}"),
+        };
+        Ok(())
     }
+}
 
-    fn evaluate_binary_operation<'a, T: FieldElement>(
-        left: &Value<'a, T>,
-        op: BinaryOperator,
-        right: &Value<'a, T>,
-    ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Ok(match (left, op, right) {
-            (Value::Array(l), BinaryOperator::Add, Value::Array(r)) => {
-                Value::Array(l.iter().chain(r).cloned().collect::<Vec<_>>()).into()
-            }
-            (Value::String(l), BinaryOperator::Add, Value::String(r)) => {
-                Value::String(l.clone() + r).into()
-            }
-            (Value::Bool(l), BinaryOperator::LogicalOr, Value::Bool(r)) => {
-                Value::Bool(*l || *r).into()
-            }
-            (Value::Bool(l), BinaryOperator::LogicalAnd, Value::Bool(r)) => {
-                Value::Bool(*l && *r).into()
-            }
-            (Value::Integer(l), _, Value::Integer(r)) => {
-                evaluate_binary_operation_integer(l, op, r)?
-            }
-            (Value::FieldElement(l), _, Value::FieldElement(r)) => {
-                evaluate_binary_operation_field(*l, op, *r)?
-            }
-            (Value::FieldElement(l), BinaryOperator::Pow, Value::Integer(r)) => {
-                let exp: u64 = r.clone().try_into().map_err(|_| {
-                    EvalError::TypeError(format!("Exponent in {l}**{r} is too large."))
-                })?;
-                Value::FieldElement(l.pow(exp.into())).into()
-            }
-            (Value::Expression(l), BinaryOperator::Pow, Value::Integer(r)) => {
-                let exp: u64 = r.clone().try_into().map_err(|_| {
-                    EvalError::TypeError(format!("Exponent in {l}**{r} is too large."))
-                })?;
-                match l {
-                    AlgebraicExpression::Number(l) => {
-                        Value::Expression(AlgebraicExpression::Number(l.pow(exp.into()))).into()
-                    }
-                    l => {
-                        assert!(
-                            BigUint::from(exp) < T::modulus().to_arbitrary_integer(),
-                            "Exponent too large: {exp}"
-                        );
-                        Value::from(AlgebraicExpression::BinaryOperation(
-                            Box::new(l.clone()),
-                            AlgebraicBinaryOperator::Pow,
-                            Box::new(T::from(exp).into()),
-                        ))
-                        .into()
-                    }
-                }
-            }
-            (Value::Expression(l), BinaryOperator::Identity, Value::Expression(r)) => {
-                Value::Identity(l.clone(), r.clone()).into()
-            }
-            (Value::Expression(l), op, Value::Expression(r)) => match (l, r) {
-                (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) => {
-                    let res = evaluate_binary_operation_field::<'a, T>(*l, op, *r)?;
-                    let Value::FieldElement(result) = res.as_ref() else {
-                        panic!()
-                    };
-                    Value::from(AlgebraicExpression::Number(*result)).into()
-                }
-                (l, r) => Value::from(AlgebraicExpression::BinaryOperation(
-                    Box::new(l.clone()),
-                    op.try_into().unwrap(),
-                    Box::new(r.clone()),
-                ))
-                .into(),
-            },
-            (l, op, r) => Err(EvalError::TypeError(format!(
-                "Operator {op} not supported on types: {l}: {}, {r}: {}",
-                l.type_formatted(),
-                r.type_formatted()
+fn evaluate_literal<'a, T: FieldElement>(
+    n: BigUint,
+    ty: &Option<Type<u64>>,
+    type_args: &HashMap<String, Type>,
+) -> Result<Arc<Value<'a, T>>, EvalError> {
+    let ty = if let Some(Type::TypeVar(tv)) = ty {
+        match &type_args[tv] {
+            Type::Fe => Type::Fe,
+            Type::Int => Type::Int,
+            Type::Expr => Type::Expr,
+            t => Err(EvalError::TypeError(format!(
+                "Invalid type name for number literal: {t}"
             )))?,
-        })
+        }
+    } else {
+        ty.as_ref().cloned().unwrap_or_else(|| Type::Int)
+    };
+    if ty == Type::Int {
+        return Ok(Value::Integer(n.into()).into());
     }
+    let fe = T::checked_from(n.clone()).ok_or_else(|| {
+        EvalError::TypeError(format!(
+            "Number literal {n} is too large for field element."
+        ))
+    })?;
+    Ok((if ty == Type::Fe {
+        Value::FieldElement(fe)
+    } else if ty == Type::Expr {
+        AlgebraicExpression::Number(fe).into()
+    } else {
+        unreachable!();
+    })
+    .into())
+}
 
-    #[allow(clippy::print_stdout)]
-    pub fn evaluate_builtin_function<'a, T: FieldElement>(
-        b: BuiltinFunction,
-        mut arguments: Vec<Arc<Value<'a, T>>>,
-        symbols: &mut impl SymbolLookup<'a, T>,
-    ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        let params = match b {
-            BuiltinFunction::ArrayLen => 1,
-            BuiltinFunction::Modulus => 0,
-            BuiltinFunction::Panic => 1,
-            BuiltinFunction::Print => 1,
-            BuiltinFunction::ToExpr => 1,
-            BuiltinFunction::ToFe => 1,
-            BuiltinFunction::ToInt => 1,
-            BuiltinFunction::Challenge => 2,
-            BuiltinFunction::Eval => 1,
-        };
+fn evaluate_binary_operation<'a, T: FieldElement>(
+    left: &Value<'a, T>,
+    op: BinaryOperator,
+    right: &Value<'a, T>,
+) -> Result<Arc<Value<'a, T>>, EvalError> {
+    Ok(match (left, op, right) {
+        (Value::Array(l), BinaryOperator::Add, Value::Array(r)) => {
+            Value::Array(l.iter().chain(r).cloned().collect::<Vec<_>>()).into()
+        }
+        (Value::String(l), BinaryOperator::Add, Value::String(r)) => {
+            Value::String(l.clone() + r).into()
+        }
+        (Value::String(l), BinaryOperator::Equal, Value::String(r)) => Value::Bool(l == r).into(),
+        (Value::String(l), BinaryOperator::NotEqual, Value::String(r)) => {
+            Value::Bool(l != r).into()
+        }
+        (Value::Bool(l), BinaryOperator::LogicalOr, Value::Bool(r)) => Value::Bool(*l || *r).into(),
+        (Value::Bool(l), BinaryOperator::LogicalAnd, Value::Bool(r)) => {
+            Value::Bool(*l && *r).into()
+        }
+        (Value::Integer(l), _, Value::Integer(r)) => evaluate_binary_operation_integer(l, op, r)?,
+        (Value::FieldElement(l), _, Value::FieldElement(r)) => {
+            evaluate_binary_operation_field(*l, op, *r)?
+        }
+        (Value::FieldElement(l), BinaryOperator::Pow, Value::Integer(r)) => {
+            let exp: u64 = r
+                .clone()
+                .try_into()
+                .map_err(|_| EvalError::TypeError(format!("Exponent in {l}**{r} is too large.")))?;
+            Value::FieldElement(l.pow(exp.into())).into()
+        }
+        (Value::Expression(l), BinaryOperator::Pow, Value::Integer(r)) => {
+            let exp: u64 = r
+                .clone()
+                .try_into()
+                .map_err(|_| EvalError::TypeError(format!("Exponent in {l}**{r} is too large.")))?;
+            match l {
+                AlgebraicExpression::Number(l) => {
+                    Value::Expression(AlgebraicExpression::Number(l.pow(exp.into()))).into()
+                }
+                l => {
+                    assert!(
+                        BigUint::from(exp) < T::modulus().to_arbitrary_integer(),
+                        "Exponent too large: {exp}"
+                    );
+                    Value::from(AlgebraicExpression::BinaryOperation(
+                        Box::new(l.clone()),
+                        AlgebraicBinaryOperator::Pow,
+                        Box::new(T::from(exp).into()),
+                    ))
+                    .into()
+                }
+            }
+        }
+        (Value::Expression(l), BinaryOperator::Identity, Value::Expression(r)) => {
+            Value::Identity(l.clone(), r.clone()).into()
+        }
+        (Value::Expression(l), op, Value::Expression(r)) => match (l, r) {
+            (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) => {
+                let res = evaluate_binary_operation_field::<'a, T>(*l, op, *r)?;
+                let Value::FieldElement(result) = res.as_ref() else {
+                    panic!()
+                };
+                Value::from(AlgebraicExpression::Number(*result)).into()
+            }
+            (l, r) => Value::from(AlgebraicExpression::BinaryOperation(
+                Box::new(l.clone()),
+                op.try_into().unwrap(),
+                Box::new(r.clone()),
+            ))
+            .into(),
+        },
+        (l, op, r) => Err(EvalError::TypeError(format!(
+            "Operator {op} not supported on types: {l}: {}, {r}: {}",
+            l.type_formatted(),
+            r.type_formatted()
+        )))?,
+    })
+}
 
-        if arguments.len() != params {
-            Err(EvalError::TypeError(format!(
+#[allow(clippy::print_stdout)]
+fn evaluate_builtin_function<'a, T: FieldElement>(
+    b: BuiltinFunction,
+    mut arguments: Vec<Arc<Value<'a, T>>>,
+    symbols: &mut impl SymbolLookup<'a, T>,
+) -> Result<Arc<Value<'a, T>>, EvalError> {
+    let params = match b {
+        BuiltinFunction::ArrayLen => 1,
+        BuiltinFunction::Modulus => 0,
+        BuiltinFunction::Panic => 1,
+        BuiltinFunction::Print => 1,
+        BuiltinFunction::ToExpr => 1,
+        BuiltinFunction::ToFe => 1,
+        BuiltinFunction::ToInt => 1,
+        BuiltinFunction::Challenge => 2,
+        BuiltinFunction::Degree => 0,
+        BuiltinFunction::Eval => 1,
+    };
+
+    if arguments.len() != params {
+        Err(EvalError::TypeError(format!(
                 "Invalid function call: Supplied {} arguments to function that takes {params} parameters.",
                 arguments.len(),
             )))?
-        }
-        Ok(match b {
-            BuiltinFunction::ArrayLen => match arguments.pop().unwrap().as_ref() {
-                Value::Array(arr) => Value::Integer((arr.len() as u64).into()).into(),
+    }
+    Ok(match b {
+        BuiltinFunction::ArrayLen => match arguments.pop().unwrap().as_ref() {
+            Value::Array(arr) => Value::Integer((arr.len() as u64).into()).into(),
+            v => panic!(
+                "Expected array for std::array::len, but got {v}: {}",
+                v.type_formatted()
+            ),
+        },
+        BuiltinFunction::Panic => {
+            let msg = match arguments.pop().unwrap().as_ref() {
+                Value::String(msg) => msg.clone(),
                 v => panic!(
-                    "Expected array for std::array::len, but got {v}: {}",
+                    "Expected string for std::check::panic, but got {v}: {}",
                     v.type_formatted()
                 ),
-            },
-            BuiltinFunction::Panic => {
-                let msg = match arguments.pop().unwrap().as_ref() {
-                    Value::String(msg) => msg.clone(),
-                    v => panic!(
-                        "Expected string for std::check::panic, but got {v}: {}",
-                        v.type_formatted()
-                    ),
-                };
-                Err(EvalError::FailedAssertion(msg))?
+            };
+            Err(EvalError::FailedAssertion(msg))?
+        }
+        BuiltinFunction::Print => {
+            let msg = arguments.pop().unwrap();
+            if let Value::String(s) = msg.as_ref() {
+                print!("{s}");
+            } else {
+                print!("{msg}");
             }
-            BuiltinFunction::Print => {
-                let msg = arguments.pop().unwrap();
-                if let Value::String(s) = msg.as_ref() {
-                    print!("{s}");
-                } else {
-                    print!("{msg}");
-                }
-                Value::Array(Default::default()).into()
+            Value::Array(Default::default()).into()
+        }
+        BuiltinFunction::ToExpr => {
+            let arg = arguments.pop().unwrap();
+            Value::from(AlgebraicExpression::Number(arg.try_to_field_element()?)).into()
+        }
+        BuiltinFunction::ToInt => {
+            let arg = arguments.pop().unwrap();
+            Value::Integer(arg.try_to_integer()?).into()
+        }
+        BuiltinFunction::ToFe => {
+            let arg = arguments.pop().unwrap();
+            Value::FieldElement(arg.try_to_field_element()?).into()
+        }
+        BuiltinFunction::Modulus => {
+            Value::Integer(T::modulus().to_arbitrary_integer().into()).into()
+        }
+        BuiltinFunction::Challenge => {
+            let [stage, index] = &arguments[..] else {
+                panic!()
+            };
+            let Value::Integer(stage) = (**stage).clone() else {
+                panic!()
+            };
+            let Value::Integer(id) = (**index).clone() else {
+                panic!()
+            };
+            Value::Expression(AlgebraicExpression::Challenge(Challenge {
+                id: u64::try_from(id).unwrap(),
+                stage: u32::try_from(stage).unwrap(),
+            }))
+            .into()
+        }
+        BuiltinFunction::Degree => symbols.degree()?,
+        BuiltinFunction::Eval => {
+            let arg = arguments.pop().unwrap();
+            match arg.as_ref() {
+                Value::Expression(e) => symbols.eval_expr(e)?,
+                v => panic!(
+                    "Expected expression for std::prover::eval, but got {v}: {}",
+                    v.type_formatted()
+                ),
             }
-            BuiltinFunction::ToExpr => {
-                let arg = arguments.pop().unwrap();
-                Value::from(AlgebraicExpression::Number(arg.try_to_field_element()?)).into()
-            }
-            BuiltinFunction::ToInt => {
-                let arg = arguments.pop().unwrap();
-                Value::Integer(arg.try_to_integer()?).into()
-            }
-            BuiltinFunction::ToFe => {
-                let arg = arguments.pop().unwrap();
-                Value::FieldElement(arg.try_to_field_element()?).into()
-            }
-            BuiltinFunction::Modulus => {
-                Value::Integer(T::modulus().to_arbitrary_integer().into()).into()
-            }
-            BuiltinFunction::Challenge => {
-                let [stage, index] = &arguments[..] else {
-                    panic!()
-                };
-                let Value::Integer(stage) = (**stage).clone() else {
-                    panic!()
-                };
-                let Value::Integer(id) = (**index).clone() else {
-                    panic!()
-                };
-                Value::Expression(AlgebraicExpression::Challenge(Challenge {
-                    id: u64::try_from(id).unwrap(),
-                    stage: u32::try_from(stage).unwrap(),
-                }))
-                .into()
-            }
-            BuiltinFunction::Eval => {
-                let arg = arguments.pop().unwrap();
-                match arg.as_ref() {
-                    Value::Expression(e) => symbols.eval_expr(e)?,
-                    v => panic!(
-                        "Expected expression for std::prover::eval, but got {v}: {}",
-                        v.type_formatted()
-                    ),
-                }
-            }
-        })
-    }
+        }
+    })
 }
 
 pub fn evaluate_binary_operation_field<'a, T: FieldElement>(
@@ -1026,7 +1201,26 @@ mod test {
     }
 
     #[test]
-    pub fn arrays_and_strings() {
+    fn trivial() {
+        let src = r#"namespace Main(16);
+            let x: int = 1 + 20;
+        "#;
+        let result = parse_and_evaluate_symbol(src, "Main.x");
+        assert_eq!(result, r#"21"#);
+    }
+
+    #[test]
+    fn recursion() {
+        let src = r#"namespace Main(16);
+            let x: int -> int = |i| match i { 0 => 0, _ => x(i - 1) + 1 };
+            let y = x(4);
+        "#;
+        let result = parse_and_evaluate_symbol(src, "Main.y");
+        assert_eq!(result, r#"4"#);
+    }
+
+    #[test]
+    fn arrays_and_strings() {
         let src = r#"namespace Main(16);
             let words = ["the", "quick", "brown", "fox"];
             let translate = |w| match w {
@@ -1044,7 +1238,7 @@ mod test {
     }
 
     #[test]
-    pub fn fibonacci() {
+    fn fibonacci() {
         let src = r#"namespace Main(16);
             let fib: int -> int = |i| match i {
                 0 => 0,
@@ -1060,7 +1254,7 @@ mod test {
     }
 
     #[test]
-    pub fn capturing() {
+    fn capturing() {
         let src = r#"namespace Main(16);
             let f: int, (int -> int) -> (int -> int) = |n, g| match n { 99 => |i| n, 1 => g };
             let result = f(1, f(99, |x| x + 3000))(0);
@@ -1074,7 +1268,7 @@ mod test {
     }
 
     #[test]
-    pub fn array_len() {
+    fn array_len() {
         let src = r#"
             let N: int = 2;
             namespace std::array(N);
@@ -1090,7 +1284,7 @@ mod test {
 
     #[test]
     #[should_panic = r#"FailedAssertion("this text")"#]
-    pub fn panic_complex() {
+    fn panic_complex() {
         let src = r#"
             constant %N = 2;
             namespace std::check(%N);
@@ -1105,7 +1299,7 @@ mod test {
 
     #[test]
     #[should_panic = r#"FailedAssertion("text")"#]
-    pub fn panic_string() {
+    fn panic_string() {
         let src = r#"
             constant %N = 2;
             namespace std::check(%N);
@@ -1117,7 +1311,7 @@ mod test {
     }
 
     #[test]
-    pub fn hex_number_outside_field() {
+    fn hex_number_outside_field() {
         // This tests that the parser does not lose precision when parsing large integers.
         let src = r#"
             let N: int = 0x9999999999999999999999999999999;
@@ -1126,7 +1320,7 @@ mod test {
     }
 
     #[test]
-    pub fn decimal_number_outside_field() {
+    fn decimal_number_outside_field() {
         // This tests that the parser does not lose precision when parsing large integers.
         let src = r#"
             let N: int = 9999999999999999999999999999999;
@@ -1136,7 +1330,7 @@ mod test {
 
     #[test]
     #[should_panic = "Number literal 9999999999999999999999999999999 is too large for field element."]
-    pub fn decimal_number_outside_field_for_fe() {
+    fn decimal_number_outside_field_for_fe() {
         let src = r#"
             let N: fe = 9999999999999999999999999999999;
         "#;
@@ -1144,7 +1338,7 @@ mod test {
     }
 
     #[test]
-    pub fn zero_power_zero() {
+    fn zero_power_zero() {
         let src = r#"
         let zpz_int: int = 0**0;
         let zpz_fe: fe = 0**0;
@@ -1154,7 +1348,7 @@ mod test {
     }
 
     #[test]
-    pub fn debug_print() {
+    fn debug_print() {
         let src = r#"
             namespace std::debug(8);
             let print = 2;
@@ -1164,7 +1358,7 @@ mod test {
     }
 
     #[test]
-    pub fn debug_print_complex() {
+    fn debug_print_complex() {
         let src = r#"
             namespace std::debug(8);
             let print = 2;
@@ -1179,7 +1373,7 @@ mod test {
     }
 
     #[test]
-    pub fn local_vars() {
+    fn local_vars() {
         let src = r#"
             let f: int -> int = |i| {
                 let x = i + 1;
@@ -1193,7 +1387,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_pattern() {
+    fn match_pattern() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [] => 0,
@@ -1213,7 +1407,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_pattern_complex() {
+    fn match_pattern_complex() {
         let src = r#"
             let f: ((int, int), int[]) -> int = |q| match q {
                 ((1, _), [x, 4]) => 1 + x,
@@ -1240,7 +1434,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array() {
+    fn match_skip_array() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [x, .., y] => x + y,
@@ -1256,7 +1450,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array_2() {
+    fn match_skip_array_2() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [.., y] => y,
@@ -1271,7 +1465,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array_3() {
+    fn match_skip_array_3() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [.., x, y] => x,
@@ -1286,7 +1480,7 @@ mod test {
     }
 
     #[test]
-    pub fn match_skip_array_4() {
+    fn match_skip_array_4() {
         let src = r#"
             let f: int[] -> int = |arr| match arr {
                 [x, y, ..] => y,
@@ -1301,7 +1495,7 @@ mod test {
     }
 
     #[test]
-    pub fn unpack_fun() {
+    fn unpack_fun() {
         let src = r#"
             let t: (int, fe, int), int -> int[] = |(x, _, y), z| [x, y, z];
             let x: int[] = t((1, 2, 3), 4);
@@ -1310,7 +1504,7 @@ mod test {
     }
 
     #[test]
-    pub fn unpack_let() {
+    fn unpack_let() {
         let src = r#"
             let x: int[] = {
                 let (a, (_, b), (c, _, _, d, _)) = (1, ((), 3), (4, (), (), 7, ()));
@@ -1321,5 +1515,60 @@ mod test {
             parse_and_evaluate_symbol(src, "x"),
             "[1, 3, 4, 7]".to_string()
         );
+    }
+
+    #[test]
+    pub fn match_enum() {
+        let src = r#"
+            enum X {
+                A,
+                B(),
+                C(int, int),
+                D(int, X)
+            }
+            let f = |x| match x {
+                X::A => 1,
+                X::B() => 2,
+                X::C(a, b) => a + b,
+                X::D(0, X::A) => 10001,
+                X::D(c, y) => c + f(y),
+            };
+            let t = [f(X::A), f(X::B()), f(X::C(3, 4)), f(X::D(0, X::A)), f(X::D(0, X::B())), f(X::D(100, X::C(4, 5)))];
+        "#;
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "t"),
+            "[1, 2, 7, 10001, 2, 109]".to_string()
+        );
+    }
+
+    #[test]
+    pub fn gigantic_stack() {
+        let src = r#"
+            let arr_new: int, (int -> int) -> int[] = |n, f| if n == 0 { [] } else { arr_new(n - 1, f) + [f(n - 1)] };
+            let arr_rev: int[], int, int -> int[] = |a, i, n| if i >= n { [] } else { arr_rev(a, i + 1, n) + [a[i]] };
+            let l = 10000;
+            let t = arr_new(l, |i| i);
+            let r = arr_rev(t, 0, l);
+            let x = r[7];
+        "#;
+        assert_eq!(parse_and_evaluate_symbol(src, "x"), "9992".to_string());
+    }
+
+    #[test]
+    pub fn string_eq() {
+        let src = r#"
+            let yes = "abc" != "def";
+            let no = "abc" == "def";
+            let yes2 = "abc" == "abc";
+            let no2 = "abc" != "abc";
+            let yes3 = "ab" != "abc";
+            let no3 = "ab" == "abc";
+        "#;
+        assert_eq!(parse_and_evaluate_symbol(src, "yes"), "true".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "yes2"), "true".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "yes3"), "true".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "no"), "false".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "no2"), "false".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "no3"), "false".to_string());
     }
 }

@@ -9,18 +9,45 @@ use std::{
     collections::BTreeSet,
     iter::{empty, once},
     ops,
+    str::FromStr,
 };
 
+use auto_enums::auto_enum;
+use derive_more::Display;
 use powdr_number::{BigInt, BigUint, DegreeType};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use self::{
     asm::{Part, SymbolPath},
-    types::{FunctionType, Type, TypeScheme},
+    types::{FunctionType, Type, TypeBounds, TypeScheme},
     visitor::Children,
 };
 use crate::SourceRef;
+
+#[derive(Display, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolCategory {
+    /// A value, which has a type and can be referenced in expressions (a variable, function, constant, ...).
+    Value,
+    /// A type, for example the name of an enum or other user-defined type.
+    Type,
+    /// A type constructor, i.e. an enum variant, which can be used as a function or constant inside an expression
+    /// or to deconstruct a value in a pattern.
+    TypeConstructor,
+}
+impl SymbolCategory {
+    /// Returns if a symbol of a given category can satisfy a request for a certain category.
+    pub fn compatible_with_request(&self, request: SymbolCategory) -> bool {
+        match self {
+            SymbolCategory::Value => request == SymbolCategory::Value,
+            SymbolCategory::Type => request == SymbolCategory::Type,
+            SymbolCategory::TypeConstructor => {
+                // Type constructors can also satisfy requests for values.
+                request == SymbolCategory::TypeConstructor || request == SymbolCategory::Value
+            }
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PILFile(pub Vec<PilStatement>);
@@ -77,23 +104,45 @@ pub enum PilStatement {
 }
 
 impl PilStatement {
-    /// If the statement is a symbol definition, returns all (local) names of defined symbols.
+    /// If the statement is a symbol definition, returns all (local) names of defined symbols
+    /// and their category.
     /// Note it does not return nested definitions (for an enum for example).
-    /// The boolean indicates if the name is a type definition or a value definition.
-    pub fn symbol_definition_names(&self) -> Box<dyn Iterator<Item = (&String, bool)> + '_> {
+    pub fn symbol_definition_names(&self) -> impl Iterator<Item = (&String, SymbolCategory)> + '_ {
+        self.symbol_definition_names_and_contained()
+            .filter_map(|(name, sub_name, category)| match sub_name {
+                Some(_) => None,
+                None => Some((name, category)),
+            })
+    }
+
+    /// If the statement is a symbol definition, returns all (local) names of defined symbols
+    /// and their category.
+    /// For an enum, returns the name of the enum and all the variants, where the first
+    /// component is the name of the enum and the second the name of the variant.
+    pub fn symbol_definition_names_and_contained(
+        &self,
+    ) -> Box<dyn Iterator<Item = (&String, Option<&String>, SymbolCategory)> + '_> {
         match self {
             PilStatement::PolynomialDefinition(_, name, _)
             | PilStatement::PolynomialConstantDefinition(_, name, _)
             | PilStatement::ConstantDefinition(_, name, _)
             | PilStatement::PublicDeclaration(_, name, _, _, _)
-            | PilStatement::LetStatement(_, name, _, _) => Box::new(once((name, false))),
-            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants: _ }) => {
-                Box::new(once((name, true)))
+            | PilStatement::LetStatement(_, name, _, _) => {
+                Box::new(once((name, None, SymbolCategory::Value)))
             }
+            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants, .. }) => Box::new(
+                once((name, None, SymbolCategory::Type)).chain(
+                    variants
+                        .iter()
+                        .map(move |v| (name, Some(&v.name), SymbolCategory::TypeConstructor)),
+                ),
+            ),
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
-            | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => {
-                Box::new(polynomials.iter().map(|p| (&p.name, false)))
-            }
+            | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => Box::new(
+                polynomials
+                    .iter()
+                    .map(|p| (&p.name, None, SymbolCategory::Value)),
+            ),
 
             PilStatement::Include(_, _)
             | PilStatement::Namespace(_, _, _)
@@ -101,20 +150,6 @@ impl PilStatement {
             | PilStatement::PermutationIdentity(_, _, _)
             | PilStatement::ConnectIdentity(_, _, _)
             | PilStatement::Expression(_, _) => Box::new(empty()),
-        }
-    }
-
-    /// If the statement defines any symbols inside a namespace, returns
-    /// the name of the namespace and defined names inside that namespace.
-    /// The boolean indicates if the name is a type definition or a value definition.
-    pub fn defined_contained_names(
-        &self,
-    ) -> Box<dyn Iterator<Item = (&String, &String, bool)> + '_> {
-        match self {
-            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants }) => {
-                Box::new(variants.iter().map(move |v| (name, &v.name, false)))
-            }
-            _ => Box::new(empty()),
         }
     }
 }
@@ -191,6 +226,7 @@ impl Children<Expression> for PilStatement {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EnumDeclaration<E = u64> {
     pub name: String,
+    pub type_vars: TypeBounds,
     pub variants: Vec<EnumVariant<E>>,
 }
 
@@ -220,15 +256,24 @@ pub struct EnumVariant<E = u64> {
 
 impl<E: Clone> EnumVariant<E> {
     /// Returns the type of the constructor function for this variant
-    /// given the name of the enum type.
-    pub fn constructor_type(&self, type_name: SymbolPath) -> Type<E> {
-        match &self.fields {
-            None => Type::NamedType(type_name),
+    /// given the enum type.
+    pub fn constructor_type(&self, enum_decl: &EnumDeclaration) -> TypeScheme<E> {
+        let name = SymbolPath::from_str(&enum_decl.name).unwrap();
+        let vars = enum_decl.type_vars.clone();
+        let generic_args =
+            (!vars.is_empty()).then(|| vars.vars().cloned().map(Type::TypeVar).collect::<Vec<_>>());
+
+        let named_type = Type::NamedType(name, generic_args);
+
+        let ty = match &self.fields {
+            None => named_type,
             Some(fields) => Type::Function(FunctionType {
                 params: (*fields).clone(),
-                value: Type::NamedType(type_name).into(),
+                value: named_type.into(),
             }),
-        }
+        };
+
+        TypeScheme { vars, ty }
     }
 }
 
@@ -328,6 +373,16 @@ impl<Ref> Expression<Ref> {
     }
 }
 
+impl Expression<NamespacedPolynomialReference> {
+    pub fn try_to_identifier(&self) -> Option<&String> {
+        if let Expression::Reference(r) = self {
+            r.try_to_identifier()
+        } else {
+            None
+        }
+    }
+}
+
 impl From<u32> for Expression {
     fn from(value: u32) -> Self {
         Expression::Number(value.into(), None)
@@ -381,43 +436,40 @@ impl<R> Expression<R> {
     /// This specifically does not implement Children because otherwise it would
     /// have a wrong implementation of ExpressionVisitable (which is implemented
     /// generically for all types that implement Children<Expr>).
-    pub fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+    #[auto_enum(Iterator)]
+    pub fn children(&self) -> impl Iterator<Item = &Expression<R>> + '_ {
         match self {
             Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
-                Box::new(empty())
+                empty()
             }
-            Expression::Number(_, _) => Box::new(empty()),
-            Expression::Tuple(v) => Box::new(v.iter()),
-            Expression::LambdaExpression(LambdaExpression { body, .. }) => {
-                Box::new(once(body.as_ref()))
-            }
-            Expression::ArrayLiteral(ArrayLiteral { items }) => Box::new(items.iter()),
+            Expression::Number(_, _) => empty(),
+            Expression::Tuple(v) => v.iter(),
+            Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_ref()),
+            Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter(),
             Expression::BinaryOperation(left, _, right) => {
-                Box::new([left.as_ref(), right.as_ref()].into_iter())
+                [left.as_ref(), right.as_ref()].into_iter()
             }
-            Expression::UnaryOperation(_, e) => Box::new(once(e.as_ref())),
+            Expression::UnaryOperation(_, e) => once(e.as_ref()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
-                Box::new([array.as_ref(), index.as_ref()].into_iter())
+                [array.as_ref(), index.as_ref()].into_iter()
             }
             Expression::FunctionCall(FunctionCall {
                 function,
                 arguments,
-            }) => Box::new(once(function.as_ref()).chain(arguments.iter())),
-            Expression::FreeInput(e) => Box::new(once(e.as_ref())),
+            }) => once(function.as_ref()).chain(arguments.iter()),
+            Expression::FreeInput(e) => once(e.as_ref()),
             Expression::MatchExpression(e, arms) => {
-                Box::new(once(e.as_ref()).chain(arms.iter().flat_map(|arm| arm.children())))
+                once(e.as_ref()).chain(arms.iter().flat_map(|arm| arm.children()))
             }
             Expression::IfExpression(IfExpression {
                 condition,
                 body,
                 else_body,
-            }) => Box::new([condition, body, else_body].into_iter().map(|e| e.as_ref())),
-            Expression::BlockExpression(statements, expr) => Box::new(
-                statements
-                    .iter()
-                    .flat_map(|s| s.children())
-                    .chain(once(expr.as_ref())),
-            ),
+            }) => [condition, body, else_body].into_iter().map(|e| e.as_ref()),
+            Expression::BlockExpression(statements, expr) => statements
+                .iter()
+                .flat_map(|s| s.children())
+                .chain(once(expr.as_ref())),
         }
     }
 
@@ -425,43 +477,40 @@ impl<R> Expression<R> {
     /// This specifically does not implement Children because otherwise it would
     /// have a wrong implementation of ExpressionVisitable (which is implemented
     /// generically for all types that implement Children<Expr>).
-    pub fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+    #[auto_enum(Iterator)]
+    pub fn children_mut(&mut self) -> impl Iterator<Item = &mut Expression<R>> + '_ {
         match self {
             Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
-                Box::new(empty())
+                empty()
             }
-            Expression::Number(_, _) => Box::new(empty()),
-            Expression::Tuple(v) => Box::new(v.iter_mut()),
-            Expression::LambdaExpression(LambdaExpression { body, .. }) => {
-                Box::new(once(body.as_mut()))
-            }
-            Expression::ArrayLiteral(ArrayLiteral { items }) => Box::new(items.iter_mut()),
+            Expression::Number(_, _) => empty(),
+            Expression::Tuple(v) => v.iter_mut(),
+            Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_mut()),
+            Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter_mut(),
             Expression::BinaryOperation(left, _, right) => {
-                Box::new([left.as_mut(), right.as_mut()].into_iter())
+                [left.as_mut(), right.as_mut()].into_iter()
             }
-            Expression::UnaryOperation(_, e) => Box::new(once(e.as_mut())),
+            Expression::UnaryOperation(_, e) => once(e.as_mut()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
-                Box::new([array.as_mut(), index.as_mut()].into_iter())
+                [array.as_mut(), index.as_mut()].into_iter()
             }
             Expression::FunctionCall(FunctionCall {
                 function,
                 arguments,
-            }) => Box::new(once(function.as_mut()).chain(arguments.iter_mut())),
-            Expression::FreeInput(e) => Box::new(once(e.as_mut())),
+            }) => once(function.as_mut()).chain(arguments.iter_mut()),
+            Expression::FreeInput(e) => once(e.as_mut()),
             Expression::MatchExpression(e, arms) => {
-                Box::new(once(e.as_mut()).chain(arms.iter_mut().flat_map(|arm| arm.children_mut())))
+                once(e.as_mut()).chain(arms.iter_mut().flat_map(|arm| arm.children_mut()))
             }
             Expression::IfExpression(IfExpression {
                 condition,
                 body,
                 else_body,
-            }) => Box::new([condition, body, else_body].into_iter().map(|e| e.as_mut())),
-            Expression::BlockExpression(statements, expr) => Box::new(
-                statements
-                    .iter_mut()
-                    .flat_map(|s| s.children_mut())
-                    .chain(once(expr.as_mut())),
-            ),
+            }) => [condition, body, else_body].into_iter().map(|e| e.as_mut()),
+            Expression::BlockExpression(statements, expr) => statements
+                .iter_mut()
+                .flat_map(|s| s.children_mut())
+                .chain(once(expr.as_mut())),
         }
     }
 }
@@ -841,7 +890,11 @@ pub enum Pattern {
     String(String),
     Tuple(Vec<Pattern>),
     Array(Vec<Pattern>),
+    // A pattern that binds a variable. Variable references are parsed as
+    // Enum and are then re-mapped to Variable if they do not reference
+    // an enum variant.
     Variable(String),
+    Enum(SymbolPath, Option<Vec<Pattern>>),
 }
 
 impl Pattern {
@@ -858,7 +911,7 @@ impl Pattern {
         match self {
             Pattern::Ellipsis => unreachable!(),
             Pattern::CatchAll | Pattern::Variable(_) => true,
-            Pattern::Number(_) | Pattern::String(_) => false,
+            Pattern::Number(_) | Pattern::String(_) | Pattern::Enum(_, _) => false,
             Pattern::Array(items) => {
                 // Only "[..]"" is irrefutable
                 items == &vec![Pattern::Ellipsis]
@@ -877,6 +930,7 @@ impl Children<Pattern> for Pattern {
             | Pattern::String(_)
             | Pattern::Variable(_) => Box::new(empty()),
             Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter()),
+            Pattern::Enum(_, fields) => Box::new(fields.iter().flatten()),
         }
     }
 
@@ -888,6 +942,7 @@ impl Children<Pattern> for Pattern {
             | Pattern::String(_)
             | Pattern::Variable(_) => Box::new(empty()),
             Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter_mut()),
+            Pattern::Enum(_, fields) => Box::new(fields.iter_mut().flatten()),
         }
     }
 }

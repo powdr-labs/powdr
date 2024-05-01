@@ -60,6 +60,7 @@ pub fn serde_data_to_query_callback<T: FieldElement, S: serde::Serialize + Send 
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
+            "None" => Ok(None),
             "DataIdentifier" => {
                 let [index, cb_channel] = data[..] else {
                     panic!()
@@ -69,7 +70,7 @@ pub fn serde_data_to_query_callback<T: FieldElement, S: serde::Serialize + Send 
                     .map_err(|e| format!("Error parsing callback data channel: {e})"))?;
 
                 if channel != cb_channel {
-                    return Ok(None);
+                    return Err("Callback channel mismatch".to_string());
                 }
 
                 let index = index
@@ -82,48 +83,47 @@ pub fn serde_data_to_query_callback<T: FieldElement, S: serde::Serialize + Send 
                     index => (bytes[index - 1] as u64).into(),
                 }))
             }
-            _ => handle_simple_queries(id, &data, query),
+            _ => Err(format!("Unsupported query: {query}")),
         }
     }
 }
 
 pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCallback<T> {
     move |query: &str| -> Result<Option<T>, String> {
-        // TODO In the future, when match statements need to be exhaustive,
-        // this function should answer None by Ok(None).
-
         let (id, data) = parse_query(query)?;
         match id {
+            "None" => Ok(None),
             "Input" => {
                 assert_eq!(data.len(), 1);
                 access_element("prover inputs", &inputs, data[0])
             }
-            _ => handle_simple_queries(id, &data, query),
+            _ => Err(format!("Unsupported query: {query}")),
         }
     }
 }
 
 #[allow(clippy::print_stdout)]
-fn handle_simple_queries<T: FieldElement>(
-    id: &str,
-    data: &[&str],
-    query: &str,
-) -> Result<Option<T>, String> {
-    match id {
-        "PrintChar" => {
-            assert_eq!(data.len(), 1);
-            print!(
-                "{}",
-                data[0]
-                    .parse::<u8>()
-                    .map_err(|e| format!("Invalid char to print: {e}"))? as char
-            );
-            Ok(Some(0.into()))
+pub fn handle_simple_queries_callback<'a, T: FieldElement>() -> impl QueryCallback<T> + 'a {
+    move |query: &str| -> Result<Option<T>, String> {
+        let (id, data) = parse_query(query)?;
+        match id {
+            "None" => Ok(None),
+            "PrintChar" => {
+                assert_eq!(data.len(), 1);
+                print!(
+                    "{}",
+                    data[0]
+                        .parse::<u8>()
+                        .map_err(|e| format!("Invalid char to print: {e}"))?
+                        as char
+                );
+                Ok(Some(0.into()))
+            }
+            "Hint" => {
+                assert_eq!(data.len(), 1);
+                Ok(Some(T::from_str(data[0]).unwrap()))
+            }
+            _ => Err(format!("Unsupported query: {query}")),
         }
-        "Hint" => {
-            assert_eq!(data.len(), 1);
-            Ok(Some(T::from_str(data[0]).unwrap()))
-        }
-        _ => Err(format!("Unsupported query: {query}")),
     }
 }

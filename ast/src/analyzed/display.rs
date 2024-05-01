@@ -93,7 +93,10 @@ impl<T: Display> Display for Analyzed<T> {
                                     Some(FunctionValueDefinition::TypeDeclaration(
                                         enum_declaration,
                                     )) => {
-                                        writeln_indented(f, enum_declaration)?;
+                                        writeln_indented(
+                                            f,
+                                            enum_declaration.to_string_with_name(&name),
+                                        )?;
                                     }
                                     _ => {
                                         unreachable!("Invalid definition for symbol: {}", name)

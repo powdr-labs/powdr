@@ -43,6 +43,7 @@ lazy_static! {
         ("std::debug::print", ("T: ToString", "T -> constr[]")),
         ("std::field::modulus", ("", "-> int")),
         ("std::prover::challenge", ("", "int, int -> expr")),
+        ("std::prover::degree", ("", "-> int")),
         ("std::prover::eval", ("", "expr -> fe")),
     ]
     .into_iter()
@@ -122,7 +123,7 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
             "Neg",
             "Eq",
         ],
-        Type::String => &["ToString", "Add"],
+        Type::String => &["ToString", "Add", "Eq"],
         Type::Expr => &[
             "ToString",
             "FromLiteral",
@@ -139,6 +140,6 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
         Type::Array(_) => &["Add"],
         Type::Tuple(_) => &[],
         Type::Function(_) => &[],
-        Type::TypeVar(_) | Type::NamedType(_) => unreachable!(),
+        Type::TypeVar(_) | Type::NamedType(_, _) => unreachable!(),
     }
 }

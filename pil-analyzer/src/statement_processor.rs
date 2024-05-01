@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::iter;
+use std::sync::Arc;
 
 use itertools::Itertools;
 
@@ -429,6 +430,7 @@ where
             // its type constructors.
             assert_eq!(symbol_kind, SymbolKind::Other());
             let enum_decl = self.process_enum_declaration(enum_decl);
+            let shared_enum_decl = Arc::new(enum_decl.clone());
             let var_items = enum_decl.variants.iter().map(|variant| {
                 let var_symbol = Symbol {
                     id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
@@ -442,7 +444,7 @@ where
                     length: None,
                 };
                 let value = FunctionValueDefinition::TypeConstructor(
-                    absolute_name.clone(),
+                    shared_enum_decl.clone(),
                     variant.clone(),
                 );
                 PILItem::Definition(var_symbol, Some(value))
@@ -544,22 +546,29 @@ where
         &self,
         enum_decl: EnumDeclaration<parsed::Expression>,
     ) -> EnumDeclaration {
+        let type_vars = enum_decl.type_vars.vars().collect();
+        let variants = enum_decl
+            .variants
+            .into_iter()
+            .map(|v| self.process_enum_variant(v, &type_vars))
+            .collect();
         EnumDeclaration {
-            name: enum_decl.name,
-            variants: enum_decl
-                .variants
-                .into_iter()
-                .map(|v| self.process_enum_variant(v))
-                .collect(),
+            name: self.driver.resolve_decl(&enum_decl.name),
+            type_vars: enum_decl.type_vars,
+            variants,
         }
     }
 
-    fn process_enum_variant(&self, enum_variant: EnumVariant<parsed::Expression>) -> EnumVariant {
+    fn process_enum_variant(
+        &self,
+        enum_variant: EnumVariant<parsed::Expression>,
+        type_vars: &HashSet<&String>,
+    ) -> EnumVariant {
         EnumVariant {
             name: enum_variant.name,
             fields: enum_variant.fields.map(|f| {
                 f.into_iter()
-                    .map(|ty| self.type_processor(&Default::default()).process_type(ty))
+                    .map(|ty| self.type_processor(type_vars).process_type(ty))
                     .collect()
             }),
         }

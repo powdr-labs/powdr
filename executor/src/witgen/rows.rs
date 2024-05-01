@@ -14,7 +14,7 @@ use super::{
     affine_expression::{AffineExpression, AffineResult},
     data_structures::column_map::WitnessColumnMap,
     expression_evaluator::ExpressionEvaluator,
-    global_constraints::{GlobalConstraints, RangeConstraintSet},
+    global_constraints::RangeConstraintSet,
     range_constraints::RangeConstraint,
     symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
     FixedData,
@@ -23,7 +23,7 @@ use super::{
 /// A small wrapper around a row index, which knows the total number of rows.
 /// When converted to DegreeType or usize, it will be reduced modulo the number of rows
 /// (handling negative indices as well).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialOrd, PartialEq, Eq, Ord)]
 pub struct RowIndex {
     index: i64,
     num_rows: DegreeType,
@@ -56,6 +56,17 @@ impl RowIndex {
         Self {
             index: index.try_into().unwrap(),
             num_rows,
+        }
+    }
+
+    /// Compute the current row index as usize, assuming index 0 is the given row offset.
+    pub fn to_local(self, row_offset: &RowIndex) -> usize {
+        let row_index = DegreeType::from(self);
+        let row_offset = DegreeType::from(*row_offset);
+        if row_index >= row_offset {
+            (row_index - row_offset).try_into().unwrap()
+        } else {
+            (row_index + self.num_rows - row_offset).try_into().unwrap()
         }
     }
 }
@@ -193,7 +204,31 @@ impl<T: FieldElement> Debug for Row<'_, T> {
     }
 }
 
-impl<T: FieldElement> Row<'_, T> {
+impl<'a, T: FieldElement> Row<'a, T> {
+    /// Creates a "fresh" row, i.e., one that is empty but initialized with the global range constraints.
+    pub fn fresh(fixed_data: &'a FixedData<'a, T>, row: RowIndex) -> Row<'a, T> {
+        WitnessColumnMap::from(
+            fixed_data
+                .global_range_constraints()
+                .witness_constraints
+                .iter()
+                .map(|(poly_id, range_constraint)| {
+                    let name = fixed_data.column_name(&poly_id);
+                    let value = match (
+                        fixed_data.external_witness(row.into(), &poly_id),
+                        range_constraint.as_ref(),
+                    ) {
+                        (Some(external_witness), _) => CellValue::Known(external_witness),
+                        (None, Some(range_constraint)) => {
+                            CellValue::RangeConstraint(range_constraint.clone())
+                        }
+                        (None, None) => CellValue::Unknown,
+                    };
+                    Cell { name, value }
+                }),
+        )
+    }
+
     /// Builds a string representing the current row
     pub fn render(&self, title: &str, include_unknown: bool, cols: &HashSet<PolyID>) -> String {
         format!(
@@ -228,47 +263,6 @@ impl<T: FieldElement> Row<'_, T> {
             .into_iter()
             .map(|(_, cell)| format!("    {:?}", cell))
             .join("\n")
-    }
-}
-
-/// A factory for rows, which knows the global range constraints and has pointers to column names.
-#[derive(Clone)]
-pub struct RowFactory<'a, T: FieldElement> {
-    fixed_data: &'a FixedData<'a, T>,
-    global_range_constraints: GlobalConstraints<T>,
-}
-
-impl<'a, T: FieldElement> RowFactory<'a, T> {
-    pub fn new(
-        fixed_data: &'a FixedData<'a, T>,
-        global_range_constraints: GlobalConstraints<T>,
-    ) -> Self {
-        Self {
-            fixed_data,
-            global_range_constraints,
-        }
-    }
-
-    pub fn fresh_row(&self, row: RowIndex) -> Row<'a, T> {
-        WitnessColumnMap::from(
-            self.global_range_constraints
-                .witness_constraints
-                .iter()
-                .map(|(poly_id, range_constraint)| {
-                    let name = self.fixed_data.column_name(&poly_id);
-                    let value = match (
-                        self.fixed_data.external_witness(row.into(), &poly_id),
-                        range_constraint.as_ref(),
-                    ) {
-                        (Some(external_witness), _) => CellValue::Known(external_witness),
-                        (None, Some(range_constraint)) => {
-                            CellValue::RangeConstraint(range_constraint.clone())
-                        }
-                        (None, None) => CellValue::Unknown,
-                    };
-                    Cell { name, value }
-                }),
-        )
     }
 }
 

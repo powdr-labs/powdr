@@ -38,8 +38,6 @@ pub enum IncompleteCause<K = usize> {
     NonConstantRequiredArgument(&'static str),
     /// The left selector in a lookup is not constant. Example: `x * {1} in [{1}]` where `x` is not constant.
     NonConstantLeftSelector,
-    /// A value is not found on the left side of a match. Example: `match x {1 => 2, 3 => 4}` where `x == 0`
-    NoMatchArmFound,
     /// A lookup into a block machine was not able to assign all variables in the query. It could be that we just need to re-run it.
     BlockMachineLookupIncomplete,
     /// We could not (yet) read some data
@@ -159,7 +157,7 @@ pub type EvalResult<'a, T, K = &'a AlgebraicReference> = Result<EvalValue<K, T>,
 #[derive(Clone, PartialEq)]
 pub enum EvalError<T: FieldElement> {
     /// We ran out of rows
-    RowsExhausted,
+    RowsExhausted(String),
     /// A constraint that cannot be satisfied (i.e. 2 = 1).
     ConstraintUnsatisfiable(String),
     /// Conflicting bit- or range constraints in an equation, i.e. for X = 0x100, where X is known to be at most 0xff.
@@ -218,7 +216,9 @@ impl<T: FieldElement> fmt::Display for EvalError<T> {
             EvalError::InvalidDivision => {
                 write!(f, "A division pattern was recognized but the range constraints are conflicting with the solution.",)
             }
-            EvalError::RowsExhausted => write!(f, "Table rows exhausted"),
+            EvalError::RowsExhausted(machine_name) => {
+                write!(f, "Table rows exhausted for machine {machine_name}")
+            }
             EvalError::FixedLookupFailed(input_assignment) => {
                 let query = input_assignment
                     .iter()

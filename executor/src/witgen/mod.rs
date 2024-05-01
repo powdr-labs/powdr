@@ -16,6 +16,7 @@ pub use self::eval_result::{
 };
 use self::generator::Generator;
 
+use self::global_constraints::GlobalConstraints;
 use self::identity_processor::Machines;
 use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::profiling::{record_end, record_start, reset_and_print_profile_summary};
@@ -179,22 +180,16 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             })
             .collect::<Vec<_>>();
 
-        let (
-            constraints,
-            // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
-            // These are already captured in the range constraints.
-            retained_identities,
-        ) = global_constraints::determine_global_constraints(&fixed, &identities);
+        // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
+        // These are already captured in the range constraints.
+        let (fixed, retained_identities) =
+            global_constraints::set_global_constraints(fixed, &identities);
         let ExtractionOutput {
             mut fixed_lookup,
             mut machines,
             base_identities,
             base_witnesses,
-        } = machines::machine_extractor::split_out_machines(
-            &fixed,
-            retained_identities,
-            &constraints,
-        );
+        } = machines::machine_extractor::split_out_machines(&fixed, retained_identities);
         let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
             fixed_lookup: &mut fixed_lookup,
@@ -207,7 +202,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             &[], // No connecting identities
             base_identities,
             base_witnesses,
-            constraints.clone(),
             // We could set the latch of the main VM here, but then we would have to detect it.
             // Instead, the main VM will be computed in one block, directly continuing into the
             // infinite loop after the first return.
@@ -274,13 +268,14 @@ pub fn extract_publics<T: FieldElement>(
 }
 
 /// Data that is fixed for witness generation.
-pub struct FixedData<'a, T> {
+pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
     degree: DegreeType,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
     column_by_name: HashMap<String, PolyID>,
     challenges: BTreeMap<u64, T>,
+    global_range_constraints: GlobalConstraints<T>,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -332,6 +327,13 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
         let fixed_cols =
             FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)));
+
+        // The global range constraints are not set yet.
+        let global_range_constraints = GlobalConstraints {
+            witness_constraints: WitnessColumnMap::new(None, witness_cols.len()),
+            fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
+        };
+
         FixedData {
             analyzed,
             degree: analyzed.degree(),
@@ -344,7 +346,31 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 .map(|(name, (symbol, _))| (name.clone(), symbol.into()))
                 .collect(),
             challenges,
+            global_range_constraints,
         }
+    }
+
+    pub fn with_global_range_constraints(
+        self,
+        global_range_constraints: GlobalConstraints<T>,
+    ) -> Self {
+        assert!(
+            self.global_range_constraints
+                .witness_constraints
+                .values()
+                .chain(self.global_range_constraints.fixed_constraints.values())
+                .all(|c| c.is_none()),
+            "range constraints already set"
+        );
+
+        Self {
+            global_range_constraints,
+            ..self
+        }
+    }
+
+    pub fn global_range_constraints(&self) -> &GlobalConstraints<T> {
+        &self.global_range_constraints
     }
 
     fn witness_map_with<V: Clone>(&self, initial_value: V) -> WitnessColumnMap<V> {
@@ -391,6 +417,8 @@ pub struct WitnessColumn<'a, T> {
     /// This is needed in situations where we want to update a cell when the
     /// update does not come from an identity (which also has an AlgebraicReference).
     poly: AlgebraicReference,
+    /// The algebraic expression that points to this column in the current row.
+    expr: AlgebraicExpression<T>,
     /// The prover query expression, if any.
     query: Option<&'a Expression>,
     /// A list of externally computed witness values, if any.
@@ -426,8 +454,10 @@ impl<'a, T> WitnessColumn<'a, T> {
             name: name.to_string(),
             next: false,
         };
+        let expr = AlgebraicExpression::Reference(poly.clone());
         WitnessColumn {
             poly,
+            expr,
             query,
             external_values,
         }

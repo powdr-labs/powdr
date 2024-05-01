@@ -6,10 +6,9 @@ use crate::witgen::affine_expression::AffineExpression;
 
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::global_constraints::GlobalConstraints;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::{OuterQuery, Processor};
-use crate::witgen::rows::{CellValue, Row, RowFactory, RowIndex, RowPair, UnknownStrategy};
+use crate::witgen::rows::{CellValue, Row, RowIndex, RowPair, UnknownStrategy};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
 };
@@ -100,8 +99,6 @@ pub struct BlockMachine<'a, T: FieldElement> {
     connection_type: ConnectionType,
     /// The internal identities
     identities: Vec<&'a Identity<Expression<T>>>,
-    /// The row factory
-    row_factory: RowFactory<'a, T>,
     /// The data of the machine.
     data: FinalizableData<'a, T>,
     /// The set of witness columns that are actually part of this machine.
@@ -120,7 +117,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         connecting_identities: &[&'a Identity<Expression<T>>],
         identities: &[&'a Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
-        global_range_constraints: &GlobalConstraints<T>,
     ) -> Option<Self> {
         let (is_permutation, block_size, latch_row) =
             detect_connection_type_and_block_size(fixed_data, connecting_identities, identities)?;
@@ -146,7 +142,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
 
         assert!(block_size <= fixed_data.degree as usize);
-        let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
         // Because block shapes are not always rectangular, we add the last block to the data at the
         // beginning. It starts out with unknown values. Should the first block decide to write to
         // rows < 0, they will be written to this block.
@@ -155,7 +150,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let start_index = RowIndex::from_i64(-(block_size as i64), fixed_data.degree);
         let data = FinalizableData::with_initial_rows_in_progress(
             witness_cols,
-            (0..block_size).map(|i| row_factory.fresh_row(start_index + i)),
+            (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
         );
         Some(BlockMachine {
             name,
@@ -165,7 +160,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             connection_type: is_permutation,
             identities: identities.to_vec(),
             data,
-            row_factory,
             witness_cols: witness_cols.clone(),
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
@@ -506,7 +500,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             let current = &self.get_row(row_index);
             // We don't have the next row, because it would be the first row of the next block.
             // We'll use a fresh row instead.
-            let next = self.row_factory.fresh_row(row_index + 1);
+            let next = Row::fresh(self.fixed_data, row_index + 1);
             let row_pair = RowPair::new(
                 current,
                 &next,
@@ -539,6 +533,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             return Ok(EvalValue::incomplete(
                 IncompleteCause::BlockMachineLookupIncomplete,
             ));
+        }
+
+        if self.rows() + self.block_size as DegreeType >= self.fixed_data.degree {
+            return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
         let process_result = self.process(mutable_state, left, right, &mut sequence_iterator)?;
@@ -592,7 +590,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // and the first row of the next block.
         let block = FinalizableData::with_initial_rows_in_progress(
             &self.witness_cols,
-            (0..(self.block_size + 2)).map(|i| self.row_factory.fresh_row(row_offset + i)),
+            (0..(self.block_size + 2)).map(|i| Row::fresh(self.fixed_data, row_offset + i)),
         );
         let mut processor = BlockProcessor::new(
             row_offset,
@@ -616,9 +614,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// This is necessary to handle non-rectangular block machines, which already use
     /// unused cells in the previous block.
     fn append_block(&mut self, mut new_block: FinalizableData<'a, T>) -> Result<(), EvalError<T>> {
-        if self.rows() + self.block_size as DegreeType >= self.fixed_data.degree {
-            return Err(EvalError::RowsExhausted);
-        }
+        assert!(
+            (self.rows() + self.block_size as DegreeType) < self.fixed_data.degree,
+            "Block machine is full (this should have been checked before)"
+        );
 
         assert_eq!(new_block.len(), self.block_size + 2);
 
