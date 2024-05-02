@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap},
-    fs::{create_dir_all, hard_link},
+    fs::{create_dir_all, hard_link, remove_file},
 };
 
 use powdr_ast::{
@@ -87,11 +87,12 @@ where
                     create_dir_all(&chunk_dir).unwrap();
 
                     // Hardlink constants.bin so that chunk dir will be self sufficient
-                    hard_link(
-                        parent_dir.join("constants.bin"),
-                        chunk_dir.join("constants.bin"),
-                    )
-                    .unwrap();
+                    let link_to_consts = chunk_dir.join("constants.bin");
+                    if force_overwrite {
+                        // Remove the file if it already exists
+                        let _ = remove_file(&link_to_consts);
+                    }
+                    hard_link(parent_dir.join("constants.bin"), link_to_consts).unwrap();
 
                     pipeline.with_output(chunk_dir, force_overwrite)
                 } else {
