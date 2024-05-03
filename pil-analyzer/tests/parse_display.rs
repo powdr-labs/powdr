@@ -15,6 +15,7 @@ namespace std::prover(65536);
     let eval: expr -> fe = [];
     enum Query {
         Input(int),
+        None,
     }
 namespace std::convert(65536);
     let int = [];
@@ -51,6 +52,7 @@ namespace T(65536);
         0 => std::prover::Query::Input(1),
         3 => std::prover::Query::Input(std::convert::int::<fe>((std::prover::eval(T.CNT) + 1))),
         7 => std::prover::Query::Input(0),
+        _ => std::prover::Query::None,
     };
     col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
@@ -313,16 +315,16 @@ fn function_type_display() {
 #[test]
 fn expr_and_identity() {
     let input = r#"namespace N(16);
-    let f: expr, expr -> constr[] = |x, y| [x = y];
-    let g: expr -> constr[] = |x| [x = 0];
+    let f: expr, expr -> Constr[] = |x, y| [x = y];
+    let g: expr -> Constr[] = |x| [x = 0];
     let x: col;
     let y: col;
     f(x, y);
     g((x));
     "#;
     let expected = r#"namespace N(16);
-    let f: expr, expr -> constr[] = (|x, y| [(x = y)]);
-    let g: expr -> constr[] = (|x| [(x = 0)]);
+    let f: expr, expr -> std::prelude::Constr[] = (|x, y| [(x = y)]);
+    let g: expr -> std::prelude::Constr[] = (|x| [(x = 0)]);
     col witness x;
     col witness y;
     N.x = N.y;
@@ -333,7 +335,7 @@ fn expr_and_identity() {
 }
 
 #[test]
-#[should_panic = "Expected type constr but got type expr"]
+#[should_panic = "Expected type std::prelude::Constr but got type expr"]
 fn expression_but_expected_constraint() {
     let input = r#"namespace N(16);
     col witness y;
@@ -344,7 +346,7 @@ fn expression_but_expected_constraint() {
 }
 
 #[test]
-#[should_panic = "Expected type: expr\\nInferred type: constr\\n"]
+#[should_panic = "Expected type: expr\\nInferred type: std::prelude::Constr\\n"]
 fn constraint_but_expected_expression() {
     let input = r#"namespace N(16);
     col witness y;
@@ -697,6 +699,23 @@ namespace T(8);
     let y: int = 7;
 namespace T(8);
     let k: int = X.y;
+";
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.degree, Some(8));
+    assert_eq!(expected, analyzed.to_string());
+}
+
+#[test]
+fn find_in_prelude() {
+    let input = "namespace std::prelude;
+    let y: int = 7;
+namespace T(8);
+    let k = y;
+";
+    let expected = "namespace std::prelude(8);
+    let y: int = 7;
+namespace T(8);
+    let k: int = std::prelude::y;
 ";
     let analyzed = analyze_string::<GoldilocksField>(input);
     assert_eq!(analyzed.degree, Some(8));

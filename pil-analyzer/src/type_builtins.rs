@@ -40,9 +40,13 @@ lazy_static! {
         ("std::convert::fe", ("T: FromLiteral", "T -> fe")),
         ("std::convert::int", ("T: FromLiteral", "T -> int")),
         ("std::convert::expr", ("T: FromLiteral", "T -> expr")),
-        ("std::debug::print", ("T: ToString", "T -> constr[]")),
+        (
+            "std::debug::print",
+            ("T: ToString", "T -> std::prelude::Constr[]")
+        ),
         ("std::field::modulus", ("", "-> int")),
         ("std::prover::challenge", ("", "int, int -> expr")),
+        ("std::prover::degree", ("", "-> int")),
         ("std::prover::eval", ("", "expr -> fe")),
     ]
     .into_iter()
@@ -63,7 +67,10 @@ lazy_static! {
         (BinaryOperator::Less, ("T: Ord", "T, T -> bool")),
         (BinaryOperator::LessEqual, ("T: Ord", "T, T -> bool")),
         (BinaryOperator::Equal, ("T: Eq", "T, T -> bool")),
-        (BinaryOperator::Identity, ("", "expr, expr -> constr")),
+        (
+            BinaryOperator::Identity,
+            ("", "expr, expr -> std::prelude::Constr")
+        ),
         (BinaryOperator::NotEqual, ("T: Eq", "T, T -> bool")),
         (BinaryOperator::GreaterEqual, ("T: Ord", "T, T -> bool")),
         (BinaryOperator::Greater, ("T: Ord", "T, T -> bool")),
@@ -122,7 +129,7 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
             "Neg",
             "Eq",
         ],
-        Type::String => &["ToString", "Add"],
+        Type::String => &["ToString", "Add", "Eq"],
         Type::Expr => &[
             "ToString",
             "FromLiteral",
@@ -134,7 +141,6 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
             "Neg",
             "Eq",
         ],
-        Type::Constr => &[],
         Type::Col => &[],
         Type::Array(_) => &["Add"],
         Type::Tuple(_) => &[],

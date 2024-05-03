@@ -1,7 +1,4 @@
-machine HelloWorld {
-
-    degree 8;
-
+machine HelloWorld with degree: 8 {
     // this simple machine does not have submachines
 
     reg pc[@pc];

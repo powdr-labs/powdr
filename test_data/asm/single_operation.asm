@@ -1,5 +1,7 @@
 // we don't need to specify an operation_id if we have a single operation
-machine SingleOperation(latch, _) {
+machine SingleOperation with
+    latch: latch
+{
     operation nothing;
 
     col fixed latch = [1]*;

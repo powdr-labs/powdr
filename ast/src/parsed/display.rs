@@ -33,46 +33,35 @@ impl Display for ASMModule {
 impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => match value {
-                SymbolValue::Machine(
-                    m @ Machine {
-                        arguments:
-                            MachineArguments {
-                                latch,
-                                operation_id,
-                            },
-                        ..
-                    },
-                ) => {
-                    if let (None, None) = (latch, operation_id) {
-                        write!(f, "machine {name} {m}")
-                    } else {
-                        write!(
-                            f,
-                            "machine {name}({}, {}) {m}",
-                            latch.as_deref().unwrap_or("_"),
-                            operation_id.as_deref().unwrap_or("_"),
-                        )
-                    }
-                }
-                SymbolValue::Import(i) => {
-                    write!(f, "{i} as {name};")
-                }
-                SymbolValue::Module(m @ Module::External(_)) => {
-                    write!(f, "mod {m}")
-                }
-                SymbolValue::Module(m @ Module::Local(_)) => {
-                    write!(f, "mod {name} {m}")
-                }
-                SymbolValue::Expression(TypedExpression { e, type_scheme }) => {
-                    write!(
-                        f,
-                        "let{} = {e};",
-                        format_type_scheme_around_name(name, type_scheme)
-                    )
-                }
-                SymbolValue::TypeDeclaration(ty) => write!(f, "{ty}"),
-            },
+            ModuleStatement::SymbolDefinition(symbol_def) => write!(f, "{symbol_def}"),
+        }
+    }
+}
+
+impl Display for SymbolDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let SymbolDefinition { name, value } = self;
+        match value {
+            SymbolValue::Machine(m) => {
+                write!(f, "machine {name}{m}")
+            }
+            SymbolValue::Import(i) => {
+                write!(f, "{i} as {name};")
+            }
+            SymbolValue::Module(m @ Module::External(_)) => {
+                write!(f, "mod {m}")
+            }
+            SymbolValue::Module(m @ Module::Local(_)) => {
+                write!(f, "mod {name} {m}")
+            }
+            SymbolValue::Expression(TypedExpression { e, type_scheme }) => {
+                write!(
+                    f,
+                    "let{} = {e};",
+                    format_type_scheme_around_name(name, type_scheme)
+                )
+            }
+            SymbolValue::TypeDeclaration(ty) => write!(f, "{ty}"),
         }
     }
 }
@@ -98,9 +87,45 @@ impl Display for Import {
 
 impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "{{")?;
+        writeln!(f, "{}{} {{", &self.arguments, &self.properties)?;
         write_items_indented(f, &self.statements)?;
         write!(f, "}}")
+    }
+}
+
+impl Display for MachineArguments {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let args = self.0.iter().join(", ");
+        if !args.is_empty() {
+            write!(f, "({args})")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for MachineProperties {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let props = self
+            .degree
+            .as_ref()
+            .map(|s| format!("degree: {s}"))
+            .into_iter()
+            .chain(self.latch.as_ref().map(|s| format!("latch: {s}")))
+            .chain(
+                self.operation_id
+                    .as_ref()
+                    .map(|s| format!("operation_id: {s}")),
+            )
+            .chain(
+                self.call_selectors
+                    .as_ref()
+                    .map(|s| format!("call_selectors: {s}")),
+            )
+            .join(", ");
+        if !props.is_empty() {
+            write!(f, " with {props}")?;
+        }
+        Ok(())
     }
 }
 
@@ -168,8 +193,6 @@ impl Display for CallableRef {
 impl Display for MachineStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            MachineStatement::Degree(_, degree) => write!(f, "degree {};", degree),
-            MachineStatement::CallSelectors(_, sel) => write!(f, "call_selectors {};", sel),
             MachineStatement::Pil(_, statement) => write!(f, "{statement}"),
             MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),
             MachineStatement::RegisterDeclaration(_, name, flag) => write!(
@@ -715,7 +738,6 @@ impl<E: Display> Display for Type<E> {
             Type::String => write!(f, "string"),
             Type::Col => write!(f, "col"),
             Type::Expr => write!(f, "expr"),
-            Type::Constr => write!(f, "constr"),
             Type::Array(array) => write!(f, "{array}"),
             Type::Tuple(tuple) => write!(f, "{tuple}"),
             Type::Function(fun) => write!(f, "{fun}"),

@@ -37,6 +37,7 @@ pub fn test_continuations(case: &str) {
         let mut pipeline = pipeline.with_backend(BackendType::EStarkDump);
         pipeline.compute_proof().unwrap();
         verify(pipeline.output_dir().unwrap()).unwrap();
+
         Ok(())
     };
     let bootloader_inputs = rust_continuations_dry_run(&mut pipeline);
@@ -225,6 +226,22 @@ fn sum_serde() {
         vec![answer.into()],
         &Runtime::base(),
         vec![(42, data)],
+    );
+}
+
+#[ignore = "Too slow"]
+#[test]
+fn two_sums_serde() {
+    let case = "two_sums_serde";
+
+    let data1: Vec<u32> = vec![1, 2, 8, 5];
+    let data2 = data1.clone();
+
+    verify_riscv_crate_with_data(
+        case,
+        vec![],
+        &Runtime::base(),
+        vec![(42, data1), (43, data2)],
     );
 }
 

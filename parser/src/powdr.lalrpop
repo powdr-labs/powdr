@@ -6,6 +6,10 @@ use crate::{ParserContext, unescape_string};
 
 grammar(ctx: &ParserContext);
 
+extern {
+    type Error = String;
+}
+
 match {
     r"\s*" => { },
     r"//[^\n\r]*[\n\r]*" => { }, // Skip `// comments`
@@ -255,20 +259,30 @@ GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
 // ---------------------------- ASM part -----------------------------
 
 MachineDefinition: SymbolDefinition = {
-    "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, statements}.into() }
+    "machine" <name:Identifier> <arguments:MachineArguments> <properties:("with" <MachineProperties>)?> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, properties: properties.unwrap_or_default(), statements}.into() },
+}
+
+MachineProperties: MachineProperties = {
+    <mut list:( <MachineProperty> "," )*> <end:MachineProperty> ","? =>? {
+        list.push(end);
+        MachineProperties::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
+    }
+}
+
+MachineProperty: (String, Expression) = {
+    <name:Identifier> ":" <value:Expression> => (name, value),
 }
 
 MachineArguments: MachineArguments = {
-    "(" "_" "," "_" ")" => MachineArguments::default(),
-    "(" <latch:Identifier> "," "_" ")" => MachineArguments { latch: Some(latch), operation_id: None },
-    "(" "_" "," <operation_id:Identifier> ")" => MachineArguments { latch: None, operation_id: Some(operation_id) },
-    "(" <latch:Identifier> "," <operation_id:Identifier> ")" => MachineArguments { latch: Some(latch), operation_id: Some(operation_id) },
     => MachineArguments::default(),
+    "(" ")" => MachineArguments::default(),
+    "(" <mut list:( <Param> "," )*> <end:Param> ","? ")" =>? {
+        list.push(end);
+        MachineArguments::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
+    }
 }
 
 MachineStatement: MachineStatement = {
-    Degree,
-    CallSelectors,
     Submachine,
     RegisterDeclaration,
     InstructionDeclaration,
@@ -280,14 +294,6 @@ MachineStatement: MachineStatement = {
 
 PilStatementInMachine: MachineStatement = {
     <start:@L> <stmt:PilStatement> => MachineStatement::Pil(ctx.source_ref(start), stmt)
-}
-
-Degree: MachineStatement = {
-    <start:@L> "degree" <deg:Expression> ";" => MachineStatement::Degree(ctx.source_ref(start), deg)
-}
-
-CallSelectors: MachineStatement = {
-    <start:@L> "call_selectors" <id:Identifier> ";" => MachineStatement::CallSelectors(ctx.source_ref(start), id)
 }
 
 Submachine: MachineStatement = {
@@ -721,7 +727,6 @@ TypeTerm: Type<Expression> = {
     "string" => Type::String,
     "col" => Type::Col,
     "expr" => Type::Expr,
-    "constr" => Type::Constr,
     <base:TypeTerm> "[" <length:Expression?> "]" => Type::Array(ArrayType{base: Box::new(base), length}),
     "(" <mut items:( <TypeTerm> "," )+> <end:TypeTerm> ")" => { items.push(end); Type::Tuple(TupleType{items}) },
     "(" ")" => Type::Tuple(TupleType{items: vec![]}),

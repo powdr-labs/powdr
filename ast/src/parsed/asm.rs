@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Display, Formatter, Result},
+    fmt::{Display, Formatter},
     iter::{empty, once, repeat},
     str::FromStr,
 };
@@ -186,7 +186,7 @@ impl FromStr for SymbolPath {
     type Err = String;
 
     /// Parses a symbol path both in the "a.b" and the "a::b" notation.
-    fn from_str(s: &str) -> std::result::Result<Self, String> {
+    fn from_str(s: &str) -> Result<Self, String> {
         let (dots, double_colons) = (s.matches('.').count(), s.matches("::").count());
         if dots != 0 && double_colons != 0 {
             Err(format!("Path mixes \"::\" and \".\" separators: {s}"))?
@@ -217,7 +217,7 @@ impl From<AbsoluteSymbolPath> for SymbolPath {
 }
 
 impl Display for SymbolPath {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.parts.iter().format("::"))
     }
 }
@@ -349,7 +349,7 @@ impl AbsoluteSymbolPath {
 }
 
 impl Display for AbsoluteSymbolPath {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "::{}", self.parts.iter().format("::"))
     }
 }
@@ -363,7 +363,7 @@ pub enum Part {
 impl TryInto<String> for Part {
     type Error = ();
 
-    fn try_into(self) -> std::result::Result<String, Self::Error> {
+    fn try_into(self) -> Result<String, Self::Error> {
         if let Part::Named(name) = self {
             Ok(name)
         } else {
@@ -373,7 +373,7 @@ impl TryInto<String> for Part {
 }
 
 impl Display for Part {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Part::Super => write!(f, "super"),
             Part::Named(name) => write!(f, "{name}"),
@@ -384,6 +384,7 @@ impl Display for Part {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Machine {
     pub arguments: MachineArguments,
+    pub properties: MachineProperties,
     pub statements: Vec<MachineStatement>,
 }
 
@@ -399,23 +400,98 @@ impl Machine {
                         MachineStatement::Pil(_, statement) => {
                             Box::new(statement.symbol_definition_names().map(|(s, _)| s))
                         }
-                        MachineStatement::CallSelectors(_, name) => Box::new(once(name)),
-                        MachineStatement::Degree(_, _)
-                        | MachineStatement::Submachine(_, _, _)
+                        MachineStatement::Submachine(_, _, _)
                         | MachineStatement::InstructionDeclaration(_, _, _)
                         | MachineStatement::LinkDeclaration(_, _)
                         | MachineStatement::FunctionDeclaration(_, _, _, _)
                         | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
                     }
-                }),
+                })
+                .chain(self.arguments.defined_names())
+                .chain(self.properties.defined_names()),
         )
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
-pub struct MachineArguments {
+pub struct MachineArguments(pub Vec<Param>);
+
+impl MachineArguments {
+    pub fn defined_names(&self) -> impl Iterator<Item = &String> {
+        self.0.iter().map(|p| &p.name)
+    }
+}
+
+impl TryFrom<Vec<Param>> for MachineArguments {
+    type Error = String;
+
+    fn try_from(params: Vec<Param>) -> Result<Self, Self::Error> {
+        for p in &params {
+            if p.index.is_some() || p.ty.is_none() || p.name.is_empty() {
+                return Err(format!("invalid machine argument: `{p}`"));
+            }
+        }
+        Ok(MachineArguments(params))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
+pub struct MachineProperties {
+    pub degree: Option<Expression>,
     pub latch: Option<String>,
     pub operation_id: Option<String>,
+    pub call_selectors: Option<String>,
+}
+
+impl MachineProperties {
+    pub fn defined_names(&self) -> impl Iterator<Item = &String> {
+        self.call_selectors.iter()
+    }
+}
+
+impl TryFrom<Vec<(String, Expression)>> for MachineProperties {
+    type Error = String;
+
+    fn try_from(prop_list: Vec<(String, Expression)>) -> Result<Self, Self::Error> {
+        let mut props: Self = Default::default();
+        for (name, value) in prop_list {
+            match name.as_str() {
+                "degree" => {
+                    if props.degree.replace(value).is_some() {
+                        return Err(format!("`{name}` already defined"));
+                    }
+                }
+                "latch" => {
+                    let id = value.try_to_identifier().ok_or_else(|| {
+                        format!("`{name}` machine property expects a local column name")
+                    })?;
+                    if props.latch.replace(id.clone()).is_some() {
+                        return Err(format!("`{name}` already defined"));
+                    }
+                }
+                "operation_id" => {
+                    let id = value.try_to_identifier().ok_or_else(|| {
+                        format!("`{name}` machine property expects a local column name")
+                    })?;
+                    if props.operation_id.replace(id.clone()).is_some() {
+                        return Err(format!("`{name}` already defined"));
+                    }
+                }
+                "call_selectors" => {
+                    let id = value.try_to_identifier().ok_or_else(|| {
+                        format!("`{name}` machine property expects a new column name")
+                    })?;
+                    if props.call_selectors.replace(id.clone()).is_some() {
+                        return Err(format!("`{name}` already defined"));
+                    }
+                }
+                _ => {
+                    return Err(format!("unknown machine property `{name}`"));
+                }
+            }
+        }
+        Ok(props)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
@@ -475,8 +551,6 @@ pub struct Instruction {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement {
-    CallSelectors(SourceRef, String),
-    Degree(SourceRef, Expression),
     Pil(SourceRef, PilStatement),
     Submachine(SourceRef, SymbolPath, String),
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),

@@ -23,7 +23,7 @@ mod utils {
 machine Main {
     // use a machine from another module by relative path
     my_module::Other a;
-    
+
     // use a machine from another module using a local binding
     LocalOther b;
 
@@ -31,24 +31,29 @@ machine Main {
     SubmoduleOther c;
 
     // use a machine from another module defined in a different directory
-    FolderSubmoduleOther c;
+    FolderSubmoduleOther d;
 
     reg pc[@pc];
 
     instr nothing = a.nothing;
     instr also_nothing = b.nothing;
     instr still_nothing = c.nothing;
+    instr nothing_again = d.nothing;
 
     function main {
         nothing;
         also_nothing;
         still_nothing;
+        nothing_again;
         return;
     }
 }
 
 mod my_module {
-    machine Other(latch, operation_id) {
+    machine Other with
+        latch: latch,
+        operation_id: operation_id
+    {
         operation nothing<0>;
 
         col fixed latch = [1]*;

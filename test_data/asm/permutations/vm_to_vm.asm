@@ -15,9 +15,7 @@ machine Binary {
     }
 }
 
-machine Main {
-    degree 65536;
-
+machine Main with degree: 65536 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

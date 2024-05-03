@@ -977,6 +977,12 @@ impl<T: FieldElement> VMConverter<T> {
                 let free_value = format!("{reg}_free_value");
                 let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
+                    let mut prover_query_arms = prover_query_arms;
+                    prover_query_arms.push(MatchArm {
+                        pattern: Pattern::CatchAll,
+                        value: absolute_reference("::std::prover::Query::None"),
+                    });
+
                     FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression {
                         kind: FunctionKind::Query,
                         params: vec![Pattern::Variable("__i".to_string())],
@@ -1244,7 +1250,6 @@ mod test {
     fn instr_external_lhs_not_assignment_reg() {
         let asm = r"
 machine Main {
-  degree 8;
   reg pc[@pc];
   reg A;
 
@@ -1263,7 +1268,6 @@ machine Main {
     fn instr_external_lhs_register_not_used() {
         let asm = r"
 machine Main {
-  degree 8;
   reg pc[@pc];
   reg X[<=];
   reg Y[<=];
@@ -1284,7 +1288,6 @@ machine Main {
     fn instr_external_rhs_register_not_on_lhs() {
         let asm = r"
 machine Main {
-  degree 8;
   reg pc[@pc];
   reg X[<=];
   reg Y[<=];

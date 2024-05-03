@@ -26,9 +26,7 @@ mod R {
     use super::utils::sum_two;
     use super::utils::make_array;
 
-    machine FullConstant {
-        degree 4;
-
+    machine FullConstant with degree: 4 {
         let C: int -> fe = |i| match i % 2 {
             0 => x,
             1 => y,

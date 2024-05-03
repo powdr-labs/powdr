@@ -63,9 +63,9 @@ fn new_witness_column_name_clash() {
 }
 
 #[test]
-fn create_constrainst() {
+fn create_constraints() {
     let input = r#"namespace N(16);
-    let force_bool: expr -> constr = |c| c * (1 - c) = 0;
+    let force_bool: expr -> Constr = |c| c * (1 - c) = 0;
     let new_bool: -> expr = constr || { let x; force_bool(x); x };
     let is_zero: expr -> expr = constr |x| {
         let x_is_zero;
@@ -81,7 +81,7 @@ fn create_constrainst() {
     y = x_is_zero + 2;
     "#;
     let expected = r#"namespace N(16);
-    let force_bool: expr -> constr = (|c| ((c * (1 - c)) = 0));
+    let force_bool: expr -> std::prelude::Constr = (|c| ((c * (1 - c)) = 0));
     let new_bool: -> expr = (constr || {
         let x;
         N.force_bool(x);
@@ -106,5 +106,71 @@ fn create_constrainst() {
     N.y = (N.x_is_zero_1 + 2);
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+pub fn degree() {
+    let input = r#"
+        namespace std::convert;
+            let expr = [];
+        namespace std::prover;
+            let degree = [];
+        namespace Main(8);
+            let d = std::prover::degree();
+            let w;
+            w = std::convert::expr(d);
+    "#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace std::convert(8);
+    let expr = [];
+namespace std::prover(8);
+    let degree = [];
+namespace Main(8);
+    let d: int = std::prover::degree();
+    col witness w;
+    Main.w = 8;
+"#;
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+#[should_panic = "Error: DataNotAvailable"]
+pub fn degree_unset() {
+    let input = r#"
+        namespace std::convert;
+            let expr = [];
+        namespace std::prover;
+            let degree = [];
+        namespace Main;
+            let d = std::prover::degree();
+            let w;
+            w = std::convert::expr(d);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+pub fn constructed_constraints() {
+    let input = r#"
+        namespace Main(1024);
+            let x;
+            let y;
+            let z;
+            Constr::Identity(x, y);
+            Constr::Lookup(Option::Some(1), [x, 3], Option::None, [y, z]);
+            Constr::Permutation(Option::None, [x, 3], Option::Some(x), [y, z]);
+            Constr::Connection([x, y], [z, 3]);
+    "#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace Main(1024);
+    col witness x;
+    col witness y;
+    col witness z;
+    Main.x = Main.y;
+    1 { Main.x, 3 } in { Main.y, Main.z };
+    { Main.x, 3 } is Main.x { Main.y, Main.z };
+    { Main.x, Main.y } connect { Main.z, 3 };
+"#;
     assert_eq!(formatted, expected);
 }
