@@ -103,6 +103,14 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         name: &'a str,
         type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        // TODO: Why is this an "intermediate polynomial"? Why is it not inlined?
+        if let Some((_, expressions)) = self.fixed_data.analyzed.intermediate_columns.get(name) {
+            if expressions.len() == 1 {
+                if let AlgebraicExpression::Challenge(_) = &expressions[0] {
+                    return Ok(Value::from(expressions[0].clone()).into());
+                }
+            }
+        }
         Definitions::lookup_with_symbols(
             &self.fixed_data.analyzed.definitions,
             name,
@@ -112,6 +120,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     }
 
     fn eval_expr(&self, expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
+        if let AlgebraicExpression::Challenge(challenge) = expr {
+            return Ok(Value::FieldElement(self.fixed_data.challenges[&challenge.id]).into());
+        }
+
         let AlgebraicExpression::Reference(poly_ref) = expr else {
             return Err(EvalError::TypeError(format!(
                 "Can use std::prover::eval only directly on columns - tried to evaluate {expr}"
