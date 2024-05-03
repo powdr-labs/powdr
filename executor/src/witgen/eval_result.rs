@@ -47,7 +47,7 @@ pub enum IncompleteCause<K = usize> {
     /// Last resort error when all possible solving approaches have failed. TODO: make this more precise or use another variant
     SolvingFailed,
     /// We tried to symbolically evaluate a challenge, which is not supported.
-    SymbolicExecutionOfChallenge,
+    SymbolicEvaluationOfChallenge,
     /// Some knowledge was learnt, but not a concrete value. Example: `Y = X` if we know that `Y` is boolean. We learn that `X` is boolean, but not its exact value.
     NotConcrete,
     Multiple(Vec<IncompleteCause<K>>),

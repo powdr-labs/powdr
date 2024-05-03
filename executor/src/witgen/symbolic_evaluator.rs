@@ -23,6 +23,6 @@ impl<T: FieldElement> SymbolicVariables<T> for SymbolicEvaluator {
     ) -> AffineResult<&'a AlgebraicReference, T> {
         // TODO: Challenges can't be symbolically evaluated, because they can't be
         // represented as an AffineExpression<&AlgebraicReference, T>...
-        Err(IncompleteCause::SymbolicExecutionOfChallenge)
+        Err(IncompleteCause::SymbolicEvaluationOfChallenge)
     }
 }

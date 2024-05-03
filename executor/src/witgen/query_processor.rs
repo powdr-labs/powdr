@@ -103,44 +103,55 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         name: &'a str,
         type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        // TODO: Why is this an "intermediate polynomial"? Why is it not inlined?
-        if let Some((_, expressions)) = self.fixed_data.analyzed.intermediate_columns.get(name) {
-            if expressions.len() == 1 {
-                if let AlgebraicExpression::Challenge(_) = &expressions[0] {
-                    return Ok(Value::from(expressions[0].clone()).into());
+        match self.fixed_data.analyzed.intermediate_columns.get(name) {
+            // Intermediate polynomials (which includes challenged) are not inlined in hints,
+            // so we need to look them up here.
+            Some((symbol, expressions)) => {
+                if symbol.is_array() {
+                    Ok(Value::Array(
+                        expressions
+                            .clone()
+                            .into_iter()
+                            .map(|e| Value::from(e).into())
+                            .collect(),
+                    )
+                    .into())
+                } else {
+                    assert!(expressions.len() == 1);
+                    Ok(Value::from(expressions[0].clone()).into())
                 }
             }
+            None => Definitions::lookup_with_symbols(
+                &self.fixed_data.analyzed.definitions,
+                name,
+                type_args,
+                self,
+            ),
         }
-        Definitions::lookup_with_symbols(
-            &self.fixed_data.analyzed.definitions,
-            name,
-            type_args,
-            self,
-        )
     }
 
     fn eval_expr(&self, expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
-        if let AlgebraicExpression::Challenge(challenge) = expr {
-            return Ok(Value::FieldElement(self.fixed_data.challenges[&challenge.id]).into());
-        }
-
-        let AlgebraicExpression::Reference(poly_ref) = expr else {
-            return Err(EvalError::TypeError(format!(
-                "Can use std::prover::eval only directly on columns - tried to evaluate {expr}"
-            )));
-        };
-
-        Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
-            PolynomialType::Committed | PolynomialType::Intermediate => self
-                .rows
-                .get_value(poly_ref)
-                .ok_or(EvalError::DataNotAvailable)?,
-            PolynomialType::Constant => {
-                let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values;
-                let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
-                values[usize::from(row)]
+        match expr {
+            AlgebraicExpression::Challenge(challenge) => {
+                Ok(Value::FieldElement(self.fixed_data.challenges[&challenge.id]).into())
             }
-        })
-        .into())
+            AlgebraicExpression::Reference(poly_ref) => {
+                Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
+                    PolynomialType::Committed | PolynomialType::Intermediate => self
+                        .rows
+                        .get_value(poly_ref)
+                        .ok_or(EvalError::DataNotAvailable)?,
+                    PolynomialType::Constant => {
+                        let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values;
+                        let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
+                        values[usize::from(row)]
+                    }
+                })
+                .into())
+            }
+            _ => Err(EvalError::TypeError(format!(
+                "Can use std::prover::eval polynomials and challenges - tried to evaluate {expr}"
+            ))),
+        }
     }
 }
