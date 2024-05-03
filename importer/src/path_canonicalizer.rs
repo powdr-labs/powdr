@@ -144,6 +144,11 @@ impl<'a> Folder for Canonicalizer<'a> {
                 _ => {}
             }
         }
+        // canonicalize machine argument types
+        for param in &mut machine.arguments.0 {
+            let p = self.path.clone().join(param.ty.clone().unwrap());
+            param.ty = Some(self.paths.get(&p).cloned().unwrap().into());
+        }
 
         Ok(machine)
     }
