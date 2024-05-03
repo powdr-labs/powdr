@@ -396,12 +396,12 @@ impl Machine {
                 .iter()
                 .flat_map(|s| -> Box<dyn Iterator<Item = &String> + '_> {
                     match s {
-                        MachineStatement::RegisterDeclaration(_, name, _) => Box::new(once(name)),
+                        MachineStatement::Submachine(_, _, name, _)
+                        | MachineStatement::RegisterDeclaration(_, name, _) => Box::new(once(name)),
                         MachineStatement::Pil(_, statement) => {
                             Box::new(statement.symbol_definition_names().map(|(s, _)| s))
                         }
-                        MachineStatement::Submachine(_, _, _, _)
-                        | MachineStatement::InstructionDeclaration(_, _, _)
+                        MachineStatement::InstructionDeclaration(_, _, _)
                         | MachineStatement::LinkDeclaration(_, _)
                         | MachineStatement::FunctionDeclaration(_, _, _, _)
                         | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
