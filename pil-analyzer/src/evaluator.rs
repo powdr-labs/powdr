@@ -495,7 +495,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
     fn eval_expr(&self, expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(match expr {
             AlgebraicExpression::Reference(reference) => self.eval_reference(reference)?,
-            AlgebraicExpression::PublicReference(_) => todo!(),
+            AlgebraicExpression::PublicReference(_) => unimplemented!(),
             AlgebraicExpression::Challenge(challenge) => self.eval_challenge(challenge)?,
             AlgebraicExpression::Number(n) => Value::FieldElement(*n).into(),
             AlgebraicExpression::BinaryOperation(left, op, right) => {
@@ -508,7 +508,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
                     let operand = self.eval_expr(operand)?;
                     match operand.as_ref() {
                         Value::FieldElement(fe) => Value::FieldElement(-*fe).into(),
-                        _ => unimplemented!(),
+                        _ => panic!("Expected field element"),
                     }
                 }
             },
