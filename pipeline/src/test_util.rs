@@ -1,6 +1,5 @@
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
-use powdr_executor::witgen::extract_publics;
 use powdr_number::{buffered_write_file, BigInt, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::path::PathBuf;
@@ -75,7 +74,6 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
     pipeline.clone().compute_proof().unwrap();
 
     // Repeat the proof generation, but with an externally generated verification key
-    let pil = pipeline.compute_optimized_pil().unwrap();
 
     // Verification Key
     let vkey_file_path = tmp_dir.as_path().join("verification_key.bin");
@@ -90,7 +88,9 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
 
     let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
 
-    let publics: Vec<GoldilocksField> = extract_publics(&pipeline.witness().unwrap(), &pil)
+    let publics: Vec<GoldilocksField> = pipeline
+        .publics()
+        .unwrap()
         .iter()
         .map(|(_name, v)| *v)
         .collect();
@@ -162,7 +162,9 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 
     let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
 
-    let publics: Vec<Bn254Field> = extract_publics(&pipeline.witness().unwrap(), &pil)
+    let publics: Vec<Bn254Field> = pipeline
+        .publics()
+        .unwrap()
         .iter()
         .map(|(_name, v)| *v)
         .collect();

@@ -21,7 +21,8 @@ use powdr_backend::{BackendOptions, BackendType, Proof};
 use powdr_executor::{
     constant_evaluator,
     witgen::{
-        chain_callbacks, unused_query_callback, QueryCallback, WitgenCallback, WitnessGenerator,
+        chain_callbacks, extract_publics, unused_query_callback, QueryCallback, WitgenCallback,
+        WitnessGenerator,
     },
 };
 use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
@@ -843,6 +844,12 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn witness(&self) -> Result<Rc<Columns<T>>, Vec<String>> {
         Ok(self.artifact.witness.as_ref().unwrap().clone())
+    }
+
+    pub fn publics(&self) -> Result<Vec<(String, T)>, Vec<String>> {
+        let pil = self.optimized_pil()?;
+        let witness = self.witness()?;
+        Ok(extract_publics(&witness, &pil))
     }
 
     pub fn witgen_callback(&mut self) -> Result<WitgenCallback<T>, Vec<String>> {

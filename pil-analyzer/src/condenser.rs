@@ -3,7 +3,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    iter::{self, once},
+    iter::once,
     str::FromStr,
     sync::Arc,
 };
@@ -35,6 +35,7 @@ pub fn condense<T: FieldElement>(
     mut public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[Identity<Expression>],
     source_order: Vec<StatementIdentifier>,
+    auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
     let mut condenser = Condenser::new(&definitions, degree);
 
@@ -149,6 +150,7 @@ pub fn condense<T: FieldElement>(
         intermediate_columns,
         identities: condensed_identities,
         source_order,
+        auto_added_symbols,
     }
 }
 
@@ -382,26 +384,22 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         constraints: Arc<Value<'a, T>>,
         source: SourceRef,
     ) -> Result<(), evaluator::EvalError> {
-        let identities: Box<dyn Iterator<Item = _>> = match constraints.as_ref() {
-            Value::Identity(left, right) => Box::new(iter::once((left, right))),
-            Value::Array(items) => Box::new(items.iter().map(|item| match item.as_ref() {
-                Value::Identity(left, right) => (left, right),
-                _ => panic!("Expected constraint, but got {item}"),
-            })),
-            _ => panic!("Expected constraint but got {constraints}"),
-        };
-        for (left, right) in identities {
-            self.new_constraints
-                .push(IdentityWithoutID::from_polynomial_identity(
-                    source.clone(),
-                    left.clone() - right.clone(),
-                ));
+        match constraints.as_ref() {
+            Value::Array(items) => {
+                for item in items {
+                    self.new_constraints
+                        .push(to_constraint(item, source.clone()))
+                }
+            }
+            _ => self
+                .new_constraints
+                .push(to_constraint(&constraints, source)),
         }
         Ok(())
     }
 }
 
-impl<'a, T> Condenser<'a, T> {
+impl<'a, T: FieldElement> Condenser<'a, T> {
     fn find_unused_name(&self, name: &str) -> String {
         once(None)
             .chain((1..).map(Some))
@@ -411,5 +409,86 @@ impl<'a, T> Condenser<'a, T> {
                 !self.symbols.contains_key(name) && !self.all_new_witness_names.contains(name)
             })
             .unwrap()
+    }
+}
+
+fn to_constraint<T: FieldElement>(
+    constraint: &Value<'_, T>,
+    source: SourceRef,
+) -> IdentityWithoutID<AlgebraicExpression<T>> {
+    match constraint {
+        Value::Enum("Identity", Some(fields)) => {
+            assert_eq!(fields.len(), 2);
+            IdentityWithoutID::from_polynomial_identity(
+                source,
+                to_expr(&fields[0]) - to_expr(&fields[1]),
+            )
+        }
+        Value::Enum(kind @ "Lookup" | kind @ "Permutation", Some(fields)) => {
+            assert_eq!(fields.len(), 4);
+            let kind = if *kind == "Lookup" {
+                IdentityKind::Plookup
+            } else {
+                IdentityKind::Permutation
+            };
+            IdentityWithoutID {
+                kind,
+                source,
+                left: to_selected_exprs(&fields[0], &fields[1]),
+                right: to_selected_exprs(&fields[2], &fields[3]),
+            }
+        }
+        Value::Enum("Connection", Some(fields)) => {
+            assert_eq!(fields.len(), 2);
+            IdentityWithoutID {
+                kind: IdentityKind::Connect,
+                source,
+                left: SelectedExpressions {
+                    selector: None,
+                    expressions: to_vec_expr(&fields[0]),
+                },
+                right: SelectedExpressions {
+                    selector: None,
+                    expressions: to_vec_expr(&fields[1]),
+                },
+            }
+        }
+        _ => panic!("Expected constraint but got {constraint}"),
+    }
+}
+
+fn to_selected_exprs<'a, T: Clone>(
+    selector: &Value<'a, T>,
+    exprs: &Value<'a, T>,
+) -> SelectedExpressions<AlgebraicExpression<T>> {
+    SelectedExpressions {
+        selector: to_option_expr(selector),
+        expressions: to_vec_expr(exprs),
+    }
+}
+
+fn to_option_expr<T: Clone>(value: &Value<'_, T>) -> Option<AlgebraicExpression<T>> {
+    match value {
+        Value::Enum("None", None) => None,
+        Value::Enum("Some", Some(fields)) => {
+            assert_eq!(fields.len(), 1);
+            Some(to_expr(&fields[0]))
+        }
+        _ => panic!(),
+    }
+}
+
+fn to_vec_expr<T: Clone>(value: &Value<'_, T>) -> Vec<AlgebraicExpression<T>> {
+    match value {
+        Value::Array(items) => items.iter().map(|item| to_expr(item)).collect(),
+        _ => panic!(),
+    }
+}
+
+fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
+    if let Value::Expression(expr) = value {
+        (*expr).clone()
+    } else {
+        panic!()
     }
 }
