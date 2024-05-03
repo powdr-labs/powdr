@@ -10,6 +10,7 @@ repository = { workspace = true }
 [features]
 halo2 = ["dep:powdr-halo2"]
 estark-polygon = ["dep:pil-stark-prover"]
+starky-avx512 = ["starky/avx512"]
 
 [dependencies]
 powdr-ast = { path = "../ast" }
@@ -23,7 +24,7 @@ log = "0.4.17"
 serde = "1.0"
 serde_json = "1.0"
 thiserror = "1.0.43"
-starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "59d2152" }
+starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "87b5fe3" }
 pil-stark-prover = { git = "https://github.com/powdr-labs/pil-stark-prover.git", rev = "f0c7800564f78ed9414640317e905a777f43fd90", optional = true }
 mktemp = "0.5.0"
 
