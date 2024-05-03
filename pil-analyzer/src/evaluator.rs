@@ -9,8 +9,9 @@ use num_traits::Signed;
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, Challenge, Expression,
-        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
+        AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
+        Challenge, Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind,
+        TypedExpression,
     },
     parsed::{
         display::quote,
@@ -478,7 +479,7 @@ impl<'a> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>> fo
     }
 }
 
-pub trait SymbolLookup<'a, T> {
+pub trait SymbolLookup<'a, T: FieldElement> {
     fn lookup(
         &mut self,
         name: &'a str,
@@ -491,7 +492,37 @@ pub trait SymbolLookup<'a, T> {
         )))
     }
 
-    fn eval_expr(&self, _expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
+    fn eval_expr(&self, expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Ok(match expr {
+            AlgebraicExpression::Reference(reference) => self.eval_reference(reference)?,
+            AlgebraicExpression::PublicReference(_) => todo!(),
+            AlgebraicExpression::Challenge(challenge) => self.eval_challenge(challenge)?,
+            AlgebraicExpression::Number(n) => Value::FieldElement(*n).into(),
+            AlgebraicExpression::BinaryOperation(left, op, right) => {
+                let left = self.eval_expr(left)?;
+                let right = self.eval_expr(right)?;
+                evaluate_binary_operation(&left, (*op).into(), &right)?
+            }
+            AlgebraicExpression::UnaryOperation(op, operand) => match op {
+                AlgebraicUnaryOperator::Minus => {
+                    let operand = self.eval_expr(operand)?;
+                    match operand.as_ref() {
+                        Value::FieldElement(fe) => Value::FieldElement(-*fe).into(),
+                        _ => unimplemented!(),
+                    }
+                }
+            },
+        })
+    }
+
+    fn eval_challenge(&self, _challenge: &Challenge) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::DataNotAvailable)
+    }
+
+    fn eval_reference(
+        &self,
+        _reference: &AlgebraicReference,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::DataNotAvailable)
     }
 
@@ -543,7 +574,7 @@ enum Operation<'a, T> {
 /// This allows arbitrarily deep recursion in PIL on a physical machine with limited stack.
 /// SymbolLookup might still do regular recursive calls into the evaluator,
 /// but this is very limited.
-struct Evaluator<'a, 'b, T, S: SymbolLookup<'a, T>> {
+struct Evaluator<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> {
     symbols: &'b mut S,
     local_vars: Vec<Arc<Value<'a, T>>>,
     type_args: HashMap<String, Type>,

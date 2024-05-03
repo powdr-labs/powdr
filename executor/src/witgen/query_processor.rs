@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Expression, PolyID, PolynomialType,
-};
+use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
 use powdr_ast::parsed::types::Type;
 use powdr_number::{BigInt, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
@@ -109,13 +107,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         )
     }
 
-    fn eval_expr(&self, expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
-        let AlgebraicExpression::Reference(poly_ref) = expr else {
-            return Err(EvalError::TypeError(format!(
-                "Can use std::prover::eval only directly on columns - tried to evaluate {expr}"
-            )));
-        };
-
+    fn eval_reference(
+        &self,
+        poly_ref: &AlgebraicReference,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Intermediate => self
                 .rows
