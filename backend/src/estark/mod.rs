@@ -34,6 +34,16 @@ impl From<BackendOptions> for ProofType {
     }
 }
 
+impl ProofType {
+    pub fn hash_type(&self) -> &'static str {
+        match self {
+            ProofType::StarkGL => "GL",
+            ProofType::StarkBN => "BN",
+            ProofType::SnarkBN => "BN",
+        }
+    }
+}
+
 fn create_stark_struct(degree: DegreeType, hash_type: &str) -> StarkStruct {
     assert!(degree > 1);
     let n_bits = (DegreeType::BITS - (degree - 1).leading_zeros()) as usize;
@@ -185,15 +195,9 @@ impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
         }
 
         // Write the stark struct JSON.
-        let hash_type = match self.proof_type {
-            ProofType::StarkGL => "GL",
-            ProofType::StarkBN => "BN",
-            ProofType::SnarkBN => "BN",
-        };
-        log::info!("Writing {}.", paths.stark_struct.to_string_lossy());
         write_json_file(
             &paths.stark_struct,
-            &create_stark_struct(self.degree, hash_type),
+            &create_stark_struct(self.degree, self.proof_type.hash_type()),
         )?;
 
         // Write the constraints in JSON.

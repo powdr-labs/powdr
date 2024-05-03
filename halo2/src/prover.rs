@@ -20,7 +20,7 @@ use powdr_number::{buffered_write_file, DegreeType, FieldElement, KnownField};
 
 // We use two different EVM verifier libraries.
 // 1. snark_verifier: supports single SNARK verification as well as aggregated proof verification.
-// However the generated smart contract code size is often larger than the limit on Ethereum for complex programs.
+// However the generated smart contract code size is often larger than the limit on Ethereum for complex VMs.
 // This is mitigated in (2).
 // 2. halo2_solidity_verifier: supports single SNARK verification only. The generated smart contract
 // code size is reasonable.
@@ -57,8 +57,13 @@ pub use halo2_proofs::SerdeFormat;
 
 #[derive(Clone)]
 pub enum ProofType {
+    /// Create a single proof for a given PIL using Poseidon transcripts.
     Poseidon,
+    /// Create a single proof for a given PIL using Keccak transcripts,
+    /// which can be verified directly on Ethereum.
     SnarkSingle,
+    /// Create a recursive proof that compresses a Poseidon proof,
+    /// which can be verified directly on Ethereum.
     SnarkAggr,
 }
 
@@ -111,7 +116,7 @@ fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), S
 
 pub fn generate_setup(size: DegreeType) -> ParamsKZG<Bn256> {
     // Halo2 does not like degree < 2^4, so we enforce a minimum of 2^4 here.
-    // Soundness is fine is we use a larger degree.
+    // Soundness is fine if we use a larger degree.
     // Performance is also fine if we have to raise it to 4 since it's still quite small.
     ParamsKZG::<Bn256>::new(std::cmp::max(4, degree_bits(size)))
 }
@@ -206,8 +211,8 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     ) -> Result<Vec<u8>, String> {
         assert!(matches!(self.proof_type, ProofType::Poseidon));
 
-        let proof = self.prove::<_, aggregation::PoseidonTranscript<NativeLoader, _>,  aggregation::PoseidonTranscript<NativeLoader, _>>(witness, witgen_callback)?;
-        Ok(proof.0)
+        let (proof, _) = self.prove::<_, aggregation::PoseidonTranscript<NativeLoader, _>,  aggregation::PoseidonTranscript<NativeLoader, _>>(witness, witgen_callback)?;
+        Ok(proof)
     }
 
     /// Generate a single proof for a given PIL using Keccak transcripts.
@@ -219,7 +224,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     ) -> Result<Vec<u8>, String> {
         assert!(matches!(self.proof_type, ProofType::SnarkSingle));
 
-        let proof = self.prove::<_, EvmTranscript<_, _, _, _>, EvmTranscript<G1Affine, _, _, _>>(
+        let (proof, publics) = self.prove::<_, EvmTranscript<_, _, _, _>, EvmTranscript<G1Affine, _, _, _>>(
             witness,
             witgen_callback,
         )?;
@@ -233,14 +238,14 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let mut evm = Evm::default();
         let verifier_address = evm.create(verifier_creation_code);
 
-        let calldata = encode_calldata(None, &proof.0, &proof.1[0]);
+        let calldata = encode_calldata(None, &proof, &publics[0]);
 
         let (_gas_cost, output) = evm.call(verifier_address, calldata);
         assert_eq!(output, [vec![0; 31], vec![1]].concat());
 
         log::info!("EVM verification done.");
 
-        Ok(proof.0)
+        Ok(proof)
     }
 
     /// Generate a recursive proof that compresses one or more Poseidon proofs.
@@ -377,17 +382,17 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         }
 
         match self.proof_type {
-            ProofType::Poseidon | ProofType::SnarkSingle => self.verification_key_single(),
-            ProofType::SnarkAggr => self.verification_key_aggr(),
+            ProofType::Poseidon | ProofType::SnarkSingle => self.generate_verification_key_single(),
+            ProofType::SnarkAggr => self.generate_verification_key_aggr(),
         }
     }
 
-    fn verification_key_single(&self) -> Result<VerifyingKey<G1Affine>, String> {
+    fn generate_verification_key_single(&self) -> Result<VerifyingKey<G1Affine>, String> {
         let circuit = PowdrCircuit::new(self.analyzed, self.fixed);
         keygen_vk(&self.params, &circuit).map_err(|e| e.to_string())
     }
 
-    fn verification_key_aggr(&self) -> Result<VerifyingKey<G1Affine>, String> {
+    fn generate_verification_key_aggr(&self) -> Result<VerifyingKey<G1Affine>, String> {
         let vkey_app = match self.vkey_app.as_ref() {
             Some(vkey_app) => vkey_app,
             None => {
@@ -544,7 +549,7 @@ fn gen_proof<
         .map(|instances| instances.as_slice())
         .collect_vec();
     let proof = {
-        let mut transcript = TranscriptWriterBuffer::<_, G1Affine, _>::init(Vec::new());
+        let mut transcript = TW::init(Vec::new());
         create_proof::<KZGCommitmentScheme<Bn256>, ProverGWC<_>, _, _, TW, _>(
             params,
             pk,

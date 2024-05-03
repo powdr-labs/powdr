@@ -2,7 +2,7 @@
 
 This example is yet another variation of the previous [Hello World on Ethereum](./hello_world_ethereum.md)
 example, still targeting verification on Ethereum but supporting more complex
-programs. As noted in the previous section, complex programs can lead to large
+VMs. As noted in the previous section, complex VMs can lead to large
 Solidity verifiers that exceed the contract size limit on Ethereum. One
 solution to that problem is to create proofs using the Poseidon transcript, as
 we did in the [first example](./hello_world.md), and then use proof
@@ -18,15 +18,14 @@ longer to compute.  The good news are that (i) we can use a pre-computed setup
 from a previous ceremony, and (ii) the verification key only has to be computed
 once per program.
 
-First, we need a setup of "size" 22. This is the log2 of the maximum execution
-trace length of the recursion circuit.
+First, we need a setup of "size" 2^22. This is the maximum execution trace length of the recursion circuit.
 
 You can generate it using the command line below, or download a pre-computed
 one [here](https://drive.google.com/file/d/1xG_O_KqooiRR3QJno3tXIiNELSB2AQMH/view?usp=drive_link).
 
 This will take a couple minutes if you decide to compute it yourself:
 ```console
-powdr setup 22 --backend halo2 --field bn254
+powdr setup 4194304 --backend halo2 --field bn254
 ```
 
 We can re-use the new large `params.bin` for both initial and recursive proofs.
