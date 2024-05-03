@@ -16,7 +16,7 @@ use halo2_proofs::{
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{buffered_write_file, DegreeType, FieldElement, KnownField};
+use powdr_number::{DegreeType, FieldElement, KnownField};
 
 // We use two different EVM verifier libraries.
 // 1. snark_verifier: supports single SNARK verification as well as aggregated proof verification.
@@ -44,10 +44,8 @@ use crate::{
 
 use itertools::Itertools;
 use rand::rngs::OsRng;
-use serde::Serialize;
 use std::{
     io::{self, Cursor},
-    path::Path,
     time::Instant,
 };
 
@@ -96,22 +94,10 @@ pub struct Halo2Prover<'a, F> {
     // the vkey of the "poseidon" proof.
     vkey_app: Option<VerifyingKey<G1Affine>>,
     proof_type: ProofType,
-    output_dir: Option<&'a Path>,
 }
 
 fn degree_bits(degree: DegreeType) -> u32 {
     DegreeType::BITS - degree.leading_zeros() + 1
-}
-
-// TODO move to `backend` and sync with the similar function in estark
-fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), String> {
-    buffered_write_file(path, |writer| {
-        serde_json::to_writer(writer, data).map_err(|e| e.to_string())
-    })
-    .unwrap()
-    .unwrap();
-
-    Ok(())
 }
 
 pub fn generate_setup(size: DegreeType) -> ParamsKZG<Bn256> {
@@ -127,7 +113,6 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         fixed: &'a [(String, Vec<F>)],
         setup: Option<&mut dyn io::Read>,
         proof_type: ProofType,
-        output_dir: Option<&'a Path>,
     ) -> Result<Self, io::Error> {
         Self::assert_field_is_bn254();
 
@@ -147,7 +132,6 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
             vkey: None,
             vkey_app: None,
             proof_type,
-            output_dir,
         })
     }
 
@@ -208,11 +192,19 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         &self,
         witness: &[(String, Vec<F>)],
         witgen_callback: WitgenCallback<F>,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<(Vec<u8>, Vec<F>), String> {
         assert!(matches!(self.proof_type, ProofType::Poseidon));
 
-        let (proof, _) = self.prove::<_, aggregation::PoseidonTranscript<NativeLoader, _>,  aggregation::PoseidonTranscript<NativeLoader, _>>(witness, witgen_callback)?;
-        Ok(proof)
+        let (proof, publics) = self.prove::<_, aggregation::PoseidonTranscript<NativeLoader, _>,  aggregation::PoseidonTranscript<NativeLoader, _>>(witness, witgen_callback)?;
+        // Our Halo2 integration always has one instance column `publics[0]`
+        // containing the public inputs.
+        let publics: Vec<F> = publics[0]
+            .clone()
+            .into_iter()
+            .map(|x| F::from_bytes_le(&x.to_repr()))
+            .collect();
+
+        Ok((proof, publics))
     }
 
     /// Generate a single proof for a given PIL using Keccak transcripts.
@@ -221,13 +213,14 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         &self,
         witness: &[(String, Vec<F>)],
         witgen_callback: WitgenCallback<F>,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<(Vec<u8>, Vec<F>), String> {
         assert!(matches!(self.proof_type, ProofType::SnarkSingle));
 
-        let (proof, publics) = self.prove::<_, EvmTranscript<_, _, _, _>, EvmTranscript<G1Affine, _, _, _>>(
-            witness,
-            witgen_callback,
-        )?;
+        let (proof, publics) = self
+            .prove::<_, EvmTranscript<_, _, _, _>, EvmTranscript<G1Affine, _, _, _>>(
+                witness,
+                witgen_callback,
+            )?;
 
         log::info!("Verifying SNARK in the EVM...");
 
@@ -245,7 +238,15 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
 
         log::info!("EVM verification done.");
 
-        Ok(proof)
+        // Our Halo2 integration always has one instance column `publics[0]`
+        // containing the public inputs.
+        let publics: Vec<F> = publics[0]
+            .clone()
+            .into_iter()
+            .map(|x| F::from_bytes_le(&x.to_repr()))
+            .collect();
+
+        Ok((proof, publics))
     }
 
     /// Generate a recursive proof that compresses one or more Poseidon proofs.
@@ -255,7 +256,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         witness: &[(String, Vec<F>)],
         witgen_callback: WitgenCallback<F>,
         proof: Vec<u8>,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<(Vec<u8>, Vec<F>), String> {
         assert!(matches!(self.proof_type, ProofType::SnarkAggr));
 
         log::info!("Starting proof aggregation...");
@@ -331,19 +332,17 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         log::info!("Verifying aggregated proof in the EVM...");
         evm_verify(deployment_code, agg_instances.clone(), &proof);
 
-        let output_dir = self.output_dir.ok_or("output_dir is None".to_owned())?;
-        let publics_path = output_dir.join("publics_aggr.json");
-        let publics_str: Vec<String> = agg_instances[0]
+        // Our Halo2 integration always has one instance column `publics[0]`
+        // containing the public inputs.
+        let publics: Vec<F> = agg_instances[0]
             .clone()
             .into_iter()
-            .map(|x| F::from_bytes_le(&x.to_repr()).to_string())
+            .map(|x| F::from_bytes_le(&x.to_repr()))
             .collect();
-        write_json_file(publics_path.as_path(), &publics_str).unwrap();
-        log::info!("Wrote publics_aggr.bin.");
 
         log::info!("Proof aggregation done.");
 
-        Ok(proof)
+        Ok((proof, publics))
     }
 
     pub fn add_verification_key(&mut self, mut vkey: &mut dyn io::Read) {

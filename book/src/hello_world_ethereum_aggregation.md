@@ -66,13 +66,14 @@ We can now generate the recursive proof (can take 3 or more minutes and use 28gb
 powdr prove test_data/asm/book/hello_world.asm --field bn254 --backend halo2 --backend-options "snark_aggr" --params params.bin --vkey vkey.bin --vkey-app vkey_app.bin --proof hello_world_proof_app.bin
 ```
 
-We have a proof! Note that another file is also generated.
-File `publics_aggr.bin` contains the public accumulator limbs that we need in order to verify the recursive proof:
-```json
-["269487626280642378794","9378970522278219882","62304027188881225691","811176493438944","234778270138968319485","3212529982775999134","171155758373806079356","207910400337448","188563849779606300850","155626297629081952942","194348356185923309508","433061951018270","34598221006207900280","283775241405787955338","79508596887913496910","354189825580534"]
+We have a proof! Note that the proof contents have two fields, `proof` and
+`publics`.  The `proof` object contains the binary encoding of the proof
+points, and the `publics` object contains the public accumulator limbs that we
+need in order to verify the recursive proof.
+
 ```
 
-We can now verify the proof:
+We can now verify the proof, using the `publics` object as input:
 ```console
 powdr verify test_data/asm/book/hello_world.asm --field bn254 --backend halo2 --backend-options "snark_aggr" --params params.bin --vkey vkey.bin --proof hello_world_proof_aggr.bin --publics "269487626280642378794,9378970522278219882,62304027188881225691,811176493438944,234778270138968319485,3212529982775999134,171155758373806079356,207910400337448,188563849779606300850,155626297629081952942,194348356185923309508,433061951018270,34598221006207900280,283775241405787955338,79508596887913496910,354189825580534"
 ```
