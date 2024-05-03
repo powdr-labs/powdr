@@ -293,30 +293,30 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .collect::<BTreeMap<_, _>>();
 
         let witness_cols = 
-                WitnessColumnMap::from(analyzed.committed_polys_in_source_order().iter().flat_map(
-                    |(poly, value)| {
-                        poly.array_elements()
-                            .map(|(name, poly_id)| {
-                                let external_values = external_witness_values.remove(name.as_str());
-                                if let Some(external_values) = &external_values {
-                                    if external_values.len() != analyzed.degree() as usize {
-                                        log::debug!(
-                                            "External witness values for column {} were only partially provided \
-                                            (length is {} but the degree is {})",
-                                            name,
-                                            external_values.len(),
-                                            analyzed.degree()
-                                        );
-                                    }
+            WitnessColumnMap::from(analyzed.committed_polys_in_source_order().iter().flat_map(
+                |(poly, value)| {
+                    poly.array_elements()
+                        .map(|(name, poly_id)| {
+                            let external_values = external_witness_values.remove(name.as_str());
+                            if let Some(external_values) = &external_values {
+                                if external_values.len() != analyzed.degree() as usize {
+                                    log::debug!(
+                                        "External witness values for column {} were only partially provided \
+                                        (length is {} but the degree is {})",
+                                        name,
+                                        external_values.len(),
+                                        analyzed.degree()
+                                    );
                                 }
-                                // Remove any hint for witness columns of a later stage
-                                // (because it might reference a challenge that is not available yet)
-                                let value = if poly.stage.unwrap_or_default() <= stage.into() {  value.as_ref()} else { None };
-                                WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
-                            })
-                            .collect::<Vec<_>>()
-                    },
-            ));
+                            }
+                            // Remove any hint for witness columns of a later stage
+                            // (because it might reference a challenge that is not available yet)
+                            let value = if poly.stage.unwrap_or_default() <= stage.into() {  value.as_ref()} else { None };
+                            WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
+                        })
+                        .collect::<Vec<_>>()
+                },
+        ));
 
         if !external_witness_values.is_empty() {
             let available_columns = witness_cols

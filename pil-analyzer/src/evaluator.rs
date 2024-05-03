@@ -413,8 +413,7 @@ impl<'a> Definitions<'a> {
 
         let (symbol, value) = definitions
             .get(&name)
-            .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))
-            .unwrap();
+            .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))?;
 
         Ok(if matches!(symbol.kind, SymbolKind::Poly(_)) {
             if symbol.is_array() {
