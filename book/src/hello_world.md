@@ -1,25 +1,33 @@
 # Hello World
 
-Let's write [a minimal VM](https://github.com/powdr-labs/powdr/blob/main/test_data/asm/book/hello_world.asm) and generate a SNARK!
+Let's write [a minimal VM](https://github.com/powdr-labs/powdr/blob/main/test_data/asm/book/hello_world.asm) and generate a proof!
 
 ```
 {{#include ../../test_data/asm/book/hello_world.asm}}
 ```
 
-Then let's generate a proof of execution for the valid prover input `0` (since for `0 + 1 - 1 == 0`)
+Let's generate a proof of execution for the valid prover input `0` (since `0 + 1 - 1 == 0`)
 
 ```console
 powdr pil test_data/asm/book/hello_world.asm --field bn254 --inputs 0 --prove-with halo2
 ```
 
-We observe that a proof was created at `hello_world_proof.bin`.
-Now let's try for the invalid input `1`
+We observe that several artifacts are created in the current directory:
+- `hello_world.pil`: the compiled PIL file.
+- `hello_world_opt.pil`: the optimized PIL file.
+- `hello_world_constants.bin`: the computed fixed columns which only have to be computed once per PIL file.
+- `hello_world_commits.bin`: the computed witness which needs to be computed for each proof.
+- `hello_world_proof.bin`: the ZK proof!
+
+> Note that the output directory can be specified with option `-o|--output`, and `.` is used by default.
+
+Now let's try for the invalid input `1`:
 
 ```console
 powdr pil test_data/asm/book/hello_world.asm --field bn254 --inputs 1 --prove-with halo2
 ```
 
-We observe that witness generation fails, and no proof is created.
+In this case witness generation fails, and no proof is created.
 
 # Setup & Verification
 
@@ -55,6 +63,10 @@ We can now compute the verification key, output in `vkey.bin`:
 powdr verification-key test_data/asm/book/hello_world.asm --field bn254 --backend halo2 --params "params.bin"
 ```
 
+> The command above can read previously generated constants from the directory
+specified via `-d|--dir`, where `.` is used by default. If the constants are not present
+it computes them before generating the verification key.
+
 The next command compiles and optimizes the given source, generating the file
 `hello_world_opt.pil`. It also computes both the fixed data and the witness
 needed for the proof, stored respectively in `hello_world_constants.bin` and
@@ -77,3 +89,14 @@ powdr verify test_data/asm/book/hello_world.asm --field bn254 --backend halo2 --
 ```
 
 > Note that CLI proof verification works analogously for eSTARK, without the setup step and using the Goldilocks field instead of Bn254.
+
+Another aspect that was omitted in this example is the fact that this proof
+uses a Poseidon transcript and cannot be verified in a cheap way on Ethereum,
+even though we can verify it efficiently via powdr.
+There are two ways to enable verification on Ethereum:
+
+1. Use a different transcript when generating this proof. See section
+   [Hello World on Ethereum](./hello_world_ethereum.md) for the same example targeting EVM verification.
+2. Use proof aggregation to compress the proof we just generated using a
+   circuit that can be verified on Ethereum. See section
+   [Hello World on Ethereum via proof aggregation](./hello_world_ethereum_aggregation.md) to learn how to do that.
