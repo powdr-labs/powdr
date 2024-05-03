@@ -292,7 +292,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .map(|(name, values)| (name.clone(), values))
             .collect::<BTreeMap<_, _>>();
 
-        let witness_cols = 
+        let witness_cols =
             WitnessColumnMap::from(analyzed.committed_polys_in_source_order().iter().flat_map(
                 |(poly, value)| {
                     poly.array_elements()
