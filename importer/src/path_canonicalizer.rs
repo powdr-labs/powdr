@@ -575,7 +575,7 @@ fn check_machine(
         }
     }
     for param in &m.arguments.0 {
-        let path: SymbolPath = param.ty.as_ref().unwrap().parse()?;
+        let path: SymbolPath = param.ty.clone().unwrap();
         check_path(module_location.clone().join(path), state)?
     }
     for statement in &m.statements {

@@ -842,7 +842,7 @@ mod tests {
         let p = Param {
             name: "abc".into(),
             index: None,
-            ty: Some("ty".into()),
+            ty: "ty".parse().ok(),
         };
         assert_eq!(p.to_string(), "abc: ty");
         let empty = Params::<Param>::default();
@@ -853,24 +853,24 @@ mod tests {
                 Param {
                     name: "abc".into(),
                     index: Some(7u32.into()),
-                    ty: Some("ty0".into()),
+                    ty: "ty0".parse().ok(),
                 },
                 Param {
                     name: "def".into(),
                     index: None,
-                    ty: Some("ty1".into()),
+                    ty: "ty1".parse().ok(),
                 },
             ],
             outputs: vec![
                 Param {
                     name: "abc".into(),
                     index: None,
-                    ty: Some("ty0".into()),
+                    ty: "ty0".parse().ok(),
                 },
                 Param {
                     name: "def".into(),
                     index: Some(2u32.into()),
-                    ty: Some("ty1".into()),
+                    ty: "ty1".parse().ok(),
                 },
             ],
         };
@@ -887,7 +887,7 @@ mod tests {
             outputs: vec![Param {
                 name: "abc".into(),
                 index: None,
-                ty: Some("ty".into()),
+                ty: "ty".parse().ok(),
             }],
         };
         assert_eq!(out.to_string(), "-> abc: ty");
@@ -896,7 +896,7 @@ mod tests {
             inputs: vec![Param {
                 name: "abc".into(),
                 index: None,
-                ty: Some("ty".into()),
+                ty: "ty".parse().ok(),
             }],
             outputs: vec![],
         };

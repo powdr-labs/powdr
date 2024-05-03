@@ -365,7 +365,7 @@ ParamList: Vec<Param> = {
 }
 
 Param: Param = {
-    <name: Identifier> <index:("[" <Number> "]")?> <ty:(":" <SymbolPath>)?> => Param{name, index, ty: ty.map(|s| s.to_string())}
+    <name: Identifier> <index:("[" <Number> "]")?> <ty:(":" <SymbolPath>)?> => Param{<>}
 }
 
 FunctionDeclaration: MachineStatement = {

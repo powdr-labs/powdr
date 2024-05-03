@@ -651,7 +651,7 @@ pub enum RegisterFlag {
 pub struct Param {
     pub name: String,
     pub index: Option<BigUint>,
-    pub ty: Option<String>,
+    pub ty: Option<SymbolPath>,
 }
 
 #[cfg(test)]
