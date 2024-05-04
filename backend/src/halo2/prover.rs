@@ -3,15 +3,16 @@ use halo2_proofs::{
     halo2curves::ff::PrimeField,
     plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ProvingKey, VerifyingKey},
     poly::{
-        commitment::ParamsProver,
+        commitment::{Params, ParamsProver},
         kzg::{
-            commitment::KZGCommitmentScheme,
+            commitment::{KZGCommitmentScheme, ParamsKZG},
             multiopen::{ProverGWC, VerifierGWC},
             strategy::AccumulatorStrategy,
         },
         VerificationStrategy,
     },
     transcript::{EncodedChallenge, TranscriptReadBuffer, TranscriptWriterBuffer},
+    SerdeFormat,
 };
 
 use powdr_ast::analyzed::Analyzed;
@@ -37,9 +38,10 @@ use halo2_solidity_verifier::{
     compile_solidity, encode_calldata, BatchOpenScheme, Evm, SolidityGenerator,
 };
 
-use crate::{
+use super::{
     aggregation,
     circuit_builder::{convert_field, PowdrCircuit},
+    ProofType,
 };
 
 use itertools::Itertools;
@@ -48,33 +50,6 @@ use std::{
     io::{self, Cursor},
     time::Instant,
 };
-
-pub use halo2_proofs::poly::commitment::Params;
-pub use halo2_proofs::poly::kzg::commitment::ParamsKZG;
-pub use halo2_proofs::SerdeFormat;
-
-#[derive(Clone)]
-pub enum ProofType {
-    /// Create a single proof for a given PIL using Poseidon transcripts.
-    Poseidon,
-    /// Create a single proof for a given PIL using Keccak transcripts,
-    /// which can be verified directly on Ethereum.
-    SnarkSingle,
-    /// Create a recursive proof that compresses a Poseidon proof,
-    /// which can be verified directly on Ethereum.
-    SnarkAggr,
-}
-
-impl From<String> for ProofType {
-    fn from(s: String) -> Self {
-        match s.as_str() {
-            "" | "poseidon" => Self::Poseidon,
-            "snark_single" => Self::SnarkSingle,
-            "snark_aggr" => Self::SnarkAggr,
-            _ => panic!("Invalid proof type: {s}"),
-        }
-    }
-}
 
 /// Create a halo2 proof for a given PIL, fixed column values and witness column
 /// values. We use KZG ([GWC variant](https://eprint.iacr.org/2019/953)) and

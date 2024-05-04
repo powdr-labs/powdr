@@ -1,17 +1,49 @@
+#![deny(clippy::print_stdout)]
+
 use std::{io, path::Path};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_halo2::{generate_setup, Halo2Prover, Params, ProofType};
 use powdr_number::{DegreeType, FieldElement};
+use prover::{generate_setup, Halo2Prover};
 
 use serde::de::{self, Deserializer};
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 
+mod aggregation;
+mod circuit_builder;
+mod mock_prover;
+mod prover;
+
+use halo2_proofs::poly::commitment::Params;
+use halo2_proofs::SerdeFormat;
+
 pub(crate) struct Halo2ProverFactory;
 
+#[derive(Clone)]
+enum ProofType {
+    /// Create a single proof for a given PIL using Poseidon transcripts.
+    Poseidon,
+    /// Create a single proof for a given PIL using Keccak transcripts,
+    /// which can be verified directly on Ethereum.
+    SnarkSingle,
+    /// Create a recursive proof that compresses a Poseidon proof,
+    /// which can be verified directly on Ethereum.
+    SnarkAggr,
+}
+
+impl From<BackendOptions> for ProofType {
+    fn from(options: BackendOptions) -> Self {
+        match options.as_str() {
+            "" | "poseidon" => Self::Poseidon,
+            "snark_single" => Self::SnarkSingle,
+            "snark_aggr" => Self::SnarkAggr,
+            _ => panic!("Unsupported proof type: {options}"),
+        }
+    }
+}
 #[derive(Serialize, Deserialize)]
 struct Halo2Proof {
     #[serde(
@@ -124,7 +156,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
 
     fn export_verification_key(&self, mut output: &mut dyn io::Write) -> Result<(), Error> {
         let vk = self.verification_key()?;
-        vk.write(&mut output, powdr_halo2::SerdeFormat::Processed)?;
+        vk.write(&mut output, SerdeFormat::Processed)?;
 
         Ok(())
     }
@@ -185,7 +217,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<'a, T> {
             return Err(Error::NoAggregationAvailable);
         }
 
-        powdr_halo2::mock_prove(self.pil, self.fixed, witness, witgen_callback)
+        mock_prover::mock_prove(self.pil, self.fixed, witness, witgen_callback)
             .map_err(Error::BackendError)?;
 
         Ok(vec![])
