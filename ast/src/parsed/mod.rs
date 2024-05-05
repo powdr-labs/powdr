@@ -351,6 +351,33 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     BlockExpression(SourceRef, BlockExpression<Self>),
 }
 
+// Comparison function for expressions that ignore source information.
+impl<Ref> Expression<Ref>
+where
+    Ref: PartialEq,
+{
+    pub fn equivalent(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Expression::Reference(_, a), Expression::Reference(_, b)) => a == b,
+            (Expression::PublicReference(_, a), Expression::PublicReference(_, b)) => a == b,
+            (Expression::Number(_, a), Expression::Number(_, b)) => a == b,
+            (Expression::String(_, a), Expression::String(_, b)) => a == b,
+            (Expression::Tuple(_, a), Expression::Tuple(_, b)) => a == b,
+            (Expression::LambdaExpression(_, a), Expression::LambdaExpression(_, b)) => a == b,
+            (Expression::ArrayLiteral(_, a), Expression::ArrayLiteral(_, b)) => a == b,
+            (Expression::BinaryOperation(_, a), Expression::BinaryOperation(_, b)) => a == b,
+            (Expression::UnaryOperation(_, a), Expression::UnaryOperation(_, b)) => a == b,
+            (Expression::IndexAccess(_, a), Expression::IndexAccess(_, b)) => a == b,
+            (Expression::FunctionCall(_, a), Expression::FunctionCall(_, b)) => a == b,
+            (Expression::FreeInput(_, a), Expression::FreeInput(_, b)) => a == b,
+            (Expression::MatchExpression(_, a), Expression::MatchExpression(_, b)) => a == b,
+            (Expression::IfExpression(_, a), Expression::IfExpression(_, b)) => a == b,
+            (Expression::BlockExpression(_, a), Expression::BlockExpression(_, b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
 pub trait SourceInfo {
     fn get_source(&self) -> &SourceRef;
     fn get_source_mut(&mut self) -> &mut SourceRef;

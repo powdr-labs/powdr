@@ -77,17 +77,10 @@ fn fe_slice_to_string<F: FieldElement>(fe: &[F]) -> Vec<String> {
 
 impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
-<<<<<<< HEAD
-        let proof: Halo2Proof<T> = serde_json::from_slice(proof).unwrap();
-        // TODO should do a verification refactoring making it a 1d vec
-        assert!(instances.len() == 1);
-        if proof.publics != instances[0] {
-=======
         let proof: Halo2Proof = serde_json::from_slice(proof).unwrap();
         // TODO should do a verification refactoring making it a 1d vec
         assert!(instances.len() == 1);
         if proof.publics != fe_slice_to_string(&instances[0]) {
->>>>>>> upstream/main
             return Err(Error::BackendError(format!(
                 "Invalid public inputs {:?} != {:?}",
                 proof.publics, instances[0]
@@ -112,21 +105,14 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
             ProofType::SnarkSingle => self.prove_snark_single(witness, witgen_callback),
             ProofType::SnarkAggr => match prev_proof {
                 Some(proof) => {
-<<<<<<< HEAD
-                    let proof: Halo2Proof<T> = serde_json::from_slice(&proof).unwrap();
-=======
                     let proof: Halo2Proof = serde_json::from_slice(&proof).unwrap();
->>>>>>> upstream/main
                     self.prove_snark_aggr(witness, witgen_callback, proof.proof)
                 }
                 None => Err("Aggregated proof requires a previous proof".to_string()),
             },
         };
         let (proof, publics) = proof_and_publics?;
-<<<<<<< HEAD
-=======
         let publics = fe_slice_to_string(&publics);
->>>>>>> upstream/main
         let proof = Halo2Proof { proof, publics };
         let proof = serde_json::to_vec(&proof).unwrap();
         Ok(proof)

@@ -36,7 +36,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
 
     for (location, object) in graph.objects.into_iter() {
         if let Some(degree) = object.degree {
-            if degree != main_degree {
+            if degree.equivalent(&main_degree) {
                 errors.push(format!(
                     "Machine {location} should have degree {main_degree}, found {}",
                     degree
