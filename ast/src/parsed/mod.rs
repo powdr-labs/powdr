@@ -342,8 +342,8 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     Tuple(Vec<Self>),
     LambdaExpression(LambdaExpression<Self>),
     ArrayLiteral(ArrayLiteral<Self>),
-    BinaryOperation(Box<Self>, BinaryOperator, Box<Self>),
     UnaryOperation(UnaryOperation<Self>),
+    BinaryOperation(BinaryOperation<Self>),
     IndexAccess(IndexAccess<Self>),
     FunctionCall(FunctionCall<Self>),
     FreeInput(Box<Self>),
@@ -377,9 +377,26 @@ impl<Ref> From<UnaryOperation<Expression<Ref>>> for Expression<Ref> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BinaryOperation<E = Expression<NamespacedPolynomialReference>> {
+    pub left: Box<E>,
+    pub op: BinaryOperator,
+    pub right: Box<E>,
+}
+
+impl<Ref> From<BinaryOperation<Expression<Ref>>> for Expression<Ref> {
+    fn from(operation: BinaryOperation<Expression<Ref>>) -> Self {
+        Expression::BinaryOperation(operation)
+    }
+}
+
 impl<Ref> Expression<Ref> {
     pub fn new_binary(left: Self, op: BinaryOperator, right: Self) -> Self {
-        Expression::BinaryOperation(Box::new(left), op, Box::new(right))
+        Expression::BinaryOperation(BinaryOperation {
+            left: Box::new(left),
+            op,
+            right: Box::new(right),
+        })
     }
 
     /// Visits this expression and all of its sub-expressions and returns true
@@ -504,7 +521,7 @@ impl<R> Expression<R> {
             Expression::Tuple(v) => v.iter(),
             Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_ref()),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter(),
-            Expression::BinaryOperation(left, _, right) => {
+            Expression::BinaryOperation(BinaryOperation { left, op: _, right }) => {
                 [left.as_ref(), right.as_ref()].into_iter()
             }
             Expression::UnaryOperation(UnaryOperation { op: _, expr }) => once(expr.as_ref()),
@@ -545,7 +562,7 @@ impl<R> Expression<R> {
             Expression::Tuple(v) => v.iter_mut(),
             Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_mut()),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter_mut(),
-            Expression::BinaryOperation(left, _, right) => {
+            Expression::BinaryOperation(BinaryOperation { left, op: _, right }) => {
                 [left.as_mut(), right.as_mut()].into_iter()
             }
             Expression::UnaryOperation(UnaryOperation { op: _, expr }) => once(expr.as_mut()),

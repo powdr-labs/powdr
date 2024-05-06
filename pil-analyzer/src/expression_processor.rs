@@ -7,8 +7,8 @@ use std::{
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
-        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BlockExpression, IfExpression,
-        LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
+        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BinaryOperation, BlockExpression,
+        IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
         NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
         SymbolCategory, UnaryOperation,
     },
@@ -101,11 +101,16 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             PExpression::LambdaExpression(lambda_expression) => {
                 Expression::LambdaExpression(self.process_lambda_expression(lambda_expression))
             }
-            PExpression::BinaryOperation(left, op, right) => Expression::BinaryOperation(
-                Box::new(self.process_expression(*left)),
+            PExpression::BinaryOperation(BinaryOperation {
+                left: l,
                 op,
-                Box::new(self.process_expression(*right)),
-            ),
+                right: r,
+            }) => BinaryOperation {
+                left: Box::new(self.process_expression(*l)),
+                op,
+                right: Box::new(self.process_expression(*r)),
+            }
+            .into(),
             PExpression::UnaryOperation(UnaryOperation { op, expr: value }) => UnaryOperation {
                 op,
                 expr: Box::new(self.process_expression(*value)),

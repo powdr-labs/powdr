@@ -22,7 +22,9 @@ use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
     },
-    parsed::{asm::DebugDirective, Expression, FunctionCall, Number, UnaryOperation},
+    parsed::{
+        asm::DebugDirective, BinaryOperation, Expression, FunctionCall, Number, UnaryOperation,
+    },
 };
 use powdr_number::{FieldElement, LargeInt};
 use powdr_riscv_syscalls::SYSCALL_REGISTERS;
@@ -845,7 +847,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Expression::Tuple(_) => todo!(),
             Expression::LambdaExpression(_) => todo!(),
             Expression::ArrayLiteral(_) => todo!(),
-            Expression::BinaryOperation(l, op, r) => {
+            Expression::BinaryOperation(BinaryOperation {
+                left: l,
+                op,
+                right: r,
+            }) => {
                 let l = &self.eval_expression(l)[0];
                 let r = &self.eval_expression(r)[0];
 
