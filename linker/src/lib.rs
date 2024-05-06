@@ -8,7 +8,7 @@ use powdr_ast::{
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, namespaced_reference},
-        Expression, Number, PILFile, PilStatement, SelectedExpressions, TypedExpression,
+        Number, PILFile, PilStatement, SelectedExpressions, TypedExpression,
     },
     SourceRef,
 };
@@ -142,10 +142,11 @@ fn process_link(link: Link) -> PilStatement {
 
     // the lhs is `instr_flag { operation_id, inputs, outputs }`
     let op_id = to.operation.id.iter().cloned().map(|n| {
-        Expression::Number(Number {
+        Number {
             value: n,
             type_: None,
-        })
+        }
+        .into()
     });
 
     if link.is_permutation {

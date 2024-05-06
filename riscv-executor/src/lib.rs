@@ -822,7 +822,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
     fn eval_expression(&mut self, expression: &Expression) -> Vec<Elem<F>> {
         match expression {
-            Expression::Reference(r) => {
+            Expression::Reference(_, r) => {
                 // an identifier looks like this:
                 let name = r.try_to_identifier().unwrap();
 
@@ -835,23 +835,26 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .unwrap_or_else(|| self.proc.get_reg(name.as_str()));
                 vec![val]
             }
-            Expression::PublicReference(_) => todo!(),
-            Expression::Number(Number { value: n, type_: _ }) => {
+            Expression::PublicReference(_, _) => todo!(),
+            Expression::Number(_, Number { value: n, type_: _ }) => {
                 let unsigned: u32 = n
                     .try_into()
                     .unwrap_or_else(|_| panic!("Value does not fit in 32 bits."));
 
                 vec![unsigned.into()]
             }
-            Expression::String(_) => todo!(),
-            Expression::Tuple(_) => todo!(),
-            Expression::LambdaExpression(_) => todo!(),
-            Expression::ArrayLiteral(_) => todo!(),
-            Expression::BinaryOperation(BinaryOperation {
-                left: l,
-                op,
-                right: r,
-            }) => {
+            Expression::String(_, _) => todo!(),
+            Expression::Tuple(_, _) => todo!(),
+            Expression::LambdaExpression(_, _) => todo!(),
+            Expression::ArrayLiteral(_, _) => todo!(),
+            Expression::BinaryOperation(
+                _,
+                BinaryOperation {
+                    left: l,
+                    op,
+                    right: r,
+                },
+            ) => {
                 let l = &self.eval_expression(l)[0];
                 let r = &self.eval_expression(r)[0];
 
@@ -903,7 +906,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![result]
             }
-            Expression::UnaryOperation(UnaryOperation { op, expr: arg }) => {
+            Expression::UnaryOperation(_, UnaryOperation { op, expr: arg }) => {
                 let arg = self.eval_expression(arg)[0].bin();
                 let result = match op {
                     powdr_ast::parsed::UnaryOperator::Minus => -arg,
@@ -913,18 +916,21 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![Elem::Binary(result)]
             }
-            Expression::FunctionCall(FunctionCall {
-                function,
-                arguments,
-            }) => match function.as_ref() {
-                Expression::Reference(f) if f.to_string() == "std::prover::eval" => {
+            Expression::FunctionCall(
+                _,
+                FunctionCall {
+                    function,
+                    arguments,
+                },
+            ) => match function.as_ref() {
+                Expression::Reference(_, f) if f.to_string() == "std::prover::eval" => {
                     self.eval_expression(&arguments[0])
                 }
-                Expression::Reference(f) if f.to_string() == "std::convert::int" => {
+                Expression::Reference(_, f) if f.to_string() == "std::convert::int" => {
                     // whatever. we don't need to convert anything
                     self.eval_expression(&arguments[0])
                 }
-                Expression::Reference(f) => {
+                Expression::Reference(_, f) => {
                     self.exec_instruction(f.try_to_identifier().unwrap(), arguments)
                 }
                 _ => {
@@ -934,15 +940,18 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     )
                 }
             },
-            Expression::FreeInput(expr) => {
-                let Expression::FunctionCall(FunctionCall {
-                    function,
-                    arguments,
-                }) = expr.as_ref()
+            Expression::FreeInput(_, expr) => {
+                let Expression::FunctionCall(
+                    _,
+                    FunctionCall {
+                        function,
+                        arguments,
+                    },
+                ) = expr.as_ref()
                 else {
                     panic!("Free input does not match pattern: {expr}");
                 };
-                let Expression::Reference(f) = function.as_ref() else {
+                let Expression::Reference(_, f) = function.as_ref() else {
                     panic!("Free input does not match pattern: {expr}");
                 };
                 let variant = f
@@ -962,10 +971,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 }
             }
-            Expression::MatchExpression(_) => todo!(),
-            Expression::IfExpression(_) => panic!(),
-            Expression::BlockExpression(_) => panic!(),
-            Expression::IndexAccess(_) => todo!(),
+            Expression::MatchExpression(_, _) => todo!(),
+            Expression::IfExpression(_, _) => panic!(),
+            Expression::BlockExpression(_, _) => panic!(),
+            Expression::IndexAccess(_, _) => todo!(),
         }
     }
 }

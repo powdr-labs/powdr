@@ -523,7 +523,7 @@ impl Display for FunctionDefinition {
             FunctionDefinition::Array(array_expression) => {
                 write!(f, " = {array_expression}")
             }
-            FunctionDefinition::Expression(Expression::LambdaExpression(lambda))
+            FunctionDefinition::Expression(Expression::LambdaExpression(_, lambda))
                 if lambda.params.len() == 1 =>
             {
                 write!(
@@ -590,36 +590,39 @@ fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
 impl<Ref: Display> Display for Expression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Expression::Reference(reference) => write!(f, "{reference}"),
-            Expression::PublicReference(name) => write!(f, ":{name}"),
-            Expression::Number(Number { value, type_: _ }) => write!(f, "{value}"),
-            Expression::String(value) => write!(f, "{}", quote(value)),
-            Expression::Tuple(items) => write!(f, "({})", format_list(items)),
-            Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
-            Expression::ArrayLiteral(array) => write!(f, "{array}"),
-            Expression::BinaryOperation(BinaryOperation { left, op, right }) => {
+            Expression::Reference(_, reference) => write!(f, "{reference}"),
+            Expression::PublicReference(_, name) => write!(f, ":{name}"),
+            Expression::Number(_, Number { value, type_: _ }) => write!(f, "{value}"),
+            Expression::String(_, value) => write!(f, "{}", quote(value)),
+            Expression::Tuple(_, items) => write!(f, "({})", format_list(items)),
+            Expression::LambdaExpression(_, lambda) => write!(f, "{}", lambda),
+            Expression::ArrayLiteral(_, array) => write!(f, "{array}"),
+            Expression::BinaryOperation(_, BinaryOperation { left, op, right }) => {
                 write!(f, "({left} {op} {right})")
             }
-            Expression::UnaryOperation(UnaryOperation { op, expr }) => {
+            Expression::UnaryOperation(_, UnaryOperation { op, expr }) => {
                 if op.is_prefix() {
                     write!(f, "{op}{expr}")
                 } else {
                     write!(f, "{expr}{op}")
                 }
             }
-            Expression::IndexAccess(index_access) => write!(f, "{index_access}"),
-            Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
-            Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
-            Expression::MatchExpression(MatchExpression {
-                expr: scrutinee,
-                arms,
-            }) => {
+            Expression::IndexAccess(_, index_access) => write!(f, "{index_access}"),
+            Expression::FunctionCall(_, fun_call) => write!(f, "{fun_call}"),
+            Expression::FreeInput(_, input) => write!(f, "${{ {input} }}"),
+            Expression::MatchExpression(
+                _,
+                MatchExpression {
+                    expr: scrutinee,
+                    arms,
+                },
+            ) => {
                 writeln!(f, "match {scrutinee} {{")?;
                 write_items_indented(f, arms)?;
                 write!(f, "}}")
             }
-            Expression::IfExpression(e) => write!(f, "{e}"),
-            Expression::BlockExpression(BlockExpression { statements, expr }) => {
+            Expression::IfExpression(_, e) => write!(f, "{e}"),
+            Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
                 if statements.is_empty() {
                     write!(f, "{{ {expr} }}")
                 } else {

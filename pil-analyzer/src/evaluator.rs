@@ -626,21 +626,24 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
     /// Modifies the operation and value stack.
     fn expand(&mut self, expr: &'a Expression) -> Result<(), EvalError> {
         match expr {
-            Expression::Reference(reference) => {
+            Expression::Reference(_, reference) => {
                 let v = self.evaluate_reference(reference)?;
                 self.value_stack.push(v)
             }
-            Expression::PublicReference(name) => self
+            Expression::PublicReference(_, name) => self
                 .value_stack
                 .push(self.symbols.lookup_public_reference(name)?),
-            Expression::Number(Number {
-                value: n,
-                type_: ty,
-            }) => self
+            Expression::Number(
+                _,
+                Number {
+                    value: n,
+                    type_: ty,
+                },
+            ) => self
                 .value_stack
                 .push(evaluate_literal(n.clone(), ty, &self.type_args)?),
-            Expression::String(s) => self.value_stack.push(Value::String(s.clone()).into()),
-            Expression::Tuple(items) => {
+            Expression::String(_, s) => self.value_stack.push(Value::String(s.clone()).into()),
+            Expression::Tuple(_, items) => {
                 self.op_stack.push(Operation::Combine(expr));
                 if !items.is_empty() {
                     self.op_stack
@@ -648,7 +651,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.expand(&items[0])?;
                 }
             }
-            Expression::ArrayLiteral(ArrayLiteral { items }) => {
+            Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 if !items.is_empty() {
                     self.op_stack
@@ -656,16 +659,16 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.expand(&items[0])?;
                 }
             }
-            Expression::BinaryOperation(BinaryOperation { left, op: _, right }) => {
+            Expression::BinaryOperation(_, BinaryOperation { left, op: _, right }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.op_stack.push(Operation::Expand(right));
                 self.expand(left)?;
             }
-            Expression::UnaryOperation(UnaryOperation { op: _, expr: inner }) => {
+            Expression::UnaryOperation(_, UnaryOperation { op: _, expr: inner }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.expand(inner)?;
             }
-            Expression::LambdaExpression(lambda) => {
+            Expression::LambdaExpression(_, lambda) => {
                 // TODO only copy the part of the environment that is actually referenced?
                 self.value_stack.push(
                     Value::from(Closure {
@@ -676,30 +679,36 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     .into(),
                 )
             }
-            Expression::IndexAccess(IndexAccess { array, index }) => {
+            Expression::IndexAccess(_, IndexAccess { array, index }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.op_stack.push(Operation::Expand(index));
                 self.expand(array)?;
             }
-            Expression::FunctionCall(FunctionCall {
-                function,
-                arguments,
-            }) => {
+            Expression::FunctionCall(
+                _,
+                FunctionCall {
+                    function,
+                    arguments,
+                },
+            ) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.op_stack
                     .extend(arguments.iter().rev().map(Operation::Expand));
                 self.expand(function)?;
             }
-            Expression::MatchExpression(MatchExpression {
-                expr: condition,
-                arms: _,
-            })
-            | Expression::IfExpression(IfExpression { condition, .. }) => {
+            Expression::MatchExpression(
+                _,
+                MatchExpression {
+                    expr: condition,
+                    arms: _,
+                },
+            )
+            | Expression::IfExpression(_, IfExpression { condition, .. }) => {
                 // Only handle the scrutinee / condition for now, we do not want to evaluate all arms.
                 self.op_stack.push(Operation::Combine(expr));
                 self.expand(condition)?;
             }
-            Expression::BlockExpression(BlockExpression { statements, expr }) => {
+            Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
                 self.op_stack
                     .push(Operation::TruncateLocals(self.local_vars.len()));
                 self.op_stack.push(Operation::Expand(expr));
@@ -718,7 +727,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     }
                 }
             }
-            Expression::FreeInput(_) => Err(EvalError::Unsupported(
+            Expression::FreeInput(_, _) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
             ))?,
         };
@@ -750,28 +759,31 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
     /// Evaluate a complex expression given the values for all sub-expressions.
     fn combine(&mut self, expr: &'a Expression) -> Result<(), EvalError> {
         let value = match expr {
-            Expression::Tuple(items) => {
+            Expression::Tuple(_, items) => {
                 let inner_values = self
                     .value_stack
                     .split_off(self.value_stack.len() - items.len());
                 Value::Tuple(inner_values).into()
             }
-            Expression::ArrayLiteral(ArrayLiteral { items }) => {
+            Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
                 let inner_values = self
                     .value_stack
                     .split_off(self.value_stack.len() - items.len());
                 Value::Array(inner_values).into()
             }
-            Expression::BinaryOperation(BinaryOperation {
-                left: _,
-                op,
-                right: _,
-            }) => {
+            Expression::BinaryOperation(
+                _,
+                BinaryOperation {
+                    left: _,
+                    op,
+                    right: _,
+                },
+            ) => {
                 let right = self.value_stack.pop().unwrap();
                 let left = self.value_stack.pop().unwrap();
                 evaluate_binary_operation(&left, *op, &right)?
             }
-            Expression::UnaryOperation(UnaryOperation { op, expr: _ }) => {
+            Expression::UnaryOperation(_, UnaryOperation { op, expr: _ }) => {
                 let inner = self.value_stack.pop().unwrap();
                 match (op, inner.as_ref()) {
                     (UnaryOperator::Minus, Value::FieldElement(e)) => {
@@ -808,7 +820,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     )))?,
                 }
             }
-            Expression::IndexAccess(_) => {
+            Expression::IndexAccess(_, _) => {
                 let index = self.value_stack.pop().unwrap();
                 let array = self.value_stack.pop().unwrap();
                 let Value::Array(elements) = array.as_ref() else {
@@ -833,14 +845,14 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     )))?,
                 }
             }
-            Expression::FunctionCall(FunctionCall { arguments, .. }) => {
+            Expression::FunctionCall(_, FunctionCall { arguments, .. }) => {
                 let arguments = self
                     .value_stack
                     .split_off(self.value_stack.len() - arguments.len());
                 let function = self.value_stack.pop().unwrap();
                 return self.combine_function_call(function, arguments);
             }
-            Expression::MatchExpression(MatchExpression { expr: _, arms }) => {
+            Expression::MatchExpression(_, MatchExpression { expr: _, arms }) => {
                 let v = self.value_stack.pop().unwrap();
                 let (vars, body) = arms
                     .iter()
@@ -855,9 +867,12 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 }
                 return self.expand(body);
             }
-            Expression::IfExpression(IfExpression {
-                body, else_body, ..
-            }) => {
+            Expression::IfExpression(
+                _,
+                IfExpression {
+                    body, else_body, ..
+                },
+            ) => {
                 let v = self.value_stack.pop().unwrap();
                 let condition = match v.as_ref() {
                     Value::Bool(b) => Ok(b),
