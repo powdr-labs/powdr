@@ -1,0 +1,25 @@
+[package]
+name = "powdr-rs-cli"
+description = "CLI to compile Rust programs to powdr-asm"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+default-run = "powdr-rs"
+
+[dependencies]
+powdr-number = { path = "../number" }
+powdr-riscv = { path = "../riscv" }
+powdr-riscv-executor = { path = "../riscv-executor" }
+powdr-pipeline = { path = "../pipeline" }
+
+clap = { version = "^4.3", features = ["derive"] }
+env_logger = "0.10.0"
+log = "0.4.17"
+strum = { version = "0.24.1", features = ["derive"] }
+clap-markdown = "0.1.3"
+
+[[bin]]
+name = "powdr-rs"
+path = "src/main.rs"

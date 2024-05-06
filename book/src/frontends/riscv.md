@@ -7,9 +7,11 @@ A [RISCV](https://riscv.org/technical/specifications/) frontend for powdr is alr
 ```sh
 # Install the riscv target for the rust compiler
 rustup target add riscv32imac-unknown-none-elf
-# Run the compiler. It will generate files in /tmp/.
+# Run the powdr-rs compiler. It will generate files in ./output/
+powdr-rs compile riscv/tests/riscv_data/sum -o output
+# Run powdr to compile powdr-asm to powdr-PIL and generate the witness
 # -i specifies the prover witness input (see below)
-powdr rust riscv/tests/riscv_data/sum -o /tmp -f -i 10,2,4,6 
+powdr pil output/sum.asm -o output -f -i 10,2,4,6
 ```
 
 The example Rust code verifies that a supplied list of integers sums up to a specified value.

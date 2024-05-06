@@ -8,6 +8,7 @@ members = [
     "number",
     "parser",
     "cli",
+    "cli-rs",
     "executor",
     "riscv",
     "parser-util",
