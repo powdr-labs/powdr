@@ -24,21 +24,24 @@ let one_expr = Fp2Expr::Fp2(1, 0);
 let zero_value = Fp2Value::Fp2(0, 0);
 let one_value = Fp2Value::Fp2(1, 0);
 
-let add_ext = |a, b| match (a, b) {
+// Extension field addition
+let add_ext: Fp2Expr, Fp2Expr -> Fp2Expr = |a, b| match (a, b) {
     (Fp2Expr::Fp2(a0, a1), Fp2Expr::Fp2(b0, b1)) => Fp2Expr::Fp2(
         a0 + b0,
         a1 + b1
     )
 };
 
-let sub_ext = |a, b| match (a, b) {
+// Extension field subtraction
+let sub_ext: Fp2Expr, Fp2Expr -> Fp2Expr = |a, b| match (a, b) {
     (Fp2Expr::Fp2(a0, a1), Fp2Expr::Fp2(b0, b1)) => Fp2Expr::Fp2(
         a0 - b0,
         a1 - b1
     )
 };
 
-let mul_ext = |a, b| match (a, b) {
+// Extension field multiplication
+let mul_ext: Fp2Expr, Fp2Expr -> Fp2Expr = |a, b| match (a, b) {
     (Fp2Expr::Fp2(a0, a1), Fp2Expr::Fp2(b0, b1)) => Fp2Expr::Fp2(
         // Multiplication modulo the polynomial x^2 - 7. We'll use the fact
         // that x^2 == 7 (mod x^2 - 7), so:
@@ -48,21 +51,25 @@ let mul_ext = |a, b| match (a, b) {
     )
 };
 
-
-let eval_ext = query |a| match a {
+// Converts and Fp2Expr into an Fp2Value
+let eval_ext: Fp2Expr -> Fp2Value = query |a| match a {
     Fp2Expr::Fp2(a0, a1) => Fp2Value::Fp2(eval(a0), eval(a1))
 };
 
-let expr_ext = |a| match a {
+// Converts and Fp2Value into an Fp2Expr
+let expr_ext: Fp2Value -> Fp2Expr = |a| match a {
     Fp2Value::Fp2(a0, a1) => Fp2Expr::Fp2(expr(a0), expr(a1))
 };
 
-let eq_ext = |a, b| match (a, b) {
+// Extension field equality
+let eq_ext: Fp2Value, Fp2Value -> bool = |a, b| match (a, b) {
     (Fp2Value::Fp2(a0, a1), Fp2Value::Fp2(b0, b1)) => (a0 == b0) && (a1 == b1)
 };
 
-// Extension field inversion (defined on fe instead of int)
+// Field inversion (defined on fe instead of int)
 let inv_field: fe -> fe = |x| fe(inverse(int(x), modulus()));
+
+// Extension field inversion
 let inv_ext: Fp2Value -> Fp2Value = |a| match a {
     // The inverse of (a0, a1) is a point (b0, b1) such that:
     // (a0 + a1 * x) (b0 + b1 * x) = 1 (mod x^2 - 7)
