@@ -341,7 +341,7 @@ fn read_poly_files() {
         let mut pipeline = Pipeline::<Bn254Field>::default()
             .from_file(resolve_test_file(f))
             .with_output(tmp_dir.to_path_buf(), true)
-            .with_backend(BackendType::EStarkDump);
+            .with_backend(BackendType::EStarkDump, None);
         pipeline.compute_witness().unwrap();
         let pil = pipeline.compute_optimized_pil().unwrap();
         pipeline.compute_proof().unwrap();
