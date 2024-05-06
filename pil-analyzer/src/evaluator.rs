@@ -16,7 +16,8 @@ use powdr_ast::{
         display::quote,
         types::{Type, TypeScheme},
         ArrayLiteral, BinaryOperator, FunctionCall, IfExpression, IndexAccess, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock, UnaryOperator,
+        LetStatementInsideBlock, MatchArm, MatchExpression, Pattern, StatementInsideBlock,
+        UnaryOperator,
     },
     SourceRef,
 };
@@ -687,7 +688,10 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     .extend(arguments.iter().rev().map(Operation::Expand));
                 self.expand(function)?;
             }
-            Expression::MatchExpression(condition, _)
+            Expression::MatchExpression(MatchExpression {
+                expr: condition,
+                arms: _,
+            })
             | Expression::IfExpression(IfExpression { condition, .. }) => {
                 // Only handle the scrutinee / condition for now, we do not want to evaluate all arms.
                 self.op_stack.push(Operation::Combine(expr));
@@ -830,7 +834,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 let function = self.value_stack.pop().unwrap();
                 return self.combine_function_call(function, arguments);
             }
-            Expression::MatchExpression(_, arms) => {
+            Expression::MatchExpression(MatchExpression { expr: _, arms }) => {
                 let v = self.value_stack.pop().unwrap();
                 let (vars, body) = arms
                     .iter()

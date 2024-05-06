@@ -8,7 +8,7 @@ use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, NamespacedPolynomialReference, Pattern,
+        LetStatementInsideBlock, MatchArm, MatchExpression, NamespacedPolynomialReference, Pattern,
         SelectedExpressions, StatementInsideBlock, SymbolCategory,
     },
 };
@@ -116,9 +116,13 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 function: Box::new(self.process_expression(*c.function)),
                 arguments: self.process_expressions(c.arguments),
             }),
-            PExpression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
-                Box::new(self.process_expression(*scrutinee)),
-                arms.into_iter()
+            PExpression::MatchExpression(MatchExpression {
+                expr: scrutinee,
+                arms,
+            }) => MatchExpression {
+                expr: Box::new(self.process_expression(*scrutinee)),
+                arms: arms
+                    .into_iter()
                     .map(|MatchArm { pattern, value }| {
                         let vars = self.save_local_variables();
                         let pattern = self.process_pattern(pattern);
@@ -127,7 +131,8 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                         MatchArm { pattern, value }
                     })
                     .collect(),
-            ),
+            }
+            .into(),
             PExpression::IfExpression(IfExpression {
                 condition,
                 body,
