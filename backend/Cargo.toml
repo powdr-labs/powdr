@@ -18,7 +18,7 @@ powdr-number = { path = "../number" }
 powdr-pil-analyzer = { path = "../pil-analyzer" }
 powdr-executor = { path = "../executor" }
 
-starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "59d2152" }
+starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "cf405b2e2cecb8567cfd083a55936b71722276d5" }
 pil-stark-prover = { git = "https://github.com/powdr-labs/pil-stark-prover.git", rev = "769b1153f3ae2d7cbab4c8acf33865ed13f8a823", optional = true }
 
 # TODO change this once Halo2 releases 0.3.1
