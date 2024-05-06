@@ -501,7 +501,12 @@ pub trait SymbolLookup<'a, T: FieldElement> {
             AlgebraicExpression::BinaryOperation(left, op, right) => {
                 let left = self.eval_expr(left)?;
                 let right = self.eval_expr(right)?;
-                evaluate_binary_operation(&left, (*op).into(), &right)?
+                match (left.as_ref(), right.as_ref()) {
+                    (Value::FieldElement(left), Value::FieldElement(right)) => {
+                        evaluate_binary_operation_field(*left, (*op).into(), *right)?
+                    }
+                    _ => panic!("Expected field elements"),
+                }
             }
             AlgebraicExpression::UnaryOperation(op, operand) => match op {
                 AlgebraicUnaryOperator::Minus => {
