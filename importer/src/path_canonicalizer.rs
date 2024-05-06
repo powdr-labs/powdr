@@ -14,8 +14,8 @@ use powdr_ast::parsed::{
     folder::Folder,
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
-    ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, PilStatement,
+    ArrayLiteral, BinaryOperation, EnumDeclaration, EnumVariant, Expression, FunctionCall,
+    IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, PilStatement,
     StatementInsideBlock, TypedExpression,
 };
 
@@ -156,7 +156,7 @@ fn free_inputs_in_expression<'a>(
         | Expression::PublicReference(_)
         | Expression::Number(_, _)
         | Expression::String(_) => Box::new(None.into_iter()),
-        Expression::BinaryOperation(left, _, right) => {
+        Expression::BinaryOperation(BinaryOperation { left, op: _, right }) => {
             Box::new(free_inputs_in_expression(left).chain(free_inputs_in_expression(right)))
         }
         Expression::UnaryOperation(_, expr) => free_inputs_in_expression(expr),
@@ -188,7 +188,7 @@ fn free_inputs_in_expression_mut<'a>(
         | Expression::PublicReference(_)
         | Expression::Number(_, _)
         | Expression::String(_) => Box::new(None.into_iter()),
-        Expression::BinaryOperation(left, _, right) => Box::new(
+        Expression::BinaryOperation(BinaryOperation { left, op: _, right }) => Box::new(
             free_inputs_in_expression_mut(left).chain(free_inputs_in_expression_mut(right)),
         ),
         Expression::UnaryOperation(_, expr) => free_inputs_in_expression_mut(expr),
@@ -660,7 +660,11 @@ fn check_expression(
             local_variables.extend(check_patterns(location, params, state)?);
             check_expression(location, body, state, &local_variables)
         }
-        Expression::BinaryOperation(a, _, b)
+        Expression::BinaryOperation(BinaryOperation {
+            left: a,
+            op: _,
+            right: b,
+        })
         | Expression::IndexAccess(IndexAccess { array: a, index: b }) => {
             check_expression(location, a.as_ref(), state, local_variables)?;
             check_expression(location, b.as_ref(), state, local_variables)

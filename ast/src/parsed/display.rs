@@ -597,7 +597,9 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::Tuple(items) => write!(f, "({})", format_list(items)),
             Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
-            Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
+            Expression::BinaryOperation(BinaryOperation { left, op, right }) => {
+                write!(f, "({left} {op} {right})")
+            }
             Expression::UnaryOperation(op, exp) => {
                 if op.is_prefix() {
                     write!(f, "{op}{exp}")
