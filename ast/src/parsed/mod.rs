@@ -356,7 +356,7 @@ impl<Ref> Expression<Ref>
 where
     Ref: PartialEq,
 {
-    pub fn equivalent(&self, other: &Self) -> bool {
+    pub fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Expression::Reference(_, a), Expression::Reference(_, b)) => a == b,
             (Expression::PublicReference(_, a), Expression::PublicReference(_, b)) => a == b,
