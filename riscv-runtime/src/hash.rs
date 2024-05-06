@@ -33,7 +33,7 @@ pub fn poseidon_gl(data: [u64; 12]) -> [u64; 4] {
 /// This is unsafe because it does not check if the u64 elements fit the Goldilocks field.
 pub fn keccakf_unsafe(input: &[u64; 25], output: &mut [u64; 25]) {
     unsafe {
-        // syscall input: memory pointer to state array
+        // syscall inputs: memory pointer to input array and memory pointer to output array
         asm!("ecall", in("a0") input as *const [u64; 25], in("a1") output as *mut [u64; 25], in("t0") u32::from(Syscall::KeccakF));
     }
 }
