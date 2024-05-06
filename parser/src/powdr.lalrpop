@@ -259,7 +259,7 @@ GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
 // ---------------------------- ASM part -----------------------------
 
 MachineDefinition: SymbolDefinition = {
-    "machine" <name:Identifier> <arguments:MachineArguments> <properties:("with" <MachineProperties>)?> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, properties: properties.unwrap_or_default(), statements}.into() },
+    "machine" <name:Identifier> <params:MachineParams> <properties:("with" <MachineProperties>)?> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { params, properties: properties.unwrap_or_default(), statements}.into() },
 }
 
 MachineProperties: MachineProperties = {
@@ -273,12 +273,12 @@ MachineProperty: (String, Expression) = {
     <name:Identifier> ":" <value:Expression> => (name, value),
 }
 
-MachineArguments: MachineArguments = {
-    => MachineArguments::default(),
-    "(" ")" => MachineArguments::default(),
+MachineParams: MachineParams = {
+    => MachineParams::default(),
+    "(" ")" => MachineParams::default(),
     "(" <mut list:( <Param> "," )*> <end:Param> ","? ")" =>? {
         list.push(end);
-        MachineArguments::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
+        MachineParams::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
     }
 }
 

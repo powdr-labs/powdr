@@ -383,7 +383,7 @@ impl Display for Part {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Machine {
-    pub arguments: MachineArguments,
+    pub params: MachineParams,
     pub properties: MachineProperties,
     pub statements: Vec<MachineStatement>,
 }
@@ -407,22 +407,22 @@ impl Machine {
                         | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
                     }
                 })
-                .chain(self.arguments.defined_names())
+                .chain(self.params.defined_names())
                 .chain(self.properties.defined_names()),
         )
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
-pub struct MachineArguments(pub Vec<Param>);
+pub struct MachineParams(pub Vec<Param>);
 
-impl MachineArguments {
+impl MachineParams {
     pub fn defined_names(&self) -> impl Iterator<Item = &String> {
         self.0.iter().map(|p| &p.name)
     }
 }
 
-impl TryFrom<Vec<Param>> for MachineArguments {
+impl TryFrom<Vec<Param>> for MachineParams {
     type Error = String;
 
     fn try_from(params: Vec<Param>) -> Result<Self, Self::Error> {
@@ -431,7 +431,7 @@ impl TryFrom<Vec<Param>> for MachineArguments {
                 return Err(format!("invalid machine argument: `{p}`"));
             }
         }
-        Ok(MachineArguments(params))
+        Ok(MachineParams(params))
     }
 }
 

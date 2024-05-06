@@ -87,13 +87,13 @@ impl Display for Import {
 
 impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "{}{} {{", &self.arguments, &self.properties)?;
+        writeln!(f, "{}{} {{", &self.params, &self.properties)?;
         write_items_indented(f, &self.statements)?;
         write!(f, "}}")
     }
 }
 
-impl Display for MachineArguments {
+impl Display for MachineParams {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let args = self.0.iter().join(", ");
         if !args.is_empty() {

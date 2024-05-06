@@ -14,7 +14,7 @@ use itertools::Either;
 use crate::parsed::{
     asm::{
         AbsoluteSymbolPath, AssignmentRegister, CallableRef, FunctionParams, InstructionBody,
-        InstructionParams, MachineArguments, OperationId, OperationParams,
+        InstructionParams, MachineParams, OperationId, OperationParams,
     },
     visitor::{ExpressionVisitable, VisitOrder},
     EnumDeclaration, NamespacedPolynomialReference, PilStatement, TypedExpression,
@@ -691,8 +691,8 @@ pub struct Machine {
     pub operation_id: Option<String>,
     /// call selector array
     pub call_selectors: Option<String>,
-    /// Declared machine arguments
-    pub arguments: MachineArguments,
+    /// Declared machine parameters
+    pub params: MachineParams,
     /// The set of registers for this machine
     pub registers: Vec<RegisterDeclarationStatement>,
     /// The index of the program counter in the registers, if any

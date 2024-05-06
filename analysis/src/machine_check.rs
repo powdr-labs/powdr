@@ -272,7 +272,7 @@ impl TypeChecker {
             latch,
             operation_id,
             call_selectors,
-            arguments: machine.arguments,
+            params: machine.params,
             pc: registers
                 .iter()
                 .enumerate()

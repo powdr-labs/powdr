@@ -145,7 +145,7 @@ impl<'a> Folder for Canonicalizer<'a> {
             }
         }
         // canonicalize machine argument types
-        for param in &mut machine.arguments.0 {
+        for param in &mut machine.params.0 {
             let p = self.path.clone().join(param.ty.clone().unwrap());
             param.ty = Some(self.paths.get(&p).cloned().unwrap().into());
         }
@@ -579,7 +579,7 @@ fn check_machine(
             return Err(format!("Duplicate name `{name}` in machine `{location}`"));
         }
     }
-    for param in &m.arguments.0 {
+    for param in &m.params.0 {
         let path: SymbolPath = param.ty.clone().unwrap();
         check_path(module_location.clone().join(path), state)?
     }
