@@ -471,14 +471,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(Value::from(AlgebraicExpression::PublicReference(name.to_string())).into())
     }
-
-    fn eval_expr(&self, expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
-        if let AlgebraicExpression::Number(n) = expr {
-            Ok(Arc::new(Value::FieldElement(*n)))
-        } else {
-            Err(EvalError::DataNotAvailable)
-        }
-    }
 }
 
 impl<'a> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>> for Definitions<'a> {
