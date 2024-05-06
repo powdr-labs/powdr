@@ -15,8 +15,9 @@ use powdr_ast::{
     parsed::{
         display::quote,
         types::{Type, TypeScheme},
-        ArrayLiteral, BinaryOperator, FunctionCall, IfExpression, IndexAccess, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock, UnaryOperator,
+        ArrayLiteral, BinaryOperator, BlockExpression, FunctionCall, IfExpression, IndexAccess,
+        LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock,
+        UnaryOperator,
     },
     SourceRef,
 };
@@ -693,7 +694,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.op_stack.push(Operation::Combine(expr));
                 self.expand(condition)?;
             }
-            Expression::BlockExpression(statements, expr) => {
+            Expression::BlockExpression(BlockExpression { statements, expr }) => {
                 self.op_stack
                     .push(Operation::TruncateLocals(self.local_vars.len()));
                 self.op_stack.push(Operation::Expand(expr));

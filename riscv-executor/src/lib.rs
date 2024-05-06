@@ -958,7 +958,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             Expression::MatchExpression(_, _) => todo!(),
             Expression::IfExpression(_) => panic!(),
-            Expression::BlockExpression(_, _) => panic!(),
+            Expression::BlockExpression(_) => panic!(),
             Expression::IndexAccess(_) => todo!(),
         }
     }
