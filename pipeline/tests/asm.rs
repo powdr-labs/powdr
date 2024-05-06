@@ -463,7 +463,10 @@ fn keccak() {
     use std::{fs, sync::Arc};
 
     // Set up the file to test
-    let code_path = format!("{}/../test_data/asm/keccakf.asm", env!("CARGO_MANIFEST_DIR"),);
+    let code_path = format!(
+        "{}/../test_data/asm/keccakf.asm",
+        env!("CARGO_MANIFEST_DIR"),
+    );
     let code = fs::read_to_string(code_path).unwrap();
     let mut pipeline = Pipeline::<GoldilocksField>::default().from_asm_string(code, None);
     let analyzed = pipeline.compute_analyzed_pil().unwrap().clone();
