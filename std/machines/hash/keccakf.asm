@@ -1,6 +1,8 @@
 // TODO: placeholder for Rust wrapper
-machine KeccakF { 
+machine KeccakF with
+    latch: LATCH,
+{ 
     let x;
     let y;
-    operation keccakf<0> x -> y;
+    operation keccakf x -> y;
 }

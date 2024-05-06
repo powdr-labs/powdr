@@ -163,8 +163,10 @@ let main: int, int[], int -> int[] = |W, input, delim| {
 };
 
 // main machine
-machine KeccakF { 
+machine KeccakF with
+    latch: LATCH,
+{ 
     let x;
     let y;
-    operation keccakf<0> x -> y;
+    operation keccakf x -> y;
 }
