@@ -8,7 +8,7 @@ use powdr_ast::{
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
         ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock,
-        MatchArm, Number, Pattern, StatementInsideBlock, UnaryOperation,
+        MatchArm, MatchExpression, Number, Pattern, StatementInsideBlock, UnaryOperation,
     },
 };
 
@@ -585,7 +585,10 @@ impl<'a> TypeChecker<'a> {
                 })?
             }
             Expression::FreeInput(_) => todo!(),
-            Expression::MatchExpression(scrutinee, arms) => {
+            Expression::MatchExpression(MatchExpression {
+                expr: scrutinee,
+                arms,
+            }) => {
                 let scrutinee_type = self.infer_type_of_expression(scrutinee)?;
                 let result = self.new_type_var();
                 for MatchArm { pattern, value } in arms {

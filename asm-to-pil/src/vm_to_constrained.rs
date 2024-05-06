@@ -13,8 +13,8 @@ use powdr_ast::{
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
-        FunctionKind, LambdaExpression, MatchArm, Number, Pattern, PilStatement, PolynomialName,
-        SelectedExpressions, UnaryOperation, UnaryOperator,
+        FunctionKind, LambdaExpression, MatchArm, MatchExpression, Number, Pattern, PilStatement,
+        PolynomialName, SelectedExpressions, UnaryOperation, UnaryOperator,
     },
     SourceRef,
 };
@@ -753,7 +753,7 @@ impl<T: FieldElement> VMConverter<T> {
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
             Expression::ArrayLiteral(_) => panic!(),
-            Expression::MatchExpression(_, _) => panic!(),
+            Expression::MatchExpression(_) => panic!(),
             Expression::IfExpression(_) => panic!(),
             Expression::BlockExpression(_, _) => panic!(),
             Expression::FreeInput(expr) => {
@@ -993,13 +993,16 @@ impl<T: FieldElement> VMConverter<T> {
                     FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression {
                         kind: FunctionKind::Query,
                         params: vec![Pattern::Variable("__i".to_string())],
-                        body: Box::new(Expression::MatchExpression(
-                            Box::new(Expression::FunctionCall(FunctionCall {
-                                function: Box::new(absolute_reference("::std::prover::eval")),
-                                arguments: vec![direct_reference(pc_name.as_ref().unwrap())],
-                            })),
-                            prover_query_arms,
-                        )),
+                        body: Box::new(
+                            MatchExpression {
+                                expr: Box::new(Expression::FunctionCall(FunctionCall {
+                                    function: Box::new(absolute_reference("::std::prover::eval")),
+                                    arguments: vec![direct_reference(pc_name.as_ref().unwrap())],
+                                })),
+                                arms: prover_query_arms,
+                            }
+                            .into(),
+                        ),
                     }))
                 });
                 witness_column(SourceRef::unknown(), free_value, prover_query)

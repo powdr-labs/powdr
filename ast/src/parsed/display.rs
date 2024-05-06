@@ -608,7 +608,10 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::IndexAccess(index_access) => write!(f, "{index_access}"),
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
-            Expression::MatchExpression(scrutinee, arms) => {
+            Expression::MatchExpression(MatchExpression {
+                expr: scrutinee,
+                arms,
+            }) => {
                 writeln!(f, "match {scrutinee} {{")?;
                 write_items_indented(f, arms)?;
                 write!(f, "}}")
