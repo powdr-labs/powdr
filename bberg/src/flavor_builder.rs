@@ -437,6 +437,14 @@ fn create_polynomial_views(first_poly: &String) -> String {
     using ProverUnivariates = AllEntities<bb::Univariate<FF, LENGTH>>;
 
     /**
+     * @brief A container for univariates used during Protogalaxy folding and sumcheck with some of the computation
+     * optmistically ignored
+     * @details During folding and sumcheck, the prover evaluates the relations on these univariates.
+     */
+    template <size_t LENGTH, size_t SKIP_COUNT>
+    using OptimisedProverUnivariates = AllEntities<bb::Univariate<FF, LENGTH, 0, SKIP_COUNT>>;
+
+    /**
      * @brief A container for univariates produced during the hot loop in sumcheck.
      */
     using ExtendedEdges = ProverUnivariates<MAX_PARTIAL_RELATION_LENGTH>;
