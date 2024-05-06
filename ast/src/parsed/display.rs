@@ -598,11 +598,11 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
             Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
-            Expression::UnaryOperation(op, exp) => {
+            Expression::UnaryOperation(UnaryOperation { op, expr }) => {
                 if op.is_prefix() {
-                    write!(f, "{op}{exp}")
+                    write!(f, "{op}{expr}")
                 } else {
-                    write!(f, "{exp}{op}")
+                    write!(f, "{expr}{op}")
                 }
             }
             Expression::IndexAccess(index_access) => write!(f, "{index_access}"),

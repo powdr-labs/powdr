@@ -9,7 +9,7 @@ use powdr_ast::{
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
         LetStatementInsideBlock, MatchArm, NamespacedPolynomialReference, Number, Pattern,
-        SelectedExpressions, StatementInsideBlock, SymbolCategory,
+        SelectedExpressions, StatementInsideBlock, SymbolCategory, UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
@@ -105,9 +105,11 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 op,
                 Box::new(self.process_expression(*right)),
             ),
-            PExpression::UnaryOperation(op, value) => {
-                Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
+            PExpression::UnaryOperation(UnaryOperation { op, expr: value }) => UnaryOperation {
+                op,
+                expr: Box::new(self.process_expression(*value)),
             }
+            .into(),
             PExpression::IndexAccess(index_access) => {
                 Expression::IndexAccess(parsed::IndexAccess {
                     array: Box::new(self.process_expression(*index_access.array)),
