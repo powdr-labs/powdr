@@ -1234,7 +1234,7 @@ mod test {
             .to_string()
     }
 
-    pub fn evaluate_function<'a, T: FieldElement>(input: &str, function: &'a str) -> T {
+    pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
         let analyzed = analyze_string::<GoldilocksField>(input);
         let mut symbols = evaluator::Definitions(&analyzed.definitions);
         let function = symbols.lookup(function, None).unwrap();
