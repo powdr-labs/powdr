@@ -34,19 +34,17 @@ let<T: Add + FromLiteral> sum: T[] -> T = |arr| fold(arr, 0, |a, b| a + b);
 let<T1, T2, T3> zip: T1[], T2[], (T1, T2 -> T3) -> T3[] = |array1, array2, fn| new(len(array1), |i| fn(array1[i], array2[i]));
 
 /// Returns f(i, arr[i]) for the first i where this is not None, or None if no such i exists.
-let<T1, T2> find_map_enumerated: T1[], (int, T1 -> std::utils::Option<T2>) -> std::utils::Option<T2> =
+let<T1, T2> find_map_enumerated: T1[], (int, T1 -> Option<T2>) -> Option<T2> =
     |arr, f| find_internal::find_map_enumerated(arr, 0, len(arr), f);
 /// Returns f(arr[i]) for the first i where this is not None, or None if no such i exists.
-let<T1, T2> find_map: T1[], (T1 -> std::utils::Option<T2>) -> std::utils::Option<T2> =
+let<T1, T2> find_map: T1[], (T1 -> Option<T2>) -> Option<T2> =
     |arr, f| find_map_enumerated(arr, |_, x| f(x));
 
 /// Returns Some(i) for the first index i where f(arr[i]) is true, or None if no such i exists.
-let<T> find_index: T[], (T -> bool) -> std::utils::Option<int>
-    = |arr, f| find_map_enumerated(arr, |i, x| if f(x) { std::utils::Option::Some(i) } else { std::utils::Option::None });
+let<T> find_index: T[], (T -> bool) -> Option<int>
+    = |arr, f| find_map_enumerated(arr, |i, x| if f(x) { Option::Some(i) } else { Option::None });
 
 mod find_internal {
-    use std::utils::Option;
-
     let<T1, T2> find_map_enumerated: T1[], int, int, (int, T1 -> Option<T2>) -> Option<T2> =
         |arr, i, l, f| if i >= l { Option::None } else {
             match f(i, arr[i]) {

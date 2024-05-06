@@ -3,7 +3,6 @@ use std::btree::insert;
 use std::btree::get;
 use std::btree::CmpResult;
 use std::btree::BTree;
-use std::utils::Option;
 
 let cmp: int, int -> CmpResult = |a, b|
     if a < b {
@@ -72,13 +71,13 @@ let print_btree: BTree<int, string>, int -> () = |n, indent| match n {
     }
 };
 
-let expect: BTree<int, string>, int, string -> constr[] = |b_tree, k, v|
+let expect: BTree<int, string>, int, string -> Constr[] = |b_tree, k, v|
     match get(b_tree, k, cmp) {
         Option::Some(x) => std::check::assert(x == v, || ""),
         _ => std::check::assert(false, || ""),
     };
 
-let do_print: BTree<int, string> -> constr[] = |b_tree| {
+let do_print: BTree<int, string> -> Constr[] = |b_tree| {
     let _ = print_btree(b_tree, 0);
     []
 };

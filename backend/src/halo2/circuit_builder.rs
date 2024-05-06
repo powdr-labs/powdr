@@ -121,6 +121,10 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         }
     }
 
+    pub(crate) fn has_publics(&self) -> bool {
+        !self.publics.is_empty()
+    }
+
     /// Computes the instance column from the witness
     pub(crate) fn instance_column<F: PrimeField<Repr = [u8; 32]>>(&self) -> Vec<F> {
         let witness = self
