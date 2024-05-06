@@ -2,7 +2,7 @@
 
 mod estark;
 #[cfg(feature = "halo2")]
-mod halo2_impl;
+mod halo2;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -35,9 +35,9 @@ pub const DEFAULT_ESTARK_OPTIONS: &str = "stark_gl";
 impl BackendType {
     pub fn factory<T: FieldElement>(&self) -> &'static dyn BackendFactory<T> {
         #[cfg(feature = "halo2")]
-        const HALO2_FACTORY: halo2_impl::Halo2ProverFactory = halo2_impl::Halo2ProverFactory;
+        const HALO2_FACTORY: halo2::Halo2ProverFactory = halo2::Halo2ProverFactory;
         #[cfg(feature = "halo2")]
-        const HALO2_MOCK_FACTORY: halo2_impl::Halo2MockFactory = halo2_impl::Halo2MockFactory;
+        const HALO2_MOCK_FACTORY: halo2::Halo2MockFactory = halo2::Halo2MockFactory;
         #[cfg(feature = "estark-polygon")]
         const ESTARK_POLYGON_FACTORY: estark::polygon_wrapper::Factory =
             estark::polygon_wrapper::Factory;
