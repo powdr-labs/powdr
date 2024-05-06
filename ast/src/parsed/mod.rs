@@ -24,6 +24,7 @@ use self::{
     visitor::Children,
 };
 use crate::SourceRef;
+use std::cmp::PartialEq;
 
 #[derive(Display, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolCategory {
@@ -332,7 +333,7 @@ impl<Expr> Children<Expr> for SelectedExpressions<Expr> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Expression<Ref = NamespacedPolynomialReference> {
     Reference(SourceRef, Ref),
     PublicReference(SourceRef, String),
@@ -352,11 +353,8 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
 }
 
 // Comparison function for expressions that ignore source information.
-impl<Ref> Expression<Ref>
-where
-    Ref: PartialEq,
-{
-    pub fn eq(&self, other: &Self) -> bool {
+impl<Ref: PartialEq> PartialEq for Expression<Ref> {
+    fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Expression::Reference(_, a), Expression::Reference(_, b)) => a == b,
             (Expression::PublicReference(_, a), Expression::PublicReference(_, b)) => a == b,
