@@ -29,23 +29,22 @@ pub fn poseidon_gl(data: [u64; 12]) -> [u64; 4] {
 }
 
 /// Calls the keccakf machine
-/// Return value is placed in the same array as the input
+/// Return value is placed in the output array.
 /// This is unsafe because it does not check if the u64 elements fit the Goldilocks field.
-pub fn keccakf_unsafe(mut data: [u64; 25]) -> [u64; 25] {
+pub fn keccakf_unsafe(input: &[u64; 25], output: &mut [u64; 25]) {
     unsafe {
         // syscall input: memory pointer to state array
-        asm!("ecall", in("a0") &mut data as *mut [u64; 25], in("t0") u32::from(Syscall::KeccakF));
+        asm!("ecall", in("a0") input as *const [u64; 25], in("a1") output as *mut [u64; 25], in("t0") u32::from(Syscall::KeccakF));
     }
-    data
 }
 
 /// Calls the keccakf machine
 /// This function will panic if any of the u64 elements doesn't fit the Goldilocks field.
-pub fn keccakf(data: [u64; 25]) -> [u64; 25] {
-    for &n in data.iter() {
+pub fn keccakf(input: &[u64; 25], output: &mut [u64; 25]) {
+    for &n in input.iter() {
         assert!(n < GOLDILOCKS);
     }
-    keccakf_unsafe(data)
+    keccakf_unsafe(input, output)
 }
 
 // Output number of bytes for keccak-256 (32 bytes)
@@ -55,30 +54,31 @@ const W: usize = 32;
 /// Input is a byte array of arbitrary length and a delimiter byte
 /// Output is a byte array of length W
 pub fn keccak(data: &[u8], delim: u8) -> [u8; W] {
-    let mut b = [0; 200];
+    let mut b_input = [0u8; 200];
+    let mut b_output = [0u64; 25];
     let rate = 200 - (2 * W);
     let mut pt = 0;
 
     // update
     for i in 0..data.len() {
-        b[pt] = b[pt] ^ data[i];
+        b_input[pt] = b_input[pt] ^ data[i];
         pt = (pt + 1) % rate;
-        b = if pt == 0 {
-            to_bytes(keccakf(from_bytes(b)))
-        } else {
-            b
-        };
+        if pt == 0 {
+            keccakf(&from_bytes(b_input), &mut b_output);
+            b_input.copy_from_slice(&to_bytes(b_output));
+        }
     }
 
     // finalize
-    b[pt] = b[pt] ^ delim;
-    b[rate - 1] = b[rate - 1] ^ 0x80;
-    b = to_bytes(keccakf(from_bytes(b)));
+    b_input[pt] = b_input[pt] ^ delim;
+    b_input[rate - 1] = b_input[rate - 1] ^ 0x80;
+    keccakf(&from_bytes(b_input), &mut b_output);
+    b_input.copy_from_slice(&to_bytes(b_output));
 
     // Extract the first W bytes and return as a fixed-size array
     // Simply slicing won't work
     let mut output = [0u8; W];
-    output.copy_from_slice(&b[..W]);
+    output.copy_from_slice(&b_input[..W]);
     output
 }
 

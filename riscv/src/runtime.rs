@@ -150,41 +150,22 @@ impl Runtime {
 
     pub fn with_keccak(mut self) -> Self {
         self.add_submachine(
-            "test_data::asm::keccakf::KeccakF",
+            "std::machines::hash::keccakf::KeccakF",
             None,
             "keccakf",
             [format!(
                 "instr keccakf ~ keccakf.keccakf {};", // operation
-                instr_register_params(0, 25, 25) // 25 registers for the states, covered by 26 registers of riscv
+                instr_register_params(0, 2, 2)         // 2 pointers as both input and output
             )],
             0,
-            // zero out output registers
-            // TODO: I did this similar to what poseidon did,
-            // but I'm concerned that any preexisting values in the registers aren't saved.
-            // Can I simply leave this blank?
-            (0..25).map(|i| format!("{} <=X= 0;", reg(i))),
+            std::iter::once("keccakf;".to_string()) // must be called at least once
+                .chain((0..2).map(|i| format!("{} <=X= 0;", reg(i)))), // zero out output registers
         );
 
-        // The keccakf syscall has a single argument passed on x10, the
-        // memory address of the 25 field element input array.
-        let implementation =
-            // The keccakf syscall uses x10 for input, we store it in tmp3 and
-            // reuse x10 as input to the keccakf machine instruction.
-            std::iter::once("tmp3 <=X= x10;".to_string())
-            // The keccakf instruction uses registers 0..25 as input/output.
-            // The memory field elements are loaded into these registers before calling the instruction.
-            // They might be in use by the riscv machine, so we save the registers on the stack.
-            .chain((0..25).flat_map(|i| push_register(&reg(i))))
-            .chain((0..25).flat_map(|i| load_gl_fe("tmp3", i as u32 * 8, &reg(i))))
-            .chain(std::iter::once("keccakf;".to_string()))
-            .chain((0..25).flat_map(|i| store_gl_fe("tmp3", i as u32 * 8, &reg(i))))
-            // After copying the result back into memory, we restore the original register values.
-            // Note that we spilled beyond SYSCALL_REGISTERS
-            .chain(
-                (0..25)
-                    .rev()
-                    .flat_map(|i| pop_register(&reg(i))),
-            );
+        // The keccakf syscall has a two arguments passed on x10 and x11,
+        // the memory address of the 25 field element input array
+        // and the memory address of the output array to store results to.
+        let implementation = std::iter::once("keccakf;".to_string());
 
         self.add_syscall(Syscall::KeccakF, implementation);
         self
