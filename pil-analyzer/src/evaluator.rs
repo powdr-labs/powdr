@@ -1212,6 +1212,7 @@ pub fn evaluate_binary_operation_integer<'a, T>(
 
 #[cfg(test)]
 mod test {
+    use crate::evaluator;
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
 
@@ -1231,6 +1232,20 @@ mod test {
         evaluate::<GoldilocksField>(symbol, &mut Definitions(&analyzed.definitions))
             .unwrap()
             .to_string()
+    }
+
+    pub fn evaluate_function<'a, T: FieldElement>(input: &str, function: &'a str) -> T {
+        let analyzed = analyze_string::<GoldilocksField>(input);
+        let mut symbols = evaluator::Definitions(&analyzed.definitions);
+        let function = symbols.lookup(function, None).unwrap();
+        let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
+            .unwrap()
+            .as_ref()
+            .clone();
+        match result {
+            Value::FieldElement(fe) => fe,
+            _ => panic!("Expected field element but got {result}"),
+        }
     }
 
     #[test]
@@ -1603,5 +1618,20 @@ mod test {
         assert_eq!(parse_and_evaluate_symbol(src, "no"), "false".to_string());
         assert_eq!(parse_and_evaluate_symbol(src, "no2"), "false".to_string());
         assert_eq!(parse_and_evaluate_symbol(src, "no3"), "false".to_string());
+    }
+
+    #[test]
+    pub fn eval_complex_expression() {
+        let src = r#"
+            namespace std::prover;
+                let eval: expr -> fe = [];
+            namespace main;
+                // Put into query function, so we're allowed to use eval()
+                let test = query || std::prover::eval(2 * (1 + 1 + 1) + 1);
+        "#;
+        assert_eq!(
+            evaluate_function::<GoldilocksField>(src, "main.test"),
+            7u64.into()
+        );
     }
 }
