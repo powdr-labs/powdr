@@ -12,7 +12,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
-use powdr_ast::parsed::EnumDeclaration;
+use powdr_ast::parsed::{EnumDeclaration, Number};
 use powdr_number::{BigUint, FieldElement};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
@@ -220,7 +220,7 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
                 .filter(|e| !e.is_empty())
                 .flat_map(|e| e.pattern().iter())
                 .map(|e| match e {
-                    Expression::Number(n, _) => Some(n),
+                    Expression::Number(Number { value: n, type_: _ }) => Some(n),
                     _ => None,
                 });
             let first = values.next()??;
@@ -424,7 +424,11 @@ fn substitute_polynomial_references<T: FieldElement>(
         })) = e
         {
             if let Some(value) = substitutions.get(poly_id) {
-                *e = Expression::Number(value.clone(), Some(Type::Fe));
+                *e = Number {
+                    value: value.clone(),
+                    type_: Some(Type::Fe),
+                }
+                .into();
             }
         }
     });

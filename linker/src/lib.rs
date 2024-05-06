@@ -8,7 +8,7 @@ use powdr_ast::{
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, namespaced_reference},
-        Expression, PILFile, PilStatement, SelectedExpressions, TypedExpression,
+        Expression, Number, PILFile, PilStatement, SelectedExpressions, TypedExpression,
     },
     SourceRef,
 };
@@ -141,12 +141,12 @@ fn process_link(link: Link) -> PilStatement {
     let to = link.to;
 
     // the lhs is `instr_flag { operation_id, inputs, outputs }`
-    let op_id = to
-        .operation
-        .id
-        .iter()
-        .cloned()
-        .map(|n| Expression::Number(n, None));
+    let op_id = to.operation.id.iter().cloned().map(|n| {
+        Expression::Number(Number {
+            value: n,
+            type_: None,
+        })
+    });
 
     if link.is_permutation {
         // permutation lhs is `flag { operation_id, inputs, outputs }`
@@ -232,7 +232,7 @@ mod test {
 
     use powdr_ast::{
         object::{Location, Object, PILGraph},
-        parsed::{Expression, PILFile},
+        parsed::{Number, PILFile},
     };
     use powdr_number::{FieldElement, GoldilocksField};
 
@@ -275,7 +275,11 @@ mod test {
         let all_namespaces_have_degree = |f: PILFile, n: u64| {
             f.0.iter().all(|s| match s {
                 powdr_ast::parsed::PilStatement::Namespace(_, _, Some(e)) => {
-                    *e == Expression::Number(n.into(), None)
+                    *e == Number {
+                        value: n.into(),
+                        type_: None,
+                    }
+                    .into()
                 }
                 _ => true,
             })

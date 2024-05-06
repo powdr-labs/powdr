@@ -578,7 +578,7 @@ Term: Box<Expression> = {
     ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference::from_identifier(<>))),
     GenericReference => Box::new(Expression::Reference(<>)),
     PublicIdentifier => Box::new(Expression::PublicReference(<>)),
-    Number => Box::new(Expression::Number(<>.into(), None)),
+    Number => Box::new(Number{value: <>.into(), type_:None}.into()),
     StringLiteral => Box::new(Expression::String(<>)),
     MatchExpression,
     IfExpression,
