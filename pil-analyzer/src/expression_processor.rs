@@ -7,9 +7,10 @@ use std::{
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
-        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, MatchExpression, NamespacedPolynomialReference, Number,
-        Pattern, SelectedExpressions, StatementInsideBlock, SymbolCategory, UnaryOperation,
+        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BlockExpression, IfExpression,
+        LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
+        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
+        SymbolCategory, UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
@@ -146,7 +147,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 body: Box::new(self.process_expression(*body)),
                 else_body: Box::new(self.process_expression(*else_body)),
             }),
-            PExpression::BlockExpression(statements, expr) => {
+            PExpression::BlockExpression(BlockExpression { statements, expr }) => {
                 self.process_block_expression(statements, *expr)
             }
             PExpression::FreeInput(_) => panic!(),
@@ -286,7 +287,11 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
         let processed_expr = self.process_expression(expr);
         self.reset_local_variables(vars);
-        Expression::BlockExpression(processed_statements, Box::new(processed_expr))
+        BlockExpression {
+            statements: processed_statements,
+            expr: Box::new(processed_expr),
+        }
+        .into()
     }
 
     pub fn process_namespaced_polynomial_reference(

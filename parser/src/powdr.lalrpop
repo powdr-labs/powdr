@@ -629,12 +629,12 @@ IfExpression: Box<Expression> = {
 }
 
 BlockExpression: Box<Expression> = {
-    "{" <StatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>))
+    "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" => Box::new(BlockExpression{statements, expr}.into())
 }
 
 BracedExpression: Box<Expression> = {
-    "{" <StatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>)),
-    "{" <BoxedExpression> "}" => Box::new(Expression::BlockExpression(vec![], <>))
+    "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" => Box::new(BlockExpression{statements, expr}.into()),
+    "{" <expr:BoxedExpression> "}" => Box::new(BlockExpression{ statements: vec![], expr}.into())
 }
 
 StatementInsideBlock: StatementInsideBlock = {

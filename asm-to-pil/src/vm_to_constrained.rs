@@ -755,7 +755,7 @@ impl<T: FieldElement> VMConverter<T> {
             Expression::ArrayLiteral(_) => panic!(),
             Expression::MatchExpression(_) => panic!(),
             Expression::IfExpression(_) => panic!(),
-            Expression::BlockExpression(_, _) => panic!(),
+            Expression::BlockExpression(_) => panic!(),
             Expression::FreeInput(expr) => {
                 vec![(1.into(), AffineExpressionComponent::FreeInput(*expr))]
             }

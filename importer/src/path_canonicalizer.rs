@@ -14,9 +14,9 @@ use powdr_ast::parsed::{
     folder::Folder,
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
-    ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Pattern, PilStatement,
-    StatementInsideBlock, TypedExpression, UnaryOperation,
+    ArrayLiteral, BlockExpression, EnumDeclaration, EnumVariant, Expression, FunctionCall,
+    IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Pattern,
+    PilStatement, StatementInsideBlock, TypedExpression, UnaryOperation,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -176,7 +176,7 @@ fn free_inputs_in_expression<'a>(
         Expression::IndexAccess(_) => todo!(),
         Expression::MatchExpression(_) => todo!(),
         Expression::IfExpression(_) => todo!(),
-        Expression::BlockExpression(_, _) => todo!(),
+        Expression::BlockExpression(_) => todo!(),
     }
 }
 
@@ -213,7 +213,7 @@ fn free_inputs_in_expression_mut<'a>(
         Expression::IndexAccess(_) => todo!(),
         Expression::MatchExpression(_) => todo!(),
         Expression::IfExpression(_) => todo!(),
-        Expression::BlockExpression(_, _) => todo!(),
+        Expression::BlockExpression(_) => todo!(),
     }
 }
 
@@ -232,7 +232,10 @@ fn canonicalize_inside_expression(
                     assert!(reference.path.try_to_identifier().is_some());
                 }
             }
-            Expression::BlockExpression(statements, _expr) => {
+            Expression::BlockExpression(BlockExpression {
+                statements,
+                expr: _,
+            }) => {
                 for statement in statements {
                     if let StatementInsideBlock::LetStatement(let_statement) = statement {
                         canonicalize_inside_pattern(&mut let_statement.pattern, path, paths);
@@ -698,7 +701,7 @@ fn check_expression(
             check_expression(location, body, state, local_variables)?;
             check_expression(location, else_body, state, local_variables)
         }
-        Expression::BlockExpression(statements, expr) => {
+        Expression::BlockExpression(BlockExpression { statements, expr }) => {
             let mut local_variables = local_variables.clone();
             for statement in statements {
                 match statement {

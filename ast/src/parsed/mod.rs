@@ -349,7 +349,7 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     FreeInput(Box<Self>),
     MatchExpression(MatchExpression<Self>),
     IfExpression(IfExpression<Self>),
-    BlockExpression(Vec<StatementInsideBlock<Self>>, Box<Self>),
+    BlockExpression(BlockExpression<Self>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
@@ -407,6 +407,18 @@ pub struct MatchExpression<E = Expression<NamespacedPolynomialReference>> {
 impl<Ref> From<MatchExpression<Expression<Ref>>> for Expression<Ref> {
     fn from(match_expr: MatchExpression<Expression<Ref>>) -> Self {
         Expression::MatchExpression(match_expr)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BlockExpression<E> {
+    pub statements: Vec<StatementInsideBlock<E>>,
+    pub expr: Box<E>,
+}
+
+impl<Ref> From<BlockExpression<Expression<Ref>>> for Expression<Ref> {
+    fn from(block: BlockExpression<Expression<Ref>>) -> Self {
+        Expression::BlockExpression(block)
     }
 }
 
@@ -512,7 +524,7 @@ impl<R> Expression<R> {
                 body,
                 else_body,
             }) => [condition, body, else_body].into_iter().map(|e| e.as_ref()),
-            Expression::BlockExpression(statements, expr) => statements
+            Expression::BlockExpression(BlockExpression { statements, expr }) => statements
                 .iter()
                 .flat_map(|s| s.children())
                 .chain(once(expr.as_ref())),
@@ -553,7 +565,7 @@ impl<R> Expression<R> {
                 body,
                 else_body,
             }) => [condition, body, else_body].into_iter().map(|e| e.as_mut()),
-            Expression::BlockExpression(statements, expr) => statements
+            Expression::BlockExpression(BlockExpression { statements, expr }) => statements
                 .iter_mut()
                 .flat_map(|s| s.children_mut())
                 .chain(once(expr.as_mut())),

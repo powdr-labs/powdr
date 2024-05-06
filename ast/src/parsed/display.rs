@@ -617,7 +617,7 @@ impl<Ref: Display> Display for Expression<Ref> {
                 write!(f, "}}")
             }
             Expression::IfExpression(e) => write!(f, "{e}"),
-            Expression::BlockExpression(statements, expr) => {
+            Expression::BlockExpression(BlockExpression { statements, expr }) => {
                 if statements.is_empty() {
                     write!(f, "{{ {expr} }}")
                 } else {
