@@ -62,20 +62,21 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     // map instance location to (type, arguments)
     let mut instances = BTreeMap::default();
 
-    while let Some((location, ty, args)) = queue.pop() {
+    while let Some((location, ty, param_values)) = queue.pop() {
         let machine = input.items.get(&ty).unwrap().try_to_machine().unwrap();
 
         queue.extend(machine.submachines.iter().map(|def| {
             (
                 // get the absolute name for this submachine
                 location.clone().join(def.name.clone()),
-                // get its type
+                // type
                 def.ty.clone(),
-                def.args.clone(),
+                // given parameters
+                def.param_values.clone(),
             )
         }));
 
-        instances.insert(location, (ty, args));
+        instances.insert(location, (ty, param_values));
     }
 
     // count incoming permutations for each machine.
@@ -158,13 +159,13 @@ fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, 
         .collect()
 }
 
-struct Submachine {
-    /// the name of this instance
+struct SubmachineRef {
+    /// local name for this instance
     pub name: String,
-    /// the type of the submachine
-    pub ty: AbsoluteSymbolPath,
     /// machine instance location
     pub location: Location,
+    /// type of the submachine
+    pub ty: AbsoluteSymbolPath,
 }
 
 struct ASMPILConverter<'a> {
@@ -174,11 +175,10 @@ struct ASMPILConverter<'a> {
     location: &'a Location,
     /// Input definitions and machines.
     items: &'a BTreeMap<AbsoluteSymbolPath, Item>,
+    /// Pil statements generated for the machine
     pil: Vec<PilStatement>,
-    /// Machine parameters declaration
-    params: MachineParams,
-    /// Submachine instances declared by the machine
-    submachines: Vec<Submachine>,
+    /// Submachine instances accessible to the machine (includes those passed as a parameter)
+    submachines: Vec<SubmachineRef>,
     /// keeps track of the total count of incoming permutations for a given machine.
     incoming_permutations: &'a mut BTreeMap<Location, u64>,
 }
@@ -195,7 +195,6 @@ impl<'a> ASMPILConverter<'a> {
             location,
             items: &input.items,
             pil: Default::default(),
-            params: Default::default(),
             submachines: Default::default(),
             incoming_permutations,
         }
@@ -215,7 +214,7 @@ impl<'a> ASMPILConverter<'a> {
     }
 
     fn convert_machine_inner(mut self) -> Object {
-        let (ty, args) = self.instances.get(self.location).as_ref().unwrap();
+        let (ty, param_values) = self.instances.get(self.location).as_ref().unwrap();
         // TODO: This clone doubles the current memory usage
         let Item::Machine(input) = self.items.get(ty).unwrap().clone() else {
             panic!();
@@ -223,11 +222,10 @@ impl<'a> ASMPILConverter<'a> {
 
         let degree = input.degree;
 
-        self.params = input.params;
         self.submachines = input
             .submachines
             .into_iter()
-            .map(|m| Submachine {
+            .map(|m| SubmachineRef {
                 location: self.location.clone().join(m.name.clone()),
                 name: m.name,
                 ty: m.ty,
@@ -240,7 +238,7 @@ impl<'a> ASMPILConverter<'a> {
         assert!(input.callable.is_only_operations());
 
         // process machine parameters
-        self.handle_parameters(args);
+        self.handle_parameters(input.params, param_values);
 
         for block in input.pil {
             self.handle_pil_statement(block);
@@ -340,8 +338,16 @@ impl<'a> ASMPILConverter<'a> {
     // Process machine parameters.
     // Allows machines passed as argument to be referenced.
     // TODO: support some elementary pil types as a machine parameter?
-    fn handle_parameters(&mut self, args: &Vec<Expression>) {
-        for (param, value) in self.params.0.iter().zip(args) {
+    fn handle_parameters(&mut self, params: MachineParams, values: &Vec<Expression>) {
+        if params.0.len() != values.len() {
+            panic!(
+                "wrong number of arguments for machine `{}`: got {} expected {}",
+                self.location,
+                values.len(),
+                params.0.len()
+            );
+        }
+        for (param, value) in params.0.iter().zip(values) {
             let ty = AbsoluteSymbolPath::default().join(param.ty.clone().unwrap());
             if let Some(Item::Machine(_)) = self.items.get(&ty) {
                 // param is a machine, we need to find the actual instance
@@ -358,7 +364,7 @@ impl<'a> ASMPILConverter<'a> {
                     loc = parent;
                     let (loc_ty, loc_args) = self.instances.get(&loc).as_ref().unwrap();
                     let Item::Machine(loc_ty) = self.items.get(loc_ty).unwrap() else {
-                        panic!()
+                        unreachable!()
                     };
                     // is the name declared as an actual submachine?
                     if loc_ty
@@ -368,7 +374,7 @@ impl<'a> ASMPILConverter<'a> {
                     {
                         // found the submachine
                         let name = param.name.clone();
-                        self.submachines.push(Submachine {
+                        self.submachines.push(SubmachineRef {
                             location: loc.join(loc_submachine),
                             name,
                             ty,
@@ -377,18 +383,17 @@ impl<'a> ASMPILConverter<'a> {
                         break;
                     } else {
                         // submachine is a machine parameter, go up the machine tree
-                        let Some((param, value)) = loc_ty
+                        let (param, value) = loc_ty
                             .params
                             .0
                             .iter()
                             .zip(loc_args)
                             .find(|(p, _)| &p.name == loc_submachine)
-                        else {
-                            panic!();
-                        };
+                            .unwrap();
                         assert_eq!(
                             ty,
-                            AbsoluteSymbolPath::default().join(param.ty.clone().unwrap())
+                            AbsoluteSymbolPath::default().join(param.ty.clone().unwrap()),
+                            "machine passed as parameter has the wrong type"
                         );
                         loc_submachine =
                             value.try_to_identifier().expect("invalid submachine name");

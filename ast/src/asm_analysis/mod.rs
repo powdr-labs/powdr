@@ -660,7 +660,7 @@ pub struct SubmachineDeclaration {
     /// the type of the submachine
     pub ty: AbsoluteSymbolPath,
     /// machine arguments
-    pub args: Vec<Expression>,
+    pub param_values: Vec<Expression>,
 }
 
 /// An item that is part of the module tree after all modules,
