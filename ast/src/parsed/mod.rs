@@ -343,13 +343,25 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     LambdaExpression(LambdaExpression<Self>),
     ArrayLiteral(ArrayLiteral<Self>),
     BinaryOperation(Box<Self>, BinaryOperator, Box<Self>),
-    UnaryOperation(UnaryOperator, Box<Self>),
+    UnaryOperation(UnaryOperation<Self>),
     IndexAccess(IndexAccess<Self>),
     FunctionCall(FunctionCall<Self>),
     FreeInput(Box<Self>),
     MatchExpression(Box<Self>, Vec<MatchArm<Self>>),
     IfExpression(IfExpression<Self>),
     BlockExpression(Vec<StatementInsideBlock<Self>>, Box<Self>),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UnaryOperation<E = Expression<NamespacedPolynomialReference>> {
+    pub op: UnaryOperator,
+    pub expr: Box<E>,
+}
+
+impl<Ref> From<UnaryOperation<Expression<Ref>>> for Expression<Ref> {
+    fn from(operation: UnaryOperation<Expression<Ref>>) -> Self {
+        Expression::UnaryOperation(operation)
+    }
 }
 
 impl<Ref> Expression<Ref> {
@@ -449,7 +461,7 @@ impl<R> Expression<R> {
             Expression::BinaryOperation(left, _, right) => {
                 [left.as_ref(), right.as_ref()].into_iter()
             }
-            Expression::UnaryOperation(_, e) => once(e.as_ref()),
+            Expression::UnaryOperation(UnaryOperation { op: _, expr }) => once(expr.as_ref()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
                 [array.as_ref(), index.as_ref()].into_iter()
             }
@@ -490,7 +502,7 @@ impl<R> Expression<R> {
             Expression::BinaryOperation(left, _, right) => {
                 [left.as_mut(), right.as_mut()].into_iter()
             }
-            Expression::UnaryOperation(_, e) => once(e.as_mut()),
+            Expression::UnaryOperation(UnaryOperation { op: _, expr }) => once(expr.as_mut()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
                 [array.as_mut(), index.as_mut()].into_iter()
             }

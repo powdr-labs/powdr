@@ -16,7 +16,8 @@ use powdr_ast::{
         display::quote,
         types::{Type, TypeScheme},
         ArrayLiteral, BinaryOperator, FunctionCall, IfExpression, IndexAccess, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock, UnaryOperator,
+        LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock, UnaryOperation,
+        UnaryOperator,
     },
     SourceRef,
 };
@@ -658,7 +659,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.op_stack.push(Operation::Expand(r));
                 self.expand(l)?;
             }
-            Expression::UnaryOperation(_, inner) => {
+            Expression::UnaryOperation(UnaryOperation { op: _, expr: inner }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.expand(inner)?;
             }
@@ -761,7 +762,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 let left = self.value_stack.pop().unwrap();
                 evaluate_binary_operation(&left, *op, &right)?
             }
-            Expression::UnaryOperation(op, _) => {
+            Expression::UnaryOperation(UnaryOperation { op, expr: _ }) => {
                 let inner = self.value_stack.pop().unwrap();
                 match (op, inner.as_ref()) {
                     (UnaryOperator::Minus, Value::FieldElement(e)) => {
