@@ -49,10 +49,13 @@ fn pad_return_arguments(s: &mut FunctionStatement, output_count: usize) {
     if let FunctionStatement::Return(ret) = s {
         ret.values = std::mem::take(&mut ret.values)
             .into_iter()
-            .chain(repeat(Expression::Number(Number {
-                value: 0u32.into(),
-                type_: None,
-            })))
+            .chain(repeat(
+                Number {
+                    value: 0u32.into(),
+                    type_: None,
+                }
+                .into(),
+            ))
             .take(output_count)
             .collect();
     };
