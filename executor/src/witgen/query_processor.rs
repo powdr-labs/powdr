@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use powdr_ast::analyzed::Challenge;
 use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
 use powdr_ast::parsed::types::Type;
 use powdr_number::{BigInt, FieldElement};
@@ -99,14 +100,35 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         name: &'a str,
         type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Definitions::lookup_with_symbols(
-            &self.fixed_data.analyzed.definitions,
-            name,
-            type_args,
-            self,
-        )
+        match self.fixed_data.analyzed.intermediate_columns.get(name) {
+            // Intermediate polynomials (which includes challenges) are not inlined in hints,
+            // so we need to look them up here.
+            Some((symbol, expressions)) => {
+                if let Some(type_args) = &type_args {
+                    assert!(type_args.is_empty());
+                }
+                Ok(if symbol.is_array() {
+                    Value::Array(
+                        expressions
+                            .clone()
+                            .into_iter()
+                            .map(|e| Value::from(e).into())
+                            .collect(),
+                    )
+                } else {
+                    assert!(expressions.len() == 1);
+                    Value::from(expressions[0].clone())
+                }
+                .into())
+            }
+            None => Definitions::lookup_with_symbols(
+                &self.fixed_data.analyzed.definitions,
+                name,
+                type_args,
+                self,
+            ),
+        }
     }
-
     fn eval_reference(
         &self,
         poly_ref: &AlgebraicReference,
@@ -123,5 +145,9 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
             }
         })
         .into())
+    }
+
+    fn eval_challenge(&self, challenge: &Challenge) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Ok(Value::FieldElement(self.fixed_data.challenges[&challenge.id]).into())
     }
 }
