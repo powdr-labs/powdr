@@ -12,7 +12,7 @@ fn main() {
     let _proof = Pipeline::<Bn254Field>::default()
         .from_file("test_data/asm/book/hello_world.asm".into())
         .with_prover_inputs(vec![0.into()])
-        .with_backend(BackendType::Halo2)
+        .with_backend(BackendType::Halo2, None)
         .compute_proof()
         .unwrap();
 
@@ -31,7 +31,7 @@ fn main() {
     let mut pipeline = Pipeline::<Bn254Field>::default()
         .from_file("test_data/asm/book/hello_world.asm".into())
         .with_prover_inputs(vec![0.into()])
-        .with_backend(BackendType::Halo2)
+        .with_backend(BackendType::Halo2, None)
         .with_setup_file(Some("params.bin".into()));
 
     // Create the verification key
@@ -47,7 +47,7 @@ fn main() {
 
     // Create yet another fresh pipeline only for proof verification
     let mut pipeline = pipeline
-        .with_backend(BackendType::Halo2)
+        .with_backend(BackendType::Halo2, None)
         .with_setup_file(Some("params.bin".into()))
         .with_vkey_file(Some("vkey.bin".into()));
 
