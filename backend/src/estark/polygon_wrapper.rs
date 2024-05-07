@@ -4,7 +4,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 
-use crate::{Backend, BackendFactory, Error, Proof};
+use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 use super::EStarkFilesCommon;
 
@@ -18,6 +18,8 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         output_dir: Option<&'a Path>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
+        verification_app_key: Option<&mut dyn std::io::Read>,
+        options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         Ok(Box::new(PolygonBackend(EStarkFilesCommon::create(
             analyzed,
@@ -25,6 +27,8 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
             output_dir,
             setup,
             verification_key,
+            verification_app_key,
+            options,
         )?)))
     }
 }
@@ -36,7 +40,8 @@ struct PolygonBackend<'a, F: FieldElement>(EStarkFilesCommon<'a, F>);
 impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<'a, F> {
     fn prove(
         &self,
-        witness: &[(String, Vec<F>)],
+        // Witness is taken from file written by the pipeline.
+        _witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
         // TODO: Implement challenges
         _witgen_callback: WitgenCallback<F>,
@@ -53,14 +58,16 @@ impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<'a, F> {
             tmp_dir.as_path()
         };
 
-        let input_paths = self.0.write_files(output_dir, witness)?;
+        let input_paths = self.0.write_files(output_dir)?;
+
+        let commits_path = output_dir.join("commits.bin");
 
         // Generate the proof.
         let proof_paths = pil_stark_prover::generate_proof(
             &input_paths.contraints,
             &input_paths.stark_struct,
             &input_paths.constants,
-            &input_paths.commits,
+            &commits_path,
             output_dir,
         )
         .map_err(|e| Error::BackendError(e.to_string()))?;

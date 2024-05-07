@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Expression, PolyID, PolynomialType,
-};
+use powdr_ast::analyzed::Challenge;
+use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
 use powdr_ast::parsed::types::Type;
 use powdr_number::{BigInt, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
@@ -47,8 +46,6 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             Ok(query) => query,
             Err(e) => {
                 return match e {
-                    // TODO this mechanism should be replaced by a proper Option datatype.
-                    EvalError::NoMatch() => Ok(EvalValue::complete(vec![])),
                     EvalError::DataNotAvailable => {
                         Ok(EvalValue::incomplete(IncompleteCause::DataNotYetAvailable))
                     }
@@ -132,29 +129,25 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
             ),
         }
     }
+    fn eval_reference(
+        &self,
+        poly_ref: &AlgebraicReference,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
+            PolynomialType::Committed | PolynomialType::Intermediate => self
+                .rows
+                .get_value(poly_ref)
+                .ok_or(EvalError::DataNotAvailable)?,
+            PolynomialType::Constant => {
+                let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values;
+                let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
+                values[usize::from(row)]
+            }
+        })
+        .into())
+    }
 
-    fn eval_expr(&self, expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
-        match expr {
-            AlgebraicExpression::Challenge(challenge) => {
-                Ok(Value::FieldElement(self.fixed_data.challenges[&challenge.id]).into())
-            }
-            AlgebraicExpression::Reference(poly_ref) => {
-                Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
-                    PolynomialType::Committed | PolynomialType::Intermediate => self
-                        .rows
-                        .get_value(poly_ref)
-                        .ok_or(EvalError::DataNotAvailable)?,
-                    PolynomialType::Constant => {
-                        let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values;
-                        let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
-                        values[usize::from(row)]
-                    }
-                })
-                .into())
-            }
-            _ => Err(EvalError::TypeError(format!(
-                "Can use std::prover::eval polynomials and challenges - tried to evaluate {expr}"
-            ))),
-        }
+    fn eval_challenge(&self, challenge: &Challenge) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Ok(Value::FieldElement(self.fixed_data.challenges[&challenge.id]).into())
     }
 }

@@ -422,6 +422,8 @@ pub struct WitnessColumn<'a, T> {
     /// This is needed in situations where we want to update a cell when the
     /// update does not come from an identity (which also has an AlgebraicReference).
     poly: AlgebraicReference,
+    /// The algebraic expression that points to this column in the current row.
+    expr: AlgebraicExpression<T>,
     /// The prover query expression, if any.
     query: Option<&'a Expression>,
     /// A list of externally computed witness values, if any.
@@ -457,8 +459,10 @@ impl<'a, T> WitnessColumn<'a, T> {
             name: name.to_string(),
             next: false,
         };
+        let expr = AlgebraicExpression::Reference(poly.clone());
         WitnessColumn {
             poly,
+            expr,
             query,
             external_values,
         }

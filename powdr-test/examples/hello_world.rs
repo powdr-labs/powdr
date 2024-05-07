@@ -1,10 +1,9 @@
 use powdr::backend::BackendType;
-use powdr::pipeline::util::write_or_panic;
+use powdr::number::buffered_write_file;
 use powdr::Bn254Field;
 use powdr::Pipeline;
 
-use std::fs;
-use std::io::BufWriter;
+use std::path::Path;
 
 fn main() {
     env_logger::init();
@@ -13,31 +12,33 @@ fn main() {
     let _proof = Pipeline::<Bn254Field>::default()
         .from_file("test_data/asm/book/hello_world.asm".into())
         .with_prover_inputs(vec![0.into()])
-        .with_backend(BackendType::Halo2)
+        .with_backend(BackendType::Halo2, None)
         .compute_proof()
         .unwrap();
 
     // Step-by-step case
 
     // First we create the universal setup of size 8
-    let params_file = BufWriter::new(fs::File::create("params.bin").unwrap());
-    write_or_panic(params_file, |writer| {
+    buffered_write_file(Path::new("params.bin"), |writer| {
         BackendType::Halo2
             .factory::<Bn254Field>()
             .generate_setup(8, writer)
             .unwrap()
-    });
+    })
+    .unwrap();
 
     // Configure a pipeline
     let mut pipeline = Pipeline::<Bn254Field>::default()
         .from_file("test_data/asm/book/hello_world.asm".into())
         .with_prover_inputs(vec![0.into()])
-        .with_backend(BackendType::Halo2)
+        .with_backend(BackendType::Halo2, None)
         .with_setup_file(Some("params.bin".into()));
 
     // Create the verification key
-    let vkey_file = BufWriter::new(fs::File::create("vkey.bin").unwrap());
-    write_or_panic(vkey_file, |w| pipeline.export_verification_key(w)).unwrap();
+    buffered_write_file(Path::new("vkey.bin"), |w| {
+        pipeline.export_verification_key(w).unwrap()
+    })
+    .unwrap();
 
     // Add the verification key to a fresh pipeline and create a proof
     let mut pipeline_fresh = pipeline.clone().with_vkey_file(Some("vkey.bin".into()));
@@ -46,7 +47,7 @@ fn main() {
 
     // Create yet another fresh pipeline only for proof verification
     let mut pipeline = pipeline
-        .with_backend(BackendType::Halo2)
+        .with_backend(BackendType::Halo2, None)
         .with_setup_file(Some("params.bin".into()))
         .with_vkey_file(Some("vkey.bin".into()));
 

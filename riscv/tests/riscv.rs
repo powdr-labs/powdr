@@ -34,9 +34,10 @@ pub fn test_continuations(case: &str) {
     let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
         // Can't use `verify_pipeline`, because the pipeline was renamed in the middle of after
         // computing the constants file.
-        let mut pipeline = pipeline.with_backend(BackendType::EStarkDump);
+        let mut pipeline = pipeline.with_backend(BackendType::EStarkDump, None);
         pipeline.compute_proof().unwrap();
         verify(pipeline.output_dir().unwrap()).unwrap();
+
         Ok(())
     };
     let bootloader_inputs = rust_continuations_dry_run(&mut pipeline);

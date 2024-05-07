@@ -9,8 +9,9 @@ use num_traits::Signed;
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, Challenge, Expression,
-        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
+        AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
+        Challenge, Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind,
+        TypedExpression,
     },
     parsed::{
         display::quote,
@@ -136,7 +137,6 @@ pub enum Value<'a, T> {
     Enum(&'a str, Option<Vec<Arc<Self>>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
-    Identity(AlgebraicExpression<T>, AlgebraicExpression<T>),
 }
 
 impl<'a, T: FieldElement> From<T> for Value<'a, T> {
@@ -214,7 +214,6 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::Enum(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
-            Value::Identity(_, _) => "constr".to_string(),
         }
     }
 
@@ -367,7 +366,6 @@ impl<'a, T: Display> Display for Value<'a, T> {
             }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
-            Value::Identity(left, right) => write!(f, "{left} = {right}"),
         }
     }
 }
@@ -481,7 +479,7 @@ impl<'a> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>> fo
     }
 }
 
-pub trait SymbolLookup<'a, T> {
+pub trait SymbolLookup<'a, T: FieldElement> {
     fn lookup(
         &mut self,
         name: &'a str,
@@ -494,7 +492,42 @@ pub trait SymbolLookup<'a, T> {
         )))
     }
 
-    fn eval_expr(&self, _expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
+    fn eval_expr(&self, expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Ok(match expr {
+            AlgebraicExpression::Reference(reference) => self.eval_reference(reference)?,
+            AlgebraicExpression::PublicReference(_) => unimplemented!(),
+            AlgebraicExpression::Challenge(challenge) => self.eval_challenge(challenge)?,
+            AlgebraicExpression::Number(n) => Value::FieldElement(*n).into(),
+            AlgebraicExpression::BinaryOperation(left, op, right) => {
+                let left = self.eval_expr(left)?;
+                let right = self.eval_expr(right)?;
+                match (left.as_ref(), right.as_ref()) {
+                    (Value::FieldElement(left), Value::FieldElement(right)) => {
+                        evaluate_binary_operation_field(*left, (*op).into(), *right)?
+                    }
+                    _ => panic!("Expected field elements"),
+                }
+            }
+            AlgebraicExpression::UnaryOperation(op, operand) => match op {
+                AlgebraicUnaryOperator::Minus => {
+                    let operand = self.eval_expr(operand)?;
+                    match operand.as_ref() {
+                        Value::FieldElement(fe) => Value::FieldElement(-*fe).into(),
+                        _ => panic!("Expected field element"),
+                    }
+                }
+            },
+        })
+    }
+
+    fn eval_challenge(&self, _challenge: &Challenge) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::DataNotAvailable)
+    }
+
+    fn eval_reference(
+        &self,
+        _reference: &AlgebraicReference,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::DataNotAvailable)
     }
 
@@ -546,7 +579,7 @@ enum Operation<'a, T> {
 /// This allows arbitrarily deep recursion in PIL on a physical machine with limited stack.
 /// SymbolLookup might still do regular recursive calls into the evaluator,
 /// but this is very limited.
-struct Evaluator<'a, 'b, T, S: SymbolLookup<'a, T>> {
+struct Evaluator<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> {
     symbols: &'b mut S,
     local_vars: Vec<Arc<Value<'a, T>>>,
     type_args: HashMap<String, Type>,
@@ -1006,8 +1039,8 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
                 }
             }
         }
-        (Value::Expression(l), BinaryOperator::Identity, Value::Expression(r)) => {
-            Value::Identity(l.clone(), r.clone()).into()
+        (l @ Value::Expression(_), BinaryOperator::Identity, r @ Value::Expression(_)) => {
+            Value::Enum("Identity", Some(vec![l.clone().into(), r.clone().into()])).into()
         }
         (Value::Expression(l), op, Value::Expression(r)) => match (l, r) {
             (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) => {
@@ -1179,6 +1212,7 @@ pub fn evaluate_binary_operation_integer<'a, T>(
 
 #[cfg(test)]
 mod test {
+    use crate::evaluator;
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
 
@@ -1198,6 +1232,20 @@ mod test {
         evaluate::<GoldilocksField>(symbol, &mut Definitions(&analyzed.definitions))
             .unwrap()
             .to_string()
+    }
+
+    pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
+        let analyzed = analyze_string::<GoldilocksField>(input);
+        let mut symbols = evaluator::Definitions(&analyzed.definitions);
+        let function = symbols.lookup(function, None).unwrap();
+        let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
+            .unwrap()
+            .as_ref()
+            .clone();
+        match result {
+            Value::FieldElement(fe) => fe,
+            _ => panic!("Expected field element but got {result}"),
+        }
     }
 
     #[test]
@@ -1570,5 +1618,20 @@ mod test {
         assert_eq!(parse_and_evaluate_symbol(src, "no"), "false".to_string());
         assert_eq!(parse_and_evaluate_symbol(src, "no2"), "false".to_string());
         assert_eq!(parse_and_evaluate_symbol(src, "no3"), "false".to_string());
+    }
+
+    #[test]
+    pub fn eval_complex_expression() {
+        let src = r#"
+            namespace std::prover;
+                let eval: expr -> fe = [];
+            namespace main;
+                // Put into query function, so we're allowed to use eval()
+                let test = query || std::prover::eval(2 * (1 + 1 + 1) + 1);
+        "#;
+        assert_eq!(
+            evaluate_function::<GoldilocksField>(src, "main.test"),
+            7u64.into()
+        );
     }
 }

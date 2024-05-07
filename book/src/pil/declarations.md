@@ -25,3 +25,9 @@ Examples:
 ```rust
 {{#include ../../../test_data/pil/book/declarations.pil:declarations}}
 ```
+
+Name lookup is performed as follows:
+
+Lookup is performed starting from the current namespace, going up to the root component by component
+where the first match is used. If all lookups fail, a last attempt is done
+inside the ``std::prelude`` namespace.

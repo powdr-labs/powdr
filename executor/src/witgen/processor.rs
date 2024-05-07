@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
+use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::{
     analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID},
     parsed::SelectedExpressions,
@@ -10,7 +11,10 @@ use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, C
 
 use super::{
     affine_expression::AffineExpression,
-    data_structures::{column_map::WitnessColumnMap, finalizable_data::FinalizableData},
+    data_structures::{
+        column_map::WitnessColumnMap, copy_constraints::CopyConstraints,
+        finalizable_data::FinalizableData,
+    },
     identity_processor::IdentityProcessor,
     rows::{CellValue, Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
     Constraints, EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
@@ -67,6 +71,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     outer_query: Option<OuterQuery<'a, T>>,
     inputs: Vec<(PolyID, T)>,
     previously_set_inputs: BTreeMap<PolyID, usize>,
+    copy_constraints: CopyConstraints<(PolyID, RowIndex)>,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
@@ -93,6 +98,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             outer_query: None,
             inputs: Vec::new(),
             previously_set_inputs: BTreeMap::new(),
+            // TODO(#1333): Get copy constraints from PIL.
+            copy_constraints: Default::default(),
         }
     }
 
@@ -342,17 +349,18 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         log::trace!("    Updates from: {}", source_name());
 
-        // Build RowUpdater
-        // (a bit complicated, because we need two mutable
-        // references to elements of the same vector)
-        let (current, next) = self.data.mutable_row_pair(row_index);
-        let mut row_updater = RowUpdater::new(current, next, self.row_offset + row_index as u64);
-
         let mut progress = false;
         for (poly, c) in &updates.constraints {
             if self.witness_cols.contains(&poly.poly_id) {
+                // Build RowUpdater
+                // (a bit complicated, because we need two mutable
+                // references to elements of the same vector)
+                let (current, next) = self.data.mutable_row_pair(row_index);
+                let mut row_updater =
+                    RowUpdater::new(current, next, self.row_offset + row_index as u64);
                 row_updater.apply_update(poly, c);
                 progress = true;
+                self.propagate_along_copy_constraints(row_index, poly, c);
             } else if let Constraint::Assignment(v) = c {
                 let left = &mut self.outer_query.as_mut().unwrap().left;
                 log::trace!("      => {} (outer) = {}", poly, v);
@@ -366,12 +374,58 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         progress
     }
 
+    fn propagate_along_copy_constraints(
+        &mut self,
+        row_index: usize,
+        poly: &AlgebraicReference,
+        constraint: &Constraint<T>,
+    ) {
+        if self.copy_constraints.is_empty() {
+            return;
+        }
+        if let Constraint::Assignment(v) = constraint {
+            // If we do an assignment, propagate the value to any other cell that is
+            // copy-constrained to the current cell.
+            let row = self.row_offset + row_index + poly.next as usize;
+
+            // Have to materialize the other cells to please the borrow checker...
+            let others = self
+                .copy_constraints
+                .iter_equivalence_class((poly.poly_id, row))
+                .skip(1)
+                .collect::<Vec<_>>();
+            for (other_poly, other_row) in others {
+                if other_poly.ptype != PolynomialType::Committed {
+                    unimplemented!(
+                        "Copy constraints to fixed columns are not yet supported (#1335)!"
+                    );
+                }
+                let expression = &self.fixed_data.witness_cols[&other_poly].expr;
+                let local_index = other_row.to_local(&self.row_offset);
+                self.set_value(local_index, expression, *v, || {
+                    format!(
+                        "Copy constraint: {} (Row {}) -> {} (Row {})",
+                        self.fixed_data.column_name(&poly.poly_id),
+                        row,
+                        self.fixed_data.column_name(&other_poly),
+                        other_row
+                    )
+                })
+                .unwrap();
+            }
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
     pub fn finalize_range(&mut self, range: impl Iterator<Item = usize>) {
-        self.data.finalize_range(range)
+        assert!(
+            self.copy_constraints.is_empty(),
+            "Machines with copy constraints should not be finalized while being processed."
+        );
+        self.data.finalize_range(range);
     }
 
     pub fn row(&self, i: usize) -> &Row<'a, T> {

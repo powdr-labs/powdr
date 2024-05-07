@@ -79,7 +79,7 @@ If the argument is already an expr, it is returned without modification.
 ### Printing
 
 ```rust
-let std::debug::print: string -> constr[]
+let std::debug::print: string -> Constr[]
 ```
 
 This function takes a string and prints it on the standard output during evaluation, as a side-effect of its evaluation.
@@ -88,7 +88,7 @@ This function should only be used for debugging purposes.
 
 Note that the function does not append a newline at the end.
 
-It returns an empty `constr` array so that it can be used at statement level where
+It returns an empty `Constr` array so that it can be used at statement level where
 constraints are expected.
 
 ### Modulus
@@ -161,6 +161,36 @@ let std::prover::degree: -> int
 Returns the current number of rows / the length of the witness columns, also
 known as the degree.
 
+## Types
+
+There are some types that are not proper built-in types (in the sense that they are not treated
+specially in the type system), but they are defined in the
+standard library and are referenced by built-in functions.
+
+### Constr
+
+The type `Constr` or more specifically, `std::prelude::Constr` is the type of a constraint.
+Expressions at statement level are required to evaluate either to `Constr` or `Constr[]`.
+
+It is defined as follows:
+
+```rust
+enum Constr {
+    /// A polynomial identity.
+    Identity(expr, expr),
+    /// A lookup constraint with selectors.
+    Lookup(Option<expr>, expr[], Option<expr>, expr[]),
+    /// A permutation constraint with selectors.
+    Permutation(Option<expr>, expr[], Option<expr>, expr[]),
+    /// A connection constraint (copy constraint).
+    Connection(expr[], expr[])
+}
+```
+
+The operator `=` can be applied on two `expr` values and results in a `Constr::Identity`.
+
+The type implements no traits and allows no operators.
+
 
 ## Operators
 
@@ -191,7 +221,7 @@ let<T: Ord> <: T, T -> bool
 let<T: Eq> ==: T, T -> bool
 let<T: Eq> !=: T, T -> bool
 
-let =: expr, expr -> constr
+let =: expr, expr -> Constr
 let ': expr -> expr
 
 let ||: bool, bool -> bool

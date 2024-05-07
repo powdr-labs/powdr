@@ -10,7 +10,6 @@ The powdr-pil language has the following types:
 - array
 - function type
 - `expr` (expression)
-- `constr` (constraint)
 - `!` ("bottom" or "unreachable" type)
 - enum types
 
@@ -265,22 +264,7 @@ Expressions allow the following operators, which always construct new expression
 - `**`: exponential combination of an expression with an integer constant
 - `'`: reference to the next row of a column, can only be applied directly to columns and only once
 
-The operator `=` on expressions constructs a constraint (see below);
-
-
-### Constraints
-
-Type name: `constr`
-
-Any evaluation of an expression at statement level needs to result in a constraint,
-or in an array of constraints.
-
-Generally, constraints include polynomial identities, plookups, permutations and connection identities.
-
-The only constraint currently constructible in the powdr-pil language are polynomial identities.
-These can be constructed from expressions by applying the `=` operator as in `x = 7`.
-
-Constraints do not allow any operators.
+The operator `=` on expressions constructs a constraint (see [../builtins#Constr]).
 
 ### Bottom Type
 

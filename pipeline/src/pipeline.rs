@@ -17,14 +17,15 @@ use powdr_ast::{
     object::PILGraph,
     parsed::{asm::ASMProgram, PILFile},
 };
-use powdr_backend::{BackendType, Proof};
+use powdr_backend::{BackendOptions, BackendType, Proof};
 use powdr_executor::{
     constant_evaluator,
     witgen::{
-        chain_callbacks, unused_query_callback, QueryCallback, WitgenCallback, WitnessGenerator,
+        chain_callbacks, extract_publics, unused_query_callback, QueryCallback, WitgenCallback,
+        WitnessGenerator,
     },
 };
-use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement};
+use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
 use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
@@ -92,6 +93,8 @@ struct Arguments<T: FieldElement> {
     query_callback: Option<Arc<dyn QueryCallback<T>>>,
     /// Backend to use for proving. If None, proving will fail.
     backend: Option<BackendType>,
+    /// Backend options
+    backend_options: BackendOptions,
     /// CSV render mode for witness generation.
     csv_render_mode: CsvRenderMode,
     /// Whether to export the witness as a CSV file.
@@ -100,6 +103,8 @@ struct Arguments<T: FieldElement> {
     setup_file: Option<PathBuf>,
     /// The optional verification key file to use for proving.
     vkey_file: Option<PathBuf>,
+    /// The optional verification key file to use for recursive proving.
+    vkey_app_file: Option<PathBuf>,
     /// The optional existing proof file to use for aggregation.
     existing_proof_file: Option<PathBuf>,
 }
@@ -172,7 +177,8 @@ where
 ///
 /// let mut pipeline = Pipeline::<GoldilocksField>::default()
 ///   .from_file(resolve_test_file("pil/fibonacci.pil"))
-///   .with_backend(BackendType::EStarkDump);
+///   .with_output(PathBuf::from("."), true)
+///   .with_backend(BackendType::EStarkDump, Some("stark_gl".to_string()));
 ///
 /// // Get the result
 /// let proof = pipeline.compute_proof().unwrap();
@@ -256,8 +262,9 @@ impl<T: FieldElement> Pipeline<T> {
         self.add_query_callback(Arc::new(inputs_to_query_callback(inputs)))
     }
 
-    pub fn with_backend(mut self, backend: BackendType) -> Self {
+    pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
         self.arguments.backend = Some(backend);
+        self.arguments.backend_options = options.unwrap_or_default();
         self
     }
 
@@ -271,13 +278,13 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn with_existing_proof_file(mut self, existing_proof_file: Option<PathBuf>) -> Self {
-        self.arguments.existing_proof_file = existing_proof_file;
+    pub fn with_vkey_app_file(mut self, vkey_app_file: Option<PathBuf>) -> Self {
+        self.arguments.vkey_app_file = vkey_app_file;
         self
     }
 
-    pub fn with_name(mut self, name: String) -> Self {
-        self.name = Some(name);
+    pub fn with_existing_proof_file(mut self, existing_proof_file: Option<PathBuf>) -> Self {
+        self.arguments.existing_proof_file = existing_proof_file;
         self
     }
 
@@ -486,11 +493,22 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
+    fn maybe_write_constants(&self, constants: &[(String, Vec<T>)]) -> Result<(), Vec<String>> {
+        if let Some(path) = self.path_if_should_write(|_| "constants.bin".to_string())? {
+            write_polys_file(&path, constants).map_err(|e| vec![format!("{}", e)])?;
+        }
+        Ok(())
+    }
+
     fn maybe_write_witness(
         &self,
         fixed: &[(String, Vec<T>)],
         witness: &[(String, Vec<T>)],
     ) -> Result<(), Vec<String>> {
+        if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
+            write_polys_file(&path, witness).map_err(|e| vec![format!("{}", e)])?;
+        }
+
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
                 let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
@@ -780,6 +798,7 @@ impl<T: FieldElement> Pipeline<T> {
 
         let start = Instant::now();
         let fixed_cols = constant_evaluator::generate(&pil);
+        self.maybe_write_constants(&fixed_cols)?;
         self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
         self.artifact.fixed_cols = Some(Rc::new(fixed_cols));
@@ -827,6 +846,12 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }
 
+    pub fn publics(&self) -> Result<Vec<(String, T)>, Vec<String>> {
+        let pil = self.optimized_pil()?;
+        let witness = self.witness()?;
+        Ok(extract_publics(&witness, &pil))
+    }
+
     pub fn witgen_callback(&mut self) -> Result<WitgenCallback<T>, Vec<String>> {
         Ok(WitgenCallback::new(
             self.compute_optimized_pil()?,
@@ -865,6 +890,13 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| BufReader::new(fs::File::open(path).unwrap()));
 
+        // Opens the verification app key file, if set.
+        let mut vkey_app = self
+            .arguments
+            .vkey_app_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
         /* Create the backend */
         let backend = factory
             .create(
@@ -873,6 +905,8 @@ impl<T: FieldElement> Pipeline<T> {
                 self.output_dir(),
                 setup.as_io_read(),
                 vkey.as_io_read(),
+                vkey_app.as_io_read(),
+                self.arguments.backend_options.clone(),
             )
             .unwrap();
 
@@ -888,7 +922,7 @@ impl<T: FieldElement> Pipeline<T> {
             Err(powdr_backend::Error::BackendError(e)) => {
                 return Err(vec![e.to_string()]);
             }
-            _ => panic!(),
+            Err(e) => panic!("{}", e),
         };
 
         drop(backend);
@@ -906,6 +940,10 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn output_dir(&self) -> Option<&Path> {
         self.output_dir.as_ref().map(|p| p.as_ref())
+    }
+
+    pub fn is_force_overwrite(&self) -> bool {
+        self.force_overwrite
     }
 
     pub fn name(&self) -> &str {
@@ -932,6 +970,13 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| BufReader::new(fs::File::open(path).unwrap()));
 
+        // An aggregation verification key needs the app vkey to be set
+        let mut vkey_app_file = self
+            .arguments
+            .vkey_app_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
         let pil = self.compute_optimized_pil()?;
         let fixed_cols = self.compute_fixed_cols()?;
 
@@ -944,11 +989,70 @@ impl<T: FieldElement> Pipeline<T> {
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),
                 None,
+                vkey_app_file
+                    .as_mut()
+                    .map(|file| file as &mut dyn std::io::Read),
+                self.arguments.backend_options.clone(),
             )
             .unwrap();
 
         match backend.export_verification_key(&mut writer) {
             Ok(()) => Ok(()),
+            Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
+            _ => panic!(),
+        }
+    }
+
+    pub fn export_ethereum_verifier<W: io::Write>(
+        &mut self,
+        mut writer: W,
+    ) -> Result<(), Vec<String>> {
+        let backend = self
+            .arguments
+            .backend
+            .expect("backend must be set before generating verifier!");
+        let factory = backend.factory::<T>();
+
+        let mut setup_file = self
+            .arguments
+            .setup_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
+        let mut vkey = self
+            .arguments
+            .vkey_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
+        let mut vkey_app = self
+            .arguments
+            .vkey_app_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
+        let pil = self.compute_optimized_pil()?;
+        let fixed_cols = self.compute_fixed_cols()?;
+
+        let backend = factory
+            .create(
+                pil.borrow(),
+                &fixed_cols[..],
+                self.output_dir(),
+                setup_file
+                    .as_mut()
+                    .map(|file| file as &mut dyn std::io::Read),
+                vkey.as_io_read(),
+                vkey_app.as_io_read(),
+                self.arguments.backend_options.clone(),
+            )
+            .unwrap();
+
+        match backend.export_ethereum_verifier(&mut writer) {
+            Ok(()) => Ok(()),
+            Err(powdr_backend::Error::NoEthereumVerifierAvailable) => {
+                Err(vec!["No Ethereum verifier available".to_string()])
+            }
             Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
             _ => panic!(),
         }
@@ -985,6 +1089,9 @@ impl<T: FieldElement> Pipeline<T> {
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),
                 Some(&mut vkey_file),
+                // We shouldn't need the app verification key for this
+                None,
+                self.arguments.backend_options.clone(),
             )
             .unwrap();
 

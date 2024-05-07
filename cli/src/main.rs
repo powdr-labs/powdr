@@ -7,13 +7,12 @@ use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use powdr_backend::BackendType;
-use powdr_number::{read_polys_csv_file, CsvRenderMode};
-use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
-use powdr_pipeline::util::write_or_panic;
+use powdr_number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
+use powdr_number::{BigUint, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::Pipeline;
 use powdr_riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use powdr_riscv::{compile_riscv_asm, compile_rust};
-use std::io::{self, BufWriter};
+use std::io;
 use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
@@ -134,6 +133,15 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         prove_with: Option<BackendType>,
 
+        /// File containing previously generated setup parameters.
+        #[arg(long)]
+        params: Option<String>,
+
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
+        #[arg(long)]
+        backend_options: Option<String>,
+
         /// Generate a CSV file containing the fixed and witness column values. Useful for debugging purposes.
         #[arg(long)]
         #[arg(default_value_t = false)]
@@ -192,6 +200,15 @@ enum Commands {
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         prove_with: Option<BackendType>,
+
+        /// File containing previously generated setup parameters.
+        #[arg(long)]
+        params: Option<String>,
+
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
+        #[arg(long)]
+        backend_options: Option<String>,
 
         /// Generate a CSV file containing the fixed and witness column values. Useful for debugging purposes.
         #[arg(long)]
@@ -257,6 +274,15 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         prove_with: Option<BackendType>,
 
+        /// File containing previously generated setup parameters.
+        #[arg(long)]
+        params: Option<String>,
+
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
+        #[arg(long)]
+        backend_options: Option<String>,
+
         /// Generate a CSV file containing the fixed and witness column values. Useful for debugging purposes.
         #[arg(long)]
         #[arg(default_value_t = false)]
@@ -303,6 +329,11 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         backend: BackendType,
 
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
+        #[arg(long)]
+        backend_options: Option<String>,
+
         /// File containing previously generated proof for aggregation.
         #[arg(long)]
         proof: Option<String>,
@@ -310,6 +341,11 @@ enum Commands {
         /// File containing previously generated verification key.
         #[arg(long)]
         vkey: Option<String>,
+
+        /// File containing the verification key of a proof to be
+        /// verified recursively.
+        #[arg(long)]
+        vkey_app: Option<String>,
 
         /// File containing previously generated setup parameters.
         #[arg(long)]
@@ -336,6 +372,11 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         backend: BackendType,
 
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
+        #[arg(long)]
+        backend_options: Option<String>,
+
         /// File containing the proof.
         #[arg(long)]
         proof: String,
@@ -345,7 +386,7 @@ enum Commands {
         #[arg(default_value_t = String::new())]
         publics: String,
 
-        /// File containing the verification ley.
+        /// File containing the verification key.
         #[arg(long)]
         vkey: String,
 
@@ -374,10 +415,55 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         backend: BackendType,
 
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
+        #[arg(long)]
+        backend_options: Option<String>,
+
         /// File containing previously generated setup parameters.
         /// This will be needed for SNARK verification keys but not for STARK.
         #[arg(long)]
         params: Option<String>,
+
+        /// File containing the verification key of a proof to be
+        /// verified recursively.
+        #[arg(long)]
+        vkey_app: Option<String>,
+    },
+
+    ExportVerifier {
+        /// Input PIL file
+        file: String,
+
+        /// Directory to find the fixed values
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        dir: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Chosen backend.
+        #[arg(short, long)]
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        backend: BackendType,
+
+        /// Backend options. Halo2: "poseidon", "snark_single" or "snark_aggr".
+        /// EStark and PilStarkCLI: "stark_gl", "stark_bn" or "snark_bn".
+        #[arg(long)]
+        backend_options: Option<String>,
+
+        /// File containing previously generated setup parameters.
+        /// This will be needed for SNARK verification keys but not for STARK.
+        #[arg(long)]
+        params: Option<String>,
+
+        /// File containing previously generated verification key.
+        #[arg(long)]
+        vkey: Option<String>,
     },
 
     Setup {
@@ -425,7 +511,7 @@ fn split_inputs<T: FieldElement>(inputs: &str) -> Vec<T> {
         .split(',')
         .map(|x| x.trim())
         .filter(|x| !x.is_empty())
-        .map(|x| x.parse::<u64>().unwrap().into())
+        .map(|x| x.parse::<BigUint>().unwrap().into())
         .collect()
 }
 
@@ -480,6 +566,8 @@ fn run_command(command: Commands) {
             force,
             pilo,
             prove_with,
+            params,
+            backend_options,
             export_csv,
             csv_mode,
             coprocessors,
@@ -493,6 +581,8 @@ fn run_command(command: Commands) {
                 force,
                 pilo,
                 prove_with,
+                params,
+                backend_options,
                 export_csv,
                 csv_mode,
                 coprocessors,
@@ -508,6 +598,8 @@ fn run_command(command: Commands) {
             force,
             pilo,
             prove_with,
+            params,
+            backend_options,
             export_csv,
             csv_mode,
             coprocessors,
@@ -529,6 +621,8 @@ fn run_command(command: Commands) {
                 force,
                 pilo,
                 prove_with,
+                params,
+                backend_options,
                 export_csv,
                 csv_mode,
                 coprocessors,
@@ -557,6 +651,8 @@ fn run_command(command: Commands) {
             force,
             pilo,
             prove_with,
+            params,
+            backend_options,
             export_csv,
             csv_mode,
             just_execute,
@@ -570,6 +666,8 @@ fn run_command(command: Commands) {
                 force,
                 pilo,
                 prove_with,
+                params,
+                backend_options,
                 export_csv,
                 csv_mode,
                 just_execute,
@@ -581,14 +679,23 @@ fn run_command(command: Commands) {
             dir,
             field,
             backend,
+            backend_options,
             proof,
             vkey,
+            vkey_app,
             params,
         } => {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
             call_with_field!(read_and_prove::<field>(
-                pil, dir, &backend, proof, vkey, params
+                pil,
+                dir,
+                &backend,
+                backend_options,
+                proof,
+                vkey,
+                vkey_app,
+                params
             ))
         }
         Commands::Verify {
@@ -596,6 +703,7 @@ fn run_command(command: Commands) {
             dir,
             field,
             backend,
+            backend_options,
             proof,
             publics,
             params,
@@ -604,7 +712,14 @@ fn run_command(command: Commands) {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
             call_with_field!(read_and_verify::<field>(
-                pil, dir, &backend, proof, publics, params, vkey
+                pil,
+                dir,
+                &backend,
+                backend_options,
+                proof,
+                publics,
+                params,
+                vkey
             ))
         }
         Commands::VerificationKey {
@@ -612,11 +727,40 @@ fn run_command(command: Commands) {
             dir,
             field,
             backend,
+            backend_options,
             params,
+            vkey_app,
         } => {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
-            call_with_field!(verification_key::<field>(pil, dir, &backend, params))
+            call_with_field!(verification_key::<field>(
+                pil,
+                dir,
+                &backend,
+                backend_options,
+                params,
+                vkey_app
+            ))
+        }
+        Commands::ExportVerifier {
+            file,
+            dir,
+            field,
+            backend,
+            backend_options,
+            params,
+            vkey,
+        } => {
+            let pil = Path::new(&file);
+            let dir = Path::new(&dir);
+            call_with_field!(export_verifier::<field>(
+                pil,
+                dir,
+                &backend,
+                backend_options,
+                params,
+                vkey
+            ))
         }
         Commands::Setup {
             size,
@@ -640,17 +784,48 @@ fn verification_key<T: FieldElement>(
     file: &Path,
     dir: &Path,
     backend_type: &BackendType,
+    backend_options: Option<String>,
     params: Option<String>,
+    vkey_app: Option<String>,
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
         .read_constants(dir)
         .with_setup_file(params.map(PathBuf::from))
-        .with_backend(*backend_type);
+        .with_vkey_app_file(vkey_app.map(PathBuf::from))
+        .with_backend(*backend_type, backend_options);
 
-    let vkey_file = BufWriter::new(fs::File::create(dir.join("vkey.bin")).unwrap());
-    write_or_panic(vkey_file, |w| pipeline.export_verification_key(w))?;
+    log::info!("Generating verification key...");
+    buffered_write_file(&dir.join("vkey.bin"), |w| {
+        pipeline.export_verification_key(w).unwrap()
+    })
+    .unwrap();
     log::info!("Wrote vkey.bin.");
+
+    Ok(())
+}
+
+fn export_verifier<T: FieldElement>(
+    file: &Path,
+    dir: &Path,
+    backend_type: &BackendType,
+    backend_options: Option<String>,
+    params: Option<String>,
+    vkey: Option<String>,
+) -> Result<(), Vec<String>> {
+    let mut pipeline = Pipeline::<T>::default()
+        .from_file(file.to_path_buf())
+        .read_constants(dir)
+        .with_setup_file(params.map(PathBuf::from))
+        .with_vkey_file(vkey.map(PathBuf::from))
+        .with_backend(*backend_type, backend_options);
+
+    buffered_write_file(&dir.join("verifier.sol"), |w| {
+        pipeline.export_ethereum_verifier(w).unwrap()
+    })
+    .unwrap();
+
+    log::info!("Wrote verifier.sol.");
 
     Ok(())
 }
@@ -658,13 +833,13 @@ fn verification_key<T: FieldElement>(
 fn setup<F: FieldElement>(size: u64, dir: String, backend_type: BackendType) {
     let dir = Path::new(&dir);
 
-    let params_file = BufWriter::new(fs::File::create(dir.join("params.bin")).unwrap());
-    write_or_panic(params_file, |writer| {
+    buffered_write_file(&dir.join("params.bin"), |writer| {
         backend_type
             .factory::<F>()
             .generate_setup(size, writer)
             .unwrap()
-    });
+    })
+    .unwrap();
     log::info!("Wrote params.bin.");
 }
 
@@ -676,6 +851,8 @@ fn run_rust<F: FieldElement>(
     force_overwrite: bool,
     pilo: bool,
     prove_with: Option<BackendType>,
+    params: Option<String>,
+    backend_options: Option<String>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
     coprocessors: Option<String>,
@@ -713,7 +890,15 @@ fn run_rust<F: FieldElement>(
         export_csv,
         csv_mode,
     );
-    run(pipeline, inputs, prove_with, just_execute, continuations)?;
+    run(
+        pipeline,
+        inputs,
+        prove_with,
+        params,
+        backend_options,
+        just_execute,
+        continuations,
+    )?;
     Ok(())
 }
 
@@ -726,6 +911,8 @@ fn run_riscv_asm<F: FieldElement>(
     force_overwrite: bool,
     pilo: bool,
     prove_with: Option<BackendType>,
+    params: Option<String>,
+    backend_options: Option<String>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
     coprocessors: Option<String>,
@@ -764,7 +951,15 @@ fn run_riscv_asm<F: FieldElement>(
         export_csv,
         csv_mode,
     );
-    run(pipeline, inputs, prove_with, just_execute, continuations)?;
+    run(
+        pipeline,
+        inputs,
+        prove_with,
+        params,
+        backend_options,
+        just_execute,
+        continuations,
+    )?;
     Ok(())
 }
 
@@ -777,6 +972,8 @@ fn run_pil<F: FieldElement>(
     force: bool,
     pilo: bool,
     prove_with: Option<BackendType>,
+    params: Option<String>,
+    backend_options: Option<String>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
     just_execute: bool,
@@ -794,7 +991,15 @@ fn run_pil<F: FieldElement>(
         export_csv,
         csv_mode,
     );
-    run(pipeline, inputs, prove_with, just_execute, continuations)?;
+    run(
+        pipeline,
+        inputs,
+        prove_with,
+        params,
+        backend_options,
+        just_execute,
+        continuations,
+    )?;
     Ok(())
 }
 
@@ -802,9 +1007,13 @@ fn run<F: FieldElement>(
     mut pipeline: Pipeline<F>,
     inputs: Vec<F>,
     prove_with: Option<BackendType>,
+    params: Option<String>,
+    backend_options: Option<String>,
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
+    pipeline = pipeline.with_setup_file(params.map(PathBuf::from));
+
     let bootloader_inputs = if continuations {
         pipeline = pipeline.with_prover_inputs(inputs.clone());
         rust_continuations_dry_run(&mut pipeline)
@@ -815,7 +1024,10 @@ fn run<F: FieldElement>(
     let generate_witness_and_prove_maybe = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
         pipeline.compute_witness().unwrap();
         if let Some(backend) = prove_with {
-            pipeline.with_backend(backend).compute_proof().unwrap();
+            pipeline
+                .with_backend(backend, backend_options.clone())
+                .compute_proof()
+                .unwrap();
         }
         Ok(())
     };
@@ -849,12 +1061,15 @@ fn run<F: FieldElement>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn read_and_prove<T: FieldElement>(
     file: &Path,
     dir: &Path,
     backend_type: &BackendType,
+    backend_options: Option<String>,
     proof_path: Option<String>,
     vkey: Option<String>,
+    vkey_app: Option<String>,
     params: Option<String>,
 ) -> Result<(), Vec<String>> {
     Pipeline::<T>::default()
@@ -862,17 +1077,20 @@ fn read_and_prove<T: FieldElement>(
         .with_output(dir.to_path_buf(), true)
         .read_witness(dir)
         .with_setup_file(params.map(PathBuf::from))
+        .with_vkey_app_file(vkey_app.map(PathBuf::from))
         .with_vkey_file(vkey.map(PathBuf::from))
         .with_existing_proof_file(proof_path.map(PathBuf::from))
-        .with_backend(*backend_type)
+        .with_backend(*backend_type, backend_options)
         .compute_proof()?;
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn read_and_verify<T: FieldElement>(
     file: &Path,
     dir: &Path,
     backend_type: &BackendType,
+    backend_options: Option<String>,
     proof: String,
     publics: String,
     params: Option<String>,
@@ -889,7 +1107,7 @@ fn read_and_verify<T: FieldElement>(
         .read_constants(dir)
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_file(Some(vkey))
-        .with_backend(*backend_type);
+        .with_backend(*backend_type, backend_options);
 
     pipeline.verify(&proof, &[publics])?;
     println!("Proof is valid!");
@@ -932,6 +1150,8 @@ mod test {
             force: false,
             pilo: false,
             prove_with: Some(BackendType::EStarkDump),
+            params: None,
+            backend_options: Some("stark_gl".to_string()),
             export_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,
             just_execute: false,
@@ -951,8 +1171,10 @@ mod test {
                 dir: output_dir_str,
                 field: FieldArgument::Bn254,
                 backend: BackendType::Halo2Mock,
+                backend_options: None,
                 proof: None,
                 vkey: None,
+                vkey_app: None,
                 params: None,
             };
             run_command(prove_command);
