@@ -461,7 +461,7 @@ impl<R> Expression<R> {
             Expression::BinaryOperation(left, _, right) => {
                 [left.as_ref(), right.as_ref()].into_iter()
             }
-            Expression::UnaryOperation(UnaryOperation { op: _, expr }) => once(expr.as_ref()),
+            Expression::UnaryOperation(UnaryOperation { expr, .. }) => once(expr.as_ref()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
                 [array.as_ref(), index.as_ref()].into_iter()
             }
@@ -502,7 +502,7 @@ impl<R> Expression<R> {
             Expression::BinaryOperation(left, _, right) => {
                 [left.as_mut(), right.as_mut()].into_iter()
             }
-            Expression::UnaryOperation(UnaryOperation { op: _, expr }) => once(expr.as_mut()),
+            Expression::UnaryOperation(UnaryOperation { expr, .. }) => once(expr.as_mut()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
                 [array.as_mut(), index.as_mut()].into_iter()
             }

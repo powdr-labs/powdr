@@ -659,7 +659,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.op_stack.push(Operation::Expand(r));
                 self.expand(l)?;
             }
-            Expression::UnaryOperation(UnaryOperation { op: _, expr: inner }) => {
+            Expression::UnaryOperation(UnaryOperation { expr: inner, .. }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.expand(inner)?;
             }
@@ -762,7 +762,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 let left = self.value_stack.pop().unwrap();
                 evaluate_binary_operation(&left, *op, &right)?
             }
-            Expression::UnaryOperation(UnaryOperation { op, expr: _ }) => {
+            Expression::UnaryOperation(UnaryOperation { op, .. }) => {
                 let inner = self.value_stack.pop().unwrap();
                 match (op, inner.as_ref()) {
                     (UnaryOperator::Minus, Value::FieldElement(e)) => {
