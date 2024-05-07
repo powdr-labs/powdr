@@ -488,8 +488,8 @@ impl<'a> TypeChecker<'a> {
             }
             Expression::PublicReference(_) => Type::Expr,
             Expression::Number(Number {
-                value: _,
                 type_: annotated_type,
+                ..
             }) => {
                 let ty = match annotated_type {
                     Some(Type::Int) => Type::Int,
@@ -675,8 +675,8 @@ impl<'a> TypeChecker<'a> {
         // For literals, we try to store the type here already.
         // This avoids creating tons of type variables for large arrays.
         if let Expression::Number(Number {
-            value: _,
             type_: annotated_type @ None,
+            ..
         }) = expr
         {
             match expected_type {

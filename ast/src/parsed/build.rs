@@ -4,7 +4,7 @@ use crate::parsed::Expression;
 
 use super::{
     asm::{parse_absolute_path, Part, SymbolPath},
-    BinaryOperator, IndexAccess, NamespacedPolynomialReference, Number, UnaryOperator,
+    BinaryOperator, IndexAccess, NamespacedPolynomialReference, UnaryOperator,
 };
 
 pub fn absolute_reference(name: &str) -> Expression {
@@ -33,10 +33,7 @@ pub fn index_access(expr: Expression, index: Option<BigUint>) -> Expression {
     match index {
         Some(i) => Expression::IndexAccess(IndexAccess {
             array: Box::new(expr),
-            index: Box::new(Expression::Number(Number {
-                value: i,
-                type_: None,
-            })),
+            index: Box::new(i.into()),
         }),
         None => expr,
     }

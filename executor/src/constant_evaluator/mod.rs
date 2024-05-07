@@ -8,10 +8,10 @@ use powdr_ast::{
     analyzed::{Analyzed, Expression, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
-        IndexAccess, Number,
+        IndexAccess,
     },
 };
-use powdr_number::{BigInt, DegreeType, FieldElement};
+use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
@@ -71,13 +71,7 @@ fn generate_values<T: FieldElement>(
             let e = if let Some(index) = index {
                 index_expr = Expression::IndexAccess(IndexAccess {
                     array: e.clone().into(),
-                    index: Box::new(
-                        Number {
-                            value: index.into(),
-                            type_: None,
-                        }
-                        .into(),
-                    ),
+                    index: Box::new(BigUint::from(index).into()),
                 });
                 &index_expr
             } else {

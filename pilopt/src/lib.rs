@@ -220,7 +220,7 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
                 .filter(|e| !e.is_empty())
                 .flat_map(|e| e.pattern().iter())
                 .map(|e| match e {
-                    Expression::Number(Number { value: n, type_: _ }) => Some(n),
+                    Expression::Number(Number { value: n, .. }) => Some(n),
                     _ => None,
                 });
             let first = values.next()??;
