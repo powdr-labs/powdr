@@ -463,7 +463,7 @@ impl<R> Expression<R> {
             Expression::Tuple(v) => v.iter(),
             Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_ref()),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter(),
-            Expression::BinaryOperation(BinaryOperation { left, op: _, right }) => {
+            Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
                 [left.as_ref(), right.as_ref()].into_iter()
             }
             Expression::UnaryOperation(_, e) => once(e.as_ref()),
@@ -504,7 +504,7 @@ impl<R> Expression<R> {
             Expression::Tuple(v) => v.iter_mut(),
             Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_mut()),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter_mut(),
-            Expression::BinaryOperation(BinaryOperation { left, op: _, right }) => {
+            Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
                 [left.as_mut(), right.as_mut()].into_iter()
             }
             Expression::UnaryOperation(_, e) => once(e.as_mut()),

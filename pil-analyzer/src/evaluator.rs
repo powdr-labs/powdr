@@ -654,7 +654,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.expand(&items[0])?;
                 }
             }
-            Expression::BinaryOperation(BinaryOperation { left, op: _, right }) => {
+            Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.op_stack.push(Operation::Expand(right));
                 self.expand(left)?;
@@ -757,11 +757,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     .split_off(self.value_stack.len() - items.len());
                 Value::Array(inner_values).into()
             }
-            Expression::BinaryOperation(BinaryOperation {
-                left: _,
-                op,
-                right: _,
-            }) => {
+            Expression::BinaryOperation(BinaryOperation { op, .. }) => {
                 let right = self.value_stack.pop().unwrap();
                 let left = self.value_stack.pop().unwrap();
                 evaluate_binary_operation(&left, *op, &right)?

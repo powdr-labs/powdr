@@ -98,16 +98,14 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             PExpression::LambdaExpression(lambda_expression) => {
                 Expression::LambdaExpression(self.process_lambda_expression(lambda_expression))
             }
-            PExpression::BinaryOperation(BinaryOperation {
-                left: l,
-                op,
-                right: r,
-            }) => (BinaryOperation {
-                left: Box::new(self.process_expression(*l)),
-                op,
-                right: Box::new(self.process_expression(*r)),
-            })
-            .into(),
+            PExpression::BinaryOperation(BinaryOperation { left, op, right }) => {
+                (BinaryOperation {
+                    left: Box::new(self.process_expression(*left)),
+                    op,
+                    right: Box::new(self.process_expression(*right)),
+                })
+                .into()
+            }
             PExpression::UnaryOperation(op, value) => {
                 Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
             }

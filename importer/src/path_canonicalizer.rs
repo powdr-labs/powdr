@@ -156,7 +156,7 @@ fn free_inputs_in_expression<'a>(
         | Expression::PublicReference(_)
         | Expression::Number(_, _)
         | Expression::String(_) => Box::new(None.into_iter()),
-        Expression::BinaryOperation(BinaryOperation { left, op: _, right }) => {
+        Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
             Box::new(free_inputs_in_expression(left).chain(free_inputs_in_expression(right)))
         }
         Expression::UnaryOperation(_, expr) => free_inputs_in_expression(expr),
@@ -188,7 +188,7 @@ fn free_inputs_in_expression_mut<'a>(
         | Expression::PublicReference(_)
         | Expression::Number(_, _)
         | Expression::String(_) => Box::new(None.into_iter()),
-        Expression::BinaryOperation(BinaryOperation { left, op: _, right }) => Box::new(
+        Expression::BinaryOperation(BinaryOperation { left, right, .. }) => Box::new(
             free_inputs_in_expression_mut(left).chain(free_inputs_in_expression_mut(right)),
         ),
         Expression::UnaryOperation(_, expr) => free_inputs_in_expression_mut(expr),
@@ -661,9 +661,7 @@ fn check_expression(
             check_expression(location, body, state, &local_variables)
         }
         Expression::BinaryOperation(BinaryOperation {
-            left: a,
-            op: _,
-            right: b,
+            left: a, right: b, ..
         })
         | Expression::IndexAccess(IndexAccess { array: a, index: b }) => {
             check_expression(location, a.as_ref(), state, local_variables)?;
