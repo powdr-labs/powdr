@@ -571,6 +571,12 @@ pub struct LambdaExpression<E = Expression<NamespacedPolynomialReference>> {
     pub body: Box<E>,
 }
 
+impl<Ref> From<LambdaExpression<Expression<Ref>>> for Expression<Ref> {
+    fn from(lambda: LambdaExpression<Expression<Ref>>) -> Self {
+        Expression::LambdaExpression(lambda)
+    }
+}
+
 impl<E> Children<E> for LambdaExpression<E> {
     fn children(&self) -> Box<dyn Iterator<Item = &E> + '_> {
         Box::new(once(self.body.as_ref()))
@@ -670,6 +676,12 @@ impl<E> Children<E> for IndexAccess<E> {
 pub struct FunctionCall<E = Expression<NamespacedPolynomialReference>> {
     pub function: Box<E>,
     pub arguments: Vec<E>,
+}
+
+impl<Ref> From<FunctionCall<Expression<Ref>>> for Expression<Ref> {
+    fn from(call: FunctionCall<Expression<Ref>>) -> Self {
+        Expression::FunctionCall(call)
+    }
 }
 
 impl<E> Children<E> for FunctionCall<E> {
