@@ -643,3 +643,10 @@ fn keccak() {
             test_main(&analyzed, input, expected);
         });
 }
+
+#[test]
+fn connect_no_witgen() {
+    let f = "asm/connect_no_witgen.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
+}
