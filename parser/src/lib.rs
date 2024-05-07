@@ -277,7 +277,7 @@ mod test {
             | Number(s, _)
             | String(s, _)
             | Tuple(s, _)
-            | ArrayLiteral(s)
+            | ArrayLiteral(s, _)
             | UnaryOperation(s, _)
             | BinaryOperation(s, _)
             | IndexAccess(s, _)

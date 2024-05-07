@@ -379,7 +379,6 @@ impl<Ref: PartialEq> PartialEq for Expression<Ref> {
 pub trait SourceReference {
     fn source_reference(&self) -> &SourceRef;
     fn source_reference_mut(&mut self) -> &mut SourceRef;
-    fn set_source_reference(&mut self, source: SourceRef);
 }
 
 impl<E> SourceReference for Expression<E> {
@@ -422,27 +421,6 @@ impl<E> SourceReference for Expression<E> {
             MatchExpression(src, _) => src,
             IfExpression(src, _) => src,
             BlockExpression(src, _) => src,
-        }
-    }
-
-    fn set_source_reference(&mut self, new_src: SourceRef) {
-        use Expression::*;
-        match self {
-            Reference(src, _) => *src = new_src,
-            PublicReference(src, _) => *src = new_src,
-            Number(src, _) => *src = new_src,
-            String(src, _) => *src = new_src,
-            Tuple(src, _) => *src = new_src,
-            LambdaExpression(src, _) => *src = new_src,
-            ArrayLiteral(src, _) => *src = new_src,
-            BinaryOperation(src, _) => *src = new_src,
-            UnaryOperation(src, _) => *src = new_src,
-            IndexAccess(src, _) => *src = new_src,
-            FunctionCall(src, _) => *src = new_src,
-            FreeInput(src, _) => *src = new_src,
-            MatchExpression(src, _) => *src = new_src,
-            IfExpression(src, _) => *src = new_src,
-            BlockExpression(src, _) => *src = new_src,
         }
     }
 }
