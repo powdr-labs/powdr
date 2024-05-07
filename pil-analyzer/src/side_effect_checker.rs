@@ -57,10 +57,7 @@ impl<'a> SideEffectChecker<'a> {
                 self.context = old_context;
                 result
             }
-            Expression::BlockExpression(BlockExpression {
-                statements,
-                expr: _,
-            }) => {
+            Expression::BlockExpression(BlockExpression { statements, .. }) => {
                 for s in statements {
                     match s {
                         StatementInsideBlock::LetStatement(s) => {

@@ -230,7 +230,7 @@ fn canonicalize_inside_expression(
             }
             Expression::BlockExpression(BlockExpression {
                 statements,
-                expr: _,
+                ..,
             }) => {
                 for statement in statements {
                     if let StatementInsideBlock::LetStatement(let_statement) = statement {
