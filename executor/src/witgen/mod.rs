@@ -311,7 +311,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                             }
                             // Remove any hint for witness columns of a later stage
                             // (because it might reference a challenge that is not available yet)
-                            let value = if poly.stage.unwrap_or_default() <= stage.into() {  value.as_ref()} else { None };
+                            let value = if poly.stage.unwrap_or_default() <= stage.into() { value.as_ref() } else { None };
                             WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
                         })
                         .collect::<Vec<_>>()

@@ -104,22 +104,25 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         match self.fixed_data.analyzed.intermediate_columns.get(name) {
-            // Intermediate polynomials (which includes challenged) are not inlined in hints,
+            // Intermediate polynomials (which includes challenges) are not inlined in hints,
             // so we need to look them up here.
             Some((symbol, expressions)) => {
-                if symbol.is_array() {
-                    Ok(Value::Array(
+                if let Some(type_args) = &type_args {
+                    assert!(type_args.is_empty());
+                }
+                Ok(if symbol.is_array() {
+                    Value::Array(
                         expressions
                             .clone()
                             .into_iter()
                             .map(|e| Value::from(e).into())
                             .collect(),
                     )
-                    .into())
                 } else {
                     assert!(expressions.len() == 1);
-                    Ok(Value::from(expressions[0].clone()).into())
+                    Value::from(expressions[0].clone())
                 }
+                .into())
             }
             None => Definitions::lookup_with_symbols(
                 &self.fixed_data.analyzed.definitions,
