@@ -228,10 +228,7 @@ fn canonicalize_inside_expression(
                     assert!(reference.path.try_to_identifier().is_some());
                 }
             }
-            Expression::BlockExpression(BlockExpression {
-                statements,
-                ..,
-            }) => {
+            Expression::BlockExpression(BlockExpression { statements, .. }) => {
                 for statement in statements {
                     if let StatementInsideBlock::LetStatement(let_statement) = statement {
                         canonicalize_inside_pattern(&mut let_statement.pattern, path, paths);
