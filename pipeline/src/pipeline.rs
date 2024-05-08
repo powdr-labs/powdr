@@ -213,8 +213,7 @@ impl<T: FieldElement> Pipeline<T> {
                     .external_witness_values
                     .iter()
                     .any(|(n, _)| n == name),
-                "Duplicate witness column name: {}",
-                name
+                "Duplicate witness column name: {name}"
             );
         }
         self.arguments

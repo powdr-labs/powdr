@@ -313,8 +313,8 @@ fn serialize_deserialize_optimized_pil() {
     let optimized_deserialized: powdr_ast::analyzed::Analyzed<powdr_number::Bn254Field> =
         serde_cbor::from_slice(&optimized_serialized[..]).unwrap();
 
-    let input_pil_file = format!("{}", optimized);
-    let output_pil_file = format!("{}", optimized_deserialized);
+    let input_pil_file = format!("{optimized}");
+    let output_pil_file = format!("{optimized_deserialized}");
 
     assert_eq!(input_pil_file, output_pil_file);
 }

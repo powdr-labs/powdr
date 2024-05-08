@@ -38,7 +38,7 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<Strin
 
     reg_values
         .into_iter()
-        .map(|(n, c)| (format!("main.{}", n), c))
+        .map(|(n, c)| (format!("main.{n}"), c))
         .collect()
 }
 
@@ -83,7 +83,7 @@ where
                 let pipeline = if let Some(parent_dir) = pipeline.output_dir() {
                     let force_overwrite = pipeline.is_force_overwrite();
 
-                    let chunk_dir = parent_dir.join(format!("chunk_{}", i));
+                    let chunk_dir = parent_dir.join(format!("chunk_{i}"));
                     create_dir_all(&chunk_dir).unwrap();
 
                     // Hardlink constants.bin so that chunk dir will be self sufficient

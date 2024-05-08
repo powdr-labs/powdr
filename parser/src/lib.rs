@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 lalrpop_mod!(
     #[allow(clippy::all)]
+    #[allow(clippy::uninlined_format_args)]
     pub powdr,
     "/powdr.rs"
 );
@@ -335,7 +336,7 @@ mod test {
         let asm_files = find_files_with_ext(basedir, "asm".into());
         for (file, orig_string) in asm_files {
             let mut orig_asm = parse_asm(Some(&file), &orig_string).unwrap_err_to_stderr();
-            let orig_asm_to_string = format!("{}", orig_asm);
+            let orig_asm_to_string = format!("{orig_asm}");
             let mut reparsed_asm = parse_asm(
                 Some((file.clone() + " reparsed").as_ref()),
                 &orig_asm_to_string,
@@ -354,7 +355,7 @@ mod test {
                         similar::ChangeTag::Insert => "+",
                         similar::ChangeTag::Equal => " ",
                     };
-                    eprint!("\t{}{}", sign, change);
+                    eprint!("\t{sign}{change}");
                 }
                 panic!("parsed and re-parsed ASTs differ for file: {file}");
             }
@@ -369,7 +370,7 @@ mod test {
         let pil_files = find_files_with_ext(basedir, "pil".into());
         for (file, orig_string) in pil_files {
             let mut orig_pil = parse(Some(&file), &orig_string).unwrap_err_to_stderr();
-            let orig_pil_to_string = format!("{}", orig_pil);
+            let orig_pil_to_string = format!("{orig_pil}");
             let mut reparsed_pil = parse(
                 Some((file.clone() + " reparsed").as_ref()),
                 &orig_pil_to_string,
@@ -389,7 +390,7 @@ mod test {
                         similar::ChangeTag::Insert => "+",
                         similar::ChangeTag::Equal => " ",
                     };
-                    eprint!("\t{}{}", sign, change);
+                    eprint!("\t{sign}{change}");
                 }
                 panic!("parsed and re-parsed ASTs differ for file: {file}");
             }
