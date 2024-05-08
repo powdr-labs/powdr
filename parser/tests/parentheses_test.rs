@@ -29,14 +29,13 @@ mod test {
             ("(-x) + y * (!z);", "-x + y * !z;"),
             ("(x * y) * z;", "x * y * z;"),
             ("(x / y) / z;", "x / y / z;"),
-            ("x ** (y ** z);", "x ** y ** z;"),
             ("(x ** (y ** z));", "x ** y ** z;"),
             ("(x - (y + z));", "x - (y + z);"),
             // Observe associativity
             ("x * (y * z);", "x * (y * z);"),
             ("x / (y / z);", "x / (y / z);"),
             ("x ** (y ** z);", "x ** y ** z;"),
-            ("(x ** (y ** z));", "x ** y ** z;"),
+            ("(x ** y) ** z;", "(x ** y) ** z;"),
             // Don't remove needed
             ("(x + y) * z;", "(x + y) * z;"),
             ("((x + y) * z);", "(x + y) * z;"),
