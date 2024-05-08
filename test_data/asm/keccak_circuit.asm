@@ -12,10 +12,10 @@ let rotl_constants = array::new(64, |i| Gate::Reference(25 + i));
 /// Represent the array RC.
 let rc_constants = array::new(24, |i| Gate::Reference(25 + 64 + i));
 
-let xor_c: Gate, Gate -> Gate = |a, b| Gate::Op(1, a, b);
-let rotl64_c: Gate, int -> Gate = |x, n| Gate::Op(2, x, rotl_constants[n]);
+let xor: Gate, Gate -> Gate = |a, b| Gate::Op(1, a, b);
+let rotl64: Gate, int -> Gate = |x, n| Gate::Op(2, x, rotl_constants[n]);
 /// Evaluates as and(not(a), b)
-let and_not_c: Gate, Gate -> Gate = |a, b| Gate::Op(3, a, b);
+let and_not: Gate, Gate -> Gate = |a, b| Gate::Op(3, a, b);
 
 // constants
 let RHO: int[] = [
@@ -46,38 +46,38 @@ let RC: int[] = [
     0x8000000000008080, 0x0000000080000001, 0x8000000080008008
 ];
 
-let theta_bc_c = |st, i| xor_c(xor_c(xor_c(xor_c(st[i], st[i + 5]), st[i + 10]), st[i + 15]), st[i + 20]);
+let theta_bc = |st, i| xor(xor(xor(xor(st[i], st[i + 5]), st[i + 10]), st[i + 15]), st[i + 20]);
 
-let theta_st_c = |state, inputs| {
-    let bc = array::new(5, |i| theta_bc_c(inputs, i));
+let theta_st = |state, inputs| {
+    let bc = array::new(5, |i| theta_bc(inputs, i));
     // TODO we could turn the bc into a reference here already.
     let r = array::map_enumerated(inputs, |idx, elem| {
         let i = idx % 5;
-        let t = xor_c(bc[(i + 4) % 5], rotl64_c(bc[(i + 1) % 5], 1));
-        xor_c(elem, t)
+        let t = xor(bc[(i + 4) % 5], rotl64(bc[(i + 1) % 5], 1));
+        xor(elem, t)
     });
     circuit::add_routines(state, r)
 };
 
-let rho_pi_c: Gate[], int -> Gate = |inputs, i| {
+let rho_pi: Gate[], int -> Gate = |inputs, i| {
     let p = if i == 0 { 23 } else { i - 1 };
-    rotl64_c(inputs[PI[p]], RHO[i])
+    rotl64(inputs[PI[p]], RHO[i])
 };
 // collect st_j
-let rho_pi_loop_c = |inputs| array::new(25, |i| if i == 0 { inputs[0] } else { rho_pi_c(inputs, i - 1) } );
+let rho_pi_loop = |inputs| array::new(25, |i| if i == 0 { inputs[0] } else { rho_pi(inputs, i - 1) } );
 
 // rearrange st_j
-let rho_pi_rearrange_c: Gate[] -> Gate[] = |inputs| array::new(25, |i| inputs[PI_INVERSE[i]]);
+let rho_pi_rearrange: Gate[] -> Gate[] = |inputs| array::new(25, |i| inputs[PI_INVERSE[i]]);
 
 // chi
-let chi_c: Gate[] -> Gate[] = |inputs| array::map_enumerated(inputs, |idx, elem| {
+let chi: Gate[] -> Gate[] = |inputs| array::map_enumerated(inputs, |idx, elem| {
     let i = idx / 5;
     let j = idx % 5;
-    xor_c(inputs[idx], and_not_c(inputs[i * 5 + (j + 1) % 5], inputs[i * 5 + (j + 2) % 5]))
+    xor(inputs[idx], and_not(inputs[i * 5 + (j + 1) % 5], inputs[i * 5 + (j + 2) % 5]))
 });
 
 // iota
-let iota_c: Gate[], int -> Gate[] = |inputs, r| array::map_enumerated(inputs, |idx, elem| if idx == 0 { xor_c(elem, rc_constants[r]) } else { elem } );
+let iota: Gate[], int -> Gate[] = |inputs, r| array::map_enumerated(inputs, |idx, elem| if idx == 0 { xor(elem, rc_constants[r]) } else { elem } );
 
 let add_inputs: State, int -> (State, Gate[]) = |state, n|
     utils::fold(n, |i| i, (state, []), |(s, inp), _| {
@@ -92,8 +92,8 @@ let keccakf_circuit: -> (circuit::State, Gate[]) = || {
     // TODO assert that rotl_const equal rotl_constants
     // TODO assert that rc_const equal rc_constants
     utils::fold(24, |i| i, (s3, inputs), |(s, st), r| {
-        let (s_1, th) = theta_st_c(s, st);
-        circuit::add_routines(s_1, iota_c(chi_c(rho_pi_rearrange_c(rho_pi_loop_c(th))), r))
+        let (s_1, th) = theta_st(s, st);
+        circuit::add_routines(s_1, iota(chi(rho_pi_rearrange(rho_pi_loop(th))), r))
     })
 };
 
