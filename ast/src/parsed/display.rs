@@ -632,10 +632,7 @@ impl<E: Display> Expression<E> {
         right: &Expression<E>,
         f: &mut Formatter<'_>,
     ) -> Result {
-        let parenthes_on_precedence = match op {
-            BinaryOperator::Pow => true,
-            _ => false,
-        };
+        let parenthes_on_precedence = matches!(op, BinaryOperator::Pow);
 
         let use_left_parentheses = match left.precedence() {
             Some(left_precedence) => {
@@ -668,7 +665,7 @@ impl<E: Display> Expression<E> {
             format!("{right}")
         };
 
-        write!(f, "{} {} {}", left_string, op, right_string)
+        write!(f, "{left_string} {op} {right_string}")
     }
 }
 
