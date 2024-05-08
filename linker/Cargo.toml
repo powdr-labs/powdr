@@ -19,3 +19,6 @@ itertools = "^0.10"
 powdr-airgen = { path = "../airgen" }
 powdr-importer = { path = "../importer" }
 powdr-parser = { path = "../parser" }
+
+[lints.clippy]
+uninlined_format_args = "deny"
