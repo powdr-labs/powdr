@@ -26,6 +26,8 @@ type Statement = powdr_asm_utils::ast::Statement<Register, FunctionKind>;
 type Argument = powdr_asm_utils::ast::Argument<Register, FunctionKind>;
 type Expression = powdr_asm_utils::ast::Expression<FunctionKind>;
 
+const RUST_TARGET: &str = "riscv32im-risc0-zkvm-elf";
+
 /// Compiles a rust file all the way down to PIL and generates
 /// fixed and witness columns.
 #[allow(clippy::print_stderr)]
@@ -196,7 +198,7 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
         "-Z",
         "build-std=core,alloc",
         "--target",
-        "riscv32imac-unknown-none-elf",
+        RUST_TARGET,
         "--lib",
         "--target-dir",
         target_dir,
@@ -241,7 +243,7 @@ fn output_files_from_cargo_build_plan(
             // Strip the target_dir, so that the path becomes relative.
             let parent = output.parent().unwrap().strip_prefix(target_dir).unwrap();
             if Some(OsStr::new("rmeta")) == output.extension()
-                && parent.ends_with("riscv32imac-unknown-none-elf/release/deps")
+                && parent.ends_with(Path::new(RUST_TARGET).join("release/deps"))
             {
                 // Have to convert to string to remove the "lib" prefix:
                 let name_stem = output
