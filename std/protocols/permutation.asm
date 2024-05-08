@@ -37,12 +37,11 @@ let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |per
 };
 
 // Whether we need to operate on the F_{p^2} extension field (because the current field is too small).
-let _needs_extension: -> bool = || match known_field() {
+let needs_extension: -> bool = || match known_field() {
     Option::Some(KnownField::Goldilocks) => true,
     Option::Some(KnownField::BN254) => false,
     None => panic("The permutation argument is not implemented for the current field!")
 };
-let needs_extension: -> bool = || false;
 
 // Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
 let compress_expression_array = |expr_array, alpha| fold(
@@ -87,24 +86,29 @@ let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
     let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
+    let with_extension = len(acc) == 2;
+
+    let _ = if !with_extension {
+        assert(!needs_extension(), || "Needs extension")
+    } else { [] };
 
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
     // in which case the operations below effectively only operate on the first component.
-    let acc_ext = if needs_extension() {
+    let acc_ext = if with_extension {
         let _ = assert(len(acc) == 2, || "Expected 2 accumulators");
         Fp2Expr::Fp2(acc[0], acc[1])
     } else {
         let _ = assert(len(acc) == 1, || "Expected 1 accumulators");
         Fp2Expr::Fp2(acc[0], 0)
     };
-    let alpha = if needs_extension() {Fp2Expr::Fp2(alpha1, alpha2)} else {Fp2Expr::Fp2(alpha1, 0)};
-    let beta = if needs_extension() {Fp2Expr::Fp2(beta1, beta2)} else {Fp2Expr::Fp2(beta1, 0)};
+    let alpha = if with_extension {Fp2Expr::Fp2(alpha1, alpha2)} else {Fp2Expr::Fp2(alpha1, 0)};
+    let beta = if with_extension {Fp2Expr::Fp2(beta1, beta2)} else {Fp2Expr::Fp2(beta1, 0)};
 
     let lhs_folded = mul_ext(Fp2Expr::Fp2(lhs_selector, 0), compress_expression_array(lhs, alpha));
     let rhs_folded = mul_ext(Fp2Expr::Fp2(rhs_selector, 0), compress_expression_array(rhs, alpha));
 
-    let next_acc = if needs_extension() {
+    let next_acc = if with_extension {
         next_ext(acc_ext)
     } else {
         Fp2Expr::Fp2(acc[0]', 0)
