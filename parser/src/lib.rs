@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 lalrpop_mod!(
     #[allow(clippy::all)]
+    #[allow(clippy::uninlined_format_args)]
     pub powdr,
     "/powdr.rs"
 );
