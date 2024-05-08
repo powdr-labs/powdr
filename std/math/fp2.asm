@@ -83,6 +83,16 @@ let inv_ext: Fp2Value -> Fp2Value = |a| match a {
     )
 };
 
+// Applies the next operator to both components of the extension field element
+let next_ext: Fp2Expr -> Fp2Expr = |a| match a {
+    Fp2Expr::Fp2(a0, a1) => Fp2Expr::Fp2(a0', a1')
+};
+
+// Returns the two components of the extension field element
+let unpack_ext: Fp2Expr -> expr[] = |a| match a {
+    Fp2Expr::Fp2(a0, a1) => [a0, a1]
+};
+
 mod test {
     use super::Fp2Expr;
     use super::Fp2Value;

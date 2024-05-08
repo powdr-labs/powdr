@@ -3,18 +3,19 @@ use std::array::fold;
 use std::array::len;
 use std::convert::int;
 use std::check::assert;
-use std::field::modulus;
+use std::check::panic;
+use std::field::known_field;
+use std::field::KnownField;
+use std::math::fp2::Fp2Value;
 use std::math::fp2::Fp2Expr;
 use std::math::fp2::add_ext;
 use std::math::fp2::sub_ext;
 use std::math::fp2::mul_ext;
-
-let next_ext = |a| match a {
-    Fp2Expr::Fp2(a0, a1) => Fp2Expr::Fp2(a0', a1')
-};
-let unpack_ext = |a| match a {
-    Fp2Expr::Fp2(a0, a1) => [a0, a1]
-};
+use std::math::fp2::unpack_ext;
+use std::math::fp2::next_ext;
+use std::math::fp2::eval_ext;
+use std::math::fp2::expr_ext;
+use std::math::fp2::inv_ext;
 
 let is_first: col = |i| if i == 0 { 1 } else { 0 };
 
@@ -26,6 +27,35 @@ let alpha2: expr = challenge(0, 2);
 let beta1: expr = challenge(0, 3);
 let beta2: expr = challenge(0, 4);
 
+
+// Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
+let compress_expression_array = |expr_array, alpha| fold(
+    expr_array,
+    Fp2Expr::Fp2(0, 0),
+    |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), Fp2Expr::Fp2(el, 0))
+);
+
+// Compute z' = z * (beta - a) / (beta - b), using extension field arithmetic
+let compute_next_z: Fp2Expr, expr, expr[], expr, expr[] -> fe[] = query |acc, lhs_selector, lhs, rhs_selector, rhs| {
+    let alpha = if len(lhs) > 1 {
+        Fp2Expr::Fp2(alpha1, alpha2)
+    } else {
+        // The optimizer will have removed alpha, but the compression function
+        // still accesses it (to multiply by 0 in this case)
+        Fp2Expr::Fp2(0, 0)
+    };
+    let beta = Fp2Expr::Fp2(beta1, beta2);
+    
+    let lhs_folded = mul_ext(Fp2Expr::Fp2(lhs_selector, 0), compress_expression_array(lhs, alpha));
+    let rhs_folded = mul_ext(Fp2Expr::Fp2(rhs_selector, 0), compress_expression_array(rhs, alpha));
+    
+    let res = eval_ext(mul_ext(mul_ext(acc, sub_ext(beta, lhs_folded)), expr_ext(inv_ext(eval_ext(sub_ext(beta, rhs_folded))))));
+
+    match res {
+        Fp2Value::Fp2(a0_fe, a1_fe) => [a0_fe, a1_fe]
+    }
+};
+
 // Adds constraints that enforce that lhs is a permutation of rhs
 // Arguments:
 // - acc: A phase-2 witness column to be used as the accumulator
@@ -35,30 +65,33 @@ let beta2: expr = challenge(0, 4);
 // - rhs: An array of expressions
 let permutation = |acc, lhs_selector, lhs, rhs_selector, rhs| {
 
-    let GOLDILOCKS_PRIME = 2**64 - 2**32 + 1;
     let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
-    let _ = assert(modulus() > 2**100 || modulus() == GOLDILOCKS_PRIME, || "No implementation on this small field");
-    let _ = assert(len(acc) == 2, || "Expected 2 accumulators");
-
-    let acc_ext = Fp2Expr::Fp2(acc[0], acc[1]);
 
     // On the Goldilocks field, we evaluate the polynomial on the F_{p^2} extension field
     // modulo the irreducible polynomial x^2 - 7.
     // TODO: This is always true, to test that phase-2 witgen works
-    let needs_extension = modulus() != 42;
-    // let needs_extension = modulus() == GOLDILOCKS_PRIME;
+    let needs_extension = true;
+    let _needs_extension = match known_field() {
+        Option::Some(KnownField::Goldilocks) => true,
+        Option::Some(KnownField::BN254) => false,
+        None => panic("The permutation argument is not implemented for the current field!")
+    };
 
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
     // in which case the operations below effectively only operate on the first component.
+    let acc_ext = if needs_extension {
+        let _ = assert(len(acc) == 2, || "Expected 2 accumulators");
+        Fp2Expr::Fp2(acc[0], acc[1])
+    } else {
+        let _ = assert(len(acc) == 1, || "Expected 1 accumulators");
+        Fp2Expr::Fp2(acc[0], 0)
+    };
     let alpha = if needs_extension {Fp2Expr::Fp2(alpha1, alpha2)} else {Fp2Expr::Fp2(alpha1, 0)};
     let beta = if needs_extension {Fp2Expr::Fp2(beta1, beta2)} else {Fp2Expr::Fp2(beta1, 0)};
 
-    // Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
-    let compress_expression_array = |expr_array| fold(expr_array, Fp2Expr::Fp2(0, 0), |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), Fp2Expr::Fp2(el, 0)));
-
-    let lhs_folded = mul_ext(Fp2Expr::Fp2(lhs_selector, 0), compress_expression_array(lhs));
-    let rhs_folded = mul_ext(Fp2Expr::Fp2(rhs_selector, 0), compress_expression_array(rhs));
+    let lhs_folded = mul_ext(Fp2Expr::Fp2(lhs_selector, 0), compress_expression_array(lhs, alpha));
+    let rhs_folded = mul_ext(Fp2Expr::Fp2(rhs_selector, 0), compress_expression_array(rhs, alpha));
 
     // Update rule:
     // acc' = acc * (beta - lhs_folded) / (beta - rhs_folded)
