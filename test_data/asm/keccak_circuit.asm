@@ -6,23 +6,6 @@ mod circuit;
 use circuit::State;
 use circuit::Gate;
 
-// enum Op {
-//     Reference(int),
-//     Xor(Op, Op),
-//     And(Op, Op),
-//     Rotl(Op, Op),
-// }
-
-// let xor: Op, Op -> Op = |a, b| Op::Xor(a, b);
-
-
-// elementary gates
-let or: int, int -> int = |a, b| a | b;
-let and: int, int -> int = |a, b| a & b;
-let xor: int, int -> int = |a, b| a ^ b;
-let not: int -> int = |a| a ^ 0xffffffffffffffff; // bitwise not for 64 bits
-let rotl64: int, int -> int = |x, n| and(or((x << n), (x >> (64 - n))), 0xffffffffffffffff); // left rotation
-
 
 /// Represent the numbers 0 to 63, used for rotl.
 let rotl_constants = array::new(64, |i| Gate::Reference(25 + i));
@@ -63,18 +46,8 @@ let RC: int[] = [
     0x8000000000008080, 0x0000000080000001, 0x8000000080008008
 ];
 
-let theta_bc = |st, i| xor(xor(xor(xor(st[i], st[i + 5]), st[i + 10]), st[i + 15]), st[i + 20]);
 let theta_bc_c = |st, i| xor_c(xor_c(xor_c(xor_c(st[i], st[i + 5]), st[i + 10]), st[i + 15]), st[i + 20]);
 
-let theta_st = |inputs| {
-    let bc = array::new(5, |i| theta_bc(inputs, i));
-    // TODO we should probably bc here (turn it into a ref)
-    array::map_enumerated(inputs, |idx, elem| {
-        let i = idx % 5;
-        let t = xor(bc[(i + 4) % 5], rotl64(bc[(i + 1) % 5], 1));
-        xor(elem, t)
-    })
-};
 let theta_st_c = |state, inputs| {
     let bc = array::new(5, |i| theta_bc_c(inputs, i));
     // TODO we could turn the bc into a reference here already.
@@ -86,29 +59,17 @@ let theta_st_c = |state, inputs| {
     circuit::add_routines(state, r)
 };
 
-// rho pi
-let rho_pi = |st, i| {
-    let p = if i == 0 { 23 } else { i - 1 };
-    rotl64(st[PI[p]], RHO[i])
-};
 let rho_pi_c: Gate[], int -> Gate = |inputs, i| {
     let p = if i == 0 { 23 } else { i - 1 };
     rotl64_c(inputs[PI[p]], RHO[i])
 };
 // collect st_j
-let rho_pi_loop = |st| array::new(25, |i| if i == 0 { st[0] } else { rho_pi(st, i - 1) } );
 let rho_pi_loop_c = |inputs| array::new(25, |i| if i == 0 { inputs[0] } else { rho_pi_c(inputs, i - 1) } );
 
 // rearrange st_j
-let rho_pi_rearrange = |st| array::new(25, |i| st[PI_INVERSE[i]]);
 let rho_pi_rearrange_c: Gate[] -> Gate[] = |inputs| array::new(25, |i| inputs[PI_INVERSE[i]]);
 
 // chi
-let chi: int[] -> int[] = |st| array::map_enumerated(st, |idx, elem| {
-    let i = idx / 5;
-    let j = idx % 5;
-    xor(st[idx], and(not(st[i * 5 + (j + 1) % 5]), st[i * 5 + (j + 2) % 5]))
-});
 let chi_c: Gate[] -> Gate[] = |inputs| array::map_enumerated(inputs, |idx, elem| {
     let i = idx / 5;
     let j = idx % 5;
@@ -116,10 +77,7 @@ let chi_c: Gate[] -> Gate[] = |inputs| array::map_enumerated(inputs, |idx, elem|
 });
 
 // iota
-let iota: int[], int -> int[] = |st, r| array::map_enumerated(st, |idx, elem| if idx == 0 { xor(elem, RC[r]) } else { elem } );
 let iota_c: Gate[], int -> Gate[] = |inputs, r| array::map_enumerated(inputs, |idx, elem| if idx == 0 { xor_c(elem, rc_constants[r]) } else { elem } );
-
-let keccakf: int[] -> int[] = |st| utils::fold(24, |i| i, st, |acc, r| iota(chi(rho_pi_rearrange(rho_pi_loop(theta_st(acc)))), r) );
 
 let add_inputs: State, int -> (State, Gate[]) = |state, n|
     utils::fold(n, |i| i, (state, []), |(s, inp), _| {
@@ -140,9 +98,9 @@ let keccakf_circuit: -> (circuit::State, Gate[]) = || {
 };
 
 let eval_gate: int, int, int -> int = |gate, in1, in2| match gate {
-    1 => xor(in1, in2),
-    2 => rotl64(in1, in2),
-    3 => and(not(in1), in2),
+    1 => in1 ^ in2,
+    2 => (((in1 << in2) | (in1 >> (64 - in2))) & 0xffffffffffffffff),
+    3 => (in1 ^ 0xffffffffffffffff) & in2,
     _ => std::check::panic("Invalid gate"),
 };
 
@@ -193,8 +151,6 @@ let test = || {
         0x17cf3d9d8026e97f,
         0xdf84d5da988117d2
     ];
-    let result = keccakf(input);
-    let _ = std::array::zip(result, expectation, |a, b| std::check::assert(a == b, || "Keccakf failed"));
 
     let (circuit_state, circuit_outputs) = keccakf_circuit();
     let l = match circuit_state {
