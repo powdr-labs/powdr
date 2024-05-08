@@ -628,9 +628,9 @@ impl<E: Display> Expression<E> {
         };
 
         if op.is_prefix() {
-            write!(f, "{}{}", op, exp_string)
+            write!(f, "{op}{exp_string}")
         } else {
-            write!(f, "{}{}", exp_string, op)
+            write!(f, "{exp_string}{op}")
         }
     }
 
@@ -659,14 +659,14 @@ impl<E: Display> Expression<E> {
         };
 
         let left_string = if use_left_parentheses {
-            format!("({})", left)
+            format!("({left})")
         } else {
-            format!("{}", left)
+            format!("{left}")
         };
         let right_string = if use_right_parentheses {
-            format!("({})", right)
+            format!("({right})")
         } else {
-            format!("{}", right)
+            format!("{right}")
         };
 
         write!(f, "{} {} {}", left_string, op, right_string)
