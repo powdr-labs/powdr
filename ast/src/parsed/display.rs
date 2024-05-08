@@ -331,7 +331,7 @@ impl<T: Display> Display for Params<T> {
 
 impl<E: Display> Display for IndexAccess<Expression<E>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.array.precedence().is_none() {
+        if self.array.precedence().is_none() || self.array.is_postfix() {
             write!(f, "{}[{}]", self.array, self.index)
         } else {
             write!(f, "({})[{}]", self.array, self.index)
@@ -341,7 +341,7 @@ impl<E: Display> Display for IndexAccess<Expression<E>> {
 
 impl<E: Display> Display for FunctionCall<Expression<E>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.function.precedence().is_none() {
+        if self.function.precedence().is_none() || self.function.is_postfix() {
             write!(f, "{}({})", self.function, format_list(&self.arguments))
         } else {
             write!(f, "({})({})", self.function, format_list(&self.arguments))
@@ -601,6 +601,14 @@ impl<E: Display> Expression<E> {
             Expression::UnaryOperation(op, _) => Some(op.precedence()),
             Expression::BinaryOperation(_, op, _) => Some(op.precedence()),
             _ => None,
+        }
+    }
+
+    pub fn is_postfix(&self) -> bool {
+        match self {
+            Expression::UnaryOperation(op, _) => !op.is_prefix(),
+            Expression::FunctionCall(_) | Expression::IndexAccess(_) => true,
+            _ => false,
         }
     }
 

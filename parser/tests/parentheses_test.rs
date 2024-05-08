@@ -101,4 +101,22 @@ mod test {
             test_paren(&test_case);
         }
     }
+
+    #[test]
+    fn test_index_access_parentheses() {
+        let test_cases: Vec<TestCase> = vec![
+            ("(x')(2);", "x'(2);"),
+            ("x[2](2);", "x[2](2);"),
+            ("(x')[2];", "x'[2];"),
+            ("-x[2];", "-x[2];"),
+            ("(-x)[2];", "(-x)[2];"),
+            ("-(x[2]);", "-x[2];"),
+            ("1 + x[2];", "1 + x[2];"),
+            ("1 + x(2);", "1 + x(2);"),
+        ];
+
+        for test_case in test_cases {
+            test_paren(&test_case);
+        }
+    }
 }
