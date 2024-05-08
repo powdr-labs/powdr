@@ -30,7 +30,7 @@ impl Display for PILGraph {
             }
         }
         for (location, object) in &self.objects {
-            writeln!(f, "// Object {}", location)?;
+            writeln!(f, "// Object {location}")?;
             writeln!(f, "{object}")?;
             writeln!(f)?;
         }
@@ -41,7 +41,7 @@ impl Display for PILGraph {
 impl Display for Object {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if let Some(degree) = self.degree.as_ref() {
-            writeln!(f, "// Degree {}", degree)?;
+            writeln!(f, "// Degree {degree}")?;
         }
         for s in &self.pil {
             writeln!(f, "{s}")?;

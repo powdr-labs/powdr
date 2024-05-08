@@ -38,8 +38,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         if let Some(degree) = object.degree {
             if degree != main_degree {
                 errors.push(format!(
-                    "Machine {location} should have degree {main_degree}, found {}",
-                    degree
+                    "Machine {location} should have degree {main_degree}, found {degree}"
                 ))
             }
         }

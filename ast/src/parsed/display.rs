@@ -157,7 +157,7 @@ fn format_instruction_statement(stmt: &PilStatement) -> String {
             assert_eq!(s.pop(), Some(';'));
             s
         }
-        _ => panic!("invalid statement inside instruction body: {}", stmt),
+        _ => panic!("invalid statement inside instruction body: {stmt}"),
     }
 }
 
@@ -204,7 +204,7 @@ impl Display for MachineStatement {
                     .unwrap_or_default()
             ),
             MachineStatement::InstructionDeclaration(_, name, instruction) => {
-                write!(f, "instr {}{}", name, instruction)
+                write!(f, "instr {name}{instruction}")
             }
             MachineStatement::LinkDeclaration(_, link) => {
                 write!(f, "{link}")
@@ -411,7 +411,7 @@ impl Display for Param {
                 .unwrap_or_default(),
             self.ty
                 .as_ref()
-                .map(|ty| format!(": {}", ty))
+                .map(|ty| format!(": {ty}"))
                 .unwrap_or_default()
         )
     }
@@ -595,7 +595,7 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::Number(value, _) => write!(f, "{value}"),
             Expression::String(value) => write!(f, "{}", quote(value)),
             Expression::Tuple(items) => write!(f, "({})", format_list(items)),
-            Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
+            Expression::LambdaExpression(lambda) => write!(f, "{lambda}"),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
             Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
             Expression::UnaryOperation(op, exp) => {

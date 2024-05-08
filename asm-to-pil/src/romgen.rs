@@ -181,7 +181,7 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
                 .first_mut()
                 .expect("function should have at least one statement as it must return")
                 .statements
-                .insert(0, parse_function_statement(&format!("_{}:", name)));
+                .insert(0, parse_function_statement(&format!("_{name}:")));
 
             // modify the last batch to be caused by the coming label
             let last = batches
