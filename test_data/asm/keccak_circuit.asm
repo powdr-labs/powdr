@@ -139,8 +139,29 @@ let keccakf_circuit: -> (circuit::State, Gate[]) = || {
     })
 };
 
-let eval_circuit: circuit::State, Gate[], int[] -> int[] = |state, outputs, inputs|
-    [];
+let eval_gate: int, int, int -> int = |gate, in1, in2| match gate {
+    1 => xor(in1, in2),
+    2 => rotl64(in1, in2),
+    3 => and(not(in1), in2),
+    _ => std::check::panic("Invalid gate"),
+};
+
+let eval_circuit: circuit::State, Gate[], int[] -> int[] = |state, outputs, inputs| match state {
+    State::S(gates, _) => {
+        let initial = inputs + array::new(64, |i| i) + array::new(24, |i| RC[i]);
+        let values = std::utils::fold(std::array::len(gates), |i| i, [], |acc, i| {
+            let value = if i < array::len(initial) { initial[i] } else {
+                let (id, in1, in2) = gates[i];
+                eval_gate(id, acc[in1], acc[in2])
+            };
+            acc + [value]
+        });
+        array::map(outputs, |g| match g {
+            Gate::Reference(i) => values[i],
+            _ => std::check::panic("Invalid output gate"),
+        })
+    },
+};
 
 
 let test = || {
@@ -178,13 +199,11 @@ let test = || {
     let (circuit_state, circuit_outputs) = keccakf_circuit();
     let l = match circuit_state {
         State::S(gates, _) => std::array::len(gates),
-        _ => -1,
-
     };
     let _ = std::debug::print("Gate count: ");
     let _ = std::debug::println(l);
-    //let result2 = eval_circuit(circuit_state, circuit_outputs, input);
-    //let _ = std::array::zip(result, expectation, |a, b| std::check::assert(a == b, || "Keccakf failed"));
+    let result2 = eval_circuit(circuit_state, circuit_outputs, input);
+    let _ = std::array::zip(result2, expectation, |a, b| std::check::assert(a == b, || "Keccakf failed"));
     []
 };
 
