@@ -632,11 +632,11 @@ impl<E: Display> Expression<E> {
         right: &Expression<E>,
         f: &mut Formatter<'_>,
     ) -> Result {
-        let parenthes_on_precedence = matches!(op, BinaryOperator::Pow);
+        let force_parentheses = matches!(op, BinaryOperator::Pow);
 
         let use_left_parentheses = match left.precedence() {
             Some(left_precedence) => {
-                parenthes_on_precedence
+                force_parentheses
                     || left_precedence > op.precedence()
                     || (left_precedence == op.precedence()
                         && op.associativity() != BinaryOperatorAssociativity::Left)
@@ -646,7 +646,7 @@ impl<E: Display> Expression<E> {
 
         let use_right_parentheses = match right.precedence() {
             Some(right_precedence) => {
-                parenthes_on_precedence
+                force_parentheses
                     || right_precedence > op.precedence()
                     || (right_precedence == op.precedence()
                         && op.associativity() != BinaryOperatorAssociativity::Right)

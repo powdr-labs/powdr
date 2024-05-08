@@ -13,6 +13,8 @@ use powdr_parser_util::{handle_parse_error, ParseError};
 
 use std::sync::Arc;
 
+pub mod test_utils;
+
 lalrpop_mod!(
     #[allow(clippy::all)]
     pub powdr,
@@ -123,30 +125,6 @@ pub fn unescape_string(s: &str) -> String {
         })
     }
     result
-}
-
-use powdr_ast::parsed::{PILFile, PilStatement};
-fn pil_statement_clear_source_ref(stmt: &mut PilStatement) {
-    match stmt {
-        PilStatement::Include(s, _)
-        | PilStatement::Namespace(s, _, _)
-        | PilStatement::LetStatement(s, _, _, _)
-        | PilStatement::PolynomialDefinition(s, _, _)
-        | PilStatement::PublicDeclaration(s, _, _, _, _)
-        | PilStatement::PolynomialConstantDeclaration(s, _)
-        | PilStatement::PolynomialConstantDefinition(s, _, _)
-        | PilStatement::PolynomialCommitDeclaration(s, _, _, _)
-        | PilStatement::PlookupIdentity(s, _, _)
-        | PilStatement::PermutationIdentity(s, _, _)
-        | PilStatement::ConnectIdentity(s, _, _)
-        | PilStatement::ConstantDefinition(s, _, _)
-        | PilStatement::Expression(s, _)
-        | PilStatement::EnumDeclaration(s, _) => *s = SourceRef::unknown(),
-    }
-}
-// helper function to clear SourceRef's inside the AST so we can compare for equality
-pub fn pil_clear_source_refs(ast: &mut PILFile) {
-    ast.0.iter_mut().for_each(pil_statement_clear_source_ref);
 }
 
 #[cfg(test)]
@@ -274,6 +252,7 @@ mod test {
         };
 
         fn clear_machine_stmt(stmt: &mut MachineStatement) {
+            use test_utils::pil_statement_clear_source_ref;
             match stmt {
                 MachineStatement::Submachine(s, _, _)
                 | MachineStatement::RegisterDeclaration(s, _, _)
@@ -364,6 +343,7 @@ mod test {
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for pil files
     fn parse_write_reparse_pil() {
+        use test_utils::pil_clear_source_refs;
         let crate_dir = env!("CARGO_MANIFEST_DIR");
         let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
         let pil_files = find_files_with_ext(basedir, "pil".into());

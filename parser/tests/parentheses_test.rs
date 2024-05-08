@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use powdr_parser::{parse, pil_clear_source_refs};
+    use powdr_parser::{parse, test_utils::pil_clear_source_refs};
     use powdr_parser_util::UnwrapErrToStderr;
     use pretty_assertions::assert_eq;
     use test_log::test;
