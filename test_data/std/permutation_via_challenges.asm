@@ -9,6 +9,7 @@ use std::protocols::permutation::permutation;
 use std::protocols::permutation::beta1;
 use std::protocols::permutation::beta2;
 use std::protocols::permutation::compute_next_z;
+use std::protocols::permutation::needs_extension;
 use std::math::fp2::Fp2Expr;
 use std::math::fp2::Fp2Value;
 use std::math::fp2::add_ext;
@@ -28,22 +29,36 @@ machine Main with degree: 8 {
     col witness b1(i) query Query::Hint(fe(7 - i));
     col witness b2(i) query Query::Hint(fe(7 - i + 42));
 
-    let permutation_claim = Constr::Permutation(
+    let permutation_constraint = Constr::Permutation(
+        Option::Some(1),
+        [a1],
+        Option::Some(1),
+        [b1]
+    );
+    /*
+    let permutation_constraint = Constr::Permutation(
         Option::Some(first_four),
         [a1, a2],
         Option::Some(1 - first_four),
         [b1, b2]
     );
+    */
 
     // TODO: Functions currently cannot add witness columns at later stages,
     // so we have to manually create it here and pass it to permutation(). 
     col witness stage(1) z1;
     col witness stage(1) z2;
-    permutation([z1, z2], permutation_claim);
+    let z = if needs_extension() { [z1, z2] } else { [z1] };
+    permutation(z, permutation_constraint);
 
     // TODO: Helper columns, because we can't access the previous row in hints
-    col witness stage(1) z1_next(i) query Query::Hint(compute_next_z(Fp2Expr::Fp2(z1, z2), permutation_claim)[0]);
-    col witness stage(1) z2_next(i) query Query::Hint(compute_next_z(Fp2Expr::Fp2(z1, z2), permutation_claim)[1]);
+    let hint = query |i| if needs_extension() {
+        Query::Hint(compute_next_z(Fp2Expr::Fp2(z1, z2), permutation_constraint)[i])
+    } else {
+        Query::None
+    }; 
+    col witness stage(1) z1_next(i) query hint(0);
+    col witness stage(1) z2_next(i) query hint(1);
 
     z1' = z1_next;
     z2' = z2_next;

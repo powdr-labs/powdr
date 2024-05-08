@@ -89,8 +89,8 @@ let next_ext: Fp2Expr -> Fp2Expr = |a| match a {
 };
 
 // Returns the two components of the extension field element
-let unpack_ext: Fp2Expr -> expr[] = |a| match a {
-    Fp2Expr::Fp2(a0, a1) => [a0, a1]
+let unpack_ext: Fp2Expr -> (expr, expr) = |a| match a {
+    Fp2Expr::Fp2(a0, a1) => (a0, a1)
 };
 
 mod test {

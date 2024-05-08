@@ -42,7 +42,7 @@ let _needs_extension: -> bool = || match known_field() {
     Option::Some(KnownField::BN254) => false,
     None => panic("The permutation argument is not implemented for the current field!")
 };
-let needs_extension: -> bool = || true;
+let needs_extension: -> bool = || false;
 
 // Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
 let compress_expression_array = |expr_array, alpha| fold(
@@ -104,23 +104,31 @@ let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
     let lhs_folded = mul_ext(Fp2Expr::Fp2(lhs_selector, 0), compress_expression_array(lhs, alpha));
     let rhs_folded = mul_ext(Fp2Expr::Fp2(rhs_selector, 0), compress_expression_array(rhs, alpha));
 
+    let next_acc = if needs_extension() {
+        next_ext(acc_ext)
+    } else {
+        Fp2Expr::Fp2(acc[0]', 0)
+    };
+
     // Update rule:
     // acc' = acc * (beta - lhs_folded) / (beta - rhs_folded)
     // => (beta - rhs_folded) * acc' - (beta - lhs_folded) * acc = 0
-    let update_expr = unpack_ext(sub_ext(
-        mul_ext(sub_ext(beta, rhs_folded), next_ext(acc_ext)),
+    let (update_expr_1, update_expr_2) = unpack_ext(sub_ext(
+        mul_ext(sub_ext(beta, rhs_folded), next_acc),
         mul_ext(sub_ext(beta, lhs_folded), acc_ext)
     ));
+
+    let (acc_1, acc_2) = unpack_ext(acc_ext);
 
     [
         // First and last z needs to be 1
         // (because of wrapping, the z[0] and z[N] are the same)
-        is_first * (acc[0] - 1) = 0,
-        is_first * acc[1] = 0,
+        is_first * (acc_1 - 1) = 0,
+        is_first * acc_2 = 0,
 
         // Update rule:
         // acc' = acc * (beta - lhs_folded) / (beta - rhs_folded)
-        update_expr[0] = 0,
-        update_expr[1] = 0
+        update_expr_1 = 0,
+        update_expr_2 = 0
     ]
 };
