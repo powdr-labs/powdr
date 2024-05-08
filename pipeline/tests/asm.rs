@@ -43,6 +43,12 @@ fn secondary_block_machine_add2() {
 }
 
 #[test]
+fn second_phase_hint() {
+    let f = "asm/second_phase_hint.asm";
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn mem_write_once() {
     let f = "asm/mem_write_once.asm";
     verify_asm(f, Default::default());
@@ -79,10 +85,7 @@ fn palindrome() {
     let i = [7, 1, 7, 3, 9, 3, 7, 1];
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
-    // currently starky leads to
-    // thread 'functional_instructions' has overflowed its stack
-    // leave it out until that's fixed
-    //gen_estark_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -127,10 +130,7 @@ fn vm_to_block_unique_interface() {
     let i = [];
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
-    // currently starky leads to
-    // thread 'functional_instructions' has overflowed its stack
-    // leave it out until that's fixed
-    //gen_estark_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -285,10 +285,7 @@ fn bit_access() {
     let i = [20];
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
-    // currently starky leads to
-    // thread 'functional_instructions' has overflowed its stack
-    // leave it out until that's fixed
-    //gen_estark_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -305,10 +302,7 @@ fn functional_instructions() {
     let i = [20];
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
-    // currently starky leads to
-    // thread 'functional_instructions' has overflowed its stack
-    // leave it out until that's fixed
-    //gen_estark_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -353,7 +347,7 @@ fn read_poly_files() {
         let mut pipeline = Pipeline::<Bn254Field>::default()
             .from_file(resolve_test_file(f))
             .with_output(tmp_dir.to_path_buf(), true)
-            .with_backend(BackendType::EStarkDump);
+            .with_backend(BackendType::EStarkDump, None);
         pipeline.compute_witness().unwrap();
         let pil = pipeline.compute_optimized_pil().unwrap();
         pipeline.compute_proof().unwrap();
@@ -654,4 +648,11 @@ fn keccak() {
         .for_each(|(input, expected)| {
             test_main(&analyzed, input, expected);
         });
+}
+
+#[test]
+fn connect_no_witgen() {
+    let f = "asm/connect_no_witgen.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
 }

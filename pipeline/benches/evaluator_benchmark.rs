@@ -1,73 +1,13 @@
 use std::sync::Arc;
 
-use ::powdr_pipeline::{inputs_to_query_callback, Pipeline};
+use ::powdr_pipeline::Pipeline;
 use powdr_ast::analyzed::Analyzed;
-use powdr_number::{BigInt, FieldElement, GoldilocksField};
+use powdr_number::{BigInt, GoldilocksField};
 use powdr_pil_analyzer::evaluator::Value;
 
 use powdr_pipeline::test_util::{evaluate_function, evaluate_integer_function, std_analyzed};
-use powdr_riscv::{
-    compile_rust_crate_to_riscv_asm, compiler, continuations::bootloader::default_input, Runtime,
-};
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use mktemp::Temp;
-
-type T = GoldilocksField;
-
-fn run_witgen<T: FieldElement>(
-    analyzed: &Analyzed<T>,
-    constants: &[(String, Vec<T>)],
-    external_witness_values: &[(String, Vec<T>)],
-) {
-    let query_callback = inputs_to_query_callback(vec![]);
-    powdr_executor::witgen::WitnessGenerator::new(analyzed, constants, &query_callback)
-        .with_external_witness_values(external_witness_values)
-        .generate();
-}
-
-fn executor_benchmark(c: &mut Criterion) {
-    let mut group = c.benchmark_group("executor-benchmark");
-    group.sample_size(10);
-
-    // Keccak
-    let tmp_dir = Temp::new_dir().unwrap();
-    let riscv_asm_files =
-        compile_rust_crate_to_riscv_asm("../riscv/tests/riscv_data/keccak/Cargo.toml", &tmp_dir);
-    let contents = compiler::compile::<T>(riscv_asm_files, &Runtime::base(), false);
-    let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
-    let pil = pipeline.compute_optimized_pil().unwrap();
-    let fixed_cols = pipeline.compute_fixed_cols().unwrap();
-
-    group.bench_function("keccak", |b| b.iter(|| run_witgen(&pil, &fixed_cols, &[])));
-
-    // The first chunk of `many_chunks`, with Poseidon co-processor & bootloader
-    let riscv_asm_files = compile_rust_crate_to_riscv_asm(
-        "../riscv/tests/riscv_data/many_chunks/Cargo.toml",
-        &tmp_dir,
-    );
-    let contents = compiler::compile::<T>(riscv_asm_files, &Runtime::base().with_poseidon(), true);
-    let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
-    let pil = pipeline.compute_optimized_pil().unwrap();
-    let fixed_cols = pipeline.compute_fixed_cols().unwrap();
-
-    group.bench_function("many_chunks_chunk_0", |b| {
-        b.iter(|| {
-            run_witgen(
-                &pil,
-                &fixed_cols,
-                &[(
-                    "main_bootloader_input.value".to_string(),
-                    default_input(&[63, 64, 65])
-                        .into_iter()
-                        .map(|e| e.into_fe())
-                        .collect(),
-                )],
-            )
-        })
-    });
-    group.finish();
-}
 
 fn evaluator_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("evaluator-benchmark");
@@ -174,5 +114,5 @@ fn evaluator_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, evaluator_benchmark, executor_benchmark);
-criterion_main!(benches);
+criterion_group!(benches_pil, evaluator_benchmark);
+criterion_main!(benches_pil);
