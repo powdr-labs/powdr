@@ -158,8 +158,9 @@ let test = || {
     };
     let _ = std::debug::print("Gate count: ");
     let _ = std::debug::println(l);
-    let result2 = eval_circuit(circuit_state, circuit_outputs, input);
-    let _ = std::array::zip(result2, expectation, |a, b| std::check::assert(a == b, || "Keccakf failed"));
+    let result = eval_circuit(circuit_state, circuit_outputs, input);
+    let _ = std::array::zip(result, expectation, |a, b| std::check::assert(a == b, || "Keccakf failed"));
+    let _ = circuit::permutation(circuit_state);
     []
 };
 
