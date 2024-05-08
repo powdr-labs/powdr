@@ -28,17 +28,24 @@ machine Main with degree: 8 {
     col witness b1(i) query Query::Hint(fe(7 - i));
     col witness b2(i) query Query::Hint(fe(7 - i + 42));
 
+    let permutation_claim = Constr::Permutation(
+        Option::Some(first_four),
+        [a1, a2],
+        Option::Some(1 - first_four),
+        [b1, b2]
+    );
+
     // TODO: Functions currently cannot add witness columns at later stages,
     // so we have to manually create it here and pass it to permutation(). 
     col witness stage(1) z1;
     col witness stage(1) z2;
+    permutation([z1, z2], permutation_claim);
 
     // TODO: Helper columns, because we can't access the previous row in hints
-    col witness stage(1) z1_next(i) query Query::Hint(compute_next_z(Fp2Expr::Fp2(z1, z2), first_four, [a1, a2], 1 - first_four, [b1, b2])[0]);
-    col witness stage(1) z2_next(i) query Query::Hint(compute_next_z(Fp2Expr::Fp2(z1, z2), first_four, [a1, a2], 1 - first_four, [b1, b2])[1]);
+    col witness stage(1) z1_next(i) query Query::Hint(compute_next_z(Fp2Expr::Fp2(z1, z2), permutation_claim)[0]);
+    col witness stage(1) z2_next(i) query Query::Hint(compute_next_z(Fp2Expr::Fp2(z1, z2), permutation_claim)[1]);
 
     z1' = z1_next;
     z2' = z2_next;
 
-    permutation([z1, z2], first_four, [a1, a2], 1 - first_four, [b1, b2]);
 }
