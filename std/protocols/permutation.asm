@@ -31,8 +31,8 @@ let alpha2: expr = challenge(0, 2);
 let beta1: expr = challenge(0, 3);
 let beta2: expr = challenge(0, 4);
 
-let unpack_permutation_constraint: Constr -> expr[][] = |permutation_constraint| match permutation_constraint {
-    Constr::Permutation(Option::Some(lhs_selector), lhs, Option::Some(rhs_selector), rhs) => [[lhs_selector], lhs, [rhs_selector], rhs],
+let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |permutation_constraint| match permutation_constraint {
+    Constr::Permutation(Option::Some(lhs_selector), lhs, Option::Some(rhs_selector), rhs) => (lhs_selector, lhs, rhs_selector, rhs),
     _ => panic("Expected permutation constraint")
 };
 
@@ -54,11 +54,7 @@ let compress_expression_array = |expr_array, alpha| fold(
 // Compute z' = z * (beta - a) / (beta - b), using extension field arithmetic
 let compute_next_z: Fp2Expr, Constr -> fe[] = query |acc, permutation_constraint| {
 
-    let foo = unpack_permutation_constraint(permutation_constraint);
-    let lhs_selector = foo[0][0];
-    let lhs = foo[1];
-    let rhs_selector = foo[2][0];
-    let rhs = foo[3];
+    let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
     let alpha = if len(lhs) > 1 {
         Fp2Expr::Fp2(alpha1, alpha2)
@@ -88,11 +84,7 @@ let compute_next_z: Fp2Expr, Constr -> fe[] = query |acc, permutation_constraint
 // - rhs: An array of expressions
 let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
 
-    let foo = unpack_permutation_constraint(permutation_constraint);
-    let lhs_selector = foo[0][0];
-    let lhs = foo[1];
-    let rhs_selector = foo[2][0];
-    let rhs = foo[3];
+    let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
     let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
 
