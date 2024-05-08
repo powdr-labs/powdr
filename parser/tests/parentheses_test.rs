@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use powdr_parser::parse;
+    use powdr_parser::{parse, pil_clear_source_refs};
     use powdr_parser_util::UnwrapErrToStderr;
     use pretty_assertions::assert_eq;
     use test_log::test;
@@ -9,8 +9,14 @@ mod test {
 
     fn test_paren(test_case: &TestCase) {
         let (input, expected) = test_case;
-        let printed = format!("{}", parse(None, input).unwrap_err_to_stderr());
+        let mut parsed = parse(None, input).unwrap_err_to_stderr();
+        let printed = parsed.to_string();
         assert_eq!(expected.trim(), printed.trim());
+        let mut re_parsed = parse(None, printed.as_str()).unwrap_err_to_stderr();
+
+        pil_clear_source_refs(&mut parsed);
+        pil_clear_source_refs(&mut re_parsed);
+        assert_eq!(parsed, re_parsed);
     }
 
     #[test]
@@ -29,12 +35,12 @@ mod test {
             ("(-x) + y * (!z);", "-x + y * !z;"),
             ("(x * y) * z;", "x * y * z;"),
             ("(x / y) / z;", "x / y / z;"),
-            ("(x ** (y ** z));", "x ** y ** z;"),
+            ("(x ** (y ** z));", "x ** (y ** z);"),
             ("(x - (y + z));", "x - (y + z);"),
             // Observe associativity
             ("x * (y * z);", "x * (y * z);"),
             ("x / (y / z);", "x / (y / z);"),
-            ("x ** (y ** z);", "x ** y ** z;"),
+            ("x ** (y ** z);", "x ** (y ** z);"),
             ("(x ** y) ** z;", "(x ** y) ** z;"),
             // Don't remove needed
             ("(x + y) * z;", "(x + y) * z;"),
@@ -46,8 +52,8 @@ mod test {
             ("(a + b)[2];", "(a + b)[2];"),
             ("(i < 7) && (6 >= -i);", "i < 7 && 6 >= -i;"),
             // Power test
-            ("(-x) ** (-y);", "-x ** -y;"),
-            ("2 ** x';", "2 ** x';"),
+            ("(-x) ** (-y);", "(-x) ** (-y);"),
+            ("2 ** x';", "2 ** (x');"),
             ("(2 ** x)';", "(2 ** x)';"),
         ];
 
@@ -101,7 +107,7 @@ mod test {
             ),
             (
                 "let root_of_unity_for_log_degree: int -> fe = |n| root_of_unity ** (2**(32 - n));",
-                "let root_of_unity_for_log_degree: int -> fe = (|n| root_of_unity ** 2 ** (32 - n));",
+                "let root_of_unity_for_log_degree: int -> fe = (|n| root_of_unity ** (2 ** (32 - n)));",
             ),
         ];
 

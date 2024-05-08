@@ -331,7 +331,7 @@ impl<T: Display> Display for Params<T> {
 
 impl<E: Display> Display for IndexAccess<Expression<E>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.array.precedence().is_none() || self.array.is_postfix() {
+        if self.array.precedence().is_none() {
             write!(f, "{}[{}]", self.array, self.index)
         } else {
             write!(f, "({})[{}]", self.array, self.index)
@@ -341,7 +341,7 @@ impl<E: Display> Display for IndexAccess<Expression<E>> {
 
 impl<E: Display> Display for FunctionCall<Expression<E>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.function.precedence().is_none() || self.function.is_postfix() {
+        if self.function.precedence().is_none() {
             write!(f, "{}({})", self.function, format_list(&self.arguments))
         } else {
             write!(f, "({})({})", self.function, format_list(&self.arguments))
@@ -604,14 +604,6 @@ impl<E: Display> Expression<E> {
         }
     }
 
-    pub fn is_postfix(&self) -> bool {
-        match self {
-            Expression::UnaryOperation(op, _) => !op.is_prefix(),
-            Expression::FunctionCall(_) | Expression::IndexAccess(_) => true,
-            _ => false,
-        }
-    }
-
     pub fn format_unary_operation(
         &self,
         op: &UnaryOperator,
@@ -640,9 +632,15 @@ impl<E: Display> Expression<E> {
         right: &Expression<E>,
         f: &mut Formatter<'_>,
     ) -> Result {
+        let parenthes_on_precedence = match op {
+            BinaryOperator::Pow => true,
+            _ => false,
+        };
+
         let use_left_parentheses = match left.precedence() {
             Some(left_precedence) => {
-                left_precedence > op.precedence()
+                parenthes_on_precedence
+                    || left_precedence > op.precedence()
                     || (left_precedence == op.precedence()
                         && op.associativity() != BinaryOperatorAssociativity::Left)
             }
@@ -651,7 +649,8 @@ impl<E: Display> Expression<E> {
 
         let use_right_parentheses = match right.precedence() {
             Some(right_precedence) => {
-                right_precedence > op.precedence()
+                parenthes_on_precedence
+                    || right_precedence > op.precedence()
                     || (right_precedence == op.precedence()
                         && op.associativity() != BinaryOperatorAssociativity::Right)
             }
