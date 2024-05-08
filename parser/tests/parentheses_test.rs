@@ -42,9 +42,13 @@ mod test {
             ("-(x + y);", "-(x + y);"),
             // function call
             ("(a + b)(2);", "(a + b)(2);"),
-            // // Index access
+            // Index access
             ("(a + b)[2];", "(a + b)[2];"),
             ("(i < 7) && (6 >= -i);", "i < 7 && 6 >= -i;"),
+            // Power test
+            ("(-x) ** (-y);", "-x ** -y;"),
+            ("2 ** x';", "2 ** x';"),
+            ("(2 ** x)';", "(2 ** x)';"),
         ];
 
         for test_case in test_cases {
@@ -94,7 +98,11 @@ mod test {
             (
                 "pc' = (1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));",
                 "pc' = (1 - first_step') * (instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1));",
-            )
+            ),
+            (
+                "let root_of_unity_for_log_degree: int -> fe = |n| root_of_unity ** (2**(32 - n));",
+                "let root_of_unity_for_log_degree: int -> fe = (|n| root_of_unity ** 2 ** (32 - n));",
+            ),
         ];
 
         for test_case in test_cases {
