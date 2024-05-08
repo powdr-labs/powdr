@@ -20,13 +20,24 @@ use std::math::fp2::inv_ext;
 let is_first: col = |i| if i == 0 { 1 } else { 0 };
 
 // Get two phase-2 challenges to use in all permutation arguments.
-// Note that this assumes that globally no other challenge of these IDs is used.
+// Note that this assumes that globally no other challenge of these IDs is used,
+// and that challenges for multiple permutation arguments are re-used.
+// We declare two components for each challenge here, in case we need to operate
+// on the extension field. If we don't, we won't end up needing it and the optimizer
+// will remove it.
 let alpha1: expr = challenge(0, 1);
 let alpha2: expr = challenge(0, 2);
 
 let beta1: expr = challenge(0, 3);
 let beta2: expr = challenge(0, 4);
 
+// Whether we need to operate on the F_{p^2} extension field (because the current field is too small).
+let _needs_extension: -> bool = || match known_field() {
+    Option::Some(KnownField::Goldilocks) => true,
+    Option::Some(KnownField::BN254) => false,
+    None => panic("The permutation argument is not implemented for the current field!")
+};
+let needs_extension: -> bool = || true;
 
 // Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
 let compress_expression_array = |expr_array, alpha| fold(
@@ -63,32 +74,22 @@ let compute_next_z: Fp2Expr, expr, expr[], expr, expr[] -> fe[] = query |acc, lh
 // - lhs: An array of expressions
 // - rhs_selector: (assumed to be) binary selector to check which elements from the RHS to include
 // - rhs: An array of expressions
-let permutation = |acc, lhs_selector, lhs, rhs_selector, rhs| {
+let permutation: expr[], expr, expr[], expr, expr[] -> Constr[] = |acc, lhs_selector, lhs, rhs_selector, rhs| {
 
     let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
-
-    // On the Goldilocks field, we evaluate the polynomial on the F_{p^2} extension field
-    // modulo the irreducible polynomial x^2 - 7.
-    // TODO: This is always true, to test that phase-2 witgen works
-    let needs_extension = true;
-    let _needs_extension = match known_field() {
-        Option::Some(KnownField::Goldilocks) => true,
-        Option::Some(KnownField::BN254) => false,
-        None => panic("The permutation argument is not implemented for the current field!")
-    };
 
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
     // in which case the operations below effectively only operate on the first component.
-    let acc_ext = if needs_extension {
+    let acc_ext = if needs_extension() {
         let _ = assert(len(acc) == 2, || "Expected 2 accumulators");
         Fp2Expr::Fp2(acc[0], acc[1])
     } else {
         let _ = assert(len(acc) == 1, || "Expected 1 accumulators");
         Fp2Expr::Fp2(acc[0], 0)
     };
-    let alpha = if needs_extension {Fp2Expr::Fp2(alpha1, alpha2)} else {Fp2Expr::Fp2(alpha1, 0)};
-    let beta = if needs_extension {Fp2Expr::Fp2(beta1, beta2)} else {Fp2Expr::Fp2(beta1, 0)};
+    let alpha = if needs_extension() {Fp2Expr::Fp2(alpha1, alpha2)} else {Fp2Expr::Fp2(alpha1, 0)};
+    let beta = if needs_extension() {Fp2Expr::Fp2(beta1, beta2)} else {Fp2Expr::Fp2(beta1, 0)};
 
     let lhs_folded = mul_ext(Fp2Expr::Fp2(lhs_selector, 0), compress_expression_array(lhs, alpha));
     let rhs_folded = mul_ext(Fp2Expr::Fp2(rhs_selector, 0), compress_expression_array(rhs, alpha));
