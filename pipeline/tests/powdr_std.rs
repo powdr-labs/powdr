@@ -61,15 +61,26 @@ fn memory_test() {
 }
 
 #[test]
-fn permutation_via_challenges() {
+fn permutation_via_challenges_bn() {
     let f = "std/permutation_via_challenges.asm";
     test_halo2(f, Default::default());
+}
+
+#[test]
+#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation([main.z], main.permutation_constraint)\nError: FailedAssertion(\"The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!\")"]
+fn permutation_via_challenges_gl() {
+    let f = "std/permutation_via_challenges.asm";
+    verify_test_file(f, Default::default(), vec![]).unwrap();
 }
 
 #[test]
 fn permutation_via_challenges_ext() {
     let f = "std/permutation_via_challenges_ext.asm";
     test_halo2(f, Default::default());
+    // Note that this does not actually run the second-phase witness generation, because no
+    // Goldilocks backend support challenges yet. But at least it tests that the panic from
+    // the previous test is not happening.
+    verify_test_file(f, Default::default(), vec![]).unwrap();
 }
 
 #[test]

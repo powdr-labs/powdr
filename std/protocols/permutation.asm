@@ -89,7 +89,7 @@ let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
     let with_extension = len(acc) == 2;
 
     let _ = if !with_extension {
-        assert(!needs_extension(), || "Needs extension")
+        assert(!needs_extension(), || "The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!")
     } else { [] };
 
     // On the extension field, we'll need two field elements to represent the challenge.
