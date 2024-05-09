@@ -64,7 +64,7 @@ fn generate_values<T: FieldElement>(
                     assert!(index.is_some());
                     assert_eq!(base.as_ref(), &Type::Col);
                 } else {
-                    panic!("Invalid fixed column type: {}", ty);
+                    panic!("Invalid fixed column type: {ty}");
                 }
             };
             let index_expr;

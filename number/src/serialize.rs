@@ -43,7 +43,7 @@ pub fn write_polys_csv_file<T: FieldElement>(
     let len = polys[0].1.len();
     for row_index in 0..len {
         let mut row = Vec::new();
-        row.push(format!("{}", row_index));
+        row.push(format!("{row_index}"));
         for (_, values) in polys {
             assert!(values.len() == len);
             let value = match render_mode {

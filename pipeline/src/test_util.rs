@@ -270,7 +270,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
 }
 
 #[cfg(not(feature = "halo2"))]
-pub fn assert_proofs_fail_for_invalid_witnesses_bn254(
+pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
     _file_name: &str,
     _witness: &[(String, Vec<u64>)],
 ) {
