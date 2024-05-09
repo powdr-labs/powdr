@@ -599,7 +599,11 @@ impl<E: Display> Expression<E> {
     pub fn precedence(&self) -> Option<ExpressionPrecedence> {
         match self {
             Expression::UnaryOperation(op, _) => Some(op.precedence()),
-            Expression::BinaryOperation(_, op, _) => Some(op.precedence()),
+            Expression::BinaryOperation(BinaryOperation {
+                left: _,
+                op,
+                right: _,
+            }) => Some(op.precedence()),
             _ => None,
         }
     }
@@ -679,12 +683,6 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::Tuple(items) => write!(f, "({})", format_list(items)),
             Expression::LambdaExpression(lambda) => write!(f, "{lambda}"),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
-            Expression::UnaryOperation(op, exp) => {
-                if op.is_prefix() {
-                    write!(f, "{op}{exp}")
-                } else {
-                    write!(f, "{exp}{op}")
-                }
             Expression::BinaryOperation(BinaryOperation { left, op, right }) => {
                 Expression::format_binary_operation(left, op, right, f)
             }
