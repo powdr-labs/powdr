@@ -385,6 +385,18 @@ impl<Ref> From<MatchExpression<Expression<Ref>>> for Expression<Ref> {
     }
 }
 
+impl<E> Children<E> for MatchExpression<E> {
+    fn children(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+        Box::new(once(self.expr.as_ref()).chain(self.arms.iter().flat_map(|arm| arm.children())))
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
+        Box::new(
+            once(self.expr.as_mut()).chain(self.arms.iter_mut().flat_map(|arm| arm.children_mut())),
+        )
+    }
+}
+
 impl Expression<NamespacedPolynomialReference> {
     pub fn try_to_identifier(&self) -> Option<&String> {
         if let Expression::Reference(r) = self {
@@ -456,7 +468,7 @@ impl<R> Expression<R> {
             }
             Expression::Number(_, _) => empty(),
             Expression::Tuple(v) => v.iter(),
-            Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_ref()),
+            Expression::LambdaExpression(lambda) => lambda.children(),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter(),
             Expression::BinaryOperation(left, _, right) => {
                 [left.as_ref(), right.as_ref()].into_iter()
@@ -470,9 +482,7 @@ impl<R> Expression<R> {
                 arguments,
             }) => once(function.as_ref()).chain(arguments.iter()),
             Expression::FreeInput(e) => once(e.as_ref()),
-            Expression::MatchExpression(MatchExpression { expr, arms }) => {
-                once(expr.as_ref()).chain(arms.iter().flat_map(|arm| arm.children()))
-            }
+            Expression::MatchExpression(match_expr) => match_expr.children(),
             Expression::IfExpression(IfExpression {
                 condition,
                 body,
@@ -497,7 +507,7 @@ impl<R> Expression<R> {
             }
             Expression::Number(_, _) => empty(),
             Expression::Tuple(v) => v.iter_mut(),
-            Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_mut()),
+            Expression::LambdaExpression(lambda) => lambda.children_mut(),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter_mut(),
             Expression::BinaryOperation(left, _, right) => {
                 [left.as_mut(), right.as_mut()].into_iter()
@@ -511,9 +521,7 @@ impl<R> Expression<R> {
                 arguments,
             }) => once(function.as_mut()).chain(arguments.iter_mut()),
             Expression::FreeInput(e) => once(e.as_mut()),
-            Expression::MatchExpression(MatchExpression { expr, arms }) => {
-                once(expr.as_mut()).chain(arms.iter_mut().flat_map(|arm| arm.children_mut()))
-            }
+            Expression::MatchExpression(match_expr) => match_expr.children_mut(),
             Expression::IfExpression(IfExpression {
                 condition,
                 body,
