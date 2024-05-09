@@ -154,8 +154,9 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
             .get(&challenge.id)
             .unwrap_or_else(|| {
                 panic!(
-                    "Challenge {} not found in fixed data: {:?}",
-                    challenge.id, self.fixed_data.challenges
+                    "Challenge {} not found! Available challenges: {:?}",
+                    challenge.id,
+                    self.fixed_data.challenges.keys()
                 )
             });
         Ok(Value::FieldElement(challenge).into())
