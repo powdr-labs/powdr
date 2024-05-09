@@ -598,7 +598,7 @@ fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
 impl<E: Display> Expression<E> {
     pub fn precedence(&self) -> Option<ExpressionPrecedence> {
         match self {
-            Expression::UnaryOperation(op, _) => Some(op.precedence()),
+            Expression::UnaryOperation(UnaryOperation { op, expr: _ }) => Some(op.precedence()),
             Expression::BinaryOperation(_, op, _) => Some(op.precedence()),
             _ => None,
         }
@@ -683,7 +683,7 @@ impl<Ref: Display> Display for Expression<Ref> {
                 Expression::format_binary_operation(left, op, right, f)
             }
             Expression::UnaryOperation(UnaryOperation { op, expr }) => {
-                self.format_unary_operation(op, exp, f)
+                self.format_unary_operation(op, expr, f)
             }
             Expression::IndexAccess(index_access) => write!(f, "{index_access}"),
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
