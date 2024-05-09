@@ -684,7 +684,7 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::Number(_, Number { value, type_: _ }) => write!(f, "{value}"),
             Expression::String(_, value) => write!(f, "{}", quote(value)),
             Expression::Tuple(_, items) => write!(f, "({})", format_list(items)),
-            Expression::LambdaExpression(_, lambda) => write!(f, "{}", lambda),
+            Expression::LambdaExpression(_, lambda) => write!(f, "{lambda}"),
             Expression::ArrayLiteral(_, array) => write!(f, "{array}"),
             Expression::BinaryOperation(_, BinaryOperation { left, op, right }) => {
                 Expression::format_binary_operation(left, op, right, f)
