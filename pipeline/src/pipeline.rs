@@ -213,8 +213,7 @@ impl<T: FieldElement> Pipeline<T> {
                     .external_witness_values
                     .iter()
                     .any(|(n, _)| n == name),
-                "Duplicate witness column name: {}",
-                name
+                "Duplicate witness column name: {name}"
             );
         }
         self.arguments
@@ -827,7 +826,7 @@ impl<T: FieldElement> Pipeline<T> {
         let query_callback = self
             .arguments
             .query_callback
-            .take()
+            .clone()
             .unwrap_or_else(|| Arc::new(unused_query_callback()));
         let witness = WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
             .with_external_witness_values(&external_witness_values)

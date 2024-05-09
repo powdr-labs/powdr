@@ -127,8 +127,8 @@ impl<F: FieldElement> From<usize> for Elem<F> {
 impl<F: FieldElement> Display for Elem<F> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Binary(b) => write!(f, "{}", b),
-            Self::Field(fe) => write!(f, "{}", fe),
+            Self::Binary(b) => write!(f, "{b}"),
+            Self::Field(fe) => write!(f, "{fe}"),
         }
     }
 }

@@ -19,7 +19,7 @@ fn new_witness_column() {
     t[0] = t[1];
     "#;
     let expected = r#"namespace N(16);
-    col fixed even(i) { (i * 2) };
+    col fixed even(i) { i * 2 };
     let new_wit: -> expr = (constr || {
         let x;
         x
@@ -81,7 +81,7 @@ fn create_constraints() {
     y = x_is_zero + 2;
     "#;
     let expected = r#"namespace N(16);
-    let force_bool: expr -> std::prelude::Constr = (|c| ((c * (1 - c)) = 0));
+    let force_bool: expr -> std::prelude::Constr = (|c| c * (1 - c) = 0);
     let new_bool: -> expr = (constr || {
         let x;
         N.force_bool(x);
@@ -91,8 +91,8 @@ fn create_constraints() {
         let x_is_zero;
         N.force_bool(x_is_zero);
         let x_inv;
-        (x_is_zero = (1 - (x * x_inv)));
-        ((x_is_zero * x) = 0);
+        x_is_zero = 1 - x * x_inv;
+        x_is_zero * x = 0;
         x_is_zero
     });
     col witness x;

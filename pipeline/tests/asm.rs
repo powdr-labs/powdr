@@ -43,6 +43,12 @@ fn secondary_block_machine_add2() {
 }
 
 #[test]
+fn second_phase_hint() {
+    let f = "asm/second_phase_hint.asm";
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn mem_write_once() {
     let f = "asm/mem_write_once.asm";
     verify_asm(f, Default::default());
@@ -642,4 +648,11 @@ fn keccak() {
         .for_each(|(input, expected)| {
             test_main(&analyzed, input, expected);
         });
+}
+
+#[test]
+fn connect_no_witgen() {
+    let f = "asm/connect_no_witgen.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
 }

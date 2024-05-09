@@ -13,3 +13,6 @@ powdr-number = { path = "../number" }
 powdr-parser = { path = "../parser" }
 
 pretty_assertions = "1.4.0"
+
+[lints.clippy]
+uninlined_format_args = "deny"
