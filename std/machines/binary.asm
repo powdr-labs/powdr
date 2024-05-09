@@ -62,14 +62,18 @@ machine Binary2x with
 	Binary bin0;
 	Binary bin1;
 
-	link instr_and_m0 => bin0.and A, B -> C;
-	link instr_and_m1 => bin1.and A, B -> C;
+    // Unfortunately, this needs to be a witness column for witgen to work...
+    let used;
+    used = std::array::sum(sel);
+    std::utils::force_bool(used);
+	link instr_and_m0 ~> bin0.and A, B -> C;
+	link instr_and_m1 ~> bin1.and A, B -> C;
 
-	link instr_or_m0 => bin0.or A, B -> C;
-	link instr_or_m1 => bin1.or A, B -> C;
+	link instr_or_m0 ~> bin0.or A, B -> C;
+	link instr_or_m1 ~> bin1.or A, B -> C;
 
-	link instr_xor_m0 => bin0.xor A, B -> C;
-	link instr_xor_m1 => bin1.xor A, B -> C;
+	link instr_xor_m0 ~> bin0.xor A, B -> C;
+	link instr_xor_m1 ~> bin1.xor A, B -> C;
 
 	operation and<0> A, B -> C;
 	operation or<1> A, B -> C;
@@ -99,14 +103,17 @@ machine Binary2x with
 	col witness instr_xor_m0;
 	col witness instr_xor_m1;
 
-	instr_and_m0 = is_and * (1 - M);
-	instr_and_m1 = is_and * M;
+    let is_and_and_used = used * is_and;
+	instr_and_m0 = is_and_and_used * (1 - M);
+	instr_and_m1 = is_and_and_used * M;
 
-	instr_or_m0 = is_or * (1 - M);
-	instr_or_m1 = is_or * M;
+    let is_or_and_used = used * is_or;
+	instr_or_m0 = is_or_and_used * (1 - M);
+	instr_or_m1 = is_or_and_used * M;
 
-	instr_xor_m0 = is_xor * (1 - M);
-	instr_xor_m1 = is_xor * M;
+    let is_xor_and_used = used * is_xor;
+	instr_xor_m0 = is_xor_and_used * (1 - M);
+	instr_xor_m1 = is_xor_and_used * M;
 
 	col fixed latch = [1]*;
 }

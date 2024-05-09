@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::fmt::Display;
 use std::iter;
 
 use super::{EvalResult, FixedData, FixedLookup};
@@ -85,6 +86,16 @@ impl TryFrom<IdentityKind> for ConnectionType {
     }
 }
 
+impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} (block_size: {}, latch_row: {})",
+            self.name, self.block_size, self.latch_row
+        )
+    }
+}
+
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if
 /// the lookup has a binary selector that is 1 every k rows for some k
@@ -119,7 +130,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
         let (is_permutation, block_size, latch_row) =
-            detect_connection_type_and_block_size(fixed_data, connecting_identities, identities)?;
+            detect_connection_type_and_block_size(fixed_data, connecting_identities)?;
 
         // Collect all right-hand sides of the connecting identities.
         // This is used later to decide to which lookup the machine should respond.
@@ -174,7 +185,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
     connecting_identities: &[&'a Identity<Expression<T>>],
-    identities: &[&'a Identity<Expression<T>>],
 ) -> Option<(ConnectionType, usize, usize)> {
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
@@ -214,21 +224,11 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
                     collect_fixed_cols(selector, &mut latch_candidates);
                 }
             }
-            // If there is a fixed column among the selectors, use that.
-            find_max_period(latch_candidates).or_else(|| {
-                // Otherwise, try to all other fixed columns. For example, it could be that the selector
-                // is just a witness column that is constrained such that it can only be 1 with some period.
-                let mut latch_candidates = BTreeSet::new();
-                for id in identities {
-                    if id.kind == IdentityKind::Polynomial {
-                        collect_fixed_cols(
-                            id.left.selector.as_ref().unwrap(),
-                            &mut latch_candidates,
-                        );
-                    };
-                }
-                find_max_period(latch_candidates)
-            })?
+            if latch_candidates.is_empty() {
+                (0, 1)
+            } else {
+                find_max_period(latch_candidates)?
+            }
         }
     };
     Some((connection_type, block_size, latch_row))
