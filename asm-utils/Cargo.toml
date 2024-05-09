@@ -9,3 +9,6 @@ repository = { workspace = true }
 
 [dependencies]
 itertools = "^0.10"
+
+[lints.clippy]
+uninlined_format_args = "deny"

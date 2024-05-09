@@ -364,6 +364,8 @@ impl<Ref> From<UnaryOperation<Expression<Ref>>> for Expression<Ref> {
     }
 }
 
+pub type ExpressionPrecedence = u64;
+
 impl<Ref> Expression<Ref> {
     pub fn new_binary(left: Self, op: BinaryOperator, right: Self) -> Self {
         Expression::BinaryOperation(Box::new(left), op, Box::new(right))
@@ -648,6 +650,76 @@ pub enum BinaryOperator {
     NotEqual,
     GreaterEqual,
     Greater,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum BinaryOperatorAssociativity {
+    Left,
+    Right,
+    RequireParentheses,
+}
+
+trait Precedence {
+    fn precedence(&self) -> ExpressionPrecedence;
+}
+
+impl Precedence for UnaryOperator {
+    fn precedence(&self) -> ExpressionPrecedence {
+        use UnaryOperator::*;
+        match self {
+            // NOTE: Any modification must be done with care to not overlap with BinaryOperator's precedence
+            Next => 1,
+            Minus | LogicalNot => 2,
+        }
+    }
+}
+
+impl Precedence for BinaryOperator {
+    fn precedence(&self) -> ExpressionPrecedence {
+        use BinaryOperator::*;
+        match self {
+            // NOTE: Any modification must be done with care to not overlap with LambdaExpression's precedence
+            // Unary Oprators
+            // **
+            Pow => 3,
+            // * / %
+            Mul | Div | Mod => 4,
+            // + -
+            Add | Sub => 5,
+            // << >>
+            ShiftLeft | ShiftRight => 6,
+            // &
+            BinaryAnd => 7,
+            // ^
+            BinaryXor => 8,
+            // |
+            BinaryOr => 9,
+            // = == != < > <= >=
+            Identity | Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => 10,
+            // &&
+            LogicalAnd => 11,
+            // ||
+            LogicalOr => 12,
+            // .. ..=
+            // ??
+        }
+    }
+}
+
+impl BinaryOperator {
+    pub fn associativity(&self) -> BinaryOperatorAssociativity {
+        use BinaryOperator::*;
+        use BinaryOperatorAssociativity::*;
+        match self {
+            Identity | Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => {
+                RequireParentheses
+            }
+            Pow => Right,
+
+            // .. ..= => RequireParentheses,
+            _ => Left,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]

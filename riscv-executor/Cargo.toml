@@ -22,3 +22,6 @@ itertools = "0.11"
 num-bigint = "0.4.3"
 num-traits = "0.2.15"
 k256 = { version = "0.13.3", features = [] }
+
+[lints.clippy]
+uninlined_format_args = "deny"

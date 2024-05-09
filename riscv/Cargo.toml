@@ -47,8 +47,16 @@ powdr-backend = { path = "../backend" }
 test-log = "0.2.12"
 env_logger = "0.10.0"
 hex = "0.4.3"
+criterion = { version = "0.4", features = ["html_reports"] }
 
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
 
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
+
+[[bench]]
+name = "executor_benchmark"
+harness = false
+
+[lints.clippy]
+uninlined_format_args = "deny"

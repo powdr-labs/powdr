@@ -545,7 +545,7 @@ ProductOp: BinaryOperator = {
 }
 
 Power: Box<Expression> = {
-    <Power> <PowOp> <Term> => Box::new(Expression::BinaryOperation(<>)),
+    <Term> <PowOp> <Power> => Box::new(Expression::BinaryOperation(<>)),
     Unary,
 }
 
