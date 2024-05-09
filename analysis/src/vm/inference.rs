@@ -50,7 +50,7 @@ fn infer_machine(mut machine: Machine) -> Result<Machine, Vec<String>> {
                             .instructions
                             .iter()
                             .find(|i| i.name == *instr_name)
-                            .unwrap_or_else(|| panic!("invalid instruction: {}", instr_name));
+                            .unwrap_or_else(|| panic!("invalid instruction: {instr_name}"));
 
                         def.instruction
                             .params

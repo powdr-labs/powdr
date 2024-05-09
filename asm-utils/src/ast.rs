@@ -164,7 +164,7 @@ impl<F: FunctionOpKind> Display for Expression<F> {
         match self {
             Expression::Number(n) => write!(f, "{n}"),
             Expression::Symbol(sym) => write!(f, "{sym}"),
-            Expression::UnaryOp(kind, expr) => write!(f, "({}{})", kind, expr),
+            Expression::UnaryOp(kind, expr) => write!(f, "({kind}{expr})"),
             Expression::BinaryOp(op, args) => {
                 let symbol = match op {
                     BinaryOpKind::Or => "|",
@@ -180,7 +180,7 @@ impl<F: FunctionOpKind> Display for Expression<F> {
                 };
                 write!(f, "({} {symbol} {})", args[0], args[1])
             }
-            Expression::FunctionOp(kind, expr) => write!(f, "{}({})", kind, expr),
+            Expression::FunctionOp(kind, expr) => write!(f, "{kind}({expr})"),
         }
     }
 }

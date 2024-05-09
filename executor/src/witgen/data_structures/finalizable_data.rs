@@ -75,7 +75,7 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
     pub fn remove(&mut self, i: usize) -> Row<'a, T> {
         match self.data.remove(i) {
             Entry::InProgress(row) => row,
-            Entry::Finalized(_, _) => panic!("Row {} already finalized.", i),
+            Entry::Finalized(_, _) => panic!("Row {i} already finalized."),
         }
     }
 
@@ -86,7 +86,7 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
     pub fn get_mut(&mut self, i: usize) -> Option<&mut Row<'a, T>> {
         match &mut self.data[i] {
             Entry::InProgress(row) => Some(row),
-            Entry::Finalized(_, _) => panic!("Row {} already finalized.", i),
+            Entry::Finalized(_, _) => panic!("Row {i} already finalized."),
         }
     }
 
@@ -183,7 +183,7 @@ impl<'a, T: FieldElement> Index<usize> for FinalizableData<'a, T> {
     fn index(&self, index: usize) -> &Self::Output {
         match &self.data[index] {
             Entry::InProgress(row) => row,
-            Entry::Finalized(_, _) => panic!("Row {} already finalized.", index),
+            Entry::Finalized(_, _) => panic!("Row {index} already finalized."),
         }
     }
 }
@@ -192,7 +192,7 @@ impl<'a, T: FieldElement> IndexMut<usize> for FinalizableData<'a, T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         match &mut self.data[index] {
             Entry::InProgress(row) => row,
-            Entry::Finalized(_, _) => panic!("Row {} already finalized.", index),
+            Entry::Finalized(_, _) => panic!("Row {index} already finalized."),
         }
     }
 }

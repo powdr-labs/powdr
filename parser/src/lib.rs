@@ -13,8 +13,11 @@ use powdr_parser_util::{handle_parse_error, ParseError};
 
 use std::sync::Arc;
 
+pub mod test_utils;
+
 lalrpop_mod!(
     #[allow(clippy::all)]
+    #[allow(clippy::uninlined_format_args)]
     pub powdr,
     "/powdr.rs"
 );
@@ -300,6 +303,7 @@ mod test {
         };
 
         fn clear_machine_stmt(stmt: &mut MachineStatement) {
+            use test_utils::pil_statement_clear_source_ref;
             match stmt {
                 MachineStatement::Submachine(s, _, _)
                 | MachineStatement::RegisterDeclaration(s, _, _)
@@ -361,7 +365,7 @@ mod test {
         let asm_files = find_files_with_ext(basedir, "asm".into());
         for (file, orig_string) in asm_files {
             let mut orig_asm = parse_asm(Some(&file), &orig_string).unwrap_err_to_stderr();
-            let orig_asm_to_string = format!("{}", orig_asm);
+            let orig_asm_to_string = format!("{orig_asm}");
             let mut reparsed_asm = parse_asm(
                 Some((file.clone() + " reparsed").as_ref()),
                 &orig_asm_to_string,
@@ -380,7 +384,7 @@ mod test {
                         similar::ChangeTag::Insert => "+",
                         similar::ChangeTag::Equal => " ",
                     };
-                    eprint!("\t{}{}", sign, change);
+                    eprint!("\t{sign}{change}");
                 }
                 panic!("parsed and re-parsed ASTs differ for file: {file}");
             }
@@ -390,12 +394,13 @@ mod test {
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for pil files
     fn parse_write_reparse_pil() {
+        use test_utils::pil_clear_source_refs;
         let crate_dir = env!("CARGO_MANIFEST_DIR");
         let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
         let pil_files = find_files_with_ext(basedir, "pil".into());
         for (file, orig_string) in pil_files {
             let mut orig_pil = parse(Some(&file), &orig_string).unwrap_err_to_stderr();
-            let orig_pil_to_string = format!("{}", orig_pil);
+            let orig_pil_to_string = format!("{orig_pil}");
             let mut reparsed_pil = parse(
                 Some((file.clone() + " reparsed").as_ref()),
                 &orig_pil_to_string,
@@ -415,7 +420,7 @@ mod test {
                         similar::ChangeTag::Insert => "+",
                         similar::ChangeTag::Equal => " ",
                     };
-                    eprint!("\t{}{}", sign, change);
+                    eprint!("\t{sign}{change}");
                 }
                 panic!("parsed and re-parsed ASTs differ for file: {file}");
             }
@@ -429,8 +434,8 @@ mod test {
         let input = r#"
     constant %N = 16;
 namespace Fibonacci(%N);
-    constant %last_row = (%N - 1);
-    let bool: expr -> expr = (|X| (X * (1 - X)));
+    constant %last_row = %N - 1;
+    let bool: expr -> expr = (|X| X * (1 - X));
     let one_hot = (|i, which| match i {
         which => 1,
         _ => 0,
@@ -438,9 +443,9 @@ namespace Fibonacci(%N);
     pol constant ISLAST(i) { one_hot(i, %last_row) };
     pol commit arr[8];
     pol commit x, y;
-    { (x + 2), y' } in { ISLAST, 7 };
-    y { (x + 2), y' } is ISLAST { ISLAST, 7 };
-    (((x - 2) * y) = 8);
+    { x + 2, y' } in { ISLAST, 7 };
+    y { x + 2, y' } is ISLAST { ISLAST, 7 };
+    (x - 2) * y = 8;
     public out = y(%last_row);"#;
         let printed = format!("{}", parse(Some("input"), input).unwrap());
         assert_eq!(input.trim(), printed.trim());
@@ -455,7 +460,8 @@ namespace Fibonacci(%N);
 
     #[test]
     fn reparse_arrays() {
-        let input = "    pol commit y[3];\n    ((y - 2) = 0);\n    ((y[2] - 2) = 0);\n    public out = y[1](2);";
+        let input =
+            "    pol commit y[3];\n    y - 2 = 0;\n    y[2] - 2 = 0;\n    public out = y[1](2);";
         let printed = format!("{}", parse(Some("input"), input).unwrap());
         assert_eq!(input.trim(), printed.trim());
     }
@@ -469,7 +475,7 @@ namespace Fibonacci(%N);
 
     #[test]
     fn array_literals() {
-        let input = r#"let x = [[1], [2], [(3 + 7)]];"#;
+        let input = r#"let x = [[1], [2], [3 + 7]];"#;
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(input.trim(), printed.trim());
     }
@@ -537,7 +543,7 @@ namespace N(2);
     fn type_args() {
         let input = r#"
 namespace N(2);
-    let<T: Ord> max: T, T -> T = (|a, b| if (a < b) { b } else { a });
+    let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
     let<T1, T2> left: T1, T2 -> T1 = (|a, b| a);
     let seven = max::<int>(3, 7);
     let five = left::<int, fe[]>(5, [7]);
@@ -551,12 +557,12 @@ namespace N(2);
     fn type_args_with_space() {
         let input = r#"
 namespace N(2);
-    let<T: Ord> max: T, T -> T = (|a, b| if (a < b) { b } else { a });
+    let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
     let seven = max :: <int>(3, 7);
 "#;
         let expected = r#"
 namespace N(2);
-    let<T: Ord> max: T, T -> T = (|a, b| if (a < b) { b } else { a });
+    let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
     let seven = max::<int>(3, 7);
 "#;
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());

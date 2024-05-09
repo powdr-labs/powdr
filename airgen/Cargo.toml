@@ -13,3 +13,6 @@ powdr-number = { path = "../number" }
 powdr-analysis = { path = "../analysis" }
 
 log = "0.4.17"
+
+[lints.clippy]
+uninlined_format_args = "deny"

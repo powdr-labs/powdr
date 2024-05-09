@@ -20,7 +20,7 @@ impl<'a, D: AnalysisDriver> TypeProcessor<'a, D> {
 
     pub fn process_type(&self, ty: Type<Expression>) -> Type {
         let mut ty = self.evaluate_array_lengths(ty.clone())
-            .map_err(|e| panic!("Error evaluating expressions in type name \"{}\" to reduce it to a type:\n{e})", ty))
+            .map_err(|e| panic!("Error evaluating expressions in type name \"{ty}\" to reduce it to a type:\n{e})"))
             .unwrap();
         ty.map_to_type_vars(self.type_vars);
         ty.contained_named_types_mut().for_each(|n| {

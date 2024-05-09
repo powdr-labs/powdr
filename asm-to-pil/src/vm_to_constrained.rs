@@ -136,7 +136,7 @@ impl<T: FieldElement> VMConverter<T> {
                             Pc => {
                                 // introduce an intermediate witness polynomial to keep the degree of polynomial identities at 2
                                 // this may not be optimal for backends which support higher degree constraints
-                                let pc_update_name = format!("{}_update", name);
+                                let pc_update_name = format!("{name}_update");
 
                                 vec![
                                     PilStatement::PolynomialDefinition(
@@ -368,7 +368,7 @@ impl<T: FieldElement> VMConverter<T> {
                     Input::Literal(param.name, LiteralKind::UnsignedConstant)
                 }
                 None => Input::Register(param.name),
-                Some(ty) => panic!("Invalid param type {}", ty),
+                Some(ty) => panic!("Invalid param type {ty}"),
             })
             .collect();
 
@@ -410,7 +410,7 @@ impl<T: FieldElement> VMConverter<T> {
                         );
                     }
                 }
-                Some(ty) => panic!("Invalid param type '{}'", ty),
+                Some(ty) => panic!("Invalid param type '{ty}'"),
             }
         }
 
@@ -566,8 +566,7 @@ impl<T: FieldElement> VMConverter<T> {
             for name in &rhs_assignment_registers {
                 assert!(
                     lhs.inputs_and_outputs().any(|p_lhs| p_lhs.name == *name),
-                    "Assignment register '{}' used on rhs must be present on lhs params",
-                    name
+                    "Assignment register '{name}' used on rhs must be present on lhs params"
                 );
             }
 
@@ -655,8 +654,7 @@ impl<T: FieldElement> VMConverter<T> {
         assert_eq!(
             instr.inputs.len() + instr.outputs.len(),
             args.len(),
-            "Called instruction {} with the wrong number of arguments",
-            instr_name
+            "Called instruction {instr_name} with the wrong number of arguments"
         );
 
         let mut args = args.into_iter();
@@ -689,7 +687,7 @@ impl<T: FieldElement> VMConverter<T> {
                                     T::from(n),
                                 ));
                             } else {
-                                panic!("expected unsigned number, received {}", a);
+                                panic!("expected unsigned number, received {a}");
                             }
                         }
                         Input::Literal(_, LiteralKind::SignedConstant) => {
@@ -1133,7 +1131,7 @@ impl<T: FieldElement> VMConverter<T> {
                         if counter == 0 {
                             "".to_string()
                         } else {
-                            format!("_{}", counter)
+                            format!("_{counter}")
                         }
                     );
                     self.pil.push(PilStatement::PolynomialDefinition(
