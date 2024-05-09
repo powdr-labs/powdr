@@ -8,6 +8,7 @@ use std::{
     process::Command,
 };
 
+use itertools::Itertools;
 use mktemp::Temp;
 use powdr_number::FieldElement;
 use serde_json::Value as JsonValue;
@@ -217,6 +218,13 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
     } else {
         cmd.args(args.iter());
     }
+
+    log::info!(
+        "Building cargo project with command:\n→ {} {}",
+        cmd.get_program().to_string_lossy(),
+        cmd.get_args()
+            .format_with(" ", |arg, f| f(&arg.to_string_lossy()))
+    );
 
     cmd
 }
