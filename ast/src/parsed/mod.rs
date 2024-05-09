@@ -452,10 +452,10 @@ impl<R> Expression<R> {
     #[auto_enum(Iterator)]
     pub fn children(&self) -> impl Iterator<Item = &Expression<R>> + '_ {
         match self {
-            Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
-                empty()
-            }
-            Expression::Number(_) => empty(),
+            Expression::Reference(_)
+            | Expression::PublicReference(_)
+            | Expression::String(_)
+            | Expression::Number(_) => empty(),
             Expression::Tuple(v) => v.iter(),
             Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_ref()),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter(),
