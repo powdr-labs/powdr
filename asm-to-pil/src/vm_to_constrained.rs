@@ -13,7 +13,7 @@ use powdr_ast::{
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
-        FunctionKind, LambdaExpression, MatchArm, MatchExpression, Pattern, PilStatement,
+        FunctionKind, LambdaExpression, MatchArm, MatchExpression, Number, Pattern, PilStatement,
         PolynomialName, SelectedExpressions, UnaryOperator,
     },
     SourceRef,
@@ -114,10 +114,7 @@ impl<T: FieldElement> VMConverter<T> {
         self.pil.push(PilStatement::PolynomialConstantDefinition(
             SourceRef::unknown(),
             "first_step".to_string(),
-            FunctionDefinition::Array(
-                ArrayExpression::value(vec![Expression::Number(1u32.into(), None)])
-                    .pad_with_zeroes(),
-            ),
+            FunctionDefinition::Array(ArrayExpression::value(vec![1u32.into()]).pad_with_zeroes()),
         ));
 
         self.pil.extend(
@@ -132,7 +129,7 @@ impl<T: FieldElement> VMConverter<T> {
                             Pc => {
                                 // introduce an intermediate witness polynomial to keep the degree of polynomial identities at 2
                                 // this may not be optimal for backends which support higher degree constraints
-                                let pc_update_name = format!("{}_update", name);
+                                let pc_update_name = format!("{name}_update");
 
                                 vec![
                                     PilStatement::PolynomialDefinition(
@@ -364,7 +361,7 @@ impl<T: FieldElement> VMConverter<T> {
                     Input::Literal(param.name, LiteralKind::UnsignedConstant)
                 }
                 None => Input::Register(param.name),
-                Some(ty) => panic!("Invalid param type {}", ty),
+                Some(ty) => panic!("Invalid param type {ty}"),
             })
             .collect();
 
@@ -406,7 +403,7 @@ impl<T: FieldElement> VMConverter<T> {
                         );
                     }
                 }
-                Some(ty) => panic!("Invalid param type '{}'", ty),
+                Some(ty) => panic!("Invalid param type '{ty}'"),
             }
         }
 
@@ -556,8 +553,7 @@ impl<T: FieldElement> VMConverter<T> {
             for name in &rhs_assignment_registers {
                 assert!(
                     lhs.inputs_and_outputs().any(|p_lhs| p_lhs.name == *name),
-                    "Assignment register '{}' used on rhs must be present on lhs params",
-                    name
+                    "Assignment register '{name}' used on rhs must be present on lhs params"
                 );
             }
 
@@ -645,8 +641,7 @@ impl<T: FieldElement> VMConverter<T> {
         assert_eq!(
             instr.inputs.len() + instr.outputs.len(),
             args.len(),
-            "Called instruction {} with the wrong number of arguments",
-            instr_name
+            "Called instruction {instr_name} with the wrong number of arguments"
         );
 
         let mut args = args.into_iter();
@@ -672,27 +667,27 @@ impl<T: FieldElement> VMConverter<T> {
                         }
                         Input::Literal(_, LiteralKind::UnsignedConstant) => {
                             // TODO evaluate expression
-                            if let Expression::Number(n, _) = a {
+                            if let Expression::Number(Number {value: n, type_: _}) = a {
                                 let half_modulus = T::modulus().to_arbitrary_integer() / BigUint::from(2u64);
                                 assert!(n < half_modulus, "Number passed to unsigned parameter is negative or too large: {n}");
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(
                                     T::from(n),
                                 ));
                             } else {
-                                panic!("expected unsigned number, received {}", a);
+                                panic!("expected unsigned number, received {a}");
                             }
                         }
                         Input::Literal(_, LiteralKind::SignedConstant) => {
                             // TODO evaluate expression
-                            if let Expression::Number(n, _) = a {
+                            if let Expression::Number(Number {value, ..}) = a {
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(
-                                    T::checked_from(n).unwrap(),
+                                    T::checked_from(value).unwrap(),
                                 ));
                             } else if let Expression::UnaryOperation(UnaryOperator::Minus, expr) = a
                             {
-                                if let Expression::Number(n, _) = *expr {
+                                if let Expression::Number(Number {value, ..}) = *expr {
                                     instruction_literal_arg.push(InstructionLiteralArg::Number(
-                                        -T::checked_from(n).unwrap(),
+                                        -T::checked_from(value).unwrap(),
                                     ))
                                 } else {
                                     panic!();
@@ -740,7 +735,7 @@ impl<T: FieldElement> VMConverter<T> {
                 let name = reference.try_to_identifier().unwrap();
                 vec![(1.into(), AffineExpressionComponent::Register(name.clone()))]
             }
-            Expression::Number(value, _) => {
+            Expression::Number(Number { value, .. }) => {
                 vec![(T::from(value), AffineExpressionComponent::Constant)]
             }
             Expression::String(_) => panic!(),
@@ -1116,7 +1111,7 @@ impl<T: FieldElement> VMConverter<T> {
                         if counter == 0 {
                             "".to_string()
                         } else {
-                            format!("_{}", counter)
+                            format!("_{counter}")
                         }
                     );
                     self.pil.push(PilStatement::PolynomialDefinition(

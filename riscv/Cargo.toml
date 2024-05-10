@@ -57,3 +57,6 @@ development = ["env_logger"]
 [[bench]]
 name = "executor_benchmark"
 harness = false
+
+[lints.clippy]
+uninlined_format_args = "deny"

@@ -148,7 +148,7 @@ mod tests {
             .into_iter()
             .map(|(n, c)| (n.to_string(), c))
             .collect::<Vec<_>>();
-        let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default());
+        let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 
         // No submachines
         let mut fixed_lookup = FixedLookup::new(fixed_data.global_range_constraints().clone());

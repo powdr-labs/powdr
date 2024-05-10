@@ -8,8 +8,8 @@ use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, MatchExpression, NamespacedPolynomialReference, Pattern,
-        SelectedExpressions, StatementInsideBlock, SymbolCategory,
+        LetStatementInsideBlock, MatchArm, MatchExpression, NamespacedPolynomialReference, Number,
+        Pattern, SelectedExpressions, StatementInsideBlock, SymbolCategory,
     },
 };
 use powdr_number::DegreeType;
@@ -87,7 +87,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         match expr {
             PExpression::Reference(poly) => Expression::Reference(self.process_reference(poly)),
             PExpression::PublicReference(name) => Expression::PublicReference(name),
-            PExpression::Number(n, t) => Expression::Number(n, t),
+            PExpression::Number(Number { value: number, .. }) => number.into(),
             PExpression::String(value) => Expression::String(value),
             PExpression::Tuple(items) => Expression::Tuple(self.process_expressions(items)),
             PExpression::ArrayLiteral(ArrayLiteral { items }) => {
