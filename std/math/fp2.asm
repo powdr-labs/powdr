@@ -4,7 +4,7 @@ use std::convert::expr;
 use std::field::modulus;
 use std::prover::eval;
 
-/// A element of the extension field over the implied base field (which has to be either
+/// An element of the extension field over the implied base field (which has to be either
 /// the Goldilocks or the BN254 field) relative to the irreducible polynomial X^2 - 7,
 /// where Fp2(a0, a1) is interpreted as a0 + a1 * X.
 /// T is assumed to either be fe, expr or any other object whose algebraic operations
