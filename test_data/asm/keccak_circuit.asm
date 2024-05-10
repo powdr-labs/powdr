@@ -199,7 +199,7 @@ let eval_circuit: circuit::State, Gate[], int[] -> int[] = |state, outputs, inpu
 };
 
 
-let test = || {
+let test: -> Constr[] = || {
     let input = [8315180248889782138, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9223372036854775808, 0, 0, 0, 0, 0, 0, 0, 0];
     let expectation = [
         0xb6dc406d97d185ca,
@@ -241,14 +241,43 @@ let test = || {
     []
 };
 
-machine Main(262144) { 
+machine Main with degree: 196608 {
     // TODO uncomment to run the evaluation test.
     // test();
 
 
-    std::Binary binary;
-    std::Shift shift;
+    std::machines::binary::Binary binary;
+    std::machines::shift::Shift shift;
 
-    col witness a, b, c;
+    col witness in1, in2, out;
+
+    // TODO we need this because we do not have destructuring assignments
+    let circuit = keccakf_circuit();
+    let circuit_gates = (|(state, _)| match state { State::S(gates, _) => gates })(circuit);
+    let output_gates = (|(_, output)| output)(circuit);
+    let circuit_permutation = (|(state, _)| circuit::permutation(state))(circuit);
+    let circuit_len = std::array::len(circuit_gates);
+
+    let GATE_ID: col = |i| i % circuit_len;
+    let GATE_OP: col = |i| { let (op, _, _) = circuit_gates[i % circuit_len]; op };
+
+    // ----- fix the test inputs ------------
+    IS_INPUT { GATE_ID, out } in { GATE_ID, INPUTS };
+
+    let test_inputs = values64_to_32([8315180248889782138, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9223372036854775808, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let INPUTS: col = |i| if i % circuit_len < std::array::len(test_inputs) { test_inputs[i % circuit_len] } else { 0 };
+
+    // ------ gate operations ----------
+    // TODO Can we do without fixed cols?
+    // TODO "op" really needs to be an enum, this is horrible.
+    let IS_INPUT: col = |i| { let (op, _, _) = circuit_gates[i % circuit_len]; if op == 0 { 1 } else { 0 } };
+    let IS_XOR: col = |i| { let (op, _, _) = circuit_gates[i % circuit_len]; if op == 1 { 1 } else { 0 } };
+    let IS_AND_NOT: col = |i| { let (op, _, _) = circuit_gates[i % circuit_len]; if op == 2 { 1 } else { 0 } };
+    let IS_SHL: col = |i| { let (op, _, _) = circuit_gates[i % circuit_len]; if op == 3 { 1 } else { 0 } };
+    let IS_SHR: col = |i| { let (op, _, _) = circuit_gates[i % circuit_len]; if op == 4 { 1 } else { 0 } };
+
+    link IS_XOR => binary.xor in1, in2 -> out;
+
+
 
 }
