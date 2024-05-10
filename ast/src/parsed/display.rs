@@ -692,15 +692,8 @@ impl<Ref: Display> Display for Expression<Ref> {
                 write!(f, "}}")
             }
             Expression::IfExpression(e) => write!(f, "{e}"),
-            Expression::BlockExpression(BlockExpression { statements, expr }) => {
-                if statements.is_empty() {
-                    write!(f, "{{ {expr} }}")
-                } else {
-                    writeln!(f, "{{")?;
-                    write_items_indented(f, statements)?;
-                    write_indented_by(f, expr, 1)?;
-                    write!(f, "\n}}")
-                }
+            Expression::BlockExpression(block_expr) => {
+                write!(f, "{block_expr}")
             }
         }
     }
@@ -803,6 +796,19 @@ impl Display for UnaryOperator {
                 UnaryOperator::Next => "'",
             }
         )
+    }
+}
+
+impl<E: Display> Display for BlockExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if self.statements.is_empty() {
+            write!(f, "{{ {} }}", self.expr)
+        } else {
+            writeln!(f, "{{")?;
+            write_items_indented(f, &self.statements)?;
+            write_indented_by(f, &self.expr, 1)?;
+            write!(f, "\n}}")
+        }
     }
 }
 
