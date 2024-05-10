@@ -9,9 +9,9 @@ use circuit::Gate;
 
 /// Represent the numbers 0 to 63, used for rotl.
 /// TODO actually we only need up to 31 after the translation to 32-bit gates.
-let rotl_constants = array::new(64, |i| Gate::Reference(25 + i));
+let rotl_constants = array::new(64, |i| Gate::Reference(50 + i));
 /// Represent the array RC.
-let rc_constants = array::new(24, |i| Gate::Reference(25 + 64 + i));
+let rc_constants = array::new(24, |i| Gate64::Reference(50 + 64 + 2 * i, 50 + 64 + 2 * i + 1));
 
 /// -------------- the elementary 64-bit gates -----------------
 enum Gate64 {
@@ -55,7 +55,7 @@ let to_gate32: Gate64 -> (Gate, Gate) = |gate| match gate {
     },
     Gate64::Rotl(x, n) => {
         let (a, b) = to_gate32(x);
-        rotl32(a, b)
+        rotl32(a, b, n)
     },
     Gate64::AndNot(a, b) => {
         let (a0, a1) = to_gate32(a);
@@ -64,7 +64,7 @@ let to_gate32: Gate64 -> (Gate, Gate) = |gate| match gate {
     }
 };
 
-let to_gate32_array: Gate64[] -> Gate[] = |gates| array::flatten(array::map(gates, |g| { let (a, b) = to_gate32; [a, b] }));
+let to_gate32_array: Gate64[] -> Gate[] = |gates| array::flatten(array::map(gates, |g| { let (a, b) = to_gate32(g); [a, b] }));
 
 let to_gate64: Gate, Gate -> Gate64 = |g1, g2| match (g1, g2) {
     (Gate::Reference(i), Gate::Reference(j)) => Gate64::Reference(i, j),
@@ -149,7 +149,7 @@ let round_32 = |round| wrap_64_in_32(|inputs| iota(chi(rho_pi_rearrange(rho_pi_l
 let keccakf_circuit: -> (circuit::State, Gate[]) = || {
     let (s1, inputs) = add_inputs(circuit::new(), 50);
     let (s2, rotl_const) = add_inputs(s1, 64);
-    let (s3, rc_const) = add_inputs(s2, 24);
+    let (s3, rc_const) = add_inputs(s2, 48);
     // TODO assert that rotl_const equal rotl_constants
     // TODO assert that rc_const equal rc_constants
 
@@ -174,15 +174,16 @@ let eval_gate: int, int, int -> int = |gate, in1, in2| match gate {
     _ => std::check::panic("Invalid gate"),
 };
 
-let values64_to_32: int[] -> int[] = |values| array::new(50, |i| match i % 2 {
+let values64_to_32: int[] -> int[] = |values| array::new(array::len(values) * 2, |i| match i % 2 {
     0 => values[i / 2] >> 32,
     1 => values[i / 2] & 0xffffffff,
 });
-let values32_to_64: int[] -> int[] = |values| array::new(25, |i| (values[2 * i] << 32) | values[2 * i + 1]);
+let values32_to_64: int[] -> int[] = |values| array::new(array::len(values) / 2, |i| (values[2 * i] << 32) | values[2 * i + 1]);
 
 let eval_circuit: circuit::State, Gate[], int[] -> int[] = |state, outputs, inputs| match state {
     State::S(gates, _) => {
-        let initial = values64_to_32(inputs) + array::new(64, |i| i) + array::new(24, |i| RC[i]);
+        let initial = values64_to_32(inputs) + array::new(64, |i| i) + values64_to_32(RC);
+        let _ = std::check::assert(std::array::len(initial) == 50 + 64 + 48, || "invalid initial length");
         let values = std::utils::fold(std::array::len(gates), |i| i, [], |acc, i| {
             let value = if i < array::len(initial) { initial[i] } else {
                 let (id, in1, in2) = gates[i];
