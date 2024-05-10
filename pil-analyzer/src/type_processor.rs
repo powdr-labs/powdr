@@ -1,6 +1,7 @@
 use std::{collections::HashSet, str::FromStr};
 
 use powdr_ast::parsed::{asm::SymbolPath, types::Type, visitor::Children, Expression};
+use powdr_number::BigUint;
 
 use crate::{evaluator::EvalError, untyped_evaluator, AnalysisDriver};
 
@@ -40,7 +41,7 @@ impl<'a, D: AnalysisDriver> TypeProcessor<'a, D> {
             let v_u64: u64 = v.clone().try_into().map_err(|_| {
                 EvalError::TypeError(format!("Number too large, expected u64, but got {v}"))
             })?;
-            *e = Expression::Number(v_u64.into(), None);
+            *e = BigUint::from(v_u64).into();
             Ok(())
         })?;
         Ok(t.into())

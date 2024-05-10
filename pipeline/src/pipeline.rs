@@ -705,13 +705,13 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     fn compute_analyzed_pil_from_parsed_pil_file(&mut self) -> Result<Analyzed<T>, Vec<String>> {
-        self.log("Analyzing pil...");
-
         self.compute_parsed_pil_file()?;
         let linked = self.artifact.parsed_pil_file.take().unwrap();
 
+        self.log("Analyzing PIL and computing constraints...");
         let analyzed = powdr_pil_analyzer::analyze_ast(linked);
         self.maybe_write_pil(&analyzed, "_analyzed")?;
+        self.log("done.");
 
         Ok(analyzed)
     }
@@ -722,9 +722,10 @@ impl<T: FieldElement> Pipeline<T> {
             None => return Err(vec!["No pil file path available".to_string()]),
         };
 
-        self.log("Analyzing pil...");
+        self.log("Analyzing PIL and computing constraints...");
         let analyzed = powdr_pil_analyzer::analyze_file(pil_file);
         self.maybe_write_pil(&analyzed, "_analyzed")?;
+        self.log("done.");
 
         Ok(analyzed)
     }
@@ -735,9 +736,10 @@ impl<T: FieldElement> Pipeline<T> {
             None => return Err(vec!["No pil string available".to_string()]),
         };
 
-        self.log("Analyzing pil...");
+        self.log("Analyzing PIL and computing constraints...");
         let analyzed = powdr_pil_analyzer::analyze_string(pil_string);
         self.maybe_write_pil(&analyzed, "_analyzed")?;
+        self.log("done.");
 
         Ok(analyzed)
     }
