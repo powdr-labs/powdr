@@ -98,4 +98,17 @@ powdr-rs execute many_chunks.asm --witness
 The witnesses are written in `./chunk_0/commits.bin`, `./chunk_1/commits.bin`
 and `./chunk_2/commits.bin`.
 
-Now that we have the witnesses for all chunks we can use `powdr` (instead of `powdr-rs`) to compute proofs for each chunk:
+Now that we have the witnesses for all chunks we can use `powdr` (instead of
+`powdr-rs`) to compute proofs for each chunk:
+
+```console
+powdr prove many_chunks.asm -d chunk_0 --backend estark-dump
+powdr prove many_chunks.asm -d chunk_1 --backend estark-dump
+powdr prove many_chunks.asm -d chunk_2 --backend estark-dump
+```
+
+These proofs are mock proofs for the sake of the example, but any backend
+should work here.
+
+After generating real proofs, each specific proof system can be used for the
+recursion/aggregation parts.  A follow-up tutorial on that is coming soon.
