@@ -686,13 +686,8 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::IndexAccess(index_access) => write!(f, "{index_access}"),
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
-            Expression::MatchExpression(MatchExpression {
-                expr: scrutinee,
-                arms,
-            }) => {
-                writeln!(f, "match {scrutinee} {{")?;
-                write_items_indented(f, arms)?;
-                write!(f, "}}")
+            Expression::MatchExpression(match_expr) => {
+                write!(f, "{match_expr}")
             }
             Expression::IfExpression(e) => write!(f, "{e}"),
             Expression::BlockExpression(statements, expr) => {
@@ -745,6 +740,14 @@ impl<E: Display> Display for LambdaExpression<E> {
             format_list(&self.params),
             self.body
         )
+    }
+}
+
+impl<E: Display> Display for MatchExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "match {} {{", self.scrutinee)?;
+        write_items_indented(f, &self.arms)?;
+        write!(f, "}}")
     }
 }
 

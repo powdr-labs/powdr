@@ -401,7 +401,7 @@ impl<Ref> Expression<Ref> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MatchExpression<E = Expression<NamespacedPolynomialReference>> {
-    pub expr: Box<E>,
+    pub scrutinee: Box<E>,
     pub arms: Vec<MatchArm<E>>,
 }
 
@@ -413,12 +413,15 @@ impl<Ref> From<MatchExpression<Expression<Ref>>> for Expression<Ref> {
 
 impl<E> Children<E> for MatchExpression<E> {
     fn children(&self) -> Box<dyn Iterator<Item = &E> + '_> {
-        Box::new(once(self.expr.as_ref()).chain(self.arms.iter().flat_map(|arm| arm.children())))
+        Box::new(
+            once(self.scrutinee.as_ref()).chain(self.arms.iter().flat_map(|arm| arm.children())),
+        )
     }
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
         Box::new(
-            once(self.expr.as_mut()).chain(self.arms.iter_mut().flat_map(|arm| arm.children_mut())),
+            once(self.scrutinee.as_mut())
+                .chain(self.arms.iter_mut().flat_map(|arm| arm.children_mut())),
         )
     }
 }

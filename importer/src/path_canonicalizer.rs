@@ -240,7 +240,7 @@ fn canonicalize_inside_expression(
                     canonicalize_inside_pattern(p, path, paths);
                 });
             }
-            Expression::MatchExpression(MatchExpression { expr: _, arms }) => {
+            Expression::MatchExpression(MatchExpression { scrutinee: _, arms }) => {
                 arms.iter_mut().for_each(|MatchArm { pattern, .. }| {
                     canonicalize_inside_pattern(pattern, path, paths);
                 })
@@ -675,10 +675,7 @@ fn check_expression(
             check_expression(location, function, state, local_variables)?;
             check_expressions(location, arguments, state, local_variables)
         }
-        Expression::MatchExpression(MatchExpression {
-            expr: scrutinee,
-            arms,
-        }) => {
+        Expression::MatchExpression(MatchExpression { scrutinee, arms }) => {
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
                 let mut local_variables = local_variables.clone();

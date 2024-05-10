@@ -116,11 +116,8 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 function: Box::new(self.process_expression(*c.function)),
                 arguments: self.process_expressions(c.arguments),
             }),
-            PExpression::MatchExpression(MatchExpression {
-                expr: scrutinee,
-                arms,
-            }) => MatchExpression {
-                expr: Box::new(self.process_expression(*scrutinee)),
+            PExpression::MatchExpression(MatchExpression { scrutinee, arms }) => MatchExpression {
+                scrutinee: Box::new(self.process_expression(*scrutinee)),
                 arms: arms
                     .into_iter()
                     .map(|MatchArm { pattern, value }| {

@@ -585,10 +585,7 @@ impl<'a> TypeChecker<'a> {
                 })?
             }
             Expression::FreeInput(_) => todo!(),
-            Expression::MatchExpression(MatchExpression {
-                expr: scrutinee,
-                arms,
-            }) => {
+            Expression::MatchExpression(MatchExpression { scrutinee, arms }) => {
                 let scrutinee_type = self.infer_type_of_expression(scrutinee)?;
                 let result = self.new_type_var();
                 for MatchArm { pattern, value } in arms {

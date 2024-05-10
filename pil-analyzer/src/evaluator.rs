@@ -727,7 +727,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.expand(function)?;
             }
             Expression::MatchExpression(MatchExpression {
-                expr: condition,
+                scrutinee: condition,
                 arms: _,
             })
             | Expression::IfExpression(IfExpression { condition, .. }) => {
@@ -872,7 +872,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 let function = self.value_stack.pop().unwrap();
                 return self.combine_function_call(function, arguments);
             }
-            Expression::MatchExpression(MatchExpression { expr: _, arms }) => {
+            Expression::MatchExpression(MatchExpression { scrutinee: _, arms }) => {
                 let v = self.value_stack.pop().unwrap();
                 let (vars, body) = arms
                     .iter()

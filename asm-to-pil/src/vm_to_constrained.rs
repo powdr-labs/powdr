@@ -984,7 +984,7 @@ impl<T: FieldElement> VMConverter<T> {
                             params: vec![Pattern::Variable("__i".to_string())],
                             body: Box::new(
                                 MatchExpression {
-                                    expr: Box::new(
+                                    scrutinee: Box::new(
                                         FunctionCall {
                                             function: Box::new(absolute_reference(
                                                 "::std::prover::eval",
