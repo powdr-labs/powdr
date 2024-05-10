@@ -221,7 +221,7 @@ fn run_command(command: Commands) {
             continuations,
             witness,
         } => {
-            call_with_field!(run_rust::<field>(
+            call_with_field!(execute::<field>(
                 Path::new(&file),
                 split_inputs(&inputs),
                 Path::new(&output_directory),
@@ -245,24 +245,19 @@ fn compile_rust<F: FieldElement>(
     coprocessors: Option<String>,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let runtime = match (coprocessors, continuations) {
-        (Some(list), _) => {
-            let runtime =
-                powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref())
-                    .unwrap();
-            if continuations {
-                runtime.with_poseidon()
-            } else {
-                runtime
-            }
+    let mut runtime = match coprocessors {
+        Some(list) => {
+            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
         }
-        (None, false) => powdr_riscv::Runtime::base(),
-        (None, true) => powdr_riscv::Runtime::base().with_poseidon(),
+        None => powdr_riscv::Runtime::base(),
     };
 
-    let (_asm_file_path, _asm_contents) =
-        powdr_riscv::compile_rust::<F>(file_name, output_dir, true, &runtime, continuations)
-            .ok_or_else(|| vec!["could not compile rust".to_string()])?;
+    if continuations && !runtime.has_submachine("poseidon_gl") {
+        runtime = runtime.with_poseidon();
+    }
+
+    powdr_riscv::compile_rust::<F>(file_name, output_dir, true, &runtime, continuations)
+        .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
     Ok(())
 }
@@ -282,7 +277,7 @@ fn compile_riscv_asm<F: FieldElement>(
         None => powdr_riscv::Runtime::base(),
     };
 
-    let (_asm_file_path, _asm_contents) = powdr_riscv::compile_riscv_asm::<F>(
+    powdr_riscv::compile_riscv_asm::<F>(
         original_file_name,
         file_names,
         output_dir,
@@ -296,7 +291,7 @@ fn compile_riscv_asm<F: FieldElement>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run_rust<F: FieldElement>(
+fn execute<F: FieldElement>(
     file_name: &Path,
     inputs: Vec<F>,
     output_dir: &Path,

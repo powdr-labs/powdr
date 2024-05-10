@@ -48,7 +48,7 @@ cargo install --features halo2 --path ./cli
 
 ## Building *powdr-rs*
 
-Using a single Cargo command (enable the Halo2 backend to use it with the cli):
+Using a single Cargo command:
 
 ```sh
 cargo install --git https://github.com/powdr-labs/powdr powdr-rs-cli
