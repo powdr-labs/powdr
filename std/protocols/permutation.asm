@@ -1,5 +1,6 @@
 use std::prover::challenge;
 use std::array::fold;
+use std::utils::unwrap_or_else;
 use std::array::len;
 use std::check::assert;
 use std::check::panic;
@@ -30,7 +31,7 @@ let beta1: expr = challenge(0, 3);
 let beta2: expr = challenge(0, 4);
 
 let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |permutation_constraint| match permutation_constraint {
-    Constr::Permutation(Option::Some(lhs_selector), lhs, Option::Some(rhs_selector), rhs) => (lhs_selector, lhs, rhs_selector, rhs),
+    Constr::Permutation(lhs_selector, lhs, rhs_selector, rhs) => (unwrap_or_else(lhs_selector, || 1), lhs, unwrap_or_else(rhs_selector, || 1), rhs),
     _ => panic("Expected permutation constraint")
 };
 
