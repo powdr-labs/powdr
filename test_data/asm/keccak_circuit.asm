@@ -7,11 +7,18 @@ use circuit::State;
 use circuit::Gate;
 
 
-/// Represent the numbers 0 to 63, used for rotl.
-/// TODO actually we only need up to 31 after the translation to 32-bit gates.
-let rotl_constants = array::new(64, |i| Gate::Reference(50 + i));
+let input_count = 50;
+/// Represent the numbers 0 to 31, used for rotl.
+/// TODO actually not all of them are used.
+/// TODO and we can also re-use them in the permutation, so we don't have to add them for every circuit.
+let rotl_constants = array::new(32, |i| Gate::Reference(input_count + i));
 /// Represent the array RC.
-let rc_constants = array::new(24, |i| Gate64::Reference(50 + 64 + 2 * i, 50 + 64 + 2 * i + 1));
+let rc_constants = array::new(24, |i| Gate64::Reference(
+    input_count + array::len(rotl_constants) + 2 * i,
+    input_count + array::len(rotl_constants) + 2 * i + 1
+));
+/// The all-ones constant, used for bitwise negation.
+let all_ones = Gate::Reference(input_count + array::len(rotl_constants) + array::len(rc_constants) * 2);
 
 /// -------------- the elementary 64-bit gates -----------------
 enum Gate64 {
@@ -29,7 +36,7 @@ let and_not: Gate64, Gate64 -> Gate64 = |a, b| Gate64::AndNot(a, b);
 /// -------------- conversion from 64 bit gates to 32 bit gates ----------
 
 let xor32: Gate, Gate -> Gate = |a, b| Gate::Op(1, a, b);
-let and_not32: Gate, Gate -> Gate = |a, b| Gate::Op(2, a, b);
+let and_not32: Gate, Gate -> Gate = |a, b| Gate::Op(2, xor32(a, all_ones), b);
 let shl32: Gate, int -> Gate = |a, n| Gate::Op(3, a, rotl_constants[n]);
 let shr32: Gate, int -> Gate = |a, n| Gate::Op(4, a, rotl_constants[n]);
 
@@ -148,8 +155,10 @@ let round_32 = |round| wrap_64_in_32(|inputs| iota(chi(rho_pi_rearrange(rho_pi_l
 
 let keccakf_circuit: -> (circuit::State, Gate[]) = || {
     let (s1, inputs) = add_inputs(circuit::new(), 50);
-    let (s2, rotl_const) = add_inputs(s1, 64);
+    // TODO maybe add_constants?
+    let (s2, rotl_const) = add_inputs(s1, 32);
     let (s3, rc_const) = add_inputs(s2, 48);
+    let (s4, all_ones_gate) = add_inputs(s3, 1);
     // TODO assert that rotl_const equal rotl_constants
     // TODO assert that rc_const equal rc_constants
 
@@ -159,7 +168,7 @@ let keccakf_circuit: -> (circuit::State, Gate[]) = || {
     // Then we turn them into 32-bit gates and add them as routines.
     // As a result we get 50 32-bit gates, which we can re-group again.
     // So essentially we need a function add_step, which takes 25 64-bit gates and returns 25 64-bit gates.
-    utils::fold(24, |i| i, (s3, inputs), |(s, st), r| {
+    utils::fold(24, |i| i, (s4, inputs), |(s, st), r| {
         let (s_1, th_r) = circuit::add_routines(s, theta_st_32(st));
         circuit::add_routines(s_1, round_32(r)(th_r))
     })
@@ -168,7 +177,7 @@ let keccakf_circuit: -> (circuit::State, Gate[]) = || {
 
 let eval_gate: int, int, int -> int = |gate, in1, in2| match gate {
     1 => in1 ^ in2,
-    2 => (in1 ^ 0xffffffff) & in2,
+    2 => in1 & in2,
     3 => (in1 << in2) & 0xffffffff,
     4 => in1 >> in2,
     _ => std::check::panic("Invalid gate"),
@@ -182,8 +191,8 @@ let values32_to_64: int[] -> int[] = |values| array::new(array::len(values) / 2,
 
 let eval_circuit: circuit::State, Gate[], int[] -> int[] = |state, outputs, inputs| match state {
     State::S(gates, _) => {
-        let initial = values64_to_32(inputs) + array::new(64, |i| i) + values64_to_32(RC);
-        let _ = std::check::assert(std::array::len(initial) == 50 + 64 + 48, || "invalid initial length");
+        let initial = values64_to_32(inputs) + array::new(32, |i| i) + values64_to_32(RC) + [0xffffffff];
+        let _ = std::check::assert(std::array::len(initial) == input_count + array::len(rotl_constants) + array::len(rc_constants) * 2 + 1, || "invalid initial length");
         let values = std::utils::fold(std::array::len(gates), |i| i, [], |acc, i| {
             let value = if i < array::len(initial) { initial[i] } else {
                 let (id, in1, in2) = gates[i];
