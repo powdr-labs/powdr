@@ -30,11 +30,11 @@ let and_not: Gate64, Gate64 -> Gate64 = |a, b| Gate64::AndNot(a, b);
 
 let xor32: Gate, Gate -> Gate = |a, b| Gate::Op(1, a, b);
 let and_not32: Gate, Gate -> Gate = |a, b| Gate::Op(2, a, b);
-let shl32: Gate, int -> Gate = |a, n| Gate::Op(3, x, rotl_constants[n]);
-let shr32: Gate, int -> Gate = |a, n| Gate::Op(4, x, rotl_constants[n]);
+let shl32: Gate, int -> Gate = |a, n| Gate::Op(3, a, rotl_constants[n]);
+let shr32: Gate, int -> Gate = |a, n| Gate::Op(4, a, rotl_constants[n]);
 
-let rotl32: Gate, Gate, n -> [Gate, Gate] = |a, b, n| match n {
-    0 => (a, b),
+let rotl32: Gate, Gate, int -> Gate[] = |a, b, n| match n {
+    0 => [a, b],
     _ =>
         if n >= 32 {
             rotl32(b, a, n - 32)
@@ -43,19 +43,20 @@ let rotl32: Gate, Gate, n -> [Gate, Gate] = |a, b, n| match n {
                 xor32(shl32(a, n), shr32(b, 32 - n)),
                 xor32(shl32(b, n), shr32(a, 32 - n))
             ]
-        };
+        }
+    };
 
-let to_gate32: Gate64 -> [Gate, Gate] = |gate| match gate {
-    Gate64::Reference(i, j) => [Gate::Reference(i), Gate::Reference(j)]
+let to_gate32: Gate64 -> Gate[] = |gate| match gate {
+    Gate64::Reference(i, j) => [Gate::Reference(i), Gate::Reference(j)],
     Gate64::Xor(a, b) => {
         let (a0, a1) = to_gate32(a);
-        let (b0, b1) = to_gate32(b);n
+        let (b0, b1) = to_gate32(b);
         [xor32(a0, b0), xor32(a1, b1)]
-    }
+    },
     Gate64::Rotl(x, n) => {
         let (a, b) = to_gate32(x);
         rotl32(a, b)
-    }
+    },
     Gate64::AndNot(a, b) => {
         let (a0, a1) = to_gate32(a);
         let (b0, b1) = to_gate32(b);
@@ -155,9 +156,9 @@ let keccakf_circuit: -> (circuit::State, Gate[]) = || {
     // So essentially we need a function add_step, which takes 25 64-bit gates and returns 25 64-bit gates.
     utils::fold(24, |i| i, (s3, inputs), |(s, st), r| {
         let th = theta_st(to_gate64_array(st));
-        let (s_1, th_r) = add_routines(state, to_gate32_array(th))
+        let (s_1, th_r) = circuit::add_routines(state, to_gate32_array(th));
         let th64 = to_gate64_array(th_r);
-        add_routines(s_1, to_gate32_array(iota(chi(rho_pi_rearrange(rho_pi_loop(th64))), r)))
+        circuit::add_routines(s_1, to_gate32_array(iota(chi(rho_pi_rearrange(rho_pi_loop(th64))), r)))
     })
 };
 
@@ -165,8 +166,8 @@ let keccakf_circuit: -> (circuit::State, Gate[]) = || {
 let eval_gate: int, int, int -> int = |gate, in1, in2| match gate {
     1 => in1 ^ in2,
     2 => (in1 ^ 0xffffffff) & in2,
-    3 => (in1 << in2) & 0xffffffff;
-    4 => in1 >> in2;
+    3 => (in1 << in2) & 0xffffffff,
+    4 => in1 >> in2,
     _ => std::check::panic("Invalid gate"),
 };
 
