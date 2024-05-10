@@ -13,8 +13,8 @@ enum Fp2<T> {
     Fp2(T, T)
 }
 
-let<T: FromLiteral> zero_ext: -> Fp2<T> = || Fp2::Fp2(0, 0);
-let<T: FromLiteral> one_ext: -> Fp2<T> = || Fp2::Fp2(1, 0);
+/// Converts a base field element to an extension field element
+let<T: FromLiteral> from_base: T -> Fp2<T> = |x| Fp2::Fp2(x, 0);
 
 /// Extension field addition
 let<T: Add> add_ext: Fp2<T>, Fp2<T> -> Fp2<T> = |a, b| match (a, b) {
@@ -54,7 +54,7 @@ let expr_ext: Fp2<fe> -> Fp2<expr> = |a| match a {
 };
 
 /// Extension field equality
-let<T: Eq> eq_ext: Fp2<T>, Fp2<T> -> bool = |a, b| match (a, b) {
+let eq_ext: Fp2<fe>, Fp2<fe> -> bool = |a, b| match (a, b) {
     (Fp2::Fp2(a0, a1), Fp2::Fp2(b0, b1)) => (a0 == b0) && (a1 == b1)
 };
 
@@ -77,72 +77,67 @@ let inv_ext: Fp2<fe> -> Fp2<fe> = |a| match a {
 
 mod test {
     use super::Fp2;
-    use super::one_ext;
-    use super::zero_ext;
+    use super::from_base;
     use super::add_ext;
     use super::sub_ext;
     use super::mul_ext;
     use super::inv_ext;
-    use super::eval_ext;
-    use super::expr_ext;
     use super::eq_ext;
     use std::check::assert;
     use std::array::map;
 
-
-    let add = query || {
-        let test_add = |a, b, c| assert(eq_ext(eval_ext(add_ext(a, b)), c), || "Wrong addition result");
+    let add = || {
+        let test_add = |a, b, c| assert(eq_ext(add_ext(a, b), c), || "Wrong addition result");
 
         // Test adding 0
-        let _ = test_add(zero_ext(), zero_ext(), zero_ext());
-        let _ = test_add(Fp2::Fp2(123, 1234), zero_ext(), Fp2::Fp2(123, 1234));
-        let _ = test_add(zero_ext(), Fp2::Fp2(123, 1234), Fp2::Fp2(123, 1234));
+        let _ = test_add(from_base(0), from_base(0), from_base(0));
+        let _ = test_add(Fp2::Fp2(123, 1234), from_base(0), Fp2::Fp2(123, 1234));
+        let _ = test_add(from_base(0), Fp2::Fp2(123, 1234), Fp2::Fp2(123, 1234));
 
         // Add arbitrary elements
         let _ = test_add(Fp2::Fp2(123, 1234), Fp2::Fp2(567, 5678), Fp2::Fp2(690, 6912));
         test_add(Fp2::Fp2(0xffffffff00000000, 0xffffffff00000000), Fp2::Fp2(3, 4), Fp2::Fp2(2, 3))
     };
 
-    let sub = query || {
-        let test_sub = |a, b, c| assert(eq_ext(eval_ext(sub_ext(a, b)), c), || "Wrong subtraction result");
+    let sub = || {
+        let test_sub = |a, b, c| assert(eq_ext(sub_ext(a, b), c), || "Wrong subtraction result");
 
         // Test subtracting 0
-        let _ = test_sub(zero_ext(), zero_ext(), zero_ext());
-        let _ = test_sub(Fp2::Fp2(123, 1234), zero_ext(), Fp2::Fp2(123, 1234));
+        let _ = test_sub(from_base(0), from_base(0), from_base(0));
+        let _ = test_sub(Fp2::Fp2(123, 1234), from_base(0), Fp2::Fp2(123, 1234));
 
         // Subtract arbitrary elements
         let _ = test_sub(Fp2::Fp2(123, 1234), Fp2::Fp2(567, 5678), Fp2::Fp2(18446744069414583877, 18446744069414579877));
         test_sub(Fp2::Fp2(0xffffffff00000000, 0xffffffff00000000), Fp2::Fp2(0x100000000, 1), Fp2::Fp2(0xfffffffe00000000, 0xfffffffeffffffff))
     };
 
-    let mul = query || {
-        let test_mul = |a, b, c| assert(eq_ext(eval_ext(mul_ext(a, b)), c), || "Wrong multiplication result");
+    let mul = || {
+        let test_mul = |a, b, c| assert(eq_ext(mul_ext(a, b), c), || "Wrong multiplication result");
 
         // Test multiplication by 1
-        let _ = test_mul(one_ext(), one_ext(), one_ext());
-        let _ = test_mul(Fp2::Fp2(123, 1234), one_ext(), Fp2::Fp2(123, 1234));
-        let _ = test_mul(one_ext(), Fp2::Fp2(123, 1234), Fp2::Fp2(123, 1234));
+        let _ = test_mul(from_base(1), from_base(1), from_base(1));
+        let _ = test_mul(Fp2::Fp2(123, 1234), from_base(1), Fp2::Fp2(123, 1234));
+        let _ = test_mul(from_base(1), Fp2::Fp2(123, 1234), Fp2::Fp2(123, 1234));
 
         // Test multiplication by 0
-        let _ = test_mul(Fp2::Fp2(123, 1234), zero_ext(), zero_ext());
-        let _ = test_mul(zero_ext(), Fp2::Fp2(123, 1234), zero_ext());
+        let _ = test_mul(Fp2::Fp2(123, 1234), from_base(0), from_base(0));
+        let _ = test_mul(from_base(0), Fp2::Fp2(123, 1234), from_base(0));
 
         // Multiply arbitrary elements
         test_mul(Fp2::Fp2(123, 1234), Fp2::Fp2(567, 5678), Fp2::Fp2(49116305, 1398072))
     };
 
-    let inverse = query || {
+    let inverse = || {
         let test_elements = [
-            one_ext(),
+            from_base(1),
             Fp2::Fp2(123, 1234),
             Fp2::Fp2(0xffffffff00000000, 0xffffffff00000000)
         ];
 
         map(test_elements, |x| {
-            let inv_x = expr_ext(inv_ext(eval_ext(x)));
-            let mul_with_inverse = eval_ext(mul_ext(x, inv_x));
+            let mul_with_inverse = mul_ext(x, inv_ext(x));
 
-            assert(eq_ext(mul_with_inverse, one_ext()), || "Should be 1")
+            assert(eq_ext(mul_with_inverse, from_base(1)), || "Should be 1")
         })
     };
 }
