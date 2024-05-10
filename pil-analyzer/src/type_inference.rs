@@ -8,7 +8,7 @@ use powdr_ast::{
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
         ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock,
-        MatchArm, Pattern, StatementInsideBlock, UnaryOperation,
+        MatchArm, Number, Pattern, StatementInsideBlock, UnaryOperation,
     },
 };
 
@@ -351,7 +351,10 @@ impl<'a> TypeChecker<'a> {
         type_var_mapping: &HashMap<String, Type>,
     ) -> Result<(), String> {
         match e {
-            Expression::Number(n, annotated_type) => match annotated_type {
+            Expression::Number(Number {
+                value: n,
+                type_: annotated_type,
+            }) => match annotated_type {
                 Some(Type::Int) | Some(Type::Fe) | Some(Type::Expr) => {}
                 Some(Type::TypeVar(tv)) => {
                     let mut ty = Type::TypeVar(tv.clone());
@@ -484,7 +487,10 @@ impl<'a> TypeChecker<'a> {
                 type_for_reference(&ty)
             }
             Expression::PublicReference(_) => Type::Expr,
-            Expression::Number(_, annotated_type) => {
+            Expression::Number(Number {
+                type_: annotated_type,
+                ..
+            }) => {
                 let ty = match annotated_type {
                     Some(Type::Int) => Type::Int,
                     Some(Type::Fe) => Type::Fe,
@@ -668,7 +674,11 @@ impl<'a> TypeChecker<'a> {
     fn expect_type(&mut self, expected_type: &Type, expr: &mut Expression) -> Result<(), String> {
         // For literals, we try to store the type here already.
         // This avoids creating tons of type variables for large arrays.
-        if let Expression::Number(_, annotated_type @ None) = expr {
+        if let Expression::Number(Number {
+            type_: annotated_type @ None,
+            ..
+        }) = expr
+        {
             match expected_type {
                 Type::Int => *annotated_type = Some(Type::Int),
                 Type::Fe => *annotated_type = Some(Type::Fe),

@@ -11,7 +11,7 @@ use powdr_ast::{
         IndexAccess,
     },
 };
-use powdr_number::{BigInt, DegreeType, FieldElement};
+use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
@@ -71,7 +71,7 @@ fn generate_values<T: FieldElement>(
             let e = if let Some(index) = index {
                 index_expr = Expression::IndexAccess(IndexAccess {
                     array: e.clone().into(),
-                    index: Box::new(Expression::Number(index.into(), None)),
+                    index: Box::new(BigUint::from(index).into()),
                 });
                 &index_expr
             } else {

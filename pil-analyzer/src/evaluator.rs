@@ -17,7 +17,7 @@ use powdr_ast::{
         display::quote,
         types::{Type, TypeScheme},
         ArrayLiteral, BinaryOperator, FunctionCall, IfExpression, IndexAccess, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock, UnaryOperation,
+        LetStatementInsideBlock, MatchArm, Number, Pattern, StatementInsideBlock, UnaryOperation,
         UnaryOperator,
     },
     SourceRef,
@@ -669,10 +669,12 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::PublicReference(name) => self
                 .value_stack
                 .push(self.symbols.lookup_public_reference(name)?),
-            Expression::Number(n, ty) => {
-                self.value_stack
-                    .push(evaluate_literal(n.clone(), ty, &self.type_args)?)
-            }
+            Expression::Number(Number {
+                value: n,
+                type_: ty,
+            }) => self
+                .value_stack
+                .push(evaluate_literal(n.clone(), ty, &self.type_args)?),
             Expression::String(s) => self.value_stack.push(Value::String(s.clone()).into()),
             Expression::Tuple(items) => {
                 self.op_stack.push(Operation::Combine(expr));

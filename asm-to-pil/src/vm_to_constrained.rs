@@ -13,7 +13,7 @@ use powdr_ast::{
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
-        FunctionKind, LambdaExpression, MatchArm, Pattern, PilStatement, PolynomialName,
+        FunctionKind, LambdaExpression, MatchArm, Number, Pattern, PilStatement, PolynomialName,
         SelectedExpressions, UnaryOperation, UnaryOperator,
     },
     SourceRef,
@@ -114,10 +114,7 @@ impl<T: FieldElement> VMConverter<T> {
         self.pil.push(PilStatement::PolynomialConstantDefinition(
             SourceRef::unknown(),
             "first_step".to_string(),
-            FunctionDefinition::Array(
-                ArrayExpression::value(vec![Expression::Number(1u32.into(), None)])
-                    .pad_with_zeroes(),
-            ),
+            FunctionDefinition::Array(ArrayExpression::value(vec![1u32.into()]).pad_with_zeroes()),
         ));
 
         self.pil.extend(
@@ -673,7 +670,7 @@ impl<T: FieldElement> VMConverter<T> {
                         }
                         Input::Literal(_, LiteralKind::UnsignedConstant) => {
                             // TODO evaluate expression
-                            if let Expression::Number(n, _) = a {
+                            if let Expression::Number(Number {value: n, type_: _}) = a {
                                 let half_modulus = T::modulus().to_arbitrary_integer() / BigUint::from(2u64);
                                 assert!(n < half_modulus, "Number passed to unsigned parameter is negative or too large: {n}");
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(
@@ -685,15 +682,15 @@ impl<T: FieldElement> VMConverter<T> {
                         }
                         Input::Literal(_, LiteralKind::SignedConstant) => {
                             // TODO evaluate expression
-                            if let Expression::Number(n, _) = a {
+                            if let Expression::Number(Number {value, ..}) = a {
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(
-                                    T::checked_from(n).unwrap(),
+                                    T::checked_from(value).unwrap(),
                                 ));
                             } else if let Expression::UnaryOperation(UnaryOperation { op: UnaryOperator::Minus, expr }) = a
                             {
-                                if let Expression::Number(n, _) = *expr {
+                                if let Expression::Number(Number {value, ..}) = *expr {
                                     instruction_literal_arg.push(InstructionLiteralArg::Number(
-                                        -T::checked_from(n).unwrap(),
+                                        -T::checked_from(value).unwrap(),
                                     ))
                                 } else {
                                     panic!();
@@ -741,7 +738,7 @@ impl<T: FieldElement> VMConverter<T> {
                 let name = reference.try_to_identifier().unwrap();
                 vec![(1.into(), AffineExpressionComponent::Register(name.clone()))]
             }
-            Expression::Number(value, _) => {
+            Expression::Number(Number { value, .. }) => {
                 vec![(T::from(value), AffineExpressionComponent::Constant)]
             }
             Expression::String(_) => panic!(),
