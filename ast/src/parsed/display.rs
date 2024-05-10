@@ -596,36 +596,6 @@ fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
 }
 
 impl<E: Display> Expression<E> {
-    pub fn precedence(&self) -> Option<ExpressionPrecedence> {
-        match self {
-            Expression::UnaryOperation(UnaryOperation { op, expr: _ }) => Some(op.precedence()),
-            Expression::BinaryOperation(_, op, _) => Some(op.precedence()),
-            _ => None,
-        }
-    }
-
-    pub fn format_unary_operation(
-        &self,
-        op: &UnaryOperator,
-        exp: &Expression<E>,
-        f: &mut Formatter<'_>,
-    ) -> Result {
-        let exp_string = match (self.precedence(), exp.precedence()) {
-            (Some(precedence), Some(inner_precedence)) if precedence < inner_precedence => {
-                format!("({exp})")
-            }
-            _ => {
-                format!("{exp}")
-            }
-        };
-
-        if op.is_prefix() {
-            write!(f, "{op}{exp_string}")
-        } else {
-            write!(f, "{exp_string}{op}")
-        }
-    }
-
     pub fn format_binary_operation(
         left: &Expression<E>,
         op: &BinaryOperator,
@@ -634,11 +604,12 @@ impl<E: Display> Expression<E> {
     ) -> Result {
         let force_parentheses = matches!(op, BinaryOperator::Pow);
 
+        let op_precedence = op.precedence().unwrap();
         let use_left_parentheses = match left.precedence() {
             Some(left_precedence) => {
                 force_parentheses
-                    || left_precedence > op.precedence()
-                    || (left_precedence == op.precedence()
+                    || left_precedence > op_precedence
+                    || (left_precedence == op_precedence
                         && op.associativity() != BinaryOperatorAssociativity::Left)
             }
             None => false,
@@ -647,8 +618,8 @@ impl<E: Display> Expression<E> {
         let use_right_parentheses = match right.precedence() {
             Some(right_precedence) => {
                 force_parentheses
-                    || right_precedence > op.precedence()
-                    || (right_precedence == op.precedence()
+                    || right_precedence > op_precedence
+                    || (right_precedence == op_precedence
                         && op.associativity() != BinaryOperatorAssociativity::Right)
             }
             None => false,
@@ -682,8 +653,8 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::BinaryOperation(left, op, right) => {
                 Expression::format_binary_operation(left, op, right, f)
             }
-            Expression::UnaryOperation(UnaryOperation { op, expr }) => {
-                self.format_unary_operation(op, expr, f)
+            Expression::UnaryOperation(unaryop) => {
+                write!(f, "{unaryop}")
             }
             Expression::IndexAccess(index_access) => write!(f, "{index_access}"),
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
@@ -791,6 +762,28 @@ impl Display for BinaryOperator {
                 BinaryOperator::Greater => ">",
             }
         )
+    }
+}
+
+impl<E> Display for UnaryOperation<E>
+where
+    E: Display + Precedence,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let exp_string = match (self.op.precedence(), self.expr.precedence()) {
+            (Some(precedence), Some(inner_precedence)) if precedence < inner_precedence => {
+                format!("({})", self.expr)
+            }
+            _ => {
+                format!("{}", self.expr)
+            }
+        };
+
+        if self.op.is_prefix() {
+            write!(f, "{}{exp_string}", self.op)
+        } else {
+            write!(f, "{exp_string}{}", self.op)
+        }
     }
 }
 
