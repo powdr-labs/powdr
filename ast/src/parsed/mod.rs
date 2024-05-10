@@ -429,19 +429,6 @@ impl<E> SourceReference for Expression<E> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct Number {
-    #[schemars(skip)]
-    pub value: BigUint,
-    pub type_: Option<Type>,
-}
-
-impl<Ref> From<Number> for Expression<Ref> {
-    fn from(number: Number) -> Self {
-        Expression::Number(SourceRef::unknown(), number)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UnaryOperation<E = Expression<NamespacedPolynomialReference>> {
     pub op: UnaryOperator,
     pub expr: Box<E>,
@@ -466,6 +453,30 @@ impl<Ref> From<BinaryOperation<Expression<Ref>>> for Expression<Ref> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct Number {
+    #[schemars(skip)]
+    pub value: BigUint,
+    pub type_: Option<Type>,
+}
+
+impl<Ref> From<Number> for Expression<Ref> {
+    fn from(number: Number) -> Self {
+        Expression::Number(SourceRef::unknown(), number)
+    }
+}
+
+impl<Ref> From<BigUint> for Expression<Ref> {
+    fn from(value: BigUint) -> Self {
+        Number { value, type_: None }.into()
+    }
+}
+
+impl<Ref> From<u32> for Expression<Ref> {
+    fn from(value: u32) -> Self {
+        BigUint::from(value).into()
+    }
+}
 pub type ExpressionPrecedence = u64;
 
 impl<Ref> Expression<Ref> {
@@ -535,22 +546,6 @@ impl Expression<NamespacedPolynomialReference> {
     }
 }
 
-impl From<u32> for Expression {
-    fn from(value: u32) -> Self {
-        Number {
-            value: value.into(),
-            type_: None,
-        }
-        .into()
-    }
-}
-
-impl From<BigUint> for Expression {
-    fn from(value: BigUint) -> Self {
-        Number { value, type_: None }.into()
-    }
-}
-
 impl<Ref> ops::Add for Expression<Ref> {
     type Output = Expression<Ref>;
 
@@ -576,13 +571,7 @@ impl<Ref> ops::Mul for Expression<Ref> {
 
 impl<Ref> std::iter::Sum for Expression<Ref> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.reduce(|a, b| a + b).unwrap_or_else(|| {
-            Number {
-                value: 0u32.into(),
-                type_: None,
-            }
-            .into()
-        })
+        iter.reduce(|a, b| a + b).unwrap_or_else(|| 0u32.into())
     }
 }
 
@@ -1066,13 +1055,7 @@ impl ArrayExpression {
     }
 
     pub fn pad_with_zeroes(self) -> Self {
-        self.pad_with(
-            Number {
-                value: 0u32.into(),
-                type_: None,
-            }
-            .into(),
-        )
+        self.pad_with(0u32.into())
     }
 
     fn last(&self) -> Option<&Expression> {

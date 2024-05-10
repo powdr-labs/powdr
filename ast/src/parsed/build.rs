@@ -4,8 +4,8 @@ use crate::parsed::{Expression, SourceReference};
 
 use super::{
     asm::{parse_absolute_path, Part, SymbolPath},
-    BinaryOperation, BinaryOperator, IndexAccess, NamespacedPolynomialReference, Number,
-    UnaryOperation, UnaryOperator,
+    BinaryOperation, BinaryOperator, IndexAccess, NamespacedPolynomialReference, UnaryOperation,
+    UnaryOperator,
 };
 
 pub fn absolute_reference(name: &str) -> Expression {
@@ -40,13 +40,7 @@ pub fn index_access(expr: Expression, index: Option<BigUint>) -> Expression {
             expr.source_reference().clone(),
             IndexAccess {
                 array: Box::new(expr),
-                index: Box::new(
-                    Number {
-                        value: i,
-                        type_: None,
-                    }
-                    .into(),
-                ),
+                index: Box::new(i.into()),
             },
         ),
         None => expr,

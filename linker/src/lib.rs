@@ -8,7 +8,7 @@ use powdr_ast::{
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, namespaced_reference},
-        Number, PILFile, PilStatement, SelectedExpressions, TypedExpression,
+        PILFile, PilStatement, SelectedExpressions, TypedExpression,
     },
     SourceRef,
 };
@@ -140,13 +140,7 @@ fn process_link(link: Link) -> PilStatement {
     let to = link.to;
 
     // the lhs is `instr_flag { operation_id, inputs, outputs }`
-    let op_id = to.operation.id.iter().cloned().map(|n| {
-        Number {
-            value: n,
-            type_: None,
-        }
-        .into()
-    });
+    let op_id = to.operation.id.iter().cloned().map(|n| n.into());
 
     if link.is_permutation {
         // permutation lhs is `flag { operation_id, inputs, outputs }`
@@ -232,17 +226,14 @@ mod test {
 
     use powdr_ast::{
         object::{Location, Object, PILGraph},
-        parsed::{Number, PILFile},
+        parsed::PILFile,
     };
-    use powdr_number::{FieldElement, GoldilocksField};
-
-    use powdr_analysis::convert_asm_to_pil;
-    use powdr_parser::parse_asm;
-
-    use pretty_assertions::assert_eq;
+    use powdr_number::{BigUint, FieldElement, GoldilocksField};
 
     use crate::{link, DEFAULT_DEGREE};
-
+    use powdr_analysis::convert_asm_to_pil;
+    use powdr_parser::parse_asm;
+    use pretty_assertions::assert_eq;
     fn parse_analyze_and_compile<T: FieldElement>(input: &str) -> PILGraph {
         let parsed = parse_asm(None, input).unwrap();
         let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
@@ -275,11 +266,7 @@ mod test {
         let all_namespaces_have_degree = |f: PILFile, n: u64| {
             f.0.iter().all(|s| match s {
                 powdr_ast::parsed::PilStatement::Namespace(_, _, Some(e)) => {
-                    *e == Number {
-                        value: n.into(),
-                        type_: None,
-                    }
-                    .into()
+                    *e == BigUint::from(n).into()
                 }
                 _ => true,
             })

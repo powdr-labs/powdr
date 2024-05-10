@@ -836,7 +836,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 vec![val]
             }
             Expression::PublicReference(_, _) => todo!(),
-            Expression::Number(_, Number { value: n, type_: _ }) => {
+            Expression::Number(_, Number { value: n, .. }) => {
                 let unsigned: u32 = n
                     .try_into()
                     .unwrap_or_else(|_| panic!("Value does not fit in 32 bits."));

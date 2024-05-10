@@ -500,8 +500,8 @@ impl<'a> TypeChecker<'a> {
             Expression::Number(
                 _,
                 Number {
-                    value: _,
                     type_: annotated_type,
+                    ..
                 },
             ) => {
                 let ty = match annotated_type {
@@ -702,8 +702,8 @@ impl<'a> TypeChecker<'a> {
         if let Expression::Number(
             _,
             Number {
-                value: _,
                 type_: annotated_type @ None,
+                ..
             },
         ) = expr
         {

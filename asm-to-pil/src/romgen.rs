@@ -7,11 +7,11 @@ use powdr_ast::asm_analysis::{
     Machine, OperationSymbol, Rom,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::parsed::NamespacedPolynomialReference;
 use powdr_ast::parsed::{
     asm::{OperationId, Param, Params},
     Expression,
 };
-use powdr_ast::parsed::{NamespacedPolynomialReference, Number};
 use powdr_ast::SourceRef;
 use powdr_number::{BigUint, FieldElement};
 
@@ -49,13 +49,7 @@ fn pad_return_arguments(s: &mut FunctionStatement, output_count: usize) {
     if let FunctionStatement::Return(ret) = s {
         ret.values = std::mem::take(&mut ret.values)
             .into_iter()
-            .chain(repeat(
-                Number {
-                    value: 0u32.into(),
-                    type_: None,
-                }
-                .into(),
-            ))
+            .chain(repeat(0u32.into()))
             .take(output_count)
             .collect();
     };

@@ -681,7 +681,7 @@ impl<Ref: Display> Display for Expression<Ref> {
         match self {
             Expression::Reference(_, reference) => write!(f, "{reference}"),
             Expression::PublicReference(_, name) => write!(f, ":{name}"),
-            Expression::Number(_, Number { value, type_: _ }) => write!(f, "{value}"),
+            Expression::Number(_, Number { value, .. }) => write!(f, "{value}"),
             Expression::String(_, value) => write!(f, "{}", quote(value)),
             Expression::Tuple(_, items) => write!(f, "({})", format_list(items)),
             Expression::LambdaExpression(_, lambda) => write!(f, "{lambda}"),
