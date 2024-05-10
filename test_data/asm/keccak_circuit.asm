@@ -276,17 +276,29 @@ machine Main with degree: 196608 {
     let test_inputs = values64_to_32([8315180248889782138, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9223372036854775808, 0, 0, 0, 0, 0, 0, 0, 0]);
     let INPUTS: col = |i| if i % circuit_len < std::array::len(test_inputs) { test_inputs[i % circuit_len] } else { 0 };
 
+    // ----- fix the constants ---------------
+
+    // TODO
+
     // ------ gate operations ----------
     // TODO Can we do without fixed cols?
     // TODO "op" really needs to be an enum, this is horrible.
     let IS_INPUT: col = |i| { let (op, _, _) = circuit_gates[i % circuit_len]; if op == 0 { 1 } else { 0 } };
     let IS_XOR: col = |i| { let (op, _, _) = circuit_gates[i % circuit_len]; if op == 1 { 1 } else { 0 } };
-    let IS_AND_NOT: col = |i| { let (op, _, _) = circuit_gates[i % circuit_len]; if op == 2 { 1 } else { 0 } };
+    let IS_AND: col = |i| { let (op, _, _) = circuit_gates[i % circuit_len]; if op == 2 { 1 } else { 0 } };
     let IS_SHL: col = |i| { let (op, _, _) = circuit_gates[i % circuit_len]; if op == 3 { 1 } else { 0 } };
     let IS_SHR: col = |i| { let (op, _, _) = circuit_gates[i % circuit_len]; if op == 4 { 1 } else { 0 } };
 
     link IS_XOR => binary.xor in1, in2 -> out;
+    link IS_AND => binary.and in1, in2 -> out;
+    link IS_SHL => shift.shl in1, in2 -> out;
+    link IS_SHR => shift.shr in1, in2 -> out;
 
+    let IN1_PERM = |r| circuit_permutation(0, r);
+    let IN2_PERM = |r| circuit_permutation(1, r);
+    let OUT_PERM = |r| circuit_permutation(2, r);
 
+    // Commented out because the types are not as expected.
+    //{in1, in2, out} connect { IN1_PERM, IN2_PERM, OUT_PERM };
 
 }

@@ -41,7 +41,11 @@ let add_input: State -> (State, Gate) = |state| match state {
 };
 
 /// Returns the permutation on the rows used for the copy constraints.
-let permutation: State -> (int -> int) = |state| match state {
+/// The returned function maps a (col, row)-pair to the next (col, row)-pair
+/// in the cycle.
+/// This assumes that the columns are (input1, input2, output)
+/// TODO we should probably use an enum for the column.
+let permutation: State -> (int, int -> (int, int)) = |state| match state {
     State::S(gates, _) => internal::ops_to_permutation(gates),
 };
 
@@ -123,7 +127,7 @@ mod internal {
     };
 
     /// Computes the permutation from a flattened circuit.
-    let ops_to_permutation: (int, int, int)[] -> (int -> int) = |ops| {
+    let ops_to_permutation: (int, int, int)[] -> (int, int -> (int, int)) = |ops| {
         // First create an edge list and sort it by source gate index.
         // The first component an edge in the list is the gate index of the source gate.
         // The second component is the vertex index of the destination vertex
@@ -163,20 +167,21 @@ mod internal {
         };
 
         // Now compute a permutation from the partition list.
-        // The permutation is in row-first order, although we need column-first order,
-        // but it is easy to transpose.
-        |i| {
-            let vertex = i % (3 * std::array::len(ops));
-            let (row, vertex_kind) = vertex_id_to_row(vertex);
-            let source = match vertex_kind {
-                Vertex::Output => row,
-                Vertex::Input1 => { let (_, s, _) = ops[row]; s },
-                Vertex::Input2 => { let (_, _, s) = ops[row]; s },
+        // The permutation maps (col, row) to the next (col, row) in the cycle.
+        |column, abs_row| {
+            let row = abs_row % std::array::len(ops);
+            let vertex = 3 * row + column;
+            let source = match column {
+                2 => row,
+                0 => { let (_, s, _) = ops[row]; s },
+                1 => { let (_, _, s) = ops[row]; s },
+                _ => std::check::panic("Invalid column index"),
             };
             let vertices = partition[source];
             let self_index = std::utils::unwrap(std::array::find_index(vertices, |v| v == vertex));
             let _ = std::check::assert(self_index >= 0, || "");
-            (i - vertex) + vertices[(self_index + 1) % std::array::len(vertices)]
+            let next = vertices[(self_index + 1) % std::array::len(vertices)];
+            (next % 3, (abs_row - row) + (next / 3))
         }
     };
 
