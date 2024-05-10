@@ -154,7 +154,7 @@ fn free_inputs_in_expression<'a>(
         Expression::FreeInput(e) => Box::new(once(e.as_ref())),
         Expression::Reference(_)
         | Expression::PublicReference(_)
-        | Expression::Number(_, _)
+        | Expression::Number(_)
         | Expression::String(_) => Box::new(None.into_iter()),
         Expression::BinaryOperation(left, _, right) => {
             Box::new(free_inputs_in_expression(left).chain(free_inputs_in_expression(right)))
@@ -186,7 +186,7 @@ fn free_inputs_in_expression_mut<'a>(
         Expression::FreeInput(e) => Box::new(once(e.as_mut())),
         Expression::Reference(_)
         | Expression::PublicReference(_)
-        | Expression::Number(_, _)
+        | Expression::Number(_)
         | Expression::String(_) => Box::new(None.into_iter()),
         Expression::BinaryOperation(left, _, right) => Box::new(
             free_inputs_in_expression_mut(left).chain(free_inputs_in_expression_mut(right)),
@@ -646,7 +646,7 @@ fn check_expression(
             }
             check_path_try_prelude(location.clone(), reference.path.clone(), state)
         }
-        Expression::PublicReference(_) | Expression::Number(_, _) | Expression::String(_) => Ok(()),
+        Expression::PublicReference(_) | Expression::Number(_) | Expression::String(_) => Ok(()),
         Expression::Tuple(items) | Expression::ArrayLiteral(ArrayLiteral { items }) => {
             check_expressions(location, items, state, local_variables)
         }

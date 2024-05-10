@@ -8,6 +8,7 @@ use powdr_parser_util::handle_parse_error;
 
 lalrpop_mod!(
     #[allow(clippy::all)]
+    #[allow(clippy::uninlined_format_args)]
     riscv_asm,
     "/riscv_asm.rs"
 );

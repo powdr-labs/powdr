@@ -181,7 +181,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                     0 => meta.advice_column_in(FirstPhase),
                     1 => meta.advice_column_in(SecondPhase),
                     2 => meta.advice_column_in(ThirdPhase),
-                    _ => panic!("Stage too large for Halo2 backend: {}", stage),
+                    _ => panic!("Stage too large for Halo2 backend: {stage}"),
                 };
                 (name.clone(), col)
             })

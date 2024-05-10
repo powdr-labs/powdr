@@ -21,3 +21,5 @@ auto_enums = "0.8.5"
 [dev-dependencies]
 pretty_assertions = "1.4.0"
 
+[lints.clippy]
+uninlined_format_args = "deny"

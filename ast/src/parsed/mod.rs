@@ -337,7 +337,7 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     Reference(Ref),
     PublicReference(String),
     // A number literal and its type.
-    Number(#[schemars(skip)] BigUint, Option<Type>),
+    Number(Number),
     String(String),
     Tuple(Vec<Self>),
     LambdaExpression(LambdaExpression<Self>),
@@ -351,6 +351,32 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     IfExpression(IfExpression<Self>),
     BlockExpression(BlockExpression<Self>),
 }
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct Number {
+    #[schemars(skip)]
+    pub value: BigUint,
+    pub type_: Option<Type>,
+}
+
+impl<Ref> From<Number> for Expression<Ref> {
+    fn from(number: Number) -> Self {
+        Expression::Number(number)
+    }
+}
+
+impl<Ref> From<BigUint> for Expression<Ref> {
+    fn from(value: BigUint) -> Self {
+        Number { value, type_: None }.into()
+    }
+}
+
+impl<Ref> From<u32> for Expression<Ref> {
+    fn from(value: u32) -> Self {
+        BigUint::from(value).into()
+    }
+}
+pub type ExpressionPrecedence = u64;
 
 impl<Ref> Expression<Ref> {
     pub fn new_binary(left: Self, op: BinaryOperator, right: Self) -> Self {
@@ -395,18 +421,6 @@ impl Expression<NamespacedPolynomialReference> {
     }
 }
 
-impl From<u32> for Expression {
-    fn from(value: u32) -> Self {
-        Expression::Number(value.into(), None)
-    }
-}
-
-impl From<BigUint> for Expression {
-    fn from(value: BigUint) -> Self {
-        Expression::Number(value, None)
-    }
-}
-
 impl<Ref> ops::Add for Expression<Ref> {
     type Output = Expression<Ref>;
 
@@ -432,8 +446,7 @@ impl<Ref> ops::Mul for Expression<Ref> {
 
 impl<Ref> std::iter::Sum for Expression<Ref> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.reduce(|a, b| a + b)
-            .unwrap_or_else(|| Expression::Number(0u32.into(), None))
+        iter.reduce(|a, b| a + b).unwrap_or_else(|| 0u32.into())
     }
 }
 
@@ -451,10 +464,10 @@ impl<R> Expression<R> {
     #[auto_enum(Iterator)]
     pub fn children(&self) -> impl Iterator<Item = &Expression<R>> + '_ {
         match self {
-            Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
-                empty()
-            }
-            Expression::Number(_, _) => empty(),
+            Expression::Reference(_)
+            | Expression::PublicReference(_)
+            | Expression::String(_)
+            | Expression::Number(_) => empty(),
             Expression::Tuple(v) => v.iter(),
             Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_ref()),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter(),
@@ -495,7 +508,7 @@ impl<R> Expression<R> {
             Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
                 empty()
             }
-            Expression::Number(_, _) => empty(),
+            Expression::Number(_) => empty(),
             Expression::Tuple(v) => v.iter_mut(),
             Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_mut()),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter_mut(),
@@ -648,6 +661,76 @@ pub enum BinaryOperator {
     NotEqual,
     GreaterEqual,
     Greater,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum BinaryOperatorAssociativity {
+    Left,
+    Right,
+    RequireParentheses,
+}
+
+trait Precedence {
+    fn precedence(&self) -> ExpressionPrecedence;
+}
+
+impl Precedence for UnaryOperator {
+    fn precedence(&self) -> ExpressionPrecedence {
+        use UnaryOperator::*;
+        match self {
+            // NOTE: Any modification must be done with care to not overlap with BinaryOperator's precedence
+            Next => 1,
+            Minus | LogicalNot => 2,
+        }
+    }
+}
+
+impl Precedence for BinaryOperator {
+    fn precedence(&self) -> ExpressionPrecedence {
+        use BinaryOperator::*;
+        match self {
+            // NOTE: Any modification must be done with care to not overlap with LambdaExpression's precedence
+            // Unary Oprators
+            // **
+            Pow => 3,
+            // * / %
+            Mul | Div | Mod => 4,
+            // + -
+            Add | Sub => 5,
+            // << >>
+            ShiftLeft | ShiftRight => 6,
+            // &
+            BinaryAnd => 7,
+            // ^
+            BinaryXor => 8,
+            // |
+            BinaryOr => 9,
+            // = == != < > <= >=
+            Identity | Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => 10,
+            // &&
+            LogicalAnd => 11,
+            // ||
+            LogicalOr => 12,
+            // .. ..=
+            // ??
+        }
+    }
+}
+
+impl BinaryOperator {
+    pub fn associativity(&self) -> BinaryOperatorAssociativity {
+        use BinaryOperator::*;
+        use BinaryOperatorAssociativity::*;
+        match self {
+            Identity | Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual => {
+                RequireParentheses
+            }
+            Pow => Right,
+
+            // .. ..= => RequireParentheses,
+            _ => Left,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
@@ -817,7 +900,7 @@ impl ArrayExpression {
     }
 
     pub fn pad_with_zeroes(self) -> Self {
-        self.pad_with(Expression::Number(0u32.into(), None))
+        self.pad_with(0u32.into())
     }
 
     fn last(&self) -> Option<&Expression> {

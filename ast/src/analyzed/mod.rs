@@ -322,11 +322,11 @@ impl<T: FieldElement> Analyzed<T> {
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>, String> {
-        serde_cbor::to_vec(self).map_err(|e| format!("Failed to serialize analyzed: {}", e))
+        serde_cbor::to_vec(self).map_err(|e| format!("Failed to serialize analyzed: {e}"))
     }
 
     pub fn deserialize(bytes: &[u8]) -> Result<Self, String> {
-        serde_cbor::from_slice(bytes).map_err(|e| format!("Failed to deserialize analyzed: {}", e))
+        serde_cbor::from_slice(bytes).map_err(|e| format!("Failed to deserialize analyzed: {e}"))
     }
 }
 

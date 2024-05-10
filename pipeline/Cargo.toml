@@ -8,6 +8,7 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [features]
+default = [] # halo2 is disabled by default
 halo2 = ["powdr-backend/halo2"]
 estark-polygon = ["powdr-backend/estark-polygon"]
 
@@ -49,3 +50,6 @@ walkdir = "2.4.0"
 [[bench]]
 name = "evaluator_benchmark"
 harness = false
+
+[lints.clippy]
+uninlined_format_args = "deny"
