@@ -337,7 +337,7 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     Reference(Ref),
     PublicReference(String),
     // A number literal and its type.
-    Number(#[schemars(skip)] BigUint, Option<Type>),
+    Number(Number),
     String(String),
     Tuple(Vec<Self>),
     LambdaExpression(LambdaExpression<Self>),
@@ -352,6 +352,30 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     BlockExpression(Vec<StatementInsideBlock<Self>>, Box<Self>),
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct Number {
+    #[schemars(skip)]
+    pub value: BigUint,
+    pub type_: Option<Type>,
+}
+
+impl<Ref> From<Number> for Expression<Ref> {
+    fn from(number: Number) -> Self {
+        Expression::Number(number)
+    }
+}
+
+impl<Ref> From<BigUint> for Expression<Ref> {
+    fn from(value: BigUint) -> Self {
+        Number { value, type_: None }.into()
+    }
+}
+
+impl<Ref> From<u32> for Expression<Ref> {
+    fn from(value: u32) -> Self {
+        BigUint::from(value).into()
+    }
+}
 pub type ExpressionPrecedence = u64;
 
 impl<Ref> Expression<Ref> {
@@ -385,18 +409,6 @@ impl Expression<NamespacedPolynomialReference> {
     }
 }
 
-impl From<u32> for Expression {
-    fn from(value: u32) -> Self {
-        Expression::Number(value.into(), None)
-    }
-}
-
-impl From<BigUint> for Expression {
-    fn from(value: BigUint) -> Self {
-        Expression::Number(value, None)
-    }
-}
-
 impl<Ref> ops::Add for Expression<Ref> {
     type Output = Expression<Ref>;
 
@@ -422,8 +434,7 @@ impl<Ref> ops::Mul for Expression<Ref> {
 
 impl<Ref> std::iter::Sum for Expression<Ref> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.reduce(|a, b| a + b)
-            .unwrap_or_else(|| Expression::Number(0u32.into(), None))
+        iter.reduce(|a, b| a + b).unwrap_or_else(|| 0u32.into())
     }
 }
 
@@ -441,10 +452,10 @@ impl<R> Expression<R> {
     #[auto_enum(Iterator)]
     pub fn children(&self) -> impl Iterator<Item = &Expression<R>> + '_ {
         match self {
-            Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
-                empty()
-            }
-            Expression::Number(_, _) => empty(),
+            Expression::Reference(_)
+            | Expression::PublicReference(_)
+            | Expression::String(_)
+            | Expression::Number(_) => empty(),
             Expression::Tuple(v) => v.iter(),
             Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_ref()),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter(),
@@ -485,7 +496,7 @@ impl<R> Expression<R> {
             Expression::Reference(_) | Expression::PublicReference(_) | Expression::String(_) => {
                 empty()
             }
-            Expression::Number(_, _) => empty(),
+            Expression::Number(_) => empty(),
             Expression::Tuple(v) => v.iter_mut(),
             Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_mut()),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter_mut(),
@@ -877,7 +888,7 @@ impl ArrayExpression {
     }
 
     pub fn pad_with_zeroes(self) -> Self {
-        self.pad_with(Expression::Number(0u32.into(), None))
+        self.pad_with(0u32.into())
     }
 
     fn last(&self) -> Option<&Expression> {

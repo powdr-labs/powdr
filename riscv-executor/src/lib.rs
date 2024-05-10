@@ -22,7 +22,7 @@ use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
     },
-    parsed::{asm::DebugDirective, Expression, FunctionCall},
+    parsed::{asm::DebugDirective, Expression, FunctionCall, Number},
 };
 use powdr_number::{FieldElement, LargeInt};
 use powdr_riscv_syscalls::SYSCALL_REGISTERS;
@@ -834,7 +834,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 vec![val]
             }
             Expression::PublicReference(_) => todo!(),
-            Expression::Number(n, _) => {
+            Expression::Number(Number { value: n, .. }) => {
                 let unsigned: u32 = n
                     .try_into()
                     .unwrap_or_else(|_| panic!("Value does not fit in 32 bits."));
