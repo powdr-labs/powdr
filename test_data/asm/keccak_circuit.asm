@@ -27,8 +27,8 @@ let and_not: Gate64, Gate64 -> Gate64 = |a, b| Gate64::AndNot(a, b);
 
 /// -------------- conversion from 64 bit gates to 32 bit gates ----------
 
-let to_gate32: Gate64 -> Gate = |gate| match gate {
-    Gate64::Reference(i) => Gate::Reference(i),
+let to_gate32: Gate64 -> (Gate, Gate) = |gate| match gate {
+    Gate64::Reference(i, j) => (Gate::Reference(i), Gate::Reference(j))
     Gate64::Xor(a, b) => Gate::Op(1, to_gate32(a), to_gate32(b)),
     Gate64::Rotl(x, n) => Gate::Op(2, rotl64(to_gate32(x), rotl_constants[n])),
     Gate64::AndNot(a, b) => Gate::Op(3, to_gate32(a), to_gate32(b)),
@@ -36,11 +36,11 @@ let to_gate32: Gate64 -> Gate = |gate| match gate {
 
 let to_gate32_array: Gate64[] -> Gate[] = |gates| array::map(gates, to_gate32);
 
-let from_gate32: Gate -> Gate64 = |gate| match gate {
-    Gate::Reference(i) => Gate64::Reference(i),
+let to_gate64: Gate, Gate -> Gate64 = |g1, g2| match (g1, g2) {
+    (Gate::Reference(i), Gate::Reference(j)) => Gate64::Reference(i, j),
     _ => std::check::panic("Invalid gate"),
 };
-let from_gate32_array: Gate[] -> Gate64[] = |gates| array::map(gates, from_gate32);
+let to_gate64_array: Gate[] -> Gate64[] = |gates| array::map(gates, from_gate32);
 
 // ---------------- constants --------------------
 let RHO: int[] = [
