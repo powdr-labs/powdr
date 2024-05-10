@@ -4,10 +4,11 @@ use std::convert::expr;
 use std::field::modulus;
 use std::prover::eval;
 
-/// An extension field element, represented as a tuple (a0, a1) of expressions (which evaluate to field elements).
-/// An element of F_{p^2} is a polynomial a0 + a1 * x (mod x^2 - 7).
-/// The polynomial x^2 - 7 is irreducible in both the Goldilocks and BN254 field
-/// (which follows from 7 not having a square root in both fields).
+/// A element of the extension field over the implied base field (which has to be either
+/// the Goldilocks or the BN254 field) relative to the irreducible polynomial X^2 - 7,
+/// where Fp2(a0, a1) is interpreted as a0 + a1 * X.
+/// T is assumed to either be fe, expr or any other object whose algebraic operations
+/// are compatible with fe.
 enum Fp2<T> {
     Fp2(T, T)
 }
@@ -42,12 +43,12 @@ let<T: Add + FromLiteral + Mul> mul_ext: Fp2<T>, Fp2<T> -> Fp2<T> = |a, b| match
     )
 };
 
-/// Converts and Fp2<expr> into an Fp2<fe>
+/// Converts an Fp2<expr> into an Fp2<fe>
 let eval_ext: Fp2<expr> -> Fp2<fe> = query |a| match a {
     Fp2::Fp2(a0, a1) => Fp2::Fp2(eval(a0), eval(a1))
 };
 
-/// Converts and Fp2<fe> into an Fp2<expr>
+/// Converts an Fp2<fe> into an Fp2<expr>
 let expr_ext: Fp2<fe> -> Fp2<expr> = |a| match a {
     Fp2::Fp2(a0, a1) => Fp2::Fp2(expr(a0), expr(a1))
 };
