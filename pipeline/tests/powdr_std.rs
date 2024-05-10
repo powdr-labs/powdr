@@ -6,7 +6,7 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof,
-        std_analyzed, test_halo2, verify_test_file,
+        resolve_test_file, std_analyzed, test_halo2, verify_test_file,
     },
     Pipeline,
 };
@@ -70,7 +70,10 @@ fn permutation_via_challenges_bn() {
 #[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation([main.z], main.permutation_constraint)\nError: FailedAssertion(\"The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!\")"]
 fn permutation_via_challenges_gl() {
     let f = "std/permutation_via_challenges.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    Pipeline::<GoldilocksField>::default()
+        .from_file(resolve_test_file(f))
+        .compute_witness()
+        .unwrap();
 }
 
 #[test]
@@ -80,7 +83,10 @@ fn permutation_via_challenges_ext() {
     // Note that this does not actually run the second-phase witness generation, because no
     // Goldilocks backend support challenges yet. But at least it tests that the panic from
     // the previous test is not happening.
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    Pipeline::<GoldilocksField>::default()
+        .from_file(resolve_test_file(f))
+        .compute_witness()
+        .unwrap();
 }
 
 #[test]
