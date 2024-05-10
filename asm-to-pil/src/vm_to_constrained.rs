@@ -978,30 +978,28 @@ impl<T: FieldElement> VMConverter<T> {
                         value: absolute_reference("::std::prover::Query::None"),
                     });
 
-                    FunctionDefinition::Expression(
-                        LambdaExpression {
-                            kind: FunctionKind::Query,
-                            params: vec![Pattern::Variable("__i".to_string())],
-                            body: Box::new(
-                                MatchExpression {
-                                    scrutinee: Box::new(
-                                        FunctionCall {
-                                            function: Box::new(absolute_reference(
-                                                "::std::prover::eval",
-                                            )),
-                                            arguments: vec![direct_reference(
-                                                pc_name.as_ref().unwrap(),
-                                            )],
-                                        }
-                                        .into(),
-                                    ),
-                                    arms: prover_query_arms,
-                                }
-                                .into(),
-                            ),
+                    let scrutinee = Box::new(
+                        FunctionCall {
+                            function: Box::new(absolute_reference("::std::prover::eval")),
+                            arguments: vec![direct_reference(pc_name.as_ref().unwrap())],
                         }
                         .into(),
-                    )
+                    );
+
+                    let lambda = LambdaExpression {
+                        kind: FunctionKind::Query,
+                        params: vec![Pattern::Variable("__i".to_string())],
+                        body: Box::new(
+                            MatchExpression {
+                                scrutinee,
+                                arms: prover_query_arms,
+                            }
+                            .into(),
+                        ),
+                    }
+                    .into();
+
+                    FunctionDefinition::Expression(lambda)
                 });
                 witness_column(SourceRef::unknown(), free_value, prover_query)
             })
