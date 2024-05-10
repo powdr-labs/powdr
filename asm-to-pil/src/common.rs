@@ -17,12 +17,12 @@ fn output_registers(count: usize) -> Vec<String> {
 
 /// The name of the read-only registers at index `i`
 pub fn input_at(i: usize) -> String {
-    format!("_input_{}", i)
+    format!("_input_{i}")
 }
 
 /// The name of the output assignment registers at index `i`
 pub fn output_at(i: usize) -> String {
-    format!("_output_{}", i)
+    format!("_output_{i}")
 }
 
 /// The return instruction for `output_count` outputs and `pc_name` the name of the pc

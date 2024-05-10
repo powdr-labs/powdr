@@ -21,3 +21,6 @@ powdr-riscv-executor = { path = "../riscv-executor" }
 default = ["halo2"]
 halo2 = ["powdr-backend/halo2", "powdr-pipeline/halo2"]
 estark-polygon = ["powdr-backend/estark-polygon", "powdr-pipeline/estark-polygon", "powdr-riscv/estark-polygon"]
+
+[lints.clippy]
+uninlined_format_args = "deny"

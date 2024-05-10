@@ -290,7 +290,7 @@ impl Display for FunctionBody {
 
 impl Display for Incompatible {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
