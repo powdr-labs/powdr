@@ -12,12 +12,37 @@ let rotl_constants = array::new(64, |i| Gate::Reference(25 + i));
 /// Represent the array RC.
 let rc_constants = array::new(24, |i| Gate::Reference(25 + 64 + i));
 
-let xor: Gate, Gate -> Gate = |a, b| Gate::Op(1, a, b);
-let rotl64: Gate, int -> Gate = |x, n| Gate::Op(2, x, rotl_constants[n]);
+/// -------------- the elementary 64-bit gates -----------------
+enum Gate64 {
+    /// A 64-bit reference references two 32-bit gates.
+    Reference(int, int),
+    Xor(Gate64, Gate64),
+    Rotl(Gate64, int),
+    AndNot(Gate64, Gate64),
+}
+let xor: Gate64, Gate64 -> Gate64 = |a, b| Gate64::Xor(a, b);
+let rotl64: Gate64, int -> Gate64 = |x, n| Gate64::Rotl(x, n);
 /// Evaluates as and(not(a), b)
-let and_not: Gate, Gate -> Gate = |a, b| Gate::Op(3, a, b);
+let and_not: Gate64, Gate64 -> Gate64 = |a, b| Gate64::AndNot(a, b);
 
-// constants
+/// -------------- conversion from 64 bit gates to 32 bit gates ----------
+
+let to_gate32: Gate64 -> Gate = |gate| match gate {
+    Gate64::Reference(i) => Gate::Reference(i),
+    Gate64::Xor(a, b) => Gate::Op(1, to_gate32(a), to_gate32(b)),
+    Gate64::Rotl(x, n) => Gate::Op(2, rotl64(to_gate32(x), rotl_constants[n])),
+    Gate64::AndNot(a, b) => Gate::Op(3, to_gate32(a), to_gate32(b)),
+};
+
+let to_gate32_array: Gate64[] -> Gate[] = |gates| array::map(gates, to_gate32);
+
+let from_gate32: Gate -> Gate64 = |gate| match gate {
+    Gate::Reference(i) => Gate64::Reference(i),
+    _ => std::check::panic("Invalid gate"),
+};
+let from_gate32_array: Gate[] -> Gate64[] = |gates| array::map(gates, from_gate32);
+
+// ---------------- constants --------------------
 let RHO: int[] = [
     1,  3,  6,  10, 15, 21, 28, 36, 45, 55, 2,  14,
     27, 41, 56, 8,  25, 43, 62, 18, 39, 61, 20, 44
@@ -46,20 +71,21 @@ let RC: int[] = [
     0x8000000000008080, 0x0000000080000001, 0x8000000080008008
 ];
 
+/// ------------------------- circuit construction routines -------------------
+
 let theta_bc = |st, i| xor(xor(xor(xor(st[i], st[i + 5]), st[i + 10]), st[i + 15]), st[i + 20]);
 
-let theta_st = |state, inputs| {
+let theta_st = |inputs| {
     let bc = array::new(5, |i| theta_bc(inputs, i));
     // TODO we could turn the bc into a reference here already.
-    let r = array::map_enumerated(inputs, |idx, elem| {
+    array::map_enumerated(inputs, |idx, elem| {
         let i = idx % 5;
         let t = xor(bc[(i + 4) % 5], rotl64(bc[(i + 1) % 5], 1));
         xor(elem, t)
-    });
-    circuit::add_routines(state, r)
+    })
 };
 
-let rho_pi: Gate[], int -> Gate = |inputs, i| {
+let rho_pi: Gate64[], int -> Gate64 = |inputs, i| {
     let p = if i == 0 { 23 } else { i - 1 };
     rotl64(inputs[PI[p]], RHO[i])
 };
@@ -67,17 +93,17 @@ let rho_pi: Gate[], int -> Gate = |inputs, i| {
 let rho_pi_loop = |inputs| array::new(25, |i| if i == 0 { inputs[0] } else { rho_pi(inputs, i - 1) } );
 
 // rearrange st_j
-let rho_pi_rearrange: Gate[] -> Gate[] = |inputs| array::new(25, |i| inputs[PI_INVERSE[i]]);
+let rho_pi_rearrange: Gate64[] -> Gate64[] = |inputs| array::new(25, |i| inputs[PI_INVERSE[i]]);
 
 // chi
-let chi: Gate[] -> Gate[] = |inputs| array::map_enumerated(inputs, |idx, elem| {
+let chi: Gate64[] -> Gate64[] = |inputs| array::map_enumerated(inputs, |idx, elem| {
     let i = idx / 5;
     let j = idx % 5;
     xor(inputs[idx], and_not(inputs[i * 5 + (j + 1) % 5], inputs[i * 5 + (j + 2) % 5]))
 });
 
 // iota
-let iota: Gate[], int -> Gate[] = |inputs, r| array::map_enumerated(inputs, |idx, elem| if idx == 0 { xor(elem, rc_constants[r]) } else { elem } );
+let iota: Gate64[], int -> Gate64[] = |inputs, r| array::map_enumerated(inputs, |idx, elem| if idx == 0 { xor(elem, rc_constants[r]) } else { elem } );
 
 let add_inputs: State, int -> (State, Gate[]) = |state, n|
     utils::fold(n, |i| i, (state, []), |(s, inp), _| {
@@ -91,9 +117,17 @@ let keccakf_circuit: -> (circuit::State, Gate[]) = || {
     let (s3, rc_const) = add_inputs(s2, 24);
     // TODO assert that rotl_const equal rotl_constants
     // TODO assert that rc_const equal rc_constants
+
+
+    // TODO We start with 50 32-bit inputs here and we need to group them to
+    // 25 Gate64 references, which we then pass to theta_st.
+    // Then we turn them into 32-bit gates and add them as routines.
+    // As a result we get 50 32-bit gates, which we can re-group again.
+    // So essentially we need a function add_step, which takes 25 64-bit gates and returns 25 64-bit gates.
     utils::fold(24, |i| i, (s3, inputs), |(s, st), r| {
-        let (s_1, th) = theta_st(s, st);
-        circuit::add_routines(s_1, iota(chi(rho_pi_rearrange(rho_pi_loop(th))), r))
+        let th = theta_st(st);
+        let (s_1, th_r) = add_routines(state, r)
+        add_routines(s_1, to_gate32_array(iota(chi(rho_pi_rearrange(rho_pi_loop(th))), r)))
     })
 };
 
