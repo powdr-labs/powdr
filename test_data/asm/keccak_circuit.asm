@@ -241,8 +241,14 @@ let test = || {
     []
 };
 
-// main machine
-machine Main { 
-    let x;
-    test();
+machine Main(262144) { 
+    // TODO uncomment to run the evaluation test.
+    // test();
+
+
+    std::Binary binary;
+    std::Shift shift;
+
+    col witness a, b, c;
+
 }
