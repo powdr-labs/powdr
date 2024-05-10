@@ -1,8 +1,6 @@
 use std::prover::Query;
 use std::convert::fe;
 use std::protocols::permutation::permutation;
-use std::protocols::permutation::compute_next_z;
-use std::math::fp2::Fp2Expr;
 
 machine Main with degree: 8 {
     col fixed first_four = [1, 1, 1, 1, 0, 0, 0, 0];

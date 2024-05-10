@@ -5,16 +5,15 @@ use std::check::assert;
 use std::check::panic;
 use std::field::known_field;
 use std::field::KnownField;
-use std::math::fp2::Fp2Value;
-use std::math::fp2::Fp2Expr;
+use std::math::fp2::Fp2;
 use std::math::fp2::add_ext;
 use std::math::fp2::sub_ext;
 use std::math::fp2::mul_ext;
 use std::math::fp2::unpack_ext;
 use std::math::fp2::next_ext;
-use std::math::fp2::eval_ext;
-use std::math::fp2::expr_ext;
 use std::math::fp2::inv_ext;
+use std::math::fp2::eval_ext;
+use std::math::fp2::from_base;
 
 let is_first: col = |i| if i == 0 { 1 } else { 0 };
 
@@ -43,41 +42,39 @@ let needs_extension: -> bool = || match known_field() {
 };
 
 // Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
-let compress_expression_array: expr[], Fp2Expr -> Fp2Expr = |expr_array, alpha| fold(
+let<T: Add + Mul + FromLiteral> compress_expression_array: T[], Fp2<T> -> Fp2<T> = |expr_array, alpha| fold(
     expr_array,
-    Fp2Expr::Fp2(0, 0),
-    |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), Fp2Expr::Fp2(el, 0))
+    Fp2::Fp2(0, 0),
+    |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), Fp2::Fp2(el, 0))
 );
 
 // Compute z' = z * (beta - a) / (beta - b), using extension field arithmetic
 // This is intended to be used as a hint in the extension field case; for the base case
 // automatic witgen is smart enough to figure out the value if the accumulator.
-let compute_next_z: Fp2Expr, Constr -> fe[] = query |acc, permutation_constraint| {
+let compute_next_z: Fp2<expr>, Constr -> fe[] = query |acc, permutation_constraint| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
     let alpha = if len(lhs) > 1 {
-        Fp2Expr::Fp2(alpha1, alpha2)
+        Fp2::Fp2(alpha1, alpha2)
     } else {
         // The optimizer will have removed alpha, but the compression function
         // still accesses it (to multiply by 0 in this case)
-        Fp2Expr::Fp2(0, 0)
+        Fp2::Fp2(0, 0)
     };
-    let beta = Fp2Expr::Fp2(beta1, beta2);
+    let beta = Fp2::Fp2(beta1, beta2);
     
-    let lhs_folded = mul_ext(Fp2Expr::Fp2(lhs_selector, 0), compress_expression_array(lhs, alpha));
-    let rhs_folded = mul_ext(Fp2Expr::Fp2(rhs_selector, 0), compress_expression_array(rhs, alpha));
+    let lhs_folded = mul_ext(from_base(lhs_selector), compress_expression_array(lhs, alpha));
+    let rhs_folded = mul_ext(from_base(rhs_selector), compress_expression_array(rhs, alpha));
     
     // acc' = acc * (beta - lhs_folded) / (beta - rhs_folded)
-    let res = eval_ext(
-        mul_ext(
-            mul_ext(acc, sub_ext(beta, lhs_folded)),
-            expr_ext(inv_ext(eval_ext(sub_ext(beta, rhs_folded))))
-        )
+    let res = mul_ext(
+        eval_ext(mul_ext(acc, sub_ext(beta, lhs_folded))),
+        inv_ext(eval_ext(sub_ext(beta, rhs_folded)))
     );
 
     match res {
-        Fp2Value::Fp2(a0_fe, a1_fe) => [a0_fe, a1_fe]
+        Fp2::Fp2(a0_fe, a1_fe) => [a0_fe, a1_fe]
     }
 };
 
@@ -107,19 +104,19 @@ let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
     // in which case the operations below effectively only operate on the first component.
-    let fp2_from_array = |arr| if with_extension { Fp2Expr::Fp2(arr[0], arr[1]) } else { Fp2Expr::Fp2(arr[0], 0) };
+    let fp2_from_array = |arr| if with_extension { Fp2::Fp2(arr[0], arr[1]) } else { Fp2::Fp2(arr[0], 0) };
     let acc_ext = fp2_from_array(acc);
     let alpha = fp2_from_array([alpha1, alpha2]);
     let beta = fp2_from_array([beta1, beta2]);
 
-    let lhs_folded = mul_ext(Fp2Expr::Fp2(lhs_selector, 0), compress_expression_array(lhs, alpha));
-    let rhs_folded = mul_ext(Fp2Expr::Fp2(rhs_selector, 0), compress_expression_array(rhs, alpha));
+    let lhs_folded = mul_ext(Fp2::Fp2(lhs_selector, 0), compress_expression_array(lhs, alpha));
+    let rhs_folded = mul_ext(Fp2::Fp2(rhs_selector, 0), compress_expression_array(rhs, alpha));
 
     let next_acc = if with_extension {
         next_ext(acc_ext)
     } else {
         // The second component is 0, but the next operator is not defined on it...
-        Fp2Expr::Fp2(acc[0]', 0)
+        Fp2::Fp2(acc[0]', 0)
     };
 
     // Update rule:

@@ -48,11 +48,6 @@ let eval_ext: Fp2<expr> -> Fp2<fe> = query |a| match a {
     Fp2::Fp2(a0, a1) => Fp2::Fp2(eval(a0), eval(a1))
 };
 
-/// Converts an Fp2<fe> into an Fp2<expr>
-let expr_ext: Fp2<fe> -> Fp2<expr> = |a| match a {
-    Fp2::Fp2(a0, a1) => Fp2::Fp2(expr(a0), expr(a1))
-};
-
 /// Extension field equality
 let eq_ext: Fp2<fe>, Fp2<fe> -> bool = |a, b| match (a, b) {
     (Fp2::Fp2(a0, a1), Fp2::Fp2(b0, b1)) => (a0 == b0) && (a1 == b1)
@@ -76,13 +71,13 @@ let inv_ext: Fp2<fe> -> Fp2<fe> = |a| match a {
 };
 
 // Applies the next operator to both components of the extension field element
-let next_ext: Fp2Expr -> Fp2Expr = |a| match a {
-    Fp2Expr::Fp2(a0, a1) => Fp2Expr::Fp2(a0', a1')
+let next_ext: Fp2<expr> -> Fp2<expr> = |a| match a {
+    Fp2::Fp2(a0, a1) => Fp2::Fp2(a0', a1')
 };
 
 // Returns the two components of the extension field element
-let unpack_ext: Fp2Expr -> (expr, expr) = |a| match a {
-    Fp2Expr::Fp2(a0, a1) => (a0, a1)
+let<T> unpack_ext: Fp2<T> -> (T, T) = |a| match a {
+    Fp2::Fp2(a0, a1) => (a0, a1)
 };
 
 mod test {
