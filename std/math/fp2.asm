@@ -1,4 +1,3 @@
-use std::math::ff::inverse;
 use std::convert::fe;
 use std::convert::int;
 use std::convert::expr;
@@ -59,7 +58,7 @@ let<T: Eq> eq_ext: Fp2<T>, Fp2<T> -> bool = |a, b| match (a, b) {
 };
 
 /// Field inversion (defined on fe instead of int)
-let inv_field: fe -> fe = |x| fe(inverse(int(x), modulus()));
+let inv_field: fe -> fe = |x| fe(std::math::ff::inverse(int(x), modulus()));
 
 /// Extension field inversion
 let inv_ext: Fp2<fe> -> Fp2<fe> = |a| match a {
@@ -67,12 +66,12 @@ let inv_ext: Fp2<fe> -> Fp2<fe> = |a| match a {
     // (a0 + a1 * x) (b0 + b1 * x) = 1 (mod x^2 - 7)
     // Multiplying out and plugging in x^2 = 7 yields the following system of linear equations:
     // a0 * b0 + 7 * a1 * b1 = 1
-    // a1 * b1 + a0 * b1 = 0
+    // a1 * b0 + a0 * b1 = 0
     // Solving for (b0, b1) yields:
-    Fp2::Fp2(a0, a1) => Fp2::Fp2(
-        -a0 * inv_field(7 * a1 * a1 - a0 * a0),
-        a1 * inv_field(7 * a1 * a1 - a0 * a0)
-    )
+    Fp2::Fp2(a0, a1) => {
+        let factor = inv_field(7 * a1 * a1 - a0 * a0);
+        Fp2::Fp2(-a0 * factor, a1 * factor)
+    }
 };
 
 mod test {
