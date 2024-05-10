@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use powdr_number::{BigInt, GoldilocksField};
+use powdr_number::{BigInt, Bn254Field, GoldilocksField};
 
 use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
@@ -215,6 +215,12 @@ fn ff_inv_big() {
 #[test]
 fn fp2() {
     let analyzed = std_analyzed::<GoldilocksField>();
+    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
+
+    let analyzed = std_analyzed::<Bn254Field>();
     evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);

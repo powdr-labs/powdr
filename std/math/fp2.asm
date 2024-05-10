@@ -96,7 +96,7 @@ mod test {
 
         // Add arbitrary elements
         let _ = test_add(Fp2::Fp2(123, 1234), Fp2::Fp2(567, 5678), Fp2::Fp2(690, 6912));
-        test_add(Fp2::Fp2(0xffffffff00000000, 0xffffffff00000000), Fp2::Fp2(3, 4), Fp2::Fp2(2, 3))
+        test_add(Fp2::Fp2(-1, -1), Fp2::Fp2(3, 4), Fp2::Fp2(2, 3))
     };
 
     let sub = || {
@@ -107,8 +107,8 @@ mod test {
         let _ = test_sub(Fp2::Fp2(123, 1234), from_base(0), Fp2::Fp2(123, 1234));
 
         // Subtract arbitrary elements
-        let _ = test_sub(Fp2::Fp2(123, 1234), Fp2::Fp2(567, 5678), Fp2::Fp2(18446744069414583877, 18446744069414579877));
-        test_sub(Fp2::Fp2(0xffffffff00000000, 0xffffffff00000000), Fp2::Fp2(0x100000000, 1), Fp2::Fp2(0xfffffffe00000000, 0xfffffffeffffffff))
+        let _ = test_sub(Fp2::Fp2(123, 1234), Fp2::Fp2(567, 5678), Fp2::Fp2(123 - 567, 1234 - 5678));
+        test_sub(Fp2::Fp2(-1, -1), Fp2::Fp2(0x100000000, 1), Fp2::Fp2(-0x100000000 - 1, -2))
     };
 
     let mul = || {
@@ -124,14 +124,17 @@ mod test {
         let _ = test_mul(from_base(0), Fp2::Fp2(123, 1234), from_base(0));
 
         // Multiply arbitrary elements
-        test_mul(Fp2::Fp2(123, 1234), Fp2::Fp2(567, 5678), Fp2::Fp2(49116305, 1398072))
+        let _ = test_mul(Fp2::Fp2(123, 1234), Fp2::Fp2(567, 5678), Fp2::Fp2(49116305, 1398072));
+
+        // Multiplication with field overflow
+        test_mul(Fp2::Fp2(-1, -2), Fp2::Fp2(-3, 4), Fp2::Fp2(3 - 7 * 8, 6 - 4))
     };
 
     let inverse = || {
         let test_elements = [
             from_base(1),
             Fp2::Fp2(123, 1234),
-            Fp2::Fp2(0xffffffff00000000, 0xffffffff00000000)
+            Fp2::Fp2(-1, 500)
         ];
 
         map(test_elements, |x| {
