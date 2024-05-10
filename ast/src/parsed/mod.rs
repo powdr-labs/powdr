@@ -379,6 +379,9 @@ impl<Ref: PartialEq> PartialEq for Expression<Ref> {
 pub trait SourceReference {
     fn source_reference(&self) -> &SourceRef;
     fn source_reference_mut(&mut self) -> &mut SourceRef;
+    fn set_source_reference(&mut self, s: SourceRef) {
+        *self.source_reference_mut() = s;
+    }
 }
 
 impl<E> SourceReference for Expression<E> {
@@ -477,8 +480,8 @@ impl<Ref> Expression<Ref> {
         )
     }
 
-    pub fn with_source_reference(&mut self, s: SourceRef) -> &mut Self {
-        *(self.source_reference_mut()) = s;
+    pub fn with_source_reference(mut self, s: SourceRef) -> Self {
+        self.set_source_reference(s);
         self
     }
 
