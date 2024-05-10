@@ -665,24 +665,26 @@ pub enum BinaryOperatorAssociativity {
 }
 
 trait Precedence {
-    fn precedence(&self) -> ExpressionPrecedence;
+    fn precedence(&self) -> Option<ExpressionPrecedence>;
 }
 
 impl Precedence for UnaryOperator {
-    fn precedence(&self) -> ExpressionPrecedence {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
         use UnaryOperator::*;
-        match self {
+        let precedence = match self {
             // NOTE: Any modification must be done with care to not overlap with BinaryOperator's precedence
             Next => 1,
             Minus | LogicalNot => 2,
-        }
+        };
+
+        Some(precedence)
     }
 }
 
 impl Precedence for BinaryOperator {
-    fn precedence(&self) -> ExpressionPrecedence {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
         use BinaryOperator::*;
-        match self {
+        let precedence = match self {
             // NOTE: Any modification must be done with care to not overlap with LambdaExpression's precedence
             // Unary Oprators
             // **
@@ -707,6 +709,22 @@ impl Precedence for BinaryOperator {
             LogicalOr => 12,
             // .. ..=
             // ??
+        };
+
+        Some(precedence)
+    }
+}
+
+impl<E> Precedence for Expression<E> {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        match self {
+            Expression::UnaryOperation(op, _) => op.precedence(),
+            Expression::BinaryOperation(BinaryOperation {
+                left: _,
+                op,
+                right: _,
+            }) => op.precedence(),
+            _ => None,
         }
     }
 }
