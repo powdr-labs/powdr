@@ -540,9 +540,9 @@ impl<T: FieldElement> VMConverter<T> {
                     }
                     Expression::UnaryOperation(UnaryOperation {
                         op: UnaryOperator::Next,
-                        expr: e,
+                        expr,
                     }) => {
-                        if let Expression::Reference(poly) = e.as_ref() {
+                        if let Expression::Reference(poly) = expr.as_ref() {
                             poly.try_to_identifier()
                                 .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
                                 .filter(|(_, reg)| {
@@ -1221,8 +1221,8 @@ fn extract_update(expr: Expression) -> (Option<String>, Expression) {
     match *left {
         Expression::UnaryOperation(UnaryOperation {
             op: UnaryOperator::Next,
-            expr: column,
-        }) => match *column {
+            expr,
+        }) => match *expr {
             Expression::Reference(column) => {
                 (Some(column.try_to_identifier().unwrap().clone()), *right)
             }
@@ -1230,7 +1230,7 @@ fn extract_update(expr: Expression) -> (Option<String>, Expression) {
                 None,
                 Expression::UnaryOperation(UnaryOperation {
                     op: UnaryOperator::Next,
-                    expr: column,
+                    expr,
                 }) - *right,
             ),
         },
