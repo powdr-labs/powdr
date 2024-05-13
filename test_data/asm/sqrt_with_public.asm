@@ -4,11 +4,8 @@ machine Square with degree: 8 {
     reg Y[<=];
     reg A;
 
+    // Expose the register value of A in the last time step
     public N = A(7);
-
-    instr j l: label {
-        pc' = l
-    }
 
     instr square X -> Y {
         Y = X * X
@@ -17,8 +14,5 @@ machine Square with degree: 8 {
     function main {
         A <=X= ${ std::prover::Query::Input(0) };
         A <== square(A);
-    loop:
-        j loop;
-        return;
     }
 }
