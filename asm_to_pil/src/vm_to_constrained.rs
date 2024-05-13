@@ -1082,7 +1082,7 @@ fn witness_column<S: Into<String>, T>(
     start: usize,
     name: S,
     def: Option<FunctionDefinition<T>>,
-    is_public: bool
+    is_public: bool,
 ) -> PilStatement<T> {
     PilStatement::PolynomialCommitDeclaration(
         start,

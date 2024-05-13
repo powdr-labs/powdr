@@ -211,13 +211,10 @@ fn get_all_col_names<F: FieldElement>(
 /// The compiler automatically suffixes the public input columns with "__is_public"
 /// This function removes the suffix and collects the columns into their own container
 pub fn extract_public_input_columns(witness_columns: Vec<String>) -> (Vec<String>, Vec<String>) {
-    let witness_names: Vec<String> = witness_columns
-        .clone();
+    let witness_names: Vec<String> = witness_columns.clone();
     let public_input_column_names: Vec<String> = witness_columns
         .into_iter()
-        .filter(|name| 
-            name.ends_with("__is_public")
-        )
+        .filter(|name| name.ends_with("__is_public"))
         .collect();
 
     assert!(

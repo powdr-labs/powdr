@@ -33,7 +33,12 @@ pub enum PilStatement<T> {
     ),
     PolynomialConstantDeclaration(usize, Vec<PolynomialName<T>>),
     PolynomialConstantDefinition(usize, String, FunctionDefinition<T>),
-    PolynomialCommitDeclaration(usize, Vec<PolynomialName<T>>, Option<FunctionDefinition<T>>, /*public=*/ bool),
+    PolynomialCommitDeclaration(
+        usize,
+        Vec<PolynomialName<T>>,
+        Option<FunctionDefinition<T>>,
+        /*public=*/ bool,
+    ),
     PolynomialIdentity(usize, Option<String>, Expression<T>),
     PlookupIdentity(
         usize,

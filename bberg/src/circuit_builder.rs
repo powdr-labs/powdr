@@ -105,7 +105,7 @@ impl CircuitBuilder for BBFiles {
                 )
         };
 
-        // When we are running natively, we want check circuit to run as futures; however, futures are not supported in wasm, so we must provide an 
+        // When we are running natively, we want check circuit to run as futures; however, futures are not supported in wasm, so we must provide an
         // alternative codepath that will execute the closures in serial
         let emplace_future_transformation = |relation_name: &String| {
             format!(
@@ -131,11 +131,11 @@ impl CircuitBuilder for BBFiles {
             map_with_newline(relations, check_circuit_transformation);
         let check_circuit_for_each_lookup =
             map_with_newline(permutations, check_lookup_transformation);
-        
+
         // With futures
         let emplace_future_relations = map_with_newline(relations, emplace_future_transformation);
         let emplace_future_lookups = map_with_newline(permutations, emplace_future_transformation);
-        
+
         // With threads
         let serial_relations = map_with_newline(relations, execute_serial_transformation);
         let serial_lookups = map_with_newline(permutations, execute_serial_transformation);
@@ -150,7 +150,6 @@ impl CircuitBuilder for BBFiles {
         } else {
             "".to_owned()
         };
-
 
         let circuit_hpp = format!("
 {includes}
