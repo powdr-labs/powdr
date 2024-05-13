@@ -375,12 +375,13 @@ impl<T: Display> Display for PilStatement<T> {
             PilStatement::PolynomialConstantDefinition(_, name, definition) => {
                 write!(f, "pol constant {name}{definition};")
             }
-            PilStatement::PolynomialCommitDeclaration(_, names, value) => {
+            PilStatement::PolynomialCommitDeclaration(_, names, value, public) => {
                 write!(
                     f,
-                    "pol commit {}{};",
+                    "pol commit {}{}{};",
+                    if *public { "public " } else { " " },
                     names.iter().format(", "),
-                    value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
+                    value.as_ref().map(|v| format!("{v}")).unwrap_or_default(),
                 )
             }
             PilStatement::PolynomialIdentity(_, _attr, expression) => {

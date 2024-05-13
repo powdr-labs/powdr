@@ -110,7 +110,7 @@ where
                 self.handle_public_declaration(start, name, polynomial, array_index, index)
             }
             PilStatement::PolynomialConstantDeclaration(start, polynomials) => {
-                self.handle_polynomial_declarations(start, polynomials, PolynomialType::Constant)
+                self.handle_polynomial_declarations(start, polynomials, PolynomialType::Constant, false)
             }
             PilStatement::PolynomialConstantDefinition(start, name, definition) => self
                 .handle_symbol_definition(
@@ -120,10 +120,10 @@ where
                     SymbolKind::Poly(PolynomialType::Constant),
                     Some(definition),
                 ),
-            PilStatement::PolynomialCommitDeclaration(start, polynomials, None) => {
-                self.handle_polynomial_declarations(start, polynomials, PolynomialType::Committed)
+            PilStatement::PolynomialCommitDeclaration(start, polynomials, None, is_public) => {
+                self.handle_polynomial_declarations(start, polynomials, PolynomialType::Committed, is_public)
             }
-            PilStatement::PolynomialCommitDeclaration(start, mut polynomials, Some(definition)) => {
+            PilStatement::PolynomialCommitDeclaration(start, mut polynomials, Some(definition), _) => {
                 assert!(polynomials.len() == 1);
                 let name = polynomials.pop().unwrap();
                 self.handle_symbol_definition(
@@ -267,10 +267,15 @@ where
         start: usize,
         polynomials: Vec<PolynomialName<T>>,
         polynomial_type: PolynomialType,
+        is_public: bool,
     ) -> Vec<PILItem<T>> {
         polynomials
             .into_iter()
             .flat_map(|PolynomialName { name, array_size }| {
+
+                // hack(https://github.com/AztecProtocol/aztec-packages/issues/6359): add an is_public modifier to the end of a committed polynomial
+                let name = if is_public { format!("{name}__is_public")} else {name};
+
                 self.handle_symbol_definition(
                     start,
                     name,

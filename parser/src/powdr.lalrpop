@@ -84,6 +84,7 @@ PolynomialDefinition: PilStatement<T> = {
     <@L> PolCol <Identifier> "=" <Expression> => PilStatement::PolynomialDefinition(<>)
 }
 
+
 PublicDeclaration: PilStatement<T> = {
     <@L> "public" <Identifier> "="
         <NamespacedPolynomialReference>
@@ -121,9 +122,10 @@ ArrayLiteralTerm: ArrayExpression<T> = {
 }
 
 PolynomialCommitDeclaration: PilStatement<T> = {
-    <@L> PolCol CommitWitness <PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(<>, None),
+    <@L> PolCol CommitWitness <PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(<>, None, false),
+    <@L> PolCol "public" <PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(<>, None, true),
     <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <param:ParameterList> ")" "query" <value:Expression>
-     => PilStatement::PolynomialCommitDeclaration(start, vec![name], Some(FunctionDefinition::Query(param, value)))
+     => PilStatement::PolynomialCommitDeclaration(start, vec![name], Some(FunctionDefinition::Query(param, value)), false)
 }
 
 PolynomialIdentity: PilStatement<T> = {

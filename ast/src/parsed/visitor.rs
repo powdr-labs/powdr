@@ -218,10 +218,10 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
                 .try_for_each(|e| e.visit_expressions_mut(f, o)),
 
             PilStatement::PolynomialConstantDefinition(_, _, fundef)
-            | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => {
+            | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef), _) => {
                 fundef.visit_expressions_mut(f, o)
             }
-            PilStatement::PolynomialCommitDeclaration(_, _, None)
+            PilStatement::PolynomialCommitDeclaration(_, _, None, _)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _)
             | PilStatement::LetStatement(_, _, None) => ControlFlow::Continue(()),
@@ -260,10 +260,10 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
                 .try_for_each(|e| e.visit_expressions(f, o)),
 
             PilStatement::PolynomialConstantDefinition(_, _, fundef)
-            | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => {
+            | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef), _) => {
                 fundef.visit_expressions(f, o)
             }
-            PilStatement::PolynomialCommitDeclaration(_, _, None)
+            PilStatement::PolynomialCommitDeclaration(_, _, None, _)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _)
             | PilStatement::LetStatement(_, _, None) => ControlFlow::Continue(()),

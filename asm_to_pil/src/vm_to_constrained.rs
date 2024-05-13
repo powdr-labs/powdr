@@ -313,7 +313,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 ty,
             },
         );
-        self.pil.push(witness_column(start, name, None));
+        self.pil.push(witness_column(start, name, None, false));
     }
 
     fn handle_instruction_def(
@@ -846,7 +846,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         ),
                     )
                 });
-                witness_column(0, free_value, prover_query)
+                witness_column(0, free_value, prover_query, false)
             })
             .collect::<Vec<_>>();
         self.pil.extend(free_value_pil);
@@ -877,7 +877,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
     /// Creates a pair of witness and fixed column and matches them in the lookup.
     fn create_witness_fixed_pair(&mut self, start: usize, name: &str) {
         let fixed_name = format!("p_{name}");
-        self.pil.push(witness_column(start, name, None));
+        self.pil.push(witness_column(start, name, None, false));
         self.line_lookup
             .push((name.to_string(), fixed_name.clone()));
         self.rom_constant_names.push(fixed_name);
@@ -1082,6 +1082,7 @@ fn witness_column<S: Into<String>, T>(
     start: usize,
     name: S,
     def: Option<FunctionDefinition<T>>,
+    is_public: bool
 ) -> PilStatement<T> {
     PilStatement::PolynomialCommitDeclaration(
         start,
@@ -1090,6 +1091,7 @@ fn witness_column<S: Into<String>, T>(
             array_size: None,
         }],
         def,
+        is_public,
     )
 }
 
