@@ -143,8 +143,6 @@ mod internal {
         )
     };
     let one: int = 1;
-    let true: bool = one == 1;
-    let false: bool = !true;
     /// Inserts (k, v) into the sorted list items.
     /// Returns the new list.
     let<K, V> items_insert: (K, V)[], (K, V), (K, K -> CmpResult) -> (K, V)[] = |items, (k, v), cmp| {

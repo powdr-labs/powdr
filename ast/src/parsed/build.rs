@@ -33,7 +33,7 @@ pub fn index_access(expr: Expression, index: Option<BigUint>) -> Expression {
     match index {
         Some(i) => Expression::IndexAccess(IndexAccess {
             array: Box::new(expr),
-            index: Box::new(Expression::Number(i, None)),
+            index: Box::new(i.into()),
         }),
         None => expr,
     }

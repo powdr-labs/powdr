@@ -224,7 +224,7 @@ impl<T: FieldElement> fmt::Display for EvalError<T> {
             EvalError::FixedLookupFailed(input_assignment) => {
                 let query = input_assignment
                     .iter()
-                    .map(|(poly_name, v)| format!("{} = {}", poly_name, v))
+                    .map(|(poly_name, v)| format!("{poly_name} = {v}"))
                     .collect::<Vec<_>>()
                     .join(", ");
                 write!(

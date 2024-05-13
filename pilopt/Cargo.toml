@@ -16,3 +16,6 @@ pretty_assertions = "1.4.0"
 
 [dev-dependencies]
 powdr-pil-analyzer = { path = "../pil-analyzer" }
+
+[lints.clippy]
+uninlined_format_args = "deny"
