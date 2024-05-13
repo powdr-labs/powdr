@@ -83,7 +83,8 @@ mod test {
                         name: "t".to_string(),
                         array_size: None
                     }],
-                    None
+                    None,
+                    false
                 )
             ])
         );

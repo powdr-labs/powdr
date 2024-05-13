@@ -4,13 +4,25 @@ use crate::{
 };
 
 pub trait VerifierBuilder {
-    fn create_verifier_cpp(&mut self, name: &str, witness: &[String], inverses: &[String]);
+    fn create_verifier_cpp(
+        &mut self,
+        name: &str,
+        witness: &[String],
+        inverses: &[String],
+        public_cols: &[String],
+    );
 
-    fn create_verifier_hpp(&mut self, name: &str);
+    fn create_verifier_hpp(&mut self, name: &str, public_cols: &[String]);
 }
 
 impl VerifierBuilder for BBFiles {
-    fn create_verifier_cpp(&mut self, name: &str, witness: &[String], inverses: &[String]) {
+    fn create_verifier_cpp(
+        &mut self,
+        name: &str,
+        witness: &[String],
+        inverses: &[String],
+        public_cols: &[String],
+    ) {
         let include_str = includes_cpp(&snake_case(name));
 
         let wire_transformation = |n: &String| {
@@ -19,12 +31,63 @@ impl VerifierBuilder for BBFiles {
         )
         };
         let wire_commitments = map_with_newline(witness, wire_transformation);
+
+        let has_public_input_columns = !public_cols.is_empty();
+        let has_inverses = !inverses.is_empty();
+
+        let get_inverse_challenges = if has_inverses {
+            "
+            auto [beta, gamm] = transcript->template get_challenges<FF>(\"beta\", \"gamma\");
+            relation_parameters.beta = beta;
+            relation_parameters.gamma = gamm;
+            "
+            .to_string()
+        } else {
+            "".to_owned()
+        };
+
+        let verify_proof_function_declaration: String = if has_public_input_columns {
+            format!("bool {name}Verifier::verify_proof(const HonkProof& proof, const std::vector<FF>& public_inputs)")
+        } else {
+            format!("bool {name}Verifier::verify_proof(const HonkProof& proof)")
+        };
+
+        let (public_inputs_check, evaluate_public_inputs) = if has_public_input_columns {
+            let public_inputs_column = public_cols[0].clone(); // asserted to be 1 for the meantime, this will be generalized when required
+            let inputs_check = format!(
+                "
+        FF public_column_evaluation = evaluate_public_input_column(public_inputs, multivariate_challenge);
+        if (public_column_evaluation != claimed_evaluations.{public_inputs_column}) {{
+            return false;
+        }}
+                "
+            );
+            let evaluate_public_inputs = format!(
+                "
+
+    using FF = {name}Flavor::FF;
+    
+    // Evaluate the given public input column over the multivariate challenge points
+    [[maybe_unused]] FF evaluate_public_input_column(std::vector<FF> points, std::vector<FF> challenges) {{
+        Polynomial<FF> polynomial(points);
+        return polynomial.evaluate_mle(challenges);
+    }}
+                "
+            );
+
+            (inputs_check, evaluate_public_inputs)
+        } else {
+            ("".to_owned(), "".to_owned())
+        };
+
         let inverse_commitments = map_with_newline(inverses, wire_transformation);
 
         let ver_cpp = format!("
 {include_str} 
 
     namespace bb {{
+
+
     {name}Verifier::{name}Verifier(std::shared_ptr<Flavor::VerificationKey> verifier_key)
         : key(verifier_key)
     {{}}
@@ -41,12 +104,15 @@ impl VerifierBuilder for BBFiles {
         commitments.clear();
         return *this;
     }}
+
+    {evaluate_public_inputs}
+
     
     /**
      * @brief This function verifies an {name} Honk proof for given program settings.
      *
      */
-    bool {name}Verifier::verify_proof(const HonkProof& proof)
+    {verify_proof_function_declaration}
     {{
         using Flavor = {name}Flavor;
         using FF = Flavor::FF;
@@ -72,9 +138,7 @@ impl VerifierBuilder for BBFiles {
         // Get commitments to VM wires
         {wire_commitments}
 
-        auto [beta, gamm] = transcript->template get_challenges<FF>(\"beta\", \"gamma\");
-        relation_parameters.beta = beta;
-        relation_parameters.gamma = gamm;
+        {get_inverse_challenges}
 
         // Get commitments to inverses
         {inverse_commitments}
@@ -97,6 +161,8 @@ impl VerifierBuilder for BBFiles {
         if (sumcheck_verified.has_value() && !sumcheck_verified.value()) {{
             return false;
         }}
+
+        {public_inputs_check}
     
         // Execute ZeroMorph rounds. See https://hackmd.io/dlf9xEwhTQyE3hiGbq4FsA?view for a complete description of the
         // unrolled protocol.
@@ -126,8 +192,17 @@ impl VerifierBuilder for BBFiles {
         );
     }
 
-    fn create_verifier_hpp(&mut self, name: &str) {
+    fn create_verifier_hpp(&mut self, name: &str, public_cols: &[String]) {
         let include_str = include_hpp(&snake_case(name));
+
+        // If there are public input columns, then the generated verifier must take them in as an argument for the verify_proof
+        let verify_proof = if !public_cols.is_empty() {
+            "bool verify_proof(const HonkProof& proof, const std::vector<FF>& public_inputs);"
+                .to_string()
+        } else {
+            "bool verify_proof(const HonkProof& proof);".to_owned()
+        };
+
         let ver_hpp = format!(
             "
 {include_str}
@@ -149,7 +224,7 @@ impl VerifierBuilder for BBFiles {
         {name}Verifier& operator=(const {name}Verifier& other) = delete;
         {name}Verifier& operator=({name}Verifier&& other) noexcept;
     
-        bool verify_proof(const HonkProof& proof);
+        {verify_proof}
     
         std::shared_ptr<VerificationKey> key;
         std::map<std::string, Commitment> commitments;
@@ -188,6 +263,7 @@ fn includes_cpp(name: &str) -> String {
     #include \"./{name}_verifier.hpp\"
     #include \"barretenberg/commitment_schemes/zeromorph/zeromorph.hpp\"
     #include \"barretenberg/numeric/bitop/get_msb.hpp\"
+    #include \"barretenberg/polynomials/polynomial.hpp\"
     #include \"barretenberg/transcript/transcript.hpp\"
     "
     )

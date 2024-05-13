@@ -498,7 +498,14 @@ fn create_commitment_labels(all_ents: &[String]) -> String {
     )
 }
 
+/// Create the compute_logderivative_inverses function
+///
+/// If we do not have any lookups, we do not need to include this round
 fn create_compute_logderivative_inverses(flavor_name: &str, lookups: &[String]) -> String {
+    if lookups.is_empty() {
+        return "".to_string();
+    }
+
     let compute_inverse_transformation = |lookup_name: &String| {
         format!("bb::compute_logderivative_inverse<{flavor_name}Flavor, {lookup_name}_relation<FF>>(prover_polynomials, relation_parameters, this->circuit_size);")
     };

@@ -15,6 +15,7 @@ pub trait ProverBuilder {
 impl ProverBuilder for BBFiles {
     fn create_prover_hpp(&mut self, name: &str) {
         let include_str = includes_hpp(&snake_case(name));
+
         let prover_hpp = format!("
     {include_str} 
     namespace bb {{
@@ -91,7 +92,16 @@ impl ProverBuilder for BBFiles {
         let include_str = includes_cpp(&snake_case(name));
 
         let polynomial_commitment_phase = create_commitments_phase(commitment_polys);
-        let log_derivative_inverse_phase = create_log_derivative_inverse_round(lookup_names);
+
+        let (call_log_derivative_phase, log_derivative_inverse_phase): (String, String) =
+            if lookup_names.is_empty() {
+                ("".to_owned(), "".to_owned())
+            } else {
+                (
+                    "execute_log_derivative_inverse_round();".to_owned(),
+                    create_log_derivative_inverse_round(lookup_names),
+                )
+            };
 
         let prover_cpp = format!("
     {include_str}
@@ -208,7 +218,7 @@ impl ProverBuilder for BBFiles {
         execute_wire_commitments_round();
     
         // Compute sorted list accumulator and commitment
-        execute_log_derivative_inverse_round();
+        {call_log_derivative_phase}
     
         // Fiat-Shamir: alpha
         // Run sumcheck subprotocol.
