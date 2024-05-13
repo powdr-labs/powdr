@@ -6,7 +6,6 @@ edition = { workspace = true }
 license = { workspace = true }
 homepage = { workspace = true }
 repository = { workspace = true }
-default-run = "powdr-rs"
 
 [dependencies]
 powdr-number = { path = "../number" }
