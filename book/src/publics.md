@@ -1,0 +1,45 @@
+# Using publics
+
+Public values are a small but important part of verifying ZK proofs.  Often a
+verifier is interested in a public challenge, such as a specific hash for which
+the prover has the pre-image.
+
+In the toy example below the prover can show that they know the square root of
+a public value that is published with the proof.
+
+```
+{{#include ../../test_data/asm/sqrt_with_public.asm}}
+```
+
+This example uses a small VM with `jump` and a `square` instructions.  The
+program reads the private input from the prover, squares it, and enters an
+infinite loop to ensure that all the rows are filled with the result of `A^2`.
+Since the length of our execution trace is fixed and equals 8, we can tag the
+8-th row of `A` (`A[7]`) as the publicly exposed number.
+
+Let's run all steps needed to generate and verify a proof that 3^2 = 9:
+
+1. Setup step:
+```console
+powdr setup 8 --backend halo2 --field bn254
+```
+
+2. Verification Key generation:
+```console
+powdr verification-key test_data/asm/sqrt.asm --field bn254 --backend halo2 --params params.bin
+```
+
+3. Witness generation:
+```console
+powdr pil test_data/asm/sqrt.asm --field bn254 -i 3
+```
+
+4. Proof generation:
+```console
+powdr prove test_data/asm/sqrt.asm --field bn254 --backend halo2 --params params.bin --vkey vkey.bin
+```
+
+5. Proof verification:
+```console
+powdr verify test_data/asm/sqrt.asm --field bn254 --backend halo2 --params params.bin --vkey vkey.bin --proof sqrt_proof.bin --publics 9
+```

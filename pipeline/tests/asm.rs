@@ -16,6 +16,15 @@ fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
 }
 
 #[test]
+fn sqrt_asm() {
+    let f = "asm/sqrt.asm";
+    let i = [3];
+    verify_asm(f, slice_to_vec(&i));
+    test_halo2(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
