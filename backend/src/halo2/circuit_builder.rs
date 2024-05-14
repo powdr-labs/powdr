@@ -85,7 +85,7 @@ pub(crate) struct PowdrCircuit<'a, T> {
     witgen_callback: Option<WitgenCallback<T>>,
 }
 
-fn get_publics<'a, T: FieldElement>(analyzed: &'a Analyzed<T>) -> Vec<(String, usize)> {
+fn get_publics<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, usize)> {
     let mut publics = analyzed
         .public_declarations
         .values()
@@ -275,7 +275,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                         Rotation(analyzed.degree().try_into().unwrap()),
                     );
                     let expr = first_step.clone() * (first_row - last_row);
-                    (format!("enforce wrapping ({})", name), expr)
+                    (format!("enforce wrapping ({name})"), expr)
                 })
                 .collect()
         });
@@ -446,15 +446,20 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                 if let Some(witness) = witness {
                     for (name, values) in witness.iter() {
                         let column = *config.advice.get(name).unwrap();
-                        for i in 0..degree {
-                            let value = Value::known(convert_field::<T, F>(values[i]));
+                        for (i, value) in values.iter().enumerate() {
+                            let value = Value::known(convert_field::<T, F>(*value));
 
                             let assigned_cell =
                                 region.assign_advice(|| name, column, i, || value)?;
 
                             // The first row needs to be copied to row <degree>
                             if i == 0 {
-                                region.assign_advice(|| name, column, degree, || value)?;
+                                region.assign_advice(
+                                    || name,
+                                    column,
+                                    degree,
+                                    || Value::known(F::from(1)),
+                                )?;
                             }
 
                             // Collect public cells, which are later copy-constrained to equal
