@@ -1,5 +1,6 @@
 use core::arch::asm;
 use core::mem;
+use tiny_keccak::{Hasher, Keccak, keccakf as tiny_keccak_keccakf};
 
 use powdr_riscv_syscalls::Syscall;
 
@@ -32,9 +33,22 @@ pub fn poseidon_gl(data: [u64; 12]) -> [u64; 4] {
 /// Calls the keccakf machine
 /// Return value is placed in the output array.
 pub fn keccakf(input: *const [u64; 25], output: *mut [u64; 25]) {
+    // unsafe {
+        // // syscall inputs: memory pointer to input array and memory pointer to output array
+        // asm!("ecall", in("a0") input, in("a1") output, in("t0") u32::from(Syscall::KeccakF));
+    // }
+
+    // Testing only
     unsafe {
-        // syscall inputs: memory pointer to input array and memory pointer to output array
-        asm!("ecall", in("a0") input, in("a1") output, in("t0") u32::from(Syscall::KeccakF));
+        // Convert the input pointer to a mutable reference
+        let input_slice = &mut *(input as *mut [u64; 25]);
+
+        // Perform the keccakf operation in place
+        tiny_keccak_keccakf(input_slice);
+
+        // Copy the result to the output
+        let output_slice = &mut *output;
+        output_slice.copy_from_slice(input_slice);
     }
 }
 
@@ -79,3 +93,4 @@ pub fn keccak(data: &[u8], delim: u8) -> [u8; W] {
     output.copy_from_slice(&b_toggle[1 - toggle][..W]);
     output
 }
+
