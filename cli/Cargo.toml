@@ -14,11 +14,11 @@ halo2 = ["powdr-backend/halo2", "powdr-pipeline/halo2"]
 estark-polygon = ["powdr-backend/estark-polygon", "powdr-pipeline/estark-polygon"]
 
 [dependencies]
-powdr-backend = { path = "../backend" }
-powdr-number = { path = "../number" }
-powdr-parser = { path = "../parser" }
-powdr-pilopt = { path = "../pilopt" }
-powdr-pipeline = { path = "../pipeline" }
+powdr-backend.workspace = true
+powdr-number.workspace = true
+powdr-parser.workspace = true
+powdr-pilopt.workspace = true
+powdr-pipeline.workspace = true
 
 clap = { version = "^4.3", features = ["derive"] }
 env_logger = "0.10.0"
