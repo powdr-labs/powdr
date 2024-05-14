@@ -14,3 +14,6 @@ powdr-riscv-syscalls = { path = "../riscv-syscalls" }
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 
 [workspace]
+
+[lints.clippy]
+uninlined_format_args = "deny"

@@ -200,7 +200,7 @@ The diff for our example program is as follows:
 +               _output_0 = ((((read__output_0_pc * pc) + (read__output_0__input_0 * _input_0)) + _output_0_const) + (_output_0_read_free * _output_0_free_value));
 +               pol constant first_step = [1] + [0]*;
 +               ((1 - instr__reset) * _input_0') = ((1 - instr__reset) * _input_0);
-+               pc' = ((1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1))));
++               pc' = (1 - first_step') * (instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1));
 +               pol constant p_line = [0, 1, 2, 3, 4, 5] + [5]*;
 +               pol commit _output_0_free_value;
 +               pol constant p__output_0_const = [0, 0, 0, 0, 1, 0] + [0]*;

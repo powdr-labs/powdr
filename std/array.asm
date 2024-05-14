@@ -29,6 +29,9 @@ let<T1, T2> fold: T1[], T2, (T2, T1 -> T2) -> T2 = |arr, initial, folder| std::u
 // use this function to flatten an array of arrays.
 let<T: Add + FromLiteral> sum: T[] -> T = |arr| fold(arr, 0, |a, b| a + b);
 
+/// Returns the product of the array elements.
+let<T: Mul + FromLiteral> product: T[] -> T = |arr| fold(arr, 1, |a, b| a * b);
+
 /// Zips two arrays
 /// TODO: Assert that lengths are equal when expressions are supported.
 let<T1, T2, T3> zip: T1[], T2[], (T1, T2 -> T3) -> T3[] = |array1, array2, fn| new(len(array1), |i| fn(array1[i], array2[i]));

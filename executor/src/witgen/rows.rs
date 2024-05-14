@@ -261,7 +261,7 @@ impl<'a, T: FieldElement> Row<'a, T> {
 
         cells
             .into_iter()
-            .map(|(_, cell)| format!("    {:?}", cell))
+            .map(|(_, cell)| format!("    {cell:?}"))
             .join("\n")
     }
 }
