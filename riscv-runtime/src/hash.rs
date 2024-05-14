@@ -1,6 +1,6 @@
 use core::arch::asm;
 use core::mem;
-use tiny_keccak::{Hasher, Keccak, keccakf as tiny_keccak_keccakf};
+use tiny_keccak::keccakf as tiny_keccak_keccakf;
 
 use powdr_riscv_syscalls::Syscall;
 
@@ -33,12 +33,13 @@ pub fn poseidon_gl(data: [u64; 12]) -> [u64; 4] {
 /// Calls the keccakf machine
 /// Return value is placed in the output array.
 pub fn keccakf(input: *const [u64; 25], output: *mut [u64; 25]) {
+    // TODO: uncomment this chunk after syscall implemented
     // unsafe {
         // // syscall inputs: memory pointer to input array and memory pointer to output array
         // asm!("ecall", in("a0") input, in("a1") output, in("t0") u32::from(Syscall::KeccakF));
     // }
 
-    // Testing only
+    // TODO: delete the following testing only chunk which uses tiny_keccak once syscall implemented
     unsafe {
         // Convert the input pointer to a mutable reference
         let input_slice = &mut *(input as *mut [u64; 25]);

@@ -13,3 +13,4 @@ riscv/runtime/target
 cargo_target/
 riscv-runtime/target
 riscv/tests/riscv_data/keccak/target
+output/
