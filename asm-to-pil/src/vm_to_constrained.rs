@@ -355,19 +355,21 @@ impl<T: FieldElement> VMConverter<T> {
         let inputs: Vec<_> = params
             .inputs
             .into_iter()
-            .map(
-                |param| match param.ty.as_ref().and_then(|ty| ty.try_to_identifier()) {
-                    Some(ty) if ty == "label" => Input::Literal(param.name, LiteralKind::Label),
-                    Some(ty) if ty == "signed" => {
-                        Input::Literal(param.name, LiteralKind::SignedConstant)
-                    }
-                    Some(ty) if ty == "unsigned" => {
+            .map(|param| {
+                match param
+                    .ty
+                    .as_ref()
+                    .map(|ty| ty.try_to_identifier().map(|s| s.as_str()))
+                {
+                    Some(Some("label")) => Input::Literal(param.name, LiteralKind::Label),
+                    Some(Some("signed")) => Input::Literal(param.name, LiteralKind::SignedConstant),
+                    Some(Some("unsigned")) => {
                         Input::Literal(param.name, LiteralKind::UnsignedConstant)
                     }
                     None => Input::Register(param.name),
-                    Some(ty) => panic!("Invalid param type {}", ty),
-                },
-            )
+                    Some(_) => panic!("Invalid param type: {}", param.ty.as_ref().unwrap()),
+                }
+            })
             .collect();
 
         let outputs = params.outputs.into_iter().map(|param| param.name).collect();
@@ -392,10 +394,13 @@ impl<T: FieldElement> VMConverter<T> {
                 param.index.is_none(),
                 "Cannot use array elements for instruction parameters."
             );
-            match param.ty.as_ref().and_then(|ty| ty.try_to_identifier()) {
-                Some(ty) if ty == "label" || ty == "signed" || ty == "unsigned" => {
-                    literal_arg_names.push(&param.name)
-                }
+            match param
+                .ty
+                .as_ref()
+                .map(|ty| ty.try_to_identifier().map(|s| s.as_str()))
+            {
+                Some(Some("label" | "signed" | "unsigned")) => literal_arg_names.push(&param.name),
+                Some(_) => panic!("Invalid param type: {}", param.ty.as_ref().unwrap()),
                 None => {
                     if !self
                         .registers
@@ -408,7 +413,6 @@ impl<T: FieldElement> VMConverter<T> {
                         );
                     }
                 }
-                Some(ty) => panic!("Invalid param type '{}'", ty),
             }
         }
 

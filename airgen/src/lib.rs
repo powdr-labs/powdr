@@ -56,7 +56,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         }
     };
 
-    // get a list of all machines to instantiate. The order does not matter.
+    // get a list of all machines to instantiate and their arguments. The order does not matter.
     let mut queue = vec![(main_location.clone(), main_ty.clone(), vec![])];
 
     // map instance location to (type, arguments)
@@ -69,7 +69,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
             (
                 // get the absolute name for this submachine
                 location.clone().join(def.name.clone()),
-                // type
+                // submachine type
                 def.ty.clone(),
                 // given parameters
                 def.param_values.clone(),
@@ -169,7 +169,7 @@ struct SubmachineRef {
 }
 
 struct ASMPILConverter<'a> {
-    /// Map of all machine instances
+    /// Map of all machine instances to their type and passed arguments
     instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, Vec<Expression>)>,
     /// Current machine instance
     location: &'a Location,
@@ -338,16 +338,20 @@ impl<'a> ASMPILConverter<'a> {
     // Process machine parameters.
     // Allows machines passed as argument to be referenced.
     // TODO: support some elementary pil types as a machine parameter?
-    fn handle_parameters(&mut self, params: MachineParams, values: &Vec<Expression>) {
-        if params.0.len() != values.len() {
+    fn handle_parameters(
+        &mut self,
+        MachineParams(params): MachineParams,
+        values: &Vec<Expression>,
+    ) {
+        if params.len() != values.len() {
             panic!(
                 "wrong number of arguments for machine `{}`: got {} expected {}",
                 self.location,
                 values.len(),
-                params.0.len()
+                params.len()
             );
         }
-        for (param, value) in params.0.iter().zip(values) {
+        for (param, value) in params.iter().zip(values) {
             let ty = AbsoluteSymbolPath::default().join(param.ty.clone().unwrap());
             if let Some(Item::Machine(_)) = self.items.get(&ty) {
                 // param is a machine, we need to find the actual instance
