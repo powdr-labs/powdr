@@ -454,12 +454,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
 
                             // The first row needs to be copied to row <degree>
                             if i == 0 {
-                                region.assign_advice(
-                                    || name,
-                                    column,
-                                    degree,
-                                    || Value::known(F::from(1)),
-                                )?;
+                                region.assign_advice(|| name, column, degree, || value)?;
                             }
 
                             // Collect public cells, which are later copy-constrained to equal
