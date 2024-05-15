@@ -1,8 +1,12 @@
 use std::array;
 use std::utils::unchanged_until;
+use std::utils::force_bool;
+use std::utils::sum;
+use std::convert::expr;
+use std::machines::memory::Memory;
 
 // Implements the Poseidon permutation for the Goldilocks field.
-machine PoseidonGL with
+machine PoseidonGL(mem: Memory) with
     latch: FIRSTBLOCK,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
@@ -14,7 +18,7 @@ machine PoseidonGL with
     // When the hash function is used only once, the capacity elements should be
     // set to constants, where different constants can be used to define different
     // hash functions.
-    operation poseidon_permutation<0> state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7], state[8], state[9], state[10], state[11] -> output[0], output[1], output[2], output[3];
+    operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
 
     col witness operation_id;
 
@@ -31,6 +35,49 @@ machine PoseidonGL with
     // Number of partial rounds (half of them before and half of them after the full rounds)
     let PARTIAL_ROUNDS: int = 22;
     let ROWS_PER_HASH = FULL_ROUNDS + PARTIAL_ROUNDS + 1;
+
+
+    // ------------- Begin memory read / write ---------------
+
+    // Get an intermediate column that indicates that we're in an
+    // actual block, not a default block. Its value is constant
+    // within the block.
+    let used = array::sum(sel);
+    array::map(sel, |s| unchanged_until(s, LAST));
+    std::utils::force_bool(used);
+
+    // Repeat the input state in the whole block
+    col witness input[STATE_SIZE];
+    array::map(input, |c| unchanged_until(c, LAST));
+    array::zip(input, state, |i, s| CLK[0] * (i - s) = 0);
+
+    // Repeat the time step and input / output address in the whole block
+    col witness time_step;
+    col witness input_addr;
+    col witness output_addr;
+    unchanged_until(time_step, LAST);
+    unchanged_until(input_addr, LAST);
+    unchanged_until(output_addr, LAST);
+
+    // One-hot encoding of the row number (for the first <STATE_SIZE> rows)
+    let CLK: col[STATE_SIZE] = array::new(STATE_SIZE, |i| |row| if row % ROWS_PER_HASH == i { 1 } else { 0 });
+    let CLK_0 = CLK[0];
+
+    // Do memory reads in the first 3 rows, increasing the memory address by
+    // 4 each time
+    let do_mload = used * sum(STATE_SIZE, |i| CLK[i]);
+    let addr_mload = input_addr + sum(STATE_SIZE, |i| expr(4 * i) * CLK[i]);
+    let output_mload = array::sum(array::zip(input, CLK, |i, c| c * i));
+    link do_mload ~> mem.mload addr_mload, time_step -> output_mload;
+
+    // Write the output to memory in the first row
+    let do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i]);
+    let addr_mstore = output_addr + sum(OUTPUT_SIZE, |i| expr(4 * i) * CLK[i]);
+    let output_mstore = array::sum(array::zip(output, CLK, |o, c| c * o));
+    link do_mstore ~> mem.mstore addr_mstore, time_step, output_mstore ->;
+
+
+    // ------------- End memory read / write ---------------
 
     pol constant L0 = [1] + [0]*;
     pol constant FIRSTBLOCK(i) { if i % ROWS_PER_HASH == 0 { 1 } else { 0 } };
