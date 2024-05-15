@@ -86,7 +86,7 @@ impl Runtime {
         // Base submachines
         // TODO: can/should the memory machine be part of the runtime also?
         r.add_submachine(
-            "std::machines::binary::Binary",
+            "std::machines::binary::Binary2x",
             None,
             "binary",
             [
