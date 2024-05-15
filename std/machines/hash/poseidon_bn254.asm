@@ -19,7 +19,7 @@ machine PoseidonBN254(mem: Memory) with
     // When the hash function is used only once, the capacity element should be
     // set to a constant, where different constants can be used to define different
     // hash functions.
-    operation poseidon_permutation<0> input_addr, time_step -> output[0];
+    operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
 
     col witness operation_id;
 
@@ -41,25 +41,41 @@ machine PoseidonBN254(mem: Memory) with
 
     // ------------- Begin memory read / write ---------------
 
+    // Get an intermediate column that indicates that we're in an
+    // actual block, not a default block. Its value is constant
+    // within the block.
     let used = array::sum(sel);
     array::map(sel, |s| unchanged_until(s, LAST));
     std::utils::force_bool(used);
 
+    // Repeat the input state in the whole block
     col witness input[STATE_SIZE];
     array::map(input, |c| unchanged_until(c, LAST));
+    array::zip(input, state, |i, s| FIRSTBLOCK * (i - s) = 0);
 
+    // Repeat the time step and input / output address in the whole block
     col witness time_step;
     col witness input_addr;
+    col witness output_addr;
     unchanged_until(time_step, LAST);
     unchanged_until(input_addr, LAST);
+    unchanged_until(output_addr, LAST);
+
+    // One-hot encoding of the row number
     col constant SECONDBLOCK(i) { if i % ROWS_PER_HASH == 1 { 1 } else { 0 } };
     col constant THIRDBLOCK(i) { if i % ROWS_PER_HASH == 2 { 1 } else { 0 } };
-    let do_memory_read = used * (FIRSTBLOCK + SECONDBLOCK + THIRDBLOCK);
-    let addr = input_addr + SECONDBLOCK * 4 + THIRDBLOCK * 8;
-    let mem_output = FIRSTBLOCK * input[0] + SECONDBLOCK * input[1] + THIRDBLOCK * input[2];
-    link do_memory_read ~> mem.mload addr, time_step -> mem_output;
 
-    array::zip(input, state, |i, s| FIRSTBLOCK * (i - s) = 0);
+    // Do memory reads in the first 3 rows, increasing the memory address by
+    // 4 each time
+    let do_memory_read = used * (FIRSTBLOCK + SECONDBLOCK + THIRDBLOCK);
+    let mload_addr = input_addr + SECONDBLOCK * 4 + THIRDBLOCK * 8;
+    let mem_output = FIRSTBLOCK * input[0] + SECONDBLOCK * input[1] + THIRDBLOCK * input[2];
+    link do_memory_read ~> mem.mload mload_addr, time_step -> mem_output;
+
+    // Write the output to memory in the first row
+    let do_memory_write = used * FIRSTBLOCK;
+    link do_memory_write ~> mem.mstore output_addr, time_step, output[0] ->;
+
 
     // ------------- End memory read / write ---------------
 

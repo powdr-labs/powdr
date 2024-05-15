@@ -378,12 +378,6 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 
         let value_expr = &args[3];
 
-        log::trace!(
-            "Query addr={:x}, step={step}, write: {is_write}, value: {}",
-            addr.to_arbitrary_integer(),
-            value_expr
-        );
-
         // TODO this does not check any of the failure modes
         let mut assignments = EvalValue::complete(vec![]);
         if is_write {

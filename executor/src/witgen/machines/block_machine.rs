@@ -6,9 +6,8 @@ use crate::witgen::affine_expression::AffineExpression;
 
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::{OuterQuery, Processor};
-use crate::witgen::rows::{CellValue, Row, RowIndex, RowPair, UnknownStrategy};
+use crate::witgen::rows::{CellValue, Row, RowIndex};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
 };
@@ -492,34 +491,35 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
         // to validate the constraints.
-        if left.iter().all(|v| v.is_constant()) && self.rows() > 0 {
-            // All values on the left hand side are known, check if this is a query
-            // to the last row.
-            let row_index = self.last_row_index();
+        // TODO: This assumes that machines are stateless, which is not true if the machine has access to memory!
+        // if left.iter().all(|v| v.is_constant()) && self.rows() > 0 {
+        //     // All values on the left hand side are known, check if this is a query
+        //     // to the last row.
+        //     let row_index = self.last_row_index();
 
-            let current = &self.get_row(row_index);
-            // We don't have the next row, because it would be the first row of the next block.
-            // We'll use a fresh row instead.
-            let next = Row::fresh(self.fixed_data, row_index + 1);
-            let row_pair = RowPair::new(
-                current,
-                &next,
-                row_index,
-                self.fixed_data,
-                UnknownStrategy::Unknown,
-            );
+        //     let current = &self.get_row(row_index);
+        //     // We don't have the next row, because it would be the first row of the next block.
+        //     // We'll use a fresh row instead.
+        //     let next = Row::fresh(self.fixed_data, row_index + 1);
+        //     let row_pair = RowPair::new(
+        //         current,
+        //         &next,
+        //         row_index,
+        //         self.fixed_data,
+        //         UnknownStrategy::Unknown,
+        //     );
 
-            let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
-            if let Ok(result) = identity_processor.process_link(left, right, &row_pair) {
-                if result.is_complete() && result.constraints.is_empty() {
-                    log::trace!(
-                        "End processing block machine '{}' (already solved)",
-                        self.name()
-                    );
-                    return Ok(result);
-                }
-            }
-        }
+        //     let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
+        //     if let Ok(result) = identity_processor.process_link(left, right, &row_pair) {
+        //         if result.is_complete() && result.constraints.is_empty() {
+        //             log::trace!(
+        //                 "End processing block machine '{}' (already solved)",
+        //                 self.name()
+        //             );
+        //             return Ok(result);
+        //         }
+        //     }
+        // }
 
         // TODO this assumes we are always using the same lookup for this machine.
         let mut sequence_iterator = self.processing_sequence_cache.get_processing_sequence(left);
