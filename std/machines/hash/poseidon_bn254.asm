@@ -1,6 +1,8 @@
 use std::array;
 use std::utils::unchanged_until;
 use std::utils::force_bool;
+use std::utils::sum;
+use std::convert::expr;
 use std::machines::memory::Memory;
 
 // Implements the Poseidon permutation for the BN254 curve.
@@ -8,7 +10,7 @@ use std::machines::memory::Memory;
 // only work with the Halo2 backend (which is the only backend that supports
 // the BN254 curve).
 machine PoseidonBN254(mem: Memory) with
-    latch: FIRSTBLOCK,
+    latch: CLK_0,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
@@ -51,7 +53,7 @@ machine PoseidonBN254(mem: Memory) with
     // Repeat the input state in the whole block
     col witness input[STATE_SIZE];
     array::map(input, |c| unchanged_until(c, LAST));
-    array::zip(input, state, |i, s| FIRSTBLOCK * (i - s) = 0);
+    array::zip(input, state, |i, s| CLK[0] * (i - s) = 0);
 
     // Repeat the time step and input / output address in the whole block
     col witness time_step;
@@ -61,25 +63,26 @@ machine PoseidonBN254(mem: Memory) with
     unchanged_until(input_addr, LAST);
     unchanged_until(output_addr, LAST);
 
-    // One-hot encoding of the row number
-    col constant SECONDBLOCK(i) { if i % ROWS_PER_HASH == 1 { 1 } else { 0 } };
-    col constant THIRDBLOCK(i) { if i % ROWS_PER_HASH == 2 { 1 } else { 0 } };
+    // One-hot encoding of the row number (for the first <STATE_SIZE> rows)
+    let CLK: col[STATE_SIZE] = array::new(STATE_SIZE, |i| |row| if row % ROWS_PER_HASH == i { 1 } else { 0 });
+    let CLK_0 = CLK[0];
 
     // Do memory reads in the first 3 rows, increasing the memory address by
     // 4 each time
-    let do_memory_read = used * (FIRSTBLOCK + SECONDBLOCK + THIRDBLOCK);
-    let mload_addr = input_addr + SECONDBLOCK * 4 + THIRDBLOCK * 8;
-    let mem_output = FIRSTBLOCK * input[0] + SECONDBLOCK * input[1] + THIRDBLOCK * input[2];
-    link do_memory_read ~> mem.mload mload_addr, time_step -> mem_output;
+    let do_mload = used * sum(STATE_SIZE, |i| CLK[i]);
+    let addr_mload = input_addr + sum(STATE_SIZE, |i| expr(4 * i) * CLK[i]);
+    let output_mload = array::sum(array::zip(input, CLK, |i, c| c * i));
+    link do_mload ~> mem.mload addr_mload, time_step -> output_mload;
 
     // Write the output to memory in the first row
-    let do_memory_write = used * FIRSTBLOCK;
-    link do_memory_write ~> mem.mstore output_addr, time_step, output[0] ->;
+    let do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i]);
+    let addr_mstore = output_addr + sum(OUTPUT_SIZE, |i| expr(4 * i) * CLK[i]);
+    let output_mstore = array::sum(array::zip(output, CLK, |o, c| c * o));
+    link do_mstore ~> mem.mstore addr_mstore, time_step, output_mstore ->;
 
 
     // ------------- End memory read / write ---------------
 
-    pol constant FIRSTBLOCK(i) { if i % ROWS_PER_HASH == 0 { 1 } else { 0 } };
     pol constant LASTBLOCK(i) { if i % ROWS_PER_HASH == ROWS_PER_HASH - 1 { 1 } else { 0 } };
     // Like LASTBLOCK, but also 1 in the last row of the table
     // Specified this way because we can't access the degree in the match statement
