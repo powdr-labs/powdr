@@ -156,7 +156,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         };
 
         let index = self.key_to_index.get(&key).cloned().ok_or_else(|| {
-            EvalError::from(format!("Key {:?} not found in write-once memory", key))
+            EvalError::from(format!("Key {key:?} not found in write-once memory"))
         })?;
 
         // If there is an externally provided memory value, use it

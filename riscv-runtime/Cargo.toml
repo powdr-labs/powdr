@@ -13,3 +13,6 @@ serde_cbor = { version = "0.11.2", default-features = false, features = ["alloc"
 powdr-riscv-syscalls = { path = "../riscv-syscalls" }
 
 [workspace]
+
+[lints.clippy]
+uninlined_format_args = "deny"

@@ -367,7 +367,7 @@ impl Runtime {
         );
 
         if self.syscalls.insert(syscall, implementation).is_some() {
-            panic!("duplicate syscall {}", syscall);
+            panic!("duplicate syscall {syscall}");
         }
     }
 
@@ -469,7 +469,7 @@ __rust_no_alloc_shim_is_unstable: .byte 0
         let invalid_handler = ["__invalid_syscall:".to_string(), "fail;".to_string()].into_iter();
 
         let handlers = self.syscalls.iter().flat_map(|(syscall, implementation)| {
-            std::iter::once(format!("__ecall_handler_{}:", syscall))
+            std::iter::once(format!("__ecall_handler_{syscall}:"))
                 .chain(implementation.0.iter().map(|i| i.to_string()))
                 .chain(std::iter::once("tmp1 <== jump_dyn(x1);".to_string()))
         });

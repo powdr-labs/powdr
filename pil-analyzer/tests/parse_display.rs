@@ -22,7 +22,7 @@ namespace std::convert(65536);
 namespace T(65536);
     col fixed first_step = [1] + [0]*;
     col fixed line(i) { i };
-    let ops: int -> bool = (|i| ((i < 7) && (6 >= -i)));
+    let ops: int -> bool = (|i| i < 7 && 6 >= -i);
     col witness pc;
     col witness XInv;
     col witness XIsZero;
@@ -50,7 +50,7 @@ namespace T(65536);
     T.A' = (((T.first_step' * 0) + (T.reg_write_X_A * T.X)) + ((1 - (T.first_step' + T.reg_write_X_A)) * T.A));
     col witness X_free_value(__i) query match std::prover::eval(T.pc) {
         0 => std::prover::Query::Input(1),
-        3 => std::prover::Query::Input(std::convert::int::<fe>((std::prover::eval(T.CNT) + 1))),
+        3 => std::prover::Query::Input(std::convert::int::<fe>(std::prover::eval(T.CNT) + 1)),
         7 => std::prover::Query::Input(0),
         _ => std::prover::Query::None,
     };
@@ -117,9 +117,9 @@ namespace N(%r);
 namespace N(65536);
     col witness x;
     let z: int = 2;
-    col fixed t(i) { (i + N.z) };
+    col fixed t(i) { i + N.z };
     let other: int[] = [1, N.z];
-    let other_fun: int, fe -> (int, (int -> int)) = (|i, j| ((i + 7), (|k| (k - i))));
+    let other_fun: int, fe -> (int, (int -> int)) = (|i, j| (i + 7, (|k| k - i)));
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -168,8 +168,8 @@ fn namespaced_call() {
 "#;
     let expected = r#"namespace Assembly(2);
     let A: int -> int = (|i| 0);
-    let C: int -> int = (|i| (Assembly.A((i + 2)) + 3));
-    let D: int -> int = (|i| Assembly.C((i + 3)));
+    let C: int -> int = (|i| Assembly.A(i + 2) + 3);
+    let D: int -> int = (|i| Assembly.C(i + 3));
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -184,8 +184,8 @@ fn if_expr() {
 "#;
     let expected = r#"namespace Assembly(2);
     col fixed A = [0]*;
-    let c: int -> int = (|i| if (i < 3) { i } else { (i + 9) });
-    col fixed D(i) { if (Assembly.c(i) != 0) { 3 } else { 2 } };
+    let c: int -> int = (|i| if i < 3 { i } else { i + 9 });
+    col fixed D(i) { if Assembly.c(i) != 0 { 3 } else { 2 } };
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -205,11 +205,11 @@ fn symbolic_functions() {
     "#;
     let expected = r#"namespace N(16);
     let last_row: int = 15;
-    col fixed ISLAST(i) { if (i == N.last_row) { 1 } else { 0 } };
+    col fixed ISLAST(i) { if i == N.last_row { 1 } else { 0 } };
     col witness x;
     col witness y;
-    let constrain_equal_expr: expr, expr -> expr = (|A, B| (A - B));
-    let on_regular_row: expr -> expr = (|cond| ((1 - N.ISLAST) * cond));
+    let constrain_equal_expr: expr, expr -> expr = (|A, B| A - B);
+    let on_regular_row: expr -> expr = (|cond| (1 - N.ISLAST) * cond);
     ((1 - N.ISLAST) * (N.x' - N.y)) = 0;
     ((1 - N.ISLAST) * (N.y' - (N.x + N.y))) = 0;
 "#;
@@ -228,7 +228,7 @@ fn next_op_on_param() {
     let expected = r#"namespace N(16);
     col witness x;
     col witness y;
-    let next_is_seven: expr -> expr = (|t| (t' - 7));
+    let next_is_seven: expr -> expr = (|t| t' - 7);
     (N.y' - 7) = 0;
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
@@ -247,7 +247,7 @@ fn fixed_symbolic() {
     "#;
     let expected = r#"namespace N(16);
     let last_row: int = 15;
-    let islast: int -> fe = (|i| if (i == N.last_row) { 1 } else { 0 });
+    let islast: int -> fe = (|i| if i == N.last_row { 1 } else { 0 });
     col fixed ISLAST(i) { N.islast(i) };
     col witness x;
     col witness y;
@@ -292,8 +292,8 @@ fn complex_type_resolution() {
     let z: (((int -> int), int -> int)[], expr) = ([x, x, x, x, x, x, x, x], y[0]);
     "#;
     let expected = r#"namespace N(16);
-    let f: int -> int = (|i| (i + 10));
-    let x: (int -> int), int -> int = (|k, i| k((2 ** i)));
+    let f: int -> int = (|i| i + 10);
+    let x: (int -> int), int -> int = (|k, i| k(2 ** i));
     col witness y[14];
     let z: (((int -> int), int -> int)[], expr) = ([N.x, N.x, N.x, N.x, N.x, N.x, N.x, N.x], N.y[0]);
 "#;
@@ -306,7 +306,7 @@ fn function_type_display() {
     let input = r#"namespace N(16);
     let f: (-> int)[] = [(|| 10), (|| 12)];
     let g: (int -> int) -> int = (|f| f(0));
-    let h: int -> (int -> int) = (|x| (|i| (x + i)));
+    let h: int -> (int -> int) = (|x| (|i| x + i));
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);
@@ -323,8 +323,8 @@ fn expr_and_identity() {
     g((x));
     "#;
     let expected = r#"namespace N(16);
-    let f: expr, expr -> std::prelude::Constr[] = (|x, y| [(x = y)]);
-    let g: expr -> std::prelude::Constr[] = (|x| [(x = 0)]);
+    let f: expr, expr -> std::prelude::Constr[] = (|x, y| [x = y]);
+    let g: expr -> std::prelude::Constr[] = (|x| [x = 0]);
     col witness x;
     col witness y;
     N.x = N.y;
@@ -394,7 +394,7 @@ fn to_expr() {
     let expected = r#"namespace std::convert(16);
     let expr = [];
 namespace N(16);
-    let mul_two: int -> int = (|i| (i * 2));
+    let mul_two: int -> int = (|i| i * 2);
     col witness y;
     N.y = (N.y * 14);
 "#;
@@ -481,7 +481,7 @@ fn let_inside_block() {
         let t: int -> expr = constr |i| match i {
             0 => { let x; x },
             1 => w,
-            _ => if (i < 3) { let y; y } else { w },
+            _ => if i < 3 { let y; y } else { w },
         };
         {
             let z;
@@ -497,7 +497,7 @@ fn let_inside_block() {
             x
         },
         1 => Main.w,
-        _ => if (i < 3) {
+        _ => if i < 3 {
             let y;
             y
         } else { Main.w },
@@ -642,7 +642,7 @@ fn disjoint_block_shadowing() {
         };
         {
             let x = 3;
-            (x + b)
+            x + b
         }
     };
 ";
