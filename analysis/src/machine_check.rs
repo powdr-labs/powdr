@@ -87,11 +87,11 @@ impl TypeChecker {
                 MachineStatement::Pil(_source, statement) => {
                     pil.push(statement);
                 }
-                MachineStatement::Submachine(_, ty, name, param_values) => {
+                MachineStatement::Submachine(_, ty, name, args) => {
                     submachines.push(SubmachineDeclaration {
                         name,
                         ty: AbsoluteSymbolPath::default().join(ty),
-                        param_values,
+                        args,
                     });
                 }
                 MachineStatement::FunctionDeclaration(source, name, params, statements) => {

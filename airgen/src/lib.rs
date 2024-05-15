@@ -62,7 +62,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     // map instance location to (type, arguments)
     let mut instances = BTreeMap::default();
 
-    while let Some((location, ty, param_values)) = queue.pop() {
+    while let Some((location, ty, args)) = queue.pop() {
         let machine = input.items.get(&ty).unwrap().try_to_machine().unwrap();
 
         queue.extend(machine.submachines.iter().map(|def| {
@@ -71,12 +71,12 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
                 location.clone().join(def.name.clone()),
                 // submachine type
                 def.ty.clone(),
-                // given parameters
-                def.param_values.clone(),
+                // given arguments
+                def.args.clone(),
             )
         }));
 
-        instances.insert(location, (ty, param_values));
+        instances.insert(location, (ty, args));
     }
 
     // count incoming permutations for each machine.
@@ -214,7 +214,7 @@ impl<'a> ASMPILConverter<'a> {
     }
 
     fn convert_machine_inner(mut self) -> Object {
-        let (ty, param_values) = self.instances.get(self.location).as_ref().unwrap();
+        let (ty, args) = self.instances.get(self.location).as_ref().unwrap();
         // TODO: This clone doubles the current memory usage
         let Item::Machine(input) = self.items.get(ty).unwrap().clone() else {
             panic!();
@@ -238,7 +238,7 @@ impl<'a> ASMPILConverter<'a> {
         assert!(input.callable.is_only_operations());
 
         // process machine parameters
-        self.handle_parameters(input.params, param_values);
+        self.handle_parameters(input.params, args);
 
         for block in input.pil {
             self.handle_pil_statement(block);
@@ -336,7 +336,7 @@ impl<'a> ASMPILConverter<'a> {
     }
 
     // Process machine parameters.
-    // Allows machines passed as argument to be referenced.
+    // Finds the actual instances of machines passed as argument and makes them referenceable.
     // TODO: support some elementary pil types as a machine parameter?
     fn handle_parameters(
         &mut self,
