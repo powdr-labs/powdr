@@ -23,17 +23,6 @@ machine PoseidonBN254(mem: Memory) with
 
     col witness operation_id;
 
-    let used = array::sum(sel);
-    std::utils::force_bool(used);
-
-
-    col witness time_step;
-    col witness input_addr;
-    let do_memory_read = used * FIRSTBLOCK;
-    link do_memory_read ~> mem.mload input_addr, time_step -> state[0];
-    link do_memory_read ~> mem.mload input_addr + 4, time_step -> state[1];
-    link do_memory_read ~> mem.mload input_addr + 8, time_step -> state[2];
-
     // Using parameters from https://eprint.iacr.org/2019/458.pdf
     // See https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/poseidonperm_x5_254_3.sage
 
@@ -50,7 +39,30 @@ machine PoseidonBN254(mem: Memory) with
     let PARTIAL_ROUNDS = 57;
     let ROWS_PER_HASH = FULL_ROUNDS + PARTIAL_ROUNDS + 1;
 
-    pol constant L0 = [1] + [0]*;
+    // ------------- Begin memory read / write ---------------
+
+    let used = array::sum(sel);
+    array::map(sel, |s| unchanged_until(s, LAST));
+    std::utils::force_bool(used);
+
+    col witness input[STATE_SIZE];
+    array::map(input, |c| unchanged_until(c, LAST));
+
+    col witness time_step;
+    col witness input_addr;
+    unchanged_until(time_step, LAST);
+    unchanged_until(input_addr, LAST);
+    col constant SECONDBLOCK(i) { if i % ROWS_PER_HASH == 1 { 1 } else { 0 } };
+    col constant THIRDBLOCK(i) { if i % ROWS_PER_HASH == 2 { 1 } else { 0 } };
+    let do_memory_read = used * (FIRSTBLOCK + SECONDBLOCK + THIRDBLOCK);
+    let addr = input_addr + SECONDBLOCK * 4 + THIRDBLOCK * 8;
+    let mem_output = FIRSTBLOCK * input[0] + SECONDBLOCK * input[1] + THIRDBLOCK * input[2];
+    link do_memory_read ~> mem.mload addr, time_step -> mem_output;
+
+    array::zip(input, state, |i, s| FIRSTBLOCK * (i - s) = 0);
+
+    // ------------- End memory read / write ---------------
+
     pol constant FIRSTBLOCK(i) { if i % ROWS_PER_HASH == 0 { 1 } else { 0 } };
     pol constant LASTBLOCK(i) { if i % ROWS_PER_HASH == ROWS_PER_HASH - 1 { 1 } else { 0 } };
     // Like LASTBLOCK, but also 1 in the last row of the table
