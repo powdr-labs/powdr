@@ -1,5 +1,6 @@
 use std::array;
 use std::utils::unchanged_until;
+use std::utils::force_bool;
 use std::machines::memory::Memory;
 
 // Implements the Poseidon permutation for the BN254 curve.
@@ -18,9 +19,20 @@ machine PoseidonBN254(mem: Memory) with
     // When the hash function is used only once, the capacity element should be
     // set to a constant, where different constants can be used to define different
     // hash functions.
-    operation poseidon_permutation<0> state[0], state[1], state[2] -> output[0];
+    operation poseidon_permutation<0> input_addr, time_step -> output[0];
 
     col witness operation_id;
+
+    let used = array::sum(sel);
+    std::utils::force_bool(used);
+
+
+    col witness time_step;
+    col witness input_addr;
+    let do_memory_read = used * FIRSTBLOCK;
+    link do_memory_read ~> mem.mload input_addr, time_step -> state[0];
+    link do_memory_read ~> mem.mload input_addr + 4, time_step -> state[1];
+    link do_memory_read ~> mem.mload input_addr + 8, time_step -> state[2];
 
     // Using parameters from https://eprint.iacr.org/2019/458.pdf
     // See https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/poseidonperm_x5_254_3.sage

@@ -368,9 +368,13 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             }
         };
 
-        let step = args[2]
-            .constant_value()
-            .ok_or_else(|| format!("Step must be known but is: {}", args[2]))?;
+        let step = if let Some(step) = args[2].constant_value() {
+            step
+        } else {
+            return Ok(EvalValue::incomplete(
+                IncompleteCause::NonConstantRequiredArgument("m_step"),
+            ));
+        };
 
         let value_expr = &args[3];
 
