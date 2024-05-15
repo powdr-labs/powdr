@@ -1,14 +1,22 @@
 use std::machines::hash::poseidon_bn254::PoseidonBN254;
+use std::machines::memory::Memory;
 
-machine Main with degree: 512 {
+machine Main with degree: 65536 {
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];
     reg X2[<=];
     reg X3[<=];
+    reg X[<=];
+    reg Y[<=];
     reg A;
 
-    PoseidonBN254 poseidon;
+    col fixed STEP(i) { i };
+    Memory memory;
+    instr mload X -> Y ~ memory.mload X, STEP -> Y;
+    instr mstore X, Y -> ~ memory.mstore X, STEP, Y ->;
+
+    PoseidonBN254 poseidon(memory);
 
     instr poseidon X0, X1, X2 -> X3 ~ poseidon.poseidon_permutation;
 
@@ -20,6 +28,9 @@ machine Main with degree: 512 {
 
         // Test vector for poseidonperm_x5_254_3 from:
         // https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/test_vectors.txt
+        mstore 0, 0;
+        mstore 4, 1;
+        mstore 8, 2;
         A <== poseidon(0, 1, 2);
         assert_eq A, 0x115cc0f5e7d690413df64c6b9662e9cf2a3617f2743245519e19607a4417189a;
 
