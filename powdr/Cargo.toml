@@ -8,14 +8,14 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-powdr-ast = { path = "../ast" }
-powdr-backend = { path = "../backend" }
-powdr-executor = { path = "../executor" }
-powdr-number = { path = "../number" }
-powdr-pil-analyzer = { path = "../pil-analyzer" }
-powdr-pipeline = { path = "../pipeline" }
-powdr-riscv = { path = "../riscv" }
-powdr-riscv-executor = { path = "../riscv-executor" }
+powdr-ast.workspace = true
+powdr-backend.workspace = true
+powdr-executor.workspace = true
+powdr-number.workspace = true
+powdr-pil-analyzer.workspace = true
+powdr-pipeline.workspace = true
+powdr-riscv.workspace = true
+powdr-riscv-executor.workspace = true
 
 [features]
 default = ["halo2"]
