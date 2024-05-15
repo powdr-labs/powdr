@@ -4,5 +4,6 @@ machine KeccakF with
 { 
     let x;
     let y;
-    operation keccakf x, y ->;
+    pol commit STEP;
+    operation keccakf x, y, STEP ->;
 }

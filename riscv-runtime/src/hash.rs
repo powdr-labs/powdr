@@ -32,7 +32,7 @@ pub fn poseidon_gl(data: [u64; 12]) -> [u64; 4] {
 
 /// Calls the keccakf machine
 /// Return value is placed in the output array.
-pub fn keccakf(input: *const [u64; 25], output: *mut [u64; 25]) {
+pub fn keccakf(input: &[u64; 25], output: &mut [u64; 25]) {
     // TODO: uncomment this chunk after syscall implemented
     // unsafe {
         // // syscall inputs: memory pointer to input array and memory pointer to output array
@@ -42,14 +42,13 @@ pub fn keccakf(input: *const [u64; 25], output: *mut [u64; 25]) {
     // TODO: delete the following testing only chunk which uses tiny_keccak once syscall implemented
     unsafe {
         // Convert the input pointer to a mutable reference
-        let input_slice = &mut *(input as *mut [u64; 25]);
+        let mut input_copy = input.clone();
 
         // Perform the keccakf operation in place
-        tiny_keccak_keccakf(input_slice);
+        tiny_keccak_keccakf(&mut input_copy);
 
         // Copy the result to the output
-        let output_slice = &mut *output;
-        output_slice.copy_from_slice(input_slice);
+        output.copy_from_slice(&input_copy);
     }
 }
 
@@ -60,38 +59,33 @@ const W: usize = 32;
 /// Input is a byte array of arbitrary length and a delimiter byte
 /// Output is a byte array of length W
 pub fn keccak(data: &[u8], delim: u8) -> [u8; W] {
-    let mut b_toggle = [[0u8; 200]; 2];
+    let mut b = [[0u8; 200]; 2];
+    let [mut b_input, mut b_output] = &mut b;
     let rate = 200 - (2 * W);
     let mut pt = 0;
-    let mut toggle = 0;
 
     // update
     for &byte in data {
-        b_toggle[toggle][pt] ^= byte;
+        b_input[pt] ^= byte;
         pt = (pt + 1) % rate;
         if pt == 0 {
             unsafe {
-                let b_input: *const [u64; 25] = mem::transmute(b_toggle[toggle].as_ptr());
-                let b_output: *mut [u64; 25] = mem::transmute(b_toggle[1 - toggle].as_mut_ptr());
-                keccakf(b_input, b_output);
+                keccakf(mem::transmute(&b_input), mem::transmute(&mut b_output));
             }
-            toggle = 1 - toggle;
+            mem::swap(&mut b_input, &mut b_output);
         }
     }
 
     // finalize
-    b_toggle[toggle][pt] ^= delim;
-    b_toggle[toggle][rate - 1] ^= 0x80;
+    b_input[pt] ^= delim;
+    b_input[rate - 1] ^= 0x80;
     unsafe {
-        let b_input: *const [u64; 25] = mem::transmute(b_toggle[toggle].as_ptr());
-        let b_output: *mut [u64; 25] = mem::transmute(b_toggle[1 - toggle].as_mut_ptr());
-        keccakf(b_input, b_output);
+        keccakf(mem::transmute(&b_input), mem::transmute(&mut b_output));
     }
 
     // Extract the first W bytes and return as a fixed-size array
     // Need to copy the data, not just returning a slice
     let mut output = [0u8; W];
-    output.copy_from_slice(&b_toggle[1 - toggle][..W]);
+    output.copy_from_slice(&b_output[..W]);
     output
 }
-
