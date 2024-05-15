@@ -103,8 +103,7 @@ impl TypeChecker {
                                 if let Some(using_reg) = &using_reg {
                                     if using_reg.len() != lhs.len() {
                                         errors.push(format!(
-                                            "Mismatched number of registers for assignment {}",
-                                            statement_string
+                                            "Mismatched number of registers for assignment {statement_string}"
                                         ));
                                     }
                                 }
@@ -178,8 +177,7 @@ impl TypeChecker {
             let operation_count = callable.operation_definitions().count();
             if operation_count > 0 && latch.is_none() {
                 errors.push(format!(
-                    "Machine {} should have a latch column as it does not have a pc and has operations",
-                    ctx
+                    "Machine {ctx} should have a latch column as it does not have a pc and has operations"
                 ));
             }
 
@@ -196,8 +194,7 @@ impl TypeChecker {
                 // no operation id column
                 if operation_count > 1 {
                     errors.push(format!(
-                        "Machine {} should have an operation id column as it does not have a pc and has more than one operation",
-                        ctx
+                        "Machine {ctx} should have an operation id column as it does not have a pc and has more than one operation"
                     ));
                 }
                 if let Some(o) = callable.operation_definitions().next() {
@@ -233,20 +230,17 @@ impl TypeChecker {
         } else {
             if latch.is_some() {
                 errors.push(format!(
-                    "Machine {} should not have a latch column as it has a pc",
-                    ctx
+                    "Machine {ctx} should not have a latch column as it has a pc"
                 ));
             }
             if operation_id.is_some() {
                 errors.push(format!(
-                    "Machine {} should not have an operation id column as it has a pc",
-                    ctx
+                    "Machine {ctx} should not have an operation id column as it has a pc"
                 ));
             }
             if call_selectors.is_some() {
                 errors.push(format!(
-                    "Machine {} should not have call_selectors as it has a pc",
-                    ctx
+                    "Machine {ctx} should not have call_selectors as it has a pc"
                 ));
             }
             for l in &links {
@@ -264,7 +258,7 @@ impl TypeChecker {
         }
 
         if registers.iter().filter(|r| r.ty.is_pc()).count() > 1 {
-            errors.push(format!("Machine {} cannot have more than one pc", ctx));
+            errors.push(format!("Machine {ctx} cannot have more than one pc"));
         }
 
         let machine = Machine {

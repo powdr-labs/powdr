@@ -71,17 +71,16 @@ impl SerializedAnalyzed {
 
     pub fn serialize_to(&self, path: PathBuf) -> Result<(), String> {
         serde_cbor::to_writer(
-            &mut std::fs::File::create(path)
-                .map_err(|e| format!("Failed to create file: {}", e))?,
+            &mut std::fs::File::create(path).map_err(|e| format!("Failed to create file: {e}"))?,
             self,
         )
-        .map_err(|e| format!("Failed to serialize to file: {}", e))
+        .map_err(|e| format!("Failed to serialize to file: {e}"))
     }
 
     pub fn deserialize_from(path: PathBuf) -> Result<Self, String> {
         serde_cbor::from_reader(
-            std::fs::File::open(path).map_err(|e| format!("Failed to open file: {}", e))?,
+            std::fs::File::open(path).map_err(|e| format!("Failed to open file: {e}"))?,
         )
-        .map_err(|e| format!("Failed to deserialize from file: {}", e))
+        .map_err(|e| format!("Failed to deserialize from file: {e}"))
     }
 }

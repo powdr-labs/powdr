@@ -157,7 +157,7 @@ fn format_instruction_statement(stmt: &PilStatement) -> String {
             assert_eq!(s.pop(), Some(';'));
             s
         }
-        _ => panic!("invalid statement inside instruction body: {}", stmt),
+        _ => panic!("invalid statement inside instruction body: {stmt}"),
     }
 }
 
@@ -210,7 +210,7 @@ impl Display for MachineStatement {
                     .unwrap_or_default()
             ),
             MachineStatement::InstructionDeclaration(_, name, instruction) => {
-                write!(f, "instr {}{}", name, instruction)
+                write!(f, "instr {name}{instruction}")
             }
             MachineStatement::LinkDeclaration(_, link) => {
                 write!(f, "{link}")
@@ -335,15 +335,23 @@ impl<T: Display> Display for Params<T> {
     }
 }
 
-impl<E: Display> Display for IndexAccess<E> {
+impl<E: Display> Display for IndexAccess<Expression<E>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}[{}]", self.array, self.index)
+        if self.array.precedence().is_none() {
+            write!(f, "{}[{}]", self.array, self.index)
+        } else {
+            write!(f, "({})[{}]", self.array, self.index)
+        }
     }
 }
 
-impl<E: Display> Display for FunctionCall<E> {
+impl<E: Display> Display for FunctionCall<Expression<E>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}({})", self.function, format_list(&self.arguments))
+        if self.function.precedence().is_none() {
+            write!(f, "{}({})", self.function, format_list(&self.arguments))
+        } else {
+            write!(f, "({})({})", self.function, format_list(&self.arguments))
+        }
     }
 }
 
@@ -417,7 +425,7 @@ impl Display for Param {
                 .unwrap_or_default(),
             self.ty
                 .as_ref()
-                .map(|ty| format!(": {}", ty))
+                .map(|ty| format!(": {ty}"))
                 .unwrap_or_default()
         )
     }
@@ -593,24 +601,94 @@ fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
     format!("{}", list.into_iter().format(", "))
 }
 
+impl<E: Display> Expression<E> {
+    pub fn precedence(&self) -> Option<ExpressionPrecedence> {
+        match self {
+            Expression::UnaryOperation(op, _) => Some(op.precedence()),
+            Expression::BinaryOperation(_, op, _) => Some(op.precedence()),
+            _ => None,
+        }
+    }
+
+    pub fn format_unary_operation(
+        &self,
+        op: &UnaryOperator,
+        exp: &Expression<E>,
+        f: &mut Formatter<'_>,
+    ) -> Result {
+        let exp_string = match (self.precedence(), exp.precedence()) {
+            (Some(precedence), Some(inner_precedence)) if precedence < inner_precedence => {
+                format!("({exp})")
+            }
+            _ => {
+                format!("{exp}")
+            }
+        };
+
+        if op.is_prefix() {
+            write!(f, "{op}{exp_string}")
+        } else {
+            write!(f, "{exp_string}{op}")
+        }
+    }
+
+    pub fn format_binary_operation(
+        left: &Expression<E>,
+        op: &BinaryOperator,
+        right: &Expression<E>,
+        f: &mut Formatter<'_>,
+    ) -> Result {
+        let force_parentheses = matches!(op, BinaryOperator::Pow);
+
+        let use_left_parentheses = match left.precedence() {
+            Some(left_precedence) => {
+                force_parentheses
+                    || left_precedence > op.precedence()
+                    || (left_precedence == op.precedence()
+                        && op.associativity() != BinaryOperatorAssociativity::Left)
+            }
+            None => false,
+        };
+
+        let use_right_parentheses = match right.precedence() {
+            Some(right_precedence) => {
+                force_parentheses
+                    || right_precedence > op.precedence()
+                    || (right_precedence == op.precedence()
+                        && op.associativity() != BinaryOperatorAssociativity::Right)
+            }
+            None => false,
+        };
+
+        let left_string = if use_left_parentheses {
+            format!("({left})")
+        } else {
+            format!("{left}")
+        };
+        let right_string = if use_right_parentheses {
+            format!("({right})")
+        } else {
+            format!("{right}")
+        };
+
+        write!(f, "{left_string} {op} {right_string}")
+    }
+}
+
 impl<Ref: Display> Display for Expression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Expression::Reference(reference) => write!(f, "{reference}"),
             Expression::PublicReference(name) => write!(f, ":{name}"),
-            Expression::Number(value, _) => write!(f, "{value}"),
+            Expression::Number(Number { value, .. }) => write!(f, "{value}"),
             Expression::String(value) => write!(f, "{}", quote(value)),
             Expression::Tuple(items) => write!(f, "({})", format_list(items)),
-            Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
+            Expression::LambdaExpression(lambda) => write!(f, "{lambda}"),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
-            Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
-            Expression::UnaryOperation(op, exp) => {
-                if op.is_prefix() {
-                    write!(f, "{op}{exp}")
-                } else {
-                    write!(f, "{exp}{op}")
-                }
+            Expression::BinaryOperation(left, op, right) => {
+                Expression::format_binary_operation(left, op, right, f)
             }
+            Expression::UnaryOperation(op, exp) => self.format_unary_operation(op, exp, f),
             Expression::IndexAccess(index_access) => write!(f, "{index_access}"),
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),

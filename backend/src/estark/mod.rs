@@ -4,7 +4,7 @@ pub mod polygon_wrapper;
 pub mod starky_wrapper;
 
 use std::{
-    fs::hard_link,
+    fs::{hard_link, remove_file},
     iter::{once, repeat},
     path::{Path, PathBuf},
 };
@@ -191,6 +191,7 @@ impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
             write_polys_file(&paths.constants, patched_constants)?;
         } else {
             log::info!("Hardlinking constants.bin to constants_estark.bin.");
+            let _ = remove_file(&paths.constants);
             hard_link(output_dir.join("constants.bin"), &paths.constants)?;
         }
 
