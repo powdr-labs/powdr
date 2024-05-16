@@ -17,6 +17,7 @@ pub fn pil_statement_clear_source_ref(stmt: &mut PilStatement) {
         | PilStatement::ConnectIdentity(s, _, _)
         | PilStatement::ConstantDefinition(s, _, _)
         | PilStatement::Expression(s, _)
+        | PilStatement::StructDeclaration(s, _)
         | PilStatement::EnumDeclaration(s, _) => *s = SourceRef::unknown(),
     }
 }

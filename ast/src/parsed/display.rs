@@ -507,6 +507,7 @@ impl Display for PilStatement {
             }
             PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
+            PilStatement::StructDeclaration(_, struct_decl) => write_indented_by(f, struct_decl, 1),
         }
     }
 }
@@ -588,6 +589,28 @@ impl<E: Display> Display for EnumVariant<E> {
             )?;
         }
         Ok(())
+    }
+}
+
+impl<E: Display> Display for StructDeclaration<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let name = self.name.to_string();
+        let type_vars = if self.type_vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_vars)
+        };
+        write!(
+            f,
+            "struct {name}{type_vars} {{\n{}}}",
+            indent(
+                self.fields
+                    .iter()
+                    .map(|v| format!("{}:{},\n", v.0, v.1))
+                    .format(""),
+                1
+            )
+        )
     }
 }
 

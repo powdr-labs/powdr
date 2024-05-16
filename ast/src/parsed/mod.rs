@@ -6,7 +6,7 @@ pub mod types;
 pub mod visitor;
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     iter::{empty, once},
     ops,
     str::FromStr,
@@ -100,6 +100,7 @@ pub enum PilStatement {
     ConnectIdentity(SourceRef, Vec<Expression>, Vec<Expression>),
     ConstantDefinition(SourceRef, String, Expression),
     EnumDeclaration(SourceRef, EnumDeclaration<Expression>),
+    StructDeclaration(SourceRef, StructDeclaration<Expression>),
     Expression(SourceRef, Expression),
 }
 
@@ -137,6 +138,13 @@ impl PilStatement {
                         .map(move |v| (name, Some(&v.name), SymbolCategory::TypeConstructor)),
                 ),
             ),
+            PilStatement::StructDeclaration(_, StructDeclaration { name, fields, .. }) => Box::new(
+                once((name, None, SymbolCategory::Type)).chain(
+                    fields
+                        .iter()
+                        .map(move |f| (name, Some(f.0), SymbolCategory::TypeConstructor)),
+                ),
+            ),
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
             | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => Box::new(
                 polynomials
@@ -171,6 +179,7 @@ impl Children<Expression> for PilStatement {
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children(),
+            PilStatement::StructDeclaration(_, struct_decl) => struct_decl.children(),
 
             PilStatement::LetStatement(_, _, type_scheme, value) => Box::new(
                 type_scheme
@@ -206,6 +215,7 @@ impl Children<Expression> for PilStatement {
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children_mut(),
+            PilStatement::StructDeclaration(_, struct_decl) => struct_decl.children_mut(),
 
             PilStatement::LetStatement(_, _, ty, value) => {
                 Box::new(ty.iter_mut().flat_map(|t| t.ty.children_mut()).chain(value))
@@ -220,6 +230,22 @@ impl Children<Expression> for PilStatement {
             | PilStatement::Namespace(_, _, None)
             | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct StructDeclaration<E = Expression> {
+    pub name: String,
+    pub type_vars: TypeBounds,
+    pub fields: BTreeMap<String, Type<E>>,
+}
+
+impl<R> Children<Expression<R>> for StructDeclaration<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(empty())
     }
 }
 
