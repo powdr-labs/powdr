@@ -189,15 +189,15 @@ pub fn compile_rust_crate_to_riscv_asm(
 
 fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: bool) -> Command {
     let mut cmd = Command::new("cargo");
-    cmd.env("RUSTFLAGS", "--emit=asm -g");
+    cmd.env("RUSTFLAGS", "--emit=asm -g -C passes=loweratomic");
 
     let args = as_ref![
         OsStr;
-        "+nightly-2024-02-01",
+        "+nightly",
         "build",
         "--release",
-        "-Z",
-        "build-std=core,alloc",
+        "-Zbuild-std=std,panic_abort",
+        "-Zbuild-std-features=default,compiler-builtins-mem",
         "--target",
         RUST_TARGET,
         "--lib",
