@@ -422,7 +422,7 @@ machine Arith(mem: Memory) with
     std::utils::force_bool(used);
 
     // Repeat the input state in the whole block
-    // TODO: This shouldn't be needed!
+    // TODO: Undo this when #1382 (Witgen: Range constraints not transferred for machine-to-machine call) is fixed.
     col witness x1_32[8];
     col witness y1_32[8];
     col witness x2_32[8];

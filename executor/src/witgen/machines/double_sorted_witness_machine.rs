@@ -421,7 +421,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 addr,
                 value
             );
-            let ass = (value_expr.clone() - (*value).into()).solve()?;
+            let ass = (value_expr.clone() - (*value).into()).solve_with_range_constraints(self.fixed.global_range_constraints())?;
             assignments.combine(ass);
         }
         Ok(assignments)
