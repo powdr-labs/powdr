@@ -151,6 +151,7 @@ machine Main with degree: 65536 {
         mstore 52, 0xf3be9601;
         mstore 56, 0xacfbb620;
         mstore 60, 0xae12777a;
+        mstore 124, 0xf0000000;
         ec_double 0, 64;
 
         /*

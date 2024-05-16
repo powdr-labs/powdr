@@ -454,9 +454,9 @@ machine Arith(mem: Memory) with
     unchanged_until(input_addr2, CLK32[31]);
     unchanged_until(output_addr, CLK32[31]);
 
-    // Read input 1 in rows 0..16 and input 2 in rows 16..32
-    let do_mload = used;
+    // Read input 1 in rows 0..16 and input 2 in rows 16..32 (if has two inputs)
     let first_half = sum(16, |i| CLK32[i]);
+    let do_mload = used * (selEq[1] + (1 - selEq[1]) * first_half);
     let addr_mload = first_half * input_addr1 + (1 - first_half) * input_addr2 + sum(16, |i| expr(4 * i) * CLK32[i]) + sum(16, |i| expr(4 * i) * CLK32[i + 16]);
     let output_mload = sum(8, |i| CLK32[i] * x1_32[i]) + sum(8, |i| CLK32[i + 8] * y1_32[i]) + sum(8, |i| CLK32[i + 16] * x2_32[i]) + sum(8, |i| CLK32[i + 24] * y2_32[i]);
     link do_mload ~> mem.mload addr_mload, time_step -> output_mload;
@@ -464,8 +464,8 @@ machine Arith(mem: Memory) with
     // Write (x3, y3) in rows 0..16
     let do_mstore = used * first_half;
     let addr_mstore = output_addr + sum(16, |i| expr(4 * i) * CLK32[i]);
-    let output_mstore = sum(8, |i| CLK32[i] * x3_32[i]) + sum(8, |i| CLK32[i + 8] * y3_32[i]);
-    link do_mstore ~> mem.mstore addr_mstore, time_step, output_mstore ->;
+    let value_mstore = sum(8, |i| CLK32[i] * x3_32[i]) + sum(8, |i| CLK32[i + 8] * y3_32[i]);
+    link do_mstore ~> mem.mstore addr_mstore, time_step, value_mstore ->;
 
 
     // ------------- End memory read / write ---------------
