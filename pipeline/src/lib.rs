@@ -9,12 +9,74 @@ pub mod test_util;
 pub mod util;
 pub mod verify;
 
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
+
+use serde::de::DeserializeOwned;
+
 pub use pipeline::Pipeline;
 
 pub use powdr_backend::{BackendType, Proof};
 use powdr_executor::witgen::QueryCallback;
 
 use powdr_number::FieldElement;
+
+#[derive(Clone)]
+pub struct HostContext {
+    pub data: Arc<Mutex<BTreeMap<u32, Vec<u8>>>>,
+}
+
+impl Default for HostContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HostContext {
+    pub fn new() -> Self {
+        Self {
+            data: Arc::new(Mutex::new(BTreeMap::<u32, Vec<u8>>::new())),
+        }
+    }
+
+    pub fn read<T: DeserializeOwned>(&self, fd: u32) -> Result<T, String> {
+        let fs = self.data.lock().unwrap();
+        if let Some(data) = fs.get(&fd) {
+            serde_cbor::from_slice(data).map_err(|e| format!("Error deserializing data: {e}"))
+        } else {
+            Err(format!("File descriptor {fd} not found"))
+        }
+    }
+
+    pub fn query_callback<T: FieldElement>(&self) -> Arc<dyn QueryCallback<T>> {
+        let fs = self.data.clone();
+        Arc::new(move |query: &str| -> Result<Option<T>, String> {
+            let (id, data) = parse_query(query)?;
+            match id {
+                "Output" => {
+                    assert_eq!(data.len(), 2);
+                    let fd = data[0]
+                        .parse::<u32>()
+                        .map_err(|e| format!("Invalid fd: {e}"))?;
+                    let byte = data[1]
+                        .parse::<u8>()
+                        .map_err(|e| format!("Invalid char to print: {e}"))?
+                        as char;
+                    match fd {
+                        // stdin, stdout and stderr are supported by the default callback
+                        0..=2 => return Err(format!("Unsupported file descriptor: {fd}")),
+                        _ => {
+                            let mut map = fs.lock().unwrap();
+                            map.entry(fd).or_default().push(byte as u8);
+                        }
+                    }
+                    Ok(Some(0.into()))
+                }
+                _ => Err(format!("Unsupported query: {query}")),
+            }
+        })
+    }
+}
 
 // TODO at some point, we could also just pass evaluator::Values around - would be much faster.
 pub fn parse_query(query: &str) -> Result<(&str, Vec<&str>), String> {
@@ -108,15 +170,20 @@ pub fn handle_simple_queries_callback<'a, T: FieldElement>() -> impl QueryCallba
         let (id, data) = parse_query(query)?;
         match id {
             "None" => Ok(None),
-            "PrintChar" => {
-                assert_eq!(data.len(), 1);
-                print!(
-                    "{}",
-                    data[0]
-                        .parse::<u8>()
-                        .map_err(|e| format!("Invalid char to print: {e}"))?
-                        as char
-                );
+            "Output" => {
+                assert_eq!(data.len(), 2);
+                let fd = data[0]
+                    .parse::<u32>()
+                    .map_err(|e| format!("Invalid fd: {e}"))?;
+                let byte = data[1]
+                    .parse::<u8>()
+                    .map_err(|e| format!("Invalid char to print: {e}"))?
+                    as char;
+                match fd {
+                    1 => print!("{byte}"),
+                    2 => eprint!("{byte}"),
+                    _ => return Err(format!("Unsupported file descriptor: {fd}")),
+                }
                 Ok(Some(0.into()))
             }
             "Hint" => {

@@ -60,7 +60,7 @@ macro_rules! syscalls {
 syscalls!(
     (0, Input, "input"),
     (1, DataIdentifier, "data_identifier"),
-    (2, PrintChar, "print_char"),
+    (2, Output, "output"),
     (3, PoseidonGL, "poseidon_gl"),
     (4, Affine256, "affine_256"),
     (5, EcAdd, "ec_add"),

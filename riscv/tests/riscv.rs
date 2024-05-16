@@ -275,6 +275,48 @@ fn many_chunks_dry() {
     rust_continuations_dry_run::<GoldilocksField>(&mut pipeline);
 }
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+#[test]
+fn output_syscall() {
+    let case = "output";
+    let runtime = Runtime::base();
+    let temp_dir = Temp::new_dir().unwrap();
+    let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+    );
+    let powdr_asm = powdr_riscv::compiler::compile::<GoldilocksField>(riscv_asm, &runtime, false);
+
+    let inputs = vec![1u32, 2, 3]
+        .into_iter()
+        .map(GoldilocksField::from)
+        .collect();
+    let mut pipeline = Pipeline::default()
+        .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
+        .with_prover_inputs(inputs);
+
+    pipeline.compute_witness().unwrap();
+
+    let ctx = &pipeline.host_context();
+    // Need to put the lock in a separate scope, so that it is dropped before the next read.
+    {
+        let fs = &ctx.data.lock().unwrap();
+        assert_eq!(fs[&42], vec![1]);
+        assert_eq!(fs[&43], vec![1, 2, 3]);
+    }
+
+    let p: Point = ctx.read(44).unwrap();
+    assert_eq!(p.x, 1);
+    assert_eq!(p.y, 2);
+}
+
 #[test]
 #[ignore = "Too slow"]
 fn many_chunks() {
