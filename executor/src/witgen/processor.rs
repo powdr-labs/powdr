@@ -212,13 +212,14 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         if unknown_strategy == UnknownStrategy::Zero {
             assert!(updates.constraints.is_empty());
             return Ok(IdentityResult {
-                progress: false,
+                progress: false || updates.side_effect,
                 is_complete: false,
             });
         }
 
         Ok(IdentityResult {
-            progress: self.apply_updates(row_index, &updates, || identity.to_string()),
+            progress: self.apply_updates(row_index, &updates, || identity.to_string())
+                || updates.side_effect,
             is_complete: updates.is_complete(),
         })
     }
