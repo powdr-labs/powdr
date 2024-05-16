@@ -17,7 +17,7 @@ machine Main with degree: 65536 {
     Arith arith(memory);
 
     instr ec_add X, Y, Z -> ~ arith.ec_add X, Y, Z, STEP;
-    // instr ec_double X, Y -> ~ arith.ec_double X, Y, STEP;
+    instr ec_double X, Y -> ~ arith.ec_double X, Y, STEP;
 
     instr assert_eq X, Y {
         X = Y
@@ -130,11 +130,68 @@ machine Main with degree: 65536 {
         //     = 0xd01115d5 48e7561b 15c38f00 4d734633 687cf441 9620095b c5b0f470 70afe85a
         // y3: 76870767327212528811304566602812752860184934880685532702451763239157141742375
         //     = 0xa9f34ffd c815e0d7 a8b64537 e17bd815 79238c5d d9a86d52 6b051b13 f4062327
+        /*
         t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== ec_double(
             0x60297556, 0x2f057a14, 0x8568a18b, 0x82f6472f, 0x355235d3, 0x20453a14, 0x755eeea4, 0xfff97bd5,
             0xb075f297, 0x3c870c36, 0x518fe4a0, 0xde80f0f6, 0x7f45c560, 0xf3be9601, 0xacfbb620, 0xae12777a);
+        */
+        mstore 0, 0x60297556;
+        mstore 4, 0x2f057a14;
+        mstore 8, 0x8568a18b;
+        mstore 12, 0x82f6472f;
+        mstore 16, 0x355235d3;
+        mstore 20, 0x20453a14;
+        mstore 24, 0x755eeea4;
+        mstore 28, 0xfff97bd5;
+        mstore 32, 0xb075f297;
+        mstore 36, 0x3c870c36;
+        mstore 40, 0x518fe4a0;
+        mstore 44, 0xde80f0f6;
+        mstore 48, 0x7f45c560;
+        mstore 52, 0xf3be9601;
+        mstore 56, 0xacfbb620;
+        mstore 60, 0xae12777a;
+        ec_double 0, 64;
+
+        /*
         assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0x70afe85a, 0xc5b0f470, 0x9620095b, 0x687cf441, 0x4d734633, 0x15c38f00, 0x48e7561b, 0xd01115d5;
         assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0xf4062327, 0x6b051b13, 0xd9a86d52, 0x79238c5d, 0xe17bd815, 0xa8b64537, 0xc815e0d7, 0xa9f34ffd;
+        */
+        A <== mload(64);
+        assert_eq A, 0x70afe85a;
+        A <== mload(68);
+        assert_eq A, 0xc5b0f470;
+        A <== mload(72);
+        assert_eq A, 0x9620095b;
+        A <== mload(76);
+        assert_eq A, 0x687cf441;
+        A <== mload(80);
+        assert_eq A, 0x4d734633;
+        A <== mload(84);
+        assert_eq A, 0x15c38f00;
+        A <== mload(88);
+        assert_eq A, 0x48e7561b;
+        A <== mload(92);
+        assert_eq A, 0xd01115d5;
+        A <== mload(96);
+        assert_eq A, 0xf4062327;
+        A <== mload(100);
+        assert_eq A, 0x6b051b13;
+        A <== mload(104);
+        assert_eq A, 0xd9a86d52;
+        A <== mload(108);
+        assert_eq A, 0x79238c5d;
+        A <== mload(112);
+        assert_eq A, 0xe17bd815;
+        A <== mload(116);
+        assert_eq A, 0xa8b64537;
+        A <== mload(120);
+        assert_eq A, 0xc815e0d7;
+        A <== mload(124);
+        assert_eq A, 0xa9f34ffd;
+
+        /*
+
 
         // Auto-generated rest of the test cases:
         t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== ec_double(

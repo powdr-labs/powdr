@@ -26,7 +26,7 @@ machine Arith(mem: Memory) with
     // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 32-Bit limbs in little-endian order).
     // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3
     // Operation ID is 1 = 0b0001, i.e., we activate equation 0.
-    // TODO: This is a bit weird, let's do this later
+    // TODO: This is a bit weird, because x2 is used as input and y2 as output. Should change the first output to x3.
     // operation affine_256<1> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7] -> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
     
     // Performs elliptic curve addition of points (x1, y1) and (x2, y2).
@@ -35,7 +35,7 @@ machine Arith(mem: Memory) with
     
     // Performs elliptic curve doubling of point (x1, y1).
     // Operation ID is 12 = 0b1100, i.e., we activate equations 2, 3, and 4.
-    // operation ec_double<12> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
+    operation ec_double<12> input_addr1, output_addr, time_step ->;
 
     let BYTE: col = |i| i & 0xff;
     let BYTE2: col = |i| i & 0xffff;
@@ -414,7 +414,10 @@ machine Arith(mem: Memory) with
     // Get an intermediate column that indicates that we're in an
     // actual block, not a default block. Its value is constant
     // within the block.
-    let used = array::sum(sel);
+    // TODO: Witness needs this to be a witness column, but could be turned
+    // into an intermediate.
+    col witness used;
+    used = array::sum(sel);
     array::map(sel, |s| unchanged_until(s, CLK32[31]));
     std::utils::force_bool(used);
 
