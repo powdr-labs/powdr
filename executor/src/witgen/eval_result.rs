@@ -101,6 +101,7 @@ impl<K> EvalStatus<K> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EvalValue<K, T: FieldElement> {
     pub constraints: Constraints<K, T>,
+    pub side_effect: bool,
     pub status: EvalStatus<K>,
 }
 
@@ -134,21 +135,22 @@ impl<K, T: FieldElement> EvalValue<K, T> {
     fn new(constraints: Vec<(K, Constraint<T>)>, status: EvalStatus<K>) -> Self {
         Self {
             constraints,
+            side_effect: false,
             status,
         }
     }
-}
 
-impl<K, T> EvalValue<K, T>
-where
-    K: Clone,
-    T: FieldElement,
-{
     pub fn combine(&mut self, other: Self) {
         // reserve more space?
         self.constraints.extend(other.constraints);
         self.status =
             std::mem::replace(&mut self.status, EvalStatus::Complete).combine(other.status);
+        self.side_effect |= other.side_effect;
+    }
+
+    pub fn report_side_effect(mut self) -> Self {
+        self.side_effect = true;
+        self
     }
 }
 
