@@ -209,7 +209,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
                 .ok()??
         }
         ConnectionType::Permutation => {
-            // The latch fixed column could be any fixed column that appears in any identity or the RHS selector.
+            // We check all fixed columns appearing in RHS selectors. If there is none, the block size is 1.
 
             let find_max_period = |latch_candidates: BTreeSet<Option<Expression<T>>>| {
                 latch_candidates
