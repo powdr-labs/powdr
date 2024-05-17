@@ -197,7 +197,7 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
         "build",
         "--release",
         "-Zbuild-std=std,panic_abort",
-        "-Zbuild-std-features=default,compiler-builtins-mem",
+        "-Zbuild-std-features=compiler-builtins-mem",
         "--target",
         RUST_TARGET,
         "--lib",
@@ -248,26 +248,47 @@ fn output_files_from_cargo_build_plan(
         };
         for output in outputs {
             let output = Path::new(output.as_str().unwrap());
-            // Strip the target_dir, so that the path becomes relative.
-            let parent = output.parent().unwrap().strip_prefix(target_dir).unwrap();
-            if Some(OsStr::new("rmeta")) == output.extension()
-                && parent.ends_with(Path::new(RUST_TARGET).join("release/deps"))
+            let parent = output.parent().unwrap();
+            if Some(OsStr::new("rmeta")) != output.extension()
+                || !parent.ends_with(Path::new(RUST_TARGET).join("release/deps"))
             {
-                // Have to convert to string to remove the "lib" prefix:
-                let name_stem = output
-                    .file_stem()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .strip_prefix("lib")
-                    .unwrap();
-
-                let mut asm_name = parent.join(name_stem);
-                asm_name.set_extension("s");
-
-                log::debug!(" - {}", asm_name.to_string_lossy());
-                assemblies.push((name_stem.to_string(), asm_name));
+                continue;
             }
+
+            // Strip the target_dir, so that the path becomes relative.
+            let parent = parent.strip_prefix(target_dir).unwrap();
+
+            // HACK: explicitly exclude panic_unwind, because it is
+            // conflicting with panic_abort
+            //
+            // TODO: figure out why cargo is linking them both together and
+            // why rustc is fine with it. Then fix the root cause of the
+            // problem.
+            if output
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .strip_prefix("libpanic_unwind-")
+                .is_some_and(|s| s.chars().all(|c| c.is_digit(16)))
+            {
+                continue;
+            }
+
+            // Have to convert to string to remove the "lib" prefix:
+            let name_stem = output
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .strip_prefix("lib")
+                .unwrap();
+
+            let mut asm_name = parent.join(name_stem);
+            asm_name.set_extension("s");
+
+            log::debug!(" - {}", asm_name.to_string_lossy());
+            assemblies.push((name_stem.to_string(), asm_name));
         }
     }
 
