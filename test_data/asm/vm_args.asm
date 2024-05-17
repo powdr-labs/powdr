@@ -1,50 +1,39 @@
-use std::machines::binary::Binary;
+use std::machines::shift::Shift;
 
-machine Main with degree: 262144 {
+machine Main with degree: 65536 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
     reg Z[<=];
     reg A;
 
-    Binary binary;
-    WithArg sub(binary);
+    Shift shift;
+    WithArg sub(shift);
 
-    instr and X, Y -> Z ~ binary.and;
-    instr or X, Y -> Z ~ binary.or;
-    instr xor X, Y -> Z ~ binary.xor;
+    instr shl X, Y -> Z ~ shift.shl;
+    instr shr X, Y -> Z ~ shift.shr;
 
-    // TODO: changing these to permutation passes witgen but fails proving
-    instr and1 X, Y -> Z = sub.and;
-    instr or1 X, Y -> Z = sub.or;
-    instr xor1 X, Y -> Z = sub.xor;
+    instr shl1 X, Y -> Z = sub.shl;
+    instr shr1 X, Y -> Z = sub.shr;
 
     instr assert_eq X, Y { X = Y }
 
     function main {
-        // AND
-        A <== and(0xffffffff, 0xabcdef01);
-        assert_eq A, 0xabcdef01;
-        A <== and1(0xabcdef01, 0xffffffff);
-        assert_eq A, 0xabcdef01;
+        A <== shl(0x1, 3);
+        assert_eq A, 0x8;
+        A <== shl1(0x1, 4);
+        assert_eq A, 0x10;
 
-        // OR
-        A <== or(0xffffffff, 0xabcdef01);
-        assert_eq A, 0xffffffff;
-        A <== or1(0xabcdef01, 0xffffffff);
-        assert_eq A, 0xffffffff;
-
-        // XOR
-        A <== xor(0xffffffff, 0xabcdef01);
-        assert_eq A, 0x543210fe;
-        A <== xor1(0xabcdef01, 0xffffffff);
-        assert_eq A, 0x543210fe;
+        A <== shr(0x11, 2);
+        assert_eq A, 0x4;
+        A <== shr1(0x22, 3);
+        assert_eq A, 0x4;
 
         return;
     }
 }
 
-machine WithArg(bin: Binary) {
+machine WithArg(shift: Shift) {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -52,22 +41,16 @@ machine WithArg(bin: Binary) {
     reg A;
     reg B;
 
-    instr and X, Y -> Z ~ bin.and;
-    instr or X, Y -> Z ~ bin.or;
-    instr xor X, Y -> Z ~ bin.xor;
+    instr shl X, Y -> Z ~ shift.shl;
+    instr shr X, Y -> Z ~ shift.shr;
 
-    function and a, b -> c {
-        A <== and(a,b);
+    function shl a, b -> c {
+        A <== shl(a,b);
         return A;
     }
 
-    function or a, b -> c {
-        A <== or(a,b);
-        return A;
-    }
-
-    function xor a, b -> c {
-        A <== xor(a,b);
+    function shr a, b -> c {
+        A <== shr(a,b);
         return A;
     }
 }

@@ -1,22 +1,28 @@
-machine Main with degree: 262144 {
+machine Main with degree: 1024 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
     reg Z[<=];
     reg A;
 
-    b::Binary binary;
-    a::WithArg sub(binary);
+    b::Arith arith;
+    a::WithArg subm(arith);
 
-    instr and X, Y -> Z = sub.and;
+    instr add X, Y -> Z = subm.add;
+    instr sub X, Y -> Z = subm.sub;
 
     instr assert_eq X, Y { X = Y }
 
     function main {
-        A <== and(0xffffffff, 0xabcdef01);
-        assert_eq A, 0xabcdef01;
-        A <== and(0xabcdef01, 0xffffffff);
-        assert_eq A, 0xabcdef01;
+        A <== add(1,3);
+        assert_eq A, 4;
+        A <== add(2,5);
+        assert_eq A, 7;
+
+        A <== sub(3,1);
+        assert_eq A, 2;
+        A <== sub(5,2);
+        assert_eq A, 3;
 
         return;
     }
@@ -24,22 +30,42 @@ machine Main with degree: 262144 {
 
 // check that relative paths work in machine parameters
 mod a {
-    machine WithArg(bin: super::b::Binary) {
+    machine WithArg(arith: super::b::Arith) {
         reg pc[@pc];
         reg X[<=];
         reg Y[<=];
         reg Z[<=];
         reg A;
 
-        instr and X, Y -> Z ~ bin.and;
+        instr add X, Y -> Z = arith.add;
+        instr sub X, Y -> Z = arith.sub;
 
-        function and a, b -> c {
-            A <== and(a,b);
+        function add a, b -> c {
+            A <== add(a,b);
+            return A;
+        }
+
+        function sub a, b -> c {
+            A <== sub(a,b);
             return A;
         }
     }
 }
 
 mod b {
-    use std::machines::binary::Binary;
+    machine Arith {
+        reg pc[@pc];
+        reg X[<=];
+        reg A;
+
+        function add a, b -> c {
+           A <=X= a + b;
+           return A;
+        }
+
+        function sub a, b -> c {
+           A <=X= a - b;
+           return A;
+        }
+    }
 }

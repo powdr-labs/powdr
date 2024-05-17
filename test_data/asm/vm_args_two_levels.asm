@@ -1,6 +1,6 @@
 use std::machines::memory::Memory;
 
-machine Main with degree: 262144 {
+machine Main with degree: 1024 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -14,7 +14,6 @@ machine Main with degree: 262144 {
     instr mload X -> Y ~ memory.mload X, STEP -> Y;
     instr mstore X, Y -> ~ memory.mstore X, STEP, Y ->;
 
-    // TODO: changing these to permutation passes witgen but fails proving
     instr child_mload X -> Y = sub.mload X, STEP -> Y;
     instr child_mstore X, Y -> = sub.mstore X, STEP, Y ->;
     instr grandchild_mload X -> Y = sub.child_mload X, STEP -> Y;
