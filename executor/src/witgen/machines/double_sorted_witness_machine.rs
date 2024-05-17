@@ -4,15 +4,13 @@ use std::iter::once;
 use itertools::Itertools;
 
 use super::{FixedLookup, Machine};
-use crate::witgen::affine_expression::AffineExpression;
+use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 use powdr_number::{DegreeType, FieldElement};
 
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolyID};
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.
@@ -63,6 +61,7 @@ pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
     has_bootloader_write_column: bool,
     /// All selector IDs that are used on the right-hand side connecting identities.
     selector_ids: BTreeMap<u64, PolyID>,
+    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
 }
 
 struct Operation<T> {
@@ -80,7 +79,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<T>,
-        connecting_identities: &[&Identity<Expression<T>>],
+        connecting_identities: &[&'a Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
         // get the namespaces and column names
@@ -111,6 +110,11 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                     .map(|p| (i.id, p.poly_id))
             })
             .collect::<Option<BTreeMap<_, _>>>()?;
+
+        let connecting_identities = connecting_identities
+            .iter()
+            .map(|i| (i.id, *i))
+            .collect::<BTreeMap<_, _>>();
 
         let namespace = namespaces.drain().next().unwrap().into();
 
@@ -158,6 +162,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                     trace: Default::default(),
                     data: Default::default(),
                     selector_ids,
+                    connecting_identities,
                 })
             } else {
                 None
@@ -173,6 +178,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 trace: Default::default(),
                 data: Default::default(),
                 selector_ids,
+                connecting_identities,
             })
         }
     }
@@ -191,9 +197,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, args)
+        self.process_plookup_internal(identity_id, caller_rows)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -336,7 +342,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
     fn process_plookup_internal(
         &mut self,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
         // OP { operation_id, ADDR, STEP, X } is <selector> { operation_id, m_addr, m_step, m_value }
@@ -344,6 +350,14 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         // - operation_id == 0: Read
         // - operation_id == 1: Write
         // - operation_id == 2: Bootloader write
+
+        let args = self.connecting_identities[&identity_id]
+            .left
+            .expressions
+            .iter()
+            .map(|e| caller_rows.evaluate(e))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
 
         let operation_id = match args[0].constant_value() {
             Some(v) => v,
@@ -423,7 +437,8 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 addr,
                 value
             );
-            let ass = (value_expr.clone() - (*value).into()).solve()?;
+            let ass =
+                (value_expr.clone() - (*value).into()).solve_with_range_constraints(caller_rows)?;
             assignments.combine(ass);
         }
         Ok(assignments)

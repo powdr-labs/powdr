@@ -104,8 +104,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     block_size: usize,
     /// The row index (within the block) of the latch row
     latch_row: usize,
-    /// The right-hand sides of the connecting identities.
-    connecting_rhs: BTreeMap<u64, &'a SelectedExpressions<Expression<T>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
     /// The type of constraint used to connect this machine to its caller.
     connection_type: ConnectionType,
     /// The internal identities
@@ -134,13 +133,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         // Collect all right-hand sides of the connecting identities.
         // This is used later to decide to which lookup the machine should respond.
-        let connecting_rhs = connecting_identities
+        let connecting_identities = connecting_identities
             .iter()
-            .map(|id| (id.id, &id.right))
+            .map(|id| (id.id, *id))
             .collect::<BTreeMap<_, _>>();
 
-        for rhs in connecting_rhs.values() {
-            for r in rhs.expressions.iter() {
+        for id in connecting_identities.values() {
+            for r in id.right.expressions.iter() {
                 if let Some(poly) = try_to_simple_poly(r) {
                     if poly.poly_id.ptype == PolynomialType::Constant {
                         // It does not really make sense to have constant polynomials on the RHS
@@ -167,7 +166,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             name,
             block_size,
             latch_row,
-            connecting_rhs,
+            connecting_identities,
             connection_type: is_permutation,
             identities: identities.to_vec(),
             data,
@@ -283,17 +282,17 @@ fn try_to_period<T: FieldElement>(
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_rhs.keys().copied().collect()
+        self.connecting_identities.keys().copied().collect()
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         let previous_len = self.data.len();
-        let result = self.process_plookup_internal(mutable_state, identity_id, args);
+        let result = self.process_plookup_internal(mutable_state, identity_id, caller_rows);
         if let Ok(assignments) = &result {
             if !assignments.is_complete() {
                 // rollback the changes.
@@ -348,11 +347,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
 
             // Set all selectors to 0
-            for rhs in self.connecting_rhs.values() {
+            for id in self.connecting_identities.values() {
                 processor
                     .set_value(
                         self.latch_row + 1,
-                        rhs.selector.as_ref().unwrap(),
+                        id.right.selector.as_ref().unwrap(),
                         T::zero(),
                         || "Zero selectors".to_string(),
                     )
@@ -479,15 +478,23 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         &mut self,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
+        let left = &self.connecting_identities[&identity_id]
+            .left
+            .expressions
+            .iter()
+            .map(|e| caller_rows.evaluate(e))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
         for l in left {
             log::trace!("  {}", l);
         }
 
-        let right = self.connecting_rhs.get(&identity_id).unwrap();
+        let right = &self.connecting_identities.get(&identity_id).unwrap().right;
 
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called

@@ -1,7 +1,6 @@
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
 };
-use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -11,11 +10,10 @@ use crate::witgen::processor::OuterQuery;
 use crate::witgen::rows::CellValue;
 use crate::witgen::EvalValue;
 
-use super::affine_expression::AffineExpression;
 use super::block_processor::BlockProcessor;
 use super::data_structures::column_map::WitnessColumnMap;
 use super::machines::{FixedLookup, Machine};
-use super::rows::{Row, RowIndex};
+use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
@@ -26,7 +24,7 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
-    connecting_rhs: BTreeMap<u64, &'a SelectedExpressions<Expression<T>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<Expression<T>>>,
     witnesses: HashSet<PolyID>,
@@ -37,7 +35,7 @@ pub struct Generator<'a, T: FieldElement> {
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_rhs.keys().cloned().collect()
+        self.connecting_identities.keys().cloned().collect()
     }
 
     fn name(&self) -> &str {
@@ -48,11 +46,18 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         &mut self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
-        let right = &self.connecting_rhs.get(&identity_id).unwrap();
+        let args = &self.connecting_identities[&identity_id]
+            .left
+            .expressions
+            .iter()
+            .map(|e| caller_rows.evaluate(e))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let right = &self.connecting_identities.get(&identity_id).unwrap().right;
         for (r, l) in right.expressions.iter().zip(args) {
             log::trace!("  {r} = {l}");
         }
@@ -117,9 +122,9 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     ) -> Self {
         let data = FinalizableData::new(&witnesses);
         Self {
-            connecting_rhs: connecting_identities
+            connecting_identities: connecting_identities
                 .iter()
-                .map(|&identity| (identity.id, &identity.right))
+                .map(|identity| (identity.id, *identity))
                 .collect(),
             name,
             fixed_data,
