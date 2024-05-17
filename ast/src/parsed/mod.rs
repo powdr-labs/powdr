@@ -730,11 +730,7 @@ impl<E> Precedence for Expression<E> {
     fn precedence(&self) -> Option<ExpressionPrecedence> {
         match self {
             Expression::UnaryOperation(op, _) => op.precedence(),
-            Expression::BinaryOperation(BinaryOperation {
-                left: _,
-                op,
-                right: _,
-            }) => op.precedence(),
+            Expression::BinaryOperation(operation) => operation.op.precedence(),
             _ => None,
         }
     }
