@@ -288,10 +288,7 @@ impl<'a> ASMPILConverter<'a> {
             .find(|s| s.name == instance)
             .unwrap_or_else(|| {
                 let (ty, _) = self.instances.get(self.location).unwrap();
-                panic!(
-                    "could not find submachine named `{}` in machine `{ty}`",
-                    instance
-                );
+                panic!("could not find submachine named `{instance}` in machine `{ty}`");
             });
         // get the machine type from the machine map
         let Item::Machine(instance_ty) = self.items.get(&instance.ty).unwrap() else {
