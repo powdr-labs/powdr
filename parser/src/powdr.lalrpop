@@ -32,6 +32,10 @@ ModuleStatement: ModuleStatement = {
             name: <>.name.clone(),
             value: SymbolValue::TypeDeclaration(<>),
         }),
+    //<StructDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
+    //        name: <>.name.clone(),
+    //        value: SymbolValue::TypeDeclaration(<>),
+    //    }),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
@@ -114,6 +118,7 @@ pub PilStatement = {
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> => PilStatement::EnumDeclaration(ctx.source_ref(start), decl),
+    <start:@L> <decl:StructDeclaration> => PilStatement::StructDeclaration(ctx.source_ref(start), decl),
     PlookupIdentityStatement,
     PermutationIdentityStatement,
     ConnectIdentityStatement,
@@ -209,7 +214,7 @@ PlookupIdentity: PilStatement = {
 }
 
 SelectedExpressions: SelectedExpressions<Expression> = {
-    <selector:Expression?> "{" <expressions:ExpressionList> "}" => SelectedExpressions{<>},
+    <selector:(<Expression> "$")?> "{" <expressions:ExpressionList> "}" => SelectedExpressions{<>},
     Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
 }
 
@@ -715,7 +720,7 @@ StructFields: BTreeMap<String, Type<Expression>> = {
 }
 
 StructField: (String, Type<Expression>) = {
-    <name:Identifier> ":" <type_:Type> => (name, type_)
+    <name:Identifier> ":" <type_:TypeTerm> => (name, type_)
 }
 
 // ---------------------------- Type Names -----------------------------
