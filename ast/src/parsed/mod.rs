@@ -234,7 +234,7 @@ impl Children<Expression> for PilStatement {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct StructDeclaration<E = Expression> {
+pub struct StructDeclaration<E = u64> {
     pub name: String,
     pub type_vars: TypeBounds,
     pub fields: BTreeMap<String, Type<E>>,
@@ -246,12 +246,21 @@ pub struct StructValue<Expression> {
     pub value: Expression,
 }
 
-impl<R> Children<Expression<R>> for StructDeclaration<Expression> {
+impl<R> Children<Expression<R>> for StructDeclaration<u64> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(empty())
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         Box::new(empty())
+    }
+}
+
+impl<R> Children<Expression<R>> for StructDeclaration<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(self.fields.values().flat_map(|f| f.children()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(self.fields.values_mut().flat_map(|f| f.children_mut()))
     }
 }
 
@@ -885,7 +894,13 @@ pub enum FunctionDefinition {
     /// Generic expression
     Expression(Expression),
     /// A type declaration.
-    TypeDeclaration(EnumDeclaration<Expression>),
+    TypeDeclaration(TypeDeclaration),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub enum TypeDeclaration {
+    Enum(EnumDeclaration<Expression>),
+    Struct(StructDeclaration<Expression>),
 }
 
 impl Children<Expression> for FunctionDefinition {

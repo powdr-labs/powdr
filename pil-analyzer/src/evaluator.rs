@@ -11,7 +11,7 @@ use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
         Challenge, Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind,
-        TypedExpression,
+        TypeConstructor, TypedExpression,
     },
     parsed::{
         display::quote,
@@ -135,6 +135,7 @@ pub enum Value<'a, T> {
     Closure(Closure<'a, T>),
     TypeConstructor(&'a str),
     Enum(&'a str, Option<Vec<Arc<Self>>>),
+    //Struct(&'a str, HashMap<&'a str, Arc<Self>>), // TODO is this needed?
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
 }
@@ -444,12 +445,21 @@ impl<'a> Definitions<'a> {
                     let type_args = type_arg_mapping(type_scheme, type_args);
                     evaluate_generic(value, &type_args, symbols)?
                 }
-                Some(FunctionValueDefinition::TypeConstructor(_type_name, variant)) => {
+                Some(FunctionValueDefinition::TypeConstructor(TypeConstructor::Enum(
+                    _type_name,
+                    variant,
+                ))) => {
                     if variant.fields.is_none() {
                         Value::Enum(&variant.name, None).into()
                     } else {
                         Value::TypeConstructor(&variant.name).into()
                     }
+                }
+                Some(FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
+                    struct_decl,
+                    _fields,
+                ))) => {
+                    Value::TypeConstructor(&struct_decl.name).into() // TODO Check this
                 }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),

@@ -422,10 +422,7 @@ pub fn type_from_definition(
             FunctionValueDefinition::TypeConstructor(TypeConstructor::Enum(enum_decl, variant)) => {
                 Some(variant.constructor_type(enum_decl))
             }
-            FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
-                struct_decl,
-                fields,
-            )) => {
+            FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(struct_decl, _)) => {
                 let name = SymbolPath::from_str(&struct_decl.name).unwrap();
                 let vars = struct_decl.type_vars.clone();
                 let generic_args = (!vars.is_empty())
@@ -565,8 +562,8 @@ pub enum TypeConstructor {
 impl Children<Expression> for TypeConstructor {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
-            TypeConstructor::Enum(enum_decl, variant) => variant.children(),
-            TypeConstructor::Struct(struct_decl, values) => {
+            TypeConstructor::Enum(_, variant) => variant.children(),
+            TypeConstructor::Struct(_, values) => {
                 Box::new(values.iter().flat_map(|v| v.children()))
             }
         }
@@ -574,8 +571,8 @@ impl Children<Expression> for TypeConstructor {
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
-            TypeConstructor::Enum(enum_decl, variant) => variant.children_mut(),
-            TypeConstructor::Struct(struct_decl, values) => {
+            TypeConstructor::Enum(_, variant) => variant.children_mut(),
+            TypeConstructor::Struct(_, values) => {
                 Box::new(values.iter_mut().flat_map(|v| v.children_mut()))
             }
         }
