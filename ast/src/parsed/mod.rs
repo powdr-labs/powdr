@@ -240,12 +240,27 @@ pub struct StructDeclaration<E = Expression> {
     pub fields: BTreeMap<String, Type<E>>,
 }
 
-impl<R> Children<Expression<R>> for StructDeclaration<Expression<R>> {
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct StructValue<Expression> {
+    pub name: String,
+    pub value: Expression,
+}
+
+impl<R> Children<Expression<R>> for StructDeclaration<Expression> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(empty())
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         Box::new(empty())
+    }
+}
+
+impl<R> Children<Expression<R>> for StructValue<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(once(&self.value))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(once(&mut self.value))
     }
 }
 
@@ -560,7 +575,9 @@ pub struct PolynomialName {
     pub array_size: Option<Expression>,
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
+#[derive(
+    Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 /// A polynomial with an optional namespace
 /// This is different from SymbolPath mainly due to different formatting.
 pub struct NamespacedPolynomialReference {

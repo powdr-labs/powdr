@@ -13,12 +13,16 @@ use powdr_number::{DegreeType, FieldElement};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::parsed::asm::SymbolPath;
 use crate::parsed::types::{ArrayType, Type, TypeScheme};
 use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
-use crate::parsed::{self, EnumDeclaration, EnumVariant, SelectedExpressions};
+use crate::parsed::{
+    self, EnumDeclaration, EnumVariant, SelectedExpressions, StructDeclaration, StructValue,
+};
 use crate::SourceRef;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub enum StatementIdentifier {
@@ -415,8 +419,21 @@ pub fn type_from_definition(
             FunctionValueDefinition::TypeDeclaration(_) => {
                 panic!("Requested type of type declaration.")
             }
-            FunctionValueDefinition::TypeConstructor(enum_decl, variant) => {
+            FunctionValueDefinition::TypeConstructor(TypeConstructor::Enum(enum_decl, variant)) => {
                 Some(variant.constructor_type(enum_decl))
+            }
+            FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
+                struct_decl,
+                fields,
+            )) => {
+                let name = SymbolPath::from_str(&struct_decl.name).unwrap();
+                let vars = struct_decl.type_vars.clone();
+                let generic_args = (!vars.is_empty())
+                    .then(|| vars.vars().cloned().map(Type::TypeVar).collect::<Vec<_>>());
+
+                let ty = Type::NamedType(name, generic_args);
+
+                Some(TypeScheme { vars, ty })
             }
         }
     } else {
@@ -513,8 +530,56 @@ pub enum SymbolKind {
 pub enum FunctionValueDefinition {
     Array(Vec<RepeatedArray>),
     Expression(TypedExpression),
-    TypeDeclaration(EnumDeclaration),
-    TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
+    TypeDeclaration(TypeDeclaration),
+    TypeConstructor(TypeConstructor),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub enum TypeDeclaration {
+    Enum(EnumDeclaration),
+    Struct(StructDeclaration),
+}
+
+impl Children<Expression> for TypeDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        match self {
+            TypeDeclaration::Enum(enum_decl) => enum_decl.children(),
+            TypeDeclaration::Struct(struct_decl) => struct_decl.children(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        match self {
+            TypeDeclaration::Enum(enum_decl) => enum_decl.children_mut(),
+            TypeDeclaration::Struct(struct_decl) => struct_decl.children_mut(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub enum TypeConstructor {
+    Enum(Arc<EnumDeclaration>, EnumVariant),
+    Struct(Arc<StructDeclaration>, Vec<StructValue<Expression>>),
+}
+
+impl Children<Expression> for TypeConstructor {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        match self {
+            TypeConstructor::Enum(enum_decl, variant) => variant.children(),
+            TypeConstructor::Struct(struct_decl, values) => {
+                Box::new(values.iter().flat_map(|v| v.children()))
+            }
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        match self {
+            TypeConstructor::Enum(enum_decl, variant) => variant.children_mut(),
+            TypeConstructor::Struct(struct_decl, values) => {
+                Box::new(values.iter_mut().flat_map(|v| v.children_mut()))
+            }
+        }
+    }
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -526,10 +591,12 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Array(array) => {
                 Box::new(array.iter().flat_map(|i| i.children()))
             }
-            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
-                enum_declaration.children()
+            FunctionValueDefinition::TypeDeclaration(type_declaration) => {
+                type_declaration.children()
             }
-            FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
+            FunctionValueDefinition::TypeConstructor(type_constructor) => {
+                type_constructor.children()
+            }
         }
     }
 
@@ -541,10 +608,12 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Array(array) => {
                 Box::new(array.iter_mut().flat_map(|i| i.children_mut()))
             }
-            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
-                enum_declaration.children_mut()
+            FunctionValueDefinition::TypeDeclaration(type_declaration) => {
+                type_declaration.children_mut()
             }
-            FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
+            FunctionValueDefinition::TypeConstructor(type_constructor) => {
+                type_constructor.children_mut()
+            }
         }
     }
 }

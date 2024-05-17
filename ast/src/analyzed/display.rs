@@ -48,9 +48,9 @@ impl<T: Display> Display for Analyzed<T> {
                     if let Some((symbol, definition)) = self.definitions.get(name) {
                         if matches!(
                             definition,
-                            Some(FunctionValueDefinition::TypeConstructor(_, _))
+                            Some(FunctionValueDefinition::TypeConstructor(_))
                         ) {
-                            // These are printed as part of the enum.
+                            // These are printed as part of the enum/struct.
                             continue;
                         }
                         let (name, is_local) = update_namespace(name, f)?;
@@ -95,12 +95,17 @@ impl<T: Display> Display for Analyzed<T> {
                                         )?;
                                     }
                                     Some(FunctionValueDefinition::TypeDeclaration(
-                                        enum_declaration,
+                                        TypeDeclaration::Enum(enum_declaration),
                                     )) => {
                                         writeln_indented(
                                             f,
                                             enum_declaration.to_string_with_name(&name),
                                         )?;
+                                    }
+                                    Some(FunctionValueDefinition::TypeDeclaration(
+                                        TypeDeclaration::Struct(struct_declaration),
+                                    )) => {
+                                        writeln_indented(f, struct_declaration)?;
                                     }
                                     _ => {
                                         unreachable!("Invalid definition for symbol: {}", name)
@@ -223,7 +228,7 @@ impl Display for FunctionValueDefinition {
                 write!(f, ": {} = {e}", ts.ty)
             }
             FunctionValueDefinition::TypeDeclaration(_)
-            | FunctionValueDefinition::TypeConstructor(_, _) => {
+            | FunctionValueDefinition::TypeConstructor(_) => {
                 panic!("Should not use this formatting function.")
             }
         }
