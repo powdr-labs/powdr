@@ -61,7 +61,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
     pub fn call<Q: QueryCallback<T>>(
         &mut self,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
         fixed_lookup: &mut FixedLookup<T>,
         query_callback: &mut Q,
     ) -> EvalResult<'a, T> {
@@ -77,7 +77,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
             query_callback,
         };
 
-        current.process_plookup_timed(&mut mutable_state, identity_id, args)
+        current.process_plookup_timed(&mut mutable_state, identity_id, caller_rows)
     }
 }
 
@@ -203,7 +203,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
         self.mutable_state.machines.call(
             identity.id,
-            &left,
+            &rows,
             self.mutable_state.fixed_lookup,
             self.mutable_state.query_callback,
         )
