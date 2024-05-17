@@ -421,29 +421,6 @@ machine Arith(mem: Memory) with
     array::map(sel, |s| unchanged_until(s, CLK32[31]));
     std::utils::force_bool(used);
 
-    // Repeat the input state in the whole block
-    // TODO: Undo this when #1382 (Witgen: Range constraints not transferred for machine-to-machine call) is fixed.
-    col witness x1_32[8];
-    col witness y1_32[8];
-    col witness x2_32[8];
-    col witness y2_32[8];
-    col witness x3_32[8];
-    col witness y3_32[8];
-
-    array::map(x1_32, |c| unchanged_until(c, CLK32[31]));
-    array::map(y1_32, |c| unchanged_until(c, CLK32[31]));
-    array::map(x2_32, |c| unchanged_until(c, CLK32[31]));
-    array::map(y2_32, |c| unchanged_until(c, CLK32[31]));
-    array::map(x3_32, |c| unchanged_until(c, CLK32[31]));
-    array::map(y3_32, |c| unchanged_until(c, CLK32[31]));
-    
-    array::zip(x1_32, x1c, |a, b| a = b);
-    array::zip(y1_32, y1c, |a, b| a = b);
-    array::zip(x2_32, x2c, |a, b| a = b);
-    array::zip(y2_32, y2c, |a, b| a = b);
-    array::zip(x3_32, x3c, |a, b| a = b);
-    array::zip(y3_32, y3c, |a, b| a = b);
-
     // Repeat the time step and input / output address in the whole block
     col witness time_step;
     col witness input_addr1;
@@ -458,13 +435,13 @@ machine Arith(mem: Memory) with
     let first_half = sum(16, |i| CLK32[i]);
     let do_mload = used * (selEq[1] + (1 - selEq[1]) * first_half);
     let addr_mload = first_half * input_addr1 + (1 - first_half) * input_addr2 + sum(16, |i| expr(4 * i) * CLK32[i]) + sum(16, |i| expr(4 * i) * CLK32[i + 16]);
-    let output_mload = sum(8, |i| CLK32[i] * x1_32[i]) + sum(8, |i| CLK32[i + 8] * y1_32[i]) + sum(8, |i| CLK32[i + 16] * x2_32[i]) + sum(8, |i| CLK32[i + 24] * y2_32[i]);
+    let output_mload = sum(8, |i| CLK32[i] * x1c[i]) + sum(8, |i| CLK32[i + 8] * y1c[i]) + sum(8, |i| CLK32[i + 16] * x2c[i]) + sum(8, |i| CLK32[i + 24] * y2c[i]);
     link do_mload ~> mem.mload addr_mload, time_step -> output_mload;
 
     // Write (x3, y3) in rows 0..16
     let do_mstore = used * first_half;
     let addr_mstore = output_addr + sum(16, |i| expr(4 * i) * CLK32[i]);
-    let value_mstore = sum(8, |i| CLK32[i] * x3_32[i]) + sum(8, |i| CLK32[i + 8] * y3_32[i]);
+    let value_mstore = sum(8, |i| CLK32[i] * x3c[i]) + sum(8, |i| CLK32[i + 8] * y3c[i]);
     link do_mstore ~> mem.mstore addr_mstore, time_step, value_mstore ->;
 
 
