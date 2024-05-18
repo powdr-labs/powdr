@@ -135,7 +135,7 @@ pub enum Value<'a, T> {
     Closure(Closure<'a, T>),
     TypeConstructor(&'a str),
     Enum(&'a str, Option<Vec<Arc<Self>>>),
-    //Struct(&'a str, HashMap<&'a str, Arc<Self>>), // TODO is this needed?
+    Struct(&'a str, HashMap<&'a str, Arc<Self>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
 }
@@ -212,7 +212,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
             }
             Value::Closure(c) => c.type_formatted(),
             Value::TypeConstructor(name) => format!("{name}_constructor"),
-            Value::Enum(name, _) => name.to_string(),
+            Value::Enum(name, _) | Value::Struct(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
         }
@@ -277,6 +277,19 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Pattern::Variable(_) => Some(vec![v.clone()]),
             Pattern::Enum(name, fields_pattern) => {
                 let Value::Enum(n, data) = v.as_ref() else {
+                    panic!()
+                };
+                if name.name() != n {
+                    return None;
+                }
+                if let Some(fields) = fields_pattern {
+                    Value::try_match_pattern_list(data.as_ref().unwrap(), fields)
+                } else {
+                    Some(vec![])
+                }
+            }
+            Pattern::Struct(name, fields_pattern) => {
+                let Value::Struct(n, data) = v.as_ref() else {
                     panic!()
                 };
                 if name.name() != n {
@@ -364,6 +377,13 @@ impl<'a, T: Display> Display for Value<'a, T> {
                     write!(f, "({})", data.iter().format(", "))?;
                 }
                 Ok(())
+            }
+            Value::Struct(name, data) => {
+                write!(f, "{name} {{")?;
+                for (field, value) in data {
+                    write!(f, "{field}: {value}, ")?;
+                }
+                write!(f, "}}")
             }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),

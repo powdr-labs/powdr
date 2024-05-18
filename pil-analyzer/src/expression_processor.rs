@@ -161,7 +161,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             }
             Pattern::Tuple(items) => Pattern::Tuple(self.process_pattern_vec(items)),
             Pattern::Variable(name) => self.process_variable_pattern(name),
-            Pattern::Enum(name, None) => {
+            Pattern::Enum(name, None) | Pattern::Struct(name, None) => {
                 // The parser cannot distinguish between Enum and Variable patterns.
                 // So if "name" is a single identifier that does not resolve to an enum variant,
                 // it is a variable pattern.
@@ -185,6 +185,9 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             Pattern::Enum(name, fields) => {
                 self.process_enum_pattern(self.driver.resolve_value_ref(&name), fields)
             }
+            Pattern::Struct(name, fields) => {
+                self.process_struct_pattern(self.driver.resolve_value_ref(&name), fields)
+            }
         }
     }
 
@@ -206,6 +209,18 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
     fn process_enum_pattern(&mut self, name: String, fields: Option<Vec<Pattern>>) -> Pattern {
         Pattern::Enum(
+            SymbolPath::from_str(&name).unwrap(),
+            fields.map(|fields| {
+                fields
+                    .into_iter()
+                    .map(|p| self.process_pattern(p))
+                    .collect()
+            }),
+        )
+    }
+
+    fn process_struct_pattern(&mut self, name: String, fields: Option<Vec<Pattern>>) -> Pattern {
+        Pattern::Struct(
             SymbolPath::from_str(&name).unwrap(),
             fields.map(|fields| {
                 fields

@@ -1036,6 +1036,7 @@ pub enum Pattern {
     // an enum variant.
     Variable(String),
     Enum(SymbolPath, Option<Vec<Pattern>>),
+    Struct(SymbolPath, Option<Vec<Pattern>>),
 }
 
 impl Pattern {
@@ -1052,7 +1053,10 @@ impl Pattern {
         match self {
             Pattern::Ellipsis => unreachable!(),
             Pattern::CatchAll | Pattern::Variable(_) => true,
-            Pattern::Number(_) | Pattern::String(_) | Pattern::Enum(_, _) => false,
+            Pattern::Number(_)
+            | Pattern::String(_)
+            | Pattern::Enum(_, _)
+            | Pattern::Struct(_, _) => false,
             Pattern::Array(items) => {
                 // Only "[..]"" is irrefutable
                 items == &vec![Pattern::Ellipsis]
@@ -1071,7 +1075,9 @@ impl Children<Pattern> for Pattern {
             | Pattern::String(_)
             | Pattern::Variable(_) => Box::new(empty()),
             Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter()),
-            Pattern::Enum(_, fields) => Box::new(fields.iter().flatten()),
+            Pattern::Enum(_, fields) | Pattern::Struct(_, fields) => {
+                Box::new(fields.iter().flatten())
+            }
         }
     }
 
@@ -1083,7 +1089,9 @@ impl Children<Pattern> for Pattern {
             | Pattern::String(_)
             | Pattern::Variable(_) => Box::new(empty()),
             Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter_mut()),
-            Pattern::Enum(_, fields) => Box::new(fields.iter_mut().flatten()),
+            Pattern::Enum(_, fields) | Pattern::Struct(_, fields) => {
+                Box::new(fields.iter_mut().flatten())
+            }
         }
     }
 }

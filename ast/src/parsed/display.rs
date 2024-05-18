@@ -365,7 +365,7 @@ impl Display for Pattern {
             Pattern::Tuple(t) => write!(f, "({})", t.iter().format(", ")),
             Pattern::Array(a) => write!(f, "[{}]", a.iter().format(", ")),
             Pattern::Variable(v) => write!(f, "{v}"),
-            Pattern::Enum(name, fields) => write!(
+            Pattern::Enum(name, fields) | Pattern::Struct(name, fields) => write!(
                 f,
                 "{name}{}",
                 fields
