@@ -211,8 +211,9 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         if unknown_strategy == UnknownStrategy::Zero {
             assert!(updates.constraints.is_empty());
+            assert!(!updates.side_effect);
             return Ok(IdentityResult {
-                progress: false || updates.side_effect,
+                progress: false,
                 is_complete: false,
             });
         }
