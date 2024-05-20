@@ -45,15 +45,15 @@ let needs_extension: -> bool = || match known_field() {
 /// Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
 let<T: Add + Mul + FromLiteral> compress_expression_array: T[], Fp2<T> -> Fp2<T> = |expr_array, alpha| fold(
     expr_array,
-    Fp2::Fp2(0, 0),
-    |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), Fp2::Fp2(el, 0))
+    from_base(0),
+    |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), from_base(el))
 );
 
 /// Takes a selector (0 or 1) and a value, returns value (if selector == 1) or 1 (if selector == 0)
 /// Implemented as: selector * (value - 1) + 1
 let<T: Add + Mul + Sub + FromLiteral> selected_or_one: T, Fp2<T> -> Fp2<T> = |selector, value| add_ext(mul_ext(from_base(selector), sub_ext(value, from_base(1))), from_base(1));
 
-// Compute z' = z * (beta - a) / (beta - b), using extension field arithmetic
+// Compute z' = z * selected_or_one(sel_a, beta - a) / selected_or_one(sel_b, beta - b), using extension field arithmetic
 // This is intended to be used as a hint in the extension field case; for the base case
 // automatic witgen is smart enough to figure out the value if the accumulator.
 let compute_next_z: Fp2<expr>, Constr -> fe[] = query |acc, permutation_constraint| {
@@ -65,7 +65,7 @@ let compute_next_z: Fp2<expr>, Constr -> fe[] = query |acc, permutation_constrai
     } else {
         // The optimizer will have removed alpha, but the compression function
         // still accesses it (to multiply by 0 in this case)
-        Fp2::Fp2(0, 0)
+        from_base(0)
     };
     let beta = Fp2::Fp2(beta1, beta2);
     
@@ -87,10 +87,7 @@ let compute_next_z: Fp2<expr>, Constr -> fe[] = query |acc, permutation_constrai
 // Arguments:
 // - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
 //        are done on the F_{p^2} extension field.
-// - lhs_selector: (assumed to be) binary selector to check which elements from the LHS to include
-// - lhs: An array of expressions
-// - rhs_selector: (assumed to be) binary selector to check which elements from the RHS to include
-// - rhs: An array of expressions
+// - permutation_constraint: The permutation constraint
 let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
@@ -109,7 +106,7 @@ let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
     // in which case the operations below effectively only operate on the first component.
-    let fp2_from_array = |arr| if with_extension { Fp2::Fp2(arr[0], arr[1]) } else { Fp2::Fp2(arr[0], 0) };
+    let fp2_from_array = |arr| if with_extension { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
     let acc_ext = fp2_from_array(acc);
     let alpha = fp2_from_array([alpha1, alpha2]);
     let beta = fp2_from_array([beta1, beta2]);
@@ -124,7 +121,7 @@ let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
         next_ext(acc_ext)
     } else {
         // The second component is 0, but the next operator is not defined on it...
-        Fp2::Fp2(acc[0]', 0)
+        from_base(acc[0]')
     };
 
     // Update rule:
