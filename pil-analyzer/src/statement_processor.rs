@@ -181,6 +181,17 @@ where
                         TypeDeclarationParsed::Enum(enum_declaration.clone()),
                     )),
                 ),
+            PilStatement::StructDeclaration(source, struct_declaration) => self
+                .handle_symbol_definition(
+                    source,
+                    struct_declaration.name.clone(),
+                    SymbolKind::Other(),
+                    None,
+                    None,
+                    Some(FunctionDefinition::TypeDeclaration(
+                        TypeDeclarationParsed::Struct(struct_declaration.clone()),
+                    )),
+                ),
             _ => self.handle_identity_statement(statement),
         }
     }
@@ -469,6 +480,7 @@ where
         {
             assert_eq!(symbol_kind, SymbolKind::Other());
             let struct_decl = self.process_struct_declaration(struct_decl);
+            // TODO Need to handle struct fields as well.
             return iter::once(PILItem::Definition(
                 symbol,
                 Some(FunctionValueDefinition::TypeDeclaration(
