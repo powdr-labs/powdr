@@ -35,19 +35,23 @@ let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |per
     _ => panic("Expected permutation constraint")
 };
 
-// Whether we need to operate on the F_{p^2} extension field (because the current field is too small).
+/// Whether we need to operate on the F_{p^2} extension field (because the current field is too small).
 let needs_extension: -> bool = || match known_field() {
     Option::Some(KnownField::Goldilocks) => true,
     Option::Some(KnownField::BN254) => false,
     None => panic("The permutation argument is not implemented for the current field!")
 };
 
-// Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
+/// Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
 let<T: Add + Mul + FromLiteral> compress_expression_array: T[], Fp2<T> -> Fp2<T> = |expr_array, alpha| fold(
     expr_array,
     Fp2::Fp2(0, 0),
     |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), Fp2::Fp2(el, 0))
 );
+
+/// Takes a selector (0 or 1) and a value, returns value (if selector == 1) or 1 (if selector == 0)
+/// Implemented as: selector * (value - 1) + 1
+let<T: Add + Mul + Sub + FromLiteral> selected_or_one: T, Fp2<T> -> Fp2<T> = |selector, value| add_ext(mul_ext(from_base(selector), sub_ext(value, from_base(1))), from_base(1));
 
 // Compute z' = z * (beta - a) / (beta - b), using extension field arithmetic
 // This is intended to be used as a hint in the extension field case; for the base case
@@ -65,13 +69,13 @@ let compute_next_z: Fp2<expr>, Constr -> fe[] = query |acc, permutation_constrai
     };
     let beta = Fp2::Fp2(beta1, beta2);
     
-    let lhs_folded = mul_ext(from_base(lhs_selector), compress_expression_array(lhs, alpha));
-    let rhs_folded = mul_ext(from_base(rhs_selector), compress_expression_array(rhs, alpha));
+    let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, compress_expression_array(lhs, alpha)));
+    let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, compress_expression_array(rhs, alpha)));
     
-    // acc' = acc * (beta - lhs_folded) / (beta - rhs_folded)
+    // acc' = acc * lhs_folded / rhs_folded
     let res = mul_ext(
-        eval_ext(mul_ext(acc, sub_ext(beta, lhs_folded))),
-        inv_ext(eval_ext(sub_ext(beta, rhs_folded)))
+        eval_ext(mul_ext(acc, lhs_folded)),
+        inv_ext(eval_ext(rhs_folded))
     );
 
     match res {
@@ -110,8 +114,11 @@ let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
     let alpha = fp2_from_array([alpha1, alpha2]);
     let beta = fp2_from_array([beta1, beta2]);
 
-    let lhs_folded = mul_ext(Fp2::Fp2(lhs_selector, 0), compress_expression_array(lhs, alpha));
-    let rhs_folded = mul_ext(Fp2::Fp2(rhs_selector, 0), compress_expression_array(rhs, alpha));
+    // If the selector is 1, contribute a factor of `beta - compress_expression_array(lhs)` to accumulator.
+    // If the selector is 0, contribute a factor of 1 to the accumulator.
+    // Implemented as: folded = selector * (beta - compress_expression_array(values) - 1) + 1;
+    let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, compress_expression_array(lhs, alpha)));
+    let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, compress_expression_array(rhs, alpha)));
 
     let next_acc = if with_extension {
         next_ext(acc_ext)
@@ -121,11 +128,11 @@ let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
     };
 
     // Update rule:
-    // acc' = acc * (beta - lhs_folded) / (beta - rhs_folded)
-    // => (beta - rhs_folded) * acc' - (beta - lhs_folded) * acc = 0
+    // acc' = acc * lhs_folded / rhs_folded
+    // => rhs_folded * acc' - lhs_folded * acc = 0
     let (update_expr_1, update_expr_2) = unpack_ext(sub_ext(
-        mul_ext(sub_ext(beta, rhs_folded), next_acc),
-        mul_ext(sub_ext(beta, lhs_folded), acc_ext)
+        mul_ext(rhs_folded, next_acc),
+        mul_ext(lhs_folded, acc_ext)
     ));
 
     let (acc_1, acc_2) = unpack_ext(acc_ext);
