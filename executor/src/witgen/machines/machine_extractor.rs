@@ -77,7 +77,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             .collect::<Vec<_>>();
         assert!(connecting_identities.contains(id));
 
-        log::debug!(
+        log::trace!(
             "\nExtracted a machine with the following witnesses:\n{} \n and identities:\n{} \n and connecting identities:\n{}",
             machine_witnesses
                 .iter()
@@ -142,7 +142,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             &machine_identities,
             &machine_witnesses,
         ) {
-            log::debug!("Detected machine: block");
+            log::debug!("Detected machine: {machine}");
             machines.push(KnownMachine::BlockMachine(machine));
         } else {
             log::debug!("Detected machine: VM.");
