@@ -803,7 +803,7 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             Pattern::Struct(name, data) => {
-                let (ty, generic_args) =
+                let (ty, _generic_args) =
                     self.instantiate_scheme(self.declared_types[&name.to_dotted_string()].clone());
                 let ty = type_for_reference(&ty);
 
@@ -833,7 +833,7 @@ impl<'a> TypeChecker<'a> {
                         params
                             .iter()
                             .zip(data)
-                            .try_for_each(|(ty, pat)| self.expect_type_of_pattern(&ty, pat))?;
+                            .try_for_each(|(ty, pat)| self.expect_type_of_pattern(ty, pat))?;
                         (*value).clone()
                     }
                     None => {

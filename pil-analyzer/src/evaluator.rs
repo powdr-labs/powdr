@@ -296,7 +296,8 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     return None;
                 }
                 if let Some(fields) = fields_pattern {
-                    Value::try_match_pattern_list(data.as_ref().unwrap(), fields)
+                    let patterns = data.values().cloned().collect::<Vec<_>>();
+                    Value::try_match_pattern_list(patterns.as_slice(), fields)
                 } else {
                     Some(vec![])
                 }
