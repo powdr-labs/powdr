@@ -41,8 +41,8 @@ impl ProverBuilder for BBFiles {
         void execute_relation_check_rounds();
         void execute_zeromorph_rounds();
     
-        HonkProof& export_proof();
-        HonkProof& construct_proof();
+        HonkProof export_proof();
+        HonkProof construct_proof();
     
         std::shared_ptr<Transcript> transcript = std::make_shared<Transcript>();
     
@@ -203,13 +203,13 @@ impl ProverBuilder for BBFiles {
     }}
 
     
-    HonkProof& {name}Prover::export_proof()
+    HonkProof {name}Prover::export_proof()
     {{
         proof = transcript->proof_data;
         return proof;
     }}
     
-    HonkProof& {name}Prover::construct_proof()
+    HonkProof {name}Prover::construct_proof()
     {{
         // Add circuit size public input size and public inputs to transcript.
         execute_preamble_round();
