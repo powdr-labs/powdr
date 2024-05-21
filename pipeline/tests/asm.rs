@@ -16,6 +16,15 @@ fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
 }
 
 #[test]
+fn sqrt_asm() {
+    let f = "asm/sqrt.asm";
+    let i = [3];
+    verify_asm(f, slice_to_vec(&i));
+    test_halo2(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
@@ -376,6 +385,14 @@ fn enum_in_asm() {
 }
 
 #[test]
+fn side_effects() {
+    let f = "asm/side_effects.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn permutation_simple() {
     let f = "asm/permutations/simple.asm";
     verify_asm(f, Default::default());
@@ -392,9 +409,9 @@ fn permutation_to_block() {
 }
 
 #[test]
-#[should_panic = "Witness generation failed"]
+#[should_panic = "called `Result::unwrap()` on an `Err` value: Linear constraint is not satisfiable: 18446744069414584320 != 0"]
 fn permutation_to_vm() {
-    // TODO: witgen issue
+    // TODO: witgen issue: Machine incorrectly detected as block machine.
     let f = "asm/permutations/vm_to_vm.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
@@ -402,9 +419,9 @@ fn permutation_to_vm() {
 }
 
 #[test]
-#[should_panic = "Witness generation failed"]
+#[should_panic = "Verifier did not say 'PIL OK'."]
 fn permutation_to_block_to_block() {
-    // TODO: witgen issue
+    // TODO: witgen issue (https://github.com/powdr-labs/powdr/issues/1385)
     let f = "asm/permutations/block_to_block.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());

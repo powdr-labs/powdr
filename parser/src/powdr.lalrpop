@@ -462,17 +462,17 @@ FunctionKind: FunctionKind = {
 }
 
 LogicalOr: Box<Expression> = {
-    <l:LogicalOr> "||" <r:LogicalAnd> => Box::new(Expression::BinaryOperation(l, BinaryOperator::LogicalOr, r)),
+    <left:LogicalOr> "||" <right:LogicalAnd> => Box::new((BinaryOperation { left, op: BinaryOperator::LogicalOr, right }).into()),
     LogicalAnd,
 }
 
 LogicalAnd: Box<Expression> = {
-    <l:LogicalAnd> "&&" <r:Comparison> => Box::new(Expression::BinaryOperation(l, BinaryOperator::LogicalAnd, r)),
+    <left:LogicalAnd> "&&" <right:Comparison> => Box::new((BinaryOperation{left, op: BinaryOperator::LogicalAnd, right}).into()),
     Comparison,
 }
 
 Comparison: Box<Expression> = {
-    <BinaryOr> <ComparisonOp> <BinaryOr> => Box::new(Expression::BinaryOperation(<>)),
+    <left:BinaryOr> <op:ComparisonOp> <right:BinaryOr> => Box::new((BinaryOperation{left, op, right}).into()),
     BinaryOr
 }
 
@@ -487,7 +487,7 @@ ComparisonOp: BinaryOperator = {
 }
 
 BinaryOr: Box<Expression> = {
-    BinaryOr BinaryOrOp BinaryXor => Box::new(Expression::BinaryOperation(<>)),
+    <left:BinaryOr> <op:BinaryOrOp> <right:BinaryXor> => Box::new((BinaryOperation{left, op, right}).into()),
     BinaryXor,
 }
 
@@ -496,7 +496,7 @@ BinaryOrOp: BinaryOperator = {
 }
 
 BinaryXor: Box<Expression> = {
-    BinaryXor BinaryXorOp BinaryAnd => Box::new(Expression::BinaryOperation(<>)),
+    <left:BinaryXor> <op:BinaryXorOp> <right:BinaryAnd> => Box::new((BinaryOperation{left, op, right}).into()),
     BinaryAnd,
 }
 
@@ -505,7 +505,7 @@ BinaryXorOp: BinaryOperator = {
 }
 
 BinaryAnd: Box<Expression> = {
-    BinaryAnd BinaryAndOp BitShift => Box::new(Expression::BinaryOperation(<>)),
+    <left:BinaryAnd> <op:BinaryAndOp> <right:BitShift> => Box::new((BinaryOperation{left, op, right}).into()),
     BitShift,
 }
 
@@ -514,7 +514,7 @@ BinaryAndOp: BinaryOperator = {
 }
 
 BitShift: Box<Expression> = {
-    BitShift BitShiftOp Sum => Box::new(Expression::BinaryOperation(<>)),
+    <left:BitShift> <op:BitShiftOp> <right:Sum> => Box::new((BinaryOperation{left, op, right}).into()),
     Sum,
 }
 
@@ -524,7 +524,7 @@ BitShiftOp: BinaryOperator = {
 }
 
 Sum: Box<Expression> = {
-    Sum SumOp Product => Box::new(Expression::BinaryOperation(<>)),
+    <left:Sum> <op:SumOp> <right:Product> => Box::new((BinaryOperation{left, op, right}).into()),
     Product,
 }
 
@@ -534,7 +534,7 @@ SumOp: BinaryOperator = {
 }
 
 Product: Box<Expression> = {
-    Product ProductOp Power => Box::new(Expression::BinaryOperation(<>)),
+    <left:Product> <op:ProductOp> <right:Power> => Box::new((BinaryOperation{left, op, right}).into()),
     Power,
 }
 
@@ -545,7 +545,7 @@ ProductOp: BinaryOperator = {
 }
 
 Power: Box<Expression> = {
-    <Term> <PowOp> <Power> => Box::new(Expression::BinaryOperation(<>)),
+    <left:Term> <op:PowOp> <right:Power> => Box::new((BinaryOperation{left, op, right}).into()),
     Unary,
 }
 
@@ -554,7 +554,7 @@ PowOp: BinaryOperator = {
 }
 
 Unary: Box<Expression> = {
-    PrefixUnaryOp PostfixUnary => Box::new(Expression::UnaryOperation(<>)),
+    <op:PrefixUnaryOp> <expr:PostfixUnary> => Box::new(UnaryOperation{op, expr}.into()),
     PostfixUnary,
 }
 
@@ -564,7 +564,7 @@ PrefixUnaryOp: UnaryOperator = {
 }
 
 PostfixUnary: Box<Expression> = {
-    <t:Term> <o:PostfixUnaryOp> => Box::new(Expression::UnaryOperation(o, t)),
+    <t:Term> <op:PostfixUnaryOp> => Box::new(UnaryOperation{op, expr: t}.into()),
     Term,
 }
 

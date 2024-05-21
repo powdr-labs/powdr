@@ -15,6 +15,7 @@ use crate::{parsed::FunctionKind, writeln_indented, writeln_indented_by};
 use self::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
     display::format_type_scheme_around_name,
+    BinaryOperation,
 };
 
 use super::*;
@@ -272,7 +273,12 @@ impl Display for Identity<Expression> {
         match self.kind {
             IdentityKind::Polynomial => {
                 let expression = self.expression_for_poly_id();
-                if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expression {
+                if let Expression::BinaryOperation(BinaryOperation {
+                    left,
+                    op: BinaryOperator::Sub,
+                    right,
+                }) = expression
+                {
                     write!(f, "{left} = {right};")
                 } else {
                     write!(f, "{expression} = 0;")
