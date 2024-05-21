@@ -8,6 +8,7 @@ use std::{
     sync::Arc,
 };
 
+use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
@@ -25,7 +26,7 @@ use powdr_ast::{
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::{
-    evaluator::{self, Definitions, EvalError, SymbolLookup, Value},
+    evaluator::{self, evaluate_function_call, Definitions, EvalError, SymbolLookup, Value},
     statement_processor::Counters,
 };
 
@@ -170,6 +171,8 @@ pub struct Condenser<'a, T> {
     /// The names of all new witness columns ever generated, to avoid duplicates.
     all_new_witness_names: HashSet<String>,
     new_constraints: Vec<IdentityWithoutID<AlgebraicExpression<T>>>,
+    /// The current stage.
+    stage: u32,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -231,6 +234,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             new_witnesses: vec![],
             all_new_witness_names: HashSet::new(),
             new_constraints: vec![],
+            stage: 0,
         }
     }
 
@@ -359,7 +363,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             id: self.next_witness_id,
             source,
             absolute_name: name.clone(),
-            stage: None,
+            stage: Some(self.stage),
             kind: SymbolKind::Poly(PolynomialType::Committed),
             length: None,
         };
@@ -394,6 +398,35 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         }
         Ok(())
     }
+
+    fn capture_stage(&mut self, fun: Arc<Value<'a, T>>) -> Result<Arc<Value<'a, T>>, EvalError> {
+        // TODO also check that there are no constraints at the global level.
+        if !self.new_constraints.is_empty() {
+            return Err(EvalError::Unsupported(format!(
+                "Stage is not fresh, there are constraints: {}",
+                self.new_constraints
+                    .iter()
+                    .map(|id| id.clone().into_identity(0))
+                    .format(", ")
+            )));
+        }
+
+        let degree = evaluate_function_call(fun, vec![], self)?;
+        let Value::Integer(_degree) = degree.as_ref() else {
+            panic!("Type error")
+        };
+        self.stage += 1;
+
+        // TODO use degree
+        Ok(Value::Array(
+            self.extract_new_constraints()
+                .into_iter()
+                .map(Into::into)
+                .map(Arc::new)
+                .collect(),
+        )
+        .into())
+    }
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
@@ -406,6 +439,49 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
                 !self.symbols.contains_key(name) && !self.all_new_witness_names.contains(name)
             })
             .unwrap()
+    }
+}
+
+impl<'a, T: FieldElement> From<IdentityWithoutID<AlgebraicExpression<T>>> for Value<'a, T> {
+    fn from(id: IdentityWithoutID<AlgebraicExpression<T>>) -> Self {
+        match id.kind {
+            IdentityKind::Polynomial => {
+                let id = id.into_identity(0);
+                let (left, right) = id.as_polynomial_identity();
+                let right = right
+                    .cloned()
+                    .unwrap_or_else(|| AlgebraicExpression::Number(0.into()));
+                let fields = [left.clone(), right]
+                    .into_iter()
+                    .map(|v| Arc::new(v.into()))
+                    .collect();
+
+                Value::Enum("Identity", Some(fields))
+            }
+            IdentityKind::Plookup | IdentityKind::Permutation => {
+                let name = if id.kind == IdentityKind::Plookup {
+                    "Lookup"
+                } else {
+                    "Permutation"
+                };
+                Value::Enum(
+                    name,
+                    Some(vec![
+                        to_option_expr_value(id.left.selector),
+                        to_vec_expr_value(id.left.expressions),
+                        to_option_expr_value(id.right.selector),
+                        to_vec_expr_value(id.right.expressions),
+                    ]),
+                )
+            }
+            IdentityKind::Connect => Value::Enum(
+                "Connection",
+                Some(vec![
+                    to_vec_expr_value(id.left.expressions),
+                    to_vec_expr_value(id.right.expressions),
+                ]),
+            ),
+        }
     }
 }
 
@@ -488,4 +564,17 @@ fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
     } else {
         panic!()
     }
+}
+
+fn to_option_expr_value<'a, T>(value: Option<AlgebraicExpression<T>>) -> Arc<Value<'a, T>> {
+    Arc::new(match value {
+        None => Value::Enum("None", None),
+        Some(expr) => Value::Enum("Some", Some(vec![Arc::new(expr.into())])),
+    })
+}
+
+fn to_vec_expr_value<'a, T>(items: Vec<AlgebraicExpression<T>>) -> Arc<Value<'a, T>> {
+    Arc::new(Value::Array(
+        items.into_iter().map(|e| Arc::new(e.into())).collect(),
+    ))
 }

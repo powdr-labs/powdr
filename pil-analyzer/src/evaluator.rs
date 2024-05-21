@@ -146,7 +146,7 @@ impl<'a, T: FieldElement> From<T> for Value<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> From<AlgebraicExpression<T>> for Value<'a, T> {
+impl<'a, T> From<AlgebraicExpression<T>> for Value<'a, T> {
     fn from(value: AlgebraicExpression<T>) -> Self {
         Value::Expression(value)
     }
@@ -308,7 +308,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 10] = [
+const BUILTINS: [(&str, BuiltinFunction); 11] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -316,6 +316,7 @@ const BUILTINS: [(&str, BuiltinFunction); 10] = [
     ("std::convert::int", BuiltinFunction::ToInt),
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
+    ("std::prover::capture_stage", BuiltinFunction::CaptureStage),
     ("std::prover::challenge", BuiltinFunction::Challenge),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
@@ -339,6 +340,11 @@ pub enum BuiltinFunction {
     ToInt,
     /// std::convert::fe: int/fe -> fe, converts int to fe
     ToFe,
+    /// std::prover::capture_stage: (-> int) -> Constr[], evaluates the first argument,
+    /// and returns the constraints that this functions added to the global set.
+    /// Increments the stage and sets the degree of the previous stage to the number returned
+    /// by the function.
+    CaptureStage,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
     /// std::prover::degree: -> int, returns the current column length / degree.
@@ -555,6 +561,12 @@ pub trait SymbolLookup<'a, T: FieldElement> {
     ) -> Result<(), EvalError> {
         Err(EvalError::Unsupported(
             "Tried to add constraints outside of statement context.".to_string(),
+        ))
+    }
+
+    fn capture_stage(&mut self, _fun: Arc<Value<'a, T>>) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "The function capture_stage is not allowed at this point.".to_string(),
         ))
     }
 }
@@ -1085,6 +1097,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::ToExpr => 1,
         BuiltinFunction::ToFe => 1,
         BuiltinFunction::ToInt => 1,
+        BuiltinFunction::CaptureStage => 1,
         BuiltinFunction::Challenge => 2,
         BuiltinFunction::Degree => 0,
         BuiltinFunction::Eval => 1,
@@ -1155,6 +1168,10 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             .into()
         }
         BuiltinFunction::Degree => symbols.degree()?,
+        BuiltinFunction::CaptureStage => {
+            let fun = arguments.pop().unwrap();
+            symbols.capture_stage(fun)?
+        }
         BuiltinFunction::Eval => {
             let arg = arguments.pop().unwrap();
             match arg.as_ref() {

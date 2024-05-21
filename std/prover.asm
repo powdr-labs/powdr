@@ -29,3 +29,9 @@ let require_min_degree: int -> Constr[] = |m| std::check::assert(degree() >= m, 
 
 /// Asserts that the current degree or row count is at most m;
 let require_max_degree: int -> Constr[] = |m| std::check::assert(degree() <= m, || "Degree too large.");
+
+/// Calls a function that adds constraints to the global context
+/// and returns the degree.
+/// Returns those constraints and asserts that the global context
+/// is empty at the beginning. Increments the stage.
+let capture_stage: (-> int) -> Constr[] = [];
