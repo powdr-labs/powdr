@@ -79,7 +79,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<T>,
-        connecting_identities: &[&'a Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
         // get the namespaces and column names
@@ -94,14 +94,14 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         }
 
         if !connecting_identities
-            .iter()
+            .values()
             .all(|i| i.kind == IdentityKind::Permutation)
         {
             return None;
         }
 
         let selector_ids = connecting_identities
-            .iter()
+            .values()
             .map(|i| {
                 i.right
                     .selector
@@ -110,11 +110,6 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                     .map(|p| (i.id, p.poly_id))
             })
             .collect::<Option<BTreeMap<_, _>>>()?;
-
-        let connecting_identities = connecting_identities
-            .iter()
-            .map(|i| (i.id, *i))
-            .collect::<BTreeMap<_, _>>();
 
         let namespace = namespaces.drain().next().unwrap().into();
 
@@ -162,7 +157,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                     trace: Default::default(),
                     data: Default::default(),
                     selector_ids,
-                    connecting_identities,
+                    connecting_identities: connecting_identities.clone(),
                 })
             } else {
                 None
@@ -178,7 +173,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 trace: Default::default(),
                 data: Default::default(),
                 selector_ids,
-                connecting_identities,
+                connecting_identities: connecting_identities.clone(),
             })
         }
     }

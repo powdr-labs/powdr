@@ -38,7 +38,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<T>,
-        connecting_identities: &[&'a Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         identities: &[&Identity<Expression<T>>],
         witnesses: &HashSet<PolyID>,
     ) -> Option<Self> {
@@ -55,7 +55,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .collect();
 
             let rhs_references = connecting_identities
-                .iter()
+                .values()
                 .filter_map(|&id| {
                     let rhs_expressions = id
                         .right
@@ -77,14 +77,9 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 return None;
             }
 
-            let connecting_identities = connecting_identities
-                .iter()
-                .map(|id| (id.id, *id))
-                .collect::<BTreeMap<_, _>>();
-
             Some(SortedWitnesses {
                 rhs_references,
-                connecting_identities,
+                connecting_identities: connecting_identities.clone(),
                 name,
                 key_col,
                 witness_positions,

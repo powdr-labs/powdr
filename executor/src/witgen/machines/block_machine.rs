@@ -124,19 +124,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &[&'a Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         identities: &[&'a Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
         let (is_permutation, block_size, latch_row) =
             detect_connection_type_and_block_size(fixed_data, connecting_identities)?;
-
-        // Collect all right-hand sides of the connecting identities.
-        // This is used later to decide to which lookup the machine should respond.
-        let connecting_identities = connecting_identities
-            .iter()
-            .map(|id| (id.id, *id))
-            .collect::<BTreeMap<_, _>>();
 
         for id in connecting_identities.values() {
             for r in id.right.expressions.iter() {
@@ -166,7 +159,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             name,
             block_size,
             latch_row,
-            connecting_identities,
+            connecting_identities: connecting_identities.clone(),
             connection_type: is_permutation,
             identities: identities.to_vec(),
             data,
@@ -183,13 +176,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
 fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
-    connecting_identities: &[&'a Identity<Expression<T>>],
+    connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
 ) -> Option<(ConnectionType, usize, usize)> {
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
     // Connecting identities should either all be permutations or all lookups.
     let connection_type = connecting_identities
-        .iter()
+        .values()
         .map(|id| id.kind.try_into())
         .unique()
         .exactly_one()
@@ -201,7 +194,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
         ConnectionType::Lookup => {
             // We'd expect all RHS selectors to be fixed columns of the same period.
             connecting_identities
-                .iter()
+                .values()
                 .map(|id| try_to_period(&id.right.selector, fixed_data))
                 .unique()
                 .exactly_one()
@@ -218,7 +211,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
                     .max_by_key(|&(_, period)| period)
             };
             let mut latch_candidates = BTreeSet::new();
-            for id in connecting_identities {
+            for id in connecting_identities.values() {
                 if let Some(selector) = &id.right.selector {
                     collect_fixed_cols(selector, &mut latch_candidates);
                 }

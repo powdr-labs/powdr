@@ -47,7 +47,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &[&'a Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         identities: &[&Identity<Expression<T>>],
     ) -> Option<Self> {
         if !identities.is_empty() {
@@ -55,14 +55,14 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         if !connecting_identities
-            .iter()
+            .values()
             .all(|i| i.kind == IdentityKind::Plookup)
         {
             return None;
         }
 
         // All connecting identities should have no selector or a selector of 1
-        if connecting_identities.iter().any(|i| {
+        if connecting_identities.values().any(|i| {
             i.right
                 .selector
                 .as_ref()
@@ -73,9 +73,14 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         // All RHS expressions should be the same
-        let rhs_expressions = &connecting_identities[0].right.expressions;
+        let rhs_expressions = &connecting_identities
+            .values()
+            .next()
+            .unwrap()
+            .right
+            .expressions;
         if connecting_identities
-            .iter()
+            .values()
             .any(|i| i.right.expressions != *rhs_expressions)
         {
             return None;
@@ -111,13 +116,8 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         }
 
-        let connecting_identities = connecting_identities
-            .iter()
-            .map(|id| (id.id, *id))
-            .collect::<BTreeMap<_, _>>();
-
         Some(Self {
-            connecting_identities,
+            connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
             rhs_expressions,

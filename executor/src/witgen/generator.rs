@@ -48,17 +48,17 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        log::trace!("Start processing secondary VM '{}'", self.name());
-        log::trace!("Arguments:");
-        let args = &self.connecting_identities[&identity_id]
+        let left = self.connecting_identities[&identity_id]
             .left
             .expressions
             .iter()
-            .map(|e| caller_rows.evaluate(e))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .map(|e| caller_rows.evaluate(e).unwrap())
+            .collect::<Vec<_>>();
         let right = &self.connecting_identities.get(&identity_id).unwrap().right;
-        for (r, l) in right.expressions.iter().zip(args) {
+
+        log::trace!("Start processing secondary VM '{}'", self.name());
+        log::trace!("Arguments:");
+        for (r, l) in right.expressions.iter().zip(&left) {
             log::trace!("  {r} = {l}");
         }
 
@@ -68,10 +68,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             .cloned()
             .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
 
-        let outer_query = OuterQuery {
-            left: args.to_vec(),
-            right,
-        };
+        let outer_query = OuterQuery { left, right };
         let ProcessResult { eval_value, block } =
             self.process(first_row, 0, mutable_state, Some(outer_query), false);
 
@@ -115,17 +112,14 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &[&'a Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         identities: Vec<&'a Identity<Expression<T>>>,
         witnesses: HashSet<PolyID>,
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&witnesses);
         Self {
-            connecting_identities: connecting_identities
-                .iter()
-                .map(|identity| (identity.id, *identity))
-                .collect(),
+            connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
             identities,
