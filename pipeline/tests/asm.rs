@@ -385,6 +385,14 @@ fn enum_in_asm() {
 }
 
 #[test]
+fn pass_range_constraints() {
+    let f = "asm/pass_range_constraints.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn permutation_simple() {
     let f = "asm/permutations/simple.asm";
     verify_asm(f, Default::default());
