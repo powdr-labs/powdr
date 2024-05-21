@@ -13,21 +13,21 @@ halo2 = ["powdr-backend/halo2"]
 estark-polygon = ["powdr-backend/estark-polygon"]
 
 [dependencies]
-powdr-airgen = { path = "../airgen" }
-powdr-analysis = { path = "../analysis" }
-powdr-asm-to-pil = { path = "../asm-to-pil" }
-powdr-asm-utils = { path = "../asm-utils" }
-powdr-ast = { path = "../ast" }
-powdr-backend = { path = "../backend" }
-powdr-executor = { path = "../executor" }
-powdr-importer = { path = "../importer" }
-powdr-linker = { path = "../linker" }
-powdr-number = { path = "../number" }
-powdr-parser = { path = "../parser" }
-powdr-parser-util = { path = "../parser-util" }
-powdr-pilopt = { path = "../pilopt" }
-powdr-pil-analyzer = { path = "../pil-analyzer" }
-powdr-schemas = { path = "../schemas" }
+powdr-airgen.workspace = true
+powdr-analysis.workspace = true
+powdr-asm-to-pil.workspace = true
+powdr-asm-utils.workspace = true
+powdr-ast.workspace = true
+powdr-backend.workspace = true
+powdr-executor.workspace = true
+powdr-importer.workspace = true
+powdr-linker.workspace = true
+powdr-number.workspace = true
+powdr-parser.workspace = true
+powdr-parser-util.workspace = true
+powdr-pilopt.workspace = true
+powdr-pil-analyzer.workspace = true
+powdr-schemas.workspace = true
 
 itertools = "^0.10"
 log = "0.4.17"

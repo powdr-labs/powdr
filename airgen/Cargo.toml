@@ -8,9 +8,9 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-powdr-ast = { path = "../ast" }
-powdr-number = { path = "../number" }
-powdr-analysis = { path = "../analysis" }
+powdr-ast.workspace = true
+powdr-number.workspace = true
+powdr-analysis.workspace = true
 
 log = "0.4.17"
 

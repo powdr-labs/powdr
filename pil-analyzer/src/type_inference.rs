@@ -7,8 +7,8 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
-        ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock,
-        MatchArm, Number, Pattern, StatementInsideBlock, UnaryOperation,
+        ArrayLiteral, BinaryOperation, FunctionCall, IndexAccess, LambdaExpression,
+        LetStatementInsideBlock, MatchArm, Number, Pattern, StatementInsideBlock, UnaryOperation,
     },
 };
 
@@ -544,7 +544,7 @@ impl<'a> TypeChecker<'a> {
                     length: None,
                 })
             }
-            Expression::BinaryOperation(left, op, right) => {
+            Expression::BinaryOperation(BinaryOperation { left, op, right }) => {
                 // TODO at some point, also store the generic args for operators
                 let fun_type = self.instantiate_scheme(binary_operator_scheme(*op)).0;
                 self.infer_type_of_function_call(

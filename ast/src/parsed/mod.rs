@@ -342,8 +342,8 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     Tuple(Vec<Self>),
     LambdaExpression(LambdaExpression<Self>),
     ArrayLiteral(ArrayLiteral<Self>),
-    BinaryOperation(Box<Self>, BinaryOperator, Box<Self>),
     UnaryOperation(UnaryOperation<Self>),
+    BinaryOperation(BinaryOperation<Self>),
     IndexAccess(IndexAccess<Self>),
     FunctionCall(FunctionCall<Self>),
     FreeInput(Box<Self>),
@@ -362,6 +362,13 @@ impl<Ref> From<UnaryOperation<Expression<Ref>>> for Expression<Ref> {
     fn from(operation: UnaryOperation<Expression<Ref>>) -> Self {
         Expression::UnaryOperation(operation)
     }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BinaryOperation<E = Expression<NamespacedPolynomialReference>> {
+    pub left: Box<E>,
+    pub op: BinaryOperator,
+    pub right: Box<E>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
@@ -392,7 +399,11 @@ pub type ExpressionPrecedence = u64;
 
 impl<Ref> Expression<Ref> {
     pub fn new_binary(left: Self, op: BinaryOperator, right: Self) -> Self {
-        Expression::BinaryOperation(Box::new(left), op, Box::new(right))
+        Expression::BinaryOperation(BinaryOperation {
+            left: Box::new(left),
+            op,
+            right: Box::new(right),
+        })
     }
 
     /// Visits this expression and all of its sub-expressions and returns true
@@ -408,6 +419,12 @@ impl<Ref> Expression<Ref> {
             }
         })
         .is_break()
+    }
+}
+
+impl<Ref> From<BinaryOperation<Expression<Ref>>> for Expression<Ref> {
+    fn from(operation: BinaryOperation<Expression<Ref>>) -> Self {
+        Expression::BinaryOperation(operation)
     }
 }
 
@@ -471,7 +488,7 @@ impl<R> Expression<R> {
             Expression::Tuple(v) => v.iter(),
             Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_ref()),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter(),
-            Expression::BinaryOperation(left, _, right) => {
+            Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
                 [left.as_ref(), right.as_ref()].into_iter()
             }
             Expression::UnaryOperation(UnaryOperation { expr, .. }) => once(expr.as_ref()),
@@ -512,7 +529,7 @@ impl<R> Expression<R> {
             Expression::Tuple(v) => v.iter_mut(),
             Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_mut()),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter_mut(),
-            Expression::BinaryOperation(left, _, right) => {
+            Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
                 [left.as_mut(), right.as_mut()].into_iter()
             }
             Expression::UnaryOperation(UnaryOperation { expr, .. }) => once(expr.as_mut()),
@@ -724,8 +741,8 @@ impl Precedence for BinaryOperator {
 impl<E> Precedence for Expression<E> {
     fn precedence(&self) -> Option<ExpressionPrecedence> {
         match self {
-            Expression::UnaryOperation(UnaryOperation { op, expr: _ }) => op.precedence(),
-            Expression::BinaryOperation(_left, op, _right) => op.precedence(),
+            Expression::UnaryOperation(operation) => operation.op.precedence(),
+            Expression::BinaryOperation(operation) => operation.op.precedence(),
             _ => None,
         }
     }

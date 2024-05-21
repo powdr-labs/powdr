@@ -1,6 +1,13 @@
 # Installation
 
 The only way to install powdr currently is to build it from source.
+There are two binaries, `powdr` and `powdr-rs`.
+
+The former can compile powdr-asm files to powdr-PIL, as well as generate
+witnesses and proofs.
+
+The latter compiles Rust crates to powdr-asm via RISCV, and can execute
+powdr-asm code with given inputs.
 
 ## Prerequisites
 
@@ -21,7 +28,7 @@ You will also need the following build time dependencies:
 - `libpqxx-dev` (Ubuntu) | `libpqxx` (Arch Linux)
 - `nasm`
 
-## Building
+## Building *powdr*
 
 Using a single Cargo command (enable the Halo2 backend to use it with the cli):
 
@@ -37,4 +44,22 @@ git clone https://github.com/powdr-labs/powdr.git
 cd powdr
 # install powdr-cli
 cargo install --features halo2 --path ./cli
+```
+
+## Building *powdr-rs*
+
+Using a single Cargo command:
+
+```sh
+cargo install --git https://github.com/powdr-labs/powdr powdr-rs-cli
+```
+
+Or, by manually building from a local copy of the [powdr repository](https://github.com/powdr-labs/powdr):
+
+```sh
+# clone the repository
+git clone https://github.com/powdr-labs/powdr.git
+cd powdr
+# install powdr-rs-cli
+cargo install --path ./cli-rs
 ```

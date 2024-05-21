@@ -7,9 +7,9 @@ use std::{
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
-        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, NamespacedPolynomialReference, Number, Pattern,
-        SelectedExpressions, StatementInsideBlock, SymbolCategory, UnaryOperation,
+        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BinaryOperation, IfExpression,
+        LambdaExpression, LetStatementInsideBlock, MatchArm, NamespacedPolynomialReference, Number,
+        Pattern, SelectedExpressions, StatementInsideBlock, SymbolCategory, UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
@@ -98,16 +98,19 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             PExpression::LambdaExpression(lambda_expression) => {
                 Expression::LambdaExpression(self.process_lambda_expression(lambda_expression))
             }
-            PExpression::BinaryOperation(left, op, right) => Expression::BinaryOperation(
-                Box::new(self.process_expression(*left)),
-                op,
-                Box::new(self.process_expression(*right)),
-            ),
             PExpression::UnaryOperation(UnaryOperation { op, expr: value }) => UnaryOperation {
                 op,
                 expr: Box::new(self.process_expression(*value)),
             }
             .into(),
+            PExpression::BinaryOperation(BinaryOperation { left, op, right }) => {
+                (BinaryOperation {
+                    left: Box::new(self.process_expression(*left)),
+                    op,
+                    right: Box::new(self.process_expression(*right)),
+                })
+                .into()
+            }
             PExpression::IndexAccess(index_access) => {
                 Expression::IndexAccess(parsed::IndexAccess {
                     array: Box::new(self.process_expression(*index_access.array)),
