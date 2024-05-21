@@ -802,6 +802,7 @@ impl Display for UnaryOperator {
 impl<E: Display> Display for Type<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
+            Type::Empty => write!(f, "()"),
             Type::Bottom => write!(f, "!"),
             Type::Bool => write!(f, "bool"),
             Type::Int => write!(f, "int"),
