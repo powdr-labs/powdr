@@ -3,7 +3,6 @@ use std::fmt::Display;
 use std::iter;
 
 use super::{EvalResult, FixedData, FixedLookup};
-use crate::witgen::affine_expression::AffineExpression;
 
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
@@ -22,7 +21,6 @@ use powdr_ast::analyzed::{
     PolynomialType,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
-use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
@@ -543,8 +541,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         let process_result = self.process(
             mutable_state,
-            left,
-            right,
             &mut sequence_iterator,
             caller_rows,
             connecting_identity,
@@ -559,8 +555,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 .get_default_sequence_iterator();
             self.process(
                 mutable_state,
-                left,
-                right,
                 &mut sequence_iterator,
                 caller_rows,
                 connecting_identity,
@@ -596,8 +590,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     fn process<'b, Q: QueryCallback<T>>(
         &self,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
         sequence_iterator: &mut ProcessingSequenceIterator,
         caller_rows: &'b RowPair<'b, 'a, T>,
         connecting_identity: &'a Identity<Expression<T>>,

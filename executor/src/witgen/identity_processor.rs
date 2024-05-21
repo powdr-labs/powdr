@@ -11,11 +11,7 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::{
-    global_constraints::{CombinedRangeConstraintSet, RangeConstraintSet},
-    machines::Machine,
-    EvalError,
-};
+use crate::witgen::{global_constraints::CombinedRangeConstraintSet, machines::Machine, EvalError};
 
 use super::{
     affine_expression::AffineExpression,
@@ -244,24 +240,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             .unwrap_or(Ok(T::one()))?;
         assert_eq!(selector_value, T::one());
 
-        let range_constraint = CombinedRangeConstraintSet::new(caller_rows, caller_rows);
+        let range_constraint = CombinedRangeConstraintSet::new(caller_rows, current_rows);
 
         let mut updates = EvalValue::complete(vec![]);
 
         for (l, r) in left.iter().zip(right.expressions.iter()) {
             match current_rows.evaluate(r) {
                 Ok(r) => {
-                    println!("\nl: {:?}, r: {:?}", l, r);
-                    for (l, _) in l.nonzero_coefficients() {
-                        println!("  l: {:?}", l);
-                        println!("      ({:?})", range_constraint.range_constraint(l));
-                    }
-                    for (r, _) in r.nonzero_coefficients() {
-                        println!("  r: {:?}", r);
-                        println!("      ({:?})", range_constraint.range_constraint(r));
-                    }
                     let result = (l.clone() - r).solve_with_range_constraints(&range_constraint)?;
-                    println!("result: {:?}", result);
                     updates.combine(result);
                 }
                 Err(e) => {
