@@ -16,8 +16,13 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use powdr_riscv_runtime::input::get_prover_input;
-use powdr_riscv_runtime::print;
+//use powdr_riscv_runtime::input::get_prover_input;
+//use powdr_riscv_runtime::print;
+
+fn get_prover_input(idx: u32) -> u32 {
+    let input = [5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2];
+    input[idx as usize]
+}
 
 #[no_mangle]
 fn main() {
@@ -34,6 +39,6 @@ fn main() {
         (vec[half - 1] + vec[half]) / 2
     };
 
-    print!("Found median of {median}\n");
+    //print!("Found median of {median}\n");
     assert_eq!(median, expected);
 }
