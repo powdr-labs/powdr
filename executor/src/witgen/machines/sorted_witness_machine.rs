@@ -213,13 +213,12 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let left = &self.connecting_identities[&identity_id]
+        let left = self.connecting_identities[&identity_id]
             .left
             .expressions
             .iter()
-            .map(|e| caller_rows.evaluate(e))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .map(|e| caller_rows.evaluate(e).unwrap())
+            .collect::<Vec<_>>();
         let rhs = self.rhs_references.get(&identity_id).unwrap();
         let key_index = rhs.iter().position(|&x| x.poly_id == self.key_col).unwrap();
 

@@ -44,11 +44,9 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Returns a unique name for this machine.
     fn name(&self) -> &str;
 
-    /// Process a plookup. Not all values on the LHS need to be available.
-    /// Can update internal data.
-    /// Only return an error if this machine is able to handle the query and
-    /// it results in a constraint failure.
-    /// If this is not the right machine for the query, return `None`.
+    /// Processes a connecting identity of a given ID (which must be known to the callee).
+    /// Returns an error if the query leads to a constraint failure.
+    /// Otherwise, it computes any updates to the caller row pair and returns them.
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,

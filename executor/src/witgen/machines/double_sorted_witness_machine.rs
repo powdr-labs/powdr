@@ -350,9 +350,8 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             .left
             .expressions
             .iter()
-            .map(|e| caller_rows.evaluate(e))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .map(|e| caller_rows.evaluate(e).unwrap())
+            .collect::<Vec<_>>();
 
         let operation_id = match args[0].constant_value() {
             Some(v) => v,

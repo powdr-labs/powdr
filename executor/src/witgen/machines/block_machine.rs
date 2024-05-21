@@ -104,6 +104,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     block_size: usize,
     /// The row index (within the block) of the latch row
     latch_row: usize,
+    /// Connecting identities, indexed by their ID.
     connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
     /// The type of constraint used to connect this machine to its caller.
     connection_type: ConnectionType,
@@ -477,9 +478,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             .left
             .expressions
             .iter()
-            .map(|e| caller_rows.evaluate(e))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .map(|e| caller_rows.evaluate(e).unwrap())
+            .collect::<Vec<_>>();
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
