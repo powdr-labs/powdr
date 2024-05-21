@@ -329,7 +329,6 @@ fn execute<F: FieldElement>(
                 powdr_riscv_executor::ExecMode::Fast,
             );
             log::info!("Execution trace length: {}", trace.len);
-            println!("Host context: {:?}", pipeline.host_context().data);
         }
         (true, true) => {
             powdr_riscv::continuations::rust_continuations(
