@@ -2,8 +2,6 @@
 
 // #[cfg(feature = "bberg")]
 mod bberg_impl;
-#[cfg(feature = "halo2")]
-mod halo2_impl;
 mod pilstark;
 
 use ast::analyzed::Analyzed;
@@ -16,12 +14,6 @@ pub enum BackendType {
     // #[cfg(feature = "bberg")]
     #[strum(serialize = "bberg")]
     BBerg,
-    #[cfg(feature = "halo2")]
-    #[strum(serialize = "halo2")]
-    Halo2,
-    #[cfg(feature = "halo2")]
-    #[strum(serialize = "halo2-mock")]
-    Halo2Mock,
     #[strum(serialize = "estark")]
     EStark,
     #[strum(serialize = "pil-stark-cli")]
@@ -30,11 +22,6 @@ pub enum BackendType {
 
 impl BackendType {
     pub fn factory<T: FieldElement>(&self) -> &'static dyn BackendFactory<T> {
-        #[cfg(feature = "halo2")]
-        const HALO2_FACTORY: WithSetupFactory<halo2::Halo2Prover> = WithSetupFactory(PhantomData);
-        #[cfg(feature = "halo2")]
-        const HALO2_MOCK_FACTORY: WithoutSetupFactory<halo2_impl::Halo2Mock> =
-            WithoutSetupFactory(PhantomData);
         const ESTARK_FACTORY: WithoutSetupFactory<pilstark::estark::EStark> =
             WithoutSetupFactory(PhantomData);
         const PIL_STARK_CLI_FACTORY: WithoutSetupFactory<pilstark::PilStarkCli> =
@@ -43,10 +30,6 @@ impl BackendType {
             WithoutSetupFactory(PhantomData);
 
         match self {
-            #[cfg(feature = "halo2")]
-            BackendType::Halo2 => &HALO2_FACTORY,
-            #[cfg(feature = "halo2")]
-            BackendType::Halo2Mock => &HALO2_MOCK_FACTORY,
             BackendType::PilStarkCli => &PIL_STARK_CLI_FACTORY,
             BackendType::EStark => &ESTARK_FACTORY,
             BackendType::BBerg => &BBERG_FACTORY,

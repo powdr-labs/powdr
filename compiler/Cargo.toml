@@ -3,9 +3,6 @@ name = "compiler"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-halo2 = ["dep:halo2", "backend/halo2"]
-
 [dependencies]
 backend = { path = "../backend" }
 itertools = "^0.10"
@@ -18,7 +15,6 @@ executor = { path = "../executor" }
 pilopt = { path = "../pilopt" }
 asm_to_pil = { path = "../asm_to_pil" }
 pil_analyzer = { path = "../pil_analyzer" }
-halo2 = { path = "../halo2", optional = true }
 ast = { path = "../ast" }
 analysis = { path = "../analysis" }
 linker = { path = "../linker" }
