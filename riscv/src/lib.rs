@@ -197,7 +197,7 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
         "build",
         "--release",
         "-Zbuild-std=std,panic_abort",
-        "-Zbuild-std-features=compiler-builtins-mem",
+        //"-Zbuild-std-features=compiler-builtins-mem",
         "--target",
         RUST_TARGET,
         "--lib",
