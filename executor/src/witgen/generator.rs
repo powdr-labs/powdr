@@ -48,18 +48,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let connecting_identity = &self.connecting_identities[&identity_id];
-        let left = self.connecting_identities[&identity_id]
-            .left
-            .expressions
-            .iter()
-            .map(|e| caller_rows.evaluate(e).unwrap())
-            .collect::<Vec<_>>();
+        let outer_query = OuterQuery::new(caller_rows, self.connecting_identities[&identity_id]);
         let right = &self.connecting_identities.get(&identity_id).unwrap().right;
 
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
-        for (r, l) in right.expressions.iter().zip(&left) {
+        for (r, l) in right.expressions.iter().zip(&outer_query.left) {
             log::trace!("  {r} = {l}");
         }
 
@@ -69,7 +63,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             .cloned()
             .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
 
-        let outer_query = OuterQuery::new(caller_rows, connecting_identity);
         let ProcessResult { eval_value, block } =
             self.process(first_row, 0, mutable_state, Some(outer_query), false);
 

@@ -472,17 +472,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let connecting_identity = &self.connecting_identities[&identity_id];
-        let left = &self.connecting_identities[&identity_id]
-            .left
-            .expressions
-            .iter()
-            .map(|e| caller_rows.evaluate(e).unwrap())
-            .collect::<Vec<_>>();
+        let outer_query = OuterQuery::new(caller_rows, self.connecting_identities[&identity_id]);
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
-        for l in left {
+        for l in &outer_query.left {
             log::trace!("  {}", l);
         }
 
@@ -491,7 +485,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
         // to validate the constraints.
-        if left.iter().all(|v| v.is_constant()) && self.rows() > 0 {
+        if outer_query.left.iter().all(|v| v.is_constant()) && self.rows() > 0 {
             // All values on the left hand side are known, check if this is a query
             // to the last row.
             let row_index = self.last_row_index();
@@ -509,7 +503,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             );
 
             let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
-            if let Ok(result) = identity_processor.process_link(left, right, caller_rows, &row_pair)
+            if let Ok(result) =
+                identity_processor.process_link(&outer_query.left, right, caller_rows, &row_pair)
             {
                 if result.is_complete() && result.constraints.is_empty() {
                     log::trace!(
@@ -522,7 +517,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
 
         // TODO this assumes we are always using the same lookup for this machine.
-        let mut sequence_iterator = self.processing_sequence_cache.get_processing_sequence(left);
+        let mut sequence_iterator = self
+            .processing_sequence_cache
+            .get_processing_sequence(&outer_query.left);
 
         if !sequence_iterator.has_steps() {
             // Shortcut, no need to do anything.
@@ -539,12 +536,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
-        let process_result = self.process(
-            mutable_state,
-            &mut sequence_iterator,
-            caller_rows,
-            connecting_identity,
-        )?;
+        let process_result =
+            self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?;
 
         let process_result = if sequence_iterator.is_cached() && !process_result.is_success() {
             log::debug!("The cached sequence did not complete the block machine. \
@@ -553,12 +546,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             let mut sequence_iterator = self
                 .processing_sequence_cache
                 .get_default_sequence_iterator();
-            self.process(
-                mutable_state,
-                &mut sequence_iterator,
-                caller_rows,
-                connecting_identity,
-            )?
+            self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?
         } else {
             process_result
         };
@@ -573,7 +561,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
                 // We solved the query, so report it to the cache.
                 self.processing_sequence_cache
-                    .report_processing_sequence(left, sequence_iterator);
+                    .report_processing_sequence(&outer_query.left, sequence_iterator);
                 Ok(updates)
             }
             ProcessResult::Incomplete(updates) => {
@@ -581,7 +569,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                     "End processing block machine '{}' (incomplete)",
                     self.name()
                 );
-                self.processing_sequence_cache.report_incomplete(left);
+                self.processing_sequence_cache
+                    .report_incomplete(&outer_query.left);
                 Ok(updates)
             }
         }
@@ -591,8 +580,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         &self,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
         sequence_iterator: &mut ProcessingSequenceIterator,
-        caller_rows: &'b RowPair<'b, 'a, T>,
-        connecting_identity: &'a Identity<Expression<T>>,
+        outer_query: OuterQuery<'a, 'b, T>,
     ) -> Result<ProcessResult<'a, T>, EvalError<T>> {
         // We start at the last row of the previous block.
         let row_offset = self.last_row_index();
@@ -610,7 +598,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             self.fixed_data,
             &self.witness_cols,
         )
-        .with_outer_query(OuterQuery::new(caller_rows, connecting_identity));
+        .with_outer_query(outer_query);
 
         let outer_assignments = processor.solve(sequence_iterator)?;
         let new_block = processor.finish();

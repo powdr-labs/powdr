@@ -22,9 +22,13 @@ use super::{
 type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
 
 /// Data needed to handle an outer query.
+#[derive(Clone)]
 pub struct OuterQuery<'a, 'b, T: FieldElement> {
-    pub caller_rows: &'b RowPair<'b, 'a, T>,
-    pub connecting_identity: &'a Identity<Expression<T>>,
+    /// Rows of the calling machine.
+    caller_rows: &'b RowPair<'b, 'a, T>,
+    /// Connecting identity.
+    connecting_identity: &'a Identity<Expression<T>>,
+    /// The left side of the connecting identity, evaluated.
     pub left: Left<'a, T>,
 }
 
@@ -33,6 +37,7 @@ impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
         caller_rows: &'b RowPair<'b, 'a, T>,
         connecting_identity: &'a Identity<Expression<T>>,
     ) -> Self {
+        // Evaluate once, for performance reasons.
         let left = connecting_identity
             .left
             .expressions
