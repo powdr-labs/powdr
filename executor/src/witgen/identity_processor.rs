@@ -11,7 +11,11 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::{machines::Machine, EvalError};
+use crate::witgen::{
+    global_constraints::{CombinedRangeConstraintSet, RangeConstraintSet},
+    machines::Machine,
+    EvalError,
+};
 
 use super::{
     affine_expression::AffineExpression,
@@ -223,6 +227,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         &mut self,
         left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
+        caller_rows: &RowPair<'_, 'a, T>,
         current_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         // sanity check that the right hand side selector is active
@@ -239,13 +244,24 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             .unwrap_or(Ok(T::one()))?;
         assert_eq!(selector_value, T::one());
 
+        let range_constraint = CombinedRangeConstraintSet::new(caller_rows, caller_rows);
+
         let mut updates = EvalValue::complete(vec![]);
 
         for (l, r) in left.iter().zip(right.expressions.iter()) {
             match current_rows.evaluate(r) {
                 Ok(r) => {
-                    // TODO: Should we use both rows?
-                    let result = (l.clone() - r).solve_with_range_constraints(current_rows)?;
+                    println!("\nl: {:?}, r: {:?}", l, r);
+                    for (l, _) in l.nonzero_coefficients() {
+                        println!("  l: {:?}", l);
+                        println!("      ({:?})", range_constraint.range_constraint(l));
+                    }
+                    for (r, _) in r.nonzero_coefficients() {
+                        println!("  r: {:?}", r);
+                        println!("      ({:?})", range_constraint.range_constraint(r));
+                    }
+                    let result = (l.clone() - r).solve_with_range_constraints(&range_constraint)?;
+                    println!("result: {:?}", result);
                     updates.combine(result);
                 }
                 Err(e) => {

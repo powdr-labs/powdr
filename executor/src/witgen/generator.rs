@@ -42,12 +42,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         &self.name
     }
 
-    fn process_plookup<Q: QueryCallback<T>>(
+    fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &mut MutableState<'a, '_, T, Q>,
+        mutable_state: &mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
+        let connecting_identity = &self.connecting_identities[&identity_id];
         let left = self.connecting_identities[&identity_id]
             .left
             .expressions
@@ -68,7 +69,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             .cloned()
             .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
 
-        let outer_query = OuterQuery { left, right };
+        let outer_query = OuterQuery::new(caller_rows, connecting_identity);
         let ProcessResult { eval_value, block } =
             self.process(first_row, 0, mutable_state, Some(outer_query), false);
 
@@ -212,12 +213,12 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         first_row
     }
 
-    fn process<Q: QueryCallback<T>>(
+    fn process<'b, Q: QueryCallback<T>>(
         &self,
         first_row: Row<'a, T>,
         row_offset: DegreeType,
-        mutable_state: &mut MutableState<'a, '_, T, Q>,
-        outer_query: Option<OuterQuery<'a, T>>,
+        mutable_state: &mut MutableState<'a, 'b, T, Q>,
+        outer_query: Option<OuterQuery<'a, 'b, T>>,
         is_main_run: bool,
     ) -> ProcessResult<'a, T> {
         log::trace!(

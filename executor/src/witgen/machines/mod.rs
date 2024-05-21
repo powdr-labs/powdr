@@ -33,7 +33,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         record_start(self.name());
         let result = self.process_plookup(mutable_state, identity_id, caller_rows);
@@ -51,7 +51,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T>;
 
     /// Returns the final values of the witness columns.
@@ -81,7 +81,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         match self {
             KnownMachine::SortedWitnesses(m) => {

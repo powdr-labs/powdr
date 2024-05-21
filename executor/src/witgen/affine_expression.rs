@@ -330,7 +330,10 @@ where
         if solve_for_coefficient.is_one() {
             constraint = -constraint;
         }
+        // println!("Current constraint: {:?}", constraint);
+        // println!("Checking for previous");
         if let Some(previous) = known_constraints.range_constraint(*solve_for) {
+            // println!("Has previous: {:?}", previous);
             if previous.conjunction(&constraint) == previous {
                 return None;
             }

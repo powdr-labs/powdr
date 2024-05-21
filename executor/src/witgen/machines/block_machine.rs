@@ -283,7 +283,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         let previous_len = self.data.len();
         let result = self.process_plookup_internal(mutable_state, identity_id, caller_rows);
@@ -472,8 +472,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         &mut self,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
+        let connecting_identity = &self.connecting_identities[&identity_id];
         let left = &self.connecting_identities[&identity_id]
             .left
             .expressions
@@ -510,7 +511,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             );
 
             let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
-            if let Ok(result) = identity_processor.process_link(left, right, &row_pair) {
+            if let Ok(result) = identity_processor.process_link(left, right, caller_rows, &row_pair)
+            {
                 if result.is_complete() && result.constraints.is_empty() {
                     log::trace!(
                         "End processing block machine '{}' (already solved)",
@@ -539,7 +541,14 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
-        let process_result = self.process(mutable_state, left, right, &mut sequence_iterator)?;
+        let process_result = self.process(
+            mutable_state,
+            left,
+            right,
+            &mut sequence_iterator,
+            caller_rows,
+            connecting_identity,
+        )?;
 
         let process_result = if sequence_iterator.is_cached() && !process_result.is_success() {
             log::debug!("The cached sequence did not complete the block machine. \
@@ -548,7 +557,14 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             let mut sequence_iterator = self
                 .processing_sequence_cache
                 .get_default_sequence_iterator();
-            self.process(mutable_state, left, right, &mut sequence_iterator)?
+            self.process(
+                mutable_state,
+                left,
+                right,
+                &mut sequence_iterator,
+                caller_rows,
+                connecting_identity,
+            )?
         } else {
             process_result
         };
@@ -583,6 +599,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
         sequence_iterator: &mut ProcessingSequenceIterator,
+        caller_rows: &'b RowPair<'b, 'a, T>,
+        connecting_identity: &'a Identity<Expression<T>>,
     ) -> Result<ProcessResult<'a, T>, EvalError<T>> {
         // We start at the last row of the previous block.
         let row_offset = self.last_row_index();
@@ -600,7 +618,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             self.fixed_data,
             &self.witness_cols,
         )
-        .with_outer_query(OuterQuery::new(left.to_vec(), right));
+        .with_outer_query(OuterQuery::new(caller_rows, connecting_identity));
 
         let outer_assignments = processor.solve(sequence_iterator)?;
         let new_block = processor.finish();
