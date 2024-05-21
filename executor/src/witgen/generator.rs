@@ -70,15 +70,18 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         let ProcessResult { eval_value, block } =
             self.process(first_row, 0, mutable_state, Some(outer_query), false);
 
-        if eval_value.is_complete() {
+        let eval_value = if eval_value.is_complete() {
             log::trace!("End processing VM '{}' (successfully)", self.name());
             // Remove the last row of the previous block, as it is the first row of the current
             // block.
             self.data.pop();
             self.data.extend(block);
+
+            eval_value.report_side_effect()
         } else {
             log::trace!("End processing VM '{}' (incomplete)", self.name());
-        }
+            eval_value
+        };
         Ok(eval_value)
     }
 
