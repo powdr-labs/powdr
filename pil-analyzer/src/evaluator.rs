@@ -16,8 +16,9 @@ use powdr_ast::{
     parsed::{
         display::quote,
         types::{Type, TypeScheme},
-        ArrayLiteral, BinaryOperator, FunctionCall, IfExpression, IndexAccess, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, Number, Pattern, StatementInsideBlock, UnaryOperator,
+        ArrayLiteral, BinaryOperation, BinaryOperator, FunctionCall, IfExpression, IndexAccess,
+        LambdaExpression, LetStatementInsideBlock, MatchArm, Number, Pattern, StatementInsideBlock,
+        UnaryOperator,
     },
     SourceRef,
 };
@@ -691,10 +692,10 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.expand(&items[0])?;
                 }
             }
-            Expression::BinaryOperation(l, _, r) => {
+            Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
                 self.op_stack.push(Operation::Combine(expr));
-                self.op_stack.push(Operation::Expand(r));
-                self.expand(l)?;
+                self.op_stack.push(Operation::Expand(right));
+                self.expand(left)?;
             }
             Expression::UnaryOperation(_, inner) => {
                 self.op_stack.push(Operation::Combine(expr));
@@ -794,7 +795,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     .split_off(self.value_stack.len() - items.len());
                 Value::Array(inner_values).into()
             }
-            Expression::BinaryOperation(_, op, _) => {
+            Expression::BinaryOperation(BinaryOperation { op, .. }) => {
                 let right = self.value_stack.pop().unwrap();
                 let left = self.value_stack.pop().unwrap();
                 evaluate_binary_operation(&left, *op, &right)?

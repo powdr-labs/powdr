@@ -596,14 +596,6 @@ fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
 }
 
 impl<E: Display> Expression<E> {
-    pub fn precedence(&self) -> Option<ExpressionPrecedence> {
-        match self {
-            Expression::UnaryOperation(op, _) => Some(op.precedence()),
-            Expression::BinaryOperation(_, op, _) => Some(op.precedence()),
-            _ => None,
-        }
-    }
-
     pub fn format_unary_operation(
         &self,
         op: &UnaryOperator,
@@ -625,48 +617,6 @@ impl<E: Display> Expression<E> {
             write!(f, "{exp_string}{op}")
         }
     }
-
-    pub fn format_binary_operation(
-        left: &Expression<E>,
-        op: &BinaryOperator,
-        right: &Expression<E>,
-        f: &mut Formatter<'_>,
-    ) -> Result {
-        let force_parentheses = matches!(op, BinaryOperator::Pow);
-
-        let use_left_parentheses = match left.precedence() {
-            Some(left_precedence) => {
-                force_parentheses
-                    || left_precedence > op.precedence()
-                    || (left_precedence == op.precedence()
-                        && op.associativity() != BinaryOperatorAssociativity::Left)
-            }
-            None => false,
-        };
-
-        let use_right_parentheses = match right.precedence() {
-            Some(right_precedence) => {
-                force_parentheses
-                    || right_precedence > op.precedence()
-                    || (right_precedence == op.precedence()
-                        && op.associativity() != BinaryOperatorAssociativity::Right)
-            }
-            None => false,
-        };
-
-        let left_string = if use_left_parentheses {
-            format!("({left})")
-        } else {
-            format!("{left}")
-        };
-        let right_string = if use_right_parentheses {
-            format!("({right})")
-        } else {
-            format!("{right}")
-        };
-
-        write!(f, "{left_string} {op} {right_string}")
-    }
 }
 
 impl<Ref: Display> Display for Expression<Ref> {
@@ -679,8 +629,8 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::Tuple(items) => write!(f, "({})", format_list(items)),
             Expression::LambdaExpression(lambda) => write!(f, "{lambda}"),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
-            Expression::BinaryOperation(left, op, right) => {
-                Expression::format_binary_operation(left, op, right, f)
+            Expression::BinaryOperation(binaryop) => {
+                write!(f, "{binaryop}")
             }
             Expression::UnaryOperation(op, exp) => self.format_unary_operation(op, exp, f),
             Expression::IndexAccess(index_access) => write!(f, "{index_access}"),
@@ -758,6 +708,49 @@ impl Display for FunctionKind {
 impl<E: Display> Display for ArrayLiteral<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "[{}]", format_list(&self.items))
+    }
+}
+
+impl<E> Display for BinaryOperation<E>
+where
+    E: Display + Precedence,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let force_parentheses = matches!(self.op, BinaryOperator::Pow);
+
+        let op_precedence = self.op.precedence().unwrap();
+        let use_left_parentheses = match self.left.precedence() {
+            Some(left_precedence) => {
+                force_parentheses
+                    || left_precedence > op_precedence
+                    || (left_precedence == op_precedence
+                        && self.op.associativity() != BinaryOperatorAssociativity::Left)
+            }
+            None => false,
+        };
+
+        let use_right_parentheses = match self.right.precedence() {
+            Some(right_precedence) => {
+                force_parentheses
+                    || right_precedence > op_precedence
+                    || (right_precedence == op_precedence
+                        && self.op.associativity() != BinaryOperatorAssociativity::Right)
+            }
+            None => false,
+        };
+
+        let left_string = if use_left_parentheses {
+            format!("({})", self.left)
+        } else {
+            format!("{}", self.left)
+        };
+        let right_string = if use_right_parentheses {
+            format!("({})", self.right)
+        } else {
+            format!("{}", self.right)
+        };
+
+        write!(f, "{left_string} {} {right_string}", self.op)
     }
 }
 

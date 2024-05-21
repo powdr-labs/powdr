@@ -12,9 +12,9 @@ use powdr_ast::{
         asm::{CallableRef, InstructionBody, InstructionParams},
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
-        ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
-        FunctionKind, LambdaExpression, MatchArm, Number, Pattern, PilStatement, PolynomialName,
-        SelectedExpressions, UnaryOperator,
+        ArrayExpression, BinaryOperation, BinaryOperator, Expression, FunctionCall,
+        FunctionDefinition, FunctionKind, LambdaExpression, MatchArm, Number, Pattern,
+        PilStatement, PolynomialName, SelectedExpressions, UnaryOperator,
     },
     SourceRef,
 };
@@ -750,7 +750,7 @@ impl<T: FieldElement> VMConverter<T> {
             Expression::LambdaExpression(_) => {
                 unreachable!("lambda expressions should have been removed")
             }
-            Expression::BinaryOperation(left, op, right) => match op {
+            Expression::BinaryOperation(BinaryOperation { left, op, right }) => match op {
                 BinaryOperator::Add => self.add_assignment_value(
                     self.process_assignment_value(*left),
                     self.process_assignment_value(*right),
@@ -1078,7 +1078,11 @@ impl<T: FieldElement> VMConverter<T> {
         expr: Expression,
     ) -> (usize, Expression) {
         match expr {
-            Expression::BinaryOperation(left, operator, right) => match operator {
+            Expression::BinaryOperation(BinaryOperation {
+                left,
+                op: operator,
+                right,
+            }) => match operator {
                 BinaryOperator::Add => {
                     let (counter, left) = self.linearize_rec(prefix, counter, *left);
                     let (counter, right) = self.linearize_rec(prefix, counter, *right);
@@ -1208,7 +1212,12 @@ fn witness_column<S: Into<String>>(
 }
 
 fn extract_update(expr: Expression) -> (Option<String>, Expression) {
-    let Expression::BinaryOperation(left, BinaryOperator::Identity, right) = expr else {
+    let Expression::BinaryOperation(BinaryOperation {
+        left,
+        op: BinaryOperator::Identity,
+        right,
+    }) = expr
+    else {
         panic!("Invalid statement for instruction body, expected constraint: {expr}");
     };
     // TODO check that there are no other "next" references in the expression
