@@ -13,8 +13,8 @@ use powdr_ast::{
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperation, BinaryOperator, Expression, FunctionCall,
-        FunctionDefinition, FunctionKind, LambdaExpression, MatchArm, Number, Pattern,
-        PilStatement, PolynomialName, SelectedExpressions, UnaryOperation, UnaryOperator,
+        FunctionDefinition, FunctionKind, LambdaExpression, MatchArm, MatchExpression, Number,
+        Pattern, PilStatement, PolynomialName, SelectedExpressions, UnaryOperation, UnaryOperator,
     },
     SourceRef,
 };
@@ -744,7 +744,7 @@ impl<T: FieldElement> VMConverter<T> {
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
             Expression::ArrayLiteral(_) => panic!(),
-            Expression::MatchExpression(_, _) => panic!(),
+            Expression::MatchExpression(_) => panic!(),
             Expression::IfExpression(_) => panic!(),
             Expression::BlockExpression(_, _) => panic!(),
             Expression::FreeInput(expr) => {
@@ -981,17 +981,28 @@ impl<T: FieldElement> VMConverter<T> {
                         value: absolute_reference("::std::prover::Query::None"),
                     });
 
-                    FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression {
+                    let scrutinee = Box::new(
+                        FunctionCall {
+                            function: Box::new(absolute_reference("::std::prover::eval")),
+                            arguments: vec![direct_reference(pc_name.as_ref().unwrap())],
+                        }
+                        .into(),
+                    );
+
+                    let lambda = LambdaExpression {
                         kind: FunctionKind::Query,
                         params: vec![Pattern::Variable("__i".to_string())],
-                        body: Box::new(Expression::MatchExpression(
-                            Box::new(Expression::FunctionCall(FunctionCall {
-                                function: Box::new(absolute_reference("::std::prover::eval")),
-                                arguments: vec![direct_reference(pc_name.as_ref().unwrap())],
-                            })),
-                            prover_query_arms,
-                        )),
-                    }))
+                        body: Box::new(
+                            MatchExpression {
+                                scrutinee,
+                                arms: prover_query_arms,
+                            }
+                            .into(),
+                        ),
+                    }
+                    .into();
+
+                    FunctionDefinition::Expression(lambda)
                 });
                 witness_column(SourceRef::unknown(), free_value, prover_query)
             })

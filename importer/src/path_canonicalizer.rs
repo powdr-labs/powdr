@@ -15,8 +15,8 @@ use powdr_ast::parsed::{
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, BinaryOperation, EnumDeclaration, EnumVariant, Expression, FunctionCall,
-    IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, PilStatement,
-    StatementInsideBlock, TypedExpression, UnaryOperation,
+    IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Pattern,
+    PilStatement, StatementInsideBlock, TypedExpression, UnaryOperation,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -172,7 +172,7 @@ fn free_inputs_in_expression<'a>(
         Expression::LambdaExpression(_) => todo!(),
         Expression::ArrayLiteral(_) => todo!(),
         Expression::IndexAccess(_) => todo!(),
-        Expression::MatchExpression(_, _) => todo!(),
+        Expression::MatchExpression(_) => todo!(),
         Expression::IfExpression(_) => todo!(),
         Expression::BlockExpression(_, _) => todo!(),
     }
@@ -209,7 +209,7 @@ fn free_inputs_in_expression_mut<'a>(
         Expression::LambdaExpression(_) => todo!(),
         Expression::ArrayLiteral(_) => todo!(),
         Expression::IndexAccess(_) => todo!(),
-        Expression::MatchExpression(_, _) => todo!(),
+        Expression::MatchExpression(_) => todo!(),
         Expression::IfExpression(_) => todo!(),
         Expression::BlockExpression(_, _) => todo!(),
     }
@@ -242,8 +242,8 @@ fn canonicalize_inside_expression(
                     canonicalize_inside_pattern(p, path, paths);
                 });
             }
-            Expression::MatchExpression(_, match_arms) => {
-                match_arms.iter_mut().for_each(|MatchArm { pattern, .. }| {
+            Expression::MatchExpression(MatchExpression { scrutinee: _, arms }) => {
+                arms.iter_mut().for_each(|MatchArm { pattern, .. }| {
                     canonicalize_inside_pattern(pattern, path, paths);
                 })
             }
@@ -679,7 +679,7 @@ fn check_expression(
             check_expression(location, function, state, local_variables)?;
             check_expressions(location, arguments, state, local_variables)
         }
-        Expression::MatchExpression(scrutinee, arms) => {
+        Expression::MatchExpression(MatchExpression { scrutinee, arms }) => {
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
                 let mut local_variables = local_variables.clone();

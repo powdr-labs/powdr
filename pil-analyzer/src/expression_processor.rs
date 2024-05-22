@@ -8,8 +8,9 @@ use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BinaryOperation, IfExpression,
-        LambdaExpression, LetStatementInsideBlock, MatchArm, NamespacedPolynomialReference, Number,
-        Pattern, SelectedExpressions, StatementInsideBlock, SymbolCategory, UnaryOperation,
+        LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
+        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
+        SymbolCategory, UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
@@ -121,9 +122,10 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 function: Box::new(self.process_expression(*c.function)),
                 arguments: self.process_expressions(c.arguments),
             }),
-            PExpression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
-                Box::new(self.process_expression(*scrutinee)),
-                arms.into_iter()
+            PExpression::MatchExpression(MatchExpression { scrutinee, arms }) => MatchExpression {
+                scrutinee: Box::new(self.process_expression(*scrutinee)),
+                arms: arms
+                    .into_iter()
                     .map(|MatchArm { pattern, value }| {
                         let vars = self.save_local_variables();
                         let pattern = self.process_pattern(pattern);
@@ -132,7 +134,8 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                         MatchArm { pattern, value }
                     })
                     .collect(),
-            ),
+            }
+            .into(),
             PExpression::IfExpression(IfExpression {
                 condition,
                 body,
