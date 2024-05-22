@@ -12,7 +12,6 @@ use super::{asm::SymbolPath, visitor::Children, Expression, Number};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Type<E = u64> {
-    Empty,
     /// The bottom type `!`, which cannot have a value but is
     /// compatible with all other types.
     Bottom,
@@ -43,8 +42,7 @@ impl<E> Type<E> {
     /// Type variables are not considered elementary.
     pub fn is_elementary(&self) -> bool {
         match self {
-            Type::Empty
-            | Type::Bottom
+            Type::Bottom
             | Type::Bool
             | Type::Int
             | Type::Fe
@@ -230,7 +228,6 @@ impl<R> Children<Expression<R>> for Type<Expression<R>> {
 impl<R: Display> From<Type<Expression<R>>> for Type<u64> {
     fn from(value: Type<Expression<R>>) -> Self {
         match value {
-            Type::Empty => Type::Empty,
             Type::Bottom => Type::Bottom,
             Type::Bool => Type::Bool,
             Type::Int => Type::Int,

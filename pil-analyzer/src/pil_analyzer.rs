@@ -9,7 +9,7 @@ use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::types::{TupleType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
@@ -271,14 +271,21 @@ impl PILAnalyzer {
             })
             .collect();
         // Collect all expressions in identities.
-        let statement_type = ExpectedType {
-            ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
+        //let statement_type = ExpectedType {
+        //    ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
+        //    allow_array: true,
+        //};
+        let empty_statement_type = ExpectedType {
+            ty: Type::Tuple(TupleType { items: vec![] }),
             allow_array: true,
         };
         for id in &mut self.identities {
             if id.kind == IdentityKind::Polynomial {
                 // At statement level, we allow Constr or Constr[].
-                expressions.push((id.expression_for_poly_id_mut(), statement_type.clone()));
+                expressions.push((
+                    id.expression_for_poly_id_mut(),
+                    empty_statement_type.clone(),
+                ));
             } else {
                 for part in [&mut id.left, &mut id.right] {
                     if let Some(selector) = &mut part.selector {
@@ -290,7 +297,8 @@ impl PILAnalyzer {
                 }
             }
         }
-        let inferred_types = infer_types(definitions, &mut expressions, &statement_type)
+
+        let inferred_types = infer_types(definitions, &mut expressions, &empty_statement_type)
             .map_err(|e| {
                 eprintln!("\nError during type inference:\n{e}");
                 e

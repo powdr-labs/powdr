@@ -104,7 +104,6 @@ pub fn unary_operator_scheme(op: UnaryOperator) -> TypeScheme {
 
 pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
     match ty {
-        Type::Empty => &[],
         Type::Bottom => &[],
         Type::Bool => &["ToString"],
         Type::Int => &[
