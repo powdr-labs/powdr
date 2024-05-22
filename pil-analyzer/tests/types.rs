@@ -533,7 +533,14 @@ fn empty_function_infered() {
     let t: int = 3;
     let r = empty_fn(t);
     ";
-    type_check(input, &[("empty_fn", "", "int -> ()"), ("t", "", "int"), ("r", "", "()")]);
+    type_check(
+        input,
+        &[
+            ("empty_fn", "", "int -> ()"),
+            ("t", "", "int"),
+            ("r", "", "()"),
+        ],
+    );
 }
 
 #[test]
