@@ -20,6 +20,7 @@ use powdr_riscv_runtime::input::get_prover_input;
 use powdr_riscv_runtime::print;
 
 /// entry point called by the runtime
+#[no_mangle]
 pub fn main() {
     let expected = get_prover_input(0);
     let len = get_prover_input(1);
