@@ -74,9 +74,9 @@ impl Architecture for RiscvArchitecture {
             | "slt" | "slti" | "sltu" | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu"
             | "blt" | "bge" | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal"
             | "jalr" | "call" | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw"
-            | "sh" | "sb" | "nop" | "fence" | "fence.i" | "amoadd.w" | "amoadd.w.aq"
-            | "amoadd.w.rl" | "amoadd.w.aqrl" | "lr.w" | "lr.w.aq" | "lr.w.rl" | "lr.w.aqrl"
-            | "sc.w" | "sc.w.aq" | "sc.w.rl" | "sc.w.aqrl" => false,
+            | "sh" | "sb" | "nop" | "fence" | "amoadd.w" | "amoadd.w.aq" | "amoadd.w.rl"
+            | "amoadd.w.aqrl" | "lr.w" | "lr.w.aq" | "lr.w.rl" | "lr.w.aqrl" | "sc.w"
+            | "sc.w.aq" | "sc.w.rl" | "sc.w.aqrl" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instr}");
@@ -1444,7 +1444,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 format!("mstore {rd} + {off} - tmp2, tmp1;"),
             ]
         }
-        "fence" | "fence.i" | "nop" => vec![],
+        "fence" | "nop" => vec![],
         "unimp" => vec!["fail;".to_string()],
 
         // atomic instructions
