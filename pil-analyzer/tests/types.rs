@@ -518,43 +518,24 @@ fn enum_too_many_fields() {
 }
 
 #[test]
-fn empty_tuple() {
+fn empty_function() {
     let input = "
-    let unit_value: () = ();
+    let empty_fn: int -> () = |i| ();
+    let r = empty_fn(3);
+    let inner_unit_value = ((),r);
     ";
-    type_check(input, &[("unit_value", "", "()")]);
-}
-
-#[test]
-fn empty_tuple_infered() {
-    let input = "
-    let unit_value = ();
-    ";
-    type_check(input, &[("unit_value", "", "()")]);
+    type_check(input, &[("r", "", "()")]);
 }
 
 #[test]
 fn inner_empty_tuple() {
     let input = "
-    let r: int -> int = |i| i;
-    let inner_unit_value: ((), (int -> int)) = ((),r);
-    ";
-    type_check(input, &[("inner_unit_value", "", "((), (int -> int))")]);
-}
-
-#[test]
-fn empty_function() {
-    let input = "
     let empty_fn: int -> () = |i| ();
+    let r = empty_fn(3);
+    let inner_unit_value = ((),r);
     ";
-    type_check(input, &[("empty_fn", "", "int -> ()")]);
-}
-
-#[test]
-fn return_empty_with_type_infered() {
-    let input = "
-    let empty_fn = |i| ();
-    empty_fn(3);
-    ";
-    type_check(input, &[("empty_fn", "", "int -> ()")]);
+    type_check(
+        input,
+        &[("r", "", "()"), ("inner_unit_value", "", "((), ())")],
+    );
 }
