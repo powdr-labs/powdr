@@ -25,7 +25,7 @@ let challenge: int, int -> expr = [];
 let degree: -> int = [];
 
 /// Asserts that the current degree or row count is at least m.
-let require_min_degree: int -> Constr[] = |m| std::check::assert(degree() >= m, || "Degree too small.");
+let require_min_degree: int -> () = |m| std::check::assert(degree() >= m, || "Degree too small.");
 
 /// Asserts that the current degree or row count is at most m;
-let require_max_degree: int -> Constr[] = |m| std::check::assert(degree() <= m, || "Degree too large.");
+let require_max_degree: int -> () = |m| std::check::assert(degree() <= m, || "Degree too large.");

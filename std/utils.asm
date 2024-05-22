@@ -29,10 +29,10 @@ let<T> unwrap_or_else: Option<T>, (-> T) -> T = |o, f| match o {
 /// `c` is allowed to change.
 ///
 /// Note: `latch` needs to be equal to `1`, and not merely non-zero for `c` to be able to change.
-let unchanged_until: expr, expr -> Constr = |c, latch| (c' - c) * (1 - latch) = 0;
+let unchanged_until: expr, expr -> () = |c, latch| (c' - c) * (1 - latch) = 0;
 
 /// Evaluates to a constraint that forces `c` to be either 0 or 1.
-let force_bool: expr -> Constr = |c| c * (1 - c) = 0;
+let force_bool: expr -> () = |c| c * (1 - c) = 0;
 
 /// Creates a new witness column that is constrained to the values 0 and 1.
 let new_bool: -> expr = constr || {
