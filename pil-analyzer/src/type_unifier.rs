@@ -116,7 +116,18 @@ impl Unifier {
                     .zip(args2)
                     .try_for_each(|(a1, a2)| self.unify_types(a1, a2))
             }
-
+            (Type::Array(a1), Type::Tuple(a2)) | (Type::Tuple(a2), Type::Array(a1)) => {
+                // Special case for T1[] and ().
+                if (a1.length.is_none()) & (a2.items.is_empty()) {
+                    return Ok(());
+                } else {
+                    Err(format!(
+                        "Cannot unify types {} and {}",
+                        Type::Array(a1),
+                        Type::Tuple(a2),
+                    ))
+                }
+            }
             (ty1, ty2) => Err(format!("Cannot unify types {ty1} and {ty2}")),
         }
     }
