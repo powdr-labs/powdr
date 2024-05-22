@@ -520,9 +520,8 @@ fn enum_too_many_fields() {
 #[test]
 fn empty_function() {
     let input = "
-    let empty_fn: int -> () = |i| ();
+    let empty_fn = |i| ();
     let r = empty_fn(3);
-    let inner_unit_value = ((),r);
     ";
     type_check(input, &[("r", "", "()")]);
 }
