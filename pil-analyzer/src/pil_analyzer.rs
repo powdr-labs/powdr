@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{

@@ -449,8 +449,8 @@ impl<'a> TypeChecker<'a> {
                 })
                 .map_err(|err| {
                     format!(
-                        "Expression is expected to evaluate to {} or ({})[]:\n  {expr}:\n{err}",
-                        expected_type.ty, expected_type.ty
+                        "Expression is expected to evaluate to {}:\n  {expr}:\n{err}",
+                        expected_type.ty
                     )
                 })
         } else {

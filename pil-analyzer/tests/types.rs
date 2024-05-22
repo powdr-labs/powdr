@@ -520,7 +520,7 @@ fn enum_too_many_fields() {
 #[test]
 fn empty_function() {
     let input = "
-    let empty_fn = |i| ();
+    let empty_fn: int -> () = |i| ();
     let r = empty_fn(3);
     ";
     type_check(input, &[("r", "", "()")]);
