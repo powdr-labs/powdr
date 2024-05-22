@@ -342,14 +342,33 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     Tuple(Vec<Self>),
     LambdaExpression(LambdaExpression<Self>),
     ArrayLiteral(ArrayLiteral<Self>),
-    BinaryOperation(Box<Self>, BinaryOperator, Box<Self>),
-    UnaryOperation(UnaryOperator, Box<Self>),
+    UnaryOperation(UnaryOperation<Self>),
+    BinaryOperation(BinaryOperation<Self>),
     IndexAccess(IndexAccess<Self>),
     FunctionCall(FunctionCall<Self>),
     FreeInput(Box<Self>),
-    MatchExpression(Box<Self>, Vec<MatchArm<Self>>),
+    MatchExpression(MatchExpression<Self>),
     IfExpression(IfExpression<Self>),
     BlockExpression(BlockExpression<Self>),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UnaryOperation<E = Expression<NamespacedPolynomialReference>> {
+    pub op: UnaryOperator,
+    pub expr: Box<E>,
+}
+
+impl<Ref> From<UnaryOperation<Expression<Ref>>> for Expression<Ref> {
+    fn from(operation: UnaryOperation<Expression<Ref>>) -> Self {
+        Expression::UnaryOperation(operation)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BinaryOperation<E = Expression<NamespacedPolynomialReference>> {
+    pub left: Box<E>,
+    pub op: BinaryOperator,
+    pub right: Box<E>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
@@ -380,7 +399,11 @@ pub type ExpressionPrecedence = u64;
 
 impl<Ref> Expression<Ref> {
     pub fn new_binary(left: Self, op: BinaryOperator, right: Self) -> Self {
-        Expression::BinaryOperation(Box::new(left), op, Box::new(right))
+        Expression::BinaryOperation(BinaryOperation {
+            left: Box::new(left),
+            op,
+            right: Box::new(right),
+        })
     }
 
     /// Visits this expression and all of its sub-expressions and returns true
@@ -408,6 +431,39 @@ pub struct BlockExpression<E> {
 impl<Ref> From<BlockExpression<Expression<Ref>>> for Expression<Ref> {
     fn from(block: BlockExpression<Expression<Ref>>) -> Self {
         Expression::BlockExpression(block)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MatchExpression<E = Expression<NamespacedPolynomialReference>> {
+    pub scrutinee: Box<E>,
+    pub arms: Vec<MatchArm<E>>,
+}
+
+impl<Ref> From<MatchExpression<Expression<Ref>>> for Expression<Ref> {
+    fn from(match_expr: MatchExpression<Expression<Ref>>) -> Self {
+        Expression::MatchExpression(match_expr)
+    }
+}
+
+impl<E> Children<E> for MatchExpression<E> {
+    fn children(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+        Box::new(
+            once(self.scrutinee.as_ref()).chain(self.arms.iter().flat_map(|arm| arm.children())),
+        )
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
+        Box::new(
+            once(self.scrutinee.as_mut())
+                .chain(self.arms.iter_mut().flat_map(|arm| arm.children_mut())),
+        )
+    }
+}
+
+impl<Ref> From<BinaryOperation<Expression<Ref>>> for Expression<Ref> {
+    fn from(operation: BinaryOperation<Expression<Ref>>) -> Self {
+        Expression::BinaryOperation(operation)
     }
 }
 
@@ -469,12 +525,12 @@ impl<R> Expression<R> {
             | Expression::String(_)
             | Expression::Number(_) => empty(),
             Expression::Tuple(v) => v.iter(),
-            Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_ref()),
+            Expression::LambdaExpression(lambda) => lambda.children(),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter(),
-            Expression::BinaryOperation(left, _, right) => {
+            Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
                 [left.as_ref(), right.as_ref()].into_iter()
             }
-            Expression::UnaryOperation(_, e) => once(e.as_ref()),
+            Expression::UnaryOperation(UnaryOperation { expr, .. }) => once(expr.as_ref()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
                 [array.as_ref(), index.as_ref()].into_iter()
             }
@@ -483,9 +539,7 @@ impl<R> Expression<R> {
                 arguments,
             }) => once(function.as_ref()).chain(arguments.iter()),
             Expression::FreeInput(e) => once(e.as_ref()),
-            Expression::MatchExpression(e, arms) => {
-                once(e.as_ref()).chain(arms.iter().flat_map(|arm| arm.children()))
-            }
+            Expression::MatchExpression(match_expr) => match_expr.children(),
             Expression::IfExpression(IfExpression {
                 condition,
                 body,
@@ -510,12 +564,12 @@ impl<R> Expression<R> {
             }
             Expression::Number(_) => empty(),
             Expression::Tuple(v) => v.iter_mut(),
-            Expression::LambdaExpression(LambdaExpression { body, .. }) => once(body.as_mut()),
+            Expression::LambdaExpression(lambda) => lambda.children_mut(),
             Expression::ArrayLiteral(ArrayLiteral { items }) => items.iter_mut(),
-            Expression::BinaryOperation(left, _, right) => {
+            Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
                 [left.as_mut(), right.as_mut()].into_iter()
             }
-            Expression::UnaryOperation(_, e) => once(e.as_mut()),
+            Expression::UnaryOperation(UnaryOperation { expr, .. }) => once(expr.as_mut()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
                 [array.as_mut(), index.as_mut()].into_iter()
             }
@@ -524,9 +578,7 @@ impl<R> Expression<R> {
                 arguments,
             }) => once(function.as_mut()).chain(arguments.iter_mut()),
             Expression::FreeInput(e) => once(e.as_mut()),
-            Expression::MatchExpression(e, arms) => {
-                once(e.as_mut()).chain(arms.iter_mut().flat_map(|arm| arm.children_mut()))
-            }
+            Expression::MatchExpression(match_expr) => match_expr.children_mut(),
             Expression::IfExpression(IfExpression {
                 condition,
                 body,
@@ -582,6 +634,12 @@ pub struct LambdaExpression<E = Expression<NamespacedPolynomialReference>> {
     pub kind: FunctionKind,
     pub params: Vec<Pattern>,
     pub body: Box<E>,
+}
+
+impl<Ref> From<LambdaExpression<Expression<Ref>>> for Expression<Ref> {
+    fn from(lambda: LambdaExpression<Expression<Ref>>) -> Self {
+        Expression::LambdaExpression(lambda)
+    }
 }
 
 impl<E> Children<E> for LambdaExpression<E> {
@@ -671,24 +729,26 @@ pub enum BinaryOperatorAssociativity {
 }
 
 trait Precedence {
-    fn precedence(&self) -> ExpressionPrecedence;
+    fn precedence(&self) -> Option<ExpressionPrecedence>;
 }
 
 impl Precedence for UnaryOperator {
-    fn precedence(&self) -> ExpressionPrecedence {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
         use UnaryOperator::*;
-        match self {
+        let precedence = match self {
             // NOTE: Any modification must be done with care to not overlap with BinaryOperator's precedence
             Next => 1,
             Minus | LogicalNot => 2,
-        }
+        };
+
+        Some(precedence)
     }
 }
 
 impl Precedence for BinaryOperator {
-    fn precedence(&self) -> ExpressionPrecedence {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
         use BinaryOperator::*;
-        match self {
+        let precedence = match self {
             // NOTE: Any modification must be done with care to not overlap with LambdaExpression's precedence
             // Unary Oprators
             // **
@@ -713,6 +773,18 @@ impl Precedence for BinaryOperator {
             LogicalOr => 12,
             // .. ..=
             // ??
+        };
+
+        Some(precedence)
+    }
+}
+
+impl<E> Precedence for Expression<E> {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        match self {
+            Expression::UnaryOperation(operation) => operation.op.precedence(),
+            Expression::BinaryOperation(operation) => operation.op.precedence(),
+            _ => None,
         }
     }
 }
@@ -753,6 +825,12 @@ impl<E> Children<E> for IndexAccess<E> {
 pub struct FunctionCall<E = Expression<NamespacedPolynomialReference>> {
     pub function: Box<E>,
     pub arguments: Vec<E>,
+}
+
+impl<Ref> From<FunctionCall<Expression<Ref>>> for Expression<Ref> {
+    fn from(call: FunctionCall<Expression<Ref>>) -> Self {
+        Expression::FunctionCall(call)
+    }
 }
 
 impl<E> Children<E> for FunctionCall<E> {

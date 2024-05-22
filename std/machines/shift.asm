@@ -8,8 +8,6 @@ machine Shift with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    // lower bound degree is 262144
-
     operation shl<0> A, B -> C;
 
     operation shr<1> A, B -> C;
@@ -21,7 +19,10 @@ machine Shift with
     col fixed FACTOR_ROW(i) { (i + 1) % 4 };
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
-    let inputs = cross_product([256, 32, 4, 2]);
+    let bit_counts = [256, 32, 4, 2];
+    let min_degree = std::array::product(bit_counts);
+    std::check::assert(std::prover::degree() >= std::array::product(bit_counts), || "The shift machine needs at least 65536 rows to work.");
+    let inputs = cross_product(bit_counts);
     let a: int -> int = inputs[0];
     let b: int -> int = inputs[1];
     let row: int -> int = inputs[2];

@@ -8,9 +8,6 @@ machine Binary with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-
-    // lower bound degree is 262144
-
     operation and<0> A, B -> C;
 
     operation or<1> A, B -> C;
@@ -23,14 +20,17 @@ machine Binary with
     col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
+    let bit_counts = [256, 256, 3];
+    let min_degree = std::array::product(bit_counts);
+    std::check::assert(std::prover::degree() >= std::array::product(bit_counts), || "The binary machine needs at least 196608 rows to work.");
     // TODO would be nice with destructuring assignment for arrays.
-    let inputs: (int -> int)[] = cross_product([256, 256, 3]);
+    let inputs: (int -> int)[] = cross_product(bit_counts);
     let a = inputs[0];
     let b = inputs[1];
     let op = inputs[2];
-    col fixed P_A(i) { a(i) };
-    col fixed P_B(i) { b(i) };
-    col fixed P_operation(i) { op(i)};
+    let P_A: col = a;
+    let P_B: col = b;
+    let P_operation: col = op;
     col fixed P_C(i) {
         match op(i) {
             0 => a(i) & b(i),

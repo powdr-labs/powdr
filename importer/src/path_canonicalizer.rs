@@ -14,9 +14,9 @@ use powdr_ast::parsed::{
     folder::Folder,
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
-    ArrayLiteral, BlockExpression, EnumDeclaration, EnumVariant, Expression, FunctionCall,
-    IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, PilStatement,
-    StatementInsideBlock, TypedExpression,
+    ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
+    FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
+    MatchExpression, Pattern, PilStatement, StatementInsideBlock, TypedExpression, UnaryOperation,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -156,10 +156,10 @@ fn free_inputs_in_expression<'a>(
         | Expression::PublicReference(_)
         | Expression::Number(_)
         | Expression::String(_) => Box::new(None.into_iter()),
-        Expression::BinaryOperation(left, _, right) => {
+        Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
             Box::new(free_inputs_in_expression(left).chain(free_inputs_in_expression(right)))
         }
-        Expression::UnaryOperation(_, expr) => free_inputs_in_expression(expr),
+        Expression::UnaryOperation(UnaryOperation { expr, .. }) => free_inputs_in_expression(expr),
         Expression::FunctionCall(FunctionCall {
             function,
             arguments,
@@ -172,7 +172,7 @@ fn free_inputs_in_expression<'a>(
         Expression::LambdaExpression(_) => todo!(),
         Expression::ArrayLiteral(_) => todo!(),
         Expression::IndexAccess(_) => todo!(),
-        Expression::MatchExpression(_, _) => todo!(),
+        Expression::MatchExpression(_) => todo!(),
         Expression::IfExpression(_) => todo!(),
         Expression::BlockExpression(_) => todo!(),
     }
@@ -188,10 +188,12 @@ fn free_inputs_in_expression_mut<'a>(
         | Expression::PublicReference(_)
         | Expression::Number(_)
         | Expression::String(_) => Box::new(None.into_iter()),
-        Expression::BinaryOperation(left, _, right) => Box::new(
+        Expression::BinaryOperation(BinaryOperation { left, right, .. }) => Box::new(
             free_inputs_in_expression_mut(left).chain(free_inputs_in_expression_mut(right)),
         ),
-        Expression::UnaryOperation(_, expr) => free_inputs_in_expression_mut(expr),
+        Expression::UnaryOperation(UnaryOperation { expr, .. }) => {
+            free_inputs_in_expression_mut(expr)
+        }
         Expression::FunctionCall(FunctionCall {
             function,
             arguments,
@@ -207,7 +209,7 @@ fn free_inputs_in_expression_mut<'a>(
         Expression::LambdaExpression(_) => todo!(),
         Expression::ArrayLiteral(_) => todo!(),
         Expression::IndexAccess(_) => todo!(),
-        Expression::MatchExpression(_, _) => todo!(),
+        Expression::MatchExpression(_) => todo!(),
         Expression::IfExpression(_) => todo!(),
         Expression::BlockExpression(_) => todo!(),
     }
@@ -240,8 +242,8 @@ fn canonicalize_inside_expression(
                     canonicalize_inside_pattern(p, path, paths);
                 });
             }
-            Expression::MatchExpression(_, match_arms) => {
-                match_arms.iter_mut().for_each(|MatchArm { pattern, .. }| {
+            Expression::MatchExpression(MatchExpression { scrutinee: _, arms }) => {
+                arms.iter_mut().for_each(|MatchArm { pattern, .. }| {
                     canonicalize_inside_pattern(pattern, path, paths);
                 })
             }
@@ -660,13 +662,15 @@ fn check_expression(
             local_variables.extend(check_patterns(location, params, state)?);
             check_expression(location, body, state, &local_variables)
         }
-        Expression::BinaryOperation(a, _, b)
+        Expression::BinaryOperation(BinaryOperation {
+            left: a, right: b, ..
+        })
         | Expression::IndexAccess(IndexAccess { array: a, index: b }) => {
             check_expression(location, a.as_ref(), state, local_variables)?;
             check_expression(location, b.as_ref(), state, local_variables)
         }
-        Expression::UnaryOperation(_, e) | Expression::FreeInput(e) => {
-            check_expression(location, e, state, local_variables)
+        Expression::UnaryOperation(UnaryOperation { expr, .. }) | Expression::FreeInput(expr) => {
+            check_expression(location, expr, state, local_variables)
         }
         Expression::FunctionCall(FunctionCall {
             function,
@@ -675,7 +679,7 @@ fn check_expression(
             check_expression(location, function, state, local_variables)?;
             check_expressions(location, arguments, state, local_variables)
         }
-        Expression::MatchExpression(scrutinee, arms) => {
+        Expression::MatchExpression(MatchExpression { scrutinee, arms }) => {
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
                 let mut local_variables = local_variables.clone();
