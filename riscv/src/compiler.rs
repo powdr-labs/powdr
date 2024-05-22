@@ -109,9 +109,9 @@ pub fn compile<T: FieldElement>(
     with_bootloader: bool,
 ) -> String {
     // stack grows towards zero
-    let stack_start = 0x10000;
+    let stack_start = 0x10000000;
     // data grows away from zero
-    let data_start = 0x10100;
+    let data_start = 0x10000100;
 
     assert!(assemblies
         .insert("__runtime".to_string(), runtime.global_declarations())

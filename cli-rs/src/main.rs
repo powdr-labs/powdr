@@ -92,6 +92,33 @@ enum Commands {
         #[arg(default_value_t = false)]
         continuations: bool,
     },
+    /// Translates a RISC-V statically liked executable to powdr assembly and
+    /// then to PIL and generates fixed and witness columns.
+    RiscvElf {
+        /// Input file
+        #[arg(required = true)]
+        file: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Directory for output files.
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        output_directory: String,
+
+        /// Comma-separated list of coprocessors.
+        #[arg(long)]
+        coprocessors: Option<String>,
+
+        /// Run a long execution in chunks (Experimental and not sound!)
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        continuations: bool,
+    },
     /// Executes a powdr-asm file with given inputs.
     Execute {
         /// input powdr-asm code compiled from Rust/RISCV
@@ -213,6 +240,20 @@ fn run_command(command: Commands) {
                 continuations
             ))
         }
+        Commands::RiscvElf {
+            file,
+            field,
+            output_directory,
+            coprocessors,
+            continuations,
+        } => {
+            call_with_field!(compile_riscv_elf::<field>(
+                &file,
+                Path::new(&output_directory),
+                coprocessors,
+                continuations
+            ))
+        }
         Commands::Execute {
             file,
             field,
@@ -286,6 +327,32 @@ fn compile_riscv_asm<F: FieldElement>(
         continuations,
     )
     .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
+
+    Ok(())
+}
+
+fn compile_riscv_elf<F: FieldElement>(
+    input_file: &str,
+    output_dir: &Path,
+    coprocessors: Option<String>,
+    continuations: bool,
+) -> Result<(), Vec<String>> {
+    let runtime = match coprocessors {
+        Some(list) => {
+            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
+        }
+        None => powdr_riscv::Runtime::base(),
+    };
+
+    powdr_riscv::compile_riscv_elf::<F>(
+        input_file,
+        input_file,
+        output_dir,
+        true,
+        &runtime,
+        continuations,
+    )
+    .ok_or_else(|| vec!["could not translate RISC-V executable".to_string()])?;
 
     Ok(())
 }

@@ -19,6 +19,7 @@ pub use crate::runtime::Runtime;
 pub mod compiler;
 pub mod continuations;
 mod disambiguator;
+mod elf_translate;
 pub mod parser;
 pub mod runtime;
 
@@ -136,6 +137,20 @@ pub fn compile_riscv_asm<T: FieldElement>(
         runtime,
         with_bootloader,
     )
+}
+
+/// Translates a RISC-V ELF file all the way down to PIL and generates fixed and
+/// witness columns.
+pub fn compile_riscv_elf<T: FieldElement>(
+    original_file_name: &str,
+    input_file: &str,
+    output_dir: &Path,
+    force_overwrite: bool,
+    runtime: &Runtime,
+    with_bootloader: bool,
+) -> Option<(PathBuf, String)> {
+    elf_translate::elf_translate(input_file);
+    todo!()
 }
 
 macro_rules! as_ref [
