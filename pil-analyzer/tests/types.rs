@@ -527,6 +527,16 @@ fn empty_function() {
 }
 
 #[test]
+fn empty_function_infered() {
+    let input = "
+    let empty_fn = |i| ();
+    let t: int = 3;
+    let r = empty_fn(t);
+    ";
+    type_check(input, &[("r", "", "()")]);
+}
+
+#[test]
 fn inner_empty_tuple() {
     let input = "
     let empty_fn: int -> () = |i| ();
