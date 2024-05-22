@@ -16,7 +16,7 @@ use powdr_ast::parsed::{
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, BinaryOperation, EnumDeclaration, EnumVariant, Expression, FunctionCall,
     IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, PilStatement,
-    StatementInsideBlock, TypedExpression,
+    StatementInsideBlock, TypedExpression, UnaryOperation,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -159,7 +159,7 @@ fn free_inputs_in_expression<'a>(
         Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
             Box::new(free_inputs_in_expression(left).chain(free_inputs_in_expression(right)))
         }
-        Expression::UnaryOperation(_, expr) => free_inputs_in_expression(expr),
+        Expression::UnaryOperation(UnaryOperation { expr, .. }) => free_inputs_in_expression(expr),
         Expression::FunctionCall(FunctionCall {
             function,
             arguments,
@@ -191,7 +191,9 @@ fn free_inputs_in_expression_mut<'a>(
         Expression::BinaryOperation(BinaryOperation { left, right, .. }) => Box::new(
             free_inputs_in_expression_mut(left).chain(free_inputs_in_expression_mut(right)),
         ),
-        Expression::UnaryOperation(_, expr) => free_inputs_in_expression_mut(expr),
+        Expression::UnaryOperation(UnaryOperation { expr, .. }) => {
+            free_inputs_in_expression_mut(expr)
+        }
         Expression::FunctionCall(FunctionCall {
             function,
             arguments,
@@ -667,8 +669,8 @@ fn check_expression(
             check_expression(location, a.as_ref(), state, local_variables)?;
             check_expression(location, b.as_ref(), state, local_variables)
         }
-        Expression::UnaryOperation(_, e) | Expression::FreeInput(e) => {
-            check_expression(location, e, state, local_variables)
+        Expression::UnaryOperation(UnaryOperation { expr, .. }) | Expression::FreeInput(expr) => {
+            check_expression(location, expr, state, local_variables)
         }
         Expression::FunctionCall(FunctionCall {
             function,

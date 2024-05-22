@@ -595,30 +595,6 @@ fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
     format!("{}", list.into_iter().format(", "))
 }
 
-impl<E: Display> Expression<E> {
-    pub fn format_unary_operation(
-        &self,
-        op: &UnaryOperator,
-        exp: &Expression<E>,
-        f: &mut Formatter<'_>,
-    ) -> Result {
-        let exp_string = match (self.precedence(), exp.precedence()) {
-            (Some(precedence), Some(inner_precedence)) if precedence < inner_precedence => {
-                format!("({exp})")
-            }
-            _ => {
-                format!("{exp}")
-            }
-        };
-
-        if op.is_prefix() {
-            write!(f, "{op}{exp_string}")
-        } else {
-            write!(f, "{exp_string}{op}")
-        }
-    }
-}
-
 impl<Ref: Display> Display for Expression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
@@ -632,7 +608,9 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::BinaryOperation(binaryop) => {
                 write!(f, "{binaryop}")
             }
-            Expression::UnaryOperation(op, exp) => self.format_unary_operation(op, exp, f),
+            Expression::UnaryOperation(unaryop) => {
+                write!(f, "{unaryop}")
+            }
             Expression::IndexAccess(index_access) => write!(f, "{index_access}"),
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
@@ -782,6 +760,28 @@ impl Display for BinaryOperator {
                 BinaryOperator::Greater => ">",
             }
         )
+    }
+}
+
+impl<E> Display for UnaryOperation<E>
+where
+    E: Display + Precedence,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let exp_string = match (self.op.precedence(), self.expr.precedence()) {
+            (Some(precedence), Some(inner_precedence)) if precedence < inner_precedence => {
+                format!("({})", self.expr)
+            }
+            _ => {
+                format!("{}", self.expr)
+            }
+        };
+
+        if self.op.is_prefix() {
+            write!(f, "{}{exp_string}", self.op)
+        } else {
+            write!(f, "{exp_string}{}", self.op)
+        }
     }
 }
 

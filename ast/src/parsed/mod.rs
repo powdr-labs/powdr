@@ -342,14 +342,26 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     Tuple(Vec<Self>),
     LambdaExpression(LambdaExpression<Self>),
     ArrayLiteral(ArrayLiteral<Self>),
+    UnaryOperation(UnaryOperation<Self>),
     BinaryOperation(BinaryOperation<Self>),
-    UnaryOperation(UnaryOperator, Box<Self>),
     IndexAccess(IndexAccess<Self>),
     FunctionCall(FunctionCall<Self>),
     FreeInput(Box<Self>),
     MatchExpression(Box<Self>, Vec<MatchArm<Self>>),
     IfExpression(IfExpression<Self>),
     BlockExpression(Vec<StatementInsideBlock<Self>>, Box<Self>),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UnaryOperation<E = Expression<NamespacedPolynomialReference>> {
+    pub op: UnaryOperator,
+    pub expr: Box<E>,
+}
+
+impl<Ref> From<UnaryOperation<Expression<Ref>>> for Expression<Ref> {
+    fn from(operation: UnaryOperation<Expression<Ref>>) -> Self {
+        Expression::UnaryOperation(operation)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
@@ -479,7 +491,7 @@ impl<R> Expression<R> {
             Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
                 [left.as_ref(), right.as_ref()].into_iter()
             }
-            Expression::UnaryOperation(_, e) => once(e.as_ref()),
+            Expression::UnaryOperation(UnaryOperation { expr, .. }) => once(expr.as_ref()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
                 [array.as_ref(), index.as_ref()].into_iter()
             }
@@ -520,7 +532,7 @@ impl<R> Expression<R> {
             Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
                 [left.as_mut(), right.as_mut()].into_iter()
             }
-            Expression::UnaryOperation(_, e) => once(e.as_mut()),
+            Expression::UnaryOperation(UnaryOperation { expr, .. }) => once(expr.as_mut()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
                 [array.as_mut(), index.as_mut()].into_iter()
             }
@@ -729,7 +741,7 @@ impl Precedence for BinaryOperator {
 impl<E> Precedence for Expression<E> {
     fn precedence(&self) -> Option<ExpressionPrecedence> {
         match self {
-            Expression::UnaryOperation(op, _) => op.precedence(),
+            Expression::UnaryOperation(operation) => operation.op.precedence(),
             Expression::BinaryOperation(operation) => operation.op.precedence(),
             _ => None,
         }

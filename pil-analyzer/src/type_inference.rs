@@ -8,7 +8,7 @@ use powdr_ast::{
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
         ArrayLiteral, BinaryOperation, FunctionCall, IndexAccess, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, Number, Pattern, StatementInsideBlock,
+        LetStatementInsideBlock, MatchArm, Number, Pattern, StatementInsideBlock, UnaryOperation,
     },
 };
 
@@ -553,7 +553,7 @@ impl<'a> TypeChecker<'a> {
                     || format!("applying operator {op}"),
                 )?
             }
-            Expression::UnaryOperation(op, inner) => {
+            Expression::UnaryOperation(UnaryOperation { op, expr: inner }) => {
                 // TODO at some point, also store the generic args for operators
                 let fun_type = self.instantiate_scheme(unary_operator_scheme(*op)).0;
                 self.infer_type_of_function_call(

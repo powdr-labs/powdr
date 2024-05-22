@@ -554,7 +554,7 @@ PowOp: BinaryOperator = {
 }
 
 Unary: Box<Expression> = {
-    PrefixUnaryOp PostfixUnary => Box::new(Expression::UnaryOperation(<>)),
+    <op:PrefixUnaryOp> <expr:PostfixUnary> => Box::new(UnaryOperation{op, expr}.into()),
     PostfixUnary,
 }
 
@@ -564,7 +564,7 @@ PrefixUnaryOp: UnaryOperator = {
 }
 
 PostfixUnary: Box<Expression> = {
-    <t:Term> <o:PostfixUnaryOp> => Box::new(Expression::UnaryOperation(o, t)),
+    <t:Term> <op:PostfixUnaryOp> => Box::new(UnaryOperation{op, expr: t}.into()),
     Term,
 }
 
