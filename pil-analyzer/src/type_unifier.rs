@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use powdr_ast::parsed::{types::Type, visitor::Children};
+use powdr_ast::parsed::{
+    types::{ArrayType, Type},
+    visitor::Children,
+};
 
 use crate::type_builtins::elementary_type_bounds;
 
@@ -116,18 +119,14 @@ impl Unifier {
                     .zip(args2)
                     .try_for_each(|(a1, a2)| self.unify_types(a1, a2))
             }
-            (Type::Array(a1), Type::Tuple(a2)) | (Type::Tuple(a2), Type::Array(a1)) => {
+            (Type::Array(ArrayType { length: None, .. }), Type::Tuple(a2))
+            | (Type::Tuple(a2), Type::Array(ArrayType { length: None, .. }))
+                if a2.items.is_empty() =>
+            {
                 // Special case for T1[] and ().
-                if (a1.length.is_none()) & (a2.items.is_empty()) {
-                    return Ok(());
-                } else {
-                    Err(format!(
-                        "Cannot unify types {} and {}",
-                        Type::Array(a1),
-                        Type::Tuple(a2),
-                    ))
-                }
+                return Ok(());
             }
+
             (ty1, ty2) => Err(format!("Cannot unify types {ty1} and {ty2}")),
         }
     }
