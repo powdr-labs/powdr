@@ -353,28 +353,41 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
 }
 
 /// Comparison function for expressions that ignore source information.
-impl<Ref: PartialEq> PartialEq for Expression<Ref> {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Expression::Reference(_, a), Expression::Reference(_, b)) => a == b,
-            (Expression::PublicReference(_, a), Expression::PublicReference(_, b)) => a == b,
-            (Expression::Number(_, a), Expression::Number(_, b)) => a == b,
-            (Expression::String(_, a), Expression::String(_, b)) => a == b,
-            (Expression::Tuple(_, a), Expression::Tuple(_, b)) => a == b,
-            (Expression::LambdaExpression(_, a), Expression::LambdaExpression(_, b)) => a == b,
-            (Expression::ArrayLiteral(_, a), Expression::ArrayLiteral(_, b)) => a == b,
-            (Expression::BinaryOperation(_, a), Expression::BinaryOperation(_, b)) => a == b,
-            (Expression::UnaryOperation(_, a), Expression::UnaryOperation(_, b)) => a == b,
-            (Expression::IndexAccess(_, a), Expression::IndexAccess(_, b)) => a == b,
-            (Expression::FunctionCall(_, a), Expression::FunctionCall(_, b)) => a == b,
-            (Expression::FreeInput(_, a), Expression::FreeInput(_, b)) => a == b,
-            (Expression::MatchExpression(_, a), Expression::MatchExpression(_, b)) => a == b,
-            (Expression::IfExpression(_, a), Expression::IfExpression(_, b)) => a == b,
-            (Expression::BlockExpression(_, a), Expression::BlockExpression(_, b)) => a == b,
-            _ => false,
+macro_rules! impl_partial_eq_for_expression {
+    ($($variant:ident),*) => {
+        impl<Ref: PartialEq> PartialEq for Expression<Ref> {
+            fn eq(&self, other: &Self) -> bool {
+                match (self, other) {
+                    $(
+                        (Expression::$variant(_, a), Expression::$variant(_, b)) => a == b,
+                    )*
+                    // This catches the case where variants are different and returns false
+                    $(
+                        (Expression::$variant(_, _), _) => false,
+                    )*
+                }
+            }
         }
     }
 }
+
+impl_partial_eq_for_expression!(
+    Reference,
+    PublicReference,
+    Number,
+    String,
+    Tuple,
+    LambdaExpression,
+    ArrayLiteral,
+    BinaryOperation,
+    UnaryOperation,
+    IndexAccess,
+    FunctionCall,
+    FreeInput,
+    MatchExpression,
+    IfExpression,
+    BlockExpression
+);
 
 pub trait SourceReference {
     fn source_reference(&self) -> &SourceRef;
