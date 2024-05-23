@@ -65,7 +65,7 @@ fn new_witness_column_name_clash() {
 #[test]
 fn create_constraints() {
     let input = r#"namespace N(16);
-    let force_bool: expr -> () = |c| c * (1 - c) = 0;
+    let force_bool: expr -> Constr = |c| c * (1 - c) = 0;
     let new_bool: -> expr = constr || { let x; force_bool(x); x };
     let is_zero: expr -> expr = constr |x| {
         let x_is_zero;
@@ -81,7 +81,7 @@ fn create_constraints() {
     y = x_is_zero + 2;
     "#;
     let expected = r#"namespace N(16);
-    let force_bool: expr -> () = (|c| c * (1 - c) = 0);
+    let force_bool: expr -> Constr = (|c| c * (1 - c) = 0);
     let new_bool: -> expr = (constr || {
         let x;
         N.force_bool(x);

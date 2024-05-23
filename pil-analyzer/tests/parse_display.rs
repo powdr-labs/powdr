@@ -315,16 +315,16 @@ fn function_type_display() {
 #[test]
 fn expr_and_identity() {
     let input = r#"namespace N(16);
-    let f: expr, expr -> () = |x, y| [x = y];
-    let g: expr -> () = |x| [x = 0];
+    let f: expr, expr -> Constr[] = |x, y| [x = y];
+    let g: expr -> Constr[] = |x| [x = 0];
     let x: col;
     let y: col;
     f(x, y);
     g((x));
     "#;
     let expected = r#"namespace N(16);
-    let f: expr, expr -> () = (|x, y| [x = y]);
-    let g: expr -> () = (|x| [x = 0]);
+    let f: expr, expr -> std::prelude::Constr[] = (|x, y| [x = y]);
+    let g: expr -> std::prelude::Constr[] = (|x| [x = 0]);
     col witness x;
     col witness y;
     N.x = N.y;
@@ -335,7 +335,7 @@ fn expr_and_identity() {
 }
 
 #[test]
-#[should_panic = "Expected type () but got type expr"]
+#[should_panic = "Expected type std::prelude::Constr but got type expr"]
 fn expression_but_expected_constraint() {
     let input = r#"namespace N(16);
     col witness y;
@@ -346,7 +346,7 @@ fn expression_but_expected_constraint() {
 }
 
 #[test]
-#[should_panic = "Expected type: expr\\nInferred type: ()\\n"]
+#[should_panic = "Expected type: expr\\nInferred type: std::prelude::Constr\\n"]
 fn constraint_but_expected_expression() {
     let input = r#"namespace N(16);
     col witness y;
