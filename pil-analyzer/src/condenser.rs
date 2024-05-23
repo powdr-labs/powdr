@@ -451,10 +451,7 @@ impl<'a, T: FieldElement> From<IdentityWithoutID<AlgebraicExpression<T>>> for Va
                 let right = right
                     .cloned()
                     .unwrap_or_else(|| AlgebraicExpression::Number(0.into()));
-                let fields = [left.clone(), right]
-                    .into_iter()
-                    .map(|v| Arc::new(v.into()))
-                    .collect();
+                let fields = vec![Arc::new(left.clone().into()), Arc::new(right.into())];
 
                 Value::Enum("Identity", Some(fields))
             }
