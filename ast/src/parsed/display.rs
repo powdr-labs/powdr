@@ -614,21 +614,12 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::IndexAccess(_, index_access) => write!(f, "{index_access}"),
             Expression::FunctionCall(_, fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(_, input) => write!(f, "${{ {input} }}"),
-            Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
-                writeln!(f, "match {scrutinee} {{")?;
-                write_items_indented(f, arms)?;
-                write!(f, "}}")
+            Expression::MatchExpression(_, match_expr) => {
+                write!(f, "{match_expr}")
             }
             Expression::IfExpression(_, e) => write!(f, "{e}"),
-            Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
-                if statements.is_empty() {
-                    write!(f, "{{ {expr} }}")
-                } else {
-                    writeln!(f, "{{")?;
-                    write_items_indented(f, statements)?;
-                    write_indented_by(f, expr, 1)?;
-                    write!(f, "\n}}")
-                }
+            Expression::BlockExpression(_, block_expr) => {
+                write!(f, "{block_expr}")
             }
         }
     }
