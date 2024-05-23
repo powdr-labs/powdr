@@ -352,7 +352,7 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     BlockExpression(SourceRef, BlockExpression<Self>),
 }
 
-// Comparison function for expressions that ignore source information.
+/// Comparison function for expressions that ignore source information.
 impl<Ref: PartialEq> PartialEq for Expression<Ref> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
