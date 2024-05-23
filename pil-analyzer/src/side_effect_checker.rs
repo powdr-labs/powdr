@@ -59,22 +59,12 @@ impl<'a> SideEffectChecker<'a> {
             }
             Expression::BlockExpression(statements, _expr) => {
                 for s in statements {
-                    match s {
-                        StatementInsideBlock::LetStatement(s) => {
-                            if s.value.is_none() && self.context != FunctionKind::Constr {
-                                return Err(format!(
-                                    "Tried to create a witness column in a {} context: {s}",
-                                    self.context
-                                ));
-                            }
-                        }
-                        StatementInsideBlock::Expression(expr) => {
-                            if self.context != FunctionKind::Constr {
-                                return Err(format!(
-                                    "Tried to add a constraint in a {} context: {expr}",
-                                    self.context
-                                ));
-                            }
+                    if let StatementInsideBlock::LetStatement(ls) = s {
+                        if ls.value.is_none() && self.context != FunctionKind::Constr {
+                            return Err(format!(
+                                "Tried to create a witness column in a {} context: {ls}",
+                                self.context
+                            ));
                         }
                     }
                 }
