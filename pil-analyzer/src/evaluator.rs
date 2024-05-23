@@ -109,6 +109,8 @@ pub enum EvalError {
     DataNotAvailable,
     /// Failed assertion, with reason.
     FailedAssertion(String),
+    /// The system or environment is in a state that does not support the given operation.
+    InvalidState(String),
 }
 
 impl Display for EvalError {
@@ -121,6 +123,7 @@ impl Display for EvalError {
             EvalError::SymbolNotFound(msg) => write!(f, "Symbol not found: {msg}"),
             EvalError::DataNotAvailable => write!(f, "Data not (yet) available."),
             EvalError::FailedAssertion(msg) => write!(f, "Assertion failed: {msg}"),
+            EvalError::InvalidState(msg) => write!(f, "Invalid state: {msg}"),
         }
     }
 }

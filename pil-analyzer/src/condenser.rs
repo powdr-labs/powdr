@@ -45,16 +45,20 @@ pub fn condense<T: FieldElement>(
     let mut condensed_identities = vec![];
     let mut intermediate_columns = HashMap::new();
     let mut new_witness_columns = vec![];
+    let mut stages_to_set = vec![];
     // Condense identities and intermediate columns and update the source order.
     let source_order = source_order
         .into_iter()
         .flat_map(|s| {
+            // Potentially modify the current namespace.
             if let StatementIdentifier::Definition(name) = &s {
                 let mut namespace =
                     AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
                 namespace.pop();
                 condenser.set_namespace(namespace);
             }
+
+            // Condense identities and definitions.
             let statement = match s {
                 StatementIdentifier::Identity(index) => {
                     condenser.condense_identity(&identities[index]);
@@ -103,6 +107,9 @@ pub fn condense<T: FieldElement>(
                         SymbolKind::Poly(PolynomialType::Committed)
                     ) =>
                 {
+                    if condenser.stage() != 0 {
+                        stages_to_set.push((name.clone(), condenser.stage()));
+                    }
                     condenser.set_non_fresh();
                     Some(StatementIdentifier::Definition(name))
                 }
@@ -139,9 +146,14 @@ pub fn condense<T: FieldElement>(
         })
         .collect();
 
+    let degree = condenser.degree();
+
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
     for wit in new_witness_columns {
         definitions.insert(wit.absolute_name.clone(), (wit, None));
+    }
+    for (name, stage) in stages_to_set {
+        definitions.get_mut(&name).unwrap().0.set_stage(stage);
     }
 
     for decl in public_declarations.values_mut() {
@@ -284,6 +296,16 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         self.stage_is_fresh = false;
     }
 
+    /// Returns the current stage.
+    pub fn stage(&self) -> u32 {
+        self.stage
+    }
+
+    /// Returns the degree (potentially modified through the "capture_stage" builtin.
+    pub fn degree(&self) -> Option<u64> {
+        self.degree
+    }
+
     /// Returns the witness columns generated since the last call to this function.
     pub fn extract_new_witness_columns(&mut self) -> Vec<Symbol> {
         std::mem::take(&mut self.new_witnesses)
@@ -378,11 +400,12 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = self.find_unused_name(name);
+        let stage = (self.stage() > 0).then_some(self.stage());
         let symbol = Symbol {
             id: self.next_witness_id,
             source,
             absolute_name: name.clone(),
-            stage: Some(self.stage),
+            stage,
             kind: SymbolKind::Poly(PolynomialType::Committed),
             length: None,
         };
@@ -424,7 +447,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
 
     fn capture_stage(&mut self, fun: Arc<Value<'a, T>>) -> Result<Arc<Value<'a, T>>, EvalError> {
         if !self.stage_is_fresh {
-            return Err(EvalError::Unsupported("Cannot call \"capture_stage\": There are pre-existing constraints or witness columns.".to_string()));
+            return Err(EvalError::InvalidState("Cannot call \"capture_stage\": There are pre-existing constraints or witness columns.".to_string()));
         }
 
         let degree = evaluate_function_call(fun, vec![], self)?;
@@ -433,7 +456,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         };
         let degree: u64 = degree.try_into().unwrap();
         if self.degree.is_some() && self.degree != Some(degree) {
-            return Err(EvalError::Unsupported(format!(
+            return Err(EvalError::InvalidState(format!(
                     "Call to \"capture_stage\" returned degree {degree}, but the degree has already been set to {}.",
                     self.degree.unwrap()
                 )));
