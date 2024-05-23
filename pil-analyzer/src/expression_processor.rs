@@ -145,28 +145,24 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     arguments: self.process_expressions(c.arguments),
                 },
             ),
-            PExpression::MatchExpression(
-                src,
-                MatchExpression {
-                    expr: scrutinee,
-                    arms,
-                },
-            ) => Expression::MatchExpression(
-                src,
-                MatchExpression {
-                    expr: Box::new(self.process_expression(*scrutinee)),
-                    arms: arms
-                        .into_iter()
-                        .map(|MatchArm { pattern, value }| {
-                            let vars = self.save_local_variables();
-                            let pattern = self.process_pattern(pattern);
-                            let value = self.process_expression(value);
-                            self.reset_local_variables(vars);
-                            MatchArm { pattern, value }
-                        })
-                        .collect(),
-                },
-            ),
+            PExpression::MatchExpression(src, MatchExpression { scrutinee, arms }) => {
+                Expression::MatchExpression(
+                    src,
+                    MatchExpression {
+                        scrutinee: Box::new(self.process_expression(*scrutinee)),
+                        arms: arms
+                            .into_iter()
+                            .map(|MatchArm { pattern, value }| {
+                                let vars = self.save_local_variables();
+                                let pattern = self.process_pattern(pattern);
+                                let value = self.process_expression(value);
+                                self.reset_local_variables(vars);
+                                MatchArm { pattern, value }
+                            })
+                            .collect(),
+                    },
+                )
+            }
             PExpression::IfExpression(
                 src,
                 IfExpression {

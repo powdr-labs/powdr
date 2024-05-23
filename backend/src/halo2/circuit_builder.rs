@@ -21,6 +21,7 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
+const FIRST_STEP_NAME: &str = "__first_step";
 const ENABLE_NAME: &str = "__enable";
 const INSTANCE_NAME: &str = "__instance";
 
@@ -84,25 +85,34 @@ pub(crate) struct PowdrCircuit<'a, T> {
     witgen_callback: Option<WitgenCallback<T>>,
 }
 
+fn get_publics<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, usize)> {
+    let mut publics = analyzed
+        .public_declarations
+        .values()
+        .map(|public_declaration| {
+            let witness_name = public_declaration.referenced_poly_name();
+            let witness_offset = public_declaration.index as usize;
+            (witness_name, witness_offset)
+        })
+        .collect::<Vec<_>>();
+
+    // Sort, so that the order is deterministic
+    publics.sort();
+    publics
+}
+
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub(crate) fn new(analyzed: &'a Analyzed<T>, fixed: &'a [(String, Vec<T>)]) -> Self {
-        let mut publics = analyzed
-            .public_declarations
-            .values()
-            .map(|public_declaration| {
-                let witness_name = public_declaration.referenced_poly_name();
-                let witness_offset = public_declaration.index as usize;
-                (witness_name, witness_offset)
-            })
-            .collect::<Vec<_>>();
-        // Sort, so that the order is deterministic
-        publics.sort();
+        for (fixed_name, _) in fixed {
+            assert!(fixed_name != FIRST_STEP_NAME);
+            assert!(fixed_name != ENABLE_NAME);
+        }
 
         Self {
             analyzed,
             fixed,
             witness: None,
-            publics,
+            publics: get_publics(analyzed),
             witgen_callback: None,
         }
     }
@@ -187,11 +197,13 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
             })
             .collect();
 
+        let first_step = meta.fixed_column();
         let fixed = analyzed
             .constant_polys_in_source_order()
             .iter()
             .flat_map(|(symbol, _)| symbol.array_elements())
             .map(|(name, _)| (name.clone(), meta.fixed_column()))
+            .chain(iter::once((FIRST_STEP_NAME.to_string(), first_step)))
             .collect();
 
         let enable = meta.fixed_column();
@@ -222,11 +234,11 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
             challenges,
         };
 
-        // Enable equality for all witness columns & instance
-        for &column in config.advice.values() {
-            meta.enable_equality(column);
-        }
+        // Enable equality for instance column & all witness columns with public cells
         meta.enable_equality(config.instance);
+        for (column_name, _) in get_publics(&analyzed) {
+            meta.enable_equality(config.advice[&column_name]);
+        }
 
         // Add polynomial identities
         let identities = analyzed
@@ -248,6 +260,25 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                     .collect()
             });
         }
+
+        // Add constraints that for all witness columns, cell 0 must equal cell <degree>.
+        // This forces the prover to simulate wrapping correctly.
+        meta.create_gate("enforce_wrapping", |meta| -> Vec<(String, Expression<F>)> {
+            let first_step = meta.query_fixed(config.fixed[FIRST_STEP_NAME], Rotation::cur());
+            config
+                .advice
+                .keys()
+                .map(|name| {
+                    let first_row = meta.query_advice(config.advice[name], Rotation::cur());
+                    let last_row = meta.query_advice(
+                        config.advice[name],
+                        Rotation(analyzed.degree().try_into().unwrap()),
+                    );
+                    let expr = first_step.clone() * (first_row - last_row);
+                    (format!("enforce wrapping ({name})"), expr)
+                })
+                .collect()
+        });
 
         // Challenge used to combine the lookup tuple with the selector
         let beta = Expression::Challenge(meta.challenge_usable_after(FirstPhase));
@@ -389,6 +420,12 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                         i,
                         || Value::known(value),
                     )?;
+                    region.assign_fixed(
+                        || FIRST_STEP_NAME,
+                        config.fixed[FIRST_STEP_NAME],
+                        i,
+                        || Value::known(F::from(if i == 0 { 1 } else { 0 })),
+                    )?;
                 }
 
                 let publics = self
@@ -406,31 +443,25 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                 } else {
                     Some(&new_witness)
                 };
-                for (name, &column) in config.advice.iter() {
-                    // Note that we can't skip this loop if we don't have a witness,
-                    // because the copy_advice() call below also adds copy constraints,
-                    // which are needed to compute the verification key.
-                    let values = witness.as_ref().and_then(|witness| {
-                        witness.iter().find_map(|(witness_name, values)| {
-                            (witness_name == name).then_some(values)
-                        })
-                    });
-                    for i in 0..degree {
-                        let value = values
-                            .map(|values| Value::known(convert_field::<T, F>(values[i])))
-                            .unwrap_or_default();
+                if let Some(witness) = witness {
+                    for (name, values) in witness.iter() {
+                        let column = *config.advice.get(name).unwrap();
+                        for (i, value) in values.iter().enumerate() {
+                            let value = Value::known(convert_field::<T, F>(*value));
 
-                        let assigned_cell = region.assign_advice(|| name, column, i, || value)?;
+                            let assigned_cell =
+                                region.assign_advice(|| name, column, i, || value)?;
 
-                        // The first row needs to be copied to row <degree>
-                        if i == 0 {
-                            assigned_cell.copy_advice(|| name, &mut region, column, degree)?;
-                        }
+                            // The first row needs to be copied to row <degree>
+                            if i == 0 {
+                                region.assign_advice(|| name, column, degree, || value)?;
+                            }
 
-                        // Collect public cells, which are later copy-constrained to equal
-                        // a cell in the instance column.
-                        if let Some(&instance_index) = publics.get(&(name.clone(), i)) {
-                            public_cells.push((instance_index, assigned_cell));
+                            // Collect public cells, which are later copy-constrained to equal
+                            // a cell in the instance column.
+                            if let Some(&instance_index) = publics.get(&(name.clone(), i)) {
+                                public_cells.push((instance_index, assigned_cell));
+                            }
                         }
                     }
                 }

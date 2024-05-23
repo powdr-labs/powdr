@@ -609,7 +609,7 @@ GenericReference: NamespacedPolynomialReference = {
 }
 
 MatchExpression: Box<Expression> = {
-    <start:@L> "match" <expr:BoxedExpression> "{" <arms:MatchArms> "}" => Box::new(Expression::MatchExpression(ctx.source_ref(start), MatchExpression{expr, arms}))
+    <start:@L> "match" <scrutinee:BoxedExpression> "{" <arms:MatchArms> "}" => Box::new(Expression::MatchExpression(ctx.source_ref(start), MatchExpression{scrutinee, arms}))
 }
 
 MatchArms: Vec<MatchArm> = {

@@ -514,7 +514,7 @@ impl<Ref> Expression<Ref> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MatchExpression<E = Expression<NamespacedPolynomialReference>> {
-    pub expr: Box<E>,
+    pub scrutinee: Box<E>,
     pub arms: Vec<MatchArm<E>>,
 }
 
@@ -596,10 +596,10 @@ impl<R> Expression<R> {
             Expression::Tuple(_, v) => v.iter(),
             Expression::LambdaExpression(_, LambdaExpression { body, .. }) => once(body.as_ref()),
             Expression::ArrayLiteral(_, ArrayLiteral { items }) => items.iter(),
-            Expression::BinaryOperation(_, BinaryOperation { left, op: _, right }) => {
+            Expression::BinaryOperation(_, BinaryOperation { left, right, .. }) => {
                 [left.as_ref(), right.as_ref()].into_iter()
             }
-            Expression::UnaryOperation(_, UnaryOperation { op: _, expr }) => once(expr.as_ref()),
+            Expression::UnaryOperation(_, UnaryOperation { expr, .. }) => once(expr.as_ref()),
             Expression::IndexAccess(_, IndexAccess { array, index }) => {
                 [array.as_ref(), index.as_ref()].into_iter()
             }
@@ -611,8 +611,8 @@ impl<R> Expression<R> {
                 },
             ) => once(function.as_ref()).chain(arguments.iter()),
             Expression::FreeInput(_, e) => once(e.as_ref()),
-            Expression::MatchExpression(_, MatchExpression { expr, arms }) => {
-                once(expr.as_ref()).chain(arms.iter().flat_map(|arm| arm.children()))
+            Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
+                once(scrutinee.as_ref()).chain(arms.iter().flat_map(|arm| arm.children()))
             }
             Expression::IfExpression(
                 _,
@@ -643,10 +643,10 @@ impl<R> Expression<R> {
             Expression::Tuple(_, v) => v.iter_mut(),
             Expression::LambdaExpression(_, LambdaExpression { body, .. }) => once(body.as_mut()),
             Expression::ArrayLiteral(_, ArrayLiteral { items }) => items.iter_mut(),
-            Expression::BinaryOperation(_, BinaryOperation { left, op: _, right }) => {
+            Expression::BinaryOperation(_, BinaryOperation { left, right, .. }) => {
                 [left.as_mut(), right.as_mut()].into_iter()
             }
-            Expression::UnaryOperation(_, UnaryOperation { op: _, expr }) => once(expr.as_mut()),
+            Expression::UnaryOperation(_, UnaryOperation { expr, .. }) => once(expr.as_mut()),
             Expression::IndexAccess(_, IndexAccess { array, index }) => {
                 [array.as_mut(), index.as_mut()].into_iter()
             }
@@ -658,8 +658,8 @@ impl<R> Expression<R> {
                 },
             ) => once(function.as_mut()).chain(arguments.iter_mut()),
             Expression::FreeInput(_, e) => once(e.as_mut()),
-            Expression::MatchExpression(_, MatchExpression { expr, arms }) => {
-                once(expr.as_mut()).chain(arms.iter_mut().flat_map(|arm| arm.children_mut()))
+            Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
+                once(scrutinee.as_mut()).chain(arms.iter_mut().flat_map(|arm| arm.children_mut()))
             }
             Expression::IfExpression(
                 _,
@@ -814,24 +814,26 @@ pub enum BinaryOperatorAssociativity {
 }
 
 trait Precedence {
-    fn precedence(&self) -> ExpressionPrecedence;
+    fn precedence(&self) -> Option<ExpressionPrecedence>;
 }
 
 impl Precedence for UnaryOperator {
-    fn precedence(&self) -> ExpressionPrecedence {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
         use UnaryOperator::*;
-        match self {
+        let precedence = match self {
             // NOTE: Any modification must be done with care to not overlap with BinaryOperator's precedence
             Next => 1,
             Minus | LogicalNot => 2,
-        }
+        };
+
+        Some(precedence)
     }
 }
 
 impl Precedence for BinaryOperator {
-    fn precedence(&self) -> ExpressionPrecedence {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
         use BinaryOperator::*;
-        match self {
+        let precedence = match self {
             // NOTE: Any modification must be done with care to not overlap with LambdaExpression's precedence
             // Unary Oprators
             // **
@@ -856,6 +858,18 @@ impl Precedence for BinaryOperator {
             LogicalOr => 12,
             // .. ..=
             // ??
+        };
+
+        Some(precedence)
+    }
+}
+
+impl<E> Precedence for Expression<E> {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        match self {
+            Expression::UnaryOperation(_, operation) => operation.op.precedence(),
+            Expression::BinaryOperation(_, operation) => operation.op.precedence(),
+            _ => None,
         }
     }
 }

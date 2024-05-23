@@ -156,10 +156,10 @@ fn free_inputs_in_expression<'a>(
         | Expression::PublicReference(_, _)
         | Expression::Number(_, _)
         | Expression::String(_, _) => Box::new(None.into_iter()),
-        Expression::BinaryOperation(_, BinaryOperation { left, op: _, right }) => {
+        Expression::BinaryOperation(_, BinaryOperation { left, right, .. }) => {
             Box::new(free_inputs_in_expression(left).chain(free_inputs_in_expression(right)))
         }
-        Expression::UnaryOperation(_, UnaryOperation { op: _, expr }) => {
+        Expression::UnaryOperation(_, UnaryOperation { expr, .. }) => {
             free_inputs_in_expression(expr)
         }
         Expression::FunctionCall(
@@ -193,10 +193,10 @@ fn free_inputs_in_expression_mut<'a>(
         | Expression::PublicReference(_, _)
         | Expression::Number(_, _)
         | Expression::String(_, _) => Box::new(None.into_iter()),
-        Expression::BinaryOperation(_, BinaryOperation { left, op: _, right }) => Box::new(
+        Expression::BinaryOperation(_, BinaryOperation { left, right, .. }) => Box::new(
             free_inputs_in_expression_mut(left).chain(free_inputs_in_expression_mut(right)),
         ),
-        Expression::UnaryOperation(_, UnaryOperation { op: _, expr }) => {
+        Expression::UnaryOperation(_, UnaryOperation { expr, .. }) => {
             free_inputs_in_expression_mut(expr)
         }
         Expression::FunctionCall(
@@ -238,13 +238,7 @@ fn canonicalize_inside_expression(
                     assert!(reference.path.try_to_identifier().is_some());
                 }
             }
-            Expression::BlockExpression(
-                _,
-                BlockExpression {
-                    statements,
-                    expr: _,
-                },
-            ) => {
+            Expression::BlockExpression(_, BlockExpression { statements, .. }) => {
                 for statement in statements {
                     if let StatementInsideBlock::LetStatement(let_statement) = statement {
                         canonicalize_inside_pattern(&mut let_statement.pattern, path, paths);
@@ -256,7 +250,7 @@ fn canonicalize_inside_expression(
                     canonicalize_inside_pattern(p, path, paths);
                 });
             }
-            Expression::MatchExpression(_, MatchExpression { expr: _, arms }) => {
+            Expression::MatchExpression(_, MatchExpression { arms, .. }) => {
                 arms.iter_mut().for_each(|MatchArm { pattern, .. }| {
                     canonicalize_inside_pattern(pattern, path, paths);
                 })
@@ -684,17 +678,17 @@ fn check_expression(
         Expression::BinaryOperation(
             _,
             BinaryOperation {
-                left: a,
-                op: _,
-                right: b,
+                left: a, right: b, ..
             },
         )
         | Expression::IndexAccess(_, IndexAccess { array: a, index: b }) => {
             check_expression(location, a.as_ref(), state, local_variables)?;
             check_expression(location, b.as_ref(), state, local_variables)
         }
-        Expression::UnaryOperation(_, UnaryOperation { op: _, expr: e })
-        | Expression::FreeInput(_, e) => check_expression(location, e, state, local_variables),
+        Expression::UnaryOperation(_, UnaryOperation { expr, .. })
+        | Expression::FreeInput(_, expr) => {
+            check_expression(location, expr, state, local_variables)
+        }
         Expression::FunctionCall(
             _,
             FunctionCall {
@@ -705,13 +699,7 @@ fn check_expression(
             check_expression(location, function, state, local_variables)?;
             check_expressions(location, arguments, state, local_variables)
         }
-        Expression::MatchExpression(
-            _,
-            MatchExpression {
-                expr: scrutinee,
-                arms,
-            },
-        ) => {
+        Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
                 let mut local_variables = local_variables.clone();

@@ -9,9 +9,9 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-powdr-ast = { path = "../ast" }
-powdr-number = { path = "../number" }
-powdr-parser-util = { path = "../parser-util" }
+powdr-ast.workspace = true
+powdr-number.workspace = true
+powdr-parser-util.workspace = true
 
 lazy_static = "1.4.0"
 lalrpop-util = {version = "^0.19", features = ["lexer"]}

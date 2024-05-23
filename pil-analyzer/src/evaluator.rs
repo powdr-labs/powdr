@@ -695,12 +695,12 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.expand(&items[0])?;
                 }
             }
-            Expression::BinaryOperation(_, BinaryOperation { left, op: _, right }) => {
+            Expression::BinaryOperation(_, BinaryOperation { left, right, .. }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.op_stack.push(Operation::Expand(right));
                 self.expand(left)?;
             }
-            Expression::UnaryOperation(_, UnaryOperation { op: _, expr: inner }) => {
+            Expression::UnaryOperation(_, UnaryOperation { expr: inner, .. }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.expand(inner)?;
             }
@@ -735,8 +735,8 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::MatchExpression(
                 _,
                 MatchExpression {
-                    expr: condition,
-                    arms: _,
+                    scrutinee: condition,
+                    ..
                 },
             )
             | Expression::IfExpression(_, IfExpression { condition, .. }) => {
@@ -807,19 +807,12 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     .split_off(self.value_stack.len() - items.len());
                 Value::Array(inner_values).into()
             }
-            Expression::BinaryOperation(
-                _,
-                BinaryOperation {
-                    left: _,
-                    op,
-                    right: _,
-                },
-            ) => {
+            Expression::BinaryOperation(_, BinaryOperation { op, .. }) => {
                 let right = self.value_stack.pop().unwrap();
                 let left = self.value_stack.pop().unwrap();
                 evaluate_binary_operation(&left, *op, &right)?
             }
-            Expression::UnaryOperation(_, UnaryOperation { op, expr: _ }) => {
+            Expression::UnaryOperation(_, UnaryOperation { op, .. }) => {
                 let inner = self.value_stack.pop().unwrap();
                 match (op, inner.as_ref()) {
                     (UnaryOperator::Minus, Value::FieldElement(e)) => {
@@ -888,7 +881,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 let function = self.value_stack.pop().unwrap();
                 return self.combine_function_call(function, arguments);
             }
-            Expression::MatchExpression(_, MatchExpression { expr: _, arms }) => {
+            Expression::MatchExpression(_, MatchExpression { arms, .. }) => {
                 let v = self.value_stack.pop().unwrap();
                 let (vars, body) = arms
                     .iter()

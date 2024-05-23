@@ -15,7 +15,6 @@ use crate::{parsed::FunctionKind, writeln_indented, writeln_indented_by};
 use self::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
     display::format_type_scheme_around_name,
-    BinaryOperation,
 };
 
 use super::*;
@@ -272,20 +271,12 @@ impl Display for Identity<Expression> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self.kind {
             IdentityKind::Polynomial => {
-                let expression = self.expression_for_poly_id();
-                if let Expression::BinaryOperation(
-                    _,
-                    BinaryOperation {
-                        left,
-                        op: BinaryOperator::Sub,
-                        right,
-                    },
-                ) = expression
-                {
-                    write!(f, "{left} = {right};")
-                } else {
-                    write!(f, "{expression} = 0;")
-                }
+                let (left, right) = self.as_polynomial_identity();
+                let right = right
+                    .as_ref()
+                    .map(|r| r.to_string())
+                    .unwrap_or_else(|| "0".into());
+                write!(f, "{left} = {right};")
             }
             IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
             IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
@@ -298,17 +289,12 @@ impl<T: Display> Display for Identity<AlgebraicExpression<T>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self.kind {
             IdentityKind::Polynomial => {
-                let expression = self.expression_for_poly_id();
-                if let AlgebraicExpression::BinaryOperation(
-                    left,
-                    AlgebraicBinaryOperator::Sub,
-                    right,
-                ) = expression
-                {
-                    write!(f, "{left} = {right};")
-                } else {
-                    write!(f, "{expression} = 0;")
-                }
+                let (left, right) = self.as_polynomial_identity();
+                let right = right
+                    .as_ref()
+                    .map(|r| r.to_string())
+                    .unwrap_or_else(|| "0".into());
+                write!(f, "{left} = {right};")
             }
             IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
             IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
