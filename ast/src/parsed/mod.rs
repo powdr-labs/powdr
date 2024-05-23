@@ -379,9 +379,6 @@ impl<Ref: PartialEq> PartialEq for Expression<Ref> {
 pub trait SourceReference {
     fn source_reference(&self) -> &SourceRef;
     fn source_reference_mut(&mut self) -> &mut SourceRef;
-    fn set_source_reference(&mut self, s: SourceRef) {
-        *self.source_reference_mut() = s;
-    }
 }
 
 impl<E> SourceReference for Expression<E> {
@@ -489,11 +486,6 @@ impl<Ref> Expression<Ref> {
                 right: Box::new(right),
             },
         )
-    }
-
-    pub fn with_source_reference(mut self, s: SourceRef) -> Self {
-        self.set_source_reference(s);
-        self
     }
 
     /// Visits this expression and all of its sub-expressions and returns true
@@ -751,6 +743,12 @@ pub struct ArrayLiteral<E = Expression<NamespacedPolynomialReference>> {
     pub items: Vec<E>,
 }
 
+impl<Ref> From<ArrayLiteral<Expression<Ref>>> for Expression<Ref> {
+    fn from(array: ArrayLiteral<Expression<Ref>>) -> Self {
+        Expression::ArrayLiteral(SourceRef::unknown(), array)
+    }
+}
+
 impl<E> Children<E> for ArrayLiteral<E> {
     fn children(&self) -> Box<dyn Iterator<Item = &E> + '_> {
         Box::new(self.items.iter())
@@ -955,6 +953,12 @@ pub struct IfExpression<E = Expression<NamespacedPolynomialReference>> {
     pub condition: Box<E>,
     pub body: Box<E>,
     pub else_body: Box<E>,
+}
+
+impl<Ref> From<IfExpression<Expression<Ref>>> for Expression<Ref> {
+    fn from(ifexpr: IfExpression<Expression<Ref>>) -> Self {
+        Expression::IfExpression(SourceRef::unknown(), ifexpr)
+    }
 }
 
 impl<E> Children<E> for IfExpression<E> {

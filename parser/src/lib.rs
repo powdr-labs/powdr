@@ -6,6 +6,7 @@ use lalrpop_util::*;
 use powdr_ast::parsed::{
     asm::ASMProgram,
     types::{Type, TypeBounds, TypeScheme},
+    Expression, SourceReference,
 };
 use powdr_ast::SourceRef;
 
@@ -42,6 +43,17 @@ impl ParserContext {
             line,
             col,
         }
+    }
+
+    pub fn to_expr_with_source_ref<T: Into<Expression>>(
+        &self,
+        inner_expr: T,
+        offset: usize,
+    ) -> Box<Expression> {
+        let mut expr = inner_expr.into();
+        let sr = self.source_ref(offset);
+        *expr.source_reference_mut() = sr;
+        Box::new(expr)
     }
 }
 
