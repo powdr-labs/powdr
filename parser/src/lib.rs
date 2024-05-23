@@ -51,8 +51,7 @@ impl ParserContext {
         offset: usize,
     ) -> Box<Expression> {
         let mut expr = inner_expr.into();
-        let sr = self.source_ref(offset);
-        *expr.source_reference_mut() = sr;
+        *expr.source_reference_mut() = self.source_ref(offset);
         Box::new(expr)
     }
 }
