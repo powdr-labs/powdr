@@ -8,7 +8,6 @@ use std::{
     sync::Arc,
 };
 
-use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
@@ -95,12 +94,23 @@ pub fn condense<T: FieldElement>(
                         vec![condenser.condense_to_algebraic_expression(&e.e)]
                     };
                     intermediate_columns.insert(name.clone(), (symbol.clone(), value));
+                    condenser.set_non_fresh();
+                    Some(StatementIdentifier::Definition(name))
+                }
+                StatementIdentifier::Definition(name)
+                    if matches!(
+                        definitions[&name].0.kind,
+                        SymbolKind::Poly(PolynomialType::Committed)
+                    ) =>
+                {
+                    condenser.set_non_fresh();
                     Some(StatementIdentifier::Definition(name))
                 }
                 s => Some(s),
             };
-            // Extract and prepend the new witness columns, then identites
-            // and finally the original statment (if it exists).
+
+            // Extract and prepend the new witness columns, then identities
+            // and finally the original statement (if it exists).
             let new_wits = condenser
                 .extract_new_witness_columns()
                 .into_iter()
@@ -173,6 +183,8 @@ pub struct Condenser<'a, T> {
     new_constraints: Vec<IdentityWithoutID<AlgebraicExpression<T>>>,
     /// The current stage.
     stage: u32,
+    /// If the stage is still empty, i.e. has neither constraints nor witness columns.
+    stage_is_fresh: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -235,6 +247,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             all_new_witness_names: HashSet::new(),
             new_constraints: vec![],
             stage: 0,
+            stage_is_fresh: true,
         }
     }
 
@@ -263,6 +276,12 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     /// Sets the current namespace which will be used for newly generated witness columns.
     pub fn set_namespace(&mut self, namespace: AbsoluteSymbolPath) {
         self.namespace = namespace;
+    }
+
+    /// Sets the current stage to be "not fresh", i.e. there is at least one witness column
+    /// or constraint in the current stage.
+    pub fn set_non_fresh(&mut self) {
+        self.stage_is_fresh = false;
     }
 
     /// Returns the witness columns generated since the last call to this function.
@@ -370,6 +389,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         self.next_witness_id += 1;
         self.all_new_witness_names.insert(name.clone());
         self.new_witnesses.push(symbol.clone());
+        self.set_non_fresh();
         Ok(
             Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
                 name,
@@ -396,26 +416,32 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                 .new_constraints
                 .push(to_constraint(&constraints, source)),
         }
+        if !self.new_constraints.is_empty() {
+            self.set_non_fresh();
+        }
         Ok(())
     }
 
     fn capture_stage(&mut self, fun: Arc<Value<'a, T>>) -> Result<Arc<Value<'a, T>>, EvalError> {
-        // TODO also check that there are no constraints at the global level.
-        if !self.new_constraints.is_empty() {
-            return Err(EvalError::Unsupported(format!(
-                "Stage is not fresh, there are constraints: {}",
-                self.new_constraints
-                    .iter()
-                    .map(|id| id.clone().into_identity(0))
-                    .format(", ")
-            )));
+        if !self.stage_is_fresh {
+            return Err(EvalError::Unsupported("Cannot call \"capture_stage\": There are pre-existing constraints or witness columns.".to_string()));
         }
 
         let degree = evaluate_function_call(fun, vec![], self)?;
-        let Value::Integer(_degree) = degree.as_ref() else {
+        let Value::Integer(degree) = degree.as_ref() else {
             panic!("Type error")
         };
+        let degree: u64 = degree.try_into().unwrap();
+        if self.degree.is_some() && self.degree != Some(degree) {
+            return Err(EvalError::Unsupported(format!(
+                    "Call to \"capture_stage\" returned degree {degree}, but the degree has already been set to {}.",
+                    self.degree.unwrap()
+                )));
+        } else {
+            self.degree = Some(degree);
+        }
         self.stage += 1;
+        self.stage_is_fresh = true;
 
         // TODO use degree
         Ok(Value::Array(

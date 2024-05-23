@@ -174,3 +174,56 @@ pub fn constructed_constraints() {
 "#;
     assert_eq!(formatted, expected);
 }
+
+#[test]
+pub fn capture_stage_non_fresh_wit() {
+    let input = r#"
+        namespace Main(1024);
+            col witness x;
+            let f = constr || { x = 2; 1024 };
+            std::prover::capture_stage(f);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+pub fn capture_stage_non_fresh_inter() {
+    let input = r#"
+        namespace Main(1024);
+            col x = 3;
+            let f = constr || { x = 2; 1024 };
+            std::prover::capture_stage(f);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+pub fn capture_stage_non_fresh_constr() {
+    let input = r#"
+        namespace Main(1024);
+            4 = 5;
+            let f = constr || { x = 2; 1024 };
+            std::prover::capture_stage(f);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+pub fn capture_stage_set_different_degree() {
+    let input = r#"
+        namespace Main;
+            let f = constr || 2048;
+            std::prover::capture_stage(f);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+pub fn capture_stage_working() {
+    let input = r#"
+        namespace Main;
+            let f = constr || { let x; let y; x + y = 2; 1024 };
+            std::prover::capture_stage(f);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
