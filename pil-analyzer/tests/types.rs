@@ -552,6 +552,10 @@ fn inner_empty_tuple() {
     ";
     type_check(
         input,
-        &[("r", "", "()"), ("inner_unit_value", "", "((), ())")],
+        &[
+            ("empty_fn", "", "int -> ()"),
+            ("r", "", "()"),
+            ("inner_unit_value", "", "((), ())"),
+        ],
     );
 }
