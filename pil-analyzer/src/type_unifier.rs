@@ -123,8 +123,8 @@ impl Unifier {
             | (Type::Tuple(a2), Type::Array(ArrayType { length: None, .. }))
                 if a2.items.is_empty() =>
             {
-                // Special case for T1[] and ().
-                return Ok(());
+                // Special case for Tn[] and ().
+                Ok(())
             }
 
             (ty1, ty2) => Err(format!("Cannot unify types {ty1} and {ty2}")),
