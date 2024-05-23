@@ -230,10 +230,13 @@ mod test {
     };
     use powdr_number::{BigUint, FieldElement, GoldilocksField};
 
-    use crate::{link, DEFAULT_DEGREE};
     use powdr_analysis::convert_asm_to_pil;
     use powdr_parser::parse_asm;
+
     use pretty_assertions::assert_eq;
+
+    use crate::{link, DEFAULT_DEGREE};
+
     fn parse_analyze_and_compile<T: FieldElement>(input: &str) -> PILGraph {
         let parsed = parse_asm(None, input).unwrap();
         let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();

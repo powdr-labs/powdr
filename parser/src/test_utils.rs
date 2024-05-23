@@ -1,8 +1,15 @@
 use powdr_ast::parsed::visitor::Children;
+use powdr_ast::parsed::SourceReference;
 use powdr_ast::{
     parsed::{PILFile, PilStatement},
     SourceRef,
 };
+
+// helper function to clear SourceRef's inside the AST so we can compare for equality
+pub fn pil_clear_source_refs(ast: &mut PILFile) {
+    ast.0.iter_mut().for_each(pil_statement_clear_source_ref);
+}
+
 pub fn pil_statement_clear_source_ref(stmt: &mut PilStatement) {
     stmt.children_mut()
         .for_each(pil_expression_clear_source_ref);
@@ -26,29 +33,5 @@ pub fn pil_statement_clear_source_ref(stmt: &mut PilStatement) {
 }
 
 fn pil_expression_clear_source_ref(expr: &mut powdr_ast::parsed::Expression) {
-    use powdr_ast::parsed::Expression::*;
-    match expr {
-        Reference(s, _)
-        | PublicReference(s, _)
-        | Number(s, _)
-        | String(s, _)
-        | Tuple(s, _)
-        | ArrayLiteral(s, _)
-        | UnaryOperation(s, _)
-        | BinaryOperation(s, _)
-        | IndexAccess(s, _)
-        | IfExpression(s, _)
-        | MatchExpression(s, _)
-        | FunctionCall(s, _)
-        | LambdaExpression(s, _)
-        | BlockExpression(s, _)
-        | FreeInput(s, _) => {
-            *s = SourceRef::unknown();
-        }
-    }
-}
-
-// helper function to clear SourceRef's inside the AST so we can compare for equality
-pub fn pil_clear_source_refs(ast: &mut PILFile) {
-    ast.0.iter_mut().for_each(pil_statement_clear_source_ref);
+    *expr.source_reference_mut() = SourceRef::unknown();
 }

@@ -381,49 +381,42 @@ pub trait SourceReference {
     fn source_reference_mut(&mut self) -> &mut SourceRef;
 }
 
-impl<E> SourceReference for Expression<E> {
-    fn source_reference(&self) -> &SourceRef {
-        use Expression::*;
-        match self {
-            Reference(src, _) => src,
-            PublicReference(src, _) => src,
-            Number(src, _) => src,
-            String(src, _) => src,
-            Tuple(src, _) => src,
-            LambdaExpression(src, _) => src,
-            ArrayLiteral(src, _) => src,
-            BinaryOperation(src, _) => src,
-            UnaryOperation(src, _) => src,
-            IndexAccess(src, _) => src,
-            FunctionCall(src, _) => src,
-            FreeInput(src, _) => src,
-            MatchExpression(src, _) => src,
-            IfExpression(src, _) => src,
-            BlockExpression(src, _) => src,
-        }
-    }
+macro_rules! impl_source_reference {
+    ($enum:ident, $($variant:ident),*) => {
+        impl<E> SourceReference for $enum<E> {
+            fn source_reference(&self) -> &SourceRef {
+                match self {
+                    $( $enum::$variant(src, _) => src, )*
+                }
+            }
 
-    fn source_reference_mut(&mut self) -> &mut SourceRef {
-        use Expression::*;
-        match self {
-            Reference(src, _) => src,
-            PublicReference(src, _) => src,
-            Number(src, _) => src,
-            String(src, _) => src,
-            Tuple(src, _) => src,
-            LambdaExpression(src, _) => src,
-            ArrayLiteral(src, _) => src,
-            BinaryOperation(src, _) => src,
-            UnaryOperation(src, _) => src,
-            IndexAccess(src, _) => src,
-            FunctionCall(src, _) => src,
-            FreeInput(src, _) => src,
-            MatchExpression(src, _) => src,
-            IfExpression(src, _) => src,
-            BlockExpression(src, _) => src,
+            fn source_reference_mut(&mut self) -> &mut SourceRef {
+                match self {
+                    $( $enum::$variant(src, _) => src, )*
+                }
+            }
         }
     }
 }
+
+impl_source_reference!(
+    Expression,
+    Reference,
+    PublicReference,
+    Number,
+    String,
+    Tuple,
+    LambdaExpression,
+    ArrayLiteral,
+    BinaryOperation,
+    UnaryOperation,
+    IndexAccess,
+    FunctionCall,
+    FreeInput,
+    MatchExpression,
+    IfExpression,
+    BlockExpression
+);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UnaryOperation<E = Expression<NamespacedPolynomialReference>> {
@@ -437,6 +430,16 @@ impl<Ref> From<UnaryOperation<Expression<Ref>>> for Expression<Ref> {
     }
 }
 
+impl<E> Children<E> for UnaryOperation<E> {
+    fn children(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+        Box::new(once(self.expr.as_ref()))
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
+        Box::new(once(self.expr.as_mut()))
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BinaryOperation<E = Expression<NamespacedPolynomialReference>> {
     pub left: Box<E>,
@@ -447,6 +450,16 @@ pub struct BinaryOperation<E = Expression<NamespacedPolynomialReference>> {
 impl<Ref> From<BinaryOperation<Expression<Ref>>> for Expression<Ref> {
     fn from(operation: BinaryOperation<Expression<Ref>>) -> Self {
         Expression::BinaryOperation(SourceRef::unknown(), operation)
+    }
+}
+
+impl<E> Children<E> for BinaryOperation<E> {
+    fn children(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+        Box::new([self.left.as_ref(), self.right.as_ref()].into_iter())
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
+        Box::new([self.left.as_mut(), self.right.as_mut()].into_iter())
     }
 }
 
@@ -516,6 +529,21 @@ impl<Ref> From<MatchExpression<Expression<Ref>>> for Expression<Ref> {
     }
 }
 
+impl<E> Children<E> for MatchExpression<E> {
+    fn children(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+        Box::new(
+            once(self.scrutinee.as_ref()).chain(self.arms.iter().flat_map(|arm| arm.children())),
+        )
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
+        Box::new(
+            once(self.scrutinee.as_mut())
+                .chain(self.arms.iter_mut().flat_map(|arm| arm.children_mut())),
+        )
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BlockExpression<E> {
     pub statements: Vec<StatementInsideBlock<E>>,
@@ -525,6 +553,26 @@ pub struct BlockExpression<E> {
 impl<Ref> From<BlockExpression<Expression<Ref>>> for Expression<Ref> {
     fn from(block: BlockExpression<Expression<Ref>>) -> Self {
         Expression::BlockExpression(SourceRef::unknown(), block)
+    }
+}
+
+impl<E> Children<E> for BlockExpression<E> {
+    fn children(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+        Box::new(
+            self.statements
+                .iter()
+                .flat_map(|s| s.children())
+                .chain(once(self.expr.as_ref())),
+        )
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
+        Box::new(
+            self.statements
+                .iter_mut()
+                .flat_map(|s| s.children_mut())
+                .chain(once(self.expr.as_mut())),
+        )
     }
 }
 
@@ -586,38 +634,16 @@ impl<R> Expression<R> {
             | Expression::String(_, _) => empty(),
             Expression::Number(_, _) => empty(),
             Expression::Tuple(_, v) => v.iter(),
-            Expression::LambdaExpression(_, LambdaExpression { body, .. }) => once(body.as_ref()),
-            Expression::ArrayLiteral(_, ArrayLiteral { items }) => items.iter(),
-            Expression::BinaryOperation(_, BinaryOperation { left, right, .. }) => {
-                [left.as_ref(), right.as_ref()].into_iter()
-            }
-            Expression::UnaryOperation(_, UnaryOperation { expr, .. }) => once(expr.as_ref()),
-            Expression::IndexAccess(_, IndexAccess { array, index }) => {
-                [array.as_ref(), index.as_ref()].into_iter()
-            }
-            Expression::FunctionCall(
-                _,
-                FunctionCall {
-                    function,
-                    arguments,
-                },
-            ) => once(function.as_ref()).chain(arguments.iter()),
+            Expression::LambdaExpression(_, lambda) => lambda.children(),
+            Expression::ArrayLiteral(_, array) => array.children(),
+            Expression::BinaryOperation(_, binary_op) => binary_op.children(),
+            Expression::UnaryOperation(_, unary_op) => unary_op.children(),
+            Expression::IndexAccess(_, index_access) => index_access.children(),
+            Expression::FunctionCall(_, function_call) => function_call.children(),
             Expression::FreeInput(_, e) => once(e.as_ref()),
-            Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
-                once(scrutinee.as_ref()).chain(arms.iter().flat_map(|arm| arm.children()))
-            }
-            Expression::IfExpression(
-                _,
-                IfExpression {
-                    condition,
-                    body,
-                    else_body,
-                },
-            ) => [condition, body, else_body].into_iter().map(|e| e.as_ref()),
-            Expression::BlockExpression(_, BlockExpression { statements, expr }) => statements
-                .iter()
-                .flat_map(|s| s.children())
-                .chain(once(expr.as_ref())),
+            Expression::MatchExpression(_, match_expr) => match_expr.children(),
+            Expression::IfExpression(_, if_expr) => if_expr.children(),
+            Expression::BlockExpression(_, block_expr) => block_expr.children(),
         }
     }
 
@@ -633,38 +659,16 @@ impl<R> Expression<R> {
             | Expression::String(_, _) => empty(),
             Expression::Number(_, _) => empty(),
             Expression::Tuple(_, v) => v.iter_mut(),
-            Expression::LambdaExpression(_, LambdaExpression { body, .. }) => once(body.as_mut()),
-            Expression::ArrayLiteral(_, ArrayLiteral { items }) => items.iter_mut(),
-            Expression::BinaryOperation(_, BinaryOperation { left, right, .. }) => {
-                [left.as_mut(), right.as_mut()].into_iter()
-            }
-            Expression::UnaryOperation(_, UnaryOperation { expr, .. }) => once(expr.as_mut()),
-            Expression::IndexAccess(_, IndexAccess { array, index }) => {
-                [array.as_mut(), index.as_mut()].into_iter()
-            }
-            Expression::FunctionCall(
-                _,
-                FunctionCall {
-                    function,
-                    arguments,
-                },
-            ) => once(function.as_mut()).chain(arguments.iter_mut()),
+            Expression::LambdaExpression(_, lambda) => lambda.children_mut(),
+            Expression::ArrayLiteral(_, array) => array.children_mut(),
+            Expression::BinaryOperation(_, binary_op) => binary_op.children_mut(),
+            Expression::UnaryOperation(_, unary_op) => unary_op.children_mut(),
+            Expression::IndexAccess(_, index_access) => index_access.children_mut(),
+            Expression::FunctionCall(_, function_call) => function_call.children_mut(),
             Expression::FreeInput(_, e) => once(e.as_mut()),
-            Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
-                once(scrutinee.as_mut()).chain(arms.iter_mut().flat_map(|arm| arm.children_mut()))
-            }
-            Expression::IfExpression(
-                _,
-                IfExpression {
-                    condition,
-                    body,
-                    else_body,
-                },
-            ) => [condition, body, else_body].into_iter().map(|e| e.as_mut()),
-            Expression::BlockExpression(_, BlockExpression { statements, expr }) => statements
-                .iter_mut()
-                .flat_map(|s| s.children_mut())
-                .chain(once(expr.as_mut())),
+            Expression::MatchExpression(_, match_expr) => match_expr.children_mut(),
+            Expression::IfExpression(_, if_expr) => if_expr.children_mut(),
+            Expression::BlockExpression(_, block_expr) => block_expr.children_mut(),
         }
     }
 }
