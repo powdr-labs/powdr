@@ -64,7 +64,10 @@ lazy_static! {
         (BinaryOperator::Less, ("T: Ord", "T, T -> bool")),
         (BinaryOperator::LessEqual, ("T: Ord", "T, T -> bool")),
         (BinaryOperator::Equal, ("T: Eq", "T, T -> bool")),
-        (BinaryOperator::Identity, ("", "expr, expr -> ()")),
+        (
+            BinaryOperator::Identity,
+            ("", "expr, expr -> std::prelude::Constr")
+        ),
         (BinaryOperator::NotEqual, ("T: Eq", "T, T -> bool")),
         (BinaryOperator::GreaterEqual, ("T: Ord", "T, T -> bool")),
         (BinaryOperator::Greater, ("T: Ord", "T, T -> bool")),
