@@ -1,4 +1,6 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fs::File, io::BufWriter, io::Write, path::Path};
+
+use itertools::Itertools;
 
 use rustc_demangle::demangle;
 
@@ -17,14 +19,16 @@ pub struct Profiler<'a> {
     function_begin: BTreeMap<usize, &'a str>,
     /// pc value of .debug loc statements
     location_begin: BTreeMap<usize, (usize, usize)>,
-    /// cost of each location
-    location_stats: BTreeMap<Loc<'a>, usize>,
-    /// (count, cummulative cost) of calls
-    call_stats: BTreeMap<Call<'a>, (usize, usize)>,
     /// current call stack, entries include running cost
     call_stack: Vec<(Call<'a>, usize)>,
     /// saved return address of "jump and link" instructions
     return_pc_stack: Vec<usize>,
+    /// cost of each location
+    location_stats: BTreeMap<Loc<'a>, usize>,
+    /// (count, cummulative cost) of calls
+    call_stats: BTreeMap<Call<'a>, (usize, usize)>,
+    /// stack sampling format for FlameGraph
+    folded_stack_stats: BTreeMap<Vec<&'a str>, usize>,
 }
 
 /// A location is (file, line)
@@ -42,16 +46,98 @@ impl<'a> Profiler<'a> {
             debug_files,
             function_begin,
             location_begin,
-            location_stats: Default::default(),
-            call_stats: Default::default(),
             call_stack: Default::default(),
             return_pc_stack: Default::default(),
+            location_stats: Default::default(),
+            call_stats: Default::default(),
+            folded_stack_stats: Default::default(),
         }
+    }
+
+    pub fn write_callgrind<P: AsRef<Path>>(&self, path: P) {
+        let file = File::create(path).unwrap();
+        let mut w = BufWriter::new(file);
+        writeln!(&mut w, "events: Instructions\n").unwrap();
+        for func in self.function_begin.values() {
+            let loc_stats: Vec<_> = self
+                .location_stats
+                .iter()
+                .filter_map(|(loc, cost)| {
+                    if &loc.0 == func {
+                        Some((loc.1, loc.2, cost))
+                    } else {
+                        None
+                    }
+                })
+                .sorted()
+                .collect();
+            let call_stats: Vec<_> = self
+                .call_stats
+                .iter()
+                .filter_map(|(call, (count, cost))| {
+                    if &call.from.0 == func {
+                        Some((call, count, cost))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if loc_stats.is_empty() && call_stats.is_empty() {
+                continue;
+            }
+
+            writeln!(w, "fn={}", format_function_name(func)).unwrap();
+
+            let mut curr_file = None;
+            for (file_nr, line, cost) in loc_stats {
+                if Some(file_nr) != curr_file {
+                    curr_file = Some(file_nr);
+                    let file = self.debug_files[file_nr - 1];
+                    writeln!(w, "fl={}/{}", file.0, file.1).unwrap();
+                }
+                writeln!(w, "{line} {cost}").unwrap();
+            }
+            for (call, count, cost) in call_stats {
+                let target_file_nr = call.target.1;
+                if Some(target_file_nr) != curr_file {
+                    curr_file = Some(target_file_nr);
+                    let file = self.debug_files[target_file_nr - 1];
+                    writeln!(w, "cfi={}/{}", file.0, file.1).unwrap();
+                }
+                writeln!(w, "cfn={}", format_function_name(call.target.0)).unwrap();
+                writeln!(w, "calls={count} {}", call.target.2).unwrap();
+                writeln!(w, "{} {cost}", call.from.2).unwrap();
+            }
+            writeln!(w).unwrap();
+        }
+    }
+
+    pub fn write_flamegraph<P: AsRef<Path>>(&self, path: P) {
+        let lines: Vec<_> = self
+            .folded_stack_stats
+            .iter()
+            .map(|(stack, count)| {
+                let stack = stack
+                    .iter()
+                    .map(|function| format_function_name(function))
+                    .join(";");
+                format!("{stack} {count}")
+            })
+            .collect();
+        let mut options = Default::default();
+        let file = File::create(path).unwrap();
+        let w = BufWriter::new(file);
+        inferno::flamegraph::from_lines(&mut options, lines.iter().map(|s| s.as_str()), w).unwrap();
     }
 
     /// calculate totals and write out results
     pub fn execution_finished(&mut self) {
+        // write out flamegraph file
+        self.write_flamegraph("/tmp/flamegraph.svg");
+        self.write_callgrind("/tmp/callgrind.out");
         log::debug!("====== EXECUTION STATS =======");
+        // TODO: handle tail call from `main`?
         for func in self.function_begin.values() {
             let loc_stats: Vec<_> = self
                 .location_stats
@@ -145,6 +231,7 @@ impl<'a> Profiler<'a> {
         if !self.running() {
             return;
         }
+
         // add cost to current location. AFAIU need the function name from the call stack to handle inlining
         let function = self.curr_function().unwrap();
         let (_, file, line) = self.location_at(curr_pc).unwrap();
@@ -152,8 +239,17 @@ impl<'a> Profiler<'a> {
             .location_stats
             .entry((function, file, line))
             .or_default() += 1;
+
         // add cost to current call
         self.call_stack.last_mut().unwrap().1 += 1;
+
+        // add sample to folded stacks
+        let stack: Vec<_> = self
+            .call_stack
+            .iter()
+            .map(|(call, _)| call.target.0)
+            .collect();
+        *self.folded_stack_stats.entry(stack).or_default() += 1;
     }
 
     /// Should be called for instructions that jump and save the returning address in an actual RISC-V register.
