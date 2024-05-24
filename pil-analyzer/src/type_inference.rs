@@ -438,16 +438,15 @@ impl<'a> TypeChecker<'a> {
                         expected_type.ty.clone()
                     };
 
-                    self.process_unification(expr, ty, expected_type)
-                    /*self.unifier
-                    .unify_types(ty.clone(), expected_type.clone())
-                    .map_err(|err| {
-                        format!(
-                            "Expected type {} but got type {}.\n{err}",
-                            self.type_into_substituted(expected_type),
-                            self.type_into_substituted(ty)
-                        )
-                    })*/
+                    self.unifier
+                        .unify_types(ty.clone(), expected_type.clone())
+                        .map_err(|err| {
+                            format!(
+                                "Expected type {} but got type {}.\n{err}",
+                                self.type_into_substituted(expected_type),
+                                self.type_into_substituted(ty)
+                            )
+                        })
                 })
                 .map_err(|err| {
                     format!(
@@ -457,61 +456,6 @@ impl<'a> TypeChecker<'a> {
                 })
         } else {
             self.expect_type(&expected_type.ty, expr)
-        }
-    }
-
-    fn process_unification(
-        &mut self,
-        expr: &mut Expression,
-        ty: Type,
-        expected_type: Type,
-    ) -> Result<(), String> {
-        match expr {
-            Expression::LambdaExpression(LambdaExpression {
-                kind: FunctionKind::Constr,
-                ..
-            }) => {
-                if self
-                    .unifier
-                    .unify_types(ty.clone(), expected_type.clone())
-                    .is_ok()
-                {
-                    return Ok(());
-                }
-
-                let empty_tuple = Type::Tuple(TupleType::<u64> { items: vec![] });
-                self.unifier
-                    .unify_types(ty.clone(), empty_tuple)
-                    .map_err(|err| {
-                        format!(
-                            "AError checking {expr}:\nExpected type: {} or () \nInferred type: {}\n{err}",
-                            self.type_into_substituted(expected_type.clone()),
-                            self.type_into_substituted(ty)
-                    )})
-            }
-            Expression::LambdaExpression(_lambda) => {
-                let empty_tuple = Type::Tuple(TupleType::<u64> { items: vec![] });
-                self.unifier
-                    .unify_types(ty.clone(), empty_tuple)
-                    .map_err(|err| {
-                        format!(
-                            "BError checking expression {expr}:\nExpected type: {} \nInferred type: {}\n{err}",
-                            self.type_into_substituted(expected_type.clone()),
-                            self.type_into_substituted(ty)
-                        )
-                    })
-            }
-            _ => {
-                self.unifier
-                    .unify_types(ty.clone(), expected_type.clone())
-                    .map_err(|err| {
-                        format!(
-                            "CError checking expression {expr}:\nExpected type: {} \nInferred type: {}\n{err}",
-                            self.type_into_substituted(expected_type.clone()),
-                            self.type_into_substituted(ty)
-                        )
-                    })
-            }
         }
     }
 
@@ -747,7 +691,6 @@ impl<'a> TypeChecker<'a> {
 
         let inferred_type = self.infer_type_of_expression(expr)?;
 
-        //self.process_unification(expr, inferred_type, expected_type.clone())
         self.unifier
             .unify_types(inferred_type.clone(), expected_type.clone())
             .map_err(|err| {
