@@ -393,6 +393,14 @@ fn pass_range_constraints() {
 }
 
 #[test]
+fn side_effects() {
+    let f = "asm/side_effects.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn permutation_simple() {
     let f = "asm/permutations/simple.asm";
     verify_asm(f, Default::default());

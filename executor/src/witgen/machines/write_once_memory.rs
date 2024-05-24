@@ -200,10 +200,17 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
         // Write values
         let is_complete = !values.contains(&None);
-        self.data.insert(index, values);
+        let side_effect = self.data.insert(index, values).is_none();
 
         match is_complete {
-            true => Ok(EvalValue::complete(updates)),
+            true => Ok({
+                let res = EvalValue::complete(updates);
+                if side_effect {
+                    res.report_side_effect()
+                } else {
+                    res
+                }
+            }),
             false => Ok(EvalValue::incomplete_with_constraints(
                 updates,
                 IncompleteCause::NonConstantRequiredArgument("value"),

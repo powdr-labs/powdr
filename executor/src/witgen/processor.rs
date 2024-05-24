@@ -233,6 +233,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         if unknown_strategy == UnknownStrategy::Zero {
             assert!(updates.constraints.is_empty());
+            assert!(!updates.side_effect);
             return Ok(IdentityResult {
                 progress: false,
                 is_complete: false,
@@ -240,7 +241,8 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         }
 
         Ok(IdentityResult {
-            progress: self.apply_updates(row_index, &updates, || identity.to_string()),
+            progress: self.apply_updates(row_index, &updates, || identity.to_string())
+                || updates.side_effect,
             is_complete: updates.is_complete(),
         })
     }

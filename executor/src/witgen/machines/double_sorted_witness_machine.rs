@@ -390,7 +390,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 
         // TODO this does not check any of the failure modes
         let mut assignments = EvalValue::complete(vec![]);
-        if is_write {
+        let has_side_effect = if is_write {
             let value = match value_expr.constant_value() {
                 Some(v) => v,
                 None => {
@@ -406,26 +406,19 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 value
             );
             self.data.insert(addr, value);
-            self.trace.insert(
-                (addr, step),
-                Operation {
-                    is_normal_write,
-                    is_bootloader_write,
-                    value,
-                    selector_id,
-                },
-            );
+            self.trace
+                .insert(
+                    (addr, step),
+                    Operation {
+                        is_normal_write,
+                        is_bootloader_write,
+                        value,
+                        selector_id,
+                    },
+                )
+                .is_none()
         } else {
             let value = self.data.entry(addr).or_default();
-            self.trace.insert(
-                (addr, step),
-                Operation {
-                    is_normal_write,
-                    is_bootloader_write,
-                    value: *value,
-                    selector_id,
-                },
-            );
             log::trace!(
                 "Memory read: addr={:x}, step={step}, value={:x}",
                 addr,
@@ -434,7 +427,22 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             let ass =
                 (value_expr.clone() - (*value).into()).solve_with_range_constraints(caller_rows)?;
             assignments.combine(ass);
+            self.trace
+                .insert(
+                    (addr, step),
+                    Operation {
+                        is_normal_write,
+                        is_bootloader_write,
+                        value: *value,
+                        selector_id,
+                    },
+                )
+                .is_none()
+        };
+        if has_side_effect {
+            assignments = assignments.report_side_effect();
         }
+
         Ok(assignments)
     }
 }
