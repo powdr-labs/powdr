@@ -7,7 +7,8 @@ use powdr_riscv_syscalls::Syscall;
 use alloc::vec;
 use alloc::vec::Vec;
 
-pub fn read_word(fd: u32) -> u32 {
+/// Reads a single u32 from the file descriptor fd.
+pub fn read_u32(fd: u32) -> u32 {
     let mut value: u32;
     unsafe {
         asm!("ecall", lateout("a0") value, in("a0") fd, in("t0") u32::from(Syscall::Input));
@@ -15,6 +16,7 @@ pub fn read_word(fd: u32) -> u32 {
     value
 }
 
+/// Reads data.len() u32s from the file descriptor fd into the data slice.
 pub fn read_slice(fd: u32, data: &mut [u32]) {
     for (i, d) in data.iter_mut().enumerate() {
         unsafe {
@@ -23,6 +25,7 @@ pub fn read_slice(fd: u32, data: &mut [u32]) {
     }
 }
 
+/// Reads the length of the data first at index 0, then the data itself.
 pub fn read_data_len(fd: u32) -> usize {
     let mut out: u32;
     unsafe {
@@ -31,21 +34,24 @@ pub fn read_data_len(fd: u32) -> usize {
     out as usize
 }
 
-pub fn write_word(fd: u32, w: u32) {
+/// Writes a single u32 to the file descriptor fd.
+pub fn write_u32(fd: u32, w: u32) {
     unsafe {
         asm!("ecall", in("a0") fd, in("a1") w, in("t0") u32::from(Syscall::Output));
     }
 }
 
+/// Writes data.len() u32s from the data slice to the file descriptor fd.
 pub fn write_slice(fd: u32, data: &[u32]) {
     for w in data {
-        write_word(fd, *w);
+        write_u32(fd, *w);
     }
 }
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+/// Reads and deserializes a serialized value of type T from the file descriptor fd.
 pub fn read<T: DeserializeOwned>(fd: u32) -> T {
     let l = read_data_len(fd);
     let mut data = vec![0; l];
@@ -57,6 +63,7 @@ pub fn read<T: DeserializeOwned>(fd: u32) -> T {
     serde_cbor::from_slice(&data.as_slice()).unwrap()
 }
 
+/// Serializes and writes a value of type T to the file descriptor fd.
 pub fn write<T: Serialize>(fd: u32, data: T) {
     let data = serde_cbor::to_vec(&data).unwrap();
 

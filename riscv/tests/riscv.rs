@@ -307,7 +307,7 @@ fn output_syscall() {
     let ctx = &pipeline.host_context();
     // Need to put the lock in a separate scope, so that it is dropped before the next read.
     {
-        let fs = &ctx.data.lock().unwrap();
+        let fs = &ctx.file_data.lock().unwrap();
         assert_eq!(fs[&42], vec![1]);
         assert_eq!(fs[&43], vec![1, 2, 3]);
     }

@@ -137,8 +137,7 @@ where
     T: FieldElement,
 {
     fn default() -> Self {
-        let ctx = HostContext::new();
-        let cb = ctx.query_callback::<T>();
+        let (ctx, cb) = HostContext::new();
         Pipeline {
             artifact: Default::default(),
             output_dir: None,

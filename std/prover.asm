@@ -7,8 +7,8 @@ let eval: expr -> fe = [];
 enum Query {
     /// Query a prover input element by index.
     Input(int),
-	/// Writes a byte (second argument) to a file descriptor (first argument).
-	/// fd 1 is stdout, fd 2 is stderr.
+    /// Writes a byte (second argument) to a file descriptor (first argument).
+    /// fd 1 is stdout, fd 2 is stderr.
     Output(int, int),
     /// Generate a hint to fill a witness column with.
     Hint(fe),

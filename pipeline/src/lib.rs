@@ -23,24 +23,22 @@ use powdr_number::FieldElement;
 
 #[derive(Clone)]
 pub struct HostContext {
-    pub data: Arc<Mutex<BTreeMap<u32, Vec<u8>>>>,
-}
-
-impl Default for HostContext {
-    fn default() -> Self {
-        Self::new()
-    }
+    /// Simulates a file system where the guest can write to stdout, stderr, or any other file descriptor.
+    /// After witgen the host can read what the guest wrote.
+    pub file_data: Arc<Mutex<BTreeMap<u32, Vec<u8>>>>,
 }
 
 impl HostContext {
-    pub fn new() -> Self {
-        Self {
-            data: Arc::new(Mutex::new(BTreeMap::<u32, Vec<u8>>::new())),
-        }
+    pub fn new<T: FieldElement>() -> (Self, Arc<dyn QueryCallback<T>>) {
+        let ctx = Self {
+            file_data: Arc::new(Mutex::new(BTreeMap::<u32, Vec<u8>>::new())),
+        };
+        let cb = ctx.query_callback();
+        (ctx, cb)
     }
 
     pub fn read<T: DeserializeOwned>(&self, fd: u32) -> Result<T, String> {
-        let fs = self.data.lock().unwrap();
+        let fs = self.file_data.lock().unwrap();
         if let Some(data) = fs.get(&fd) {
             serde_cbor::from_slice(data).map_err(|e| format!("Error deserializing data: {e}"))
         } else {
@@ -48,8 +46,8 @@ impl HostContext {
         }
     }
 
-    pub fn query_callback<T: FieldElement>(&self) -> Arc<dyn QueryCallback<T>> {
-        let fs = self.data.clone();
+    fn query_callback<T: FieldElement>(&self) -> Arc<dyn QueryCallback<T>> {
+        let fs = self.file_data.clone();
         Arc::new(move |query: &str| -> Result<Option<T>, String> {
             let (id, data) = parse_query(query)?;
             match id {
