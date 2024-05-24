@@ -252,15 +252,8 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         row_index: usize,
     ) -> Result<(bool, Constraints<&'a AlgebraicReference, T>), EvalError<T>> {
         let mut progress = false;
-        if let Some(selector) = self
-            .outer_query
-            .as_ref()
-            .unwrap()
-            .connecting_identity
-            .right
-            .selector
-            .as_ref()
-        {
+        let right = &self.outer_query.as_ref().unwrap().connecting_identity.right;
+        if let Some(selector) = right.selector.as_ref() {
             progress |= self
                 .set_value(row_index, selector, T::one(), || {
                     "Set selector to 1".to_string()
@@ -287,11 +280,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .map_err(|e| {
                 log::warn!("Error in outer query: {e}");
                 log::warn!("Some of the following entries could not be matched:");
-                for (l, r) in outer_query
-                    .left
-                    .iter()
-                    .zip(outer_query.connecting_identity.right.expressions.iter())
-                {
+                for (l, r) in outer_query.left.iter().zip(right.expressions.iter()) {
                     if let Ok(r) = row_pair.evaluate(r) {
                         log::warn!("  => {} = {}", l, r);
                     }
