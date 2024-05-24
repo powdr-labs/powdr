@@ -554,7 +554,7 @@ PowOp: BinaryOperator = {
 }
 
 Unary: Box<Expression> = {
-    PrefixUnaryOp PostfixUnary => Box::new(Expression::UnaryOperation(<>)),
+    <op:PrefixUnaryOp> <expr:PostfixUnary> => Box::new(UnaryOperation{op, expr}.into()),
     PostfixUnary,
 }
 
@@ -564,7 +564,7 @@ PrefixUnaryOp: UnaryOperator = {
 }
 
 PostfixUnary: Box<Expression> = {
-    <t:Term> <o:PostfixUnaryOp> => Box::new(Expression::UnaryOperation(o, t)),
+    <t:Term> <op:PostfixUnaryOp> => Box::new(UnaryOperation{op, expr: t}.into()),
     Term,
 }
 
@@ -609,7 +609,7 @@ GenericReference: NamespacedPolynomialReference = {
 }
 
 MatchExpression: Box<Expression> = {
-    "match" <BoxedExpression> "{" <MatchArms> "}" => Box::new(Expression::MatchExpression(<>))
+    "match" <scrutinee:BoxedExpression> "{" <arms:MatchArms> "}" => Box::new(MatchExpression{scrutinee, arms}.into())
 }
 
 MatchArms: Vec<MatchArm> = {
@@ -629,12 +629,12 @@ IfExpression: Box<Expression> = {
 }
 
 BlockExpression: Box<Expression> = {
-    "{" <StatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>))
+    "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" => Box::new(BlockExpression{statements, expr}.into())
 }
 
 BracedExpression: Box<Expression> = {
-    "{" <StatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>)),
-    "{" <BoxedExpression> "}" => Box::new(Expression::BlockExpression(vec![], <>))
+    "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" => Box::new(BlockExpression{statements, expr}.into()),
+    "{" <expr:BoxedExpression> "}" => Box::new(BlockExpression{ statements: vec![], expr}.into())
 }
 
 StatementInsideBlock: StatementInsideBlock = {

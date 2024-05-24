@@ -4,7 +4,7 @@ use powdr_ast::{
     analyzed::{
         Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
     },
-    parsed::{FunctionKind, LambdaExpression, StatementInsideBlock},
+    parsed::{BlockExpression, FunctionKind, LambdaExpression, StatementInsideBlock},
 };
 
 use lazy_static::lazy_static;
@@ -57,7 +57,7 @@ impl<'a> SideEffectChecker<'a> {
                 self.context = old_context;
                 result
             }
-            Expression::BlockExpression(statements, _expr) => {
+            Expression::BlockExpression(BlockExpression { statements, .. }) => {
                 for s in statements {
                     if let StatementInsideBlock::LetStatement(ls) = s {
                         if ls.value.is_none() && self.context != FunctionKind::Constr {

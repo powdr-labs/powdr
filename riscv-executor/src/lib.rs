@@ -22,7 +22,9 @@ use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
     },
-    parsed::{asm::DebugDirective, BinaryOperation, Expression, FunctionCall, Number},
+    parsed::{
+        asm::DebugDirective, BinaryOperation, Expression, FunctionCall, Number, UnaryOperation,
+    },
 };
 use powdr_number::{FieldElement, LargeInt};
 use powdr_riscv_syscalls::SYSCALL_REGISTERS;
@@ -901,7 +903,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![result]
             }
-            Expression::UnaryOperation(op, arg) => {
+            Expression::UnaryOperation(UnaryOperation { op, expr: arg }) => {
                 let arg = self.eval_expression(arg)[0].bin();
                 let result = match op {
                     powdr_ast::parsed::UnaryOperator::Minus => -arg,
@@ -960,9 +962,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 }
             }
-            Expression::MatchExpression(_, _) => todo!(),
+            Expression::MatchExpression(_) => todo!(),
             Expression::IfExpression(_) => panic!(),
-            Expression::BlockExpression(_, _) => panic!(),
+            Expression::BlockExpression(_) => panic!(),
             Expression::IndexAccess(_) => todo!(),
         }
     }

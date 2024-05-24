@@ -13,8 +13,8 @@ use powdr_ast::{
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperation, BinaryOperator, Expression, FunctionCall,
-        FunctionDefinition, FunctionKind, LambdaExpression, MatchArm, Number, Pattern,
-        PilStatement, PolynomialName, SelectedExpressions, UnaryOperator,
+        FunctionDefinition, FunctionKind, LambdaExpression, MatchArm, MatchExpression, Number,
+        Pattern, PilStatement, PolynomialName, SelectedExpressions, UnaryOperation, UnaryOperator,
     },
     SourceRef,
 };
@@ -535,8 +535,11 @@ impl<T: FieldElement> VMConverter<T> {
                             .filter(|(_, reg)| reg.ty == RegisterTy::Assignment)
                             .map(|(name, _)| rhs_assignment_registers.insert(name.clone()));
                     }
-                    Expression::UnaryOperation(UnaryOperator::Next, e) => {
-                        if let Expression::Reference(poly) = e.as_ref() {
+                    Expression::UnaryOperation(UnaryOperation {
+                        op: UnaryOperator::Next,
+                        expr,
+                    }) => {
+                        if let Expression::Reference(poly) = expr.as_ref() {
                             poly.try_to_identifier()
                                 .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
                                 .filter(|(_, reg)| {
@@ -683,7 +686,7 @@ impl<T: FieldElement> VMConverter<T> {
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(
                                     T::checked_from(value).unwrap(),
                                 ));
-                            } else if let Expression::UnaryOperation(UnaryOperator::Minus, expr) = a
+                            } else if let Expression::UnaryOperation(UnaryOperation { op: UnaryOperator::Minus, expr }) = a
                             {
                                 if let Expression::Number(Number {value, ..}) = *expr {
                                     instruction_literal_arg.push(InstructionLiteralArg::Number(
@@ -741,9 +744,9 @@ impl<T: FieldElement> VMConverter<T> {
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
             Expression::ArrayLiteral(_) => panic!(),
-            Expression::MatchExpression(_, _) => panic!(),
+            Expression::MatchExpression(_) => panic!(),
             Expression::IfExpression(_) => panic!(),
-            Expression::BlockExpression(_, _) => panic!(),
+            Expression::BlockExpression(_) => panic!(),
             Expression::FreeInput(expr) => {
                 vec![(1.into(), AffineExpressionComponent::FreeInput(*expr))]
             }
@@ -813,7 +816,7 @@ impl<T: FieldElement> VMConverter<T> {
                     panic!("Invalid operation in expression {left} {op} {right}")
                 }
             },
-            Expression::UnaryOperation(op, expr) => {
+            Expression::UnaryOperation(UnaryOperation { op, expr }) => {
                 assert!(op == UnaryOperator::Minus);
                 self.negate_assignment_value(self.process_assignment_value(*expr))
             }
@@ -978,17 +981,28 @@ impl<T: FieldElement> VMConverter<T> {
                         value: absolute_reference("::std::prover::Query::None"),
                     });
 
-                    FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression {
+                    let scrutinee = Box::new(
+                        FunctionCall {
+                            function: Box::new(absolute_reference("::std::prover::eval")),
+                            arguments: vec![direct_reference(pc_name.as_ref().unwrap())],
+                        }
+                        .into(),
+                    );
+
+                    let lambda = LambdaExpression {
                         kind: FunctionKind::Query,
                         params: vec![Pattern::Variable("__i".to_string())],
-                        body: Box::new(Expression::MatchExpression(
-                            Box::new(Expression::FunctionCall(FunctionCall {
-                                function: Box::new(absolute_reference("::std::prover::eval")),
-                                arguments: vec![direct_reference(pc_name.as_ref().unwrap())],
-                            })),
-                            prover_query_arms,
-                        )),
-                    }))
+                        body: Box::new(
+                            MatchExpression {
+                                scrutinee,
+                                arms: prover_query_arms,
+                            }
+                            .into(),
+                        ),
+                    }
+                    .into();
+
+                    FunctionDefinition::Expression(lambda)
                 });
                 witness_column(SourceRef::unknown(), free_value, prover_query)
             })
@@ -1222,13 +1236,19 @@ fn extract_update(expr: Expression) -> (Option<String>, Expression) {
     };
     // TODO check that there are no other "next" references in the expression
     match *left {
-        Expression::UnaryOperation(UnaryOperator::Next, column) => match *column {
+        Expression::UnaryOperation(UnaryOperation {
+            op: UnaryOperator::Next,
+            expr,
+        }) => match *expr {
             Expression::Reference(column) => {
                 (Some(column.try_to_identifier().unwrap().clone()), *right)
             }
             _ => (
                 None,
-                Expression::UnaryOperation(UnaryOperator::Next, column) - *right,
+                Expression::UnaryOperation(UnaryOperation {
+                    op: UnaryOperator::Next,
+                    expr,
+                }) - *right,
             ),
         },
         _ => (None, *left - *right),

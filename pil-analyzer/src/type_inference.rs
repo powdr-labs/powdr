@@ -7,8 +7,9 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
-        ArrayLiteral, BinaryOperation, FunctionCall, FunctionKind, IndexAccess, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, Number, Pattern, StatementInsideBlock,
+        ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
+        LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number, Pattern,
+        StatementInsideBlock, UnaryOperation,
     },
 };
 
@@ -609,7 +610,7 @@ impl<'a> TypeChecker<'a> {
                     || format!("applying operator {op}"),
                 )?
             }
-            Expression::UnaryOperation(op, inner) => {
+            Expression::UnaryOperation(UnaryOperation { op, expr: inner }) => {
                 // TODO at some point, also store the generic args for operators
                 let fun_type = self.instantiate_scheme(unary_operator_scheme(*op)).0;
                 self.infer_type_of_function_call(
@@ -641,7 +642,7 @@ impl<'a> TypeChecker<'a> {
                 })?
             }
             Expression::FreeInput(_) => todo!(),
-            Expression::MatchExpression(scrutinee, arms) => {
+            Expression::MatchExpression(MatchExpression { scrutinee, arms }) => {
                 let scrutinee_type = self.infer_type_of_expression(scrutinee)?;
                 let result = self.new_type_var();
                 for MatchArm { pattern, value } in arms {
@@ -659,7 +660,7 @@ impl<'a> TypeChecker<'a> {
                 self.expect_type(&result, &mut if_expr.else_body)?;
                 result
             }
-            Expression::BlockExpression(statements, expr) => {
+            Expression::BlockExpression(BlockExpression { statements, expr }) => {
                 let original_var_count = self.local_var_types.len();
                 for statement in statements {
                     match statement {
