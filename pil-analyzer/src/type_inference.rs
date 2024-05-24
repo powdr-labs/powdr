@@ -535,7 +535,7 @@ impl<'a> TypeChecker<'a> {
                     .and_then(|param_types| {
                         Ok((
                             param_types,
-                            self.infer_type_of_expression(body, Some(kind.clone()))?,
+                            self.infer_type_of_expression(body, Some(*kind))?,
                         ))
                     });
                 self.local_var_types.truncate(old_len);
@@ -724,7 +724,7 @@ impl<'a> TypeChecker<'a> {
                     })
             }
             _ => {
-                if !Self::contains_constr(&inferred_type) {
+                if !Self::contains_constr(inferred_type) {
                     self.unifier
                         .unify_types(inferred_type.clone(), expected_type.clone())
                         .map_err(|err| {
@@ -749,9 +749,9 @@ impl<'a> TypeChecker<'a> {
     fn contains_constr(ty: &Type) -> bool {
         match ty {
             Type::Tuple(TupleType { items }) => items.iter().any(Self::contains_constr),
-            Type::Array(ArrayType { base, .. }) => Self::contains_constr(&base),
+            Type::Array(ArrayType { base, .. }) => Self::contains_constr(base),
             Type::Function(FunctionType { params, value }) => {
-                Self::contains_constr(&value) || params.iter().any(Self::contains_constr)
+                Self::contains_constr(value) || params.iter().any(Self::contains_constr)
             }
             Type::NamedType(sp, Some(t)) => {
                 *sp == SymbolPath::from_str("std::prelude::Constr").unwrap()
