@@ -131,11 +131,7 @@ impl<'a> Profiler<'a> {
         inferno::flamegraph::from_lines(&mut options, lines.iter().map(|s| s.as_str()), w).unwrap();
     }
 
-    /// calculate totals and write out results
-    pub fn execution_finished(&mut self) {
-        // write out flamegraph file
-        self.write_flamegraph("/tmp/flamegraph.svg");
-        self.write_callgrind("/tmp/callgrind.out");
+    pub fn write_debug_output(&self) {
         log::debug!("====== EXECUTION STATS =======");
         // TODO: handle tail call from `main`?
         for func in self.function_begin.values() {
@@ -193,6 +189,14 @@ impl<'a> Profiler<'a> {
                 );
             }
         }
+    }
+
+    /// calculate totals and write out results
+    pub fn execution_finished(&mut self) {
+        // write out flamegraph file
+        self.write_flamegraph("/tmp/flamegraph.svg");
+        self.write_callgrind("/tmp/callgrind.out");
+        self.write_debug_output();
     }
 
     pub fn running(&self) -> bool {
