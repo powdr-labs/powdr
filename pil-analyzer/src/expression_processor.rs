@@ -7,9 +7,10 @@ use std::{
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
-        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, NamespacedPolynomialReference, Number, Pattern,
-        SelectedExpressions, StatementInsideBlock, SymbolCategory,
+        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BinaryOperation, BlockExpression,
+        IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
+        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
+        SymbolCategory, UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
@@ -98,13 +99,18 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             PExpression::LambdaExpression(lambda_expression) => {
                 Expression::LambdaExpression(self.process_lambda_expression(lambda_expression))
             }
-            PExpression::BinaryOperation(left, op, right) => Expression::BinaryOperation(
-                Box::new(self.process_expression(*left)),
+            PExpression::UnaryOperation(UnaryOperation { op, expr: value }) => UnaryOperation {
                 op,
-                Box::new(self.process_expression(*right)),
-            ),
-            PExpression::UnaryOperation(op, value) => {
-                Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
+                expr: Box::new(self.process_expression(*value)),
+            }
+            .into(),
+            PExpression::BinaryOperation(BinaryOperation { left, op, right }) => {
+                (BinaryOperation {
+                    left: Box::new(self.process_expression(*left)),
+                    op,
+                    right: Box::new(self.process_expression(*right)),
+                })
+                .into()
             }
             PExpression::IndexAccess(index_access) => {
                 Expression::IndexAccess(parsed::IndexAccess {
@@ -116,9 +122,10 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 function: Box::new(self.process_expression(*c.function)),
                 arguments: self.process_expressions(c.arguments),
             }),
-            PExpression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
-                Box::new(self.process_expression(*scrutinee)),
-                arms.into_iter()
+            PExpression::MatchExpression(MatchExpression { scrutinee, arms }) => MatchExpression {
+                scrutinee: Box::new(self.process_expression(*scrutinee)),
+                arms: arms
+                    .into_iter()
                     .map(|MatchArm { pattern, value }| {
                         let vars = self.save_local_variables();
                         let pattern = self.process_pattern(pattern);
@@ -127,7 +134,8 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                         MatchArm { pattern, value }
                     })
                     .collect(),
-            ),
+            }
+            .into(),
             PExpression::IfExpression(IfExpression {
                 condition,
                 body,
@@ -137,7 +145,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 body: Box::new(self.process_expression(*body)),
                 else_body: Box::new(self.process_expression(*else_body)),
             }),
-            PExpression::BlockExpression(statements, expr) => {
+            PExpression::BlockExpression(BlockExpression { statements, expr }) => {
                 self.process_block_expression(statements, *expr)
             }
             PExpression::FreeInput(_) => panic!(),
@@ -277,7 +285,11 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
         let processed_expr = self.process_expression(expr);
         self.reset_local_variables(vars);
-        Expression::BlockExpression(processed_statements, Box::new(processed_expr))
+        BlockExpression {
+            statements: processed_statements,
+            expr: Box::new(processed_expr),
+        }
+        .into()
     }
 
     pub fn process_namespaced_polynomial_reference(

@@ -16,8 +16,9 @@ use powdr_ast::{
     parsed::{
         display::quote,
         types::{Type, TypeScheme},
-        ArrayLiteral, BinaryOperator, FunctionCall, IfExpression, IndexAccess, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, Number, Pattern, StatementInsideBlock, UnaryOperator,
+        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
+        IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
+        Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
     },
     SourceRef,
 };
@@ -691,12 +692,12 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.expand(&items[0])?;
                 }
             }
-            Expression::BinaryOperation(l, _, r) => {
+            Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
                 self.op_stack.push(Operation::Combine(expr));
-                self.op_stack.push(Operation::Expand(r));
-                self.expand(l)?;
+                self.op_stack.push(Operation::Expand(right));
+                self.expand(left)?;
             }
-            Expression::UnaryOperation(_, inner) => {
+            Expression::UnaryOperation(UnaryOperation { expr: inner, .. }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.expand(inner)?;
             }
@@ -725,13 +726,16 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     .extend(arguments.iter().rev().map(Operation::Expand));
                 self.expand(function)?;
             }
-            Expression::MatchExpression(condition, _)
+            Expression::MatchExpression(MatchExpression {
+                scrutinee: condition,
+                arms: _,
+            })
             | Expression::IfExpression(IfExpression { condition, .. }) => {
                 // Only handle the scrutinee / condition for now, we do not want to evaluate all arms.
                 self.op_stack.push(Operation::Combine(expr));
                 self.expand(condition)?;
             }
-            Expression::BlockExpression(statements, expr) => {
+            Expression::BlockExpression(BlockExpression { statements, expr }) => {
                 self.op_stack
                     .push(Operation::TruncateLocals(self.local_vars.len()));
                 self.op_stack.push(Operation::Expand(expr));
@@ -794,12 +798,12 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     .split_off(self.value_stack.len() - items.len());
                 Value::Array(inner_values).into()
             }
-            Expression::BinaryOperation(_, op, _) => {
+            Expression::BinaryOperation(BinaryOperation { op, .. }) => {
                 let right = self.value_stack.pop().unwrap();
                 let left = self.value_stack.pop().unwrap();
                 evaluate_binary_operation(&left, *op, &right)?
             }
-            Expression::UnaryOperation(op, _) => {
+            Expression::UnaryOperation(UnaryOperation { op, .. }) => {
                 let inner = self.value_stack.pop().unwrap();
                 match (op, inner.as_ref()) {
                     (UnaryOperator::Minus, Value::FieldElement(e)) => {
@@ -868,7 +872,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 let function = self.value_stack.pop().unwrap();
                 return self.combine_function_call(function, arguments);
             }
-            Expression::MatchExpression(_, arms) => {
+            Expression::MatchExpression(MatchExpression { scrutinee: _, arms }) => {
                 let v = self.value_stack.pop().unwrap();
                 let (vars, body) = arms
                     .iter()
