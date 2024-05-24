@@ -5,17 +5,16 @@ use std::{
 
 use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
-use powdr_ast::{
-    analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind},
-    parsed::SelectedExpressions,
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind,
 };
 use powdr_number::FieldElement;
 
 use crate::witgen::{global_constraints::CombinedRangeConstraintSet, machines::Machine, EvalError};
 
 use super::{
-    affine_expression::AffineExpression,
     machines::{FixedLookup, KnownMachine},
+    processor::OuterQuery,
     rows::RowPair,
     EvalResult, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
@@ -221,11 +220,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     /// - `Err(e)`: If the constraint system is not satisfiable.
     pub fn process_link(
         &mut self,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
-        caller_rows: &RowPair<'_, 'a, T>,
+        outer_query: &OuterQuery<'a, '_, T>,
         current_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
+        let right = &outer_query.connecting_identity.right;
         // sanity check that the right hand side selector is active
         let selector_value = right
             .selector
@@ -240,11 +238,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             .unwrap_or(Ok(T::one()))?;
         assert_eq!(selector_value, T::one());
 
-        let range_constraint = CombinedRangeConstraintSet::new(caller_rows, current_rows);
+        let range_constraint =
+            CombinedRangeConstraintSet::new(outer_query.caller_rows, current_rows);
 
         let mut updates = EvalValue::complete(vec![]);
 
-        for (l, r) in left.iter().zip(right.expressions.iter()) {
+        for (l, r) in outer_query.left.iter().zip(right.expressions.iter()) {
             match current_rows.evaluate(r) {
                 Ok(r) => {
                     let result = (l.clone() - r).solve_with_range_constraints(&range_constraint)?;

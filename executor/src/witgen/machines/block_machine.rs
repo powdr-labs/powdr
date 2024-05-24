@@ -480,8 +480,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             log::trace!("  {}", l);
         }
 
-        let right = &self.connecting_identities.get(&identity_id).unwrap().right;
-
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
         // to validate the constraints.
@@ -503,9 +501,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             );
 
             let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
-            if let Ok(result) =
-                identity_processor.process_link(&outer_query.left, right, caller_rows, &row_pair)
-            {
+            if let Ok(result) = identity_processor.process_link(&outer_query, &row_pair) {
                 if result.is_complete() && result.constraints.is_empty() {
                     log::trace!(
                         "End processing block machine '{}' (already solved)",

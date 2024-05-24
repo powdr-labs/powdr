@@ -25,9 +25,9 @@ type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
 #[derive(Clone)]
 pub struct OuterQuery<'a, 'b, T: FieldElement> {
     /// Rows of the calling machine.
-    caller_rows: &'b RowPair<'b, 'a, T>,
+    pub caller_rows: &'b RowPair<'b, 'a, T>,
     /// Connecting identity.
-    connecting_identity: &'a Identity<Expression<T>>,
+    pub connecting_identity: &'a Identity<Expression<T>>,
     /// The left side of the connecting identity, evaluated.
     pub left: Left<'a, T>,
 }
@@ -268,11 +268,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 .unwrap_or(false);
         }
 
-        let OuterQuery {
-            caller_rows,
-            left,
-            connecting_identity,
-        } = self
+        let outer_query = self
             .outer_query
             .as_ref()
             .expect("Asked to process outer query, but it was not set!");
@@ -287,13 +283,14 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
         let updates = identity_processor
-            .process_link(left, &connecting_identity.right, caller_rows, &row_pair)
+            .process_link(outer_query, &row_pair)
             .map_err(|e| {
                 log::warn!("Error in outer query: {e}");
                 log::warn!("Some of the following entries could not be matched:");
-                for (l, r) in left
+                for (l, r) in outer_query
+                    .left
                     .iter()
-                    .zip(connecting_identity.right.expressions.iter())
+                    .zip(outer_query.connecting_identity.right.expressions.iter())
                 {
                     if let Ok(r) = row_pair.evaluate(r) {
                         log::warn!("  => {} = {}", l, r);

@@ -23,6 +23,20 @@ pub trait RangeConstraintSet<K, T: FieldElement> {
     fn range_constraint(&self, id: K) -> Option<RangeConstraint<T>>;
 }
 
+pub struct SimpleRangeConstraintSet<'a, T: FieldElement> {
+    range_constraints: &'a BTreeMap<PolyID, RangeConstraint<T>>,
+}
+
+impl<'a, T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
+    for SimpleRangeConstraintSet<'a, T>
+{
+    fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
+        assert!(!id.next);
+        self.range_constraints.get(&id.poly_id).cloned()
+    }
+}
+
+/// A range constraint set that combines two other range constraint sets.
 pub struct CombinedRangeConstraintSet<'a, R1, R2, K, T>
 where
     T: FieldElement,
@@ -67,19 +81,6 @@ where
             (Some(c), None) | (None, Some(c)) => Some(c),
             (None, None) => None,
         }
-    }
-}
-
-pub struct SimpleRangeConstraintSet<'a, T: FieldElement> {
-    range_constraints: &'a BTreeMap<PolyID, RangeConstraint<T>>,
-}
-
-impl<'a, T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
-    for SimpleRangeConstraintSet<'a, T>
-{
-    fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
-        assert!(!id.next);
-        self.range_constraints.get(&id.poly_id).cloned()
     }
 }
 

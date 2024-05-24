@@ -48,12 +48,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let outer_query = OuterQuery::new(caller_rows, self.connecting_identities[&identity_id]);
-        let right = &self.connecting_identities.get(&identity_id).unwrap().right;
+        let identity = self.connecting_identities.get(&identity_id).unwrap();
+        let outer_query = OuterQuery::new(caller_rows, identity);
 
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
-        for (r, l) in right.expressions.iter().zip(&outer_query.left) {
+        for (r, l) in identity.right.expressions.iter().zip(&outer_query.left) {
             log::trace!("  {r} = {l}");
         }
 
