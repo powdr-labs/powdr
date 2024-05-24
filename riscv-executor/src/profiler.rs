@@ -344,7 +344,8 @@ impl<'a> Profiler<'a> {
 
 fn format_function_name(name: &str) -> String {
     if let Some(prefix) = name.find("___ZN") {
-        format!("{}_{}", &name[0..4], demangle(&name[prefix + 2..]))
+        // format!("{}_{}", &name[0..4], demangle(&name[prefix + 2..]))
+        format!("{}", demangle(&name[prefix + 2..]))
     } else {
         format!("{}", demangle(name))
     }
