@@ -28,6 +28,7 @@ use powdr_ast::{
 };
 use powdr_number::{FieldElement, LargeInt};
 use powdr_riscv_syscalls::SYSCALL_REGISTERS;
+pub use profiler::ProfilerOptions;
 
 pub mod arith;
 pub mod poseidon_gl;
@@ -1019,6 +1020,7 @@ pub fn execute_ast<T: FieldElement>(
     bootloader_inputs: &[Elem<T>],
     max_steps_to_execute: usize,
     mode: ExecMode,
+    profiler_opt: ProfilerOptions,
 ) -> (ExecutionTrace<T>, MemoryState) {
     let main_machine = get_main_machine(program);
     let PreprocessedMain {
@@ -1049,7 +1051,12 @@ pub fn execute_ast<T: FieldElement>(
         _stdout: io::stdout(),
     };
 
-    let mut profiler = Profiler::new(&debug_files[..], function_starts, location_starts);
+    let mut profiler = Profiler::new(
+        profiler_opt,
+        &debug_files[..],
+        function_starts,
+        location_starts,
+    );
 
     let mut curr_pc = 0u32;
     loop {
@@ -1131,6 +1138,7 @@ pub fn execute<F: FieldElement>(
     inputs: &Callback<F>,
     bootloader_inputs: &[Elem<F>],
     mode: ExecMode,
+    profiler_opt: ProfilerOptions,
 ) -> (ExecutionTrace<F>, MemoryState) {
     log::info!("Parsing...");
     let parsed = powdr_parser::parse_asm(None, asm_source).unwrap();
@@ -1147,6 +1155,7 @@ pub fn execute<F: FieldElement>(
         bootloader_inputs,
         usize::MAX,
         mode,
+        profiler_opt,
     )
 }
 

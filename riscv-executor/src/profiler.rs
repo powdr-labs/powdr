@@ -1,4 +1,10 @@
-use std::{collections::BTreeMap, fs::File, io::BufWriter, io::Write, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs::File,
+    io::BufWriter,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use itertools::Itertools;
 
@@ -13,6 +19,8 @@ pub struct Call<'a> {
 /// Risc-v asm profiler.
 /// Tracks the self-cost of functions and cummulative cost specific function calls (i.e., callgrind style).
 pub struct Profiler<'a> {
+    /// profiling options
+    options: ProfilerOptions,
     /// file number to (dir,file)
     debug_files: &'a [(&'a str, &'a str)],
     /// pc value of function beginnings
@@ -31,18 +39,32 @@ pub struct Profiler<'a> {
     folded_stack_stats: BTreeMap<Vec<&'a str>, usize>,
 }
 
+#[derive(Default, Clone)]
+pub struct ProfilerOptions {
+    pub output_directory: String,
+    pub file_stem: Option<String>,
+    pub generate_flamegraph: bool,
+    pub generate_callgrind: bool,
+}
+
+impl ProfilerOptions {
+    fn is_enabled(&self) -> bool {
+        self.generate_callgrind || self.generate_flamegraph
+    }
+}
+
 /// A location is (file, line)
 pub type Loc<'a> = (&'a str, usize, usize);
 
-/// TODO: remove debugging prints
-
 impl<'a> Profiler<'a> {
     pub fn new(
+        options: ProfilerOptions,
         debug_files: &'a [(&'a str, &'a str)],
         function_begin: BTreeMap<usize, &'a str>,
         location_begin: BTreeMap<usize, (usize, usize)>,
     ) -> Self {
         Profiler {
+            options,
             debug_files,
             function_begin,
             location_begin,
@@ -131,6 +153,8 @@ impl<'a> Profiler<'a> {
         inferno::flamegraph::from_lines(&mut options, lines.iter().map(|s| s.as_str()), w).unwrap();
     }
 
+    // TODO: REMOVE
+    #[allow(unused)]
     pub fn write_debug_output(&self) {
         log::debug!("====== EXECUTION STATS =======");
         // TODO: handle tail call from `main`?
@@ -193,12 +217,22 @@ impl<'a> Profiler<'a> {
 
     /// calculate totals and write out results
     pub fn execution_finished(&mut self) {
-        // write out flamegraph file
-        self.write_flamegraph("/tmp/flamegraph.svg");
-        self.write_callgrind("/tmp/callgrind.out");
-        self.write_debug_output();
+        if !self.options.is_enabled() {
+            return;
+        }
+        let mut path = PathBuf::from(&self.options.output_directory)
+            .join(self.options.file_stem.as_deref().unwrap_or("out"));
+        if self.options.generate_flamegraph {
+            path.set_extension("svg");
+            self.write_flamegraph(&path);
+        }
+        if self.options.generate_callgrind {
+            path.set_extension("callgrind");
+            self.write_callgrind(&path);
+        }
     }
 
+    /// profiling only starts once "__runtime_start" is reached
     pub fn running(&self) -> bool {
         !self.call_stack.is_empty()
     }
@@ -221,7 +255,7 @@ impl<'a> Profiler<'a> {
             })
     }
 
-    /// TODO: debugging function, remove
+    /// TODO: for dev debugging only REMOVE
     pub fn print_stack(&self, what: &str) {
         log::debug!("[ {what}");
         for (Call { target, .. }, cost) in self.call_stack.iter() {
@@ -232,7 +266,7 @@ impl<'a> Profiler<'a> {
 
     /// add cost for instruction/row
     pub fn add_instruction_cost(&mut self, curr_pc: usize) {
-        if !self.running() {
+        if !self.options.is_enabled() || !self.running() {
             return;
         }
 
@@ -259,6 +293,9 @@ impl<'a> Profiler<'a> {
     /// Should be called for instructions that jump and save the returning address in an actual RISC-V register.
     /// This is handled as a "call" into a function.
     pub fn jump_and_link(&mut self, curr_pc: usize, target_pc: usize, return_pc: usize) {
+        if !self.options.is_enabled() {
+            return;
+        }
         if let Some(target) = self.location_at(target_pc) {
             if let Some(curr_function) = self.curr_function() {
                 let (_, curr_file, curr_line) = self.location_at(curr_pc).unwrap();
@@ -296,9 +333,10 @@ impl<'a> Profiler<'a> {
     /// - "tail call": next_function != current_function
     /// - control flow: next_function == current_function
     pub fn jump(&mut self, target_pc: usize) {
-        if !self.running() {
+        if !self.options.is_enabled() || !self.running() {
             return;
         }
+
         if self
             .return_pc_stack
             .last()
@@ -327,7 +365,7 @@ impl<'a> Profiler<'a> {
                 }
 
                 // push new call.
-                // TODO: here we keep the origin of the current call as the origin of the replacement tail call. Maybe we use the current location instead?
+                // here we keep the origin of the current call as the origin of the tail call replacing it
                 let new_call = Call {
                     from: done_call.from,
                     target,
@@ -336,7 +374,7 @@ impl<'a> Profiler<'a> {
                 self.call_stack.push((new_call, 0));
                 self.print_stack("TAIL");
             } else {
-                // TODO: "control flow" (or "tail call" to self, if that is a thing), don't think this needs special handling
+                // "control flow" (or "tail call" to self, if that is a thing), don't think this needs special handling
             }
         }
     }

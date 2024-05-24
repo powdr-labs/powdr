@@ -9,7 +9,7 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 use powdr_pipeline::Pipeline;
-use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState};
+use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState, ProfilerOptions};
 
 pub mod bootloader;
 mod memory_merkle_tree;
@@ -206,6 +206,7 @@ pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
 /// - The number of rows after which the prover should jump to the shutdown routine.
 pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
+    profiler_opt: ProfilerOptions,
 ) -> Vec<(Vec<F>, u64)> {
     // All inputs for all chunks.
     let mut bootloader_inputs_and_num_rows = vec![];
@@ -242,6 +243,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             &default_input(&[]),
             usize::MAX,
             powdr_riscv_executor::ExecMode::Trace,
+            profiler_opt,
         )
         .0;
         (transposed_trace::<F>(&trace), trace.mem_ops)
@@ -342,6 +344,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 &bootloader_inputs,
                 num_rows,
                 powdr_riscv_executor::ExecMode::Trace,
+                // profiling was done when full trace was generated
+                ProfilerOptions::default(),
             );
             (transposed_trace(&trace), memory_snapshot_update)
         };
