@@ -48,8 +48,14 @@ impl fmt::Display for Register {
 
 #[derive(Clone, Copy, Debug)]
 pub enum FunctionKind {
-    HiDataRef,
-    LoDataRef,
+    /// Upper 20 bits of a 32-bit absolute address of a label.
+    HiRef,
+    /// Lower 12 bits of a 32-bit absolute address of a label.
+    LoRef,
+    /// Upper 20 bits of a 32-bit address of a label relative to the PC.
+    PCRelHiRef,
+    /// Lower 12 bits of a 32-bit address of a label relative to the PC.
+    PCRelLoRef,
 }
 
 impl powdr_asm_utils::ast::FunctionOpKind for FunctionKind {}
@@ -57,8 +63,10 @@ impl powdr_asm_utils::ast::FunctionOpKind for FunctionKind {}
 impl fmt::Display for FunctionKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FunctionKind::HiDataRef => write!(f, "%hi"),
-            FunctionKind::LoDataRef => write!(f, "%lo"),
+            FunctionKind::HiRef => write!(f, "%hi"),
+            FunctionKind::LoRef => write!(f, "%lo"),
+            FunctionKind::PCRelHiRef => write!(f, "%pcrel_hi"),
+            FunctionKind::PCRelLoRef => write!(f, "%pcrel_lo"),
         }
     }
 }
@@ -315,7 +323,7 @@ fn replace_dynamic_label_reference(
     if instr1.as_str() != "lui" || instr2.as_str() != "addi" {
         return None;
     };
-    let [Argument::Register(r1), Argument::Expression(Expression::FunctionOp(FunctionKind::HiDataRef, expr1))] =
+    let [Argument::Register(r1), Argument::Expression(Expression::FunctionOp(FunctionKind::HiRef, expr1))] =
         &args1[..]
     else {
         return None;
@@ -324,7 +332,7 @@ fn replace_dynamic_label_reference(
     let Expression::Symbol(label1) = expr1.as_ref() else {
         return None;
     };
-    let [Argument::Register(r2), Argument::Register(r3), Argument::Expression(Expression::FunctionOp(FunctionKind::LoDataRef, expr2))] =
+    let [Argument::Register(r2), Argument::Register(r3), Argument::Expression(Expression::FunctionOp(FunctionKind::LoRef, expr2))] =
         &args2[..]
     else {
         return None;
@@ -391,8 +399,11 @@ fn substitute_symbols_with_values(
                 Expression::FunctionOp(op, subexpr) => {
                     if let Expression::Number(num) = subexpr.as_ref() {
                         let result = match op {
-                            FunctionKind::HiDataRef => num >> 12,
-                            FunctionKind::LoDataRef => num & 0xfff,
+                            FunctionKind::HiRef => num >> 12,
+                            FunctionKind::LoRef => num & 0xfff,
+                            FunctionKind::PCRelHiRef | FunctionKind::PCRelLoRef => {
+                                unimplemented!("We do not support PC-relative addressing yet.")
+                            }
                         };
                         *expression = Expression::Number(result);
                     };

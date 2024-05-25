@@ -8,6 +8,7 @@ use std::{
     process::Command,
 };
 
+use itertools::Itertools;
 use mktemp::Temp;
 use powdr_number::FieldElement;
 use serde_json::Value as JsonValue;
@@ -25,6 +26,8 @@ pub mod runtime;
 type Statement = powdr_asm_utils::ast::Statement<Register, FunctionKind>;
 type Argument = powdr_asm_utils::ast::Argument<Register, FunctionKind>;
 type Expression = powdr_asm_utils::ast::Expression<FunctionKind>;
+
+const RUST_TARGET: &str = "riscv32im-risc0-zkvm-elf";
 
 /// Compiles a rust file all the way down to PIL and generates
 /// fixed and witness columns.
@@ -186,17 +189,17 @@ pub fn compile_rust_crate_to_riscv_asm(
 
 fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: bool) -> Command {
     let mut cmd = Command::new("cargo");
-    cmd.env("RUSTFLAGS", "--emit=asm -g");
+    cmd.env("RUSTFLAGS", "--emit=asm -g -C passes=loweratomic");
 
     let args = as_ref![
         OsStr;
-        "+nightly-2024-02-01",
+        "+nightly",
         "build",
         "--release",
-        "-Z",
-        "build-std=core,alloc",
+        "-Zbuild-std=std,panic_abort",
+        //"-Zbuild-std-features=compiler-builtins-mem",
         "--target",
-        "riscv32imac-unknown-none-elf",
+        RUST_TARGET,
         "--lib",
         "--target-dir",
         target_dir,
@@ -215,6 +218,13 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
     } else {
         cmd.args(args.iter());
     }
+
+    log::info!(
+        "Building cargo project with command:\n→ {} {}",
+        cmd.get_program().to_string_lossy(),
+        cmd.get_args()
+            .format_with(" ", |arg, f| f(&arg.to_string_lossy()))
+    );
 
     cmd
 }
@@ -238,26 +248,47 @@ fn output_files_from_cargo_build_plan(
         };
         for output in outputs {
             let output = Path::new(output.as_str().unwrap());
-            // Strip the target_dir, so that the path becomes relative.
-            let parent = output.parent().unwrap().strip_prefix(target_dir).unwrap();
-            if Some(OsStr::new("rmeta")) == output.extension()
-                && parent.ends_with("riscv32imac-unknown-none-elf/release/deps")
+            let parent = output.parent().unwrap();
+            if Some(OsStr::new("rmeta")) != output.extension()
+                || !parent.ends_with(Path::new(RUST_TARGET).join("release/deps"))
             {
-                // Have to convert to string to remove the "lib" prefix:
-                let name_stem = output
-                    .file_stem()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .strip_prefix("lib")
-                    .unwrap();
-
-                let mut asm_name = parent.join(name_stem);
-                asm_name.set_extension("s");
-
-                log::debug!(" - {}", asm_name.to_string_lossy());
-                assemblies.push((name_stem.to_string(), asm_name));
+                continue;
             }
+
+            // Strip the target_dir, so that the path becomes relative.
+            let parent = parent.strip_prefix(target_dir).unwrap();
+
+            // HACK: explicitly exclude panic_unwind, because it is
+            // conflicting with panic_abort
+            //
+            // TODO: figure out why cargo is linking them both together and
+            // why rustc is fine with it. Then fix the root cause of the
+            // problem.
+            if output
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .strip_prefix("libpanic_unwind-")
+                .is_some_and(|s| s.chars().all(|c| c.is_digit(16)))
+            {
+                continue;
+            }
+
+            // Have to convert to string to remove the "lib" prefix:
+            let name_stem = output
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .strip_prefix("lib")
+                .unwrap();
+
+            let mut asm_name = parent.join(name_stem);
+            asm_name.set_extension("s");
+
+            log::debug!(" - {}", asm_name.to_string_lossy());
+            assemblies.push((name_stem.to_string(), asm_name));
         }
     }
 

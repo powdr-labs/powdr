@@ -171,8 +171,10 @@ ExprUnary: Expression = {
 ExprTerm: Expression = {
     Number => Expression::Number(<>),
     "(" <Expression> ")" => <>,
-    "%hi(" <Expression> ")" => fn_op(FOp::HiDataRef, <>),
-    "%lo(" <Expression> ")" => fn_op(FOp::LoDataRef, <>),
+    "%hi(" <Expression> ")" => fn_op(FOp::HiRef, <>),
+    "%lo(" <Expression> ")" => fn_op(FOp::LoRef, <>),
+    "%pcrel_hi(" <Expression> ")" => fn_op(FOp::PCRelHiRef, <>),
+    "%pcrel_lo(" <Expression> ")" => fn_op(FOp::PCRelLoRef, <>),
     Symbol => Expression::Symbol(<>)
 }
 

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-powdr-riscv-runtime = { path = "../../../../riscv-runtime" }
+risc0-zkvm = { version = "0.21.0", default-features = false }
+#powdr-riscv-runtime = { path = "../../../../riscv-runtime" }
 
 [workspace]
