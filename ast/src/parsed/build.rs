@@ -1,6 +1,6 @@
 use powdr_number::BigUint;
 
-use crate::parsed::Expression;
+use crate::parsed::{Expression, SourceReference};
 
 use super::{
     asm::{parse_absolute_path, Part, SymbolPath},
@@ -36,10 +36,13 @@ pub fn next_reference<S: Into<String>>(name: S) -> Expression {
 /// Returns an index access operation to expr if the index is Some, otherwise returns expr itself.
 pub fn index_access(expr: Expression, index: Option<BigUint>) -> Expression {
     match index {
-        Some(i) => Expression::IndexAccess(IndexAccess {
-            array: Box::new(expr),
-            index: Box::new(i.into()),
-        }),
+        Some(i) => Expression::IndexAccess(
+            expr.source_reference().clone(),
+            IndexAccess {
+                array: Box::new(expr),
+                index: Box::new(i.into()),
+            },
+        ),
         None => expr,
     }
 }
