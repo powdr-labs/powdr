@@ -1005,8 +1005,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
 /// return true if the expression is a jump instruction
 fn expr_is_jump(e: &Expression) -> bool {
-    if let Expression::FunctionCall(FunctionCall { function, .. }) = e {
-        if let Expression::Reference(f) = function.as_ref() {
+    if let Expression::FunctionCall(_, FunctionCall { function, .. }) = e {
+        if let Expression::Reference(_, f) = function.as_ref() {
             return ["jump", "jump_dyn"].contains(&f.try_to_identifier().unwrap().as_str());
         }
     }
