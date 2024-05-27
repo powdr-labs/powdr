@@ -5,7 +5,7 @@ use powdr_pipeline::{
     test_util::{
         assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
         assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, resolve_test_file,
-        test_halo2, verify_test_file,
+        test_halo2, test_plonky3, verify_test_file,
     },
     Pipeline,
 };
@@ -89,6 +89,7 @@ fn fibonacci() {
     verify_pil(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
+    test_plonky3(f, Default::default());
 }
 
 #[test]

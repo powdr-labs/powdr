@@ -2,8 +2,8 @@ use std::{io, path::Path};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::FieldElement;
-use powdr_plonky3::Plonky3Prover;
+use powdr_number::{DegreeType, FieldElement};
+use powdr_plonky3::{generate_setup, Plonky3Prover};
 
 use crate::{Backend, BackendFactory, Error, Proof};
 
@@ -18,20 +18,23 @@ impl<T: FieldElement> BackendFactory<T> for Plonky3ProverFactory {
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
     ) -> Result<Box<dyn crate::Backend<'a, T> + 'a>, Error> {
-        if setup.is_some() {
-            return Err(Error::NoSetupAvailable);
-        }
-        let mut plonky3 = Box::new(Plonky3Prover::new(pil, fixed));
+        let mut plonky3 = Box::new(Plonky3Prover::new(pil, fixed, setup)?);
         if let Some(vk) = verification_key {
             plonky3.add_verification_key(vk);
         }
         Ok(plonky3)
     }
+
+    fn generate_setup(&self, _size: DegreeType, output: &mut dyn io::Write) -> Result<(), Error> {
+        serde_json::to_writer(output, &generate_setup()).unwrap();
+
+        Ok(())
+    }
 }
 
 impl<'a, T: FieldElement> Backend<'a, T> for Plonky3Prover<'a, T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
-        self.verify(proof, instances)
+        Ok(self.verify(proof, instances)?)
     }
 
     fn prove(
@@ -47,7 +50,15 @@ impl<'a, T: FieldElement> Backend<'a, T> for Plonky3Prover<'a, T> {
         Ok(self.prove_ast(witness, witgen_callback)?)
     }
 
-    fn export_verification_key(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
-        todo!()
+    fn export_setup(&self, output: &mut dyn io::Write) -> Result<(), Error> {
+        self.write_setup(output);
+
+        Ok(())
+    }
+
+    fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
+        self.write_vkey(output);
+
+        Ok(())
     }
 }

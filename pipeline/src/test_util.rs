@@ -177,13 +177,6 @@ pub fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 #[cfg(feature = "plonky3")]
 pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
-    Pipeline::default()
-        .from_file(resolve_test_file(file_name))
-        .with_prover_inputs(inputs.clone())
-        .with_backend(powdr_backend::BackendType::Plonky3)
-        .compute_proof()
-        .unwrap();
-
     gen_plonky3_proof(file_name, inputs)
 }
 
@@ -191,8 +184,52 @@ pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
 pub fn test_plonky3(_: &str, _: Vec<GoldilocksField>) {}
 
 #[cfg(feature = "plonky3")]
-pub fn gen_plonky3_proof(_: &str, _: Vec<GoldilocksField>) {
-    todo!()
+pub fn gen_plonky3_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
+    let tmp_dir = mktemp::Temp::new_dir().unwrap();
+    let mut pipeline = Pipeline::default()
+        .with_tmp_output(&tmp_dir)
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs)
+        .with_backend(powdr_backend::BackendType::Plonky3);
+
+    // Generate a proof with the setup and verification key generated on the fly
+    pipeline.clone().compute_proof().unwrap();
+
+    // Repeat the proof generation, but with an externally generated setup and verification key
+    let pil = pipeline.compute_optimized_pil().unwrap();
+
+    // Setup
+    let setup_file_path = tmp_dir.as_path().join("params.bin");
+    buffered_write_file(&setup_file_path, |writer| {
+        powdr_backend::BackendType::Plonky3
+            .factory::<GoldilocksField>()
+            .generate_setup(pil.degree(), writer)
+            .unwrap()
+    })
+    .unwrap();
+    let mut pipeline = pipeline.with_setup_file(Some(setup_file_path));
+
+    // Verification Key
+    let vkey_file_path = tmp_dir.as_path().join("verification_key.bin");
+    buffered_write_file(&vkey_file_path, |writer| {
+        pipeline.export_verification_key(writer).unwrap()
+    })
+    .unwrap();
+
+    // Create the proof before adding the setup and vkey to the backend,
+    // so that they're generated during the proof
+    let proof: Vec<u8> = pipeline.compute_proof().unwrap().clone();
+
+    let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
+
+    let publics: Vec<GoldilocksField> = pipeline
+        .publics()
+        .unwrap()
+        .iter()
+        .map(|(_name, v)| *v)
+        .collect();
+
+    pipeline.verify(&proof, &[publics]).unwrap();
 }
 
 #[cfg(not(feature = "plonky3"))]
