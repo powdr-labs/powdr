@@ -35,16 +35,16 @@ pub fn read_data_len(fd: u32) -> usize {
 }
 
 /// Writes a single u32 to the file descriptor fd.
-pub fn write_u32(fd: u32, w: u32) {
+pub fn write_u8(fd: u32, w: u8) {
     unsafe {
         asm!("ecall", in("a0") fd, in("a1") w, in("t0") u32::from(Syscall::Output));
     }
 }
 
 /// Writes data.len() u32s from the data slice to the file descriptor fd.
-pub fn write_slice(fd: u32, data: &[u32]) {
+pub fn write_slice(fd: u32, data: &[u8]) {
     for w in data {
-        write_u32(fd, *w);
+        write_u8(fd, *w);
     }
 }
 
@@ -66,9 +66,5 @@ pub fn read<T: DeserializeOwned>(fd: u32) -> T {
 /// Serializes and writes a value of type T to the file descriptor fd.
 pub fn write<T: Serialize>(fd: u32, data: T) {
     let data = serde_cbor::to_vec(&data).unwrap();
-
-    // TODO we should avoid this somehow
-    let data = data.into_iter().map(|x| x as u32).collect::<Vec<u32>>();
-
     write_slice(fd, &data);
 }
