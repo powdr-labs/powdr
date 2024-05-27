@@ -335,7 +335,7 @@ fn expr_and_identity() {
 }
 
 #[test]
-#[should_panic = "Expected type: std::prelude::Constr\\nInferred type: expr\\n"]
+#[should_panic = "Expected type std::prelude::Constr but got type expr"]
 fn expression_but_expected_constraint() {
     let input = r#"namespace N(16);
     col witness y;

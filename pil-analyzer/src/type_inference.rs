@@ -443,9 +443,7 @@ impl<'a> TypeChecker<'a> {
                         expected_type.ty.clone()
                     };
 
-                    self.unify_based_on_kind(expr, kind, &ty, &expected_type)
-
-                    /*self.unifier
+                    self.unifier
                         .unify_types(ty.clone(), expected_type.clone())
                         .map_err(|err| {
                             format!(
@@ -454,7 +452,6 @@ impl<'a> TypeChecker<'a> {
                                 self.type_into_substituted(ty)
                             )
                         })
-                        */
                 })
                 .map_err(|err| {
                     format!(
@@ -625,7 +622,23 @@ impl<'a> TypeChecker<'a> {
                             value,
                         }) => {
                             let value_type = if let Some(value) = value {
-                                self.infer_type_of_expression(value, kind)?
+                                let statement_type = self.infer_type_of_expression(value, kind)?;
+                                let empty_tuple = Type::Tuple(TupleType { items: vec![] });
+                                match kind {
+                                    Some(FunctionKind::Constr) => {
+                                        if (statement_type == self.statement_type.ty)
+                                            | (statement_type == empty_tuple)
+                                        {
+                                            statement_type
+                                        } else {
+                                            return Err(format!(
+                                                "Invalid statement of type {} inside Constr function.",
+                                                statement_type
+                                            ));
+                                        }
+                                    }
+                                    _ => statement_type,
+                                }
                             } else {
                                 Type::Expr
                             };
@@ -707,58 +720,15 @@ impl<'a> TypeChecker<'a> {
         }
 
         let inferred_type = self.infer_type_of_expression(expr, kind)?;
-        self.unify_based_on_kind(expr, kind, &inferred_type, expected_type)
-    }
-
-    fn unify_based_on_kind(&mut self, expr: &Expression, kind: Option<FunctionKind>, inferred_type: &Type, expected_type: &Type) -> Result<(), String> {
-        match kind {
-            Some(FunctionKind::Constr) => {
-                self.unifier
-                    .unify_types(inferred_type.clone(), expected_type.clone())
-                    .map_err(|err| {
-                        format!(
-                            "Error checking expression {expr}:\nExpected type: {}\nInferred type: {}\n{err}",
-                            self.type_into_substituted(expected_type.clone()),
-                            self.type_into_substituted(inferred_type.clone())
-                        )
-                    })
-            }
-            _ => {
-                if !Self::contains_constr(inferred_type) {
-                    self.unifier
-                        .unify_types(inferred_type.clone(), expected_type.clone())
-                        .map_err(|err| {
-                            format!(
-                                "Error checking expression {expr}:\nExpected type: {}\nInferred type: {}\n{err}",
-                                self.type_into_substituted(expected_type.clone()),
-                                self.type_into_substituted(inferred_type.clone())
-                            )
-                        })
-                } else {
-                    Err(format!(
-                        "Error Constr type inside Pure/Query function {expr}:\nExpected type: {}\nInferred type: {}\n",
-                        self.type_into_substituted(expected_type.clone()),
-                        self.type_into_substituted(inferred_type.clone())
-                    ))
-        
-                }
-            }
-        }
-    }
-    
-    fn contains_constr(ty: &Type) -> bool {
-        match ty {
-            Type::Tuple(TupleType { items }) => items.iter().any(Self::contains_constr),
-            Type::Array(ArrayType { base, .. }) => Self::contains_constr(base),
-            Type::Function(FunctionType { params, value }) => {
-                Self::contains_constr(value) || params.iter().any(Self::contains_constr)
-            }
-            Type::NamedType(sp, Some(t)) => {
-                *sp == SymbolPath::from_str("std::prelude::Constr").unwrap()
-                    || t.iter().any(Self::contains_constr)
-            }
-            _ => false,
-        }
+        self.unifier
+            .unify_types(inferred_type.clone(), expected_type.clone())
+            .map_err(|err| {
+                format!(
+                    "Error checking sub-expression {expr}:\nExpected type: {}\nInferred type: {}\n{err}",
+                    self.type_into_substituted(expected_type.clone()),
+                    self.type_into_substituted(inferred_type)
+                )
+            })
     }
 
     /// Type-checks a pattern and adds local variables.
