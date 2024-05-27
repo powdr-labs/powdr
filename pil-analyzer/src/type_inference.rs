@@ -624,6 +624,10 @@ impl<'a> TypeChecker<'a> {
             Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
                 let original_var_count = self.local_var_types.len();
                 let empty_tuple = Type::Tuple(TupleType { items: vec![] });
+                let expected_empty_tuple = ExpectedType {
+                    ty: empty_tuple.clone(),
+                    allow_array: false,
+                };
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
@@ -660,22 +664,15 @@ impl<'a> TypeChecker<'a> {
                         }
                         StatementInsideBlock::Expression(expr) => match self.lambda_kind {
                             Some(FunctionKind::Constr) => {
-                                self.expect_type_with_flexibility(self.statement_type, expr)
-                                    .map_err(|err| {
-                                        format!("Invalid expr ({expr}) inside Constr function. Only Constr type is allowed:\n{err}",)
-                                    })?;
+                                self.expect_type_with_flexibility(&self.statement_type, expr).or_else(|err| {
+                                    self.expect_type_with_flexibility(&expected_empty_tuple, expr).map_err(|_err2| {
+                                        format!("Invalid expression ({expr}) inside Constr function:\n{err}")
+                                    })
+                                })?;
                             }
                             _ => {
-                                let expected_empty_tuple = ExpectedType {
-                                    ty: empty_tuple.clone(),
-                                    allow_array: false,
-                                };
-                                self.expect_type_with_flexibility(
-                                    &expected_empty_tuple,
-                                    expr,
-                                )
-                                .map_err(|err| {
-                                    format!("Invalid expr ({expr}) inside Pure/Query function:\n{err}",)
+                                self.expect_type_with_flexibility(&expected_empty_tuple, expr).map_err(|err| {
+                                    format!("Invalid expression ({expr}) inside Pure/Query function:\n{err}")
                                 })?;
                             }
                         },
