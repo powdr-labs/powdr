@@ -292,7 +292,8 @@ impl PILAnalyzer {
         }
         let inferred_types = infer_types(definitions, &mut expressions, &statement_type)
             .map_err(|e| {
-                eprintln!("\nError during type inference:\n{e}");
+                eprintln!("\nError during type inference:");
+                e.output_to_stderr();
                 e
             })
             .unwrap();
