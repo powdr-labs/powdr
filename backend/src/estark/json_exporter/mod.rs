@@ -392,7 +392,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
         let line_starts = self
             .line_starts
             .entry(file_contents.as_ptr())
-            .or_insert_with(|| compute_line_starts(&file_contents));
+            .or_insert_with(|| compute_line_starts(file_contents));
         offset_to_line_col(source.start, line_starts).0
     }
 }

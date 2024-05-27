@@ -426,10 +426,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         log::debug!("Set RUST_LOG=trace to understand why these values were chosen.");
         log::error!(
             "Errors:\n{}\n",
-            failures
-                .iter()
-                .map(|r| indent(&r.to_string(), 1))
-                .join("\n")
+            failures.iter().map(|r| indent(r.to_string(), 1)).join("\n")
         );
         panic!("Witness generation failed.");
     }
@@ -465,10 +462,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         log::debug!("\nSet RUST_LOG=trace to understand why these values were (not) chosen.");
         log::debug!(
             "Assuming zero for unknown values, the following identities fail:\n{}\n",
-            failures
-                .iter()
-                .map(|r| indent(&r.to_string(), 1))
-                .join("\n")
+            failures.iter().map(|r| indent(r.to_string(), 1)).join("\n")
         );
         panic!("Witness generation failed.");
     }
