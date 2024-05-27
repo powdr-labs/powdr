@@ -356,10 +356,13 @@ impl<'a> TypeChecker<'a> {
         type_var_mapping: &HashMap<String, Type>,
     ) -> Result<(), String> {
         match e {
-            Expression::Number(Number {
-                value: n,
-                type_: annotated_type,
-            }) => match annotated_type {
+            Expression::Number(
+                _,
+                Number {
+                    value: n,
+                    type_: annotated_type,
+                },
+            ) => match annotated_type {
                 Some(Type::Int) | Some(Type::Fe) | Some(Type::Expr) => {}
                 Some(Type::TypeVar(tv)) => {
                     let mut ty = Type::TypeVar(tv.clone());
@@ -386,11 +389,14 @@ impl<'a> TypeChecker<'a> {
                 }
                 _ => panic!("Invalid annotation for literal number."),
             },
-            Expression::Reference(Reference::Poly(PolynomialReference {
-                name,
-                poly_id: _,
-                type_args,
-            })) => {
+            Expression::Reference(
+                _,
+                Reference::Poly(PolynomialReference {
+                    name,
+                    poly_id: _,
+                    type_args,
+                }),
+            ) => {
                 for ty in type_args.as_mut().unwrap() {
                     // Apply regular substitution obtained from unification.
                     self.substitute(ty);
@@ -471,12 +477,15 @@ impl<'a> TypeChecker<'a> {
         kind: Option<FunctionKind>,
     ) -> Result<Type, String> {
         Ok(match e {
-            Expression::Reference(Reference::LocalVar(id, _name)) => self.local_var_type(*id),
-            Expression::Reference(Reference::Poly(PolynomialReference {
-                name,
-                poly_id: _,
-                type_args,
-            })) => {
+            Expression::Reference(_, Reference::LocalVar(id, _name)) => self.local_var_type(*id),
+            Expression::Reference(
+                _,
+                Reference::Poly(PolynomialReference {
+                    name,
+                    poly_id: _,
+                    type_args,
+                }),
+            ) => {
                 let (ty, args) = self.instantiate_scheme(self.declared_types[name].clone());
                 if let Some(requested_type_args) = type_args {
                     if requested_type_args.len() != args.len() {
@@ -496,11 +505,14 @@ impl<'a> TypeChecker<'a> {
                 *type_args = Some(args);
                 type_for_reference(&ty)
             }
-            Expression::PublicReference(_) => Type::Expr,
-            Expression::Number(Number {
-                type_: annotated_type,
-                ..
-            }) => {
+            Expression::PublicReference(_, _) => Type::Expr,
+            Expression::Number(
+                _,
+                Number {
+                    type_: annotated_type,
+                    ..
+                },
+            ) => {
                 let ty = match annotated_type {
                     Some(Type::Int) => Type::Int,
                     Some(Type::Fe) => Type::Fe,
@@ -516,14 +528,14 @@ impl<'a> TypeChecker<'a> {
                 self.unifier.ensure_bound(&ty, "FromLiteral".to_string())?;
                 ty
             }
-            Expression::String(_) => Type::String,
-            Expression::Tuple(items) => Type::Tuple(TupleType {
+            Expression::String(_, _) => Type::String,
+            Expression::Tuple(_, items) => Type::Tuple(TupleType {
                 items: items
                     .iter_mut()
                     .map(|item| self.infer_type_of_expression(item, kind))
                     .collect::<Result<_, _>>()?,
             }),
-            Expression::LambdaExpression(LambdaExpression { kind, params, body }) => {
+            Expression::LambdaExpression(_, LambdaExpression { kind, params, body }) => {
                 let old_len = self.local_var_types.len();
                 let result = params
                     .iter()
@@ -542,7 +554,7 @@ impl<'a> TypeChecker<'a> {
                     value: Box::new(body_type),
                 })
             }
-            Expression::ArrayLiteral(ArrayLiteral { items }) => {
+            Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
                 let item_type = self.new_type_var();
                 for e in items {
                     self.expect_type(&item_type, e, kind)?;
@@ -553,7 +565,7 @@ impl<'a> TypeChecker<'a> {
                     length: None,
                 })
             }
-            Expression::BinaryOperation(BinaryOperation { left, op, right }) => {
+            Expression::BinaryOperation(_, BinaryOperation { left, op, right }) => {
                 // TODO at some point, also store the generic args for operators
                 let fun_type = self.instantiate_scheme(binary_operator_scheme(*op)).0;
                 self.infer_type_of_function_call(
@@ -562,7 +574,7 @@ impl<'a> TypeChecker<'a> {
                     || format!("applying operator {op}"),
                 )?
             }
-            Expression::UnaryOperation(UnaryOperation { op, expr: inner }) => {
+            Expression::UnaryOperation(_, UnaryOperation { op, expr: inner }) => {
                 // TODO at some point, also store the generic args for operators
                 let fun_type = self.instantiate_scheme(unary_operator_scheme(*op)).0;
                 self.infer_type_of_function_call(
@@ -571,7 +583,7 @@ impl<'a> TypeChecker<'a> {
                     || format!("applying unary {op}"),
                 )?
             }
-            Expression::IndexAccess(IndexAccess { array, index }) => {
+            Expression::IndexAccess(_, IndexAccess { array, index }) => {
                 let result = self.new_type_var();
                 self.expect_type(
                     &Type::Array(ArrayType {
@@ -585,17 +597,20 @@ impl<'a> TypeChecker<'a> {
                 self.expect_type(&Type::Int, index, kind)?;
                 result
             }
-            Expression::FunctionCall(FunctionCall {
-                function,
-                arguments,
-            }) => {
+            Expression::FunctionCall(
+                _,
+                FunctionCall {
+                    function,
+                    arguments,
+                },
+            ) => {
                 let ft = self.infer_type_of_expression(function, kind)?;
                 self.infer_type_of_function_call(ft, arguments.iter_mut(), || {
                     format!("calling function {function}")
                 })?
             }
-            Expression::FreeInput(_) => todo!(),
-            Expression::MatchExpression(MatchExpression { scrutinee, arms }) => {
+            Expression::FreeInput(_, _) => todo!(),
+            Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
                 let scrutinee_type = self.infer_type_of_expression(scrutinee, kind)?;
                 let result = self.new_type_var();
                 for MatchArm { pattern, value } in arms {
@@ -607,13 +622,13 @@ impl<'a> TypeChecker<'a> {
                 }
                 result
             }
-            Expression::IfExpression(if_expr) => {
+            Expression::IfExpression(_, if_expr) => {
                 self.expect_type(&Type::Bool, &mut if_expr.condition, kind)?;
                 let result = self.infer_type_of_expression(&mut if_expr.body, kind)?;
                 self.expect_type(&result, &mut if_expr.else_body, kind)?;
                 result
             }
-            Expression::BlockExpression(BlockExpression { statements, expr }) => {
+            Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
                 let original_var_count = self.local_var_types.len();
                 for statement in statements {
                     match statement {
@@ -705,10 +720,13 @@ impl<'a> TypeChecker<'a> {
     ) -> Result<(), String> {
         // For literals, we try to store the type here already.
         // This avoids creating tons of type variables for large arrays.
-        if let Expression::Number(Number {
-            type_: annotated_type @ None,
-            ..
-        }) = expr
+        if let Expression::Number(
+            _,
+            Number {
+                type_: annotated_type @ None,
+                ..
+            },
+        ) = expr
         {
             match expected_type {
                 Type::Int => *annotated_type = Some(Type::Int),

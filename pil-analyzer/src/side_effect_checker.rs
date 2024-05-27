@@ -31,7 +31,7 @@ struct SideEffectChecker<'a> {
 impl<'a> SideEffectChecker<'a> {
     fn check(&mut self, e: &Expression) -> Result<(), String> {
         match e {
-            Expression::Reference(Reference::Poly(r)) => {
+            Expression::Reference(_, Reference::Poly(r)) => {
                 let kind = self.function_kind_of_symbol(&r.name);
                 if kind != FunctionKind::Pure && kind != self.context {
                     return Err(format!(
@@ -41,11 +41,14 @@ impl<'a> SideEffectChecker<'a> {
                 }
                 Ok(())
             }
-            Expression::LambdaExpression(LambdaExpression {
-                kind,
-                params: _,
-                body,
-            }) => {
+            Expression::LambdaExpression(
+                _,
+                LambdaExpression {
+                    kind,
+                    params: _,
+                    body,
+                },
+            ) => {
                 if *kind != FunctionKind::Pure && *kind != self.context {
                     return Err(format!(
                         "Used a {kind} lambda function inside a {} context: {e}",
@@ -57,7 +60,7 @@ impl<'a> SideEffectChecker<'a> {
                 self.context = old_context;
                 result
             }
-            Expression::BlockExpression(BlockExpression { statements, .. }) => {
+            Expression::BlockExpression(_, BlockExpression { statements, .. }) => {
                 for s in statements {
                     if let StatementInsideBlock::LetStatement(ls) = s {
                         if ls.value.is_none() && self.context != FunctionKind::Constr {
@@ -86,7 +89,7 @@ impl<'a> SideEffectChecker<'a> {
         }
         if let Some(FunctionValueDefinition::Expression(TypedExpression {
             type_scheme: _,
-            e: Expression::LambdaExpression(LambdaExpression { kind, .. }),
+            e: Expression::LambdaExpression(_, LambdaExpression { kind, .. }),
         })) = value
         {
             *kind

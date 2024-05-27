@@ -232,9 +232,9 @@ impl Display for FunctionValueDefinition {
 
 fn format_outer_function(e: &Expression, f: &mut Formatter<'_>) -> Result {
     match e {
-        parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1 => {
+        parsed::Expression::LambdaExpression(_, lambda) if lambda.params.len() == 1 => {
             let body = if lambda.kind == FunctionKind::Pure
-                && !matches!(lambda.body.as_ref(), Expression::BlockExpression(_))
+                && !matches!(lambda.body.as_ref(), Expression::BlockExpression(_, _))
             {
                 format!("{{ {} }}", lambda.body)
             } else {

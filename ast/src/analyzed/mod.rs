@@ -251,7 +251,7 @@ impl<T> Analyzed<T> {
                 poly.id = replacements[&poly_id].id;
             });
         let visitor = &mut |expr: &mut Expression| {
-            if let Expression::Reference(Reference::Poly(poly)) = expr {
+            if let Expression::Reference(_, Reference::Poly(poly)) = expr {
                 poly.poly_id = poly.poly_id.map(|poly_id| replacements[&poly_id]);
             }
         };
@@ -694,11 +694,14 @@ impl<R> Identity<parsed::Expression<R>> {
     ) -> (&parsed::Expression<R>, Option<&parsed::Expression<R>>) {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         match self.expression_for_poly_id() {
-            parsed::Expression::BinaryOperation(parsed::BinaryOperation {
-                left,
-                op: BinaryOperator::Sub,
-                right,
-            }) => (left.as_ref(), Some(right.as_ref())),
+            parsed::Expression::BinaryOperation(
+                _,
+                parsed::BinaryOperation {
+                    left,
+                    op: BinaryOperator::Sub,
+                    right,
+                },
+            ) => (left.as_ref(), Some(right.as_ref())),
             a => (a, None),
         }
     }
