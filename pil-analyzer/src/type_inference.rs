@@ -64,7 +64,7 @@ struct TypeChecker<'a> {
     /// Last used type variable index.
     last_type_var: usize,
     /// Keeps track of the kind of lambda we are currently type-checking.
-    lambda_kind: Option<FunctionKind>,
+    lambda_kind: FunctionKind,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -76,7 +76,7 @@ impl<'a> TypeChecker<'a> {
             declared_type_vars: Default::default(),
             unifier: Default::default(),
             last_type_var: Default::default(),
-            lambda_kind: None,
+            lambda_kind: FunctionKind::Constr,
         }
     }
 
@@ -536,9 +536,10 @@ impl<'a> TypeChecker<'a> {
                     .map(|p| self.infer_type_of_pattern(p))
                     .collect::<Result<Vec<_>, _>>()
                     .and_then(|param_types| {
-                        self.lambda_kind = Some(*kind);
+                        let old_lambda_kind = self.lambda_kind;
+                        self.lambda_kind = *kind;
                         let body_type = self.infer_type_of_expression(body)?;
-                        self.lambda_kind = None;
+                        self.lambda_kind = old_lambda_kind;
                         Ok((param_types, body_type))
                     });
                 self.local_var_types.truncate(old_len);
@@ -623,11 +624,7 @@ impl<'a> TypeChecker<'a> {
             }
             Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
                 let original_var_count = self.local_var_types.len();
-                let empty_tuple = Type::Tuple(TupleType { items: vec![] });
-                let expected_empty_tuple = ExpectedType {
-                    ty: empty_tuple.clone(),
-                    allow_array: false,
-                };
+
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
@@ -635,54 +632,74 @@ impl<'a> TypeChecker<'a> {
                             value,
                         }) => {
                             let value_type = if let Some(value) = value {
-                                let statement_type = self.infer_type_of_expression(value)?;
-                                match self.lambda_kind {
-                                    Some(FunctionKind::Constr) => {
-                                        if (statement_type == self.statement_type.ty)
-                                            | (statement_type == empty_tuple)
-                                        {
-                                            statement_type
-                                        } else {
-                                            return Err(format!(
-                                                "Invalid statement of type {statement_type} inside Constr function."
-                                            ));
-                                        }
-                                    }
-                                    _ => {
-                                        if statement_type == self.statement_type.ty {
-                                            return Err(format!(
-                                                "Invalid statement of type {statement_type} inside Pure/Query function."
-                                            ));
-                                        }
-                                        statement_type
-                                    }
-                                }
+                                self.infer_type_of_expression(value)?
                             } else {
                                 Type::Expr
                             };
                             self.expect_type_of_pattern(&value_type, pattern)?;
                         }
-                        StatementInsideBlock::Expression(expr) => match self.lambda_kind {
-                            Some(FunctionKind::Constr) => {
-                                self.expect_type_with_flexibility(&self.statement_type, expr).or_else(|err| {
-                                    self.expect_type_with_flexibility(&expected_empty_tuple, expr).map_err(|_err2| {
-                                        format!("Invalid expression ({expr}) inside Constr function:\n{err}")
-                                    })
-                                })?;
-                            }
-                            _ => {
-                                self.expect_type_with_flexibility(&expected_empty_tuple, expr).map_err(|err| {
-                                    format!("Invalid expression ({expr}) inside Pure/Query function:\n{err}")
-                                })?;
-                            }
-                        },
+                        StatementInsideBlock::Expression(expr) => {
+                            self.check_kind_with_flexibility(expr)?
+                        }
                     }
                 }
                 let result = self.infer_type_of_expression(expr);
+                let result = self.check_kind(result?);
                 self.local_var_types.truncate(original_var_count);
                 result?
             }
         })
+    }
+
+    fn check_kind_with_flexibility(
+        &mut self,
+        expr: &mut powdr_ast::parsed::Expression<Reference>,
+    ) -> Result<(), String> {
+        let empty_tuple = Type::Tuple(TupleType { items: vec![] });
+        let expected_empty_tuple = ExpectedType {
+            ty: empty_tuple.clone(),
+            allow_array: false,
+        };
+        match self.lambda_kind {
+            //self.expect_type_with_flexibility(self.statement_type, expr)?;
+            FunctionKind::Constr => {
+                self.expect_type_with_flexibility(self.statement_type, expr).or_else(|err| {
+                    self.expect_type_with_flexibility(&expected_empty_tuple, expr).map_err(|err2| {
+                        format!("Invalid expression ({expr}) inside Constr function:\n{err}\n{err2}")
+                    })
+                })?;
+            }
+            _ => {
+                self.expect_type_with_flexibility(&expected_empty_tuple, expr)
+                    .map_err(|err| {
+                        format!("Invalid expression ({expr}) inside Pure/Query function:\n{err}")
+                    })?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn check_kind(&mut self, result: Type) -> Result<Type, String> {
+        let empty_tuple = Type::Tuple(TupleType { items: vec![] });
+        match (result.clone(), self.lambda_kind) {
+            (res, FunctionKind::Constr) => {
+                if res.is_concrete_type() & (res != self.statement_type.ty) & (res != empty_tuple) {
+                    return Err(format!(
+                        "Invalid return type {res} for Constr function. Expected {} or {empty_tuple}.", self.statement_type.ty
+                    ));
+                }
+                Ok(result)
+            }
+            (res, _) => {
+                if res.is_concrete_type() & (res != empty_tuple) {
+                    return Err(format!(
+                        "Invalid return type {res} for Pure/Query function. Expected {empty_tuple}."
+                    ));
+                }
+                Ok(result)
+            }
+        }
     }
 
     /// Process a function call and return the type of the expression.
