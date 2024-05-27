@@ -1,13 +1,10 @@
 #[cfg(feature = "halo2")]
 use powdr_number::Bn254Field;
 use powdr_number::GoldilocksField;
-use powdr_pipeline::{
-    test_util::{
-        assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
-        assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, resolve_test_file,
-        test_halo2, test_plonky3, verify_test_file,
-    },
-    Pipeline,
+use powdr_pipeline::test_util::{
+    assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
+    assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, test_halo2, test_plonky3,
+    verify_test_file,
 };
 
 #[cfg(feature = "halo2")]
@@ -35,16 +32,21 @@ fn lookup_with_selector() {
 
     // Valid witness
     let f = "pil/lookup_with_selector.pil";
-    let witness = [2, 42, 4, 17];
-    Pipeline::default()
-        .from_file(resolve_test_file(f))
-        .set_witness(vec![(
-            "main.w".to_string(),
-            witness.iter().cloned().map(Bn254Field::from).collect(),
-        )])
-        .with_backend(powdr_backend::BackendType::Halo2Mock)
-        .compute_proof()
-        .unwrap();
+    #[cfg(feature = "halo2")]
+    {
+        use powdr_pipeline::test_util::resolve_test_file;
+        use powdr_pipeline::Pipeline;
+        let witness = [2, 42, 4, 17];
+        Pipeline::default()
+            .from_file(resolve_test_file(f))
+            .set_witness(vec![(
+                "main.w".to_string(),
+                witness.iter().cloned().map(Bn254Field::from).collect(),
+            )])
+            .with_backend(powdr_backend::BackendType::Halo2Mock, None)
+            .compute_proof()
+            .unwrap();
+    }
 
     // Invalid witness: 0 is not in the set {2, 4}
     let witness = vec![("main.w".to_string(), vec![0, 42, 4, 17])];
@@ -63,16 +65,21 @@ fn permutation_with_selector() {
 
     // Valid witness
     let f = "pil/permutation_with_selector.pil";
-    let witness = [2, 42, 4, 17];
-    Pipeline::default()
-        .from_file(resolve_test_file(f))
-        .set_witness(vec![(
-            "main.w".to_string(),
-            witness.iter().cloned().map(Bn254Field::from).collect(),
-        )])
-        .with_backend(powdr_backend::BackendType::Halo2Mock)
-        .compute_proof()
-        .unwrap();
+    #[cfg(feature = "halo2")]
+    {
+        use powdr_pipeline::test_util::resolve_test_file;
+        use powdr_pipeline::Pipeline;
+        let witness = [2, 42, 4, 17];
+        Pipeline::default()
+            .from_file(resolve_test_file(f))
+            .set_witness(vec![(
+                "main.w".to_string(),
+                witness.iter().cloned().map(Bn254Field::from).collect(),
+            )])
+            .with_backend(powdr_backend::BackendType::Halo2Mock, None)
+            .compute_proof()
+            .unwrap();
+    }
 
     // Invalid witness: 0 is not in the set {2, 4}
     let witness = vec![("main.w".to_string(), vec![0, 42, 4, 17])];
@@ -313,8 +320,8 @@ fn serialize_deserialize_optimized_pil() {
     let optimized_deserialized: powdr_ast::analyzed::Analyzed<powdr_number::Bn254Field> =
         serde_cbor::from_slice(&optimized_serialized[..]).unwrap();
 
-    let input_pil_file = format!("{}", optimized);
-    let output_pil_file = format!("{}", optimized_deserialized);
+    let input_pil_file = format!("{optimized}");
+    let output_pil_file = format!("{optimized_deserialized}");
 
     assert_eq!(input_pil_file, output_pil_file);
 }

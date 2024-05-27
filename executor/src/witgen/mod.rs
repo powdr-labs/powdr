@@ -156,6 +156,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             self.fixed_col_values,
             self.external_witness_values,
             self.challenges,
+            self.stage,
         );
         let identities = self
             .analyzed
@@ -283,6 +284,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         fixed_col_values: &'a [(String, Vec<T>)],
         external_witness_values: &'a [(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
+        stage: u8,
     ) -> Self {
         let mut external_witness_values = external_witness_values
             .iter()
@@ -299,18 +301,21 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                                 if external_values.len() != analyzed.degree() as usize {
                                     log::debug!(
                                         "External witness values for column {} were only partially provided \
-                                         (length is {} but the degree is {})",
+                                        (length is {} but the degree is {})",
                                         name,
                                         external_values.len(),
                                         analyzed.degree()
                                     );
                                 }
                             }
+                            // Remove any hint for witness columns of a later stage
+                            // (because it might reference a challenge that is not available yet)
+                            let value = if poly.stage.unwrap_or_default() <= stage.into() { value.as_ref() } else { None };
                             WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
                         })
                         .collect::<Vec<_>>()
                 },
-            ));
+        ));
 
         if !external_witness_values.is_empty() {
             let available_columns = witness_cols
@@ -429,15 +434,18 @@ impl<'a, T> WitnessColumn<'a, T> {
     pub fn new(
         id: usize,
         name: &str,
-        value: &'a Option<FunctionValueDefinition>,
+        value: Option<&'a FunctionValueDefinition>,
         external_values: Option<&'a Vec<T>>,
     ) -> WitnessColumn<'a, T> {
         let query = if let Some(FunctionValueDefinition::Expression(TypedExpression {
             e:
-                query @ Expression::LambdaExpression(LambdaExpression {
-                    kind: FunctionKind::Query,
-                    ..
-                }),
+                query @ Expression::LambdaExpression(
+                    _,
+                    LambdaExpression {
+                        kind: FunctionKind::Query,
+                        ..
+                    },
+                ),
             ..
         })) = value
         {

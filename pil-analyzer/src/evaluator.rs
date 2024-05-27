@@ -9,14 +9,16 @@ use num_traits::Signed;
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, Challenge, Expression,
-        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
+        AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
+        Challenge, Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind,
+        TypedExpression,
     },
     parsed::{
         display::quote,
         types::{Type, TypeScheme},
-        ArrayLiteral, BinaryOperator, FunctionCall, IfExpression, IndexAccess, LambdaExpression,
-        LetStatementInsideBlock, MatchArm, Pattern, StatementInsideBlock, UnaryOperator,
+        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
+        IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
+        Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
     },
     SourceRef,
 };
@@ -478,7 +480,7 @@ impl<'a> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>> fo
     }
 }
 
-pub trait SymbolLookup<'a, T> {
+pub trait SymbolLookup<'a, T: FieldElement> {
     fn lookup(
         &mut self,
         name: &'a str,
@@ -491,7 +493,42 @@ pub trait SymbolLookup<'a, T> {
         )))
     }
 
-    fn eval_expr(&self, _expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
+    fn eval_expr(&self, expr: &AlgebraicExpression<T>) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Ok(match expr {
+            AlgebraicExpression::Reference(reference) => self.eval_reference(reference)?,
+            AlgebraicExpression::PublicReference(_) => unimplemented!(),
+            AlgebraicExpression::Challenge(challenge) => self.eval_challenge(challenge)?,
+            AlgebraicExpression::Number(n) => Value::FieldElement(*n).into(),
+            AlgebraicExpression::BinaryOperation(left, op, right) => {
+                let left = self.eval_expr(left)?;
+                let right = self.eval_expr(right)?;
+                match (left.as_ref(), right.as_ref()) {
+                    (Value::FieldElement(left), Value::FieldElement(right)) => {
+                        evaluate_binary_operation_field(*left, (*op).into(), *right)?
+                    }
+                    _ => panic!("Expected field elements"),
+                }
+            }
+            AlgebraicExpression::UnaryOperation(op, operand) => match op {
+                AlgebraicUnaryOperator::Minus => {
+                    let operand = self.eval_expr(operand)?;
+                    match operand.as_ref() {
+                        Value::FieldElement(fe) => Value::FieldElement(-*fe).into(),
+                        _ => panic!("Expected field element"),
+                    }
+                }
+            },
+        })
+    }
+
+    fn eval_challenge(&self, _challenge: &Challenge) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::DataNotAvailable)
+    }
+
+    fn eval_reference(
+        &self,
+        _reference: &AlgebraicReference,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::DataNotAvailable)
     }
 
@@ -543,7 +580,7 @@ enum Operation<'a, T> {
 /// This allows arbitrarily deep recursion in PIL on a physical machine with limited stack.
 /// SymbolLookup might still do regular recursive calls into the evaluator,
 /// but this is very limited.
-struct Evaluator<'a, 'b, T, S: SymbolLookup<'a, T>> {
+struct Evaluator<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> {
     symbols: &'b mut S,
     local_vars: Vec<Arc<Value<'a, T>>>,
     type_args: HashMap<String, Type>,
@@ -625,19 +662,24 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
     /// Modifies the operation and value stack.
     fn expand(&mut self, expr: &'a Expression) -> Result<(), EvalError> {
         match expr {
-            Expression::Reference(reference) => {
+            Expression::Reference(_, reference) => {
                 let v = self.evaluate_reference(reference)?;
                 self.value_stack.push(v)
             }
-            Expression::PublicReference(name) => self
+            Expression::PublicReference(_, name) => self
                 .value_stack
                 .push(self.symbols.lookup_public_reference(name)?),
-            Expression::Number(n, ty) => {
-                self.value_stack
-                    .push(evaluate_literal(n.clone(), ty, &self.type_args)?)
-            }
-            Expression::String(s) => self.value_stack.push(Value::String(s.clone()).into()),
-            Expression::Tuple(items) => {
+            Expression::Number(
+                _,
+                Number {
+                    value: n,
+                    type_: ty,
+                },
+            ) => self
+                .value_stack
+                .push(evaluate_literal(n.clone(), ty, &self.type_args)?),
+            Expression::String(_, s) => self.value_stack.push(Value::String(s.clone()).into()),
+            Expression::Tuple(_, items) => {
                 self.op_stack.push(Operation::Combine(expr));
                 if !items.is_empty() {
                     self.op_stack
@@ -645,7 +687,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.expand(&items[0])?;
                 }
             }
-            Expression::ArrayLiteral(ArrayLiteral { items }) => {
+            Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 if !items.is_empty() {
                     self.op_stack
@@ -653,16 +695,16 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.expand(&items[0])?;
                 }
             }
-            Expression::BinaryOperation(l, _, r) => {
+            Expression::BinaryOperation(_, BinaryOperation { left, right, .. }) => {
                 self.op_stack.push(Operation::Combine(expr));
-                self.op_stack.push(Operation::Expand(r));
-                self.expand(l)?;
+                self.op_stack.push(Operation::Expand(right));
+                self.expand(left)?;
             }
-            Expression::UnaryOperation(_, inner) => {
+            Expression::UnaryOperation(_, UnaryOperation { expr: inner, .. }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.expand(inner)?;
             }
-            Expression::LambdaExpression(lambda) => {
+            Expression::LambdaExpression(_, lambda) => {
                 // TODO only copy the part of the environment that is actually referenced?
                 self.value_stack.push(
                     Value::from(Closure {
@@ -673,27 +715,36 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     .into(),
                 )
             }
-            Expression::IndexAccess(IndexAccess { array, index }) => {
+            Expression::IndexAccess(_, IndexAccess { array, index }) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.op_stack.push(Operation::Expand(index));
                 self.expand(array)?;
             }
-            Expression::FunctionCall(FunctionCall {
-                function,
-                arguments,
-            }) => {
+            Expression::FunctionCall(
+                _,
+                FunctionCall {
+                    function,
+                    arguments,
+                },
+            ) => {
                 self.op_stack.push(Operation::Combine(expr));
                 self.op_stack
                     .extend(arguments.iter().rev().map(Operation::Expand));
                 self.expand(function)?;
             }
-            Expression::MatchExpression(condition, _)
-            | Expression::IfExpression(IfExpression { condition, .. }) => {
+            Expression::MatchExpression(
+                _,
+                MatchExpression {
+                    scrutinee: condition,
+                    ..
+                },
+            )
+            | Expression::IfExpression(_, IfExpression { condition, .. }) => {
                 // Only handle the scrutinee / condition for now, we do not want to evaluate all arms.
                 self.op_stack.push(Operation::Combine(expr));
                 self.expand(condition)?;
             }
-            Expression::BlockExpression(statements, expr) => {
+            Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
                 self.op_stack
                     .push(Operation::TruncateLocals(self.local_vars.len()));
                 self.op_stack.push(Operation::Expand(expr));
@@ -712,7 +763,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     }
                 }
             }
-            Expression::FreeInput(_) => Err(EvalError::Unsupported(
+            Expression::FreeInput(_, _) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
             ))?,
         };
@@ -744,24 +795,24 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
     /// Evaluate a complex expression given the values for all sub-expressions.
     fn combine(&mut self, expr: &'a Expression) -> Result<(), EvalError> {
         let value = match expr {
-            Expression::Tuple(items) => {
+            Expression::Tuple(_, items) => {
                 let inner_values = self
                     .value_stack
                     .split_off(self.value_stack.len() - items.len());
                 Value::Tuple(inner_values).into()
             }
-            Expression::ArrayLiteral(ArrayLiteral { items }) => {
+            Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
                 let inner_values = self
                     .value_stack
                     .split_off(self.value_stack.len() - items.len());
                 Value::Array(inner_values).into()
             }
-            Expression::BinaryOperation(_, op, _) => {
+            Expression::BinaryOperation(_, BinaryOperation { op, .. }) => {
                 let right = self.value_stack.pop().unwrap();
                 let left = self.value_stack.pop().unwrap();
                 evaluate_binary_operation(&left, *op, &right)?
             }
-            Expression::UnaryOperation(op, _) => {
+            Expression::UnaryOperation(_, UnaryOperation { op, .. }) => {
                 let inner = self.value_stack.pop().unwrap();
                 match (op, inner.as_ref()) {
                     (UnaryOperator::Minus, Value::FieldElement(e)) => {
@@ -798,7 +849,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     )))?,
                 }
             }
-            Expression::IndexAccess(_) => {
+            Expression::IndexAccess(_, _) => {
                 let index = self.value_stack.pop().unwrap();
                 let array = self.value_stack.pop().unwrap();
                 let Value::Array(elements) = array.as_ref() else {
@@ -823,14 +874,14 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     )))?,
                 }
             }
-            Expression::FunctionCall(FunctionCall { arguments, .. }) => {
+            Expression::FunctionCall(_, FunctionCall { arguments, .. }) => {
                 let arguments = self
                     .value_stack
                     .split_off(self.value_stack.len() - arguments.len());
                 let function = self.value_stack.pop().unwrap();
                 return self.combine_function_call(function, arguments);
             }
-            Expression::MatchExpression(_, arms) => {
+            Expression::MatchExpression(_, MatchExpression { arms, .. }) => {
                 let v = self.value_stack.pop().unwrap();
                 let (vars, body) = arms
                     .iter()
@@ -845,9 +896,12 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 }
                 return self.expand(body);
             }
-            Expression::IfExpression(IfExpression {
-                body, else_body, ..
-            }) => {
+            Expression::IfExpression(
+                _,
+                IfExpression {
+                    body, else_body, ..
+                },
+            ) => {
                 let v = self.value_stack.pop().unwrap();
                 let condition = match v.as_ref() {
                     Value::Bool(b) => Ok(b),
@@ -1176,6 +1230,7 @@ pub fn evaluate_binary_operation_integer<'a, T>(
 
 #[cfg(test)]
 mod test {
+    use crate::evaluator;
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
 
@@ -1195,6 +1250,20 @@ mod test {
         evaluate::<GoldilocksField>(symbol, &mut Definitions(&analyzed.definitions))
             .unwrap()
             .to_string()
+    }
+
+    pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
+        let analyzed = analyze_string::<GoldilocksField>(input);
+        let mut symbols = evaluator::Definitions(&analyzed.definitions);
+        let function = symbols.lookup(function, None).unwrap();
+        let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
+            .unwrap()
+            .as_ref()
+            .clone();
+        match result {
+            Value::FieldElement(fe) => fe,
+            _ => panic!("Expected field element but got {result}"),
+        }
     }
 
     #[test]
@@ -1567,5 +1636,20 @@ mod test {
         assert_eq!(parse_and_evaluate_symbol(src, "no"), "false".to_string());
         assert_eq!(parse_and_evaluate_symbol(src, "no2"), "false".to_string());
         assert_eq!(parse_and_evaluate_symbol(src, "no3"), "false".to_string());
+    }
+
+    #[test]
+    pub fn eval_complex_expression() {
+        let src = r#"
+            namespace std::prover;
+                let eval: expr -> fe = [];
+            namespace main;
+                // Put into query function, so we're allowed to use eval()
+                let test = query || std::prover::eval(2 * (1 + 1 + 1) + 1);
+        "#;
+        assert_eq!(
+            evaluate_function::<GoldilocksField>(src, "main.test"),
+            7u64.into()
+        );
     }
 }

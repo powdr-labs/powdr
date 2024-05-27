@@ -46,13 +46,11 @@ pub struct Plonky3Prover<'a, T> {
 }
 
 impl<'a, T> Plonky3Prover<'a, T> {
-
     pub fn write_setup(&self, output: &mut dyn std::io::Write) {
         serde_json::to_writer(output, &self.setup.values).unwrap();
     }
 
     pub fn write_vkey(&self, output: &mut dyn std::io::Write) {
-
         let vk = self.verification_key();
         serde_json::to_writer(output, &vk.values).unwrap();
     }

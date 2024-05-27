@@ -44,6 +44,8 @@ pub enum IncompleteCause<K = usize> {
     DataNotYetAvailable,
     /// Last resort error when all possible solving approaches have failed. TODO: make this more precise or use another variant
     SolvingFailed,
+    /// We tried to symbolically evaluate a challenge, which is not supported.
+    SymbolicEvaluationOfChallenge,
     /// Some knowledge was learnt, but not a concrete value. Example: `Y = X` if we know that `Y` is boolean. We learn that `X` is boolean, but not its exact value.
     NotConcrete,
     Multiple(Vec<IncompleteCause<K>>),
@@ -97,9 +99,14 @@ impl<K> EvalStatus<K> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// The result of solving a constraint (polynomial identity, lookup, or permutation).
 pub struct EvalValue<K, T: FieldElement> {
+    /// Assignments and range constraint updates resulting from the solving.
     pub constraints: Constraints<K, T>,
+    /// The status of the solving. If complete, all variables are known after applying the constraints.
     pub status: EvalStatus<K>,
+    /// Whether the solving had side effects. For example, a block might be added to another machine.
+    pub side_effect: bool,
 }
 
 impl<K, T: FieldElement> EvalValue<K, T> {
@@ -132,21 +139,22 @@ impl<K, T: FieldElement> EvalValue<K, T> {
     fn new(constraints: Vec<(K, Constraint<T>)>, status: EvalStatus<K>) -> Self {
         Self {
             constraints,
+            side_effect: false,
             status,
         }
     }
-}
 
-impl<K, T> EvalValue<K, T>
-where
-    K: Clone,
-    T: FieldElement,
-{
     pub fn combine(&mut self, other: Self) {
         // reserve more space?
         self.constraints.extend(other.constraints);
         self.status =
             std::mem::replace(&mut self.status, EvalStatus::Complete).combine(other.status);
+        self.side_effect |= other.side_effect;
+    }
+
+    pub fn report_side_effect(mut self) -> Self {
+        self.side_effect = true;
+        self
     }
 }
 
@@ -222,7 +230,7 @@ impl<T: FieldElement> fmt::Display for EvalError<T> {
             EvalError::FixedLookupFailed(input_assignment) => {
                 let query = input_assignment
                     .iter()
-                    .map(|(poly_name, v)| format!("{} = {}", poly_name, v))
+                    .map(|(poly_name, v)| format!("{poly_name} = {v}"))
                     .collect::<Vec<_>>()
                     .join(", ");
                 write!(

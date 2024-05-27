@@ -16,6 +16,15 @@ fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
 }
 
 #[test]
+fn sqrt_asm() {
+    let f = "asm/sqrt.asm";
+    let i = [3];
+    verify_asm(f, slice_to_vec(&i));
+    test_halo2(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
@@ -41,6 +50,12 @@ fn secondary_block_machine_add2() {
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn second_phase_hint() {
+    let f = "asm/second_phase_hint.asm";
+    test_halo2(f, Default::default());
 }
 
 #[test]
@@ -80,10 +95,7 @@ fn palindrome() {
     let i = [7, 1, 7, 3, 9, 3, 7, 1];
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
-    // currently starky leads to
-    // thread 'functional_instructions' has overflowed its stack
-    // leave it out until that's fixed
-    //gen_estark_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -128,10 +140,7 @@ fn vm_to_block_unique_interface() {
     let i = [];
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
-    // currently starky leads to
-    // thread 'functional_instructions' has overflowed its stack
-    // leave it out until that's fixed
-    //gen_estark_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -286,10 +295,7 @@ fn bit_access() {
     let i = [20];
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
-    // currently starky leads to
-    // thread 'functional_instructions' has overflowed its stack
-    // leave it out until that's fixed
-    //gen_estark_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -306,10 +312,7 @@ fn functional_instructions() {
     let i = [20];
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
-    // currently starky leads to
-    // thread 'functional_instructions' has overflowed its stack
-    // leave it out until that's fixed
-    //gen_estark_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -354,7 +357,7 @@ fn read_poly_files() {
         let mut pipeline = Pipeline::<Bn254Field>::default()
             .from_file(resolve_test_file(f))
             .with_output(tmp_dir.to_path_buf(), true)
-            .with_backend(BackendType::EStarkDump);
+            .with_backend(BackendType::EStarkDump, None);
         pipeline.compute_witness().unwrap();
         let pil = pipeline.compute_optimized_pil().unwrap();
         pipeline.compute_proof().unwrap();
@@ -383,6 +386,14 @@ fn enum_in_asm() {
 }
 
 #[test]
+fn side_effects() {
+    let f = "asm/side_effects.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn permutation_simple() {
     let f = "asm/permutations/simple.asm";
     verify_asm(f, Default::default());
@@ -399,9 +410,9 @@ fn permutation_to_block() {
 }
 
 #[test]
-#[should_panic = "Witness generation failed"]
+#[should_panic = "called `Result::unwrap()` on an `Err` value: Linear constraint is not satisfiable: 18446744069414584320 != 0"]
 fn permutation_to_vm() {
-    // TODO: witgen issue
+    // TODO: witgen issue: Machine incorrectly detected as block machine.
     let f = "asm/permutations/vm_to_vm.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
@@ -409,9 +420,9 @@ fn permutation_to_vm() {
 }
 
 #[test]
-#[should_panic = "Witness generation failed"]
+#[should_panic = "Verifier did not say 'PIL OK'."]
 fn permutation_to_block_to_block() {
-    // TODO: witgen issue
+    // TODO: witgen issue (https://github.com/powdr-labs/powdr/issues/1385)
     let f = "asm/permutations/block_to_block.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
@@ -655,4 +666,11 @@ fn keccak() {
         .for_each(|(input, expected)| {
             test_main(&analyzed, input, expected);
         });
+}
+
+#[test]
+fn connect_no_witgen() {
+    let f = "asm/connect_no_witgen.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
 }

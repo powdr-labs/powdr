@@ -51,7 +51,7 @@ pub fn verify_pipeline(
     pipeline: Pipeline<GoldilocksField>,
     backend: BackendType,
 ) -> Result<(), String> {
-    let mut pipeline = pipeline.with_backend(backend);
+    let mut pipeline = pipeline.with_backend(backend, None);
 
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
     if pipeline.output_dir().is_none() {
@@ -69,7 +69,7 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         .with_tmp_output(&tmp_dir)
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(powdr_backend::BackendType::EStarkStarky);
+        .with_backend(powdr_backend::BackendType::EStarkStarky, None);
 
     pipeline.clone().compute_proof().unwrap();
 
@@ -106,7 +106,7 @@ pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
     Pipeline::default()
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs.clone())
-        .with_backend(powdr_backend::BackendType::Halo2Mock)
+        .with_backend(powdr_backend::BackendType::Halo2Mock, None)
         .compute_proof()
         .unwrap();
 
@@ -130,7 +130,7 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
         .with_tmp_output(&tmp_dir)
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(powdr_backend::BackendType::Halo2);
+        .with_backend(powdr_backend::BackendType::Halo2, None);
 
     // Generate a proof with the setup and verification key generated on the fly
     pipeline.clone().compute_proof().unwrap();
@@ -190,7 +190,7 @@ pub fn gen_plonky3_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         .with_tmp_output(&tmp_dir)
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(powdr_backend::BackendType::Plonky3);
+        .with_backend(powdr_backend::BackendType::Plonky3, None);
 
     // Generate a proof with the setup and verification key generated on the fly
     pipeline.clone().compute_proof().unwrap();
@@ -302,7 +302,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_estark(
 
     assert!(pipeline
         .clone()
-        .with_backend(powdr_backend::BackendType::EStarkStarky)
+        .with_backend(powdr_backend::BackendType::EStarkStarky, None)
         .compute_proof()
         .is_err());
 }
@@ -318,19 +318,19 @@ pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
 
     assert!(pipeline
         .clone()
-        .with_backend(powdr_backend::BackendType::Halo2Mock)
+        .with_backend(powdr_backend::BackendType::Halo2Mock, None)
         .compute_proof()
         .is_err());
 
     assert!(pipeline
         .clone()
-        .with_backend(powdr_backend::BackendType::Halo2)
+        .with_backend(powdr_backend::BackendType::Halo2, None)
         .compute_proof()
         .is_err());
 }
 
 #[cfg(not(feature = "halo2"))]
-pub fn assert_proofs_fail_for_invalid_witnesses_bn254(
+pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
     _file_name: &str,
     _witness: &[(String, Vec<u64>)],
 ) {

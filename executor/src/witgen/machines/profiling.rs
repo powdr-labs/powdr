@@ -67,8 +67,7 @@ pub fn reset_and_print_profile_summary() {
             // We expect one top-level call, so we should never have an empty call stack.
             let current_machine_id = *call_stack.last().unwrap_or_else(|| {
                 panic!(
-                    "Call stack is empty at index {} (event: {:?}, name: {}, time: {:?})",
-                    i, event, id, time
+                    "Call stack is empty at index {i} (event: {event:?}, name: {id}, time: {time:?})"
                 )
             });
 
@@ -94,8 +93,7 @@ pub fn reset_and_print_profile_summary() {
 
         assert!(
             call_stack.is_empty(),
-            "Call stack is not empty: {:?}",
-            call_stack
+            "Call stack is not empty: {call_stack:?}"
         );
 
         // Sort by time, descending.

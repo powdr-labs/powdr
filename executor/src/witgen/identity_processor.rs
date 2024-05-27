@@ -135,10 +135,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             IdentityKind::Plookup | IdentityKind::Permutation => {
                 self.process_plookup(identity, rows)
             }
-            kind => {
-                unimplemented!(
-                    "Identity of kind {kind:?} is not supported by the identity processor."
-                )
+            IdentityKind::Connect => {
+                // TODO this is not the right cause.
+                Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed))
+                // unimplemented!(
+                //     "Identity of kind {kind:?} is not supported by the identity processor."
+                // )
             }
         };
         report_identity_solving(identity, &result);

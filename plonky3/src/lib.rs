@@ -1,4 +1,4 @@
 mod prover;
 mod types;
 
-pub use prover::{Plonky3Prover, generate_setup};
+pub use prover::{generate_setup, Plonky3Prover};

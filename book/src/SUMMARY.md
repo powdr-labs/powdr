@@ -6,6 +6,10 @@
 - [Installation](./installation.md)
 - [Hello World using the CLI](./hello_world.md)
 - [Hello World using powdr as a library](./powdr_crate.md)
+- [Hello World verified on Ethereum - CLI](./hello_world_ethereum.md)
+- [Hello World verified on Ethereum via proof aggregation - CLI](./hello_world_ethereum_aggregation.md)
+- [Examples](./examples.md)
+- [Using publics](./publics.md)
 
 # Reference Guide
 <!-- markdown-link-check-disable-next-line -->
@@ -29,6 +33,7 @@
     - [Built-in Functions](./pil/builtins.md)
 - [Frontends](./frontends/README.md)
     - [RISCV](./frontends/riscv.md)
+        - [zk-Continuations](./frontends/zk-continuations.md)
     - [Valida](./frontends/valida.md)
     - [EVM](./frontends/evm.md)
 - [Backends](./backends/README.md)

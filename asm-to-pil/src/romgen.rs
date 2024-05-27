@@ -32,7 +32,7 @@ fn substitute_name_in_statement_expressions(
     substitution: &HashMap<String, String>,
 ) {
     fn substitute(e: &mut Expression, substitution: &HashMap<String, String>) {
-        if let Expression::Reference(r) = e {
+        if let Expression::Reference(_, r) = e {
             if let Some(n) = r.try_to_identifier() {
                 if let Some(v) = substitution.get(n).cloned() {
                     *r = NamespacedPolynomialReference::from_identifier(v);
@@ -49,7 +49,7 @@ fn pad_return_arguments(s: &mut FunctionStatement, output_count: usize) {
     if let FunctionStatement::Return(ret) = s {
         ret.values = std::mem::take(&mut ret.values)
             .into_iter()
-            .chain(repeat(Expression::Number(0u32.into(), None)))
+            .chain(repeat(0u32.into()))
             .take(output_count)
             .collect();
     };
@@ -181,7 +181,7 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
                 .first_mut()
                 .expect("function should have at least one statement as it must return")
                 .statements
-                .insert(0, parse_function_statement(&format!("_{}:", name)));
+                .insert(0, parse_function_statement(&format!("_{name}:")));
 
             // modify the last batch to be caused by the coming label
             let last = batches

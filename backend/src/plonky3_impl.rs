@@ -5,7 +5,7 @@ use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
 use powdr_plonky3::{generate_setup, Plonky3Prover};
 
-use crate::{Backend, BackendFactory, Error, Proof};
+use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 pub(crate) struct Plonky3ProverFactory;
 
@@ -14,9 +14,11 @@ impl<T: FieldElement> BackendFactory<T> for Plonky3ProverFactory {
         &self,
         pil: &'a Analyzed<T>,
         fixed: &'a [(String, Vec<T>)],
-        _output_dir: Option<&'a Path>,
+        _: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
+        _: Option<&mut dyn io::Read>,
+        _: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, T> + 'a>, Error> {
         let mut plonky3 = Box::new(Plonky3Prover::new(pil, fixed, setup)?);
         if let Some(vk) = verification_key {

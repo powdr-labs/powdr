@@ -4,12 +4,12 @@ pub mod polygon_wrapper;
 pub mod starky_wrapper;
 
 use std::{
-    fs::hard_link,
+    fs::{hard_link, remove_file},
     iter::{once, repeat},
     path::{Path, PathBuf},
 };
 
-use crate::{Backend, BackendFactory, Error, Proof};
+use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
@@ -17,7 +17,34 @@ use powdr_number::{buffered_write_file, write_polys_file, DegreeType, FieldEleme
 use serde::Serialize;
 use starky::types::{StarkStruct, Step, PIL};
 
-fn create_stark_struct(degree: DegreeType) -> StarkStruct {
+enum ProofType {
+    StarkGL,
+    StarkBN,
+    SnarkBN,
+}
+
+impl From<BackendOptions> for ProofType {
+    fn from(options: BackendOptions) -> Self {
+        match options.as_str() {
+            "" | "stark_gl" => ProofType::StarkGL,
+            "stark_bn" => ProofType::StarkBN,
+            "snark_bn" => ProofType::SnarkBN,
+            _ => panic!("Unsupported proof type: {options}"),
+        }
+    }
+}
+
+impl ProofType {
+    pub fn hash_type(&self) -> &'static str {
+        match self {
+            ProofType::StarkGL => "GL",
+            ProofType::StarkBN => "BN",
+            ProofType::SnarkBN => "BN",
+        }
+    }
+}
+
+fn create_stark_struct(degree: DegreeType, hash_type: &str) -> StarkStruct {
     assert!(degree > 1);
     let n_bits = (DegreeType::BITS - (degree - 1).leading_zeros()) as usize;
     let n_bits_ext = n_bits + 1;
@@ -32,7 +59,7 @@ fn create_stark_struct(degree: DegreeType) -> StarkStruct {
         nBits: n_bits,
         nBitsExt: n_bits_ext,
         nQueries: 2,
-        verificationHashType: "GL".to_owned(),
+        verificationHashType: hash_type.to_string(),
         steps,
     }
 }
@@ -96,8 +123,10 @@ struct EStarkFilesCommon<'a, F: FieldElement> {
     /// "main.first_step" column and must be written again to a file.
     patched_constants: Option<Vec<(String, Vec<F>)>>,
     output_dir: Option<&'a Path>,
+    proof_type: ProofType,
 }
 
+// TODO move to `backend` and sync with the similar function in halo2
 fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), Error> {
     buffered_write_file(path, |writer| {
         serde_json::to_writer(writer, data).map_err(|e| e.to_string())
@@ -113,6 +142,8 @@ impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
         output_dir: Option<&'a Path>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
+        verification_app_key: Option<&mut dyn std::io::Read>,
+        options: BackendOptions,
     ) -> Result<Self, Error> {
         if setup.is_some() {
             return Err(Error::NoSetupAvailable);
@@ -120,15 +151,21 @@ impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
         if verification_key.is_some() {
             return Err(Error::NoVerificationAvailable);
         }
+        if verification_app_key.is_some() {
+            return Err(Error::NoAggregationAvailable);
+        }
 
         // Pre-process the PIL and fixed columns.
         let (pil, patched_constants) = first_step_fixup(analyzed, fixed);
+
+        let proof_type: ProofType = ProofType::from(options);
 
         Ok(EStarkFilesCommon {
             degree: analyzed.degree(),
             pil,
             patched_constants,
             output_dir,
+            proof_type,
         })
     }
 }
@@ -154,12 +191,15 @@ impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
             write_polys_file(&paths.constants, patched_constants)?;
         } else {
             log::info!("Hardlinking constants.bin to constants_estark.bin.");
+            let _ = remove_file(&paths.constants);
             hard_link(output_dir.join("constants.bin"), &paths.constants)?;
         }
 
         // Write the stark struct JSON.
-        log::info!("Writing {}.", paths.stark_struct.to_string_lossy());
-        write_json_file(&paths.stark_struct, &create_stark_struct(self.degree))?;
+        write_json_file(
+            &paths.stark_struct,
+            &create_stark_struct(self.degree, self.proof_type.hash_type()),
+        )?;
 
         // Write the constraints in JSON.
         log::info!("Writing {}.", paths.contraints.to_string_lossy());
@@ -179,6 +219,8 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
         output_dir: Option<&'a Path>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
+        verification_app_key: Option<&mut dyn std::io::Read>,
+        options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         Ok(Box::new(DumpBackend(EStarkFilesCommon::create(
             analyzed,
@@ -186,6 +228,8 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
             output_dir,
             setup,
             verification_key,
+            verification_app_key,
+            options,
         )?)))
     }
 }
