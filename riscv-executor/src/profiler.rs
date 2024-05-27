@@ -296,9 +296,14 @@ impl<'a> Profiler<'a> {
         if !self.options.is_enabled() {
             return;
         }
-        if let Some(target) = self.location_at(target_pc) {
+        if let Some(mut target) = self.location_at(target_pc) {
             if let Some(curr_function) = self.curr_function() {
                 let (_, curr_file, curr_line) = self.location_at(curr_pc).unwrap();
+                // ecall handler code have a ".debug loc", so we keep current file/line
+                if target.0 == "__ecall_handler" {
+                    target.1 = curr_file;
+                    target.2 = curr_line;
+                }
                 let call = Call {
                     from: (curr_function, curr_file, curr_line),
                     target,
