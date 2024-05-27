@@ -65,9 +65,9 @@ impl<'a, T> Plonky3Prover<'a, T> {
         constants: Option<&mut dyn std::io::Read>,
     ) -> Result<Self, std::io::Error> {
         let constants = constants
-            .map(|mut constants| serde_json::from_reader(&mut constants))
+            .map(serde_json::from_reader)
             .transpose()?
-            .unwrap_or_else(|| generate_setup());
+            .unwrap_or_else(generate_setup);
 
         Ok(Self {
             analyzed,
