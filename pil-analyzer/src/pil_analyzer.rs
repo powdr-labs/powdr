@@ -270,11 +270,6 @@ impl PILAnalyzer {
                 Some((name.clone(), (type_scheme, expr)))
             })
             .collect();
-        // Collect all expressions in identities.
-        //let statement_type = ExpectedType {
-        //    ty: Type::Tuple(TupleType { items: vec![] }),
-        //    allow_array: true,
-        //};
         let constr_function_statement_type = ExpectedType {
             ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
             allow_array: true,
