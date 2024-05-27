@@ -11,7 +11,7 @@ struct Point {
 
 #[no_mangle]
 pub fn main() {
-    let input = read_u32(0);
+    let input = read_u32(0) as u8;
 
     write_u8(42, input);
     write_slice(43, &[input, input * 2, input * 3]);
