@@ -151,30 +151,35 @@ fn free_inputs_in_expression<'a>(
     expr: &'a Expression,
 ) -> Box<dyn Iterator<Item = &'a Expression> + 'a> {
     match expr {
-        Expression::FreeInput(e) => Box::new(once(e.as_ref())),
-        Expression::Reference(_)
-        | Expression::PublicReference(_)
-        | Expression::Number(_)
-        | Expression::String(_) => Box::new(None.into_iter()),
-        Expression::BinaryOperation(BinaryOperation { left, right, .. }) => {
+        Expression::FreeInput(_, e) => Box::new(once(e.as_ref())),
+        Expression::Reference(_, _)
+        | Expression::PublicReference(_, _)
+        | Expression::Number(_, _)
+        | Expression::String(_, _) => Box::new(None.into_iter()),
+        Expression::BinaryOperation(_, BinaryOperation { left, right, .. }) => {
             Box::new(free_inputs_in_expression(left).chain(free_inputs_in_expression(right)))
         }
-        Expression::UnaryOperation(UnaryOperation { expr, .. }) => free_inputs_in_expression(expr),
-        Expression::FunctionCall(FunctionCall {
-            function,
-            arguments,
-        }) => Box::new(
+        Expression::UnaryOperation(_, UnaryOperation { expr, .. }) => {
+            free_inputs_in_expression(expr)
+        }
+        Expression::FunctionCall(
+            _,
+            FunctionCall {
+                function,
+                arguments,
+            },
+        ) => Box::new(
             free_inputs_in_expression(function)
                 .chain(arguments.iter().flat_map(|e| free_inputs_in_expression(e))),
         ),
         // These should really not appear in assembly statements.
-        Expression::Tuple(_) => todo!(),
-        Expression::LambdaExpression(_) => todo!(),
-        Expression::ArrayLiteral(_) => todo!(),
-        Expression::IndexAccess(_) => todo!(),
-        Expression::MatchExpression(_) => todo!(),
-        Expression::IfExpression(_) => todo!(),
-        Expression::BlockExpression(_) => todo!(),
+        Expression::Tuple(_, _) => todo!(),
+        Expression::LambdaExpression(_, _) => todo!(),
+        Expression::ArrayLiteral(_, _) => todo!(),
+        Expression::IndexAccess(_, _) => todo!(),
+        Expression::MatchExpression(_, _) => todo!(),
+        Expression::IfExpression(_, _) => todo!(),
+        Expression::BlockExpression(_, _) => todo!(),
     }
 }
 
@@ -183,21 +188,24 @@ fn free_inputs_in_expression_mut<'a>(
     expr: &'a mut Expression,
 ) -> Box<dyn Iterator<Item = &'a mut Expression> + 'a> {
     match expr {
-        Expression::FreeInput(e) => Box::new(once(e.as_mut())),
-        Expression::Reference(_)
-        | Expression::PublicReference(_)
-        | Expression::Number(_)
-        | Expression::String(_) => Box::new(None.into_iter()),
-        Expression::BinaryOperation(BinaryOperation { left, right, .. }) => Box::new(
+        Expression::FreeInput(_, e) => Box::new(once(e.as_mut())),
+        Expression::Reference(_, _)
+        | Expression::PublicReference(_, _)
+        | Expression::Number(_, _)
+        | Expression::String(_, _) => Box::new(None.into_iter()),
+        Expression::BinaryOperation(_, BinaryOperation { left, right, .. }) => Box::new(
             free_inputs_in_expression_mut(left).chain(free_inputs_in_expression_mut(right)),
         ),
-        Expression::UnaryOperation(UnaryOperation { expr, .. }) => {
+        Expression::UnaryOperation(_, UnaryOperation { expr, .. }) => {
             free_inputs_in_expression_mut(expr)
         }
-        Expression::FunctionCall(FunctionCall {
-            function,
-            arguments,
-        }) => Box::new(
+        Expression::FunctionCall(
+            _,
+            FunctionCall {
+                function,
+                arguments,
+            },
+        ) => Box::new(
             free_inputs_in_expression_mut(function).chain(
                 arguments
                     .iter_mut()
@@ -205,13 +213,13 @@ fn free_inputs_in_expression_mut<'a>(
             ),
         ),
         // These should really not appear in assembly statements.
-        Expression::Tuple(_) => todo!(),
-        Expression::LambdaExpression(_) => todo!(),
-        Expression::ArrayLiteral(_) => todo!(),
-        Expression::IndexAccess(_) => todo!(),
-        Expression::MatchExpression(_) => todo!(),
-        Expression::IfExpression(_) => todo!(),
-        Expression::BlockExpression(_) => todo!(),
+        Expression::Tuple(_, _) => todo!(),
+        Expression::LambdaExpression(_, _) => todo!(),
+        Expression::ArrayLiteral(_, _) => todo!(),
+        Expression::IndexAccess(_, _) => todo!(),
+        Expression::MatchExpression(_, _) => todo!(),
+        Expression::IfExpression(_, _) => todo!(),
+        Expression::BlockExpression(_, _) => todo!(),
     }
 }
 
@@ -222,7 +230,7 @@ fn canonicalize_inside_expression(
 ) {
     e.pre_visit_expressions_mut(&mut |e| {
         match e {
-            Expression::Reference(reference) => {
+            Expression::Reference(_, reference) => {
                 // If resolving the reference fails, we assume it is a local variable that has been checked below.
                 if let Some(n) = paths.get(&path.clone().join(reference.path.clone())) {
                     *reference = n.relative_to(&Default::default()).into();
@@ -230,19 +238,19 @@ fn canonicalize_inside_expression(
                     assert!(reference.path.try_to_identifier().is_some());
                 }
             }
-            Expression::BlockExpression(BlockExpression { statements, .. }) => {
+            Expression::BlockExpression(_, BlockExpression { statements, .. }) => {
                 for statement in statements {
                     if let StatementInsideBlock::LetStatement(let_statement) = statement {
                         canonicalize_inside_pattern(&mut let_statement.pattern, path, paths);
                     }
                 }
             }
-            Expression::LambdaExpression(lambda) => {
+            Expression::LambdaExpression(_, lambda) => {
                 lambda.params.iter_mut().for_each(|p| {
                     canonicalize_inside_pattern(p, path, paths);
                 });
             }
-            Expression::MatchExpression(MatchExpression { scrutinee: _, arms }) => {
+            Expression::MatchExpression(_, MatchExpression { arms, .. }) => {
                 arms.iter_mut().for_each(|MatchArm { pattern, .. }| {
                     canonicalize_inside_pattern(pattern, path, paths);
                 })
@@ -640,7 +648,7 @@ fn check_expression(
     // We cannot use the visitor here because we need to change the local variables
     // inside lambda expressions.
     match e {
-        Expression::Reference(reference) => {
+        Expression::Reference(_, reference) => {
             if let Some(name) = reference.try_to_identifier() {
                 if local_variables.contains(name) {
                     return Ok(());
@@ -648,38 +656,50 @@ fn check_expression(
             }
             check_path_try_prelude(location.clone(), reference.path.clone(), state)
         }
-        Expression::PublicReference(_) | Expression::Number(_) | Expression::String(_) => Ok(()),
-        Expression::Tuple(items) | Expression::ArrayLiteral(ArrayLiteral { items }) => {
+        Expression::PublicReference(_, _) | Expression::Number(_, _) | Expression::String(_, _) => {
+            Ok(())
+        }
+        Expression::Tuple(_, items) | Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
             check_expressions(location, items, state, local_variables)
         }
-        Expression::LambdaExpression(LambdaExpression {
-            kind: _,
-            params,
-            body,
-        }) => {
+        Expression::LambdaExpression(
+            _,
+            LambdaExpression {
+                kind: _,
+                params,
+                body,
+            },
+        ) => {
             // Add the local variables, ignore collisions.
             let mut local_variables = local_variables.clone();
             local_variables.extend(check_patterns(location, params, state)?);
             check_expression(location, body, state, &local_variables)
         }
-        Expression::BinaryOperation(BinaryOperation {
-            left: a, right: b, ..
-        })
-        | Expression::IndexAccess(IndexAccess { array: a, index: b }) => {
+        Expression::BinaryOperation(
+            _,
+            BinaryOperation {
+                left: a, right: b, ..
+            },
+        )
+        | Expression::IndexAccess(_, IndexAccess { array: a, index: b }) => {
             check_expression(location, a.as_ref(), state, local_variables)?;
             check_expression(location, b.as_ref(), state, local_variables)
         }
-        Expression::UnaryOperation(UnaryOperation { expr, .. }) | Expression::FreeInput(expr) => {
+        Expression::UnaryOperation(_, UnaryOperation { expr, .. })
+        | Expression::FreeInput(_, expr) => {
             check_expression(location, expr, state, local_variables)
         }
-        Expression::FunctionCall(FunctionCall {
-            function,
-            arguments,
-        }) => {
+        Expression::FunctionCall(
+            _,
+            FunctionCall {
+                function,
+                arguments,
+            },
+        ) => {
             check_expression(location, function, state, local_variables)?;
             check_expressions(location, arguments, state, local_variables)
         }
-        Expression::MatchExpression(MatchExpression { scrutinee, arms }) => {
+        Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
                 let mut local_variables = local_variables.clone();
@@ -687,16 +707,19 @@ fn check_expression(
                 check_expression(location, value, state, &local_variables)
             })
         }
-        Expression::IfExpression(powdr_ast::parsed::IfExpression {
-            condition,
-            body,
-            else_body,
-        }) => {
+        Expression::IfExpression(
+            _,
+            powdr_ast::parsed::IfExpression {
+                condition,
+                body,
+                else_body,
+            },
+        ) => {
             check_expression(location, condition, state, local_variables)?;
             check_expression(location, body, state, local_variables)?;
             check_expression(location, else_body, state, local_variables)
         }
-        Expression::BlockExpression(BlockExpression { statements, expr }) => {
+        Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
             let mut local_variables = local_variables.clone();
             for statement in statements {
                 match statement {

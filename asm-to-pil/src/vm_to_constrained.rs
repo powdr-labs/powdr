@@ -243,7 +243,7 @@ impl<T: FieldElement> VMConverter<T> {
                     .collect();
 
                 match *rhs {
-                    Expression::FunctionCall(c) => {
+                    Expression::FunctionCall(_, c) => {
                         self.handle_functional_instruction(lhs_with_reg, *c.function, c.arguments)
                     }
                     _ => self.handle_non_functional_assignment(source, lhs_with_reg, *rhs),
@@ -432,7 +432,7 @@ impl<T: FieldElement> VMConverter<T> {
             .collect::<HashMap<_, _>>();
         body.iter_mut().for_each(|s| {
             s.post_visit_expressions_mut(&mut |e| {
-                if let Expression::Reference(r) = e {
+                if let Expression::Reference(_, r) = e {
                     if let Some(name) = r.try_to_identifier() {
                         if let Some(sub) = substitutions.get(name) {
                             *r.path.try_last_part_mut().unwrap() = sub.to_string();
@@ -529,17 +529,20 @@ impl<T: FieldElement> VMConverter<T> {
             // collect assignment registers and next references to write registers used on rhs
             for expr in rhs.inputs_and_outputs() {
                 expr.pre_visit_expressions(&mut |e| match e {
-                    Expression::Reference(poly) => {
+                    Expression::Reference(_, poly) => {
                         poly.try_to_identifier()
                             .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
                             .filter(|(_, reg)| reg.ty == RegisterTy::Assignment)
                             .map(|(name, _)| rhs_assignment_registers.insert(name.clone()));
                     }
-                    Expression::UnaryOperation(UnaryOperation {
-                        op: UnaryOperator::Next,
-                        expr,
-                    }) => {
-                        if let Expression::Reference(poly) = expr.as_ref() {
+                    Expression::UnaryOperation(
+                        _,
+                        UnaryOperation {
+                            op: UnaryOperator::Next,
+                            expr: e,
+                        },
+                    ) => {
+                        if let Expression::Reference(_, poly) = e.as_ref() {
                             poly.try_to_identifier()
                                 .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
                                 .filter(|(_, reg)| {
@@ -615,7 +618,7 @@ impl<T: FieldElement> VMConverter<T> {
         function: Expression,
         mut args: Vec<Expression>,
     ) -> CodeLine<T> {
-        let Expression::Reference(reference) = function else {
+        let Expression::Reference(_, reference) = function else {
             panic!("Expected instruction name");
         };
         let instr_name = reference.try_to_identifier().unwrap();
@@ -660,7 +663,7 @@ impl<T: FieldElement> VMConverter<T> {
                             value.insert(reg.clone(), self.process_assignment_value(a));
                         }
                         Input::Literal(_, LiteralKind::Label) => {
-                            if let Expression::Reference(r) = a {
+                            if let Expression::Reference(_, r) = a {
                                 instruction_literal_arg.push(InstructionLiteralArg::LabelRef(
                                     r.try_to_identifier().unwrap().clone(),
                                 ));
@@ -670,11 +673,11 @@ impl<T: FieldElement> VMConverter<T> {
                         }
                         Input::Literal(_, LiteralKind::UnsignedConstant) => {
                             // TODO evaluate expression
-                            if let Expression::Number(Number {value: n, type_: _}) = a {
+                            if let Expression::Number(_, Number {value, ..}) = a {
                                 let half_modulus = T::modulus().to_arbitrary_integer() / BigUint::from(2u64);
-                                assert!(n < half_modulus, "Number passed to unsigned parameter is negative or too large: {n}");
+                                assert!(value < half_modulus, "Number passed to unsigned parameter is negative or too large: {value}");
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(
-                                    T::from(n),
+                                    T::from(value),
                                 ));
                             } else {
                                 panic!("expected unsigned number, received {a}");
@@ -682,13 +685,13 @@ impl<T: FieldElement> VMConverter<T> {
                         }
                         Input::Literal(_, LiteralKind::SignedConstant) => {
                             // TODO evaluate expression
-                            if let Expression::Number(Number {value, ..}) = a {
+                            if let Expression::Number(_, Number {value, ..}) = a {
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(
                                     T::checked_from(value).unwrap(),
                                 ));
-                            } else if let Expression::UnaryOperation(UnaryOperation { op: UnaryOperator::Minus, expr }) = a
+                            } else if let Expression::UnaryOperation(_, UnaryOperation { op: UnaryOperator::Minus, expr }) = a
                             {
-                                if let Expression::Number(Number {value, ..}) = *expr {
+                                if let Expression::Number(_, Number {value, ..}) = *expr {
                                     instruction_literal_arg.push(InstructionLiteralArg::Number(
                                         -T::checked_from(value).unwrap(),
                                     ))
@@ -710,7 +713,7 @@ impl<T: FieldElement> VMConverter<T> {
             .zip(&mut args)
             .map(|(reg, a)| {
                 // Output a value trough assignment register "reg"
-                if let Expression::Reference(r) = a {
+                if let Expression::Reference(_, r) = a {
                     (reg.clone(), vec![r.try_to_identifier().unwrap().clone()])
                 } else {
                     panic!("Expected direct register to assign to in instruction call.");
@@ -730,30 +733,30 @@ impl<T: FieldElement> VMConverter<T> {
 
     fn process_assignment_value(&self, value: Expression) -> Vec<(T, AffineExpressionComponent)> {
         match value {
-            Expression::PublicReference(_) => panic!(),
-            Expression::IndexAccess(_) => panic!(),
-            Expression::FunctionCall(_) => panic!(),
-            Expression::Reference(reference) => {
+            Expression::PublicReference(_, _) => panic!(),
+            Expression::IndexAccess(_, _) => panic!(),
+            Expression::FunctionCall(_, _) => panic!(),
+            Expression::Reference(_, reference) => {
                 // TODO check it actually is a register
                 let name = reference.try_to_identifier().unwrap();
                 vec![(1.into(), AffineExpressionComponent::Register(name.clone()))]
             }
-            Expression::Number(Number { value, .. }) => {
+            Expression::Number(_, Number { value, .. }) => {
                 vec![(T::from(value), AffineExpressionComponent::Constant)]
             }
-            Expression::String(_) => panic!(),
-            Expression::Tuple(_) => panic!(),
-            Expression::ArrayLiteral(_) => panic!(),
-            Expression::MatchExpression(_) => panic!(),
-            Expression::IfExpression(_) => panic!(),
-            Expression::BlockExpression(_) => panic!(),
-            Expression::FreeInput(expr) => {
+            Expression::String(_, _) => panic!(),
+            Expression::Tuple(_, _) => panic!(),
+            Expression::ArrayLiteral(_, _) => panic!(),
+            Expression::MatchExpression(_, _) => panic!(),
+            Expression::IfExpression(_, _) => panic!(),
+            Expression::BlockExpression(_, _) => panic!(),
+            Expression::FreeInput(_, expr) => {
                 vec![(1.into(), AffineExpressionComponent::FreeInput(*expr))]
             }
-            Expression::LambdaExpression(_) => {
+            Expression::LambdaExpression(_, _) => {
                 unreachable!("lambda expressions should have been removed")
             }
-            Expression::BinaryOperation(BinaryOperation { left, op, right }) => match op {
+            Expression::BinaryOperation(_, BinaryOperation { left, op, right }) => match op {
                 BinaryOperator::Add => self.add_assignment_value(
                     self.process_assignment_value(*left),
                     self.process_assignment_value(*right),
@@ -816,7 +819,7 @@ impl<T: FieldElement> VMConverter<T> {
                     panic!("Invalid operation in expression {left} {op} {right}")
                 }
             },
-            Expression::UnaryOperation(UnaryOperation { op, expr }) => {
+            Expression::UnaryOperation(_, UnaryOperation { op, expr }) => {
                 assert!(op == UnaryOperator::Minus);
                 self.negate_assignment_value(self.process_assignment_value(*expr))
             }
@@ -1092,11 +1095,14 @@ impl<T: FieldElement> VMConverter<T> {
         expr: Expression,
     ) -> (usize, Expression) {
         match expr {
-            Expression::BinaryOperation(BinaryOperation {
-                left,
-                op: operator,
-                right,
-            }) => match operator {
+            Expression::BinaryOperation(
+                _,
+                BinaryOperation {
+                    left,
+                    op: operator,
+                    right,
+                },
+            ) => match operator {
                 BinaryOperator::Add => {
                     let (counter, left) = self.linearize_rec(prefix, counter, *left);
                     let (counter, right) = self.linearize_rec(prefix, counter, *right);
@@ -1226,29 +1232,38 @@ fn witness_column<S: Into<String>>(
 }
 
 fn extract_update(expr: Expression) -> (Option<String>, Expression) {
-    let Expression::BinaryOperation(BinaryOperation {
-        left,
-        op: BinaryOperator::Identity,
-        right,
-    }) = expr
+    let Expression::BinaryOperation(
+        _,
+        BinaryOperation {
+            left,
+            op: BinaryOperator::Identity,
+            right,
+        },
+    ) = expr
     else {
         panic!("Invalid statement for instruction body, expected constraint: {expr}");
     };
     // TODO check that there are no other "next" references in the expression
     match *left {
-        Expression::UnaryOperation(UnaryOperation {
-            op: UnaryOperator::Next,
-            expr,
-        }) => match *expr {
-            Expression::Reference(column) => {
+        Expression::UnaryOperation(
+            source_ref,
+            UnaryOperation {
+                op: UnaryOperator::Next,
+                expr: column,
+            },
+        ) => match *column {
+            Expression::Reference(_, column) => {
                 (Some(column.try_to_identifier().unwrap().clone()), *right)
             }
             _ => (
                 None,
-                Expression::UnaryOperation(UnaryOperation {
-                    op: UnaryOperator::Next,
-                    expr,
-                }) - *right,
+                Expression::UnaryOperation(
+                    source_ref,
+                    UnaryOperation {
+                        op: UnaryOperator::Next,
+                        expr: column,
+                    },
+                ) - *right,
             ),
         },
         _ => (None, *left - *right),
