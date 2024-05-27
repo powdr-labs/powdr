@@ -647,8 +647,7 @@ impl<'a> TypeChecker<'a> {
                                             statement_type
                                         } else {
                                             return Err(format!(
-                                                "Invalid statement of type {} inside Constr function.",
-                                                statement_type
+                                                "Invalid statement of type {statement_type} inside Constr function."
                                             ));
                                         }
                                     }
