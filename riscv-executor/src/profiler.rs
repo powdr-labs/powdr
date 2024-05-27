@@ -77,6 +77,7 @@ impl<'a> Profiler<'a> {
     }
 
     pub fn write_callgrind<P: AsRef<Path>>(&self, path: P) {
+        log::info!("Writing callgrind data to {:?}", path.as_ref());
         let file = File::create(path).unwrap();
         let mut w = BufWriter::new(file);
         writeln!(&mut w, "events: Instructions\n").unwrap();
@@ -136,6 +137,7 @@ impl<'a> Profiler<'a> {
     }
 
     pub fn write_flamegraph<P: AsRef<Path>>(&self, path: P) {
+        log::info!("Writing flamegraph to {:?}", path.as_ref());
         let lines: Vec<_> = self
             .folded_stack_stats
             .iter()
@@ -151,68 +153,6 @@ impl<'a> Profiler<'a> {
         let file = File::create(path).unwrap();
         let w = BufWriter::new(file);
         inferno::flamegraph::from_lines(&mut options, lines.iter().map(|s| s.as_str()), w).unwrap();
-    }
-
-    // TODO: REMOVE
-    #[allow(unused)]
-    pub fn write_debug_output(&self) {
-        log::debug!("====== EXECUTION STATS =======");
-        // TODO: handle tail call from `main`?
-        for func in self.function_begin.values() {
-            let loc_stats: Vec<_> = self
-                .location_stats
-                .iter()
-                .filter_map(|(loc, cost)| {
-                    if &loc.0 == func {
-                        Some((loc.1, loc.2, cost))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            let call_stats: Vec<_> = self
-                .call_stats
-                .iter()
-                .filter_map(|(call, (count, cost))| {
-                    if &call.from.0 == func {
-                        Some((call, count, cost))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            if !loc_stats.is_empty() || !call_stats.is_empty() {
-                log::debug!("===============================");
-                log::debug!("{}:", format_function_name(func));
-                let mut cumm_cost = 0;
-                let mut self_cost = 0;
-                if !loc_stats.is_empty() {
-                    log::debug!("LOC STATS:");
-                    for (file, line, cost) in loc_stats {
-                        self_cost += cost;
-                        cumm_cost += cost;
-                        log::debug!("\t{:?} {line} {cost}", self.debug_files[file - 1]);
-                    }
-                }
-                if !call_stats.is_empty() {
-                    log::debug!("CALLS:");
-                    for (call, count, cost) in call_stats {
-                        cumm_cost += cost;
-                        log::debug!(
-                            "\t{} {:?} {} {count} {cost}",
-                            format_function_name(call.target.0),
-                            self.debug_files[call.from.1 - 1],
-                            call.from.2
-                        );
-                    }
-                }
-                log::debug!("{self_cost} self cost {}", format_function_name(func));
-                log::debug!(
-                    "{cumm_cost} cummulative cost {}",
-                    format_function_name(func)
-                );
-            }
-        }
     }
 
     /// calculate totals and write out results
@@ -253,15 +193,6 @@ impl<'a> Profiler<'a> {
                     .last()
                     .map(|(_, (file, line))| (*func, *file, *line))
             })
-    }
-
-    /// TODO: for dev debugging only REMOVE
-    pub fn print_stack(&self, what: &str) {
-        log::debug!("[ {what}");
-        for (Call { target, .. }, cost) in self.call_stack.iter() {
-            log::debug!("\t{} {cost},", format_function_name(target.0));
-        }
-        log::debug!("]");
     }
 
     /// add cost for instruction/row
@@ -312,7 +243,6 @@ impl<'a> Profiler<'a> {
                 self.call_stats.entry(call.clone()).or_default().0 += 1;
                 self.call_stack.push((call, 0));
                 self.return_pc_stack.push(return_pc);
-                self.print_stack("CALL");
             } else {
                 // we start profiling on the initial call to "__runtime_start"
                 if target.0 == "__runtime_start" {
@@ -324,7 +254,6 @@ impl<'a> Profiler<'a> {
                     self.call_stats.entry(call.clone()).or_default().0 += 1;
                     self.call_stack.push((call, 0));
                     self.return_pc_stack.push(return_pc);
-                    self.print_stack("CALL");
                 }
             }
         } else {
@@ -355,7 +284,6 @@ impl<'a> Profiler<'a> {
                 self.call_stats.get_mut(&done_call).unwrap().1 += cost;
                 *curr_cost += cost;
             }
-            self.print_stack("RETURN");
         } else {
             let target = self.location_at(target_pc).unwrap();
             let curr_function = self.curr_function().unwrap();
@@ -377,7 +305,6 @@ impl<'a> Profiler<'a> {
                 };
                 self.call_stats.entry(new_call.clone()).or_default().0 += 1;
                 self.call_stack.push((new_call, 0));
-                self.print_stack("TAIL");
             } else {
                 // "control flow" (or "tail call" to self, if that is a thing), don't think this needs special handling
             }
