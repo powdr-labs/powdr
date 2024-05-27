@@ -16,15 +16,15 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use powdr_riscv_runtime::io::read_word;
+use powdr_riscv_runtime::io::read_u32;
 use powdr_riscv_runtime::print;
 
 #[no_mangle]
 fn main() {
-    let expected = read_word(0);
-    let len = read_word(1);
+    let expected = read_u32(0);
+    let len = read_u32(1);
 
-    let mut vec: Vec<_> = (2..(len + 2)).map(|idx| read_word(idx)).collect();
+    let mut vec: Vec<_> = (2..(len + 2)).map(|idx| read_u32(idx)).collect();
     vec.sort();
 
     let half = (len / 2) as usize;
