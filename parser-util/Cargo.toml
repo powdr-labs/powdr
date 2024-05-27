@@ -8,6 +8,7 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
+powdr-ast.workspace = true
 lalrpop-util = {version = "^0.19", features = ["lexer"]}
 codespan-reporting = "^0.11"
 
