@@ -34,17 +34,17 @@ pub fn read_data_len(fd: u32) -> usize {
     out as usize
 }
 
-/// Writes a single u32 to the file descriptor fd.
-pub fn write_u8(fd: u32, w: u8) {
+/// Writes a single u8 to the file descriptor fd.
+pub fn write_u8(fd: u32, byte: u8) {
     unsafe {
-        asm!("ecall", in("a0") fd, in("a1") w, in("t0") u32::from(Syscall::Output));
+        asm!("ecall", in("a0") fd, in("a1") bytw, in("t0") u32::from(Syscall::Output));
     }
 }
 
-/// Writes data.len() u32s from the data slice to the file descriptor fd.
+/// Writes data.len() u8s from the data slice to the file descriptor fd.
 pub fn write_slice(fd: u32, data: &[u8]) {
-    for w in data {
-        write_u8(fd, *w);
+    for byte in data {
+        write_u8(fd, *byte);
     }
 }
 
