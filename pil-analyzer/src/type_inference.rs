@@ -626,6 +626,7 @@ impl<'a> TypeChecker<'a> {
             }
             Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
                 let original_var_count = self.local_var_types.len();
+                let empty_tuple = Type::Tuple(TupleType { items: vec![] });
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
@@ -634,7 +635,6 @@ impl<'a> TypeChecker<'a> {
                         }) => {
                             let value_type = if let Some(value) = value {
                                 let statement_type = self.infer_type_of_expression(value, kind)?;
-                                let empty_tuple = Type::Tuple(TupleType { items: vec![] });
                                 match kind {
                                     Some(FunctionKind::Constr) => {
                                         if (statement_type == self.statement_type.ty)
@@ -647,7 +647,14 @@ impl<'a> TypeChecker<'a> {
                                             ));
                                         }
                                     }
-                                    _ => statement_type,
+                                    _ => {
+                                        if statement_type == self.statement_type.ty {
+                                            return Err(format!(
+                                                "Invalid statement of type {statement_type} inside Pure/Query function."
+                                            ));
+                                        }
+                                        statement_type
+                                    }
                                 }
                             } else {
                                 Type::Expr
@@ -655,7 +662,28 @@ impl<'a> TypeChecker<'a> {
                             self.expect_type_of_pattern(&value_type, pattern)?;
                         }
                         StatementInsideBlock::Expression(expr) => {
-                            self.expect_type_with_flexibility(self.statement_type, expr, kind)?;
+                            match kind {
+                                Some(FunctionKind::Constr) => {
+                                    self.expect_type_with_flexibility(self.statement_type, expr, kind)
+                                    .map_err(|err| {
+                                        format!("Invalid expr ({expr}) inside Constr function. Only Constr type is allowed:\n{err}",)
+                                    })?;
+                                }
+                                _ => {
+                                    let expected_empty_tuple = ExpectedType {
+                                        ty: empty_tuple.clone(),
+                                        allow_array: false,
+                                    };
+                                    self.expect_type_with_flexibility(
+                                    &expected_empty_tuple,
+                                    expr,
+                                    kind,
+                                )
+                                .map_err(|err| {
+                                    format!("Invalid expr ({expr}) inside Pure/Query function:\n{err}",)
+                                })?;
+                                }
+                            }
                         }
                     }
                 }
