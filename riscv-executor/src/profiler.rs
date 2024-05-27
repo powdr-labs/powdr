@@ -53,8 +53,12 @@ impl ProfilerOptions {
     }
 }
 
-/// A location is (file, line)
-pub type Loc<'a> = (&'a str, usize, usize);
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Loc<'a> {
+    function: &'a str,
+    file: usize,
+    line: usize,
+}
 
 impl<'a> Profiler<'a> {
     pub fn new(
@@ -86,8 +90,8 @@ impl<'a> Profiler<'a> {
                 .location_stats
                 .iter()
                 .filter_map(|(loc, cost)| {
-                    if &loc.0 == func {
-                        Some((loc.1, loc.2, cost))
+                    if &loc.function == func {
+                        Some((loc.file, loc.line, cost))
                     } else {
                         None
                     }
@@ -98,7 +102,7 @@ impl<'a> Profiler<'a> {
                 .call_stats
                 .iter()
                 .filter_map(|(call, (count, cost))| {
-                    if &call.from.0 == func {
+                    if &call.from.function == func {
                         Some((call, count, cost))
                     } else {
                         None
@@ -122,15 +126,15 @@ impl<'a> Profiler<'a> {
                 writeln!(w, "{line} {cost}").unwrap();
             }
             for (call, count, cost) in call_stats {
-                let target_file_nr = call.target.1;
+                let target_file_nr = call.target.file;
                 if Some(target_file_nr) != curr_file {
                     curr_file = Some(target_file_nr);
                     let file = self.debug_files[target_file_nr - 1];
                     writeln!(w, "cfi={}/{}", file.0, file.1).unwrap();
                 }
-                writeln!(w, "cfn={}", format_function_name(call.target.0)).unwrap();
-                writeln!(w, "calls={count} {}", call.target.2).unwrap();
-                writeln!(w, "{} {cost}", call.from.2).unwrap();
+                writeln!(w, "cfn={}", format_function_name(call.target.function)).unwrap();
+                writeln!(w, "calls={count} {}", call.target.line).unwrap();
+                writeln!(w, "{} {cost}", call.from.line).unwrap();
             }
             writeln!(w).unwrap();
         }
@@ -179,7 +183,7 @@ impl<'a> Profiler<'a> {
 
     /// function at the top of the call stack
     pub fn curr_function(&self) -> Option<&'a str> {
-        self.call_stack.last().map(|(c, _)| c.target.0)
+        self.call_stack.last().map(|(c, _)| c.target.function)
     }
 
     /// get the function name and source location for a given pc value
@@ -187,11 +191,15 @@ impl<'a> Profiler<'a> {
         self.function_begin
             .range(..=pc)
             .last()
-            .and_then(|(_, func)| {
+            .and_then(|(_, function)| {
                 self.location_begin
                     .range(..=pc)
                     .last()
-                    .map(|(_, (file, line))| (*func, *file, *line))
+                    .map(|(_, (file, line))| Loc {
+                        function,
+                        file: *file,
+                        line: *line,
+                    })
             })
     }
 
@@ -203,10 +211,14 @@ impl<'a> Profiler<'a> {
 
         // add cost to current location. AFAIU need the function name from the call stack to handle inlining
         let function = self.curr_function().unwrap();
-        let (_, file, line) = self.location_at(curr_pc).unwrap();
+        let Loc { file, line, .. } = self.location_at(curr_pc).unwrap();
         *self
             .location_stats
-            .entry((function, file, line))
+            .entry(Loc {
+                function,
+                file,
+                line,
+            })
             .or_default() += 1;
 
         // add cost to current call
@@ -216,7 +228,7 @@ impl<'a> Profiler<'a> {
         let stack: Vec<_> = self
             .call_stack
             .iter()
-            .map(|(call, _)| call.target.0)
+            .map(|(call, _)| call.target.function)
             .collect();
         *self.folded_stack_stats.entry(stack).or_default() += 1;
     }
@@ -229,14 +241,22 @@ impl<'a> Profiler<'a> {
         }
         if let Some(mut target) = self.location_at(target_pc) {
             if let Some(curr_function) = self.curr_function() {
-                let (_, curr_file, curr_line) = self.location_at(curr_pc).unwrap();
+                let Loc {
+                    file: curr_file,
+                    line: curr_line,
+                    ..
+                } = self.location_at(curr_pc).unwrap();
                 // ecall handler code have a ".debug loc", so we keep current file/line
-                if target.0 == "__ecall_handler" {
-                    target.1 = curr_file;
-                    target.2 = curr_line;
+                if target.function == "__ecall_handler" {
+                    target.file = curr_file;
+                    target.line = curr_line;
                 }
                 let call = Call {
-                    from: (curr_function, curr_file, curr_line),
+                    from: Loc {
+                        function: curr_function,
+                        file: curr_file,
+                        line: curr_line,
+                    },
                     target,
                 };
                 // increase call count
@@ -245,9 +265,13 @@ impl<'a> Profiler<'a> {
                 self.return_pc_stack.push(return_pc);
             } else {
                 // we start profiling on the initial call to "__runtime_start"
-                if target.0 == "__runtime_start" {
+                if target.function == "__runtime_start" {
                     let call = Call {
-                        from: ("", 0, 0),
+                        from: Loc {
+                            function: "",
+                            file: 0,
+                            line: 0,
+                        },
                         target,
                     };
                     // increase call count
@@ -287,7 +311,7 @@ impl<'a> Profiler<'a> {
         } else {
             let target = self.location_at(target_pc).unwrap();
             let curr_function = self.curr_function().unwrap();
-            if target.0 != curr_function {
+            if target.function != curr_function {
                 // "tail call": replace the current call in the stack
                 let (done_call, cost) = self.call_stack.pop().unwrap();
 
