@@ -1,6 +1,5 @@
 use powdr_number::FieldElement;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::{cmp, path::PathBuf};
 
 use powdr_ast::analyzed::{
@@ -35,8 +34,10 @@ struct Exporter<'a, T> {
     /// polynomials.
     intermediate_poly_expression_ids: HashMap<u64, u64>,
     number_q: u64,
-    // TODO we should really only compare based on pointers, not on values.
-    line_starts: HashMap<Arc<str>, Vec<usize>>,
+    /// A cache to improve computing the line from a file offset.
+    /// Comparison is by raw pointer value because the data comes
+    /// from Arcs and we assume the actual data is not cloned.
+    line_starts: HashMap<*const u8, Vec<usize>>,
 }
 
 pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
@@ -385,14 +386,12 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
     }
 
     fn line_of_source_ref(&mut self, source: &powdr_ast::SourceRef) -> usize {
-        let (Some(file_name), Some(file_contents)) =
-            (source.file_name.as_ref(), source.file_contents.as_ref())
-        else {
+        let Some(file_contents) = source.file_contents.as_ref() else {
             return 0;
         };
         let line_starts = self
             .line_starts
-            .entry(file_name.clone())
+            .entry(file_contents.as_ptr())
             .or_insert_with(|| compute_line_starts(&file_contents));
         offset_to_line_col(source.start, line_starts).0
     }

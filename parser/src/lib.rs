@@ -169,7 +169,7 @@ mod test {
             PILFile(vec![PilStatement::Include(
                 SourceRef {
                     file_name: None,
-                    file_contents: None,
+                    file_contents: Some(input.into()),
                     start: 0,
                     end: 0,
                 },
@@ -189,7 +189,7 @@ mod test {
                 PilStatement::Include(
                     SourceRef {
                         file_name: None,
-                        file_contents: None,
+                        file_contents: Some(input.into()),
                         start: 0,
                         end: 0,
                     },
@@ -198,7 +198,7 @@ mod test {
                 PilStatement::PolynomialCommitDeclaration(
                     SourceRef {
                         file_name: None,
-                        file_contents: None,
+                        file_contents: Some(input.into()),
                         start: 13,
                         end: 13,
                     },
@@ -223,7 +223,7 @@ mod test {
             PILFile(vec![PilStatement::PlookupIdentity(
                 SourceRef {
                     file_name: None,
-                    file_contents: None,
+                    file_contents: Some(input.into()),
                     start: 0,
                     end: 0,
                 },
