@@ -2,7 +2,26 @@
 
 #![deny(clippy::print_stdout)]
 
-use powdr_ast::SourceRef;
+use std::sync::Arc;
+
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+pub struct SourceRef {
+    pub file_name: Option<Arc<str>>,
+    pub file_contents: Option<Arc<str>>,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl SourceRef {
+    pub fn unknown() -> Self {
+        Default::default()
+    }
+}
 
 #[derive(Debug)]
 pub struct Error {
@@ -19,11 +38,7 @@ impl Error {
 
         let config = term::Config::default();
         let mut files = SimpleFiles::new();
-        let file_name = self
-            .source_ref
-            .file_name
-            .as_deref()
-            .unwrap_or_else(|| "input".into());
+        let file_name = self.source_ref.file_name.as_deref().unwrap_or("input");
         let contents = self.source_ref.file_contents.as_deref().unwrap_or_default();
         let file_id = files.add(file_name, contents);
         let diagnostic = Diagnostic::error()
@@ -37,10 +52,10 @@ impl Error {
     }
 }
 
-pub fn handle_parse_error<'a>(
+pub fn handle_parse_error(
     err: lalrpop_util::ParseError<usize, lalrpop_util::lexer::Token, String>,
     file_name: Option<&str>,
-    input: &'a str,
+    input: &str,
 ) -> Error {
     let (&start, &end) = match &err {
         lalrpop_util::ParseError::InvalidToken { location } => (location, location),
@@ -75,7 +90,7 @@ pub trait UnwrapErrToStderr {
     fn unwrap_err_to_stderr(self) -> Self::Inner;
 }
 
-impl<'a, T> UnwrapErrToStderr for Result<T, Error> {
+impl<T> UnwrapErrToStderr for Result<T, Error> {
     type Inner = T;
 
     fn unwrap_err_to_stderr(self) -> Self::Inner {

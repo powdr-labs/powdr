@@ -8,9 +8,10 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-powdr-ast.workspace = true
 lalrpop-util = {version = "^0.19", features = ["lexer"]}
 codespan-reporting = "^0.11"
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
+schemars = { version = "0.8.16", features = ["preserve_order"]}
 
 [dev-dependencies]
 test-log = "0.2.12"

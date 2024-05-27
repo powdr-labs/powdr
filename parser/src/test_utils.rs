@@ -1,9 +1,7 @@
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::SourceReference;
-use powdr_ast::{
-    parsed::{PILFile, PilStatement},
-    SourceRef,
-};
+use powdr_ast::parsed::{PILFile, PilStatement};
+use powdr_parser_util::SourceRef;
 
 // helper function to clear SourceRef's inside the AST so we can compare for equality
 pub fn pil_clear_source_refs(ast: &mut PILFile) {

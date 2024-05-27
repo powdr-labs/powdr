@@ -8,9 +8,7 @@ use powdr_ast::parsed::{
     types::{Type, TypeBounds, TypeScheme},
     Expression, SourceReference,
 };
-use powdr_ast::SourceRef;
-
-use powdr_parser_util::{handle_parse_error, Error};
+use powdr_parser_util::{handle_parse_error, Error, SourceRef};
 
 use std::sync::Arc;
 
@@ -63,9 +61,9 @@ lazy_static::lazy_static! {
     static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
-pub fn parse<'a>(
+pub fn parse(
     file_name: Option<&str>,
-    input: &'a str,
+    input: &str,
 ) -> Result<powdr_ast::parsed::PILFile, Error> {
     let ctx = ParserContext::new(file_name, input);
     PIL_FILE_PARSER
@@ -73,16 +71,16 @@ pub fn parse<'a>(
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
-pub fn parse_asm<'a>(
+pub fn parse_asm(
     file_name: Option<&str>,
-    input: &'a str,
+    input: &str,
 ) -> Result<powdr_ast::parsed::asm::ASMProgram, Error> {
     parse_module(file_name, input).map(|main| ASMProgram { main })
 }
 
-pub fn parse_module<'a>(
+pub fn parse_module(
     file_name: Option<&str>,
-    input: &'a str,
+    input: &str,
 ) -> Result<powdr_ast::parsed::asm::ASMModule, Error> {
     let ctx = ParserContext::new(file_name, input);
     ASM_MODULE_PARSER
