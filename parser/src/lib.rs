@@ -34,22 +34,23 @@ impl ParserContext {
         }
     }
 
-    pub fn source_ref(&self, offset: usize) -> SourceRef {
+    pub fn source_ref(&self, start: usize, end: usize) -> SourceRef {
         SourceRef {
             file_name: self.file_name.clone(),
             file_contents: self.file_contents.clone(),
-            start: offset,
-            end: offset,
+            start,
+            end,
         }
     }
 
     pub fn to_expr_with_source_ref<T: Into<Expression>>(
         &self,
         inner_expr: T,
-        offset: usize,
+        start: usize,
+        end: usize,
     ) -> Box<Expression> {
         let mut expr = inner_expr.into();
-        *expr.source_reference_mut() = self.source_ref(offset);
+        *expr.source_reference_mut() = self.source_ref(start, end);
         Box::new(expr)
     }
 }
@@ -61,10 +62,7 @@ lazy_static::lazy_static! {
     static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
-pub fn parse(
-    file_name: Option<&str>,
-    input: &str,
-) -> Result<powdr_ast::parsed::PILFile, Error> {
+pub fn parse(file_name: Option<&str>, input: &str) -> Result<powdr_ast::parsed::PILFile, Error> {
     let ctx = ParserContext::new(file_name, input);
     PIL_FILE_PARSER
         .parse(&ctx, input)
@@ -169,7 +167,7 @@ mod test {
                     file_name: None,
                     file_contents: Some(input.into()),
                     start: 0,
-                    end: 0,
+                    end: 11,
                 },
                 "x".to_string()
             )])
@@ -189,7 +187,7 @@ mod test {
                         file_name: None,
                         file_contents: Some(input.into()),
                         start: 0,
-                        end: 0,
+                        end: 11,
                     },
                     "x".to_string()
                 ),
@@ -198,7 +196,7 @@ mod test {
                         file_name: None,
                         file_contents: Some(input.into()),
                         start: 13,
-                        end: 13,
+                        end: 25,
                     },
                     None,
                     vec![PolynomialName {
@@ -223,7 +221,7 @@ mod test {
                     file_name: None,
                     file_contents: Some(input.into()),
                     start: 0,
-                    end: 0,
+                    end: 6,
                 },
                 SelectedExpressions {
                     selector: None,
