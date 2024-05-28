@@ -662,10 +662,12 @@ impl<'a> TypeChecker<'a> {
         let empty_tuple = Type::Tuple(TupleType { items: vec![] });
         match self.lambda_kind {
             FunctionKind::Constr => {
-                self.expect_type(&self.statement_type.ty, expr).or_else(|err| {
-                    self.expect_type(&empty_tuple, expr).map_err(|err2| {
-                        format!("Invalid expression ({expr}) inside Constr function:\n{err}\n{err2}")
-                    })
+                if self.expect_type(&self.statement_type.ty, expr).is_ok() {
+                    return Ok(());
+                }
+
+                self.expect_type(&empty_tuple, expr).map_err(|err| {
+                    format!("Invalid expression ({expr}) inside Constr function:\n{err}")
                 })?;
             }
             _ => {
@@ -679,10 +681,15 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_kind(&mut self, result: Type) -> Result<Type, String> {
+        // Temporary adding a check against the Expr type for now (TODO improve this before merging)
         let empty_tuple = Type::Tuple(TupleType { items: vec![] });
         match (result.clone(), self.lambda_kind) {
             (res, FunctionKind::Constr) => {
-                if res.is_concrete_type() & (res != self.statement_type.ty) & (res != empty_tuple) {
+                if (res != Type::Expr)
+                    & res.is_concrete_type()
+                    & (res != self.statement_type.ty)
+                    & (res != empty_tuple)
+                {
                     return Err(format!(
                         "Invalid return type {res} for Constr function. Expected {} or {empty_tuple}.", self.statement_type.ty
                     ));
@@ -690,7 +697,7 @@ impl<'a> TypeChecker<'a> {
                 Ok(result)
             }
             (res, _) => {
-                if res.is_concrete_type() & (res != empty_tuple) {
+                if (res != Type::Expr) & res.is_concrete_type() & (res != empty_tuple) {
                     return Err(format!(
                         "Invalid return type {res} for Pure/Query function. Expected {empty_tuple}."
                     ));
