@@ -26,7 +26,7 @@ machine Arith with
     // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3
     // Operation ID is 1 = 0b0001, i.e., we activate equation 0.
     operation affine_256<1> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7] -> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
-    operation mod_256<1> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7], x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7] -> y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7];
+    operation mod_256<1> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7], x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7] -> x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7];
 
     // Performs elliptic curve addition of points (x1, y2) and (x2, y2).
     // Operation ID is 10 = 0b1010, i.e., we activate equations 1, 3, and 4.
@@ -127,6 +127,53 @@ machine Arith with
     } else {
         0
     };
+
+    let quotient_hint = query || if is_ec_operation() == 0 {
+        let y2 = y2_int();
+        let y3 = y3_int();
+        let x1 = x1_int();
+        let dividend = y2 << 256 + y3;
+        let quotient = divident / x1;
+        quotient
+    } else {
+        0
+    };
+
+    col witness quotient_0 query Query::Hint(fe(select_limb(quotient_hint(), 0)));
+    col witness quotient_1 query Query::Hint(fe(select_limb(quotient_hint(), 1)));
+    col witness quotient_2 query Query::Hint(fe(select_limb(quotient_hint(), 2)));
+    col witness quotient_3 query Query::Hint(fe(select_limb(quotient_hint(), 3)));
+    col witness quotient_4 query Query::Hint(fe(select_limb(quotient_hint(), 4)));
+    col witness quotient_5 query Query::Hint(fe(select_limb(quotient_hint(), 5)));
+    col witness quotient_6 query Query::Hint(fe(select_limb(quotient_hint(), 6)));
+    col witness quotient_7 query Query::Hint(fe(select_limb(quotient_hint(), 7)));
+    col witness quotient_8 query Query::Hint(fe(select_limb(quotient_hint(), 8)));
+    col witness quotient_9 query Query::Hint(fe(select_limb(quotient_hint(), 9)));
+    col witness quotient_10 query Query::Hint(fe(select_limb(quotient_hint(), 10)));
+    col witness quotient_11 query Query::Hint(fe(select_limb(quotient_hint(), 11)));
+    col witness quotient_12 query Query::Hint(fe(select_limb(quotient_hint(), 12)));
+    col witness quotient_13 query Query::Hint(fe(select_limb(quotient_hint(), 13)));
+    col witness quotient_14 query Query::Hint(fe(select_limb(quotient_hint(), 14)));
+    col witness quotient_15 query Query::Hint(fe(select_limb(quotient_hint(), 15)));
+    
+    let quotient = [
+        quotient_0,
+        quotient_1,
+        quotient_2,
+        quotient_3,
+        quotient_4,
+        quotient_5,
+        quotient_6,
+        quotient_7,
+        quotient_8,
+        quotient_9,
+        quotient_10,
+        quotient_11,
+        quotient_12,
+        quotient_13,
+        quotient_14,
+        quotient_15,
+    ];
 
     col witness s_0(i) query Query::Hint(fe(select_limb(s_hint(), 0)));
     col witness s_1(i) query Query::Hint(fe(select_limb(s_hint(), 1)));
@@ -236,6 +283,7 @@ machine Arith with
     array::map(q0, fixed_inside_32_block);
     array::map(q1, fixed_inside_32_block);
     array::map(q2, fixed_inside_32_block);
+    array::map(quotient, fixed_inside_32_block);
 
     /****
     *
@@ -249,6 +297,21 @@ machine Arith with
     // Note that for q0-q2, we only range-constrain the first 15 limbs here
     sum(16, |i| s[i] * CLK32[i]) + sum(15, |i| q0[i] * CLK32[16 + i]) in BYTE2;
     sum(15, |i| q1[i] * CLK32[i]) + sum(15, |i| q2[i] * CLK32[16 + i]) in BYTE2;
+    // vertically arranges limbs of x1 and y1 as
+    // x1[0]
+    // x1[1]
+    // ...
+    // x1[15]
+    // y1[0]
+    // y1[1]
+    // ...
+    // y1[15]
+
+    // potential issue: the quotient can overflow 256 bits 
+    // if 2 ** 256 * y2 + y3 is almost the largest u512 number
+    // even if the modulo is almost the largest u256 number
+    // therefore, the most significant limb should be constrained to be 32 bits instead
+    sum(15, |i| quotient[i] * CLK32[i]) in BYTE2; // quotient doesn't have another number to range check with, so it only takes 16 rows vertically and the rest 16 rows are zero
 
     // The most significant limbs of q0-q2 are constrained to be 32 bits
     // In Polygon's version they are 19 bits, but that requires increasing the minimum degree
@@ -257,8 +320,8 @@ machine Arith with
     // Having a larger range-constraint is fine, because we're only multiplying it with 16-bit
     // limbs of the prime, so the result is within 48 bits, still far from overflowing the
     // Goldilocks field.
-    pol witness q0_15_high, q0_15_low, q1_15_high, q1_15_low, q2_15_high, q2_15_low;
-    q0_15_high * CLK32[0] + q0_15_low * CLK32[1] + q1_15_high * CLK32[2] + q1_15_low * CLK32[3] + q2_15_high * CLK32[4] + q2_15_low * CLK32[5] in BYTE2;
+    pol witness q0_15_high, q0_15_low, q1_15_high, q1_15_low, q2_15_high, q2_15_low, quotient_15_high, quotient_15_low;
+    q0_15_high * CLK32[0] + q0_15_low * CLK32[1] + q1_15_high * CLK32[2] + q1_15_low * CLK32[3] + q2_15_high * CLK32[4] + q2_15_low * CLK32[5] + quotient_15_high * CLK32[6] + quotient_15_low * CLK32[7] in BYTE2;
 
     fixed_inside_32_block(q0_15_high);
     fixed_inside_32_block(q0_15_low);
@@ -266,10 +329,13 @@ machine Arith with
     fixed_inside_32_block(q1_15_low);
     fixed_inside_32_block(q2_15_high);
     fixed_inside_32_block(q2_15_low);
+    fixed_inside_32_block(quotient_15_high);
+    fixed_inside_32_block(quotient_15_low);
 
     q0[15] = 2**16 * q0_15_high + q0_15_low;
     q1[15] = 2**16 * q1_15_high + q1_15_low;
     q2[15] = 2**16 * q2_15_high + q2_15_low;
+    quotient[15] = 2**16 * quotient_15_high + quotient_15_low;
 
     /*******
     *
@@ -300,8 +366,14 @@ machine Arith with
     let q0f = array_as_fun(q0);
     let q1f = array_as_fun(q1);
     let q2f = array_as_fun(q2);
+    let quotient2f = array_as_fun(quotient);
 
     // Defined for arguments from 0 to 31 (inclusive)
+    // TODO: should i replace y1f with quotient2f?
+    // not sure how to use this hint in equation 0
+    // if we only ever use multiplication alone (setting x2 to 0)
+    // or addition alone (setting x1 to 1)
+    // then we should be good to replace y1f with quotient2f?
     let eq0 = |nr|
         product(x1f, y1f)(nr)
         + x2f(nr)
