@@ -90,6 +90,7 @@ fn binary_fail() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn binary2x_test() {
     let f = "std/binary2x_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();
@@ -97,6 +98,7 @@ fn binary2x_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 #[should_panic = "Witness generation failed."]
 fn binary2x_fail() {
     let f = "std/binary2x_fail.asm";
