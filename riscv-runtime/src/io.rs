@@ -37,7 +37,7 @@ pub fn read_data_len(fd: u32) -> usize {
 /// Writes a single u8 to the file descriptor fd.
 pub fn write_u8(fd: u32, byte: u8) {
     unsafe {
-        asm!("ecall", in("a0") fd, in("a1") bytw, in("t0") u32::from(Syscall::Output));
+        asm!("ecall", in("a0") fd, in("a1") byte, in("t0") u32::from(Syscall::Output));
     }
 }
 
