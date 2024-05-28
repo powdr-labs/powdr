@@ -47,21 +47,29 @@ impl VerifierBuilder for BBFiles {
         };
 
         let verify_proof_function_declaration: String = if has_public_input_columns {
-            format!("bool {name}Verifier::verify_proof(const HonkProof& proof, const std::vector<FF>& public_inputs)")
+            format!("bool {name}Verifier::verify_proof(const HonkProof& proof, const std::vector<std::vector<FF>>& public_inputs)")
         } else {
             format!("bool {name}Verifier::verify_proof(const HonkProof& proof)")
         };
 
-        let (public_inputs_check, evaluate_public_inputs) = if has_public_input_columns {
-            let public_inputs_column = public_cols[0].clone(); // asserted to be 1 for the meantime, this will be generalized when required
-            let inputs_check = format!(
+        let public_inputs_column_transformation = |public_inputs_column_name: &String, i: usize| {
+            format!(
                 "
-        FF public_column_evaluation = evaluate_public_input_column(public_inputs, circuit_size, multivariate_challenge);
-        if (public_column_evaluation != claimed_evaluations.{public_inputs_column}) {{
+        FF {public_inputs_column_name}_evaluation = evaluate_public_input_column(public_inputs[{i}], circuit_size, multivariate_challenge);
+        if ({public_inputs_column_name}_evaluation != claimed_evaluations.{public_inputs_column_name}) {{
             return false;
         }}
                 "
-            );
+            )
+        };
+
+        let (public_inputs_check, evaluate_public_inputs) = if has_public_input_columns {
+            let inputs_check = public_cols
+                .iter()
+                .enumerate()
+                .map(|(i, col_name)| public_inputs_column_transformation(col_name, i))
+                .collect::<String>();
+
             let evaluate_public_inputs = format!(
                 "
 
@@ -172,6 +180,7 @@ impl VerifierBuilder for BBFiles {
             return false;
         }}
 
+        // Public columns evaluation checks
         {public_inputs_check}
     
         // Execute ZeroMorph rounds. See https://hackmd.io/dlf9xEwhTQyE3hiGbq4FsA?view for a complete description of the
@@ -207,7 +216,7 @@ impl VerifierBuilder for BBFiles {
 
         // If there are public input columns, then the generated verifier must take them in as an argument for the verify_proof
         let verify_proof = if !public_cols.is_empty() {
-            "bool verify_proof(const HonkProof& proof, const std::vector<FF>& public_inputs);"
+            "bool verify_proof(const HonkProof& proof, const std::vector<std::vector<FF>>& public_inputs);"
                 .to_string()
         } else {
             "bool verify_proof(const HonkProof& proof);".to_owned()
