@@ -45,7 +45,7 @@ fn call_graph<'a, I: Iterator<Item = (&'a str, Option<&'a Expression>)>>(
             let mut called: HashSet<&str> = HashSet::new();
             if let Some(e) = expr {
                 e.all_children().for_each(|e| {
-                    if let Expression::Reference(Reference::Poly(r)) = e {
+                    if let Expression::Reference(_, Reference::Poly(r)) = e {
                         called.insert(r.name.as_str());
                     }
                 });
