@@ -6,8 +6,9 @@ machine Add with
     col witness A, B, C;
     A + B = C;
 
-    // Needs operation ID if more than one operation, even
-    // though we want the constraints to be the same in both cases.
+    // The compiler enforces that there is an operation ID if there are
+    // multiple operations, even though we want the constraints to be
+    // the same in both cases...
     col witness operation_id;
     let latch = 1;
 
