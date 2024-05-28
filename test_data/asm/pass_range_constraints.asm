@@ -1,4 +1,4 @@
-// This example tests that range constraints are passed back and fourth between
+// This example tests that range constraints are passed back and forth between
 // machines to solve a call.
 // In this example, a 8-bit input is decomposed into two chunks (which requires witgen
 // to know the range constraints of the chunks) and an 8-bit output is also decomposed
