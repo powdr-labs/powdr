@@ -2,8 +2,6 @@
 
 #![deny(clippy::print_stdout)]
 
-pub mod lines;
-
 #[derive(Debug)]
 pub struct ParseError<'a> {
     start: usize,
