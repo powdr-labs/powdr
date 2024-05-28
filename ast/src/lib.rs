@@ -15,20 +15,19 @@ pub mod object;
 /// A parsed ASM + PIL AST
 pub mod parsed;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 pub struct SourceRef {
-    pub file: Option<Arc<str>>,
-    pub line: usize,
-    pub col: usize,
+    pub file_name: Option<Arc<str>>,
+    pub file_contents: Option<Arc<str>>,
+    pub start: usize,
+    pub end: usize,
 }
 
 impl SourceRef {
     pub fn unknown() -> Self {
-        Self {
-            file: None,
-            line: 0,
-            col: 0,
-        }
+        Default::default()
     }
 }
 

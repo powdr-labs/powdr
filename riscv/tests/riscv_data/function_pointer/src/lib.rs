@@ -1,6 +1,6 @@
 #![no_std]
 
-use powdr_riscv_runtime::input::get_prover_input;
+use powdr_riscv_runtime::io::read_u32;
 
 // Never inline to make sure the function is not optimized away, and public to
 // make sure op argument is not removed, forcing a function pointer to be loaded
@@ -16,9 +16,9 @@ fn sub(a: u32, b: u32) -> u32 {
 
 #[no_mangle]
 fn main() {
-    let a = get_prover_input(0);
-    let b = get_prover_input(1);
-    let expected = get_prover_input(2);
+    let a = read_u32(0);
+    let b = read_u32(1);
+    let expected = read_u32(2);
 
     // As of this writing, this will generate a dynamic load of sub's label into
     // a0 register. If we had other functions to choose dynamically depending on
