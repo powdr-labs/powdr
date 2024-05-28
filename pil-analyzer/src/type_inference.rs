@@ -31,7 +31,7 @@ pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
     statement_type: &ExpectedType,
-) -> Result<Vec<(String, Type)>, Error> {
+) -> Result<Vec<(String, Type)>, Vec<Error>> {
     TypeChecker::new(statement_type).infer_types(definitions, expressions)
 }
 
@@ -87,8 +87,10 @@ impl<'a> TypeChecker<'a> {
         mut self,
         mut definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
         expressions: &mut [(&mut Expression, ExpectedType)],
-    ) -> Result<Vec<(String, Type)>, Error> {
-        let type_var_mapping = self.infer_types_inner(&mut definitions, expressions)?;
+    ) -> Result<Vec<(String, Type)>, Vec<Error>> {
+        let type_var_mapping = self
+            .infer_types_inner(&mut definitions, expressions)
+            .map_err(|e| vec![e])?;
         self.update_type_args(&mut definitions, expressions, &type_var_mapping)?;
         Ok(definitions
             .into_iter()
@@ -313,7 +315,7 @@ impl<'a> TypeChecker<'a> {
         definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
         expressions: &mut [(&mut Expression, ExpectedType)],
         type_var_mapping: &HashMap<String, HashMap<String, Type>>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Vec<Error>> {
         let mut errors = vec![];
         definitions
             .iter_mut()
@@ -339,8 +341,7 @@ impl<'a> TypeChecker<'a> {
         if errors.is_empty() {
             Ok(())
         } else {
-            // TODO allow multiple errors.
-            Err(errors.pop().unwrap())
+            Err(errors)
         }
     }
 

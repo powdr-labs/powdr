@@ -252,7 +252,7 @@ fn type_check_arrays() {
 }
 
 #[test]
-#[should_panic = "Error type checking the symbol x = (|i| (i, \\\"abc\\\")):\\nExpected either int -> int or int -> fe, but got: int -> (int, string).\\nCannot unify types (int, string) and fe"]
+#[should_panic = "Expected either int -> int or int -> fe, but got: int -> (int, string).\\nCannot unify types (int, string) and fe"]
 fn error_for_column_type() {
     let input = "
         let x: col = |i| (i, \"abc\");
