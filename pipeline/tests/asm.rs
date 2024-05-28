@@ -401,6 +401,14 @@ fn side_effects() {
 }
 
 #[test]
+fn multiple_signatures() {
+    let f = "asm/multiple_signatures.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn permutation_simple() {
     let f = "asm/permutations/simple.asm";
     verify_asm(f, Default::default());
