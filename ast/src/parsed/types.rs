@@ -256,7 +256,7 @@ pub struct ArrayType<E = u64> {
 impl<R: Display> From<ArrayType<Expression<R>>> for ArrayType<u64> {
     fn from(value: ArrayType<Expression<R>>) -> Self {
         let length = value.length.as_ref().map(|l| {
-            if let Expression::Number(Number {value: n, type_: ty}) = l {
+            if let Expression::Number(_, Number {value: n, type_: ty}) = l {
                 assert!(ty.is_none(), "Literal inside type name has assigned type. This should be done during analysis on the types instead.");
                 n.try_into().expect("Array length expression too large.")
             } else {
