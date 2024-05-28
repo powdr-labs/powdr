@@ -17,8 +17,6 @@ namespace Or(%N);
     col witness selector1, selector2;
     selector1 * (1 - selector1) = 0;
     selector2 * (1 - selector2) = 0;
-    (1 - RESET) * selector1 = 0;
-    (1 - RESET) * selector2 = 0;
 
     // Only one or 0 selectors can be active:
     let selector_sum = selector1 + selector2;
@@ -56,6 +54,6 @@ namespace Main(%N);
     col witness c;
     col fixed NTH(i) { if i % 32 == 16 { 1 } else { 0 } };
 
-    NTH {a, b, c} is Or.selector1 {Or.A, Or.B, Or.C};
-    NTH' {a, b, c} is Or.selector2 {Or.A, Or.B, Or.C};
+    NTH {a, b, c} is (Or.selector1 * Or.RESET) {Or.A, Or.B, Or.C};
+    NTH' {a, b, c} is (Or.selector2 * Or.RESET) {Or.A, Or.B, Or.C};
 

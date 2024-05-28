@@ -32,7 +32,7 @@ fn substitute_name_in_statement_expressions(
     substitution: &HashMap<String, String>,
 ) {
     fn substitute(e: &mut Expression, substitution: &HashMap<String, String>) {
-        if let Expression::Reference(r) = e {
+        if let Expression::Reference(_, r) = e {
             if let Some(n) = r.try_to_identifier() {
                 if let Some(v) = substitution.get(n).cloned() {
                     *r = NamespacedPolynomialReference::from_identifier(v);

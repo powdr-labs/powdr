@@ -258,6 +258,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                             "Stored {} = {key_value} -> {r} = {v}",
                             self.fixed_data.column_name(&self.key_col)
                         );
+                        assignments = assignments.report_side_effect();
                         *stored_value = Some(v);
                     }
                     None => {

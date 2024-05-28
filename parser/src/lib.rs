@@ -6,6 +6,7 @@ use lalrpop_util::*;
 use powdr_ast::parsed::{
     asm::ASMProgram,
     types::{Type, TypeBounds, TypeScheme},
+    Expression, SourceReference,
 };
 use powdr_ast::SourceRef;
 
@@ -24,24 +25,34 @@ lalrpop_mod!(
 
 pub struct ParserContext {
     file_name: Option<Arc<str>>,
-    line_starts: Vec<usize>,
+    file_contents: Option<Arc<str>>,
 }
 
 impl ParserContext {
     pub fn new(file_name: Option<&str>, input: &str) -> Self {
         Self {
             file_name: file_name.map(|s| s.into()),
-            line_starts: powdr_parser_util::lines::compute_line_starts(input),
+            file_contents: Some(input.into()),
         }
     }
 
     pub fn source_ref(&self, offset: usize) -> SourceRef {
-        let (line, col) = powdr_parser_util::lines::offset_to_line_col(offset, &self.line_starts);
         SourceRef {
-            file: self.file_name.clone(),
-            line,
-            col,
+            file_name: self.file_name.clone(),
+            file_contents: self.file_contents.clone(),
+            start: offset,
+            end: offset,
         }
+    }
+
+    pub fn to_expr_with_source_ref<T: Into<Expression>>(
+        &self,
+        inner_expr: T,
+        offset: usize,
+    ) -> Box<Expression> {
+        let mut expr = inner_expr.into();
+        *expr.source_reference_mut() = self.source_ref(offset);
+        Box::new(expr)
     }
 }
 
@@ -157,9 +168,10 @@ mod test {
             parsed,
             PILFile(vec![PilStatement::Include(
                 SourceRef {
-                    file: None,
-                    line: 1,
-                    col: 0,
+                    file_name: None,
+                    file_contents: Some(input.into()),
+                    start: 0,
+                    end: 0,
                 },
                 "x".to_string()
             )])
@@ -176,17 +188,19 @@ mod test {
             PILFile(vec![
                 PilStatement::Include(
                     SourceRef {
-                        file: None,
-                        line: 1,
-                        col: 0,
+                        file_name: None,
+                        file_contents: Some(input.into()),
+                        start: 0,
+                        end: 0,
                     },
                     "x".to_string()
                 ),
                 PilStatement::PolynomialCommitDeclaration(
                     SourceRef {
-                        file: None,
-                        line: 1,
-                        col: 13,
+                        file_name: None,
+                        file_contents: Some(input.into()),
+                        start: 13,
+                        end: 13,
                     },
                     None,
                     vec![PolynomialName {
@@ -208,9 +222,10 @@ mod test {
             parsed,
             PILFile(vec![PilStatement::PlookupIdentity(
                 SourceRef {
-                    file: None,
-                    line: 1,
-                    col: 0,
+                    file_name: None,
+                    file_contents: Some(input.into()),
+                    start: 0,
+                    end: 0,
                 },
                 SelectedExpressions {
                     selector: None,

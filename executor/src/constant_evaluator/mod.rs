@@ -5,7 +5,7 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Analyzed, Expression, FunctionValueDefinition, Symbol, TypedExpression},
+    analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
         IndexAccess,
@@ -69,10 +69,11 @@ fn generate_values<T: FieldElement>(
             };
             let index_expr;
             let e = if let Some(index) = index {
-                index_expr = Expression::IndexAccess(IndexAccess {
+                index_expr = IndexAccess {
                     array: e.clone().into(),
                     index: Box::new(BigUint::from(index).into()),
-                });
+                }
+                .into();
                 &index_expr
             } else {
                 e
