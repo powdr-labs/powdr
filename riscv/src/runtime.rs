@@ -131,10 +131,10 @@ impl Runtime {
         );
 
         r.add_syscall(
-            Syscall::PrintChar,
+            Syscall::Output,
             // This is using x0 on purpose, because we do not want to introduce
             // nondeterminism with this.
-            ["x0 <=X= ${ std::prover::Query::PrintChar(std::convert::int(std::prover::eval(x10))) };"]
+            ["x0 <=X= ${ std::prover::Query::Output(std::convert::int(std::prover::eval(x10)), std::convert::int(std::prover::eval(x11))) };"]
         );
 
         r
