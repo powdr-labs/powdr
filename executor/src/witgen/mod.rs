@@ -200,7 +200,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let mut generator = Generator::new(
             "Main Machine".to_string(),
             &fixed,
-            &[], // No connecting identities
+            &BTreeMap::new(), // No connecting identities
             base_identities,
             base_witnesses,
             // We could set the latch of the main VM here, but then we would have to detect it.
