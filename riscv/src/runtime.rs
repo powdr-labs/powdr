@@ -210,7 +210,7 @@ impl Runtime {
                 format!(
                     "instr mod_256 ~ arith.mod_256 {};",
                     instr_register_params(3, 24, 8) // will use registers 3..27
-                )
+                ),
             ],
             // machine uses the 26 registers from risc-v plus 10 extra registers
             10,
@@ -277,7 +277,7 @@ impl Runtime {
         self.add_syscall(Syscall::Affine256, affine256);
 
         // The mod_256 syscall takes as input the addresses of y2, y3, and x1.
-        let mod256 = 
+        let mod256 =
             // Save instruction registers
             (3..27).flat_map(|i| push_register(&reg(i)))
             // Load y2 in 3..11
