@@ -54,66 +54,80 @@ machine Binary with
     {operation_id', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
 }
 
+// Multiplexer machine that has 2 internal binary machines to be able to
+// support double the rows compared to the normal Binary machine above.
+// The two internal machines are called in an alternated fashion.
 machine Binary2x with
-	latch: latch,
-	operation_id: operation_id,
-	call_selectors: sel,
+    latch: latch,
+    operation_id: operation_id,
+    call_selectors: sel,
 {
-	Binary bin0;
-	Binary bin1;
+    Binary bin0;
+    Binary bin1;
 
-    // Unfortunately, this needs to be a witness column for witgen to work...
+    // Unfortunately, this needs to be a witness column for witgen to work.
     let used;
     used = std::array::sum(sel);
     std::utils::force_bool(used);
-	link instr_and_m0 ~> bin0.and A, B -> C;
-	link instr_and_m1 ~> bin1.and A, B -> C;
 
-	link instr_or_m0 ~> bin0.or A, B -> C;
-	link instr_or_m1 ~> bin1.or A, B -> C;
+    // If instruction is "and" and we should use machine 0.
+    link instr_and_m0 ~> bin0.and A, B -> C;
+    // If instruction is "and" and we should use machine 1.
+    link instr_and_m1 ~> bin1.and A, B -> C;
 
-	link instr_xor_m0 ~> bin0.xor A, B -> C;
-	link instr_xor_m1 ~> bin1.xor A, B -> C;
+    // If instruction is "or" and we should use machine 0.
+    link instr_or_m0 ~> bin0.or A, B -> C;
+    // If instruction is "or" and we should use machine 1.
+    link instr_or_m1 ~> bin1.or A, B -> C;
 
-	operation and<0> A, B -> C;
-	operation or<1> A, B -> C;
-	operation xor<2> A, B -> C;
+    // If instruction is "xor" and we should use machine 0.
+    link instr_xor_m0 ~> bin0.xor A, B -> C;
+    // If instruction is "xor" and we should use machine 1.
+    link instr_xor_m1 ~> bin1.xor A, B -> C;
 
-	col witness A, B, C;
+    // The external interface is the same as the Binary machine.
+    operation and<0> A, B -> C;
+    operation or<1> A, B -> C;
+    operation xor<2> A, B -> C;
 
-	col witness operation_id;
+    col witness A, B, C;
 
-	col fixed M(i) { i % 2 };
+    col witness operation_id;
 
-	col fixed OPERATION_ID(i) { i % 3 };
-	col fixed IS_AND = [1, 0, 0]*;
-	col fixed IS_OR = [0, 1, 0]*;
-	col fixed IS_XOR = [0, 0, 1]*;
+    // Used to select which machine to use.
+    col fixed M(i) { i % 2 };
 
-	col witness is_and, is_or, is_xor;
+    col fixed OPERATION_ID(i) { i % 3 };
+    col fixed IS_AND = [1, 0, 0]*;
+    col fixed IS_OR = [0, 1, 0]*;
+    col fixed IS_XOR = [0, 0, 1]*;
 
-	{operation_id, is_and, is_or, is_xor} in {OPERATION_ID, IS_AND, IS_OR, IS_XOR};
+    col witness is_and, is_or, is_xor;
 
-	col witness instr_and_m0;
-	col witness instr_and_m1;
+    // This lookup is needed to figure out which operation is being used.
+    {operation_id, is_and, is_or, is_xor} in {OPERATION_ID, IS_AND, IS_OR, IS_XOR};
 
-	col witness instr_or_m0;
-	col witness instr_or_m1;
+    col witness instr_and_m0;
+    col witness instr_and_m1;
 
-	col witness instr_xor_m0;
-	col witness instr_xor_m1;
+    col witness instr_or_m0;
+    col witness instr_or_m1;
+
+    col witness instr_xor_m0;
+    col witness instr_xor_m1;
 
     let is_and_and_used = used * is_and;
-	instr_and_m0 = is_and_and_used * (1 - M);
-	instr_and_m1 = is_and_and_used * M;
+    instr_and_m0 = is_and_and_used * (1 - M);
+    instr_and_m1 = is_and_and_used * M;
 
     let is_or_and_used = used * is_or;
-	instr_or_m0 = is_or_and_used * (1 - M);
-	instr_or_m1 = is_or_and_used * M;
+    instr_or_m0 = is_or_and_used * (1 - M);
+    instr_or_m1 = is_or_and_used * M;
 
     let is_xor_and_used = used * is_xor;
-	instr_xor_m0 = is_xor_and_used * (1 - M);
-	instr_xor_m1 = is_xor_and_used * M;
+    instr_xor_m0 = is_xor_and_used * (1 - M);
+    instr_xor_m1 = is_xor_and_used * M;
 
-	col fixed latch = [1]*;
+    // This machine can be invoked at every row.
+    col fixed latch = [1]*;
 }
