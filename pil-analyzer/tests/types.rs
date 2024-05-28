@@ -156,6 +156,8 @@ fn generic_fixes_concrete() {
     // but in order to do that, we have to unify the derived type of
     // `y` with the declared and this would maybe create problems in that
     // we would not derive the most generic type for generic functions.
+
+    // TODO revisit this test, check if we are missing an error.
     let input = "
         let x = || 8;
         let<T> y: T -> int = |k| x();
