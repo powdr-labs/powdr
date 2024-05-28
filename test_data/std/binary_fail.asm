@@ -1,4 +1,4 @@
-use std::machines::binary::Binary2x;
+use std::machines::binary::Binary;
 
 /*
 The "Binary" machine has a lower bound of 2**18 because of the byte lookup and
@@ -7,12 +7,11 @@ That means that if the Main machine has degree D, the original Binary machine
 can only be called D/4 times.
 In the test below, the Main machine has degree 2**20 and the Binary machine is
 called ~ 1/2 of the rows, so the original Binary machine runs out of rows.
-
-Binary2x has 2 internal original Binary machines, so it can be called D/2 times.
+Therefore witgen should fail.
 */
 
 machine Main with degree: 1048576 {
-	Binary2x binary;
+	Binary binary;
 
 	reg pc[@pc];
 	reg X[<=];

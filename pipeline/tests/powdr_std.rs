@@ -82,6 +82,29 @@ fn binary_test() {
 }
 
 #[test]
+#[should_panic = "Witness generation failed."]
+fn binary_fail() {
+    let f = "std/binary_fail.asm";
+    verify_test_file(f, Default::default(), vec![]).unwrap();
+    test_halo2(f, Default::default());
+}
+
+#[test]
+fn binary2x_test() {
+    let f = "std/binary2x_test.asm";
+    verify_test_file(f, Default::default(), vec![]).unwrap();
+    test_halo2(f, Default::default());
+}
+
+#[test]
+#[should_panic = "Witness generation failed."]
+fn binary2x_fail() {
+    let f = "std/binary2x_fail.asm";
+    verify_test_file(f, Default::default(), vec![]).unwrap();
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn shift_test() {
     let f = "std/shift_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();
