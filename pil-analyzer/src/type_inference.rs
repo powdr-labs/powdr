@@ -694,7 +694,6 @@ impl<'a> TypeChecker<'a> {
                         "Invalid return type {res} for Constr function. Expected {} or {empty_tuple}.", self.statement_type.ty
                     ));
                 }
-                Ok(result)
             }
             (res, _) => {
                 if (res != Type::Expr) & res.is_concrete_type() & (res != empty_tuple) {
@@ -702,9 +701,9 @@ impl<'a> TypeChecker<'a> {
                         "Invalid return type {res} for Pure/Query function. Expected {empty_tuple}."
                     ));
                 }
-                Ok(result)
             }
         }
+        Ok(result)
     }
 
     /// Process a function call and return the type of the expression.
