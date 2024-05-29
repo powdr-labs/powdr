@@ -366,8 +366,6 @@ fn create_proving_and_verification_key(
 fn create_polynomial_views(first_poly: &String) -> String {
     format!("
 
-    using FoldedPolynomials = AllEntities<std::vector<FF>>;
-
     class AllValues : public AllEntities<FF> {{
         public:
           using Base = AllEntities<FF>;
@@ -414,9 +412,6 @@ fn create_polynomial_views(first_poly: &String) -> String {
         }}
     }};
 
-
-    using RowPolynomials = AllEntities<FF>;
-
     class PartiallyEvaluatedMultivariates : public AllEntities<Polynomial> {{
       public:
         PartiallyEvaluatedMultivariates() = default;
@@ -438,7 +433,7 @@ fn create_polynomial_views(first_poly: &String) -> String {
 
     /**
      * @brief A container for univariates used during Protogalaxy folding and sumcheck with some of the computation
-     * optmistically ignored
+     * optimistically ignored
      * @details During folding and sumcheck, the prover evaluates the relations on these univariates.
      */
     template <size_t LENGTH, size_t SKIP_COUNT>
