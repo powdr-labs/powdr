@@ -5,7 +5,7 @@ use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
 use powdr_plonky3::{generate_setup, Plonky3Prover};
 
-use crate::{Backend, BackendFactory, Error, Proof};
+use crate::{Backend, BackendFactory, Error, Proof, BackendOptions};
 
 pub(crate) struct Plonky3ProverFactory;
 
@@ -17,7 +17,12 @@ impl<T: FieldElement> BackendFactory<T> for Plonky3ProverFactory {
         _output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
+        verification_app_key: Option<&mut dyn io::Read>,
+        _: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, T> + 'a>, Error> {
+        if verification_app_key.is_some() {
+            return Err(Error::NoAggregationAvailable);
+        }
         let mut plonky3 = Box::new(Plonky3Prover::new(pil, fixed, setup)?);
         if let Some(vk) = verification_key {
             plonky3.add_verification_key(vk);

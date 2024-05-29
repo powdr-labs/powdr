@@ -4,7 +4,7 @@ mod estark;
 #[cfg(feature = "halo2")]
 mod halo2;
 #[cfg(feature = "plonky3")]
-mod plonky3_impl;
+mod plonky3;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -50,8 +50,8 @@ impl BackendType {
             estark::starky_wrapper::Factory;
         const ESTARK_DUMP_FACTORY: estark::DumpFactory = estark::DumpFactory;
         #[cfg(feature = "plonky3")]
-        const PLONKY3_FACTORY: plonky3_impl::Plonky3ProverFactory =
-            plonky3_impl::Plonky3ProverFactory;
+        const PLONKY3_FACTORY: plonky3::Plonky3ProverFactory =
+            plonky3::Plonky3ProverFactory;
 
         match self {
             #[cfg(feature = "halo2")]
