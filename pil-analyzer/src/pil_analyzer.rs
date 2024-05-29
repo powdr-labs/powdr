@@ -273,10 +273,11 @@ impl PILAnalyzer {
         let constr_function_statement_type = ExpectedType {
             ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
             allow_array: true,
+            allow_empty: true,
         };
         for id in &mut self.identities {
             if id.kind == IdentityKind::Polynomial {
-                // At statement level, we allow Constr or Constr[].
+                // At statement level, we allow Constr, Constr[] or ().
                 expressions.push((
                     id.expression_for_poly_id_mut(),
                     constr_function_statement_type.clone(),

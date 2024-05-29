@@ -39,6 +39,7 @@ pub fn infer_types(
 pub struct ExpectedType {
     pub ty: Type,
     pub allow_array: bool,
+    pub allow_empty: bool,
 }
 
 impl From<Type> for ExpectedType {
@@ -46,6 +47,7 @@ impl From<Type> for ExpectedType {
         ExpectedType {
             ty,
             allow_array: false,
+            allow_empty: false,
         }
     }
 }
@@ -423,11 +425,17 @@ impl<'a> TypeChecker<'a> {
         expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<(), String> {
         for (e, expected_type) in expressions {
-            println!(
-                "Checking expression: {e} with expected type {}",
-                expected_type.ty
-            );
-            self.expect_type_with_flexibility(expected_type, e)?;
+            let expected = self.expect_type_with_flexibility(expected_type, e);
+            if expected.is_err() && expected_type.allow_empty {
+                let empty_tuple_statement_type = ExpectedType {
+                    ty: Type::Tuple(TupleType { items: vec![] }),
+                    allow_array: false,
+                    allow_empty: false,
+                };
+                self.expect_type_with_flexibility(&empty_tuple_statement_type, e)
+            } else {
+                expected
+            }?;
         }
         Ok(())
     }
@@ -463,8 +471,8 @@ impl<'a> TypeChecker<'a> {
                 })
                 .map_err(|err| {
                     format!(
-                        "Expression is expected to evaluate to {}:\n  {expr}:\n{err}",
-                        expected_type.ty
+                        "Expression is expected to evaluate to {} or ({})[]:\n  {expr}:\n{err}",
+                        expected_type.ty, expected_type.ty
                     )
                 })
         } else {
@@ -542,9 +550,9 @@ impl<'a> TypeChecker<'a> {
                     .and_then(|param_types| {
                         let old_lambda_kind = self.lambda_kind;
                         self.lambda_kind = *kind;
-                        let body_type = self.infer_type_of_expression(body)?;
+                        let body_type = self.infer_type_of_expression(body);
                         self.lambda_kind = old_lambda_kind;
-                        Ok((param_types, body_type))
+                        Ok((param_types, body_type?))
                     });
                 self.local_var_types.truncate(old_len);
                 let (param_types, body_type) = result?;
@@ -660,24 +668,30 @@ impl<'a> TypeChecker<'a> {
         expr: &mut powdr_ast::parsed::Expression<Reference>,
     ) -> Result<(), String> {
         let empty_tuple = Type::Tuple(TupleType { items: vec![] });
+        let infered_type = self.infer_type_of_expression(expr)?;
+        if infered_type == Type::Expr || !infered_type.is_concrete_type() {
+            return Ok(());
+        }
         match self.lambda_kind {
             FunctionKind::Constr => {
-                if self.expect_type(&self.statement_type.ty, expr).is_ok() {
+                if infered_type == self.statement_type.ty || infered_type == empty_tuple {
                     return Ok(());
                 }
 
-                self.expect_type(&empty_tuple, expr).map_err(|err| {
-                    format!("Invalid expression ({expr}) inside Constr function:\n{err}")
-                })?;
+                return Err(format!(
+                    "Invalid expression `{expr}` inside Constr function:\nExpected {} or {empty_tuple} but got {infered_type}.", self.statement_type.ty
+                ));
             }
             _ => {
-                self.expect_type(&empty_tuple, expr).map_err(|err| {
-                    format!("Invalid expression ({expr}) inside Pure/Query function:\n{err}")
-                })?;
+                if infered_type == empty_tuple {
+                    return Ok(());
+                }
+
+                return Err(format!(
+                    "Invalid expression `{expr}` inside Pure/Query function:\nExpected {empty_tuple} but got {infered_type}."
+                ));
             }
         }
-
-        Ok(())
     }
 
     fn check_kind(&mut self, result: Type) -> Result<Type, String> {
