@@ -15,9 +15,6 @@ pub fn elf_translate(file_name: &str) {
 
     let elf = Elf::parse(&file_buffer).unwrap();
     println!("{:#?}", elf);
-    /*for p in elf.program_headers {
-        println!("{:?}", p);
-    }*/
 
     // Index the sections by their virtual address
     let mut text_sections = BTreeMap::new();
@@ -41,6 +38,7 @@ pub fn elf_translate(file_name: &str) {
     }
 
     extract_reachable_code(elf.entry.try_into().unwrap(), &text_sections);
+    todo!();
 }
 
 fn extract_reachable_code(entry_point: u32, text_sections: &BTreeMap<u32, &[u8]>) {
@@ -62,31 +60,38 @@ fn extract_reachable_code(entry_point: u32, text_sections: &BTreeMap<u32, &[u8]>
 
         visited.insert(addr);
 
-        // We assume the entire section is code, so decode and translate it from
-        // start.
-        let code = convert_to_pseudoinstructions(addr, section_data);
+        // She entire section should be code, so decode and translate it from start.
+        let code = lift_instructions(addr, section_data);
     }
 }
 
-struct PseudoInstruction<'a> {
+enum HighLevelImmediate {
+    None,
+    CodeLabel(i32), // The value is the original address
+    Value(i32),
+}
+
+struct HighLevelInsn<'a> {
+    original_address: u32,
     op: &'a str,
     rd: Option<u32>,
     rs1: Option<u32>,
     rs2: Option<u32>,
-    imm: Option<i32>,
+    imm: HighLevelImmediate,
 }
 
 struct PseudoInstructionConverter {
     base_addr: u32,
 }
 
-impl TwoOrOneMapper<Ins, PseudoInstruction<'static>> for PseudoInstructionConverter {
-    fn try_map_two(&mut self, insn1: &Ins, insn2: &Ins) -> Option<PseudoInstruction<'static>> {
+impl TwoOrOneMapper<Ins, HighLevelInsn<'static>> for PseudoInstructionConverter {
+    fn try_map_two(&mut self, insn1: &Ins, insn2: &Ins) -> Option<HighLevelInsn<'static>> {
         let result = match (insn1, insn2) {
             (
+                // li rd, immediate
                 Ins {
-                    opc: Op::AUIPC,
-                    rd: Some(rd_auipc),
+                    opc: Op::LUI,
+                    rd: Some(rd_lui),
                     imm: Some(hi),
                     ..
                 },
@@ -97,16 +102,126 @@ impl TwoOrOneMapper<Ins, PseudoInstruction<'static>> for PseudoInstructionConver
                     imm: Some(lo),
                     ..
                 },
-            ) if rd_auipc == rd_addi && rd_auipc == rs1_addi => PseudoInstruction {
-                op: "la",
-                rd: Some(*rd_auipc as u32),
+            ) if rd_lui == rd_addi && rd_lui == rs1_addi => HighLevelInsn {
+                op: "li",
+                rd: Some(*rd_lui as u32),
                 rs1: None,
                 rs2: None,
-                imm: Some((((*hi as i32) << 12) | (*lo as i32)) + self.base_addr as i32),
+                imm: HighLevelImmediate::Value((*hi << 12) | *lo),
+                original_address: self.base_addr,
             },
-            // TODO: add more pseudoinstructions
-            // TODO: undo linker relaxation relative to "gp" register
-            // TODO: transform relative addresses to absolute addresses
+            (
+                // All other double instructions we can lift starts with auipc.
+                // Furthermore, we have to join every auipc, as we don't support
+                // it independently.
+                Ins {
+                    opc: Op::AUIPC,
+                    rd: Some(rd_auipc),
+                    imm: Some(hi),
+                    ..
+                },
+                insn2,
+            ) => {
+                let hi = self.base_addr as i32 + (*hi << 12);
+                match insn2 {
+                    // la rd, symbol
+                    Ins {
+                        opc: Op::ADDI,
+                        rd: Some(rd_addi),
+                        rs1: Some(rs1_addi),
+                        imm: Some(lo),
+                        ..
+                    } if rd_auipc == rd_addi && rd_auipc == rs1_addi => HighLevelInsn {
+                        op: "la",
+                        rd: Some(*rd_auipc as u32),
+                        rs1: None,
+                        rs2: None,
+                        imm: HighLevelImmediate::CodeLabel(hi + lo),
+                        original_address: self.base_addr,
+                    },
+                    // TODO: uncomment when powdr supports the pseudoinstruction
+                    // version of l{b|h|w} and s{b|h|w}. For now, it is better
+                    // to just fail here if we encounter this usage of auipc.
+                    /*
+                    // l{b|h|w} rd, symbol
+                    Ins {
+                        opc: l_op,
+                        rd: Some(rd_l),
+                        rs1: Some(rs1_l),
+                        rs2: None,
+                        imm: Some(lo),
+                        ..
+                    } if matches!(l_op, Op::LB | Op::LH | Op::LW)
+                        && rd_auipc == rd_l
+                        && rd_l == rs1_l =>
+                    {
+                        HighLevelInsn {
+                            op: l_op.to_string(),
+                            rd: Some(*rd_l as u32),
+                            rs1: None,
+                            rs2: None,
+                            imm: HighLevelImmediate::Value(hi + lo),
+                            original_address: self.base_addr,
+                        }
+                    }
+                    // s{b|h|w} rd, symbol, rt
+                    Ins {
+                        opc: l_op,
+                        rd: None,
+                        rs1: Some(rt_l),
+                        rs2: Some(rd),
+                        imm: Some(lo),
+                        ..
+                    } if matches!(l_op, Op::LB | Op::LH | Op::LW) && rd_auipc == rt_l => {
+                        HighLevelInsn {
+                            op: l_op.to_string(),
+                            rd: None,
+                            // TODO: If this pseudoinstruction is ever
+                            // implemented in powdr, rs1 should end up
+                            // containing the output of auipc, a value which
+                            // doen't make sense in powdr.
+                            rs1: Some(*rd_auipc as u32),
+                            rs2: Some(*rd as u32),
+                            imm: HighLevelImmediate::Value(hi + lo),
+                            original_address: self.base_addr,
+                        }
+                    }
+                    */
+                    // call offset
+                    Ins {
+                        opc: Op::JALR,
+                        rd: Some(1),
+                        rs1: Some(1),
+                        rs2: None,
+                        imm: Some(lo),
+                        ..
+                    } if *rd_auipc == 1 => HighLevelInsn {
+                        op: "call",
+                        rd: None,
+                        rs1: None,
+                        rs2: None,
+                        imm: HighLevelImmediate::CodeLabel(hi + lo),
+                        original_address: self.base_addr,
+                    },
+                    // tail offset
+                    Ins {
+                        opc: Op::JALR,
+                        rd: Some(0),
+                        rs1: Some(6),
+                        rs2: None,
+                        imm: Some(lo),
+                        ..
+                    } if *rd_auipc == 6 => HighLevelInsn {
+                        op: "tail",
+                        rd: None,
+                        rs1: None,
+                        rs2: None,
+                        imm: HighLevelImmediate::CodeLabel(hi + lo),
+                        original_address: self.base_addr,
+                    },
+                    _ => panic!("auipc could not be joined!"),
+                }
+            }
             _ => return None,
         };
 
@@ -115,26 +230,58 @@ impl TwoOrOneMapper<Ins, PseudoInstruction<'static>> for PseudoInstructionConver
         Some(result)
     }
 
-    fn map_one(&mut self, insn: Ins) -> PseudoInstruction<'static> {
-        self.base_addr += ins_size(&insn);
+    fn map_one(&mut self, insn: Ins) -> HighLevelInsn<'static> {
+        let imm = match insn.opc {
+            // All jump instructions that have the immediate as an address
+            Op::JAL | Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
+                HighLevelImmediate::CodeLabel(insn.imm.unwrap() + self.base_addr as i32)
+            }
+            // We currently only support standalone jalr if offset is zero
+            Op::JALR => {
+                assert!(
+                    insn.imm.unwrap() == 0,
+                    "jalr with non-zero offset is not supported"
+                );
 
-        PseudoInstruction {
+                HighLevelImmediate::Value(0)
+            }
+            // We currently don't support auipc by itself
+            Op::AUIPC => panic!("auipc could not be joined!"),
+            // All other instructions, which have the immediate as a value
+            _ => match insn.imm {
+                Some(imm) => HighLevelImmediate::Value(imm as i32),
+                None => HighLevelImmediate::None,
+            },
+        };
+
+        // We don't need to lift the branch instructions to their Z versions,
+        // because powdr's optimizer should be able to figure out the comparison is
+        // against a constant. But if needed, we could do it here...
+
+        let result = HighLevelInsn {
             op: insn.opc.to_string(),
             rd: insn.rd.map(|x| x as u32),
             rs1: insn.rs1.map(|x| x as u32),
             rs2: insn.rs2.map(|x| x as u32),
-            imm: insn.imm,
-        }
+            imm,
+            original_address: self.base_addr,
+        };
+
+        self.base_addr += ins_size(&insn);
+
+        result
     }
 }
 
-/// Lift the instructions back to higher-level pseudoinstructions. Just pass
-/// throught instruction sets that don't have a pseudoinstruction equivalent.
-fn convert_to_pseudoinstructions(base_addr: u32, data: &[u8]) -> Vec<PseudoInstruction> {
+/// Lift the instructions back to higher-level instructions.
+///
+/// Turn addresses into labels and and merge instructions into
+/// pseudoinstructions.
+fn lift_instructions(base_addr: u32, data: &[u8]) -> Vec<HighLevelInsn> {
     let instructions = RiscVInstructionIterator::new(data);
 
     let pseudo_converter = PseudoInstructionConverter { base_addr };
-    try_map_two_by_two(instructions, PseudoInstructionConverter { base_addr })
+    try_map_two_by_two(instructions, pseudo_converter)
 }
 
 struct RiscVInstructionIterator<'a> {
