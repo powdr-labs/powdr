@@ -587,6 +587,7 @@ Term: Box<Expression> = {
     MatchExpression,
     IfExpression,
     BlockExpression,
+    StructExpression,
     <start:@L> "[" <items:ExpressionList> "]" => ctx.to_expr_with_source_ref(ArrayLiteral{items}, start),
     <start:@L> "(" <head:Expression> "," <tail:ExpressionList> ")" => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start), list)) },
     <start:@L> "(" ")" => Box::new(Expression::Tuple(ctx.source_ref(start), vec![])),
@@ -630,6 +631,27 @@ IfExpression: Box<Expression> = {
         <body:BracedExpression>
         "else"
         <else_body:BracedExpression> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start),
+}
+
+StructExpression: Box<Expression> = {
+    <start:@L> <path:StructSymbolPath> "{" <fields:StructExpressionList+> "}" => ctx.to_expr_with_source_ref(StructExpression{path, fields}, start),
+}
+
+StructSymbolPath: SymbolPath = {
+    <path:SymbolPath> => path
+}
+
+StructExpressionList: BTreeMap<String, Expression> = {
+    => BTreeMap::new(),
+    <map:(<StructExpressionField> ",")*> <end:StructExpressionField> ","? => {
+        let mut hashmap = map.into_iter().collect::<BTreeMap<_, _>>();
+        hashmap.insert(end.0, end.1);
+        hashmap
+    }
+}
+
+StructExpressionField: (String, Expression) = {
+    <name:Identifier> ":" <value:Expression> => (name, value)
 }
 
 BlockExpression: Box<Expression> = {

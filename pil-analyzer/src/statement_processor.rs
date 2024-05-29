@@ -7,6 +7,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     Expression, TypeConstructor, TypeDeclaration as TypeDeclarationAnalyzed,
 };
+use powdr_ast::parsed::TypedExpression;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
@@ -15,7 +16,6 @@ use powdr_ast::parsed::{
 };
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_ast::parsed::{StructDeclaration, TypeDeclaration as TypeDeclarationParsed};
-use powdr_ast::parsed::{StructValue, TypedExpression};
 use powdr_ast::SourceRef;
 use powdr_number::DegreeType;
 
@@ -482,9 +482,9 @@ where
         {
             assert_eq!(symbol_kind, SymbolKind::Other());
             let struct_decl = self.process_struct_declaration(struct_decl);
-            let shared_struct_decl = Arc::new(struct_decl.clone());
+            //let shared_struct_decl = Arc::new(struct_decl.clone());
             // TODO Need to handle struct fields as well.
-            let field_items = struct_decl.fields.iter().map(|(field_name, _ty)| {
+            /*let field_items = struct_decl.fields.iter().map(|(field_name, _ty)| {
                 let var_symbol = Symbol {
                     id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
                     source: source.clone(),
@@ -505,13 +505,14 @@ where
                 ));
                 PILItem::Definition(var_symbol, Some(value))
             });
+            */
             return iter::once(PILItem::Definition(
                 symbol,
                 Some(FunctionValueDefinition::TypeDeclaration(
                     TypeDeclarationAnalyzed::Struct(struct_decl.clone()),
                 )),
             ))
-            .chain(field_items)
+            //.chain(field_items)
             .collect();
         }
 
