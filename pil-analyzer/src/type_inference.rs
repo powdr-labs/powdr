@@ -425,8 +425,8 @@ impl<'a> TypeChecker<'a> {
         expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<(), String> {
         for (e, expected_type) in expressions {
-            let result = self.expect_type_with_flexibility(expected_type, e);
-            if result.is_err() && expected_type.allow_empty {
+            self.expect_type_with_flexibility(expected_type, e)?;
+            /*if result.is_err() && expected_type.allow_empty {
                 let empty_tuple_statement_type = ExpectedType {
                     ty: Type::Tuple(TupleType { items: vec![] }),
                     allow_array: false,
@@ -436,7 +436,7 @@ impl<'a> TypeChecker<'a> {
                     .map_err(|err| format!("Expected type {} or ().\n{err}", expected_type.ty))?;
             } else if result.is_err() {
                 return result;
-            }
+            }*/
         }
         Ok(())
     }
@@ -451,7 +451,7 @@ impl<'a> TypeChecker<'a> {
             self.infer_type_of_expression(expr)
                 .and_then(|ty| {
                     let ty = self.type_into_substituted(ty);
-                    let expected_type = if matches!(ty, Type::Array(_)) {
+                    let expected = if matches!(ty, Type::Array(_)) {
                         Type::Array(ArrayType {
                             base: Box::new(expected_type.ty.clone()),
                             length: None,
@@ -460,12 +460,14 @@ impl<'a> TypeChecker<'a> {
                         expected_type.ty.clone()
                     };
 
+                    self.check_kind_and_expression(expr, &expected)?;
+
                     self.unifier
-                        .unify_types(ty.clone(), expected_type.clone())
+                        .unify_types(ty.clone(), expected.clone())
                         .map_err(|err| {
                             format!(
                                 "Expected type {} but got type {}.\n{err}",
-                                self.type_into_substituted(expected_type),
+                                self.type_into_substituted(expected),
                                 self.type_into_substituted(ty)
                             )
                         })
@@ -477,6 +479,7 @@ impl<'a> TypeChecker<'a> {
                     )
                 })
         } else {
+            self.check_kind_and_expression(expr, &expected_type.ty)?;
             self.expect_type(&expected_type.ty, expr)
         }
     }
@@ -652,54 +655,76 @@ impl<'a> TypeChecker<'a> {
                             self.expect_type_of_pattern(&value_type, pattern)?;
                         }
                         StatementInsideBlock::Expression(expr) => {
-                            self.check_kind_in_expression(expr)?
+                            self.expect_type_with_flexibility(&self.statement_type(), expr)?;
                         }
                     }
                 }
                 let result = self.infer_type_of_expression(expr);
-                let result = self.check_kind(result?);
                 self.local_var_types.truncate(original_var_count);
                 result?
             }
         })
     }
 
-    fn check_kind_in_expression(
+    fn statement_type(&self) -> ExpectedType {
+        if self.lambda_kind == FunctionKind::Constr {
+            self.statement_type.clone()
+        } else {
+            ExpectedType {
+                ty: Type::Tuple(TupleType { items: vec![] }),
+                allow_array: false,
+                allow_empty: false,
+            }
+        }
+    }
+
+    fn check_kind_and_expression(
         &mut self,
         expr: &mut powdr_ast::parsed::Expression<Reference>,
+        expected_type: &Type,
     ) -> Result<(), String> {
-        let empty_tuple = Type::Tuple(TupleType { items: vec![] });
-        let mut infered_type = self.infer_type_of_expression(expr)?;
-        if !infered_type.is_concrete_type() {
-            infered_type = self.type_into_substituted(infered_type)
-        }
+        let infered_type = if !expected_type.is_concrete_type() {
+            self.type_into_substituted(expected_type.clone())
+        } else {
+            expected_type.clone()
+        };
         match self.lambda_kind {
             FunctionKind::Constr => {
-                if infered_type == self.statement_type.ty
-                    || infered_type == empty_tuple
-                    || infered_type == Type::Expr
-                {
+                if self.expr_is_valid_in_constr(infered_type.clone()) {
                     return Ok(());
                 }
 
                 Err(format!(
-                    "Invalid expression `{expr}` inside Constr function:\nExpected {} or {empty_tuple} but got {infered_type}.", self.statement_type.ty
+                    "Invalid expression `{expr}` inside Constr function:\nExpected {} or () but got {infered_type}.", self.statement_type.ty
                 ))
             }
             _ => {
+                let empty_tuple = Type::Tuple(TupleType { items: vec![] });
                 if infered_type == empty_tuple {
                     return Ok(());
                 }
 
                 Err(format!(
-                    "Invalid expression `{expr}` inside Pure/Query function:\nExpected {empty_tuple} but got {infered_type}."
+                    "Invalid expression `{expr}` inside Pure/Query function:\nExpected () but got {infered_type}."
                 ))
             }
         }
     }
 
-    fn check_kind(&mut self, result: Type) -> Result<Type, String> {
-        // Temporary adding a check against the Expr type for now (TODO improve this before merging)
+    fn expr_is_valid_in_constr(&mut self, infered_type: Type) -> bool {
+        let empty_tuple = Type::Tuple(TupleType { items: vec![] });
+        let constr_array = Type::Array(ArrayType {
+            base: Box::new(self.statement_type.ty.clone()),
+            length: None,
+        });
+
+        infered_type == self.statement_type.ty
+            || infered_type == empty_tuple
+            || infered_type == Type::Expr
+            || infered_type == constr_array
+    }
+
+    /*fn check_kind(&mut self, result: Type) -> Result<Type, String> {
         let empty_tuple = Type::Tuple(TupleType { items: vec![] });
         match (result.clone(), self.lambda_kind) {
             (res, FunctionKind::Constr) => {
@@ -722,7 +747,7 @@ impl<'a> TypeChecker<'a> {
             }
         }
         Ok(result)
-    }
+    } */
 
     /// Process a function call and return the type of the expression.
     /// The error message is used to clarify which kind of function call it is

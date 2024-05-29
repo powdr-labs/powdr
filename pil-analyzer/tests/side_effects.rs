@@ -12,7 +12,7 @@ fn new_wit_in_pure() {
 }
 
 #[test]
-#[should_panic = "Invalid expression `x = 7` inside Pure/Query function"]
+#[should_panic = "Error checking sub-expression x = 7:\\nExpected type: ()\\nInferred type: std::prelude::Constr"]
 fn constr_in_pure() {
     let input = r#"namespace N(16);
     let new_col = |x| { x = 7; [] };
@@ -77,7 +77,7 @@ fn constr_lambda_in_pure() {
 }
 
 #[test]
-#[should_panic = "Invalid expression `x = 7` inside Pure/Query function"]
+#[should_panic = "Error checking sub-expression x = 7:\\nExpected type: ()\\nInferred type: std::prelude::Constr"]
 fn reset_context() {
     let input = r#"namespace N(16);
     let new_col = |x| { x = 7; [] };
