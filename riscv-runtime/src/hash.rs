@@ -40,7 +40,7 @@ const W: usize = 32;
 
 /// Keccak function that calls the keccakf machine.
 /// Input is a byte array of arbitrary length and a delimiter byte.
-/// Output is a byte array of length W.
+/// Output is a byte array of length W. 
 pub fn keccak(data: &[u8], delim: u8) -> [u8; W] {
     let mut b = [[0u8; 200]; 2];
     let [mut b_input, mut b_output] = &mut b;
