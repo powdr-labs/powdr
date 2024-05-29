@@ -13,7 +13,6 @@ powdr_field!(GoldilocksField, GoldilocksBaseField);
 #[cfg(test)]
 mod test {
     use crate::traits::int_from_hex_str;
-
     use test_log::test;
 
     use super::*;

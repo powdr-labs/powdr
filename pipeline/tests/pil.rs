@@ -16,7 +16,6 @@ pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
     verify_test_file(file_name, inputs, vec![]).unwrap();
 }
 
-#[cfg(feature = "halo2")]
 #[test]
 fn invalid_witness() {
     let f = "pil/trivial.pil";
@@ -24,7 +23,6 @@ fn invalid_witness() {
     assert_proofs_fail_for_invalid_witnesses(f, &witness);
 }
 
-#[cfg(feature = "halo2")]
 #[test]
 #[should_panic = "Number not included: F3G { cube: [Fr(0x0000000000000000), Fr(0x0000000000000000), Fr(0x0000000000000000)], dim: 3 }"]
 fn lookup_with_selector() {
@@ -57,7 +55,6 @@ fn lookup_with_selector() {
     assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
 }
 
-#[cfg(feature = "halo2")]
 #[test]
 #[should_panic = "assertion failed: check_val._eq(&F::one())"]
 fn permutation_with_selector() {

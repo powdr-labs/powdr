@@ -1,7 +1,8 @@
+use std::{fmt, hash::Hash, ops::*, str::FromStr};
+
 use num_traits::{ConstOne, ConstZero, One, Zero};
 use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::{fmt, hash::Hash, ops::*, str::FromStr};
 
 use crate::{BigUint, DegreeType};
 

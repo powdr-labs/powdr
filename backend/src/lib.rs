@@ -50,8 +50,7 @@ impl BackendType {
             estark::starky_wrapper::Factory;
         const ESTARK_DUMP_FACTORY: estark::DumpFactory = estark::DumpFactory;
         #[cfg(feature = "plonky3")]
-        const PLONKY3_FACTORY: plonky3::Plonky3ProverFactory =
-            plonky3::Plonky3ProverFactory;
+        const PLONKY3_FACTORY: plonky3::Plonky3ProverFactory = plonky3::Plonky3ProverFactory;
 
         match self {
             #[cfg(feature = "halo2")]

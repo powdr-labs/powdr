@@ -5,7 +5,7 @@ use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
 use powdr_plonky3::{generate_setup, Plonky3Prover};
 
-use crate::{Backend, BackendFactory, Error, Proof, BackendOptions};
+use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 pub(crate) struct Plonky3ProverFactory;
 

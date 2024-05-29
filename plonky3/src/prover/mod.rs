@@ -17,6 +17,7 @@ use crate::circuit_builder::{cast_to_goldilocks, PowdrCircuit, Val};
 
 use self::types::*;
 
+/// In the context of plonky3, "setup" generation is the process of instantiating Poseidon with randomly sampled constants
 pub fn generate_setup() -> Vec<Val> {
     let num_rounds = 2 * HALF_NUM_FULL_ROUNDS + NUM_PARTIAL_ROUNDS;
     let num_constants = WIDTH * num_rounds;
@@ -138,8 +139,8 @@ mod tests {
 
     use crate::Plonky3Prover;
 
-    /// Prove and verify execution using a trivial PCS (coefficients of the polynomials)
-    fn run_test_goldilocks_trivial_pcs(pil: &str) {
+    /// Prove and verify execution
+    fn run_test_goldilocks(pil: &str) {
         let mut pipeline = Pipeline::<GoldilocksField>::default().from_pil_string(pil.to_string());
 
         let pil = pipeline.compute_optimized_pil().unwrap();
@@ -157,14 +158,14 @@ mod tests {
     #[test]
     fn publics() {
         let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
-        run_test_goldilocks_trivial_pcs(content);
+        run_test_goldilocks(content);
     }
 
     #[test]
     #[should_panic = "assertion failed: width >= 1"]
     fn empty() {
         let content = "namespace Global(8);";
-        run_test_goldilocks_trivial_pcs(content);
+        run_test_goldilocks(content);
     }
 
     #[test]
@@ -184,19 +185,19 @@ mod tests {
             col witness stage(1) y;
             x + beta = y + beta;
         "#;
-        run_test_goldilocks_trivial_pcs(content);
+        run_test_goldilocks(content);
     }
 
     #[test]
     fn polynomial_identity() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
-        run_test_goldilocks_trivial_pcs(content);
+        run_test_goldilocks(content);
     }
 
     #[test]
     #[should_panic = "not implemented"]
     fn lookup() {
         let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; a in z;";
-        run_test_goldilocks_trivial_pcs(content);
+        run_test_goldilocks(content);
     }
 }

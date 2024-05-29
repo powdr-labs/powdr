@@ -1,7 +1,6 @@
 //! A plonky3 adapter for powdr
 //! Since plonky3 does not have fixed columns, we encode them as witness columns.
 //! The encoded plonky3 columns are chosen to be the powdr witness columns followed by the powdr fixed columns
-//! TODO: refactor powdr to remove the distinction between fixed and witness columns, so that we do not have to rearrange things here
 
 use std::collections::BTreeMap;
 
@@ -29,7 +28,7 @@ pub(crate) struct PowdrCircuit<'a, T> {
     witness: Option<&'a [(String, Vec<T>)]>,
     /// Column name and index of the public cells
     publics: Vec<(String, usize)>,
-    /// Callback to augment the witness in the later stages.
+    /// Callback to augment the witness in the later stages
     _witgen_callback: Option<WitgenCallback<T>>,
 }
 
@@ -95,6 +94,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             .collect()
     }
 
+    /// Conversion to plonky3 expression
     fn to_plonky3_expr<AB: AirBuilder<F = Val>>(
         &self,
         e: &AlgebraicExpression<T>,
@@ -112,14 +112,13 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 };
 
                 // witness columns indexes are unchanged, fixed ones are offset by `commitment_count`
-                let index = r.poly_id.id as usize
-                    + match poly_id.ptype {
-                        PolynomialType::Committed => 0,
-                        PolynomialType::Constant => self.commitment_count,
-                        PolynomialType::Intermediate => {
-                            unreachable!("intermediate polynomials should have been inlined")
-                        }
-                    };
+                let index = match poly_id.ptype {
+                    PolynomialType::Committed => r.poly_id.id as usize,
+                    PolynomialType::Constant => self.commitment_count + r.poly_id.id as usize,
+                    PolynomialType::Intermediate => {
+                        unreachable!("intermediate polynomials should have been inlined")
+                    }
+                };
 
                 row[index].into()
             }
@@ -161,10 +160,11 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
-        let width = self.witness().len() + self.fixed.len();
+        // an iterator over all columns, committed then fixed
         let joined_iter = self.witness().iter().chain(self.fixed);
         let len = self.analyzed.degree.unwrap();
 
+        // for each row, get the value of each column
         let values = (0..len)
             .flat_map(move |i| {
                 joined_iter
@@ -173,7 +173,7 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
             })
             .collect();
 
-        Some(RowMajorMatrix::new(values, width))
+        Some(RowMajorMatrix::new(values, self.width()))
     }
 }
 
