@@ -2,8 +2,7 @@
 
 use hex_literal::hex;
 
-use powdr_riscv_runtime::arith::modmul_256_u32_le as mod_256;
-// use powdr_riscv_runtime::arith::affine_256_u8_be;
+use powdr_riscv_runtime::arith::modmul_256_u32_le as modmul_256;
 
 #[no_mangle]
 pub fn main() {
@@ -37,13 +36,12 @@ pub fn main() {
     // let lo = hex!("1fdb97530da740da60b60b60907f6e5d369d0369ca8641fda1907f6e33333333");
     // assert_eq!(affine_256_u8_be(a, b, c), (hi, lo));
 
-    // 2 * 3 + 5 = 11
-    let a = [2, 0, 0, 0, 0, 0, 0, 0];
-    let b = [3, 0, 0, 0, 0, 0, 0, 0];
-    let c = [5, 0, 0, 0, 0, 0, 0, 0];
-    let hi = [0, 0, 0, 0, 0, 0, 0, 0];
-    let lo = [11, 0, 0, 0, 0, 0, 0, 0];
-    assert_eq!(affine_256(a, b, c), (hi, lo));
+    // 2 * 3 % 5 = 1
+    let mut a = [2, 0, 0, 0, 0, 0, 0, 0];
+    let mut b = [3, 0, 0, 0, 0, 0, 0, 0];
+    let m = [5, 0, 0, 0, 0, 0, 0, 0];
+    let r = [1, 0, 0, 0, 0, 0, 0, 0];
+    assert_eq!(modmul_256(a, b, m), r);
 
     // // 256 * 256 + 1 = 65537
     // let a = [256, 0, 0, 0, 0, 0, 0, 0];

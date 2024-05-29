@@ -93,7 +93,7 @@ pub fn modmul_256_u8_be(
         asm!("ecall",
              in("a0") &mut a1 as *mut [u32; 8],
              in("a1") &mut b1 as *mut [u32; 8],
-             in("a2") &[0u8; 32] as *mut [u32; 8],
+             in("a2") &mut [0u32; 8] as *mut [u32; 8],
              in("t0") u32::from(Syscall::Affine256));
         // Next compute the remainder, stored in place in a.
         asm!("ecall",
@@ -120,7 +120,7 @@ pub fn modmul_256_u8_le(
         asm!("ecall",
              in("a0") a.as_mut_ptr() as *mut [u32; 8],
              in("a1") b.as_mut_ptr() as *mut [u32; 8],
-             in("a2") &[0u8; 32] as *mut [u32; 8],
+             in("a2") &mut [0u32; 8] as *mut [u32; 8],
              in("t0") u32::from(Syscall::Affine256));
         // Next compute the remainder, stored in place in a.
         asm!("ecall",
