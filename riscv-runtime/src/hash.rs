@@ -30,7 +30,7 @@ pub fn poseidon_gl(data: [u64; 12]) -> [u64; 4] {
     poseidon_gl_unsafe(data)
 }
 
-/// Calls the keccakf machine
+/// Calls the keccakf machine.
 /// Return value is placed in the output array.
 pub fn keccakf(input: &[u64; 25], output: &mut [u64; 25]) {
     // TODO: uncomment this chunk after syscall implemented
@@ -55,9 +55,9 @@ pub fn keccakf(input: &[u64; 25], output: &mut [u64; 25]) {
 // Output number of bytes for keccak-256 (32 bytes)
 const W: usize = 32;
 
-/// Keccak function that calls the keccakf machine
-/// Input is a byte array of arbitrary length and a delimiter byte
-/// Output is a byte array of length W
+/// Keccak function that calls the keccakf machine.
+/// Input is a byte array of arbitrary length and a delimiter byte.
+/// Output is a byte array of length W.
 pub fn keccak(data: &[u8], delim: u8) -> [u8; W] {
     let mut b = [[0u8; 200]; 2];
     let [mut b_input, mut b_output] = &mut b;
