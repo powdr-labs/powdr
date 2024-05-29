@@ -425,17 +425,18 @@ impl<'a> TypeChecker<'a> {
         expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<(), String> {
         for (e, expected_type) in expressions {
-            let expected = self.expect_type_with_flexibility(expected_type, e);
-            if expected.is_err() && expected_type.allow_empty {
+            let result = self.expect_type_with_flexibility(expected_type, e);
+            if result.is_err() && expected_type.allow_empty {
                 let empty_tuple_statement_type = ExpectedType {
                     ty: Type::Tuple(TupleType { items: vec![] }),
                     allow_array: false,
                     allow_empty: false,
                 };
                 self.expect_type_with_flexibility(&empty_tuple_statement_type, e)
-            } else {
-                expected
-            }?;
+                    .map_err(|err| format!("Expected type {} or ().\n{err}", expected_type.ty))?;
+            } else if result.is_err() {
+                return result;
+            }
         }
         Ok(())
     }
@@ -668,13 +669,16 @@ impl<'a> TypeChecker<'a> {
         expr: &mut powdr_ast::parsed::Expression<Reference>,
     ) -> Result<(), String> {
         let empty_tuple = Type::Tuple(TupleType { items: vec![] });
-        let infered_type = self.infer_type_of_expression(expr)?;
-        if infered_type == Type::Expr || !infered_type.is_concrete_type() {
-            return Ok(());
+        let mut infered_type = self.infer_type_of_expression(expr)?;
+        if !infered_type.is_concrete_type() {
+            infered_type = self.type_into_substituted(infered_type)
         }
         match self.lambda_kind {
             FunctionKind::Constr => {
-                if infered_type == self.statement_type.ty || infered_type == empty_tuple {
+                if infered_type == self.statement_type.ty
+                    || infered_type == empty_tuple
+                    || infered_type == Type::Expr
+                {
                     return Ok(());
                 }
 
@@ -710,7 +714,7 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             (res, _) => {
-                if (res != Type::Expr) & res.is_concrete_type() & (res != empty_tuple) {
+                if res.is_concrete_type() & (res != empty_tuple) {
                     return Err(format!(
                         "Invalid return type {res} for Pure/Query function. Expected {empty_tuple}."
                     ));

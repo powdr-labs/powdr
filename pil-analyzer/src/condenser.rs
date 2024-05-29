@@ -238,7 +238,14 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         if identity.kind == IdentityKind::Polynomial {
             let expr = identity.expression_for_poly_id();
             evaluator::evaluate(expr, self)
-                .and_then(|expr| self.add_constraints(expr, identity.source.clone()))
+                .and_then(|expr| {
+                    if let Value::Tuple(items) = expr.as_ref() {
+                        assert_eq!(items.len(), 0);
+                        Ok(())
+                    } else {
+                        self.add_constraints(expr, identity.source.clone())
+                    }
+                })
                 .unwrap_or_else(|err| {
                     panic!(
                         "Error reducing expression to constraint:\nExpression: {expr}\nError: {err:?}"
