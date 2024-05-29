@@ -1,6 +1,5 @@
 use core::arch::asm;
 use core::mem;
-use tiny_keccak::keccakf as tiny_keccak_keccakf;
 
 use powdr_riscv_syscalls::Syscall;
 
