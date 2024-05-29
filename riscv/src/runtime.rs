@@ -168,7 +168,7 @@ impl Runtime {
 
         // The keccakf syscall has a two arguments passed on x10 and x11,
         // the memory address of the 25 field element input array
-        // and the memory address of the output array to store results to.
+        // and the memory address of the 25 field element output array to store results to.
         let implementation = std::iter::once("keccakf;".to_string());
 
         self.add_syscall(Syscall::KeccakF, implementation);

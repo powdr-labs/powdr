@@ -33,23 +33,7 @@ pub fn poseidon_gl(data: [u64; 12]) -> [u64; 4] {
 /// Calls the keccakf machine.
 /// Return value is placed in the output array.
 pub fn keccakf(input: &[u64; 25], output: &mut [u64; 25]) {
-    // TODO: uncomment this chunk after syscall implemented
-    // unsafe {
-        // // syscall inputs: memory pointer to input array and memory pointer to output array
-        // asm!("ecall", in("a0") input, in("a1") output, in("t0") u32::from(Syscall::KeccakF));
-    // }
-
-    // TODO: delete the following testing only chunk which uses tiny_keccak once syscall implemented
-    unsafe {
-        // Convert the input pointer to a mutable reference
-        let mut input_copy = input.clone();
-
-        // Perform the keccakf operation in place
-        tiny_keccak_keccakf(&mut input_copy);
-
-        // Copy the result to the output
-        output.copy_from_slice(&input_copy);
-    }
+    unimplemented!()
 }
 
 // Output number of bytes for keccak-256 (32 bytes)
