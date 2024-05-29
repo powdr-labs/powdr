@@ -185,7 +185,38 @@ machine Main with degree: 65536 {
             5000, 0, 0, 0, 0, 0, 0, 0);
         assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 3000, 0, 0, 0, 0, 0, 0, 0;
 
+        // (2 ** 508 - 1) % secp_modulus = 
+        // 0x00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+        // % 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f
+        // = 0x000003d1000000000000000000000000000000000000000000000001000003d0
+        // t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
+         //   0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0x00000000,
+          //  0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
+           // 0xfffffc2f, 0xfffffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff); // secp_modulus
+        // assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 976, 1, 0, 0, 0, 0, 0, 977;
+        
+        // (2 ** 508) % (2 ** 255) = 0
+        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7 <== mod_256(
+            0, 0, 0, 0, 0, 0, 0, 0x10000000,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0x80000000);
+        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
 
+        // (2 ** 508 + 1) % (2 ** 255) = 1
+        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7 <== mod_256(
+            0, 0, 0, 0, 0, 0, 0, 0x10000000,
+            1, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0x80000000);
+        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 1, 0, 0, 0, 0, 0, 0, 0;
+
+        // 0xaaaaaaaabbbbbbbbcccccccc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011111111
+        // % 0xddddddddeeeeeeeeffffffff0000000000000000000000000000000022222222
+        // = 0x05973e6b48bd15d35f92aff26cad25d5b54f806e5ce298cda76b91baf89af7cf
+        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7 <== mod_256(
+            0, 0, 0, 0, 0, 0xcccccccc, 0xbbbbbbbb, 0xaaaaaaaa,
+            0x11111111, 0, 0, 0, 0, 0, 0, 0,
+            0x22222222, 0, 0, 0, 0, 0xffffffff, 0xeeeeeeee, 0xdddddddd);
+        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0xF89AF7CF, 0xA76B91BA, 0x5CE298CD, 0xB54F806E, 0x6CAD25D5, 0x5F92AFF2, 0x48BD15D3, 0x05973E6B;
 
         // EC Addition:
         // x1: 55066263022277343669578718895168534326250603453777594175500187360389116729240

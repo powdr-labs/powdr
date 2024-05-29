@@ -133,7 +133,7 @@ machine Arith with
         let y2 = y2_int();
         let y3 = y3_int();
         let x1 = x1_int();
-        let dividend = y2 << 256 + y3;
+        let dividend = (y2 << 256) + y3;
         let quotient = dividend / x1;
         quotient
     };
@@ -142,9 +142,22 @@ machine Arith with
         let y2 = y2_int();
         let y3 = y3_int();
         let x1 = x1_int();
-        let dividend = y2 << 256 + y3;
-        let quotient = dividend / x1;
-        let remainder = dividend - quotient * x1;
+        let dividend = (y2 << 256) + y3;
+        let y1 = y1_int(); // The quotient; will only evaluate after y1 is evaluated via quotient_hint.
+        let remainder = dividend - y1 * x1;
+        let _ = std::debug::println("y2");
+        let _ = std::debug::println(y2);
+        let _ = std::debug::println("y3");
+        let _ = std::debug::println(y3);
+        let _ = std::debug::println("x1");
+        let _ = std::debug::println(x1);
+        let _ = std::debug::println("dividend");
+        let _ = std::debug::println(dividend);
+        let _ = std::debug::println("quotient");
+        let _ = std::debug::println(y1);
+        let _ = std::debug::println("remainder");
+        let _ = std::debug::println(remainder);
+        let _ = std::debug::println("");
         remainder
     };
 
