@@ -1,5 +1,5 @@
 [package]
-name = "mod_256"
+name = "modmul_256"
 version = "0.1.0"
 edition = "2021"
 
