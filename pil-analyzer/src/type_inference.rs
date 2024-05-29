@@ -682,18 +682,18 @@ impl<'a> TypeChecker<'a> {
                     return Ok(());
                 }
 
-                return Err(format!(
+                Err(format!(
                     "Invalid expression `{expr}` inside Constr function:\nExpected {} or {empty_tuple} but got {infered_type}.", self.statement_type.ty
-                ));
+                ))
             }
             _ => {
                 if infered_type == empty_tuple {
                     return Ok(());
                 }
 
-                return Err(format!(
+                Err(format!(
                     "Invalid expression `{expr}` inside Pure/Query function:\nExpected {empty_tuple} but got {infered_type}."
-                ));
+                ))
             }
         }
     }
