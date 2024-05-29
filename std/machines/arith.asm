@@ -376,7 +376,6 @@ machine Arith with
     let q0f = array_as_fun(q0);
     let q1f = array_as_fun(q1);
     let q2f = array_as_fun(q2);
-    let quotient2f = array_as_fun(quotient);
 
     // Defined for arguments from 0 to 31 (inclusive)
     let eq0 = |nr|
