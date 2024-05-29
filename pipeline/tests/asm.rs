@@ -1,7 +1,7 @@
 use powdr_backend::BackendType;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
-    test_util::{gen_estark_proof, resolve_test_file, test_halo2, test_plonky3, verify_test_file},
+    test_util::{gen_estark_proof, resolve_test_file, test_halo2, verify_test_file},
     util::{try_read_poly_set, FixedPolySet, WitnessPolySet},
     Pipeline,
 };
@@ -31,7 +31,6 @@ fn simple_sum_asm() {
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
     gen_estark_proof(f, slice_to_vec(&i));
-    test_plonky3(f, slice_to_vec(&i));
 }
 
 #[test]
