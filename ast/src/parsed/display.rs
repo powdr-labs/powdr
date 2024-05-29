@@ -531,7 +531,7 @@ impl Display for FunctionDefinition {
             FunctionDefinition::Array(array_expression) => {
                 write!(f, " = {array_expression}")
             }
-            FunctionDefinition::Expression(Expression::LambdaExpression(lambda))
+            FunctionDefinition::Expression(Expression::LambdaExpression(_, lambda))
                 if lambda.params.len() == 1 =>
             {
                 write!(
@@ -595,112 +595,31 @@ fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
     format!("{}", list.into_iter().format(", "))
 }
 
-impl<E: Display> Expression<E> {
-    pub fn precedence(&self) -> Option<ExpressionPrecedence> {
-        match self {
-            Expression::UnaryOperation(op, _) => Some(op.precedence()),
-            Expression::BinaryOperation(_, op, _) => Some(op.precedence()),
-            _ => None,
-        }
-    }
-
-    pub fn format_unary_operation(
-        &self,
-        op: &UnaryOperator,
-        exp: &Expression<E>,
-        f: &mut Formatter<'_>,
-    ) -> Result {
-        let exp_string = match (self.precedence(), exp.precedence()) {
-            (Some(precedence), Some(inner_precedence)) if precedence < inner_precedence => {
-                format!("({exp})")
-            }
-            _ => {
-                format!("{exp}")
-            }
-        };
-
-        if op.is_prefix() {
-            write!(f, "{op}{exp_string}")
-        } else {
-            write!(f, "{exp_string}{op}")
-        }
-    }
-
-    pub fn format_binary_operation(
-        left: &Expression<E>,
-        op: &BinaryOperator,
-        right: &Expression<E>,
-        f: &mut Formatter<'_>,
-    ) -> Result {
-        let force_parentheses = matches!(op, BinaryOperator::Pow);
-
-        let use_left_parentheses = match left.precedence() {
-            Some(left_precedence) => {
-                force_parentheses
-                    || left_precedence > op.precedence()
-                    || (left_precedence == op.precedence()
-                        && op.associativity() != BinaryOperatorAssociativity::Left)
-            }
-            None => false,
-        };
-
-        let use_right_parentheses = match right.precedence() {
-            Some(right_precedence) => {
-                force_parentheses
-                    || right_precedence > op.precedence()
-                    || (right_precedence == op.precedence()
-                        && op.associativity() != BinaryOperatorAssociativity::Right)
-            }
-            None => false,
-        };
-
-        let left_string = if use_left_parentheses {
-            format!("({left})")
-        } else {
-            format!("{left}")
-        };
-        let right_string = if use_right_parentheses {
-            format!("({right})")
-        } else {
-            format!("{right}")
-        };
-
-        write!(f, "{left_string} {op} {right_string}")
-    }
-}
-
 impl<Ref: Display> Display for Expression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Expression::Reference(reference) => write!(f, "{reference}"),
-            Expression::PublicReference(name) => write!(f, ":{name}"),
-            Expression::Number(Number { value, .. }) => write!(f, "{value}"),
-            Expression::String(value) => write!(f, "{}", quote(value)),
-            Expression::Tuple(items) => write!(f, "({})", format_list(items)),
-            Expression::LambdaExpression(lambda) => write!(f, "{lambda}"),
-            Expression::ArrayLiteral(array) => write!(f, "{array}"),
-            Expression::BinaryOperation(left, op, right) => {
-                Expression::format_binary_operation(left, op, right, f)
+            Expression::Reference(_, reference) => write!(f, "{reference}"),
+            Expression::PublicReference(_, name) => write!(f, ":{name}"),
+            Expression::Number(_, Number { value, .. }) => write!(f, "{value}"),
+            Expression::String(_, value) => write!(f, "{}", quote(value)),
+            Expression::Tuple(_, items) => write!(f, "({})", format_list(items)),
+            Expression::LambdaExpression(_, lambda) => write!(f, "{lambda}"),
+            Expression::ArrayLiteral(_, array) => write!(f, "{array}"),
+            Expression::BinaryOperation(_, binaryop) => {
+                write!(f, "{binaryop}")
             }
-            Expression::UnaryOperation(op, exp) => self.format_unary_operation(op, exp, f),
-            Expression::IndexAccess(index_access) => write!(f, "{index_access}"),
-            Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
-            Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
-            Expression::MatchExpression(scrutinee, arms) => {
-                writeln!(f, "match {scrutinee} {{")?;
-                write_items_indented(f, arms)?;
-                write!(f, "}}")
+            Expression::UnaryOperation(_, unaryop) => {
+                write!(f, "{unaryop}")
             }
-            Expression::IfExpression(e) => write!(f, "{e}"),
-            Expression::BlockExpression(statements, expr) => {
-                if statements.is_empty() {
-                    write!(f, "{{ {expr} }}")
-                } else {
-                    writeln!(f, "{{")?;
-                    write_items_indented(f, statements)?;
-                    write_indented_by(f, expr, 1)?;
-                    write!(f, "\n}}")
-                }
+            Expression::IndexAccess(_, index_access) => write!(f, "{index_access}"),
+            Expression::FunctionCall(_, fun_call) => write!(f, "{fun_call}"),
+            Expression::FreeInput(_, input) => write!(f, "${{ {input} }}"),
+            Expression::MatchExpression(_, match_expr) => {
+                write!(f, "{match_expr}")
+            }
+            Expression::IfExpression(_, e) => write!(f, "{e}"),
+            Expression::BlockExpression(_, block_expr) => {
+                write!(f, "{block_expr}")
             }
         }
     }
@@ -745,6 +664,14 @@ impl<E: Display> Display for LambdaExpression<E> {
     }
 }
 
+impl<E: Display> Display for MatchExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "match {} {{", self.scrutinee)?;
+        write_items_indented(f, &self.arms)?;
+        write!(f, "}}")
+    }
+}
+
 impl Display for FunctionKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -758,6 +685,49 @@ impl Display for FunctionKind {
 impl<E: Display> Display for ArrayLiteral<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "[{}]", format_list(&self.items))
+    }
+}
+
+impl<E> Display for BinaryOperation<E>
+where
+    E: Display + Precedence,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let force_parentheses = matches!(self.op, BinaryOperator::Pow);
+
+        let op_precedence = self.op.precedence().unwrap();
+        let use_left_parentheses = match self.left.precedence() {
+            Some(left_precedence) => {
+                force_parentheses
+                    || left_precedence > op_precedence
+                    || (left_precedence == op_precedence
+                        && self.op.associativity() != BinaryOperatorAssociativity::Left)
+            }
+            None => false,
+        };
+
+        let use_right_parentheses = match self.right.precedence() {
+            Some(right_precedence) => {
+                force_parentheses
+                    || right_precedence > op_precedence
+                    || (right_precedence == op_precedence
+                        && self.op.associativity() != BinaryOperatorAssociativity::Right)
+            }
+            None => false,
+        };
+
+        let left_string = if use_left_parentheses {
+            format!("({})", self.left)
+        } else {
+            format!("{}", self.left)
+        };
+        let right_string = if use_right_parentheses {
+            format!("({})", self.right)
+        } else {
+            format!("{}", self.right)
+        };
+
+        write!(f, "{left_string} {} {right_string}", self.op)
     }
 }
 
@@ -792,6 +762,28 @@ impl Display for BinaryOperator {
     }
 }
 
+impl<E> Display for UnaryOperation<E>
+where
+    E: Display + Precedence,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let exp_string = match (self.op.precedence(), self.expr.precedence()) {
+            (Some(precedence), Some(inner_precedence)) if precedence < inner_precedence => {
+                format!("({})", self.expr)
+            }
+            _ => {
+                format!("{}", self.expr)
+            }
+        };
+
+        if self.op.is_prefix() {
+            write!(f, "{}{exp_string}", self.op)
+        } else {
+            write!(f, "{exp_string}{}", self.op)
+        }
+    }
+}
+
 impl Display for UnaryOperator {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
@@ -803,6 +795,19 @@ impl Display for UnaryOperator {
                 UnaryOperator::Next => "'",
             }
         )
+    }
+}
+
+impl<E: Display> Display for BlockExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if self.statements.is_empty() {
+            write!(f, "{{ {} }}", self.expr)
+        } else {
+            writeln!(f, "{{")?;
+            write_items_indented(f, &self.statements)?;
+            write_indented_by(f, &self.expr, 1)?;
+            write!(f, "\n}}")
+        }
     }
 }
 

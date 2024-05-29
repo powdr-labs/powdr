@@ -16,16 +16,16 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use powdr_riscv_runtime::input::get_prover_input;
+use powdr_riscv_runtime::io::read_u32;
 use powdr_riscv_runtime::print;
 
 /// entry point called by the runtime
 #[no_mangle]
 pub fn main() {
-    let expected = get_prover_input(0);
-    let len = get_prover_input(1);
+    let expected = read_u32(0);
+    let len = read_u32(1);
 
-    let mut vec: Vec<_> = (2..(len + 2)).map(|idx| get_prover_input(idx)).collect();
+    let mut vec: Vec<_> = (2..(len + 2)).map(|idx| read_u32(idx)).collect();
     vec.sort();
 
     let half = (len / 2) as usize;
