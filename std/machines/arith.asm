@@ -47,7 +47,7 @@ machine Arith with
     let mul = |x, y| ff::mul(x, y, secp_modulus);
     let div = |x, y| ff::div(x, y, secp_modulus);
 
-    pol commit x1[16], x2[16], y2[16], x3[16], y3[16];
+    pol commit x1[16], y2[16], x3[16], y3[16];
 
     // Selects the ith limb of x (little endian)
     // Note that the most significant limb can be up to 32 bits; all others are 16 bits.
@@ -138,6 +138,16 @@ machine Arith with
         quotient
     };
 
+    let remainder_hint = query || {
+        let y2 = y2_int();
+        let y3 = y3_int();
+        let x1 = x1_int();
+        let dividend = y2 << 256 + y3;
+        let quotient = dividend / x1;
+        let remainder = dividend - quotient * x1;
+        remainder
+    };
+
     col witness y1_0(i) query match is_ec_operation() {
         0 => Query::Hint(fe(select_limb(quotient_hint(), 0))),
         _ => Query::None
@@ -204,6 +214,73 @@ machine Arith with
     };
 
     let y1 = [y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, y1_8, y1_9, y1_10, y1_11, y1_12, y1_13, y1_14, y1_15];
+
+    col witness x2_0(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 0))),
+        _ => Query::None
+    };
+    col witness x2_1(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 1))),
+        _ => Query::None
+    };
+    col witness x2_2(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 2))),
+        _ => Query::None
+    };
+    col witness x2_3(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 3))),
+        _ => Query::None
+    };
+    col witness x2_4(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 4))),
+        _ => Query::None
+    };
+    col witness x2_5(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 5))),
+        _ => Query::None
+    };
+    col witness x2_6(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 6))),
+        _ => Query::None
+    };
+    col witness x2_7(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 7))),
+        _ => Query::None
+    };
+    col witness x2_8(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 8))),
+        _ => Query::None
+    };
+    col witness x2_9(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 9))),
+        _ => Query::None
+    };
+    col witness x2_10(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 10))),
+        _ => Query::None
+    };
+    col witness x2_11(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 11))),
+        _ => Query::None
+    };
+    col witness x2_12(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 12))),
+        _ => Query::None
+    };
+    col witness x2_13(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 13))),
+        _ => Query::None
+    };
+    col witness x2_14(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 14))),
+        _ => Query::None
+    };
+    col witness x2_15(i) query match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(remainder_hint(), 15))),
+        _ => Query::None
+    };
+
+    let x2 = [x2_0, x2_1, x2_2, x2_3, x2_4, x2_5, x2_6, x2_7, x2_8, x2_9, x2_10, x2_11, x2_12, x2_13, x2_14, x2_15];
 
     col witness s_0(i) query Query::Hint(fe(select_limb(s_hint(), 0)));
     col witness s_1(i) query Query::Hint(fe(select_limb(s_hint(), 1)));
