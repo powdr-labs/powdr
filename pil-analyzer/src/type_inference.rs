@@ -452,7 +452,7 @@ impl<'a> TypeChecker<'a> {
                     let empty_tuple = Type::Tuple(TupleType { items: vec![] });
                     if (self.check_kind_and_expression(expr, &expected).is_err()
                         | (ty == empty_tuple)
-                            & (expected == self.constr_function_statement_type.ty))
+                            & (expected == self.constr_function_statement_type.ty)) //TODO Weird hack. Improve/check this
                         & expected_type.allow_empty
                     {
                         self.check_kind_and_expression(expr, &empty_tuple)?;
