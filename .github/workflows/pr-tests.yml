@@ -44,6 +44,8 @@ jobs:
       run: cargo fmt --all --check --verbose
     - name: Build
       run: cargo build --all-targets --all --all-features --profile pr-tests
+    - name: Check docs
+      run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features --profile pr-tests
     - uses: taiki-e/install-action@nextest
     - name: Archive EStarkPolygon prover built dependencies
       run: tar --zstd -cf pil-stark-prover-deps.tar.zst target/pr-tests/build/pil-stark-prover-*/out
