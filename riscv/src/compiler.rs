@@ -1355,11 +1355,17 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
                 vec![statement]
             }
         }
-        "jalr" => {
-            // TODO there is also a form that takes more arguments
-            let rs = args.r()?;
-            vec![format!("x1 <== jump_dyn({rs});")]
-        }
+        "jalr" => vec![if let Ok(rs) = args.r() {
+            format!("x1 <== jump_dyn({rs});")
+        } else {
+            let (rd, rs, off) = args.rro()?;
+            assert_eq!(off, 0, "jalr with non-zero offset is not supported");
+            if rd.is_zero() {
+                format!("tmp1 <== jump_dyn({rs});")
+            } else {
+                format!("{rd} <== jump_dyn({rs});")
+            }
+        }],
         "call" | "tail" => {
             let label = args.l()?;
             let dest = if instr == "tail" { "tmp1" } else { "x1" };
