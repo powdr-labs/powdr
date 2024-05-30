@@ -19,8 +19,12 @@ pub fn elf_translate(file_name: &str) {
     // We simply extract all the text and data sections. There is no need to
     // perform reachability search, because we trust the linker to have done
     // that already.
+    //
+    // TODO: maybe exclude the section mapping the ELF header itself? There is
+    // also this dynamic section that I think we can ignore. But with
+    // continuations on, unused memory is practically free.
     let mut text_sections = Vec::new();
-    //let mut data_map = BTreeMap::new();
+    let mut data_map = BTreeMap::new();
 
     // Keep a list of referenced text addresses, so we can generate the labels.
     let mut referenced_text_addrs = HashSet::from([elf.entry.try_into().unwrap()]);
@@ -36,12 +40,52 @@ pub fn elf_translate(file_name: &str) {
                 let insns = lift_instructions(addr, section_data, &mut referenced_text_addrs);
                 text_sections.push(insns);
             } else {
-                //load_data_section(addr, section_data, &mut data_map, elf);
+                load_data_section(addr, section_data, &mut data_map);
             }
         }
     }
 
+    // All the references to code address have been lifted into labels in the
+    // instructions, but not the data sections. Luckily, that is just a matter of
+    // reading the dynamic relocation table.
+    for r in elf.dynrelas.iter() {
+        // We only support the R_RISCV_RELATIVE relocation type:
+        assert_eq!(r.r_type, 3, "Unsupported relocation type!");
+
+        let addr = r.r_offset as u32;
+        let original_addr = r.r_addend.unwrap() as u32;
+
+        data_map.insert(addr, Data::TextLabel(original_addr));
+
+        // We also need to add the referenced address to the list of text
+        // addresses, so we can generate the label.
+        referenced_text_addrs.insert(original_addr);
+    }
+
+    assert_eq!(elf.dynrels.len(), 0, "Unsupported relocation type!");
+
     todo!();
+}
+
+enum Data {
+    TextLabel(u32),
+    Value(u32),
+}
+
+fn load_data_section(mut addr: u32, data: &[u8], data_map: &mut BTreeMap<u32, Data>) {
+    for chunk in data.chunks(4) {
+        let mut padded = [0; 4];
+        padded[..chunk.len()].copy_from_slice(chunk);
+
+        let value = u32::from_le_bytes(padded);
+        if value != 0 {
+            data_map.insert(addr, Data::Value(value));
+        } else {
+            // We don't need to store zero values, as they are implicit.
+        }
+
+        addr += 4;
+    }
 }
 
 enum MaybeInstruction {
