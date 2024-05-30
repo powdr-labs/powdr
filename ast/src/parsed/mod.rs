@@ -1252,6 +1252,33 @@ impl Children<Pattern> for Pattern {
     }
 }
 
+impl SourceReference for Pattern {
+    fn source_reference(&self) -> &SourceRef {
+        match self {
+            Pattern::CatchAll(s)
+            | Pattern::Ellipsis(s)
+            | Pattern::Number(s, _)
+            | Pattern::String(s, _)
+            | Pattern::Variable(s, _)
+            | Pattern::Tuple(s, _)
+            | Pattern::Array(s, _)
+            | Pattern::Enum(s, _, _) => s,
+        }
+    }
+    fn source_reference_mut(&mut self) -> &mut SourceRef {
+        match self {
+            Pattern::CatchAll(s)
+            | Pattern::Ellipsis(s)
+            | Pattern::Number(s, _)
+            | Pattern::String(s, _)
+            | Pattern::Variable(s, _)
+            | Pattern::Tuple(s, _)
+            | Pattern::Array(s, _)
+            | Pattern::Enum(s, _, _) => s,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TypedExpression<Ref = NamespacedPolynomialReference, E = Expression<Ref>> {
     pub e: Expression<Ref>,

@@ -899,7 +899,7 @@ impl<T: FieldElement> VMConverter<T> {
                                 .get_mut(assign_reg)
                                 .unwrap()
                                 .push(MatchArm {
-                                    pattern: Pattern::Number(i.into()),
+                                    pattern: Pattern::Number(SourceRef::unknown(), i.into()),
                                     value: expr.clone(),
                                 });
                         }
@@ -946,7 +946,7 @@ impl<T: FieldElement> VMConverter<T> {
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
                     let mut prover_query_arms = prover_query_arms;
                     prover_query_arms.push(MatchArm {
-                        pattern: Pattern::CatchAll,
+                        pattern: Pattern::CatchAll(SourceRef::unknown()),
                         value: absolute_reference("::std::prover::Query::None"),
                     });
 
@@ -960,7 +960,7 @@ impl<T: FieldElement> VMConverter<T> {
 
                     let lambda = LambdaExpression {
                         kind: FunctionKind::Query,
-                        params: vec![Pattern::Variable("__i".to_string())],
+                        params: vec![Pattern::Variable(SourceRef::unknown(), "__i".to_string())],
                         body: Box::new(
                             MatchExpression {
                                 scrutinee,
