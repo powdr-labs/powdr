@@ -4,8 +4,8 @@ use super::Expression;
 
 /// Generic trait that allows to iterate over sub-structures.
 /// It is only meant to iterate non-recursively over the direct children.
-/// Self and O do not have to be the same type and we can also have
-/// Children<O1> and Children<O2> implemented for the same type,
+/// `Self` and `O` do not have to be the same type and we can also have
+/// `Children<O1>` and `Children<O2>` implemented for the same type,
 /// if the goal is to iterate over sub-structures of different kinds.
 pub trait Children<O> {
     /// Returns an iterator over all direct children of kind O in this object.
@@ -29,9 +29,9 @@ pub enum VisitOrder {
 /// A trait to be implemented by an AST node.
 /// The idea is that it calls a callback function on each of the sub-nodes
 /// that are expressions.
-/// The difference to the Children<Expr> trait is that ExpressionVisitable
+/// The difference to the [Children] trait is that [ExpressionVisitable]
 /// visits recursively.
-/// If a node implements Children<Expr>, it also implements ExpressionVisitable<Expr>.
+/// If a node implements [Children], it also implements [ExpressionVisitable].
 pub trait ExpressionVisitable<Expr> {
     /// Traverses the AST and calls `f` on each Expression in pre-order,
     /// potentially break early and return a value.

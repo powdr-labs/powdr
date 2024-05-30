@@ -636,9 +636,9 @@ impl From<NamespacedPolynomialReference> for Expression {
 
 impl<R> Expression<R> {
     /// Returns an iterator over all (top-level) expressions in this expression.
-    /// This specifically does not implement Children because otherwise it would
-    /// have a wrong implementation of ExpressionVisitable (which is implemented
-    /// generically for all types that implement Children<Expr>).
+    /// This specifically does not implement [Children] because otherwise it would
+    /// have a wrong implementation of `ExpressionVisitable` (which is implemented
+    /// generically for all types that implement [Children]).
     #[auto_enum(Iterator)]
     pub fn children(&self) -> impl Iterator<Item = &Expression<R>> + '_ {
         match self {
@@ -661,9 +661,9 @@ impl<R> Expression<R> {
     }
 
     /// Returns an iterator over all (top-level) expressions in this expression.
-    /// This specifically does not implement Children because otherwise it would
-    /// have a wrong implementation of ExpressionVisitable (which is implemented
-    /// generically for all types that implement Children<Expr>).
+    /// This specifically does not implement [Children] because otherwise it would
+    /// have a wrong implementation of `ExpressionVisitable` (which is implemented
+    /// generically for all types that implement [Children]).
     #[auto_enum(Iterator)]
     pub fn children_mut(&mut self) -> impl Iterator<Item = &mut Expression<R>> + '_ {
         match self {

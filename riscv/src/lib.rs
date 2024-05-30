@@ -266,7 +266,7 @@ fn output_files_from_cargo_build_plan(
 
 /// Maps an instruction in .insn syntax to Statement::Instruction() in the expected format.
 ///
-/// See https://www.rowleydownload.co.uk/arm/documentation/gnu/as/RISC_002dV_002dFormats.html
+/// See <https://www.rowleydownload.co.uk/arm/documentation/gnu/as/RISC_002dV_002dFormats.html>
 pub fn map_insn_i(
     opcode6: Expression,
     func3: Expression,

@@ -470,7 +470,7 @@ impl Symbol {
         })
     }
 
-    /// Returns "name[index]" if this is an array or just "name" otherwise.
+    /// Returns `name[index]` if this is an array or just `name` otherwise.
     /// In the second case, requires index to be zero and otherwise
     /// requires index to be less than length.
     pub fn array_element_name(&self, index: u64) -> String {
@@ -483,7 +483,7 @@ impl Symbol {
         }
     }
 
-    /// Returns "name[length]" if this is an array or just "name" otherwise.
+    /// Returns `name[length]` if this is an array or just `name` otherwise.
     pub fn array_name(&self) -> String {
         match self.length {
             Some(length) => {

@@ -129,7 +129,7 @@ static P11: &str = SYSCALL_REGISTERS[11];
 /// It lets the prover provide arbitrary memory pages and writes them to memory, as well as values for
 /// the registers (including the PC, which is set last).
 /// This can be used to implement continuations. Note that this is completely non-sound. Progress to
-/// make it sound is tracked in https://github.com/powdr-labs/powdr/issues/814.
+/// make it sound is tracked in <https://github.com/powdr-labs/powdr/issues/814>.
 /// Bootloader inputs are in the format:
 /// - First 49 values: Values of x1-x31, tmp1-tmp4, lr_sc_reservation, P0-P11, and the PC
 /// - Second 49 values: The same values, but after this chunk's execution

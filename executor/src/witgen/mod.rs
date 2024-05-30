@@ -98,7 +98,7 @@ pub fn unused_query_callback<T>() -> impl QueryCallback<T> {
     |_| -> _ { unreachable!() }
 }
 
-/// Everything [Generator] needs to mutate in order to compute a new row.
+/// Everything `Generator` needs to mutate in order to compute a new row.
 pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
     pub fixed_lookup: &'b mut FixedLookup<T>,
     pub machines: Machines<'a, 'b, T>,
