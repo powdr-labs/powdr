@@ -766,6 +766,26 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
                 vec![]
             }
+            "mod_256" => {
+                assert!(args.is_empty());
+                // take input from registers
+                let y2 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 3)).into_fe())
+                    .collect::<Vec<_>>();
+                let y3 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 11)).into_fe())
+                    .collect::<Vec<_>>();
+                let x1 = (0..8)
+                    .map(|i| self.proc.get_reg(&register_by_idx(i + 19)).into_fe())
+                    .collect::<Vec<_>>();
+                let result = arith::mod_256(&y2, &y3, &x1);
+                // store result in registers
+                (0..8).for_each(|i| {
+                    self.proc
+                        .set_reg(&register_by_idx(i + 3), Elem::Field(result[i]))
+                });
+                vec![]
+            }
             "ec_add" => {
                 assert!(args.is_empty());
                 // take input from registers

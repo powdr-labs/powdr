@@ -76,7 +76,7 @@ pub fn affine_256_u32_le(
 /// Returns `r`.
 pub fn modmul_256_u8_be(
     mut a: [u8; 32],
-    mut b: [u8; 32],
+    b: [u8; 32],
     m: [u8; 32],
 ) -> [u8; 32] {
     let mut a1: [u32; 8] = Default::default();
