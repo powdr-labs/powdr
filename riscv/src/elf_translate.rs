@@ -16,52 +16,42 @@ pub fn elf_translate(file_name: &str) {
     let elf = Elf::parse(&file_buffer).unwrap();
     println!("{:#?}", elf);
 
-    // Index the sections by their virtual address
-    let mut text_sections = BTreeMap::new();
-    let mut data_sections = BTreeMap::new();
+    // We simply extract all the text and data sections. There is no need to
+    // perform reachability search, because we trust the linker to have done
+    // that already.
+    let mut text_sections = Vec::new();
+    //let mut data_map = BTreeMap::new();
+
+    // Keep a list of referenced text addresses, so we can generate the labels.
+    let mut referenced_text_addrs = HashSet::from([elf.entry.try_into().unwrap()]);
 
     for p in elf.program_headers.iter() {
         if p.p_type == program_header::PT_LOAD {
+            let addr = p.p_vaddr as u32;
+            let section_data =
+                &file_buffer[p.p_offset as usize..(p.p_offset + p.p_filesz) as usize];
+
             // Test if executable
             if p.p_flags & 1 == 1 {
-                text_sections.insert(
-                    p.p_vaddr as u32,
-                    // Slice containing the section data. Since this is a
-                    // text section, we assume any zeroed part beyond
-                    // p_filesz (if any) is not relevant.
-                    &file_buffer[p.p_offset as usize..(p.p_offset + p.p_filesz) as usize],
-                );
+                let insns = lift_instructions(addr, section_data, &mut referenced_text_addrs);
+                text_sections.push(insns);
             } else {
-                data_sections.insert(p.p_vaddr, p);
+                //load_data_section(addr, section_data, &mut data_map, elf);
             }
         }
     }
 
-    extract_reachable_code(elf.entry.try_into().unwrap(), &text_sections);
     todo!();
 }
 
-fn extract_reachable_code(entry_point: u32, text_sections: &BTreeMap<u32, &[u8]>) {
-    // Helper function to find the section containing the address
-    let find_section_of_address = |addr| {
-        let (&section_addr, &data) = text_sections
-            .range(..=addr)
-            .next_back()
-            .expect("Jump address not found in any .text section");
-        (section_addr, data)
-    };
+enum MaybeInstruction {
+    Unimplemented,
+    Valid(Ins),
+}
 
-    let mut visited = HashSet::new();
-    let mut to_visit = vec![find_section_of_address(entry_point)];
-
-    while let Some((addr, section_data)) = to_visit.pop() {
-        // Sanity check of the alignment
-        assert_eq!(addr % 2, 0);
-
-        visited.insert(addr);
-
-        // She entire section should be code, so decode and translate it from start.
-        let code = lift_instructions(addr, section_data);
+impl From<Ins> for MaybeInstruction {
+    fn from(insn: Ins) -> Self {
+        MaybeInstruction::Valid(insn)
     }
 }
 
@@ -71,21 +61,31 @@ enum HighLevelImmediate {
     Value(i32),
 }
 
-struct HighLevelInsn<'a> {
+struct HighLevelInsn {
     original_address: u32,
-    op: &'a str,
+    op: &'static str,
     rd: Option<u32>,
     rs1: Option<u32>,
     rs2: Option<u32>,
     imm: HighLevelImmediate,
 }
 
-struct PseudoInstructionConverter {
+struct InstructionLifter<'a> {
     base_addr: u32,
+    referenced_text_addrs: &'a mut HashSet<u32>,
 }
 
-impl TwoOrOneMapper<Ins, HighLevelInsn<'static>> for PseudoInstructionConverter {
-    fn try_map_two(&mut self, insn1: &Ins, insn2: &Ins) -> Option<HighLevelInsn<'static>> {
+impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
+    fn try_map_two(
+        &mut self,
+        insn1: &MaybeInstruction,
+        insn2: &MaybeInstruction,
+    ) -> Option<HighLevelInsn> {
+        let (insn1, insn2) = match (insn1, insn2) {
+            (MaybeInstruction::Valid(insn1), MaybeInstruction::Valid(insn2)) => (insn1, insn2),
+            _ => return None,
+        };
+
         let result = match (insn1, insn2) {
             (
                 // li rd, immediate
@@ -227,14 +227,32 @@ impl TwoOrOneMapper<Ins, HighLevelInsn<'static>> for PseudoInstructionConverter 
 
         self.base_addr += [insn1, insn2].map(ins_size).into_iter().sum::<u32>();
 
+        if let HighLevelImmediate::CodeLabel(addr) = &result.imm {
+            self.referenced_text_addrs.insert(*addr as u32);
+        }
+
         Some(result)
     }
 
-    fn map_one(&mut self, insn: Ins) -> HighLevelInsn<'static> {
+    fn map_one(&mut self, insn: MaybeInstruction) -> HighLevelInsn {
+        let MaybeInstruction::Valid(insn) = insn else {
+            return HighLevelInsn {
+                op: "unimp",
+                rd: None,
+                rs1: None,
+                rs2: None,
+                imm: HighLevelImmediate::None,
+                original_address: self.base_addr,
+            };
+        };
+
         let imm = match insn.opc {
             // All jump instructions that have the immediate as an address
             Op::JAL | Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
-                HighLevelImmediate::CodeLabel(insn.imm.unwrap() + self.base_addr as i32)
+                let addr = insn.imm.unwrap() + self.base_addr as i32;
+                self.referenced_text_addrs.insert(addr as u32);
+
+                HighLevelImmediate::CodeLabel(addr)
             }
             // We currently only support standalone jalr if offset is zero
             Op::JALR => {
@@ -277,10 +295,17 @@ impl TwoOrOneMapper<Ins, HighLevelInsn<'static>> for PseudoInstructionConverter 
 ///
 /// Turn addresses into labels and and merge instructions into
 /// pseudoinstructions.
-fn lift_instructions(base_addr: u32, data: &[u8]) -> Vec<HighLevelInsn> {
+fn lift_instructions(
+    base_addr: u32,
+    data: &[u8],
+    referenced_text_addrs: &mut HashSet<u32>,
+) -> Vec<HighLevelInsn> {
     let instructions = RiscVInstructionIterator::new(data);
 
-    let pseudo_converter = PseudoInstructionConverter { base_addr };
+    let pseudo_converter = InstructionLifter {
+        base_addr,
+        referenced_text_addrs,
+    };
     try_map_two_by_two(instructions, pseudo_converter)
 }
 
@@ -297,7 +322,7 @@ impl RiscVInstructionIterator<'_> {
 }
 
 impl Iterator for RiscVInstructionIterator<'_> {
-    type Item = Ins;
+    type Item = MaybeInstruction;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining_data.is_empty() {
@@ -317,18 +342,28 @@ impl Iterator for RiscVInstructionIterator<'_> {
             )
             .decode(Isa::Rv32)
             .expect("Failed to decode instruction.")
+            .into()
         } else {
             // 16 bits
             advance = 2;
-            let c_insn = u16::from_le_bytes(
+            let bin_instruction = u16::from_le_bytes(
                 self.remaining_data[0..2]
                     .try_into()
                     .expect("Not enough bytes to complete a 16-bit instruction!"),
-            )
-            .decode(Isa::Rv32)
-            .expect("Failed to decode instruction.");
-
-            insn = to_32bit_equivalent(c_insn);
+            );
+            insn = match bin_instruction.decode(Isa::Rv32) {
+                Ok(c_insn) => to_32bit_equivalent(c_insn).into(),
+                Err(raki::decode::DecodingError::IllegalInstruction) => {
+                    // Although not a real RISC-V instruction, sometimes 0x0000
+                    // is used on purpose as an illegal instruction (it even has
+                    // its own mnemonic "unimp"), so we support it here.
+                    // Otherwise, there is something more fishy going on, and we
+                    // panic.
+                    assert_eq!(bin_instruction, 0, "Illegal instruction found!");
+                    MaybeInstruction::Unimplemented
+                }
+                Err(err) => panic!("Unexpected decoding error: {err:?}"),
+            };
         }
 
         // Advance the iterator
@@ -353,13 +388,20 @@ fn to_32bit_equivalent(mut insn: Ins) -> Ins {
         Op::C_SW => Op::SW,
         Op::C_NOP => {
             return Ins {
-                opc: Op::C_ADDI,
+                opc: Op::ADDI,
                 rd: Some(0),
                 rs1: Some(0),
                 ..insn
             }
         }
         Op::C_ADDI | Op::C_ADDI16SP => Op::ADDI,
+        Op::C_ADDI4SPN => {
+            return Ins {
+                opc: Op::ADDI,
+                rs1: Some(2), // add to x2 (stack pointer)
+                ..insn
+            };
+        }
         Op::C_LI => {
             return Ins {
                 opc: Op::ADDI,
