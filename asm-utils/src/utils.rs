@@ -41,26 +41,28 @@ pub fn escape_label(l: &str) -> String {
     l.replace('.', "_dot_").replace('/', "_slash_")
 }
 
-pub fn argument_to_escaped_symbol<R: Register, F: FunctionOpKind>(x: &Argument<R, F>) -> String {
+pub fn argument_to_escaped_symbol<R: Register, F: FunctionOpKind>(
+    x: &Argument<R, F>,
+) -> Option<String> {
     if let Argument::Expression(Expression::Symbol(symbol)) = x {
-        escape_label(symbol)
+        Some(escape_label(symbol))
     } else {
-        panic!("Expected a symbol, got {x}");
+        None
     }
 }
 
-pub fn argument_to_number<R: Register, F: FunctionOpKind>(x: &Argument<R, F>) -> u32 {
+pub fn argument_to_number<R: Register, F: FunctionOpKind>(x: &Argument<R, F>) -> Option<u32> {
     if let Argument::Expression(expr) = x {
-        expression_to_number(expr)
+        Some(expression_to_number(expr)?)
     } else {
-        panic!("Expected numeric expression, got {x}")
+        None
     }
 }
 
-pub fn expression_to_number<F: FunctionOpKind>(expr: &Expression<F>) -> u32 {
+pub fn expression_to_number<F: FunctionOpKind>(expr: &Expression<F>) -> Option<u32> {
     if let Expression::Number(n) = expr {
-        *n as u32
+        Some(*n as u32)
     } else {
-        panic!("Constant expression could not be fully resolved to a number during preprocessing: {expr}");
+        None
     }
 }

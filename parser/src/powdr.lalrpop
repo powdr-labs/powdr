@@ -158,9 +158,8 @@ PolynomialConstantDefinition: PilStatement = {
 }
 
 FunctionDefinition: FunctionDefinition = {
-    "(" <params:ParameterList> ")" <body:BracedExpression> =>
-        FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{kind: FunctionKind::Pure, params, body})),
-    "=" <ArrayLiteralExpression> => FunctionDefinition::Array(<>),
+    <start:@L> "(" <params:ParameterList> ")" <body:BracedExpression> => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start), LambdaExpression{kind: FunctionKind::Pure, params, body})),
+    <start:@L> "=" <array:ArrayLiteralExpression> => FunctionDefinition::Array(array),
 }
 
 ParameterList: Vec<Pattern> = {
@@ -184,7 +183,7 @@ PolynomialCommitDeclaration: PilStatement = {
         ctx.source_ref(start),
         stage,
         vec![name],
-        Some(FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{kind: FunctionKind::Query, params, body})))
+        Some(FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start), LambdaExpression{kind: FunctionKind::Query, params, body})))
     )
 }
 
@@ -450,8 +449,8 @@ BoxedExpression: Box<Expression> = {
 }
 
 LambdaExpression: Box<Expression> = {
-    <kind:FunctionKind> "||" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{kind, params: vec![], body})),
-    <kind:FunctionKind> "|" <params:ParameterList> "|" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{kind, params, body})),
+    <start:@L> <kind:FunctionKind> "||" <body:BoxedExpression> => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body}, start),
+    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:BoxedExpression> => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body}, start),
     LogicalOr
 }
 
@@ -462,17 +461,17 @@ FunctionKind: FunctionKind = {
 }
 
 LogicalOr: Box<Expression> = {
-    <l:LogicalOr> "||" <r:LogicalAnd> => Box::new(Expression::BinaryOperation(l, BinaryOperator::LogicalOr, r)),
+    <start:@L> <left:LogicalOr> "||" <right:LogicalAnd> => ctx.to_expr_with_source_ref(BinaryOperation { left, op: BinaryOperator::LogicalOr, right }, start),
     LogicalAnd,
 }
 
 LogicalAnd: Box<Expression> = {
-    <l:LogicalAnd> "&&" <r:Comparison> => Box::new(Expression::BinaryOperation(l, BinaryOperator::LogicalAnd, r)),
+    <start:@L> <left:LogicalAnd> "&&" <right:Comparison> => ctx.to_expr_with_source_ref(BinaryOperation { left, op: BinaryOperator::LogicalAnd, right }, start),
     Comparison,
 }
 
 Comparison: Box<Expression> = {
-    <BinaryOr> <ComparisonOp> <BinaryOr> => Box::new(Expression::BinaryOperation(<>)),
+    <start:@L> <left:BinaryOr> <op:ComparisonOp> <right:BinaryOr> => ctx.to_expr_with_source_ref(BinaryOperation { left, op: op, right }, start),
     BinaryOr
 }
 
@@ -487,7 +486,7 @@ ComparisonOp: BinaryOperator = {
 }
 
 BinaryOr: Box<Expression> = {
-    BinaryOr BinaryOrOp BinaryXor => Box::new(Expression::BinaryOperation(<>)),
+    <start:@L> <left:BinaryOr> <op:BinaryOrOp> <right:BinaryXor> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
     BinaryXor,
 }
 
@@ -496,7 +495,7 @@ BinaryOrOp: BinaryOperator = {
 }
 
 BinaryXor: Box<Expression> = {
-    BinaryXor BinaryXorOp BinaryAnd => Box::new(Expression::BinaryOperation(<>)),
+    <start:@L> <left:BinaryXor> <op:BinaryXorOp> <right:BinaryAnd> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
     BinaryAnd,
 }
 
@@ -505,7 +504,7 @@ BinaryXorOp: BinaryOperator = {
 }
 
 BinaryAnd: Box<Expression> = {
-    BinaryAnd BinaryAndOp BitShift => Box::new(Expression::BinaryOperation(<>)),
+    <start:@L> <left:BinaryAnd> <op:BinaryAndOp> <right:BitShift> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
     BitShift,
 }
 
@@ -514,7 +513,7 @@ BinaryAndOp: BinaryOperator = {
 }
 
 BitShift: Box<Expression> = {
-    BitShift BitShiftOp Sum => Box::new(Expression::BinaryOperation(<>)),
+    <start:@L> <left:BitShift> <op:BitShiftOp> <right:Sum> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
     Sum,
 }
 
@@ -524,7 +523,7 @@ BitShiftOp: BinaryOperator = {
 }
 
 Sum: Box<Expression> = {
-    Sum SumOp Product => Box::new(Expression::BinaryOperation(<>)),
+    <start:@L> <left:Sum> <op:SumOp> <right:Product> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
     Product,
 }
 
@@ -534,7 +533,7 @@ SumOp: BinaryOperator = {
 }
 
 Product: Box<Expression> = {
-    Product ProductOp Power => Box::new(Expression::BinaryOperation(<>)),
+    <start:@L> <left:Product> <op:ProductOp> <right:Power> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
     Power,
 }
 
@@ -545,7 +544,7 @@ ProductOp: BinaryOperator = {
 }
 
 Power: Box<Expression> = {
-    <Term> <PowOp> <Power> => Box::new(Expression::BinaryOperation(<>)),
+    <start:@L> <left:Term> <op:PowOp> <right:Power> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
     Unary,
 }
 
@@ -554,7 +553,7 @@ PowOp: BinaryOperator = {
 }
 
 Unary: Box<Expression> = {
-    PrefixUnaryOp PostfixUnary => Box::new(Expression::UnaryOperation(<>)),
+    <start:@L> <op:PrefixUnaryOp> <expr:PostfixUnary> => ctx.to_expr_with_source_ref(UnaryOperation{op, expr}, start),
     PostfixUnary,
 }
 
@@ -564,7 +563,7 @@ PrefixUnaryOp: UnaryOperator = {
 }
 
 PostfixUnary: Box<Expression> = {
-    <t:Term> <o:PostfixUnaryOp> => Box::new(Expression::UnaryOperation(o, t)),
+    <start:@L> <t:Term> <op:PostfixUnaryOp> => ctx.to_expr_with_source_ref(UnaryOperation{op, expr: t}, start),
     Term,
 }
 
@@ -573,21 +572,21 @@ PostfixUnaryOp: UnaryOperator = {
 }
 
 Term: Box<Expression> = {
-    IndexAccess => Box::new(Expression::IndexAccess(<>)),
-    FunctionCall => Box::new(Expression::FunctionCall(<>)),
-    ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference::from_identifier(<>))),
-    GenericReference => Box::new(Expression::Reference(<>)),
-    PublicIdentifier => Box::new(Expression::PublicReference(<>)),
-    Number => Box::new(Number{value: <>.into(), type_: None}.into()),
-    StringLiteral => Box::new(Expression::String(<>)),
+    <start:@L> <i:IndexAccess> => ctx.to_expr_with_source_ref(i, start),
+    <start:@L> <f:FunctionCall> => ctx.to_expr_with_source_ref(f, start),
+    <start:@L> <i:ConstantIdentifier> => ctx.to_expr_with_source_ref(NamespacedPolynomialReference::from_identifier(i), start),
+    <start:@L> <g:GenericReference> => ctx.to_expr_with_source_ref(g, start),
+    <start:@L> <p:PublicIdentifier> => Box::new(Expression::PublicReference(ctx.source_ref(start), p)),
+    <start:@L> <value:Number> => ctx.to_expr_with_source_ref(Number {value: value.into(), type_: None}, start),
+    <start:@L> <s:StringLiteral> => Box::new(Expression::String(ctx.source_ref(start), s)),
     MatchExpression,
     IfExpression,
     BlockExpression,
-    "[" <items:ExpressionList> "]" => Box::new(Expression::ArrayLiteral(ArrayLiteral{items})),
-    "(" <head:Expression> "," <tail:ExpressionList> ")" => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(list)) },
-    "(" ")" => Box::new(Expression::Tuple(vec![])),
+    <start:@L> "[" <items:ExpressionList> "]" => ctx.to_expr_with_source_ref(ArrayLiteral{items}, start),
+    <start:@L> "(" <head:Expression> "," <tail:ExpressionList> ")" => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start), list)) },
+    <start:@L> "(" ")" => Box::new(Expression::Tuple(ctx.source_ref(start), vec![])),
     "(" <BoxedExpression> ")",
-    "${" <BoxedExpression> "}" => Box::new(Expression::FreeInput(<>))
+    <start:@L> "${" <b:BoxedExpression> "}" => Box::new(Expression::FreeInput(ctx.source_ref(start), b))
 }
 
 IndexAccess: IndexAccess = {
@@ -609,7 +608,7 @@ GenericReference: NamespacedPolynomialReference = {
 }
 
 MatchExpression: Box<Expression> = {
-    "match" <BoxedExpression> "{" <MatchArms> "}" => Box::new(Expression::MatchExpression(<>))
+    <start:@L> "match" <scrutinee:BoxedExpression> "{" <arms:MatchArms> "}" => ctx.to_expr_with_source_ref(MatchExpression{scrutinee, arms}, start),
 }
 
 MatchArms: Vec<MatchArm> = {
@@ -622,19 +621,19 @@ MatchArm: MatchArm = {
 }
 
 IfExpression: Box<Expression> = {
-    "if" <condition:BoxedExpression>
+    <start:@L> "if" <condition:BoxedExpression>
         <body:BracedExpression>
         "else"
-        <else_body:BracedExpression> => Box::new(Expression::IfExpression(IfExpression{<>}))
+        <else_body:BracedExpression> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start),
 }
 
 BlockExpression: Box<Expression> = {
-    "{" <StatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>))
+    <start:@L> "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start),
 }
 
 BracedExpression: Box<Expression> = {
-    "{" <StatementInsideBlock+> <BoxedExpression> "}" => Box::new(Expression::BlockExpression(<>)),
-    "{" <BoxedExpression> "}" => Box::new(Expression::BlockExpression(vec![], <>))
+    <start:@L> "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start),
+    <start:@L> "{" <expr:BoxedExpression> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements: vec![], expr}, start),
 }
 
 StatementInsideBlock: StatementInsideBlock = {

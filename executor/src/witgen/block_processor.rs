@@ -53,7 +53,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 
     pub fn with_outer_query(
         self,
-        outer_query: OuterQuery<'a, T>,
+        outer_query: OuterQuery<'a, 'b, T>,
     ) -> BlockProcessor<'a, 'b, 'c, T, Q> {
         let processor = self.processor.with_outer_query(outer_query);
         Self { processor, ..self }

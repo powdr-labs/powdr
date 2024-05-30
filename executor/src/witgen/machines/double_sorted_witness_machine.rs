@@ -4,15 +4,13 @@ use std::iter::once;
 use itertools::Itertools;
 
 use super::{FixedLookup, Machine};
-use crate::witgen::affine_expression::AffineExpression;
+use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 use powdr_number::{DegreeType, FieldElement};
 
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolyID};
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.
@@ -63,6 +61,7 @@ pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
     has_bootloader_write_column: bool,
     /// All selector IDs that are used on the right-hand side connecting identities.
     selector_ids: BTreeMap<u64, PolyID>,
+    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
 }
 
 struct Operation<T> {
@@ -80,7 +79,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<T>,
-        connecting_identities: &[&Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
         // get the namespaces and column names
@@ -95,14 +94,14 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         }
 
         if !connecting_identities
-            .iter()
+            .values()
             .all(|i| i.kind == IdentityKind::Permutation)
         {
             return None;
         }
 
         let selector_ids = connecting_identities
-            .iter()
+            .values()
             .map(|i| {
                 i.right
                     .selector
@@ -158,6 +157,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                     trace: Default::default(),
                     data: Default::default(),
                     selector_ids,
+                    connecting_identities: connecting_identities.clone(),
                 })
             } else {
                 None
@@ -173,6 +173,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 trace: Default::default(),
                 data: Default::default(),
                 selector_ids,
+                connecting_identities: connecting_identities.clone(),
             })
         }
     }
@@ -191,9 +192,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, args)
+        self.process_plookup_internal(identity_id, caller_rows)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -336,7 +337,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
     fn process_plookup_internal(
         &mut self,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
         // OP { operation_id, ADDR, STEP, X } is <selector> { operation_id, m_addr, m_step, m_value }
@@ -344,6 +345,13 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         // - operation_id == 0: Read
         // - operation_id == 1: Write
         // - operation_id == 2: Bootloader write
+
+        let args = self.connecting_identities[&identity_id]
+            .left
+            .expressions
+            .iter()
+            .map(|e| caller_rows.evaluate(e).unwrap())
+            .collect::<Vec<_>>();
 
         let operation_id = match args[0].constant_value() {
             Some(v) => v,
@@ -382,7 +390,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 
         // TODO this does not check any of the failure modes
         let mut assignments = EvalValue::complete(vec![]);
-        if is_write {
+        let has_side_effect = if is_write {
             let value = match value_expr.constant_value() {
                 Some(v) => v,
                 None => {
@@ -398,34 +406,43 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 value
             );
             self.data.insert(addr, value);
-            self.trace.insert(
-                (addr, step),
-                Operation {
-                    is_normal_write,
-                    is_bootloader_write,
-                    value,
-                    selector_id,
-                },
-            );
+            self.trace
+                .insert(
+                    (addr, step),
+                    Operation {
+                        is_normal_write,
+                        is_bootloader_write,
+                        value,
+                        selector_id,
+                    },
+                )
+                .is_none()
         } else {
             let value = self.data.entry(addr).or_default();
-            self.trace.insert(
-                (addr, step),
-                Operation {
-                    is_normal_write,
-                    is_bootloader_write,
-                    value: *value,
-                    selector_id,
-                },
-            );
             log::trace!(
                 "Memory read: addr={:x}, step={step}, value={:x}",
                 addr,
                 value
             );
-            let ass = (value_expr.clone() - (*value).into()).solve()?;
+            let ass =
+                (value_expr.clone() - (*value).into()).solve_with_range_constraints(caller_rows)?;
             assignments.combine(ass);
+            self.trace
+                .insert(
+                    (addr, step),
+                    Operation {
+                        is_normal_write,
+                        is_bootloader_write,
+                        value: *value,
+                        selector_id,
+                    },
+                )
+                .is_none()
+        };
+        if has_side_effect {
+            assignments = assignments.report_side_effect();
         }
+
         Ok(assignments)
     }
 }

@@ -3,14 +3,13 @@ use std::collections::{BTreeMap, HashMap};
 use itertools::{Either, Itertools};
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-    PolynomialType,
+    AlgebraicExpression as Expression, Identity, IdentityKind, PolyID, PolynomialType,
 };
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::{
-    affine_expression::AffineExpression, util::try_to_simple_poly, EvalError, EvalResult,
-    EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
+    rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
+    IncompleteCause, MutableState, QueryCallback,
 };
 
 use super::{FixedLookup, Machine};
@@ -29,12 +28,9 @@ use super::{FixedLookup, Machine};
 /// instr mload X -> Y { {X, Y} in {ADDR, v} }
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
-    connecting_identities: Vec<u64>,
+    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
-    /// The right-hand side of the connecting identity
-    /// (if there are several, they must all be the same)
-    rhs_expressions: &'a [Expression<T>],
     /// The polynomials that are used as values (witness polynomials on the RHS)
     value_polys: Vec<PolyID>,
     /// A map from keys to row indices
@@ -48,7 +44,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &[&'a Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         identities: &[&Identity<Expression<T>>],
     ) -> Option<Self> {
         if !identities.is_empty() {
@@ -56,14 +52,14 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         if !connecting_identities
-            .iter()
+            .values()
             .all(|i| i.kind == IdentityKind::Plookup)
         {
             return None;
         }
 
         // All connecting identities should have no selector or a selector of 1
-        if connecting_identities.iter().any(|i| {
+        if connecting_identities.values().any(|i| {
             i.right
                 .selector
                 .as_ref()
@@ -74,15 +70,17 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         // All RHS expressions should be the same
-        let rhs_expressions = &connecting_identities[0].right.expressions;
-        if connecting_identities
-            .iter()
-            .any(|i| i.right.expressions != *rhs_expressions)
-        {
+        let rhs_exprs = connecting_identities
+            .values()
+            .map(|i| &i.right.expressions)
+            .collect_vec();
+        if !rhs_exprs.iter().all_equal() {
             return None;
         }
 
-        let rhs_polys = rhs_expressions
+        let rhs_polys = rhs_exprs
+            .first()
+            .unwrap()
             .iter()
             .map(|e| try_to_simple_poly(e))
             .collect::<Option<Vec<_>>>();
@@ -113,10 +111,9 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         Some(Self {
-            connecting_identities: connecting_identities.iter().map(|&i| i.id).collect(),
+            connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
-            rhs_expressions,
             value_polys,
             key_to_index,
             data: BTreeMap::new(),
@@ -125,11 +122,19 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
     fn process_plookup_internal(
         &mut self,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        identity_id: u64,
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
+        let identity = self.connecting_identities[&identity_id];
+        let args = identity
+            .left
+            .expressions
+            .iter()
+            .map(|e| caller_rows.evaluate(e).unwrap())
+            .collect::<Vec<_>>();
         let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = args
             .iter()
-            .zip(self.rhs_expressions.iter())
+            .zip(identity.right.expressions.iter())
             .partition(|(_, r)| {
                 try_to_simple_poly(r).unwrap().poly_id.ptype == PolynomialType::Constant
             });
@@ -195,10 +200,17 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
         // Write values
         let is_complete = !values.contains(&None);
-        self.data.insert(index, values);
+        let side_effect = self.data.insert(index, values).is_none();
 
         match is_complete {
-            true => Ok(EvalValue::complete(updates)),
+            true => Ok({
+                let res = EvalValue::complete(updates);
+                if side_effect {
+                    res.report_side_effect()
+                } else {
+                    res
+                }
+            }),
             false => Ok(EvalValue::incomplete_with_constraints(
                 updates,
                 IncompleteCause::NonConstantRequiredArgument("value"),
@@ -209,7 +221,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
 impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_identities.clone()
+        self.connecting_identities.keys().copied().collect()
     }
 
     fn name(&self) -> &str {
@@ -219,10 +231,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
-        _identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        identity_id: u64,
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(args)
+        self.process_plookup_internal(identity_id, caller_rows)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
