@@ -15,15 +15,16 @@ use std::math::fp2::next_ext;
 use std::math::fp2::inv_ext;
 use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
+use std::math::fp2::constrain_eq_ext;
 
 let is_first: col = |i| if i == 0 { 1 } else { 0 };
 
-// Get two phase-2 challenges to use in all permutation arguments.
-// Note that this assumes that globally no other challenge of these IDs is used,
-// and that challenges for multiple permutation arguments are re-used.
-// We declare two components for each challenge here, in case we need to operate
-// on the extension field. If we don't, we won't end up needing it and the optimizer
-// will remove it.
+/// Get two phase-2 challenges to use in all permutation arguments.
+/// Note that this assumes that globally no other challenge of these IDs is used,
+/// and that challenges for multiple permutation arguments are re-used.
+/// We declare two components for each challenge here, in case we need to operate
+/// on the extension field. If we don't, we won't end up needing it and the optimizer
+/// will remove it.
 let alpha1: expr = challenge(0, 1);
 let alpha2: expr = challenge(0, 2);
 
@@ -42,20 +43,22 @@ let needs_extension: -> bool = || match known_field() {
     None => panic("The permutation argument is not implemented for the current field!")
 };
 
-/// Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
+/// Maps [x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
 let<T: Add + Mul + FromLiteral> compress_expression_array: T[], Fp2<T> -> Fp2<T> = |expr_array, alpha| fold(
     expr_array,
     from_base(0),
     |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), from_base(el))
 );
 
-/// Takes a selector (0 or 1) and a value, returns value (if selector == 1) or 1 (if selector == 0)
+/// Takes a boolean selector (0/1) and a value, returns equivalent of `if selector { value } else { 1 }`
 /// Implemented as: selector * (value - 1) + 1
 let<T: Add + Mul + Sub + FromLiteral> selected_or_one: T, Fp2<T> -> Fp2<T> = |selector, value| add_ext(mul_ext(from_base(selector), sub_ext(value, from_base(1))), from_base(1));
 
-// Compute z' = z * selected_or_one(sel_a, beta - a) / selected_or_one(sel_b, beta - b), using extension field arithmetic
-// This is intended to be used as a hint in the extension field case; for the base case
-// automatic witgen is smart enough to figure out the value if the accumulator.
+/// Compute acc' = acc * selected_or_one(sel_a, beta - a) / selected_or_one(sel_b, beta - b),
+/// using extension field arithmetic (where expressions for sel_a, a, sel_b, b are derived from
+/// the provided permutation constraint).
+/// This is intended to be used as a hint in the extension field case; for the base case
+/// automatic witgen is smart enough to figure out the value of the accumulator.
 let compute_next_z: Fp2<expr>, Constr -> fe[] = query |acc, permutation_constraint| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
@@ -83,11 +86,11 @@ let compute_next_z: Fp2<expr>, Constr -> fe[] = query |acc, permutation_constrai
     }
 };
 
-// Adds constraints that enforce that lhs is a permutation of rhs
-// Arguments:
-// - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
-//        are done on the F_{p^2} extension field.
-// - permutation_constraint: The permutation constraint
+/// Adds constraints that enforce that lhs is a permutation of rhs
+/// Arguments:
+/// - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
+///        are done on the F_{p^2} extension field.
+/// - permutation_constraint: The permutation constraint
 let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
@@ -127,10 +130,10 @@ let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
     // Update rule:
     // acc' = acc * lhs_folded / rhs_folded
     // => rhs_folded * acc' - lhs_folded * acc = 0
-    let (update_expr_1, update_expr_2) = unpack_ext(sub_ext(
+    let diff_from_expected = sub_ext(
         mul_ext(rhs_folded, next_acc),
         mul_ext(lhs_folded, acc_ext)
-    ));
+    );
 
     let (acc_1, acc_2) = unpack_ext(acc_ext);
 
@@ -141,12 +144,6 @@ let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
 
         // Note that if with_extension is false, this generates 0 = 0 and is removed
         // by the optimizer.
-        is_first * acc_2 = 0,
-
-        // Assert that the update rule has been obeyed
-        update_expr_1 = 0,
-
-        // Again, update_expr_2 will be equal to 0 in the non-extension case.
-        update_expr_2 = 0
-    ]
+        is_first * acc_2 = 0
+    ] + constrain_eq_ext(diff_from_expected, from_base(0))
 };
