@@ -150,8 +150,8 @@ pub fn mod_256<F: FieldElement>(a: &[F], b: &[F], c: &[F]) -> [F; 8] {
 
     let res = ((a << 256) + b) % c; // big-endian, should be 256 bits max
     let mut remainder: [F; 8] = Default::default();
-    for i in 0..8 {
-        remainder[i] = F::from((res.clone() >> (i * 32)) & 0xffffffffu64);
+    for (i, r) in remainder.iter_mut().enumerate() {
+        *r = F::from((res.clone() >> (i * 32)) & 0xffffffffu64);
     }
 
     remainder
