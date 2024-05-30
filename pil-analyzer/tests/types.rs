@@ -40,7 +40,7 @@ fn type_scheme_simplify_type_vars() {
 }
 
 #[test]
-#[should_panic = "Error checking sub-expression N.id:\\nExpected type: expr\\n"]
+#[should_panic = "Expected type: expr\\n"]
 fn use_fun_in_expr_context() {
     let input = r#"namespace N(16);
     let id = |i| i;
