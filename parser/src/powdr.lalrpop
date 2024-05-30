@@ -639,10 +639,10 @@ StatementInsideBlock: StatementInsideBlock = {
 // ---------------------------- Pattern -----------------------------
 
 Pattern: Pattern = {
-    "_" => Pattern::CatchAll,
-    Number => Pattern::Number(<>.into()),
-    "-" <Number> => Pattern::Number(-BigInt::from(<>)),
-    StringLiteral => Pattern::String(<>),
+    <start:@L> "_" <end:@R> => Pattern::CatchAll(ctx.source_ref(start, end)),
+    <start:@L> <n:Number> <end:@R> => Pattern::Number(ctx.source_ref(start, end), n.into()),
+    <start:@L> "-" <n:Number> <end:@R> => Pattern::Number(ctx.source_ref(start, end), -BigInt::from(n)),
+    <start:@L> <l:StringLiteral> <end:@R> => Pattern::String(ctx.source_ref(start, end), l),
     TuplePattern,
     ArrayPattern,
     // We never parse Pattern::Variable directly. Instead, we
@@ -656,21 +656,21 @@ Pattern: Pattern = {
 
 PatternIncludingEllipsis: Pattern = {
     Pattern => <>,
-    ".." => Pattern::Ellipsis,
+    <start:@L> ".." <end:@R> => Pattern::Ellipsis(ctx.source_ref(start, end)),
 }
 
 TuplePattern: Pattern = {
-    "(" ")" => Pattern::Tuple(vec![]),
-    "(" <mut items:(<Pattern> ",")+> <last:Pattern> ")" => Pattern::Tuple({items.push(last); items})
+    <start:@L> "(" ")" <end:@R> => Pattern::Tuple(ctx.source_ref(start, end), vec![]),
+    <start:@L> "(" <mut items:(<Pattern> ",")+> <last:Pattern> ")" <end:@R> => Pattern::Tuple(ctx.source_ref(start, end), {items.push(last); items})
 }
 
 ArrayPattern: Pattern = {
-    "[" "]" => Pattern::Array(vec![]),
-    "[" <mut items:(<PatternIncludingEllipsis> ",")*> <last:PatternIncludingEllipsis> "]" => Pattern::Array({items.push(last); items})
+    <start:@L> "[" "]" <end:@R> => Pattern::Array(ctx.source_ref(start, end), vec![]),
+    <start:@L> "[" <mut items:(<PatternIncludingEllipsis> ",")*> <last:PatternIncludingEllipsis> "]" <end:@R> => Pattern::Array(ctx.source_ref(start, end), {items.push(last); items})
 }
 
 EnumPattern: Pattern = {
-    <SymbolPath> <( "(" <PatternList> ")" )?> => Pattern::Enum(<>)
+    <start:@L> <n:SymbolPath> <items:( "(" <PatternList> ")" )?> <end:@R> => Pattern::Enum(ctx.source_ref(start, end), n, items)
 }
 
 PatternList: Vec<Pattern> = {

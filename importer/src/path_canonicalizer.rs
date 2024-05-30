@@ -276,20 +276,20 @@ fn canonicalize_inside_pattern(
     paths: &'_ PathMap,
 ) {
     match pattern {
-        Pattern::Enum(name, None) => {
+        Pattern::Enum(source_ref, name, None) => {
             // TODO Currently, we treat any identifier as a variable pattern.
             // If done properly, single identifiers that resolve to enum values
             // (like a single None) should not be treated as variables.
             // This is planned to be fixed with the refactoring of path_canonicalizer,
             // where we remove the two-step approach.
             if let Some(name) = name.try_to_identifier() {
-                *pattern = Pattern::Variable(name.clone())
+                *pattern = Pattern::Variable(source_ref.clone(), name.clone())
             } else {
                 let abs = paths.get(&path.clone().join(name.clone())).unwrap();
                 *name = abs.relative_to(&Default::default()).clone();
             }
         }
-        Pattern::Enum(name, _fields) => {
+        Pattern::Enum(_, name, _fields) => {
             let abs = paths.get(&path.clone().join(name.clone())).unwrap();
             *name = abs.relative_to(&Default::default()).clone();
         }
@@ -795,8 +795,8 @@ fn check_pattern<'b>(
     state: &mut State<'_>,
 ) -> Result<Box<dyn Iterator<Item = String> + 'b>, String> {
     match pattern {
-        Pattern::Variable(n) => return Ok(Box::new(once(n.clone()))),
-        Pattern::Enum(name, fields) => {
+        Pattern::Variable(_, n) => return Ok(Box::new(once(n.clone()))),
+        Pattern::Enum(_, name, fields) => {
             // The parser cannot distinguish between Enum and Variable patterns.
             // So if "name" is a single identifier that does not resolve to an enum variant,
             // it is a variable pattern.
