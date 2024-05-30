@@ -57,6 +57,24 @@ machine Arith with
         0
     };
 
+    // Carries can be any integer in the range [-2**31, 2**31 - 1)
+    // let carry: expr[3] = array::new(3, |i| carry_high[i] * 2**16 + carry_low[i] - 2 ** 31);
+
+    // Combine: ((((main_arith.x1[0] * main_arith.y1_0) + main_arith.x2_0) - main_arith.y3[0]) * main_arith.CLK32[0])
+    // and      (main_arith.selEq[0] * (main_arith.eq0_sum + main_arith.carry[0])) = ((main_arith.selEq[0] * main_arith.carry[0]') * 65536);
+    // and      - 2 ** 31
+    // CLK32[0] * selEq[0] * (((((x1[0] * y1_0) + x2_0) - y3[0]) + carry[0]) - ((selEq[0] * carry[0]') * 65536)) = 0;
+    // CLK32[0] * selEq[0] * (x1[0] * y1_0 + x2_0 - y3[0] - 2 ** 31 - carry[0]' * 65536) = 0;
+    //  x2_0 = y3[0] + 2 ** 31 + carry[0]' * 65536 - x1[0] * y1_0
+    // This works (carry must be 0):
+    // CLK32[0] * selEq[0] * ((x2_0) - (y3[0] - x1[0] * y1_0)) = 0;
+    // Adding carry doesn't:
+    // CLK32[0] * selEq[0] * (x2_0 - (y3[0] - x1[0] * y1_0) - carry[0]' * 2**16) = 0;
+    col witness carry_foo;
+    {carry_foo} in BYTE2;
+    CLK32[0] * selEq[0] * (x2_0 - (y3[0] - x1[0] * y1_0) - carry_foo * 2**16) = 0;
+    // In other words: x2_0 + carry_foo * 2**16 = y3[0] - x1[0] * y1_0 = 1
+
     let s_for_eq1 = |x1, y1, x2, y2| div(sub(y2, y1), sub(x2, x1));
     let s_for_eq2 = |x1, y1| div(mul(3, mul(x1, x1)), mul(2, y1));
 
@@ -216,67 +234,67 @@ machine Arith with
     let y1 = [y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, y1_8, y1_9, y1_10, y1_11, y1_12, y1_13, y1_14, y1_15];
 
     col witness x2_0(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 0))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 0))),
         _ => Query::None
     };
     col witness x2_1(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 1))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 1))),
         _ => Query::None
     };
     col witness x2_2(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 2))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 2))),
         _ => Query::None
     };
     col witness x2_3(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 3))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 3))),
         _ => Query::None
     };
     col witness x2_4(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 4))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 4))),
         _ => Query::None
     };
     col witness x2_5(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 5))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 5))),
         _ => Query::None
     };
     col witness x2_6(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 6))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 6))),
         _ => Query::None
     };
     col witness x2_7(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 7))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 7))),
         _ => Query::None
     };
     col witness x2_8(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 8))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 8))),
         _ => Query::None
     };
     col witness x2_9(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 9))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 9))),
         _ => Query::None
     };
     col witness x2_10(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 10))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 10))),
         _ => Query::None
     };
     col witness x2_11(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 11))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 11))),
         _ => Query::None
     };
     col witness x2_12(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 12))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 12))),
         _ => Query::None
     };
     col witness x2_13(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 13))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 13))),
         _ => Query::None
     };
     col witness x2_14(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 14))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 14))),
         _ => Query::None
     };
     col witness x2_15(i) query match is_ec_operation() {
-        0 => Query::Hint(fe(select_limb(remainder_hint(), 15))),
+        //0 => Query::Hint(fe(select_limb(remainder_hint(), 15))),
         _ => Query::None
     };
 

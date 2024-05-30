@@ -154,7 +154,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     ) -> EvalResult<'a, T> {
         match rows.evaluate(identity.expression_for_poly_id()) {
             Err(incomplete_cause) => Ok(EvalValue::incomplete(incomplete_cause)),
-            Ok(evaluated) => evaluated.solve_with_range_constraints(rows),
+            Ok(evaluated) => {
+                println!("evaluated: {}", evaluated);
+                evaluated.solve_with_range_constraints(rows)
+            }
         }
     }
 

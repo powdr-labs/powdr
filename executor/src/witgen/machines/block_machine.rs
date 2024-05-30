@@ -481,10 +481,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identity_id: u64,
         left: &[AffineExpression<&'a AlgebraicReference, T>],
     ) -> EvalResult<'a, T> {
-        log::trace!("Start processing block machine '{}'", self.name());
-        log::trace!("Left values of lookup:");
+        log::info!("Start processing block machine '{}'", self.name());
+        log::info!("Left values of lookup:");
         for l in left {
-            log::trace!("  {}", l);
+            log::info!("  {}", l);
         }
 
         let right = self.connecting_rhs.get(&identity_id).unwrap();
@@ -555,7 +555,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         match process_result {
             ProcessResult::Success(new_block, updates) => {
-                log::trace!(
+                log::info!(
                     "End processing block machine '{}' (successfully)",
                     self.name()
                 );
@@ -572,7 +572,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 Ok(updates)
             }
             ProcessResult::Incomplete(updates) => {
-                log::trace!(
+                log::info!(
                     "End processing block machine '{}' (incomplete)",
                     self.name()
                 );

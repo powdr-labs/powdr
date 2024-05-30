@@ -170,9 +170,11 @@ where
     ) -> EvalResult<T, K> {
         // Try to solve directly.
         let value = self.solve()?;
+        println!("   (0)");
         if value.is_complete() {
             return Ok(value);
         }
+        println!("   (1)");
 
         // sanity check that we are not ignoring anything useful here
         assert!(value.constraints.is_empty());
@@ -185,12 +187,14 @@ where
                 return Ok(result);
             }
         };
+        println!("   (2)");
 
         if let Some(result) = negated.try_solve_division(known_constraints).transpose()? {
             if !result.is_empty() {
                 return Ok(result);
             }
         };
+        println!("   (3)");
 
         // If we have bit mask constraints on all variables and they are non-overlapping,
         // we can deduce values for all of them.
@@ -198,11 +202,13 @@ where
         if !result.is_empty() {
             return Ok(result);
         }
+        println!("   (4)");
 
         let result = negated.try_solve_through_constraints(known_constraints)?;
         if !result.is_empty() {
             return Ok(result);
         }
+        println!("   (5)");
 
         // Now at least try to propagate constraints to a variable from the other parts of the equation.
         let constraints = (match (
