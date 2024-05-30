@@ -1039,7 +1039,8 @@ mod tests {
 
     #[cfg(test)]
     mod parentheses {
-        use powdr_parser::{parse, test_utils::pil_clear_source_refs};
+        use powdr_parser::parse;
+        use powdr_parser::test_utils::ClearSourceRefs;
         use powdr_parser_util::UnwrapErrToStderr;
         use pretty_assertions::assert_eq;
         use test_log::test;
@@ -1053,8 +1054,8 @@ mod tests {
             assert_eq!(expected.trim(), printed.trim());
             let mut re_parsed = parse(None, printed.as_str()).unwrap_err_to_stderr();
 
-            pil_clear_source_refs(&mut parsed);
-            pil_clear_source_refs(&mut re_parsed);
+            parsed.clear_source_refs();
+            re_parsed.clear_source_refs();
             assert_eq!(parsed, re_parsed);
         }
 
