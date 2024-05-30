@@ -16,7 +16,7 @@ pub mod arith;
 pub mod ec;
 pub mod fmt;
 pub mod hash;
-pub mod input;
+pub mod io;
 
 #[panic_handler]
 unsafe fn panic(panic: &PanicInfo<'_>) -> ! {

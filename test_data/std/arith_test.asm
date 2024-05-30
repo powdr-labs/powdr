@@ -217,6 +217,13 @@ machine Main with degree: 65536 {
             0xfffffc2f, 0xfffffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
         assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0x333428f9, 0x7777783a, 0x22222263, 0xddddde1f, 0x999999da, 0x55555596, 0x777777b9, 0xddddde1e;
 
+        // ((2**256 - 1) * (2**256 - 1) + (2**256 - 1)) % (2**256 - 1)
+        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
+            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
+        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
+
         // EC Addition:
         // x1: 55066263022277343669578718895168534326250603453777594175500187360389116729240
         //     = 0x79be667e f9dcbbac 55a06295 ce870b07 029bfcdb 2dce28d9 59f2815b 16f81798
