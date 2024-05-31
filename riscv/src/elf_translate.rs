@@ -14,7 +14,10 @@ pub fn elf_translate(file_name: &str) {
     let file_buffer = fs::read(file_name).unwrap();
 
     let elf = Elf::parse(&file_buffer).unwrap();
-    println!("{:#?}", elf);
+
+    // Map of addresses into memory sections, so we can know what address belong
+    // in what section.
+    let mut address_map = AddressMap(BTreeMap::new());
 
     // We simply extract all the text and data sections. There is no need to
     // perform reachability search, because we trust the linker to have done
@@ -23,11 +26,12 @@ pub fn elf_translate(file_name: &str) {
     // TODO: maybe exclude the section mapping the ELF header itself? There is
     // also this dynamic section that I think we can ignore. But with
     // continuations on, unused memory is practically free.
-    let mut text_sections = Vec::new();
+    let mut lifted_text_sections = Vec::new();
     let mut data_map = BTreeMap::new();
 
     // Keep a list of referenced text addresses, so we can generate the labels.
     let mut referenced_text_addrs = HashSet::from([elf.entry.try_into().unwrap()]);
+    println!("entry: {:08x}:", elf.entry);
 
     for p in elf.program_headers.iter() {
         if p.p_type == program_header::PT_LOAD {
@@ -35,10 +39,13 @@ pub fn elf_translate(file_name: &str) {
             let section_data =
                 &file_buffer[p.p_offset as usize..(p.p_offset + p.p_filesz) as usize];
 
+            address_map.0.insert(addr, p);
+
             // Test if executable
             if p.p_flags & 1 == 1 {
-                let insns = lift_instructions(addr, section_data, &mut referenced_text_addrs);
-                text_sections.push(insns);
+                let insns =
+                    lift_instructions(addr, section_data, &address_map, &mut referenced_text_addrs);
+                lifted_text_sections.push(insns);
             } else {
                 load_data_section(addr, section_data, &mut data_map);
             }
@@ -49,24 +56,80 @@ pub fn elf_translate(file_name: &str) {
     // instructions, but not the data sections. Luckily, that is just a matter of
     // reading the dynamic relocation table.
     for r in elf.dynrelas.iter() {
-        // We only support the R_RISCV_RELATIVE relocation type:
-        assert_eq!(r.r_type, 3, "Unsupported relocation type!");
-
         let addr = r.r_offset as u32;
-        let original_addr = r.r_addend.unwrap() as u32;
+        if address_map.is_in_data_section(addr) {
+            // We only support the R_RISCV_RELATIVE relocation type:
+            assert_eq!(r.r_type, 3, "Unsupported relocation type!");
 
-        data_map.insert(addr, Data::TextLabel(original_addr));
+            let original_addr = r.r_addend.unwrap() as u32;
 
-        // We also need to add the referenced address to the list of text
-        // addresses, so we can generate the label.
-        referenced_text_addrs.insert(original_addr);
+            if address_map.is_in_text_section(original_addr) {
+                data_map.insert(addr, Data::TextLabel(original_addr));
+
+                // We also need to add the referenced address to the list of text
+                // addresses, so we can generate the label.
+                referenced_text_addrs.insert(original_addr);
+                println!("reloc: {:08x}:", original_addr);
+            } else {
+                data_map.insert(addr, Data::Value(original_addr));
+            }
+        } else {
+            panic!("Unsupported relocation in non-data section!\nTODO: maybe this is fine. Maybe the lifting of instructions have already taken care of this.");
+        }
     }
 
     assert_eq!(elf.dynrels.len(), 0, "Unsupported relocation type!");
 
+    println!("Text labels:");
+    for label in referenced_text_addrs {
+        println!("  label_{:08x}:", label);
+    }
+
+    println!("Non-zero data:");
+    for (addr, data) in data_map {
+        println!("  {addr:08x}: {data:?}:");
+    }
+
     todo!();
 }
 
+struct AddressMap<'a>(BTreeMap<u32, &'a program_header::ProgramHeader>);
+
+impl AddressMap<'_> {
+    fn is_in_data_section(&self, addr: u32) -> bool {
+        if let Some(section) = self.get_section_of_addr(addr) {
+            section.p_flags & 1 != 1
+        } else {
+            false
+        }
+    }
+
+    fn is_in_text_section(&self, addr: u32) -> bool {
+        if let Some(section) = self.get_section_of_addr(addr) {
+            section.p_flags & 1 == 1
+        } else {
+            false
+        }
+    }
+
+    fn get_section_of_addr(&self, addr: u32) -> Option<&program_header::ProgramHeader> {
+        // Get the latest section that starts before the address.
+        let section = self
+            .0
+            .range(..=addr)
+            .next_back()
+            .map(|(_, &section)| section)?;
+
+        if addr > section.p_vaddr as u32 + section.p_memsz as u32 {
+            // The address is after the end of the section.
+            None
+        } else {
+            Some(section)
+        }
+    }
+}
+
+#[derive(Debug)]
 enum Data {
     TextLabel(u32),
     Value(u32),
@@ -116,6 +179,7 @@ struct HighLevelInsn {
 
 struct InstructionLifter<'a> {
     base_addr: u32,
+    address_map: &'a AddressMap<'a>,
     referenced_text_addrs: &'a mut HashSet<u32>,
 }
 
@@ -151,7 +215,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 rd: Some(*rd_lui as u32),
                 rs1: None,
                 rs2: None,
-                imm: HighLevelImmediate::Value((*hi << 12) | *lo),
+                imm: HighLevelImmediate::Value(*hi | *lo),
                 original_address: self.base_addr,
             },
             (
@@ -166,7 +230,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 },
                 insn2,
             ) => {
-                let hi = self.base_addr as i32 + (*hi << 12);
+                let hi = self.base_addr as i32 + *hi;
                 match insn2 {
                     // la rd, symbol
                     Ins {
@@ -175,14 +239,22 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         rs1: Some(rs1_addi),
                         imm: Some(lo),
                         ..
-                    } if rd_auipc == rd_addi && rd_auipc == rs1_addi => HighLevelInsn {
-                        op: "la",
-                        rd: Some(*rd_auipc as u32),
-                        rs1: None,
-                        rs2: None,
-                        imm: HighLevelImmediate::CodeLabel(hi + lo),
-                        original_address: self.base_addr,
-                    },
+                    } if rd_auipc == rd_addi && rd_auipc == rs1_addi => {
+                        let imm_addr = hi + lo;
+                        let imm = if self.address_map.is_in_text_section(imm_addr as u32) {
+                            HighLevelImmediate::CodeLabel(imm_addr)
+                        } else {
+                            HighLevelImmediate::Value(imm_addr)
+                        };
+                        HighLevelInsn {
+                            op: "la",
+                            rd: Some(*rd_auipc as u32),
+                            rs1: None,
+                            rs2: None,
+                            imm,
+                            original_address: self.base_addr,
+                        }
+                    }
                     // TODO: uncomment when powdr supports the pseudoinstruction
                     // version of l{b|h|w} and s{b|h|w}. For now, it is better
                     // to just fail here if we encounter this usage of auipc.
@@ -273,6 +345,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
 
         if let HighLevelImmediate::CodeLabel(addr) = &result.imm {
             self.referenced_text_addrs.insert(*addr as u32);
+            println!("insn {}: {:08x}", result.op, addr);
         }
 
         Some(result)
@@ -342,12 +415,14 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
 fn lift_instructions(
     base_addr: u32,
     data: &[u8],
+    address_map: &AddressMap,
     referenced_text_addrs: &mut HashSet<u32>,
 ) -> Vec<HighLevelInsn> {
     let instructions = RiscVInstructionIterator::new(data);
 
     let pseudo_converter = InstructionLifter {
         base_addr,
+        address_map,
         referenced_text_addrs,
     };
     try_map_two_by_two(instructions, pseudo_converter)
