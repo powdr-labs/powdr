@@ -61,10 +61,7 @@ lazy_static::lazy_static! {
     static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
-pub fn parse(
-    file_name: Option<&str>,
-    input: &str,
-) -> Result<powdr_ast::parsed::PILFile, Error> {
+pub fn parse(file_name: Option<&str>, input: &str) -> Result<powdr_ast::parsed::PILFile, Error> {
     let ctx = ParserContext::new(file_name, input);
     PIL_FILE_PARSER
         .parse(&ctx, input)
