@@ -8,9 +8,7 @@ use powdr_ast::parsed::{
     types::{Type, TypeBounds, TypeScheme},
     Expression, SourceReference,
 };
-use powdr_ast::SourceRef;
-
-use powdr_parser_util::{handle_parse_error, ParseError};
+use powdr_parser_util::{handle_parse_error, Error, SourceRef};
 
 use std::sync::Arc;
 
@@ -63,41 +61,38 @@ lazy_static::lazy_static! {
     static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
-pub fn parse<'a>(
-    file_name: Option<&str>,
-    input: &'a str,
-) -> Result<powdr_ast::parsed::PILFile, ParseError<'a>> {
+pub fn parse(file_name: Option<&str>, input: &str) -> Result<powdr_ast::parsed::PILFile, Error> {
     let ctx = ParserContext::new(file_name, input);
     PIL_FILE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
-pub fn parse_asm<'a>(
+pub fn parse_asm(
     file_name: Option<&str>,
-    input: &'a str,
-) -> Result<powdr_ast::parsed::asm::ASMProgram, ParseError<'a>> {
+    input: &str,
+) -> Result<powdr_ast::parsed::asm::ASMProgram, Error> {
     parse_module(file_name, input).map(|main| ASMProgram { main })
 }
 
-pub fn parse_module<'a>(
+pub fn parse_module(
     file_name: Option<&str>,
-    input: &'a str,
-) -> Result<powdr_ast::parsed::asm::ASMModule, ParseError<'a>> {
+    input: &str,
+) -> Result<powdr_ast::parsed::asm::ASMModule, Error> {
     let ctx = ParserContext::new(file_name, input);
     ASM_MODULE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
-pub fn parse_type(input: &str) -> Result<Type<powdr_ast::parsed::Expression>, ParseError<'_>> {
+pub fn parse_type(input: &str) -> Result<Type<powdr_ast::parsed::Expression>, Error> {
     let ctx = ParserContext::new(None, input);
     TYPE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, None, input))
 }
 
-pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, ParseError<'_>> {
+pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, Error> {
     let ctx = ParserContext::new(None, input);
     // We use GoldilocksField here, because we need to specify a concrete type,
     // even though the grammar for TypeBounds does not depend on the field.
