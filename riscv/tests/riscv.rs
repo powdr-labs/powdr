@@ -40,7 +40,7 @@ pub fn test_continuations(case: &str) {
 
         Ok(())
     };
-    let bootloader_inputs = rust_continuations_dry_run(&mut pipeline);
+    let bootloader_inputs = rust_continuations_dry_run(&mut pipeline, Default::default());
     rust_continuations(pipeline, pipeline_callback, bootloader_inputs).unwrap();
 }
 
@@ -272,7 +272,7 @@ fn many_chunks_dry() {
     let mut pipeline = Pipeline::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
         .with_prover_inputs(Default::default());
-    rust_continuations_dry_run::<GoldilocksField>(&mut pipeline);
+    rust_continuations_dry_run::<GoldilocksField>(&mut pipeline, Default::default());
 }
 
 use serde::{Deserialize, Serialize};
