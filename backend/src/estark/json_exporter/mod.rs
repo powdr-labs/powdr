@@ -6,6 +6,7 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicUnaryOperator, Analyzed,
     IdentityKind, PolyID, PolynomialType, StatementIdentifier, SymbolKind,
 };
+use powdr_parser_util::SourceRef;
 use starky::types::{
     ConnectionIdentity, Expression as StarkyExpr, PermutationIdentity, PlookupIdentity,
     PolIdentity, Reference, PIL,
@@ -385,7 +386,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
         (1, poly)
     }
 
-    fn line_of_source_ref(&mut self, source: &powdr_ast::SourceRef) -> usize {
+    fn line_of_source_ref(&mut self, source: &SourceRef) -> usize {
         let Some(file_contents) = source.file_contents.as_ref() else {
             return 0;
         };

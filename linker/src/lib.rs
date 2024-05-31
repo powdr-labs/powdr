@@ -10,8 +10,8 @@ use powdr_ast::{
         build::{index_access, namespaced_reference},
         PILFile, PilStatement, SelectedExpressions, TypedExpression,
     },
-    SourceRef,
 };
+use powdr_parser_util::SourceRef;
 
 use itertools::Itertools;
 

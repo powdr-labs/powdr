@@ -10,6 +10,7 @@ use std::ops::{self, ControlFlow};
 use std::sync::Arc;
 
 use powdr_number::{DegreeType, FieldElement};
+use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +19,6 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{self, EnumDeclaration, EnumVariant, SelectedExpressions};
-use crate::SourceRef;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub enum StatementIdentifier {
@@ -1045,7 +1045,7 @@ impl Display for PolynomialType {
 
 #[cfg(test)]
 mod tests {
-    use crate::SourceRef;
+    use powdr_parser_util::SourceRef;
 
     use super::{AlgebraicExpression, Analyzed};
 

@@ -8,9 +8,7 @@ use powdr_ast::parsed::{
     types::{Type, TypeBounds, TypeScheme},
     Expression, SourceReference,
 };
-use powdr_ast::SourceRef;
-
-use powdr_parser_util::{handle_parse_error, ParseError};
+use powdr_parser_util::{handle_parse_error, Error, SourceRef};
 
 use std::sync::Arc;
 
@@ -36,22 +34,23 @@ impl ParserContext {
         }
     }
 
-    pub fn source_ref(&self, offset: usize) -> SourceRef {
+    pub fn source_ref(&self, start: usize, end: usize) -> SourceRef {
         SourceRef {
             file_name: self.file_name.clone(),
             file_contents: self.file_contents.clone(),
-            start: offset,
-            end: offset,
+            start,
+            end,
         }
     }
 
     pub fn to_expr_with_source_ref<T: Into<Expression>>(
         &self,
         inner_expr: T,
-        offset: usize,
+        start: usize,
+        end: usize,
     ) -> Box<Expression> {
         let mut expr = inner_expr.into();
-        *expr.source_reference_mut() = self.source_ref(offset);
+        *expr.source_reference_mut() = self.source_ref(start, end);
         Box::new(expr)
     }
 }
@@ -63,41 +62,38 @@ lazy_static::lazy_static! {
     static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
-pub fn parse<'a>(
-    file_name: Option<&str>,
-    input: &'a str,
-) -> Result<powdr_ast::parsed::PILFile, ParseError<'a>> {
+pub fn parse(file_name: Option<&str>, input: &str) -> Result<powdr_ast::parsed::PILFile, Error> {
     let ctx = ParserContext::new(file_name, input);
     PIL_FILE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
-pub fn parse_asm<'a>(
+pub fn parse_asm(
     file_name: Option<&str>,
-    input: &'a str,
-) -> Result<powdr_ast::parsed::asm::ASMProgram, ParseError<'a>> {
+    input: &str,
+) -> Result<powdr_ast::parsed::asm::ASMProgram, Error> {
     parse_module(file_name, input).map(|main| ASMProgram { main })
 }
 
-pub fn parse_module<'a>(
+pub fn parse_module(
     file_name: Option<&str>,
-    input: &'a str,
-) -> Result<powdr_ast::parsed::asm::ASMModule, ParseError<'a>> {
+    input: &str,
+) -> Result<powdr_ast::parsed::asm::ASMModule, Error> {
     let ctx = ParserContext::new(file_name, input);
     ASM_MODULE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
-pub fn parse_type(input: &str) -> Result<Type<powdr_ast::parsed::Expression>, ParseError<'_>> {
+pub fn parse_type(input: &str) -> Result<Type<powdr_ast::parsed::Expression>, Error> {
     let ctx = ParserContext::new(None, input);
     TYPE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, None, input))
 }
 
-pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, ParseError<'_>> {
+pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, Error> {
     let ctx = ParserContext::new(None, input);
     // We use GoldilocksField here, because we need to specify a concrete type,
     // even though the grammar for TypeBounds does not depend on the field.
@@ -143,13 +139,13 @@ pub fn unescape_string(s: &str) -> String {
 mod test {
     use super::*;
     use powdr_ast::parsed::{
-        asm::ASMProgram, build::direct_reference, PILFile, PilStatement, PolynomialName,
-        SelectedExpressions,
+        build::direct_reference, PILFile, PilStatement, PolynomialName, SelectedExpressions,
     };
     use powdr_parser_util::UnwrapErrToStderr;
     use pretty_assertions::assert_eq;
     use similar::TextDiff;
     use test_log::test;
+    use test_utils::ClearSourceRefs;
     use walkdir::WalkDir;
 
     #[test]
@@ -171,7 +167,7 @@ mod test {
                     file_name: None,
                     file_contents: Some(input.into()),
                     start: 0,
-                    end: 0,
+                    end: 11,
                 },
                 "x".to_string()
             )])
@@ -191,7 +187,7 @@ mod test {
                         file_name: None,
                         file_contents: Some(input.into()),
                         start: 0,
-                        end: 0,
+                        end: 11,
                     },
                     "x".to_string()
                 ),
@@ -200,7 +196,7 @@ mod test {
                         file_name: None,
                         file_contents: Some(input.into()),
                         start: 13,
-                        end: 13,
+                        end: 25,
                     },
                     None,
                     vec![PolynomialName {
@@ -225,7 +221,7 @@ mod test {
                     file_name: None,
                     file_contents: Some(input.into()),
                     start: 0,
-                    end: 0,
+                    end: 6,
                 },
                 SelectedExpressions {
                     selector: None,
@@ -260,68 +256,6 @@ mod test {
         })
     }
 
-    // helper function to clear SourceRef's inside the AST so we can compare for equality
-    fn asm_clear_source_refs(ast: &mut ASMProgram) {
-        use powdr_ast::parsed::asm::{
-            ASMModule, FunctionStatement, Instruction, InstructionBody, Machine, MachineStatement,
-            Module, ModuleStatement, SymbolDefinition, SymbolValue,
-        };
-
-        fn clear_machine_stmt(stmt: &mut MachineStatement) {
-            use test_utils::pil_statement_clear_source_ref;
-            match stmt {
-                MachineStatement::Submachine(s, _, _)
-                | MachineStatement::RegisterDeclaration(s, _, _)
-                | MachineStatement::OperationDeclaration(s, _, _, _)
-                | MachineStatement::LinkDeclaration(s, _) => {
-                    *s = SourceRef::unknown();
-                }
-                MachineStatement::Pil(s, stmt) => {
-                    *s = SourceRef::unknown();
-                    pil_statement_clear_source_ref(stmt)
-                }
-                MachineStatement::InstructionDeclaration(s, _, Instruction { body, .. }) => {
-                    *s = SourceRef::unknown();
-                    if let InstructionBody::Local(statements) = body {
-                        statements
-                            .iter_mut()
-                            .for_each(pil_statement_clear_source_ref)
-                    }
-                }
-                MachineStatement::FunctionDeclaration(s, _, _, statements) => {
-                    *s = SourceRef::unknown();
-                    for statement in statements {
-                        match statement {
-                            FunctionStatement::Assignment(s, _, _, _)
-                            | FunctionStatement::Instruction(s, _, _)
-                            | FunctionStatement::Label(s, _)
-                            | FunctionStatement::DebugDirective(s, _)
-                            | FunctionStatement::Return(s, _) => *s = SourceRef::unknown(),
-                        }
-                    }
-                }
-            }
-        }
-
-        fn clear_module_stmt(stmt: &mut ModuleStatement) {
-            let ModuleStatement::SymbolDefinition(SymbolDefinition { value, .. }) = stmt;
-            match value {
-                SymbolValue::Machine(Machine { statements, .. }) => {
-                    statements.iter_mut().for_each(clear_machine_stmt)
-                }
-                SymbolValue::Module(Module::Local(ASMModule { statements })) => {
-                    statements.iter_mut().for_each(clear_module_stmt);
-                }
-                SymbolValue::Module(Module::External(_))
-                | SymbolValue::Import(_)
-                | SymbolValue::Expression(_)
-                | SymbolValue::TypeDeclaration(_) => (),
-            }
-        }
-
-        ast.main.statements.iter_mut().for_each(clear_module_stmt);
-    }
-
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for asm files
     fn parse_write_reparse_asm() {
@@ -336,8 +270,8 @@ mod test {
                 &orig_asm_to_string,
             )
             .unwrap_err_to_stderr();
-            asm_clear_source_refs(&mut orig_asm);
-            asm_clear_source_refs(&mut reparsed_asm);
+            orig_asm.clear_source_refs();
+            reparsed_asm.clear_source_refs();
             if orig_asm != reparsed_asm {
                 let orig_ast = format!("{orig_asm:#?}");
                 let reparsed_ast = format!("{reparsed_asm:#?}");
@@ -359,7 +293,7 @@ mod test {
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for pil files
     fn parse_write_reparse_pil() {
-        use test_utils::pil_clear_source_refs;
+        use test_utils::ClearSourceRefs;
         let crate_dir = env!("CARGO_MANIFEST_DIR");
         let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
         let pil_files = find_files_with_ext(basedir, "pil".into());
@@ -371,8 +305,8 @@ mod test {
                 &orig_pil_to_string,
             )
             .unwrap_err_to_stderr();
-            pil_clear_source_refs(&mut orig_pil);
-            pil_clear_source_refs(&mut reparsed_pil);
+            orig_pil.clear_source_refs();
+            reparsed_pil.clear_source_refs();
             assert_eq!(orig_pil, reparsed_pil);
             if orig_pil != reparsed_pil {
                 let orig_ast = format!("{orig_pil:#?}");

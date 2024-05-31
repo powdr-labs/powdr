@@ -40,7 +40,7 @@ fn type_scheme_simplify_type_vars() {
 }
 
 #[test]
-#[should_panic = "Error checking sub-expression N.id:\\nExpected type: expr\\n"]
+#[should_panic = "Expected type: expr\\n"]
 fn use_fun_in_expr_context() {
     let input = r#"namespace N(16);
     let id = |i| i;
@@ -156,6 +156,8 @@ fn generic_fixes_concrete() {
     // but in order to do that, we have to unify the derived type of
     // `y` with the declared and this would maybe create problems in that
     // we would not derive the most generic type for generic functions.
+
+    // TODO revisit this test, check if we are missing an error.
     let input = "
         let x = || 8;
         let<T> y: T -> int = |k| x();
@@ -252,7 +254,7 @@ fn type_check_arrays() {
 }
 
 #[test]
-#[should_panic = "Error type checking the symbol x = (|i| (i, \\\"abc\\\")):\\nExpected either int -> int or int -> fe, but got: int -> (int, string).\\nCannot unify types (int, string) and fe"]
+#[should_panic = "Expected either int -> int or int -> fe, but got: int -> (int, string).\\nCannot unify types (int, string) and fe"]
 fn error_for_column_type() {
     let input = "
         let x: col = |i| (i, \"abc\");
@@ -479,7 +481,7 @@ fn multi_ellipsis() {
 }
 
 #[test]
-#[should_panic = "Expected enum variant for pattern X::A but got int -> X - maybe you forgot the parentheses?"]
+#[should_panic = "Expected enum variant for pattern but got int -> X - maybe you forgot the parentheses?"]
 fn enum_no_paren_for_paren() {
     let input = "
     enum X { A(int) }
@@ -492,7 +494,7 @@ fn enum_no_paren_for_paren() {
 }
 
 #[test]
-#[should_panic = "Enum variant X::A does not have fields, but is used with parentheses in X::A()"]
+#[should_panic = "Enum variant X::A does not have fields, but is used with parentheses in pattern"]
 fn enum_paren_for_no_paren() {
     let input = "
     enum X { A }

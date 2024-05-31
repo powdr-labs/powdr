@@ -18,10 +18,11 @@ use powdr_ast::parsed::{
     FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
     MatchExpression, Pattern, PilStatement, StatementInsideBlock, TypedExpression, UnaryOperation,
 };
+use powdr_parser_util::{Error, SourceRef};
 
 /// Changes all symbol references (symbol paths) from relative paths
 /// to absolute paths, and removes all import statements.
-pub fn canonicalize_paths(program: ASMProgram) -> Result<ASMProgram, String> {
+pub fn canonicalize_paths(program: ASMProgram) -> Result<ASMProgram, Error> {
     let paths = &generate_path_map(&program)?;
 
     let mut canonicalizer = Canonicalizer {
@@ -266,20 +267,20 @@ fn canonicalize_inside_pattern(
     paths: &'_ PathMap,
 ) {
     match pattern {
-        Pattern::Enum(name, None) => {
+        Pattern::Enum(source_ref, name, None) => {
             // TODO Currently, we treat any identifier as a variable pattern.
             // If done properly, single identifiers that resolve to enum values
             // (like a single None) should not be treated as variables.
             // This is planned to be fixed with the refactoring of path_canonicalizer,
             // where we remove the two-step approach.
             if let Some(name) = name.try_to_identifier() {
-                *pattern = Pattern::Variable(name.clone())
+                *pattern = Pattern::Variable(source_ref.clone(), name.clone())
             } else {
                 let abs = paths.get(&path.clone().join(name.clone())).unwrap();
                 *name = abs.relative_to(&Default::default()).clone();
             }
         }
-        Pattern::Enum(name, _fields) => {
+        Pattern::Enum(_, name, _fields) => {
             let abs = paths.get(&path.clone().join(name.clone())).unwrap();
             *name = abs.relative_to(&Default::default()).clone();
         }
@@ -498,7 +499,7 @@ fn check_import(
     check_path(location.join(imported.path), state)
 }
 
-fn generate_path_map(program: &ASMProgram) -> Result<PathMap, String> {
+fn generate_path_map(program: &ASMProgram) -> Result<PathMap, Error> {
     // an empty state starting from this module
     let mut state = State {
         root: &program.main,
@@ -522,15 +523,19 @@ fn check_module(
     location: AbsoluteSymbolPath,
     module: &ASMModule,
     state: &mut State<'_>,
-) -> Result<(), String> {
-    module.symbol_definitions().try_fold(
-        BTreeSet::default(),
-        |mut acc, SymbolDefinition { name, .. }| {
-            acc.insert(name.clone())
-                .then_some(acc)
-                .ok_or(format!("Duplicate name `{name}` in module `{location}`"))
-        },
-    )?;
+) -> Result<(), Error> {
+    module
+        .symbol_definitions()
+        .try_fold(
+            BTreeSet::default(),
+            |mut acc, SymbolDefinition { name, .. }| {
+                // TODO we should store source refs in symbol definitions.
+                acc.insert(name.clone())
+                    .then_some(acc)
+                    .ok_or(format!("Duplicate name `{name}` in module `{location}`"))
+            },
+        )
+        .map_err(|e| SourceRef::default().with_error(e))?;
 
     for SymbolDefinition { name, value } in module.symbol_definitions() {
         // start with the initial state
@@ -546,7 +551,8 @@ fn check_module(
                 };
                 check_module(location.with_part(name), m, state)?;
             }
-            SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)?,
+            SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)
+                .map_err(|e| SourceRef::default().with_error(e))?,
             SymbolValue::Expression(TypedExpression { e, type_scheme }) => {
                 if let Some(type_scheme) = type_scheme {
                     check_type_scheme(&location, type_scheme, state, &Default::default())?;
@@ -570,7 +576,7 @@ fn check_machine(
     location: AbsoluteSymbolPath,
     m: &Machine,
     state: &mut State<'_>,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     // we check the path in the context of the parent module
     let module_location = location.clone().parent();
 
@@ -578,13 +584,16 @@ fn check_machine(
     let mut local_variables = HashSet::<String>::default();
     for name in m.local_names() {
         if !local_variables.insert(name.clone()) {
-            return Err(format!("Duplicate name `{name}` in machine `{location}`"));
+            // TODO local_names could also return a source ref.
+            return Err(SourceRef::default()
+                .with_error(format!("Duplicate name `{name}` in machine `{location}`")));
         }
     }
     for statement in &m.statements {
         match statement {
-            MachineStatement::Submachine(_, path, _) => {
-                check_path(module_location.clone().join(path.clone()), state)?
+            MachineStatement::Submachine(source_ref, path, _) => {
+                check_path(module_location.clone().join(path.clone()), state)
+                    .map_err(|e| source_ref.with_error(e))?
             }
             MachineStatement::FunctionDeclaration(_, _, _, statements) => statements
                 .iter()
@@ -644,17 +653,18 @@ fn check_expression(
     e: &Expression,
     state: &mut State<'_>,
     local_variables: &HashSet<String>,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     // We cannot use the visitor here because we need to change the local variables
     // inside lambda expressions.
     match e {
-        Expression::Reference(_, reference) => {
+        Expression::Reference(source_ref, reference) => {
             if let Some(name) = reference.try_to_identifier() {
                 if local_variables.contains(name) {
                     return Ok(());
                 }
             }
             check_path_try_prelude(location.clone(), reference.path.clone(), state)
+                .map_err(|e| source_ref.with_error(e))
         }
         Expression::PublicReference(_, _) | Expression::Number(_, _) | Expression::String(_, _) => {
             Ok(())
@@ -663,7 +673,7 @@ fn check_expression(
             check_expressions(location, items, state, local_variables)
         }
         Expression::LambdaExpression(
-            _,
+            _source_ref,
             LambdaExpression {
                 kind: _,
                 params,
@@ -747,7 +757,7 @@ fn check_expressions(
     expressions: &[Expression],
     state: &mut State<'_>,
     local_variables: &HashSet<String>,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     expressions
         .iter()
         .try_for_each(|e| check_expression(location, e, state, local_variables))
@@ -760,10 +770,10 @@ fn check_pattern<'b>(
     location: &AbsoluteSymbolPath,
     pattern: &'b Pattern,
     state: &mut State<'_>,
-) -> Result<Box<dyn Iterator<Item = String> + 'b>, String> {
+) -> Result<Box<dyn Iterator<Item = String> + 'b>, Error> {
     match pattern {
-        Pattern::Variable(n) => return Ok(Box::new(once(n.clone()))),
-        Pattern::Enum(name, fields) => {
+        Pattern::Variable(_, n) => return Ok(Box::new(once(n.clone()))),
+        Pattern::Enum(source_ref, name, fields) => {
             // The parser cannot distinguish between Enum and Variable patterns.
             // So if "name" is a single identifier that does not resolve to an enum variant,
             // it is a variable pattern.
@@ -775,7 +785,8 @@ fn check_pattern<'b>(
                     return Ok(Box::new(once(identifier.clone())));
                 }
             }
-            check_path_try_prelude(location.clone(), name.clone(), state)?
+            check_path_try_prelude(location.clone(), name.clone(), state)
+                .map_err(|e| source_ref.with_error(e))?;
         }
         _ => {}
     }
@@ -786,7 +797,7 @@ fn check_patterns<'b>(
     location: &AbsoluteSymbolPath,
     patterns: impl IntoIterator<Item = &'b Pattern>,
     state: &mut State<'_>,
-) -> Result<Box<dyn Iterator<Item = String> + 'b>, String> {
+) -> Result<Box<dyn Iterator<Item = String> + 'b>, Error> {
     let mut result: Box<dyn Iterator<Item = String>> = Box::new(empty());
     for p in patterns {
         result = Box::new(result.chain(check_pattern(location, p, state)?));
@@ -798,15 +809,17 @@ fn check_type_declaration(
     location: &AbsoluteSymbolPath,
     enum_decl: &EnumDeclaration<Expression>,
     state: &mut State<'_>,
-) -> Result<(), String> {
-    enum_decl.variants.iter().try_fold(
-        BTreeSet::default(),
-        |mut acc, EnumVariant { name, .. }| {
+) -> Result<(), Error> {
+    enum_decl
+        .variants
+        .iter()
+        .try_fold(BTreeSet::default(), |mut acc, EnumVariant { name, .. }| {
             acc.insert(name.clone())
                 .then_some(acc)
                 .ok_or(format!("Duplicate variant `{name}` in enum `{location}`"))
-        },
-    )?;
+        })
+        // TODO enum declaration should have source reference.
+        .map_err(|e| SourceRef::default().with_error(e))?;
 
     let type_vars = enum_decl.type_vars.vars().collect::<HashSet<_>>();
 
@@ -823,7 +836,7 @@ fn check_type_scheme(
     type_scheme: &TypeScheme<Expression>,
     state: &mut State<'_>,
     local_variables: &HashSet<String>,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     let type_vars = type_scheme.vars.vars().collect::<HashSet<_>>();
     check_type(
         location,
@@ -840,14 +853,15 @@ fn check_type(
     state: &mut State<'_>,
     type_vars: &HashSet<&String>,
     local_variables: &HashSet<String>,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     for p in ty.contained_named_types() {
         if let Some(id) = p.try_to_identifier() {
             if type_vars.contains(id) {
                 continue;
             }
         }
-        check_path_try_prelude(location.clone(), p.clone(), state)?
+        check_path_try_prelude(location.clone(), p.clone(), state)
+            .map_err(|e| SourceRef::unknown().with_error(e))?;
     }
     ty.children()
         .try_for_each(|e| check_expression(location, e, state, local_variables))
@@ -877,7 +891,7 @@ mod tests {
             })
             .map_err(|s| s.to_string());
 
-        assert_eq!(res, expected);
+        assert_eq!(res.map_err(|e| e.message().to_string()), expected);
     }
 
     #[test]

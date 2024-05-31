@@ -607,7 +607,11 @@ impl<T: FieldElement> Pipeline<T> {
                 let (path, parsed) = self.artifact.parsed_asm_file.take().unwrap();
 
                 self.log("Loading dependencies and resolving references");
-                powdr_importer::load_dependencies_and_resolve(path, parsed).map_err(|e| vec![e])?
+                powdr_importer::load_dependencies_and_resolve(path, parsed).map_err(|e| {
+                    // TODO at some point, change the error type in Pipeline so that we can forward it here.
+                    e.output_to_stderr();
+                    vec![e.message().to_string()]
+                })?
             });
         }
 
