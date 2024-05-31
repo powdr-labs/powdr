@@ -247,8 +247,8 @@ fn run_command(command: Commands) {
                         .and_then(OsStr::to_str)
                         .map(String::from),
                     output_directory: output_directory.clone(),
-                    generate_flamegraph,
-                    generate_callgrind,
+                    flamegraph: generate_flamegraph,
+                    callgrind: generate_callgrind,
                 }
             ))
         }

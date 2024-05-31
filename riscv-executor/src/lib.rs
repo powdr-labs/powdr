@@ -1004,7 +1004,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 }
 
 /// return true if the expression is a jump instruction
-fn expr_is_jump(e: &Expression) -> bool {
+fn is_jump(e: &Expression) -> bool {
     if let Expression::FunctionCall(_, FunctionCall { function, .. }) = e {
         if let Expression::Reference(_, f) = function.as_ref() {
             return ["jump", "jump_dyn"].contains(&f.try_to_identifier().unwrap().as_str());
@@ -1075,7 +1075,7 @@ pub fn execute_ast<T: FieldElement>(
 
                 let pc_after = e.proc.get_reg("pc").u() as usize;
 
-                if expr_is_jump(a.rhs.as_ref()) {
+                if is_jump(a.rhs.as_ref()) {
                     let pc_return = results[0].u() as usize;
                     assert_eq!(a.lhs_with_reg.len(), 1);
                     // in the generated powdr asm, writing to `tmp1` means the returning pc is ignored
@@ -1119,7 +1119,7 @@ pub fn execute_ast<T: FieldElement>(
         };
     }
 
-    profiler.execution_finished();
+    profiler.finish();
     e.proc.finish()
 }
 

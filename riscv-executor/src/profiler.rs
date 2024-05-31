@@ -16,8 +16,8 @@ pub struct Call<'a> {
     target: Loc<'a>,
 }
 
-/// Risc-v asm profiler.
-/// Tracks the self-cost of functions and cummulative cost specific function calls (i.e., callgrind style).
+/// RISC-V asm profiler.
+/// Tracks the self-cost of functions and the cumulative cost of specific function calls (i.e., callgrind style).
 pub struct Profiler<'a> {
     /// profiling options
     options: ProfilerOptions,
@@ -33,7 +33,7 @@ pub struct Profiler<'a> {
     return_pc_stack: Vec<usize>,
     /// cost of each location
     location_stats: BTreeMap<Loc<'a>, usize>,
-    /// (count, cummulative cost) of calls
+    /// (count, cumulative cost) of calls
     call_stats: BTreeMap<Call<'a>, (usize, usize)>,
     /// stack sampling format for FlameGraph
     folded_stack_stats: BTreeMap<Vec<&'a str>, usize>,
@@ -43,13 +43,13 @@ pub struct Profiler<'a> {
 pub struct ProfilerOptions {
     pub output_directory: String,
     pub file_stem: Option<String>,
-    pub generate_flamegraph: bool,
-    pub generate_callgrind: bool,
+    pub flamegraph: bool,
+    pub callgrind: bool,
 }
 
 impl ProfilerOptions {
     fn is_enabled(&self) -> bool {
-        self.generate_callgrind || self.generate_flamegraph
+        self.callgrind || self.flamegraph
     }
 }
 
@@ -160,24 +160,24 @@ impl<'a> Profiler<'a> {
     }
 
     /// calculate totals and write out results
-    pub fn execution_finished(&mut self) {
+    pub fn finish(&mut self) {
         if !self.options.is_enabled() {
             return;
         }
         let mut path = PathBuf::from(&self.options.output_directory)
             .join(self.options.file_stem.as_deref().unwrap_or("out"));
-        if self.options.generate_flamegraph {
+        if self.options.flamegraph {
             path.set_extension("svg");
             self.write_flamegraph(&path);
         }
-        if self.options.generate_callgrind {
+        if self.options.callgrind {
             path.set_extension("callgrind");
             self.write_callgrind(&path);
         }
     }
 
     /// profiling only starts once "__runtime_start" is reached
-    pub fn running(&self) -> bool {
+    pub fn is_running(&self) -> bool {
         !self.call_stack.is_empty()
     }
 
@@ -205,7 +205,7 @@ impl<'a> Profiler<'a> {
 
     /// add cost for instruction/row
     pub fn add_instruction_cost(&mut self, curr_pc: usize) {
-        if !self.options.is_enabled() || !self.running() {
+        if !self.options.is_enabled() || !self.is_running() {
             return;
         }
 
@@ -281,7 +281,7 @@ impl<'a> Profiler<'a> {
                 }
             }
         } else {
-            assert!(!self.running());
+            assert!(!self.is_running());
         }
     }
 
@@ -291,7 +291,7 @@ impl<'a> Profiler<'a> {
     /// - "tail call": next_function != current_function
     /// - control flow: next_function == current_function
     pub fn jump(&mut self, target_pc: usize) {
-        if !self.options.is_enabled() || !self.running() {
+        if !self.options.is_enabled() || !self.is_running() {
             return;
         }
 
@@ -303,7 +303,7 @@ impl<'a> Profiler<'a> {
             // "return" from current function
             let (done_call, cost) = self.call_stack.pop().unwrap();
             self.return_pc_stack.pop();
-            // add to calls cummulative cost and to parent call
+            // add to cumulative cost of call and to running cost of caller
             if let Some((_curr_call, curr_cost)) = self.call_stack.last_mut() {
                 self.call_stats.get_mut(&done_call).unwrap().1 += cost;
                 *curr_cost += cost;
@@ -315,7 +315,7 @@ impl<'a> Profiler<'a> {
                 // "tail call": replace the current call in the stack
                 let (done_call, cost) = self.call_stack.pop().unwrap();
 
-                // add to calls cummulative cost and to parent call
+                // add to cumulative cost of call and to running cost of caller
                 if let Some((_curr_call, curr_cost)) = self.call_stack.last_mut() {
                     self.call_stats.get_mut(&done_call).unwrap().1 += cost;
                     *curr_cost += cost;
@@ -338,7 +338,6 @@ impl<'a> Profiler<'a> {
 
 fn format_function_name(name: &str) -> String {
     if let Some(prefix) = name.find("___ZN") {
-        // format!("{}_{}", &name[0..4], demangle(&name[prefix + 2..]))
         format!("{}", demangle(&name[prefix + 2..]))
     } else {
         format!("{}", demangle(name))
