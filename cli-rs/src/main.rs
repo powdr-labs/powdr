@@ -235,13 +235,8 @@ fn run_command(command: Commands) {
             generate_flamegraph,
             generate_callgrind,
         } => {
-            call_with_field!(execute::<field>(
-                Path::new(&file),
-                split_inputs(&inputs),
-                Path::new(&output_directory),
-                continuations,
-                witness,
-                ProfilerOptions {
+            let profiling = if generate_callgrind || generate_flamegraph {
+                Some(ProfilerOptions {
                     file_stem: Path::new(&file)
                         .file_stem()
                         .and_then(OsStr::to_str)
@@ -249,7 +244,17 @@ fn run_command(command: Commands) {
                     output_directory: output_directory.clone(),
                     flamegraph: generate_flamegraph,
                     callgrind: generate_callgrind,
-                }
+                })
+            } else {
+                None
+            };
+            call_with_field!(execute::<field>(
+                Path::new(&file),
+                split_inputs(&inputs),
+                Path::new(&output_directory),
+                continuations,
+                witness,
+                profiling
             ))
         }
     };
@@ -320,7 +325,7 @@ fn execute<F: FieldElement>(
     output_dir: &Path,
     continuations: bool,
     witness: bool,
-    profiler_opt: ProfilerOptions,
+    profiling: Option<ProfilerOptions>,
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default()
         .from_file(file_name.to_path_buf())
@@ -328,7 +333,7 @@ fn execute<F: FieldElement>(
 
     let bootloader_inputs = if continuations {
         pipeline = pipeline.with_prover_inputs(inputs.clone());
-        powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiler_opt.clone())
+        powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling.clone())
     } else {
         vec![]
     };
@@ -351,7 +356,7 @@ fn execute<F: FieldElement>(
                 pipeline.data_callback().unwrap(),
                 &[],
                 powdr_riscv_executor::ExecMode::Fast,
-                profiler_opt,
+                profiling,
             );
             log::info!("Execution trace length: {}", trace.len);
         }

@@ -1020,7 +1020,7 @@ pub fn execute_ast<T: FieldElement>(
     bootloader_inputs: &[Elem<T>],
     max_steps_to_execute: usize,
     mode: ExecMode,
-    profiler_opt: ProfilerOptions,
+    profiling: Option<ProfilerOptions>,
 ) -> (ExecutionTrace<T>, MemoryState) {
     let main_machine = get_main_machine(program);
     let PreprocessedMain {
@@ -1051,12 +1051,8 @@ pub fn execute_ast<T: FieldElement>(
         _stdout: io::stdout(),
     };
 
-    let mut profiler = Profiler::new(
-        profiler_opt,
-        &debug_files[..],
-        function_starts,
-        location_starts,
-    );
+    let mut profiler =
+        profiling.map(|opt| Profiler::new(opt, &debug_files[..], function_starts, location_starts));
 
     let mut curr_pc = 0u32;
     loop {
@@ -1066,7 +1062,9 @@ pub fn execute_ast<T: FieldElement>(
 
         match stm {
             FunctionStatement::Assignment(a) => {
-                profiler.add_instruction_cost(e.proc.get_pc().u() as usize);
+                if let Some(p) = &mut profiler {
+                    p.add_instruction_cost(e.proc.get_pc().u() as usize);
+                }
 
                 let pc_before = e.proc.get_reg("pc").u() as usize;
 
@@ -1078,11 +1076,13 @@ pub fn execute_ast<T: FieldElement>(
                 if is_jump(a.rhs.as_ref()) {
                     let pc_return = results[0].u() as usize;
                     assert_eq!(a.lhs_with_reg.len(), 1);
-                    // in the generated powdr asm, writing to `tmp1` means the returning pc is ignored
-                    if a.lhs_with_reg[0].0 == "tmp1" {
-                        profiler.jump(pc_after);
-                    } else {
-                        profiler.jump_and_link(pc_before, pc_after, pc_return);
+                    if let Some(p) = &mut profiler {
+                        // in the generated powdr asm, writing to `tmp1` means the returning pc is ignored
+                        if a.lhs_with_reg[0].0 == "tmp1" {
+                            p.jump(pc_after);
+                        } else {
+                            p.jump_and_link(pc_before, pc_after, pc_return);
+                        }
                     }
                 }
 
@@ -1092,7 +1092,9 @@ pub fn execute_ast<T: FieldElement>(
             }
             FunctionStatement::Instruction(i) => {
                 assert!(!["jump", "jump_dyn"].contains(&i.instruction.as_str()));
-                profiler.add_instruction_cost(e.proc.get_pc().u() as usize);
+                if let Some(p) = &mut profiler {
+                    p.add_instruction_cost(e.proc.get_pc().u() as usize);
+                }
                 e.exec_instruction(&i.instruction, &i.inputs);
             }
             FunctionStatement::Return(_) => break,
@@ -1119,7 +1121,9 @@ pub fn execute_ast<T: FieldElement>(
         };
     }
 
-    profiler.finish();
+    if let Some(mut p) = profiler {
+        p.finish();
+    }
     e.proc.finish()
 }
 
@@ -1138,7 +1142,7 @@ pub fn execute<F: FieldElement>(
     inputs: &Callback<F>,
     bootloader_inputs: &[Elem<F>],
     mode: ExecMode,
-    profiler_opt: ProfilerOptions,
+    profiling: Option<ProfilerOptions>,
 ) -> (ExecutionTrace<F>, MemoryState) {
     log::info!("Parsing...");
     let parsed = powdr_parser::parse_asm(None, asm_source).unwrap();
@@ -1155,7 +1159,7 @@ pub fn execute<F: FieldElement>(
         bootloader_inputs,
         usize::MAX,
         mode,
-        profiler_opt,
+        profiling,
     )
 }
 

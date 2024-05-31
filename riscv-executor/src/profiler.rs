@@ -47,12 +47,6 @@ pub struct ProfilerOptions {
     pub callgrind: bool,
 }
 
-impl ProfilerOptions {
-    fn is_enabled(&self) -> bool {
-        self.callgrind || self.flamegraph
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Loc<'a> {
     function: &'a str,
@@ -161,9 +155,6 @@ impl<'a> Profiler<'a> {
 
     /// calculate totals and write out results
     pub fn finish(&mut self) {
-        if !self.options.is_enabled() {
-            return;
-        }
         let mut path = PathBuf::from(&self.options.output_directory)
             .join(self.options.file_stem.as_deref().unwrap_or("out"));
         if self.options.flamegraph {
@@ -205,7 +196,7 @@ impl<'a> Profiler<'a> {
 
     /// add cost for instruction/row
     pub fn add_instruction_cost(&mut self, curr_pc: usize) {
-        if !self.options.is_enabled() || !self.is_running() {
+        if !self.is_running() {
             return;
         }
 
@@ -236,9 +227,6 @@ impl<'a> Profiler<'a> {
     /// Should be called for instructions that jump and save the returning address in an actual RISC-V register.
     /// This is handled as a "call" into a function.
     pub fn jump_and_link(&mut self, curr_pc: usize, target_pc: usize, return_pc: usize) {
-        if !self.options.is_enabled() {
-            return;
-        }
         if let Some(mut target) = self.location_at(target_pc) {
             if let Some(curr_function) = self.curr_function() {
                 let Loc {
@@ -291,7 +279,7 @@ impl<'a> Profiler<'a> {
     /// - "tail call": next_function != current_function
     /// - control flow: next_function == current_function
     pub fn jump(&mut self, target_pc: usize) {
-        if !self.options.is_enabled() || !self.is_running() {
+        if !self.is_running() {
             return;
         }
 

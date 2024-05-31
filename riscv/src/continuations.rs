@@ -206,7 +206,7 @@ pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
 /// - The number of rows after which the prover should jump to the shutdown routine.
 pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
-    profiler_opt: ProfilerOptions,
+    profiler_opt: Option<ProfilerOptions>,
 ) -> Vec<(Vec<F>, u64)> {
     // All inputs for all chunks.
     let mut bootloader_inputs_and_num_rows = vec![];
@@ -345,7 +345,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 num_rows,
                 powdr_riscv_executor::ExecMode::Trace,
                 // profiling was done when full trace was generated
-                ProfilerOptions::default(),
+                None,
             );
             (transposed_trace(&trace), memory_snapshot_update)
         };
