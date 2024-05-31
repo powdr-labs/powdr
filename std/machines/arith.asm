@@ -27,6 +27,11 @@ machine Arith with
     // Operation ID is 1 = 0b0001, i.e., we activate equation 0.
     operation affine_256<1> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7] -> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
     
+    // mod_256(y2, y3, x1) = x2 computes (2 ** 256 * y2 + y3) % x1, where all inputs / outputs are 256-bit words.
+    // While hint computes the modulus, there's no guarantee from user generated witness input that the remainder is smaller than the modulus.
+    // In fact, the remainder can contain any multiples of modulus.
+    operation mod_256<1> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7], x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7] -> x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7];
+
     // Performs elliptic curve addition of points (x1, y2) and (x2, y2).
     // Operation ID is 10 = 0b1010, i.e., we activate equations 1, 3, and 4.
     operation ec_add<10> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7], y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
@@ -46,7 +51,7 @@ machine Arith with
     let mul = |x, y| ff::mul(x, y, secp_modulus);
     let div = |x, y| ff::div(x, y, secp_modulus);
 
-    pol commit x1[16], y1[16], x2[16], y2[16], x3[16], y3[16];
+    pol commit x1[16], y2[16], x3[16], y3[16];
 
     // Selects the ith limb of x (little endian)
     // Note that the most significant limb can be up to 32 bits; all others are 16 bits.
@@ -79,6 +84,7 @@ machine Arith with
     let x2_int = query || limbs_to_int(x2);
     let y2_int = query || limbs_to_int(y2);
     let x3_int = query || limbs_to_int(x3);
+    let y3_int = query || limbs_to_int(y3);
     let s_int = query || limbs_to_int(s);
 
     let eq1_active = query || eval(selEq[1]) == 1;
@@ -126,6 +132,67 @@ machine Arith with
     } else {
         0
     };
+
+    let quotient_hint = query || {
+        let y2 = y2_int();
+        let y3 = y3_int();
+        let x1 = x1_int();
+        let dividend = (y2 << 256) + y3;
+        let quotient = dividend / x1;
+        quotient
+    };
+
+    let remainder_hint = query || {
+        let y2 = y2_int();
+        let y3 = y3_int();
+        let x1 = x1_int();
+        let dividend = (y2 << 256) + y3;
+        let remainder = dividend % x1;
+        remainder
+    };
+
+    let hint_if_eq0 = query |f, limb| match is_ec_operation() {
+        0 => Query::Hint(fe(select_limb(f(), limb))),
+        _ => Query::None
+    };
+
+    col witness y1_0(i) query hint_if_eq0(quotient_hint, 0);
+    col witness y1_1(i) query hint_if_eq0(quotient_hint, 1);
+    col witness y1_2(i) query hint_if_eq0(quotient_hint, 2);
+    col witness y1_3(i) query hint_if_eq0(quotient_hint, 3);
+    col witness y1_4(i) query hint_if_eq0(quotient_hint, 4);
+    col witness y1_5(i) query hint_if_eq0(quotient_hint, 5);
+    col witness y1_6(i) query hint_if_eq0(quotient_hint, 6);
+    col witness y1_7(i) query hint_if_eq0(quotient_hint, 7);
+    col witness y1_8(i) query hint_if_eq0(quotient_hint, 8);
+    col witness y1_9(i) query hint_if_eq0(quotient_hint, 9);
+    col witness y1_10(i) query hint_if_eq0(quotient_hint, 10);
+    col witness y1_11(i) query hint_if_eq0(quotient_hint, 11);
+    col witness y1_12(i) query hint_if_eq0(quotient_hint, 12);
+    col witness y1_13(i) query hint_if_eq0(quotient_hint, 13);
+    col witness y1_14(i) query hint_if_eq0(quotient_hint, 14);
+    col witness y1_15(i) query hint_if_eq0(quotient_hint, 15);
+
+    let y1 = [y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, y1_8, y1_9, y1_10, y1_11, y1_12, y1_13, y1_14, y1_15];
+
+    col witness x2_0(i) query hint_if_eq0(remainder_hint, 0);
+    col witness x2_1(i) query hint_if_eq0(remainder_hint, 1);
+    col witness x2_2(i) query hint_if_eq0(remainder_hint, 2);
+    col witness x2_3(i) query hint_if_eq0(remainder_hint, 3);
+    col witness x2_4(i) query hint_if_eq0(remainder_hint, 4);
+    col witness x2_5(i) query hint_if_eq0(remainder_hint, 5);
+    col witness x2_6(i) query hint_if_eq0(remainder_hint, 6);
+    col witness x2_7(i) query hint_if_eq0(remainder_hint, 7);
+    col witness x2_8(i) query hint_if_eq0(remainder_hint, 8);
+    col witness x2_9(i) query hint_if_eq0(remainder_hint, 9);
+    col witness x2_10(i) query hint_if_eq0(remainder_hint, 10);
+    col witness x2_11(i) query hint_if_eq0(remainder_hint, 11);
+    col witness x2_12(i) query hint_if_eq0(remainder_hint, 12);
+    col witness x2_13(i) query hint_if_eq0(remainder_hint, 13);
+    col witness x2_14(i) query hint_if_eq0(remainder_hint, 14);
+    col witness x2_15(i) query hint_if_eq0(remainder_hint, 15);
+
+    let x2 = [x2_0, x2_1, x2_2, x2_3, x2_4, x2_5, x2_6, x2_7, x2_8, x2_9, x2_10, x2_11, x2_12, x2_13, x2_14, x2_15];
 
     col witness s_0(i) query Query::Hint(fe(select_limb(s_hint(), 0)));
     col witness s_1(i) query Query::Hint(fe(select_limb(s_hint(), 1)));
