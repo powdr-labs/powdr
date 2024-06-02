@@ -163,6 +163,11 @@ let main: int, int[], int -> int[] = |W, input, delim| {
 };
 
 // main machine
-machine Main { 
+machine KeccakF with
+    latch: LATCH,
+{ 
     let x;
+    let y;
+    pol commit STEP;
+    operation keccakf x, y, STEP ->;
 }

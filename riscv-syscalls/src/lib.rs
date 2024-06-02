@@ -65,4 +65,5 @@ syscalls!(
     (4, Affine256, "affine_256"),
     (5, EcAdd, "ec_add"),
     (6, EcDouble, "ec_double"),
+    (7, KeccakF, "keccakf"),
 );
