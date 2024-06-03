@@ -234,7 +234,7 @@ impl<'a> Profiler<'a> {
                     line: curr_line,
                     ..
                 } = self.location_at(curr_pc).unwrap();
-                // ecall handler code have a ".debug loc", so we keep current file/line
+                // ecall handler code doesn't have a ".debug loc", so we keep current file/line
                 if target.function == "__ecall_handler" {
                     target.file = curr_file;
                     target.line = curr_line;
