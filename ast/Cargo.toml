@@ -9,6 +9,7 @@ repository = { workspace = true }
 
 [dependencies]
 powdr-number.workspace = true
+powdr-parser-util.workspace = true
 
 itertools = "0.11.0"
 num-traits = "0.2.15"
