@@ -56,11 +56,10 @@ struct TypeChecker<'a> {
     statement_type: &'a ExpectedType,
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
-    /// Declared types for all symbols. Contains the unmodified type scheme for symbols
-    /// with generic types and newly created type variables for symbols without declared type.
-    declared_types: HashMap<String, TypeScheme>,
-    /// Source references for all declared types.
-    declared_type_source_refs: HashMap<String, SourceRef>,
+    /// Declared types for all symbols and their source references.
+    /// Contains the unmodified type scheme for symbols with generic types and newly
+    /// created type variables for symbols without declared type.
+    declared_types: HashMap<String, (SourceRef, TypeScheme)>,
     /// Current mapping of declared type vars to type. Reset before checking each definition.
     declared_type_vars: HashMap<String, Type>,
     unifier: Unifier,
@@ -74,7 +73,6 @@ impl<'a> TypeChecker<'a> {
             statement_type,
             local_var_types: Default::default(),
             declared_types: Default::default(),
-            declared_type_source_refs: Default::default(),
             declared_type_vars: Default::default(),
             unifier: Default::default(),
             last_type_var: Default::default(),
@@ -96,7 +94,7 @@ impl<'a> TypeChecker<'a> {
             .into_iter()
             .filter(|(_, (ty, _))| ty.is_none())
             .map(|(name, _)| {
-                let mut scheme = self.declared_types.remove(&name).unwrap();
+                let (_, mut scheme) = self.declared_types.remove(&name).unwrap();
                 assert!(scheme.vars.is_empty());
                 self.substitute(&mut scheme.ty);
                 assert!(scheme.ty.is_concrete_type());
@@ -141,7 +139,7 @@ impl<'a> TypeChecker<'a> {
                 continue;
             };
 
-            let declared_type = self.declared_types[&name].clone();
+            let (_, declared_type) = self.declared_types[&name].clone();
             if declared_type.vars.is_empty() {
                 self.declared_type_vars.clear();
                 self.process_concrete_symbol(declared_type.ty.clone(), value)?;
@@ -164,13 +162,13 @@ impl<'a> TypeChecker<'a> {
 
         // Now we check for all symbols that are not declared as a type scheme that they
         // can resolve to a concrete type.
-        for (name, declared_type) in &self.declared_types {
+        for (name, (source_ref, declared_type)) in &self.declared_types {
             if declared_type.vars.is_empty() {
                 // It is not a type scheme, see if we were able to derive a concrete type.
                 let inferred = self.type_into_substituted(declared_type.ty.clone());
                 if !inferred.is_concrete_type() {
                     let inferred_scheme = self.to_type_scheme(inferred);
-                    return Err(self.declared_type_source_refs[name].with_error(
+                    return Err(source_ref.with_error(
                         format!(
                             "Could not derive a concrete type for symbol {name}.\nInferred type scheme: {}\n",
                             format_type_scheme_around_name(
@@ -190,41 +188,42 @@ impl<'a> TypeChecker<'a> {
         self.verify_type_schemes(inferred_types)
     }
 
-    /// Fills self.declared_types and checks and removes builtins from the definitions.
+    /// Fills self.declared_types and checks that declared builtins have the correct type.
     fn setup_declared_types(
         &mut self,
         definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     ) {
-        // Store all source references.
-        self.declared_type_source_refs = definitions
+        // Add types from declarations. Type schemes are added without instantiating.
+        self.declared_types = definitions
             .iter()
-            .filter_map(|(name, (_, value))| {
-                value
+            .map(|(name, (type_scheme, value))| {
+                let source_ref = value
                     .as_ref()
-                    .map(|v| (name.clone(), v.source_reference().clone()))
+                    .map(|v| v.source_reference())
+                    .cloned()
+                    .unwrap_or_default();
+                // This stores an (uninstantiated) type scheme for symbols with a declared
+                // polymorphic type and it creates a new (unquantified) type variable for
+                // symbols without declared type. This forces a single concrete type for the latter.
+                let ty = type_scheme
+                    .clone()
+                    .unwrap_or_else(|| self.new_type_var().into());
+                (name.clone(), (source_ref, ty))
             })
             .collect();
-        // Remove builtins from definitions and check their types are correct.
-        for (name, ty) in builtin_schemes() {
-            if let Some((_, (Some(defined_ty), _))) = definitions.remove_entry(name) {
-                assert!(
-                    ty == &defined_ty,
-                    "Invalid type for built-in scheme {name}: {}",
-                    format_type_scheme_around_name(name, &Some(defined_ty))
-                );
-            }
-        }
 
-        self.declared_types = builtin_schemes().clone();
-        // Add types from declarations. Type schemes are added without instantiating.
-        for (name, (type_scheme, _)) in definitions.iter() {
-            // This stores an (uninstantiated) type scheme for symbols with a declared
-            // polymorphic type and it creates a new (unquantified) type variable for
-            // symbols without declared type. This forces a single concrete type for the latter.
-            let ty = type_scheme
-                .clone()
-                .unwrap_or_else(|| self.new_type_var().into());
-            self.declared_types.insert(name.clone(), ty);
+        // Add builtin schemes if they are not already there. If they are already there, check the type is correct.
+        for (name, scheme) in builtin_schemes() {
+            self.declared_types
+                .entry(name.clone())
+                .and_modify(|(_, ty)| {
+                    assert!(
+                        ty == scheme,
+                        "Invalid type for built-in scheme {name}: {}",
+                        format_type_scheme_around_name(name, &Some(ty.clone()))
+                    );
+                })
+                .or_insert_with(|| (SourceRef::unknown(), scheme.clone()));
         }
     }
 
@@ -473,7 +472,7 @@ impl<'a> TypeChecker<'a> {
                     type_args,
                 }),
             ) => {
-                let (ty, args) = self.instantiate_scheme(self.declared_types[name].clone());
+                let (ty, args) = self.instantiate_scheme(self.declared_types[name].1.clone());
                 if let Some(requested_type_args) = type_args {
                     if requested_type_args.len() != args.len() {
                         return Err(source_ref.with_error(format!(
@@ -787,8 +786,8 @@ impl<'a> TypeChecker<'a> {
             Pattern::Enum(name, data) => {
                 // We just ignore the generic args here, storing them in the pattern
                 // is not helpful because the type is obvious from the value.
-                let (ty, _generic_args) =
-                    self.instantiate_scheme(self.declared_types[&name.to_dotted_string()].clone());
+                let (ty, _generic_args) = self
+                    .instantiate_scheme(self.declared_types[&name.to_dotted_string()].1.clone());
                 let ty = type_for_reference(&ty);
 
                 match data {
@@ -845,12 +844,12 @@ impl<'a> TypeChecker<'a> {
         inferred_types: HashMap<String, Type>,
     ) -> Result<HashMap<String, HashMap<String, Type>>, Error> {
         inferred_types.into_iter().map(|(name, inferred_type)| {
-            let declared_type = self.declared_types[&name].clone();
+            let (source_ref, declared_type) = self.declared_types[&name].clone();
             let inferred_type = self.type_into_substituted(inferred_type.clone());
             let inferred = self.to_type_scheme(inferred_type.clone());
             let declared = declared_type.clone().simplify_type_vars();
             if inferred != declared {
-                return Err(self.declared_type_source_refs[&name].with_error(format!(
+                return Err(source_ref.with_error(format!(
                     "Inferred type scheme for symbol {name} does not match the declared type.\nInferred: let{}\nDeclared: let{}",
                     format_type_scheme_around_name(&name, &Some(inferred)),
                     format_type_scheme_around_name(&name, &Some(declared_type),
