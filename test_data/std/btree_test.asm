@@ -79,7 +79,7 @@ let expect: BTree<int, string>, int, string -> () = |b_tree, k, v|
 
 let do_print: BTree<int, string> -> () = |b_tree| {
     let _ = print_btree(b_tree, 0);
-    []
+    ()
 };
 
 machine Main {
