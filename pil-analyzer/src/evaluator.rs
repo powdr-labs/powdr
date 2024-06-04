@@ -308,7 +308,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 10] = [
+const BUILTINS: [(&str, BuiltinFunction); 11] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -319,6 +319,7 @@ const BUILTINS: [(&str, BuiltinFunction); 10] = [
     ("std::prover::challenge", BuiltinFunction::Challenge),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
+    ("std::prover::set", BuiltinFunction::Set),
 ];
 
 #[derive(Clone, Copy, Debug)]
