@@ -12,8 +12,8 @@ use powdr_ast::parsed::{
     SelectedExpressions,
 };
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
-use powdr_ast::SourceRef;
 use powdr_number::DegreeType;
+use powdr_parser_util::SourceRef;
 
 use powdr_ast::analyzed::{
     Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
