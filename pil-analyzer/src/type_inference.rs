@@ -39,7 +39,9 @@ pub fn infer_types(
 #[derive(Clone)]
 pub struct ExpectedType {
     pub ty: Type,
+    /// If true, arrays of `ty` are also allowed.
     pub allow_array: bool,
+    /// If true, the empty tuple is also allowed.
     pub allow_empty: bool,
 }
 
