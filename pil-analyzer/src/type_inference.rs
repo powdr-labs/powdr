@@ -682,20 +682,11 @@ impl<'a> TypeChecker<'a> {
     ) -> Result<(), String> {
         let infered_type = if !expected_type.is_concrete_type() {
             self.type_into_substituted(expected_type.clone())
-        } else if let Type::Function(FunctionType { value, .. }) = expected_type {
-            value.as_ref().clone()
         } else {
             expected_type.clone()
         };
 
-        let mut new_lambda = false;
-        let old_kind = self.lambda_kind;
-        if let Expression::LambdaExpression(_, LambdaExpression { kind, .. }) = expr {
-            self.lambda_kind = *kind;
-            new_lambda = true;
-        };
-
-        let result = match self.lambda_kind {
+        match self.lambda_kind {
             FunctionKind::Constr => {
                 if self.expr_is_valid_in_constr(infered_type.clone()) {
                     Ok(())
@@ -715,13 +706,7 @@ impl<'a> TypeChecker<'a> {
                     ))
                 }
             }
-        };
-
-        if new_lambda {
-            self.lambda_kind = old_kind;
         }
-
-        result
     }
 
     fn expr_is_valid_in_constr(&mut self, infered_type: Type) -> bool {
@@ -731,10 +716,13 @@ impl<'a> TypeChecker<'a> {
             length: None,
         });
 
+        if let Type::Function(_) = infered_type {
+            return true;
+        }
+
         infered_type == self.constr_function_statement_type.ty
             || infered_type == empty_tuple
             || infered_type == Type::Expr
-            || infered_type == Type::Fe //TODO: Check this.
             || infered_type == constr_array
     }
 
