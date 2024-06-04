@@ -456,11 +456,10 @@ impl<'a> TypeChecker<'a> {
                 self.unifier
                     .unify_types(ty.clone(), expected_type.clone())
                     .map_err(|err| {
-                        // TODO list trait constraints
                         expr.source_reference().with_error(format!(
                             "Expected type {} but got type {}.\n{err}",
-                            self.type_into_substituted(expected_type),
-                            self.type_into_substituted(ty)
+                            self.format_type_with_bounds(expected_type),
+                            self.format_type_with_bounds(ty)
                         ))
                     })
             })
@@ -691,8 +690,8 @@ impl<'a> TypeChecker<'a> {
             .map_err(|err| {
                 source_ref.with_error(format!(
                     "Expected function of type `{}`, but got `{}` when {} on ({}):\n{err}",
-                    self.type_into_substituted(expected_function_type),
-                    self.type_into_substituted(function_type),
+                    self.format_type_with_bounds(expected_function_type),
+                    self.format_type_with_bounds(function_type),
                     error_message(),
                     arguments.iter().format(", ")
                 ))
@@ -730,11 +729,10 @@ impl<'a> TypeChecker<'a> {
         self.unifier
             .unify_types(inferred_type.clone(), expected_type.clone())
             .map_err(|err| {
-                // TODO we should also list the trait constraints.
                 expr.source_reference().with_error(format!(
                     "Expected type: {}\nInferred type: {}\n{err}",
-                    self.type_into_substituted(expected_type.clone()),
-                    self.type_into_substituted(inferred_type)
+                    self.format_type_with_bounds(expected_type.clone()),
+                    self.format_type_with_bounds(inferred_type)
                 ))
             })
     }
@@ -749,11 +747,10 @@ impl<'a> TypeChecker<'a> {
         self.unifier
             .unify_types(inferred_type.clone(), expected_type.clone())
             .map_err(|err| {
-                // TODO we should also list the trait constraints.
                 format!(
                     "Error checking pattern {pattern}:\nExpected type: {}\nInferred type: {}\n{err}",
-                    self.type_into_substituted(expected_type.clone()),
-                    self.type_into_substituted(inferred_type)
+                    self.format_type_with_bounds(expected_type.clone()),
+                    self.format_type_with_bounds(inferred_type)
                 )
             })
     }
@@ -906,6 +903,17 @@ impl<'a> TypeChecker<'a> {
         let substitutions = scheme.vars.vars().cloned().zip(vars.clone()).collect();
         ty.substitute_type_vars(&substitutions);
         (ty, vars)
+    }
+
+    fn format_type_with_bounds(&self, ty: Type) -> String {
+        let scheme = self.to_type_scheme(ty);
+        if scheme.vars.is_empty() {
+            format!("{}", scheme.ty)
+        } else if let Type::TypeVar(_) = &scheme.ty {
+            format!("{}", scheme.vars)
+        } else {
+            format!("{}, {}", scheme.ty, scheme.vars)
+        }
     }
 
     fn new_type_var_name(&mut self) -> String {
