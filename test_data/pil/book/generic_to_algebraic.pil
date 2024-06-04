@@ -11,7 +11,7 @@ namespace Main(16);
     // This function takes an algebraic expression (a column or expression
     // involving columns) and returns an identity that forces this expression
     // to equal 20. Note that `=` is not an assignment but creates an identity constraint.
-    let equals_twenty: expr -> () = |x| x = 20;
+    let equals_twenty: expr -> Constr = |x| x = 20;
     // This declares an array of 16 witness columns.
     col witness wit[16];
     // This expression has to evaluate to an identity, but we can still use
