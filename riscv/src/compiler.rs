@@ -1113,7 +1113,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             read_args(vec![r1, r2])
                 .into_iter()
                 .chain(only_if_no_write_to_zero(
-                    format!("{rd} <== wrap({r1} - {r2});"),
+                    format!("{rd} <== wrap_signed({r1} - {r2});"),
                     rd,
                 ))
                 .collect()
@@ -1207,7 +1207,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             read_args(vec![r1, r2])
                 .into_iter()
                 .chain(only_if_no_write_to_zero(
-                    format!("{rd} <== divu({r1}, {r2});"),
+                    format!("{rd}, tmp1 <== divremu({r1}, {r2});"),
                     rd,
                 ))
                 .collect()
@@ -1217,7 +1217,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             read_args(vec![r1, r2])
                 .into_iter()
                 .chain(only_if_no_write_to_zero(
-                    format!("{rd} <== remu({r1}, {r2});"),
+                    format!("tmp1, {rd} <== divremu({r1}, {r2});"),
                     rd,
                 ))
                 .collect()
@@ -1480,7 +1480,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             // TODO does this fulfill the input requirements for branch_if_positive?
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(vec![format!("branch_if_positive {r2} - {r1}, {label};")])
+                .chain(vec![format!("branch_if_positive {r1} - {r2}, {label};")])
                 .collect()
         }
         "bgez" => {
