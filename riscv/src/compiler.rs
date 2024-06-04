@@ -1042,20 +1042,24 @@ pub fn push_register(name: &str) -> Vec<String> {
 }
 
 /// Pop register from the stack
-pub fn pop_register(name: &str) -> [String; 2] {
-    // TODO: Get and set registers
-    [
+pub fn pop_register(name: &str) -> Vec<String> {
+    let mut instructions = vec![
+        "val1 <== get_reg(2);".to_string(),
         format!("{name}, tmp1 <== mload(x2);"),
         "x2 <=X= wrap(x2 + 4);".to_string(),
-    ]
+    ];
+    if let Some(reg) = name_to_register(name) {
+        instructions.push(format!("set_reg {}, {};", reg.addr(), reg));
+    }
+    instructions
 }
 
 fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
     instr: &str,
     args: &A,
 ) -> Result<Vec<String>, A::Error> {
-    println!("Processing instruction: {instr}");
-    println!("      Arguments: {:?}", args);
+    log::debug!("Processing instruction: {instr}");
+    log::debug!("      Arguments: {:?}", args);
     let statements = match instr {
         // load/store registers
         "li" | "la" => {
@@ -1813,7 +1817,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
         }
     };
     for s in &statements {
-        println!("          {s}");
+        log::debug!("          {s}");
     }
     Ok(statements)
 }
