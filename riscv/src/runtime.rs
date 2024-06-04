@@ -122,19 +122,32 @@ impl Runtime {
         // Base syscalls
         r.add_syscall(
             Syscall::Input,
-            ["x10 <=X= ${ std::prover::Query::Input(std::convert::int(std::prover::eval(x10))) };"],
+            [
+                "val1 <== get_reg(10);",
+                "x10 <=X= ${ std::prover::Query::Input(std::convert::int(std::prover::eval(x10))) };",
+                "set_reg 10, x10;"
+            ],
         );
 
         r.add_syscall(
             Syscall::DataIdentifier,
-            ["x10 <=X= ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(x11)), std::convert::int(std::prover::eval(x10))) };"]
+            [
+                "val1 <== get_reg(10);",
+                "val2 <== get_reg(11);",
+                "x10 <=X= ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(x11)), std::convert::int(std::prover::eval(x10))) };",
+                "set_reg 10, x10;"
+            ]
         );
 
         r.add_syscall(
             Syscall::Output,
             // This is using x0 on purpose, because we do not want to introduce
             // nondeterminism with this.
-            ["x0 <=X= ${ std::prover::Query::Output(std::convert::int(std::prover::eval(x10)), std::convert::int(std::prover::eval(x11))) };"]
+            [
+                "val1 <== get_reg(10);",
+                "val2 <== get_reg(11);",
+                "x0 <=X= ${ std::prover::Query::Output(std::convert::int(std::prover::eval(x10)), std::convert::int(std::prover::eval(x11))) };"
+            ]
         );
 
         r
