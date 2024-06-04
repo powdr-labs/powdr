@@ -215,14 +215,14 @@ pub fn compile<T: FieldElement>(
         .chain(bootloader_and_shutdown_routine_lines)
         .collect();
     if !data_code.is_empty() {
+        program.push("set_reg 1, pc + 2;".to_string());
         program.push("x1 <== jump(__data_init);".to_string());
-        program.push("set_reg 1, x1;".to_string());
     }
     program.extend([
         format!("// Set stack pointer\nx2 <=X= {stack_start};"),
         "set_reg 2, x2;".to_string(),
+        "set_reg 1, pc + 2;".to_string(),
         "x1 <== jump(__runtime_start);".to_string(),
-        "set_reg 1, x1;".to_string(),
         "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
     ]);
     program.extend(
@@ -1601,8 +1601,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
         "jal" => {
             if let Ok(label) = args.l() {
                 vec![
+                    "set_reg 1, pc + 2;".to_string(),
                     format!("x1 <== jump({label});"),
-                    "set_reg 1, x1;".to_string(),
                 ]
             } else {
                 let (rd, label) = args.rl()?;
@@ -1610,8 +1610,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                     vec![format!("tmp1 <== jump({label});")]
                 } else {
                     vec![
+                        format!("set_reg {}, pc + 2;", rd.addr()),
                         format!("{rd} <== jump({label});"),
-                        format!("set_reg {}, {};", rd.addr(), rd),
                     ]
                 }
             }
@@ -1621,8 +1621,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 read_args(vec![rs])
                     .into_iter()
                     .chain([
+                        "set_reg 1, pc + 2;".to_string(),
                         format!("x1 <== jump_dyn({rs});"),
-                        "set_reg 1, x1;".to_string(),
                     ])
                     .collect()
             } else {
@@ -1636,15 +1636,18 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 } else {
                     read_args(vec![rs])
                         .into_iter()
+                        .chain([format!("set_reg {}, pc + 2;", rd.addr())])
                         .chain([format!("{rd} <== jump_dyn({rs});")])
-                        .chain([format!("set_reg {}, {};", rd.addr(), rd)])
                         .collect()
                 }
             }
         },
         "call" => {
             let label = args.l()?;
-            vec![format!("x1 <== jump({label});")]
+            vec![
+                format!("set_reg 1, pc + 2;"),
+                format!("x1 <== jump({label});")
+            ]
         }
         "ecall" => {
             args.empty()?;
@@ -1653,8 +1656,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 // jump to to handler
                 .chain([
+                    "set_reg 1, pc + 2;".to_string(),
                     "x1 <== jump(__ecall_handler);".to_string(),
-                    "set_reg 1, x1;".to_string(),
                 ])
                 // restore ra/x1
                 .chain(pop_register("x1"))
