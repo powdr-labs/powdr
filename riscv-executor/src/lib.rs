@@ -280,6 +280,9 @@ mod builder {
         /// Current memory.
         mem: HashMap<u32, u32>,
 
+        /// Separate register memory.
+        reg_mem: HashMap<u32, u32>,
+
         /// The execution mode we running.
         /// Fast: do not save the register's trace and memory accesses.
         /// Trace: save everything - needed for continuations.
@@ -338,6 +341,7 @@ mod builder {
                 max_rows: max_rows_len,
                 regs,
                 mem,
+                reg_mem: Default::default(),
                 mode,
             };
 
@@ -444,6 +448,14 @@ mod builder {
             }
 
             *self.mem.get(&addr).unwrap_or(&0)
+        }
+
+        pub(crate) fn set_reg_mem(&mut self, addr: u32, val: u32) {
+            self.reg_mem.insert(addr, val);
+        }
+
+        pub(crate) fn get_reg_mem(&mut self, addr: u32) -> u32 {
+            *self.reg_mem.get(&addr).unwrap_or(&0)
         }
 
         pub fn finish(self) -> (ExecutionTrace<F>, MemoryState) {
@@ -600,6 +612,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             .collect::<Vec<_>>();
 
         match name {
+            "set_reg" => {
+                let addr = args[0].bin() as u32;
+                self.proc.set_reg_mem(addr, args[1].u());
+                Vec::new()
+            }
+            "get_reg" => {
+                let addr = args[0].bin() as u32;
+                let val = self.proc.get_reg_mem(addr);
+                vec![val.into()]
+            }
             "mstore" | "mstore_bootloader" => {
                 let addr = args[0].bin() as u32;
                 assert_eq!(addr % 4, 0);
