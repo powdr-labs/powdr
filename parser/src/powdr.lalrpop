@@ -158,7 +158,7 @@ PolynomialConstantDefinition: PilStatement = {
 }
 
 FunctionDefinition: FunctionDefinition = {
-    <start:@L> "(" <params:ParameterList> ")" <body:BracedExpression> => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start), LambdaExpression{kind: FunctionKind::Pure, params, body})),
+    <start:@L> "(" <params:ParameterList> ")" <body:BlockExpression> => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start), LambdaExpression{kind: FunctionKind::Pure, params, body})),
     <start:@L> "=" <array:ArrayLiteralExpression> => FunctionDefinition::Array(array),
 }
 
@@ -208,7 +208,7 @@ PlookupIdentity: PilStatement = {
 }
 
 SelectedExpressions: SelectedExpressions<Expression> = {
-    <selector:Expression?> "{" <expressions:ExpressionList> "}" => SelectedExpressions{<>},
+    <selector:(<Expression> "$")?> "[" <expressions:ExpressionList> "]" => SelectedExpressions{<>},
     Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
 }
 
@@ -622,18 +622,14 @@ MatchArm: MatchArm = {
 
 IfExpression: Box<Expression> = {
     <start:@L> "if" <condition:BoxedExpression>
-        <body:BracedExpression>
+        <body:BlockExpression>
         "else"
-        <else_body:BracedExpression> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start),
+        <else_body:BlockExpression> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start),
 }
 
 BlockExpression: Box<Expression> = {
-    <start:@L> "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start),
-}
-
-BracedExpression: Box<Expression> = {
-    <start:@L> "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start),
-    <start:@L> "{" <expr:BoxedExpression> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements: vec![], expr}, start),
+    <start:@L> "{" <statements:StatementInsideBlock*> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements, Box::new(Expression::Tuple(ctx.source_ref(start), vec![]))}, start),
+    <start:@L> "{" <statements:StatementInsideBlock*> <expr:BoxedExpression> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start),
 }
 
 StatementInsideBlock: StatementInsideBlock = {
