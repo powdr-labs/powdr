@@ -39,7 +39,9 @@ pub fn infer_types(
 #[derive(Clone)]
 pub struct ExpectedType {
     pub ty: Type,
+    /// If true, arrays of `ty` are also allowed.
     pub allow_array: bool,
+    /// If true, the empty tuple is also allowed.
     pub allow_empty: bool,
 }
 
@@ -54,7 +56,7 @@ impl From<Type> for ExpectedType {
 }
 
 struct TypeChecker<'a> {
-    /// The expected type for expressions at statement level in block expressions.
+    /// The expected type for expressions at statement level in block expressions inside a constr function.
     constr_function_statement_type: &'a ExpectedType,
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
@@ -677,6 +679,7 @@ impl<'a> TypeChecker<'a> {
         })
     }
 
+    /// Returns the type expected at statement level, given the current function context.
     fn statement_type(&self) -> ExpectedType {
         if self.lambda_kind == FunctionKind::Constr {
             self.constr_function_statement_type.clone()
