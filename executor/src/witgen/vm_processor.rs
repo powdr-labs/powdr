@@ -315,8 +315,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     ) -> Result<Constraints<&'a AlgebraicReference, T>, Vec<EvalError<T>>> {
         let mut outer_assignments = vec![];
         loop {
-            let mut progress =
-                self.process_identities(row_index, identities, UnknownStrategy::Unknown)?;
+            let mut progress = self
+                .processor
+                .process_queries(row_index as usize)
+                .map_err(|e| vec![e])?;
+
+            progress |= self.process_identities(row_index, identities, UnknownStrategy::Unknown)?;
             let row_index = row_index as usize;
             if let Some(true) = self.processor.latch_value(row_index) {
                 let (outer_query_progress, new_outer_assignments) = self

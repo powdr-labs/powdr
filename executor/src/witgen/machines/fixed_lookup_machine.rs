@@ -253,7 +253,12 @@ impl<T: FieldElement> FixedLookup<T> {
         let input_assignment_with_ids = input_assignment
             .iter()
             .map(|(poly_ref, v)| (poly_ref.poly_id, *v))
-            .collect();
+            .collect::<Vec<_>>();
+        // println!(
+        //     "Lookup with input size {} and output size {}",
+        //     input_assignment_with_ids.len(),
+        //     output_columns.len()
+        // );
         let index_value = self
             .indices
             .get_match(
