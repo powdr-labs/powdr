@@ -1026,19 +1026,22 @@ fn name_to_register(name: &str) -> Option<Register> {
 /// Push register into the stack
 
 pub fn push_register(name: &str) -> Vec<String> {
-
     let mut statements = vec![];
 
     if let Some(reg) = name_to_register(name) {
         statements.push(format!("val1 <== get_reg({});", reg.addr()));
     }
 
-    [statements, vec![
-        "val2 <== get_reg(2);".to_string(),
-        "x2 <=X= wrap(x2 - 4);".to_string(),
-        "set_reg 2, x2;".to_string(),
-        format!("mstore x2, {name};"),
-    ]].concat()
+    [
+        statements,
+        vec![
+            "val2 <== get_reg(2);".to_string(),
+            "x2 <=X= wrap(x2 - 4);".to_string(),
+            "set_reg 2, x2;".to_string(),
+            format!("mstore x2, {name};"),
+        ],
+    ]
+    .concat()
 }
 
 /// Pop register from the stack
@@ -1480,7 +1483,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             // TODO does this fulfill the input requirements for branch_if_positive?
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(vec![format!("branch_if_positive {r1} - {r2} + 1, {label};")])
+                .chain(vec![format!(
+                    "branch_if_positive {r1} - {r2} + 1, {label};"
+                )])
                 .collect()
         }
         "bgez" => {
@@ -1647,7 +1652,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             args.empty()?;
             vec![
                 format!("val1 <== get_reg(1);"),
-                "tmp1 <== jump_dyn(x1);".to_string()]
+                "tmp1 <== jump_dyn(x1);".to_string(),
+            ]
         }
 
         // memory access
@@ -1737,32 +1743,36 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             // a two-byte boundary
 
             let (rs, rd, off) = args.rro()?;
-            read_args(vec![rs, rd]).into_iter().chain(
-            vec![
-                format!("tmp1, tmp2 <== mload({rd} + {off});"),
-                "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
-                "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
-                "tmp1 <== and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <== and({rs}, 0xffff);"),
-                "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
-                "tmp1 <== or(tmp1, tmp3);".to_string(),
-                format!("mstore {rd} + {off} - tmp2, tmp1;"),
-            ]).collect()
+            read_args(vec![rs, rd])
+                .into_iter()
+                .chain(vec![
+                    format!("tmp1, tmp2 <== mload({rd} + {off});"),
+                    "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
+                    "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
+                    "tmp1 <== and(tmp1, tmp3);".to_string(),
+                    format!("tmp3 <== and({rs}, 0xffff);"),
+                    "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
+                    "tmp1 <== or(tmp1, tmp3);".to_string(),
+                    format!("mstore {rd} + {off} - tmp2, tmp1;"),
+                ])
+                .collect()
         }
         "sb" => {
             // store byte
             let (rs, rd, off) = args.rro()?;
-            read_args(vec![rs, rd]).into_iter().chain(
-            vec![
-                format!("tmp1, tmp2 <== mload({rd} + {off});"),
-                "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
-                "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
-                "tmp1 <== and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <== and({rs}, 0xff);"),
-                "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
-                "tmp1 <== or(tmp1, tmp3);".to_string(),
-                format!("mstore {rd} + {off} - tmp2, tmp1;"),
-            ]).collect()
+            read_args(vec![rs, rd])
+                .into_iter()
+                .chain(vec![
+                    format!("tmp1, tmp2 <== mload({rd} + {off});"),
+                    "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
+                    "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
+                    "tmp1 <== and(tmp1, tmp3);".to_string(),
+                    format!("tmp3 <== and({rs}, 0xff);"),
+                    "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
+                    "tmp1 <== or(tmp1, tmp3);".to_string(),
+                    format!("mstore {rd} + {off} - tmp2, tmp1;"),
+                ])
+                .collect()
         }
         "fence" | "fence.i" | "nop" => vec![],
         "unimp" => vec!["fail;".to_string()],
@@ -1807,9 +1817,14 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 format!("val1 <== get_reg({});", rs1.addr()),
                 format!("val2 <== get_reg({});", rs2.addr()),
                 format!("mstore {rs1}, {rs2};"),
-            ].into_iter().chain(
-                only_if_no_write_to_zero(format!("{rd} <=X= (1 - lr_sc_reservation);"), rd)
-            ).chain(["lr_sc_reservation <=X= 0;".into()]).collect()
+            ]
+            .into_iter()
+            .chain(only_if_no_write_to_zero(
+                format!("{rd} <=X= (1 - lr_sc_reservation);"),
+                rd,
+            ))
+            .chain(["lr_sc_reservation <=X= 0;".into()])
+            .collect()
         }
 
         _ => {
