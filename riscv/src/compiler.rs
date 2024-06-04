@@ -1037,6 +1037,7 @@ pub fn push_register(name: &str) -> Vec<String> {
     let mut statements = vec![];
 
     if let Some(reg) = name_to_register(name) {
+        statements.push(format!("{} <== get_reg({});", reg, reg.addr()));
         statements.push(format!("val1 <== get_reg({});", reg.addr()));
     }
 
@@ -1044,6 +1045,7 @@ pub fn push_register(name: &str) -> Vec<String> {
         statements,
         vec![
             "val2 <== get_reg(2);".to_string(),
+            "x2 <== get_reg(2);".to_string(),
             "x2 <=X= wrap(x2 - 4);".to_string(),
             "set_reg 2, x2;".to_string(),
             format!("mstore x2, {name};"),
@@ -1056,6 +1058,7 @@ pub fn push_register(name: &str) -> Vec<String> {
 pub fn pop_register(name: &str) -> Vec<String> {
     let mut instructions = vec![
         "val1 <== get_reg(2);".to_string(),
+        "x2 <== get_reg(2);".to_string(),
         format!("{name}, tmp1 <== mload(x2);"),
         "x2 <=X= wrap(x2 + 4);".to_string(),
     ];
@@ -1672,6 +1675,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             args.empty()?;
             vec![
                 format!("val1 <== get_reg(1);"),
+                "x1 <== get_reg(1);".to_string(),
                 "tmp1 <== jump_dyn(x1);".to_string(),
             ]
         }
@@ -1836,6 +1840,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 "skip_if_zero lr_sc_reservation, 1;".into(),
                 format!("val1 <== get_reg({});", rs1.addr()),
                 format!("val2 <== get_reg({});", rs2.addr()),
+                format!("{} <== get_reg({});", rs1, rs1.addr()),
+                format!("{} <== get_reg({});", rs2, rs2.addr()),
                 format!("mstore {rs1}, {rs2};"),
             ]
             .into_iter()
