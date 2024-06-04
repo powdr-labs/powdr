@@ -1061,6 +1061,7 @@ pub fn pop_register(name: &str) -> Vec<String> {
         "x2 <== get_reg(2);".to_string(),
         format!("{name}, tmp1 <== mload(x2);"),
         "x2 <=X= wrap(x2 + 4);".to_string(),
+        "set_reg 2, x2;".to_string(),
     ];
     if let Some(reg) = name_to_register(name) {
         instructions.push(format!("set_reg {}, {};", reg.addr(), reg));
