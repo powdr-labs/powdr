@@ -71,6 +71,10 @@ impl Error {
         let mut writer = StandardStream::stderr(ColorChoice::Always);
         term::emit(&mut writer, &config, &files, &diagnostic).unwrap()
     }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 pub fn handle_parse_error(
