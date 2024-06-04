@@ -679,12 +679,7 @@ impl<'a> TypeChecker<'a> {
         if self.lambda_kind == FunctionKind::Constr {
             self.constr_function_statement_type.clone()
         } else {
-            ExpectedType {
-                ty: Type::Tuple(TupleType { items: vec![] }),
-                allow_array: false,
-                allow_empty: false,
-            }
-        }
+            Type::Tuple(TupleType { items: vec![] }).into()
     }
 
     /// Process a function call and return the type of the expression.
