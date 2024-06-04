@@ -202,28 +202,37 @@ impl<'a> TypeChecker<'a> {
                     .map(|v| v.source_reference())
                     .cloned()
                     .unwrap_or_default();
-                // This stores an (uninstantiated) type scheme for symbols with a declared
-                // polymorphic type and it creates a new (unquantified) type variable for
-                // symbols without declared type. This forces a single concrete type for the latter.
-                let ty = type_scheme
-                    .clone()
-                    .unwrap_or_else(|| self.new_type_var().into());
+                // Check if it is a builtin symbol.
+                let ty = match (builtin_schemes().get(name), type_scheme) {
+                    (Some(builtin), declared) => {
+                        if let Some(declared) = declared {
+                            assert_eq!(
+                                builtin,
+                                declared,
+                                "Invalid type for built-in scheme. Got {} but expected {}",
+                                format_type_scheme_around_name(name, &Some(declared.clone())),
+                                format_type_scheme_around_name(name, &Some(builtin.clone()))
+                            );
+                        };
+                        builtin.clone()
+                    }
+                    // Store an (uninstantiated) type scheme for symbols with a declared polymorphic type.
+                    (None, Some(type_scheme)) => type_scheme.clone(),
+                    // Store a new (unquantified) type variable for symbols without declared type.
+                    // This forces a single concrete type for them.
+                    (None, None) => self.new_type_var().into(),
+                };
                 (name.clone(), (source_ref, ty))
             })
             .collect();
 
-        // Add builtin schemes if they are not already there. If they are already there, check the type is correct.
+        // Add builtin schemes if they are not already there and also remove them from the definitions
+        // (because we ignore the defined value).
         for (name, scheme) in builtin_schemes() {
             self.declared_types
                 .entry(name.clone())
-                .and_modify(|(_, ty)| {
-                    assert!(
-                        ty == scheme,
-                        "Invalid type for built-in scheme {name}: {}",
-                        format_type_scheme_around_name(name, &Some(ty.clone()))
-                    );
-                })
                 .or_insert_with(|| (SourceRef::unknown(), scheme.clone()));
+            definitions.remove(name);
         }
     }
 
