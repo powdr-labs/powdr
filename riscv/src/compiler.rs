@@ -1646,7 +1646,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
         "ret" => {
             args.empty()?;
             vec![
-                format!("x1 <== get_reg(1);"),
+                format!("val1 <== get_reg(1);"),
                 "tmp1 <== jump_dyn(x1);".to_string()]
         }
 
