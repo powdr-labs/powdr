@@ -21,6 +21,14 @@ impl SourceRef {
     pub fn unknown() -> Self {
         Default::default()
     }
+
+    /// Returns a new Error for this source reference.
+    pub fn with_error(&self, message: String) -> Error {
+        Error {
+            source_ref: self.clone(),
+            message,
+        }
+    }
 }
 
 #[derive(Debug)]
