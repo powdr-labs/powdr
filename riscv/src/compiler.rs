@@ -216,10 +216,13 @@ pub fn compile<T: FieldElement>(
         .collect();
     if !data_code.is_empty() {
         program.push("x1 <== jump(__data_init);".to_string());
+        program.push("set_reg 1, x1;".to_string());
     }
     program.extend([
         format!("// Set stack pointer\nx2 <=X= {stack_start};"),
+        "set_reg 2, x2;".to_string(),
         "x1 <== jump(__runtime_start);".to_string(),
+        "set_reg 1, x1;".to_string(),
         "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
     ]);
     program.extend(
@@ -1010,7 +1013,12 @@ fn read_args(input_regs: Vec<Register>) -> Vec<String> {
     input_regs
         .into_iter()
         .enumerate()
-        .map(|(i, r)| format!("val{} <== get_reg({});", i + 1, r.addr()))
+        .flat_map(|(i, r)| {
+            [
+                format!("{} <== get_reg({});", r, r.addr()),
+                format!("val{} <== get_reg({});", i + 1, r.addr()),
+            ]
+        })
         .collect()
 }
 
@@ -1592,7 +1600,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
         }
         "jal" => {
             if let Ok(label) = args.l() {
-                vec![format!("x1 <== jump({label});")]
+                vec![
+                    format!("x1 <== jump({label});"),
+                    "set_reg 1, x1;".to_string(),
+                ]
             } else {
                 let (rd, label) = args.rl()?;
                 if rd.is_zero() {
@@ -1609,7 +1620,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             if let Ok(rs) = args.r() {
                 read_args(vec![rs])
                     .into_iter()
-                    .chain([format!("x1 <== jump_dyn({rs});")])
+                    .chain([
+                        format!("x1 <== jump_dyn({rs});"),
+                        "set_reg 1, x1;".to_string(),
+                    ])
                     .collect()
             } else {
                 let (rd, rs, off) = args.rro()?;
@@ -1638,7 +1652,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             push_register("x1")
                 .into_iter()
                 // jump to to handler
-                .chain(std::iter::once("x1 <== jump(__ecall_handler);".to_string()))
+                .chain([
+                    "x1 <== jump(__ecall_handler);".to_string(),
+                    "set_reg 1, x1;".to_string(),
+                ])
                 // restore ra/x1
                 .chain(pop_register("x1"))
                 .collect()
