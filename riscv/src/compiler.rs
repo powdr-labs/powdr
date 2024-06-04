@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
-    fmt,
+    fmt, vec,
 };
 
 use itertools::Itertools;
@@ -35,6 +35,10 @@ impl Register {
 
     pub fn is_zero(&self) -> bool {
         self.value == 0
+    }
+
+    pub fn addr(&self) -> u8 {
+        self.value
     }
 }
 
@@ -743,6 +747,14 @@ fn memory(with_bootloader: bool) -> String {
 
     r#"
 
+    // =============== Register memory =======================
+    std::machines::memory::Memory regs;
+    instr get_reg X -> Y ~ regs.mload X, STEP -> Y;
+    instr set_reg X, Y -> ~ regs.mstore X, STEP, Y ->;
+    reg val1;
+    reg val2;
+    reg val3;
+
     // =============== read-write memory =======================
     // Read-write memory. Columns are sorted by m_addr and
     // then by m_step. m_change is 1 if and only if m_addr changes
@@ -988,27 +1000,63 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
         vec![]
     } else {
         statements
+            .into_iter()
+            .chain([format!("set_reg {}, {};", reg.addr(), reg)])
+            .collect()
+    }
+}
+
+fn read_args(input_regs: Vec<Register>) -> Vec<String> {
+    input_regs
+        .into_iter()
+        .enumerate()
+        .map(|(i, r)| format!("val{} <== get_reg({});", i + 1, r.addr()))
+        .collect()
+}
+
+fn name_to_register(name: &str) -> Option<Register> {
+    if name.starts_with("x") {
+        let num = name[1..].parse().ok()?;
+        Some(Register::new(num))
+    } else {
+        None
     }
 }
 
 /// Push register into the stack
-pub fn push_register(name: &str) -> [String; 2] {
-    [
+
+pub fn push_register(name: &str) -> Vec<String> {
+
+    let mut statements = vec![];
+
+    if let Some(reg) = name_to_register(name) {
+        statements.push(format!("val1 <== get_reg({});", reg.addr()));
+    }
+
+    [statements, vec![
+        "val2 <== get_reg(2);".to_string(),
         "x2 <=X= wrap(x2 - 4);".to_string(),
+        "set_reg 2, x2;".to_string(),
         format!("mstore x2, {name};"),
-    ]
+    ]].concat()
 }
 
 /// Pop register from the stack
 pub fn pop_register(name: &str) -> [String; 2] {
+    // TODO: Get and set registers
     [
         format!("{name}, tmp1 <== mload(x2);"),
         "x2 <=X= wrap(x2 + 4);".to_string(),
     ]
 }
 
-fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<String>, A::Error> {
-    Ok(match instr {
+fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
+    instr: &str,
+    args: &A,
+) -> Result<Vec<String>, A::Error> {
+    println!("Processing instruction: {instr}");
+    println!("      Arguments: {:?}", args);
+    let statements = match instr {
         // load/store registers
         "li" | "la" => {
             // The difference between "li" and "la" in RISC-V is that the former
@@ -1029,163 +1077,277 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
         }
         "mv" => {
             let (rd, rs) = args.rr()?;
-            only_if_no_write_to_zero(format!("{rd} <=X= {rs};"), rd)
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(format!("{rd} <=X= {rs};"), rd))
+                .collect()
         }
 
         // Arithmetic
         "add" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd} <== wrap({r1} + {r2});"), rd)
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== wrap({r1} + {r2});"),
+                    rd,
+                ))
+                .collect()
         }
         "addi" => {
             let (rd, rs, imm) = args.rri()?;
-            only_if_no_write_to_zero(format!("{rd} <== wrap({rs} + {imm});"), rd)
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== wrap({rs} + {imm});"),
+                    rd,
+                ))
+                .collect()
         }
         "sub" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd} <== wrap_signed({r1} - {r2});"), rd)
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== wrap({r1} - {r2});"),
+                    rd,
+                ))
+                .collect()
         }
         "neg" => {
             let (rd, r1) = args.rr()?;
-            only_if_no_write_to_zero(format!("{rd} <== wrap_signed(0 - {r1});"), rd)
+            read_args(vec![r1])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== wrap_signed(0 - {r1});"),
+                    rd,
+                ))
+                .collect()
         }
         "mul" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd}, tmp1 <== mul({r1}, {r2});"), rd)
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd}, tmp1 <== mul({r1}, {r2});"),
+                    rd,
+                ))
+                .collect()
         }
         "mulhu" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("tmp1, {rd} <== mul({r1}, {r2});"), rd)
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("tmp1, {rd} <== mul({r1}, {r2});"),
+                    rd,
+                ))
+                .collect()
         }
         "mulh" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== to_signed({r1});"),
-                    format!("tmp2 <== to_signed({r2});"),
-                    // tmp3 is 1 if tmp1 is non-negative
-                    "tmp3 <== is_positive(tmp1 + 1);".into(),
-                    // tmp4 is 1 if tmp2 is non-negative
-                    "tmp4 <== is_positive(tmp2 + 1);".into(),
-                    // If tmp1 is negative, convert to positive
-                    "skip_if_zero 0, tmp3;".into(),
-                    "tmp1 <=X= 0 - tmp1;".into(),
-                    // If tmp2 is negative, convert to positive
-                    "skip_if_zero 0, tmp4;".into(),
-                    "tmp2 <=X= 0 - tmp2;".into(),
-                    format!("tmp1, {rd} <== mul(tmp1, tmp2);"),
-                    // Determine the sign of the result based on the signs of tmp1 and tmp2
-                    "tmp3 <== is_not_equal_zero(tmp3 - tmp4);".into(),
-                    // If the result should be negative, convert back to negative
-                    "skip_if_zero tmp3, 2;".into(),
-                    "tmp1 <== is_equal_zero(tmp1);".into(),
-                    format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
-                ],
-                rd,
-            )
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![
+                        format!("tmp1 <== to_signed({r1});"),
+                        format!("tmp2 <== to_signed({r2});"),
+                        // tmp3 is 1 if tmp1 is non-negative
+                        "tmp3 <== is_positive(tmp1 + 1);".into(),
+                        // tmp4 is 1 if tmp2 is non-negative
+                        "tmp4 <== is_positive(tmp2 + 1);".into(),
+                        // If tmp1 is negative, convert to positive
+                        "skip_if_zero 0, tmp3;".into(),
+                        "tmp1 <=X= 0 - tmp1;".into(),
+                        // If tmp2 is negative, convert to positive
+                        "skip_if_zero 0, tmp4;".into(),
+                        "tmp2 <=X= 0 - tmp2;".into(),
+                        format!("tmp1, {rd} <== mul(tmp1, tmp2);"),
+                        // Determine the sign of the result based on the signs of tmp1 and tmp2
+                        "tmp3 <== is_not_equal_zero(tmp3 - tmp4);".into(),
+                        // If the result should be negative, convert back to negative
+                        "skip_if_zero tmp3, 2;".into(),
+                        "tmp1 <== is_equal_zero(tmp1);".into(),
+                        format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
+                    ],
+                    rd,
+                ))
+                .collect()
         }
         "mulhsu" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== to_signed({r1});"),
-                    // tmp2 is 1 if tmp1 is non-negative
-                    "tmp2 <== is_positive(tmp1 + 1);".into(),
-                    // If negative, convert to positive
-                    "skip_if_zero 0, tmp2;".into(),
-                    "tmp1 <=X= 0 - tmp1;".into(),
-                    format!("tmp1, {rd} <== mul(tmp1, {r2});"),
-                    // If was negative before, convert back to negative
-                    "skip_if_zero (1-tmp2), 2;".into(),
-                    "tmp1 <== is_equal_zero(tmp1);".into(),
-                    // If the lower bits are zero, return the two's complement,
-                    // otherwise return one's complement.
-                    format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
-                ],
-                rd,
-            )
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![
+                        format!("tmp1 <== to_signed({r1});"),
+                        // tmp2 is 1 if tmp1 is non-negative
+                        "tmp2 <== is_positive(tmp1 + 1);".into(),
+                        // If negative, convert to positive
+                        "skip_if_zero 0, tmp2;".into(),
+                        "tmp1 <=X= 0 - tmp1;".into(),
+                        format!("tmp1, {rd} <== mul(tmp1, {r2});"),
+                        // If was negative before, convert back to negative
+                        "skip_if_zero (1-tmp2), 2;".into(),
+                        "tmp1 <== is_equal_zero(tmp1);".into(),
+                        // If the lower bits are zero, return the two's complement,
+                        // otherwise return one's complement.
+                        format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
+                    ],
+                    rd,
+                ))
+                .collect()
         }
         "divu" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd}, tmp1 <== divremu({r1}, {r2});"), rd)
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== divu({r1}, {r2});"),
+                    rd,
+                ))
+                .collect()
         }
         "remu" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("tmp1, {rd} <== divremu({r1}, {r2});"), rd)
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== remu({r1}, {r2});"),
+                    rd,
+                ))
+                .collect()
         }
 
         // bitwise
         "xor" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd} <== xor({r1}, {r2});"), rd)
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== xor({r1}, {r2});"),
+                    rd,
+                ))
+                .collect()
         }
         "xori" => {
             let (rd, r1, imm) = args.rri()?;
-            only_if_no_write_to_zero(format!("{rd} <== xor({r1}, {imm});"), rd)
+            read_args(vec![r1])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== xor({r1}, {imm});"),
+                    rd,
+                ))
+                .collect()
         }
         "and" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd} <== and({r1}, {r2});"), rd)
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== and({r1}, {r2});"),
+                    rd,
+                ))
+                .collect()
         }
         "andi" => {
             let (rd, r1, imm) = args.rri()?;
-            only_if_no_write_to_zero(format!("{rd} <== and({r1}, {imm});"), rd)
+            read_args(vec![r1])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== and({r1}, {imm});"),
+                    rd,
+                ))
+                .collect()
         }
         "or" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd} <== or({r1}, {r2});"), rd)
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== or({r1}, {r2});"),
+                    rd,
+                ))
+                .collect()
         }
         "ori" => {
             let (rd, r1, imm) = args.rri()?;
-            only_if_no_write_to_zero(format!("{rd} <== or({r1}, {imm});"), rd)
+            read_args(vec![r1])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== or({r1}, {imm});"),
+                    rd,
+                ))
+                .collect()
         }
         "not" => {
             let (rd, rs) = args.rr()?;
-            only_if_no_write_to_zero(format!("{rd} <== wrap_signed(-{rs} - 1);"), rd)
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== wrap_signed(-{rs} - 1);"),
+                    rd,
+                ))
+                .collect()
         }
 
         // shift
         "slli" => {
             let (rd, rs, amount) = args.rri()?;
             assert!(amount <= 31);
-            only_if_no_write_to_zero_vec(
-                if amount <= 16 {
-                    vec![format!("{rd} <== wrap16({rs} * {});", 1 << amount)]
-                } else {
-                    vec![
-                        format!("tmp1 <== wrap16({rs} * {});", 1 << 16),
-                        format!("{rd} <== wrap16(tmp1 * {});", 1 << (amount - 16)),
-                    ]
-                },
-                rd,
-            )
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    if amount <= 16 {
+                        vec![format!("{rd} <== wrap16({rs} * {});", 1 << amount)]
+                    } else {
+                        vec![
+                            format!("tmp1 <== wrap16({rs} * {});", 1 << 16),
+                            format!("{rd} <== wrap16(tmp1 * {});", 1 << (amount - 16)),
+                        ]
+                    },
+                    rd,
+                ))
+                .collect()
         }
         "sll" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== and({r2}, 0x1f);"),
-                    format!("{rd} <== shl({r1}, tmp1);"),
-                ],
-                rd,
-            )
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![
+                        format!("tmp1 <== and({r2}, 0x1f);"),
+                        format!("{rd} <== shl({r1}, tmp1);"),
+                    ],
+                    rd,
+                ))
+                .collect()
         }
         "srli" => {
             // logical shift right
             let (rd, rs, amount) = args.rri()?;
             assert!(amount <= 31);
-            only_if_no_write_to_zero(format!("{rd} <== shr({rs}, {amount});"), rd)
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <== shr({rs}, {amount});"),
+                    rd,
+                ))
+                .collect()
         }
         "srl" => {
             // logical shift right
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== and({r2}, 0x1f);"),
-                    format!("{rd} <== shr({r1}, tmp1);"),
-                ],
-                rd,
-            )
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![
+                        format!("tmp1 <== and({r2}, 0x1f);"),
+                        format!("{rd} <== shr({r1}, tmp1);"),
+                    ],
+                    rd,
+                ))
+                .collect()
         }
         "srai" => {
             // arithmetic shift right
@@ -1194,143 +1356,217 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
             // a >>> b = (a >= 0 ? a >> b : ~(~a >> b))
             let (rd, rs, amount) = args.rri()?;
             assert!(amount <= 31);
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== to_signed({rs});"),
-                    format!("tmp1 <== is_positive(0 - tmp1);"),
-                    format!("tmp1 <=X= tmp1 * 0xffffffff;"),
-                    // Here, tmp1 is the full bit mask if rs is negative
-                    // and zero otherwise.
-                    format!("{rd} <== xor(tmp1, {rs});"),
-                    format!("{rd} <== shr({rd}, {amount});"),
-                    format!("{rd} <== xor(tmp1, {rd});"),
-                ],
-                rd,
-            )
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![
+                        format!("tmp1 <== to_signed({rs});"),
+                        format!("tmp1 <== is_positive(0 - tmp1);"),
+                        format!("tmp1 <=X= tmp1 * 0xffffffff;"),
+                        // Here, tmp1 is the full bit mask if rs is negative
+                        // and zero otherwise.
+                        format!("{rd} <== xor(tmp1, {rs});"),
+                        format!("{rd} <== shr({rd}, {amount});"),
+                        format!("{rd} <== xor(tmp1, {rd});"),
+                    ],
+                    rd,
+                ))
+                .collect()
         }
 
         // comparison
         "seqz" => {
             let (rd, rs) = args.rr()?;
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_equal_zero({rs});"), rd)
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <=Y= is_equal_zero({rs});"),
+                    rd,
+                ))
+                .collect()
         }
         "snez" => {
             let (rd, rs) = args.rr()?;
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_not_equal_zero({rs});"), rd)
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <=Y= is_not_equal_zero({rs});"),
+                    rd,
+                ))
+                .collect()
         }
         "slti" => {
             let (rd, rs, imm) = args.rri()?;
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== to_signed({rs});"),
-                    format!("{rd} <=Y= is_positive({} - tmp1);", imm as i32),
-                ],
-                rd,
-            )
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![
+                        format!("tmp1 <== to_signed({rs});"),
+                        format!("{rd} <=Y= is_positive({} - tmp1);", imm as i32),
+                    ],
+                    rd,
+                ))
+                .collect()
         }
         "slt" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== to_signed({r1});"),
-                    format!("tmp2 <== to_signed({r2});"),
-                    format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
-                ],
-                rd,
-            )
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![
+                        format!("tmp1 <== to_signed({r1});"),
+                        format!("tmp2 <== to_signed({r2});"),
+                        format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
+                    ],
+                    rd,
+                ))
+                .collect()
         }
         "sltiu" => {
             let (rd, rs, imm) = args.rri()?;
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({imm} - {rs});"), rd)
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <=Y= is_positive({imm} - {rs});"),
+                    rd,
+                ))
+                .collect()
         }
         "sltu" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({r2} - {r1});"), rd)
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(only_if_no_write_to_zero(
+                    format!("{rd} <=Y= is_positive({r2} - {r1});"),
+                    rd,
+                ))
+                .collect()
         }
         "sgtz" => {
             let (rd, rs) = args.rr()?;
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== to_signed({rs});"),
-                    format!("{rd} <=Y= is_positive(tmp1);"),
-                ],
-                rd,
-            )
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![
+                        format!("tmp1 <== to_signed({rs});"),
+                        format!("{rd} <=Y= is_positive(tmp1);"),
+                    ],
+                    rd,
+                ))
+                .collect()
         }
 
         // branching
         "beq" => {
             let (r1, r2, label) = args.rrl()?;
-            vec![format!("branch_if_zero {r1} - {r2}, {label};")]
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(vec![format!("branch_if_zero {r1} - {r2}, {label};")])
+                .collect()
         }
         "beqz" => {
             let (r1, label) = args.rl()?;
-            vec![format!("branch_if_zero {r1}, {label};")]
+            read_args(vec![r1])
+                .into_iter()
+                .chain(vec![format!("branch_if_zero {r1}, {label};")])
+                .collect()
         }
         "bgeu" => {
             let (r1, r2, label) = args.rrl()?;
             // TODO does this fulfill the input requirements for branch_if_positive?
-            vec![format!("branch_if_positive {r1} - {r2} + 1, {label};")]
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(vec![format!("branch_if_positive {r2} - {r1}, {label};")])
+                .collect()
         }
         "bgez" => {
             let (r1, label) = args.rl()?;
-            vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("branch_if_positive tmp1 + 1, {label};"),
-            ]
+            read_args(vec![r1])
+                .into_iter()
+                .chain(vec![
+                    format!("tmp1 <== to_signed({r1});"),
+                    format!("branch_if_positive tmp1 + 1, {label};"),
+                ])
+                .collect()
         }
         "bltu" => {
             let (r1, r2, label) = args.rrl()?;
-            vec![format!("branch_if_positive {r2} - {r1}, {label};")]
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(vec![format!("branch_if_positive {r2} - {r1}, {label};")])
+                .collect()
         }
         "blt" => {
             let (r1, r2, label) = args.rrl()?;
             // Branch if r1 < r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
-            vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("tmp2 <== to_signed({r2});"),
-                format!("branch_if_positive tmp2 - tmp1, {label};"),
-            ]
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(vec![
+                    format!("tmp1 <== to_signed({r1});"),
+                    format!("tmp2 <== to_signed({r2});"),
+                    format!("branch_if_positive tmp2 - tmp1, {label};"),
+                ])
+                .collect()
         }
         "bge" => {
             let (r1, r2, label) = args.rrl()?;
             // Branch if r1 >= r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
-            vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("tmp2 <== to_signed({r2});"),
-                format!("branch_if_positive tmp1 - tmp2 + 1, {label};"),
-            ]
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(vec![
+                    format!("tmp1 <== to_signed({r1});"),
+                    format!("tmp2 <== to_signed({r2});"),
+                    format!("branch_if_positive tmp1 - tmp2 + 1, {label};"),
+                ])
+                .collect()
         }
         "bltz" => {
             // branch if 2**31 <= r1 < 2**32
             let (r1, label) = args.rl()?;
-            vec![format!("branch_if_positive {r1} - 2**31 + 1, {label};")]
+            read_args(vec![r1])
+                .into_iter()
+                .chain(vec![format!(
+                    "branch_if_positive {r1} - 2**31 + 1, {label};"
+                )])
+                .collect()
         }
         "blez" => {
             // branch less or equal zero
             let (r1, label) = args.rl()?;
-            vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("branch_if_positive -tmp1 + 1, {label};"),
-            ]
+            read_args(vec![r1])
+                .into_iter()
+                .chain(vec![
+                    format!("tmp1 <== to_signed({r1});"),
+                    format!("branch_if_positive -tmp1 + 1, {label};"),
+                ])
+                .collect()
         }
         "bgtz" => {
             // branch if 0 < r1 < 2**31
             let (r1, label) = args.rl()?;
-            vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("branch_if_positive tmp1, {label};"),
-            ]
+            read_args(vec![r1])
+                .into_iter()
+                .chain(vec![
+                    format!("tmp1 <== to_signed({r1});"),
+                    format!("branch_if_positive tmp1, {label};"),
+                ])
+                .collect()
         }
         "bne" => {
             let (r1, r2, label) = args.rrl()?;
-            vec![format!("branch_if_nonzero {r1} - {r2}, {label};")]
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(vec![format!("branch_if_nonzero {r1} - {r2}, {label};")])
+                .collect()
         }
         "bnez" => {
             let (r1, label) = args.rl()?;
-            vec![format!("branch_if_nonzero {r1}, {label};")]
+            read_args(vec![r1])
+                .into_iter()
+                .chain(vec![format!("branch_if_nonzero {r1}, {label};")])
+                .collect()
         }
 
         // jump and call
@@ -1340,32 +1576,49 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
         }
         "jr" => {
             let rs = args.r()?;
-            vec![format!("tmp1 <== jump_dyn({rs});")]
+            read_args(vec![rs])
+                .into_iter()
+                .chain(vec![format!("tmp1 <== jump_dyn({rs});")])
+                .collect()
         }
         "jal" => {
             if let Ok(label) = args.l() {
                 vec![format!("x1 <== jump({label});")]
             } else {
                 let (rd, label) = args.rl()?;
-                let statement = if rd.is_zero() {
-                    format!("tmp1 <== jump({label});")
+                if rd.is_zero() {
+                    vec![format!("tmp1 <== jump({label});")]
                 } else {
-                    format!("{rd} <== jump({label});")
-                };
-                vec![statement]
+                    vec![
+                        format!("{rd} <== jump({label});"),
+                        format!("set_reg {}, {};", rd.addr(), rd),
+                    ]
+                }
             }
         }
-        "jalr" => vec![if let Ok(rs) = args.r() {
-            format!("x1 <== jump_dyn({rs});")
-        } else {
-            let (rd, rs, off) = args.rro()?;
-            assert_eq!(off, 0, "jalr with non-zero offset is not supported");
-            if rd.is_zero() {
-                format!("tmp1 <== jump_dyn({rs});")
+        "jalr" => {
+            if let Ok(rs) = args.r() {
+                read_args(vec![rs])
+                    .into_iter()
+                    .chain([format!("x1 <== jump_dyn({rs});")])
+                    .collect()
             } else {
-                format!("{rd} <== jump_dyn({rs});")
+                let (rd, rs, off) = args.rro()?;
+                assert_eq!(off, 0, "jalr with non-zero offset is not supported");
+                if rd.is_zero() {
+                    read_args(vec![rs])
+                        .into_iter()
+                        .chain([format!("tmp1 <== jump_dyn({rs});")])
+                        .collect()
+                } else {
+                    read_args(vec![rs])
+                        .into_iter()
+                        .chain([format!("{rd} <== jump_dyn({rs});")])
+                        .chain([format!("set_reg {}, {};", rd.addr(), rd)])
+                        .collect()
+                }
             }
-        }],
+        },
         "call" => {
             let label = args.l()?;
             vec![format!("x1 <== jump({label});")]
@@ -1388,68 +1641,91 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
         }
         "ret" => {
             args.empty()?;
-            vec!["tmp1 <== jump_dyn(x1);".to_string()]
+            vec![
+                format!("x1 <== get_reg(1);"),
+                "tmp1 <== jump_dyn(x1);".to_string()]
         }
 
         // memory access
         "lw" => {
             let (rd, rs, off) = args.rro()?;
             // TODO we need to consider misaligned loads / stores
-            only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs} + {off});")], rd)
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![format!("{rd}, tmp1 <== mload({rs} + {off});")],
+                    rd,
+                ))
+                .collect()
         }
         "lb" => {
             // load byte and sign-extend. the memory is little-endian.
             let (rd, rs, off) = args.rro()?;
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== sign_extend_byte({rd});"),
-                ],
-                rd,
-            )
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![
+                        format!("{rd}, tmp2 <== mload({rs} + {off});"),
+                        format!("{rd} <== shr({rd}, 8 * tmp2);"),
+                        format!("{rd} <== sign_extend_byte({rd});"),
+                    ],
+                    rd,
+                ))
+                .collect()
         }
         "lbu" => {
             // load byte and zero-extend. the memory is little-endian.
             let (rd, rs, off) = args.rro()?;
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== and({rd}, 0xff);"),
-                ],
-                rd,
-            )
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![
+                        format!("{rd}, tmp2 <== mload({rs} + {off});"),
+                        format!("{rd} <== shr({rd}, 8 * tmp2);"),
+                        format!("{rd} <== and({rd}, 0xff);"),
+                    ],
+                    rd,
+                ))
+                .collect()
         }
         "lh" => {
             // Load two bytes and sign-extend.
             // Assumes the address is a multiple of two.
             let (rd, rs, off) = args.rro()?;
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== sign_extend_16_bits({rd});"),
-                ],
-                rd,
-            )
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![
+                        format!("{rd}, tmp2 <== mload({rs} + {off});"),
+                        format!("{rd} <== shr({rd}, 8 * tmp2);"),
+                        format!("{rd} <== sign_extend_16_bits({rd});"),
+                    ],
+                    rd,
+                ))
+                .collect()
         }
         "lhu" => {
             // Load two bytes and zero-extend.
             // Assumes the address is a multiple of two.
             let (rd, rs, off) = args.rro()?;
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== and({rd}, 0x0000ffff);"),
-                ],
-                rd,
-            )
+            read_args(vec![rs])
+                .into_iter()
+                .chain(only_if_no_write_to_zero_vec(
+                    vec![
+                        format!("{rd}, tmp2 <== mload({rs} + {off});"),
+                        format!("{rd} <== shr({rd}, 8 * tmp2);"),
+                        format!("{rd} <== and({rd}, 0x0000ffff);"),
+                    ],
+                    rd,
+                ))
+                .collect()
         }
         "sw" => {
             let (r1, r2, off) = args.rro()?;
-            vec![format!("mstore {r2} + {off}, {r1};")]
+            read_args(vec![r1, r2])
+                .into_iter()
+                .chain(vec![format!("mstore {r2} + {off}, {r1};")])
+                .collect()
         }
         "sh" => {
             // store half word (two bytes)
@@ -1457,6 +1733,7 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
             // a two-byte boundary
 
             let (rs, rd, off) = args.rro()?;
+            read_args(vec![rs, rd]).into_iter().chain(
             vec![
                 format!("tmp1, tmp2 <== mload({rd} + {off});"),
                 "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
@@ -1466,11 +1743,12 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
                 format!("mstore {rd} + {off} - tmp2, tmp1;"),
-            ]
+            ]).collect()
         }
         "sb" => {
             // store byte
             let (rs, rd, off) = args.rro()?;
+            read_args(vec![rs, rd]).into_iter().chain(
             vec![
                 format!("tmp1, tmp2 <== mload({rd} + {off});"),
                 "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
@@ -1480,7 +1758,7 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
                 format!("mstore {rd} + {off} - tmp2, tmp1;"),
-            ]
+            ]).collect()
         }
         "fence" | "fence.i" | "nop" => vec![],
         "unimp" => vec!["fail;".to_string()],
@@ -1491,6 +1769,7 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
             assert_eq!(off, 0);
 
             [
+                read_args(vec![rs1, rs2]),
                 vec![
                     format!("tmp1, tmp2 <== mload({rs1});"),
                     format!("tmp2 <== wrap(tmp1 + {rs2});"),
@@ -1506,10 +1785,12 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
             let (rd, rs, off) = args.rro()?;
             assert_eq!(off, 0);
             // TODO misaligned access should raise misaligned address exceptions
-            let mut statements =
-                only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs});")], rd);
-            statements.push("lr_sc_reservation <=X= 1;".into());
-            statements
+            [
+                read_args(vec![rs]),
+                only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs});")], rd),
+                vec!["lr_sc_reservation <=X= 1;".into()],
+            ]
+            .concat()
         }
 
         insn if insn.starts_with("sc.w") => {
@@ -1517,19 +1798,22 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
             let (rd, rs2, rs1, off) = args.rrro()?;
             assert_eq!(off, 0);
             // TODO: misaligned access should raise misaligned address exceptions
-            let mut statements = vec![
+            [
                 "skip_if_zero lr_sc_reservation, 1;".into(),
+                format!("val1 <== get_reg({});", rs1.addr()),
+                format!("val2 <== get_reg({});", rs2.addr()),
                 format!("mstore {rs1}, {rs2};"),
-            ];
-            if !rd.is_zero() {
-                statements.push(format!("{rd} <=X= (1 - lr_sc_reservation);"));
-            }
-            statements.push("lr_sc_reservation <=X= 0;".into());
-            statements
+            ].into_iter().chain(
+                only_if_no_write_to_zero(format!("{rd} <=X= (1 - lr_sc_reservation);"), rd)
+            ).chain(["lr_sc_reservation <=X= 0;".into()]).collect()
         }
 
         _ => {
             panic!("Unknown instruction: {instr}");
         }
-    })
+    };
+    for s in &statements {
+        println!("          {s}");
+    }
+    Ok(statements)
 }
