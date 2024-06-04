@@ -54,7 +54,7 @@ impl From<Type> for ExpectedType {
 }
 
 struct TypeChecker<'a> {
-    /// The expected type for expressions at statement level in block expressions.
+    /// The expected type for expressions at statement level in block expressions inside a constr function.
     constr_function_statement_type: &'a ExpectedType,
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
