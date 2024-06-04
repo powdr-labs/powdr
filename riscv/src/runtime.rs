@@ -7,7 +7,7 @@ use powdr_ast::parsed::asm::{FunctionStatement, MachineStatement, SymbolPath};
 use itertools::Itertools;
 use powdr_parser::ParserContext;
 
-use crate::compiler::{pop_register, push_register};
+use crate::code_gen::{pop_register, push_register};
 
 static EXTRA_REG_PREFIX: &str = "xtra";
 
@@ -436,7 +436,7 @@ impl Runtime {
             .collect()
     }
 
-    pub fn global_declarations(&self) -> String {
+    pub fn global_declarations(&self, stack_start: u32) -> String {
         [
             "__divdi3",
             "__udivdi3",
@@ -475,6 +475,12 @@ impl Runtime {
 __rust_alloc_error_handler_should_panic: .byte 0
 .globl __rust_no_alloc_shim_is_unstable
 __rust_no_alloc_shim_is_unstable: .byte 0
+.globl __powdr_stack_start
+"
+            + &format!(
+                ".set __powdr_stack_start, {stack_start}",
+            )
+            + r"
 .text
 "
     }

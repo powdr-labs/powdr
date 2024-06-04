@@ -7,23 +7,23 @@ use crate::{
     utils::{alignment_size, next_aligned},
 };
 
-pub enum SingleDataValue<'a> {
+pub enum SingleDataValue {
     Value(u32),
-    LabelReference(&'a str),
-    Offset(&'a str, &'a str),
+    LabelReference(String),
+    Offset(String, String),
 }
 
-struct WordWriter<'a, 'b> {
-    data_writer: &'a mut dyn FnMut(Option<&str>, u32, SingleDataValue),
+struct WordWriter<'a> {
+    data_writer: &'a mut dyn FnMut(Option<String>, u32, SingleDataValue),
     partial: u32,
     current_pos: u32,
-    latest_label: Option<&'b str>,
+    latest_label: Option<String>,
 }
 
-impl<'a, 'b> WordWriter<'a, 'b> {
+impl<'a> WordWriter<'a> {
     fn new(
         starting_pos: u32,
-        data_writer: &'a mut dyn FnMut(Option<&str>, u32, SingleDataValue),
+        data_writer: &'a mut dyn FnMut(Option<String>, u32, SingleDataValue),
     ) -> Self {
         // sanitary alignment to 8 bytes
         let current_pos = next_aligned(starting_pos as usize, 8) as u32;
@@ -39,7 +39,7 @@ impl<'a, 'b> WordWriter<'a, 'b> {
         self.current_pos
     }
 
-    fn set_label(&mut self, label: &'b str) {
+    fn set_label(&mut self, label: String) {
         self.latest_label = Some(label)
     }
 
@@ -77,7 +77,7 @@ impl<'a, 'b> WordWriter<'a, 'b> {
         }
     }
 
-    fn write_label_reference(&mut self, label: &str) {
+    fn write_label_reference(&mut self, label: String) {
         assert_eq!(
             self.current_pos % 4,
             0,
@@ -103,7 +103,7 @@ impl<'a, 'b> WordWriter<'a, 'b> {
 pub fn store_data_objects(
     sections: Vec<Vec<(Option<String>, Vec<DataValue>)>>,
     memory_start: u32,
-    code_gen: &mut dyn FnMut(Option<&str>, u32, SingleDataValue),
+    code_gen: &mut dyn FnMut(Option<String>, u32, SingleDataValue),
 ) -> BTreeMap<String, u32> {
     let mut writer = WordWriter::new(memory_start, code_gen);
 
@@ -121,22 +121,22 @@ pub fn store_data_objects(
         positions
     };
 
-    for (name, data) in sections.iter().flatten() {
+    for (name, data) in sections.into_iter().flatten() {
         if let Some(name) = name {
             writer.set_label(name);
         }
         for item in data {
-            match &item {
+            match item {
                 DataValue::Zero(length) => {
                     // We can assume memory to be zero-initialized, so we
                     // just have to advance.
-                    writer.advance(*length as u32);
+                    writer.advance(length as u32);
                 }
                 DataValue::Direct(bytes) => {
                     writer.write_bytes(bytes.iter().copied());
                 }
                 DataValue::Reference(sym) => {
-                    if let Some(p) = positions.get(sym) {
+                    if let Some(p) = positions.get(&sym) {
                         writer.write_bytes(p.to_le_bytes().iter().copied());
                     } else {
                         // code reference
@@ -144,7 +144,7 @@ pub fn store_data_objects(
                     }
                 }
                 DataValue::Alignment(bytes, pad_value) => {
-                    writer.align(*bytes as u32, *pad_value);
+                    writer.align(bytes as u32, pad_value);
                 }
                 DataValue::Offset(_l, _r) => unimplemented!(),
             }

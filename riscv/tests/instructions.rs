@@ -4,7 +4,7 @@ mod instruction_tests {
     use crate::common::verify_riscv_asm_string;
     use powdr_backend::BackendType;
     use powdr_number::GoldilocksField;
-    use powdr_riscv::compiler::compile;
+    use powdr_riscv::asm_translate::compile;
     use powdr_riscv::Runtime;
     use test_log::test;
 
