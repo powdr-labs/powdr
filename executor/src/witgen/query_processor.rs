@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use powdr_ast::analyzed::Challenge;
+use powdr_ast::analyzed::{AlgebraicExpression, Challenge};
 use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
 use powdr_ast::parsed::types::Type;
 use powdr_number::{BigInt, FieldElement};
@@ -42,7 +42,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         poly: &'a AlgebraicReference,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
-        let query_str = match self.interpolate_query(query, rows) {
+        let (query_str, assignments) = match self.interpolate_query(query, rows) {
             Ok(query) => query,
             Err(e) => {
                 return match e {
@@ -57,34 +57,52 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
                 };
             }
         };
-        Ok(
-            if let Some(value) =
-                (self.query_callback)(&query_str).map_err(super::EvalError::ProverQueryError)?
-            {
-                EvalValue::complete(vec![(poly, Constraint::Assignment(value))])
-            } else {
-                EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
-                    query_str,
-                    poly.name.to_string(),
-                ))
-            },
-        )
+        let mut query_result = if let Some(value) =
+            (self.query_callback)(&query_str).map_err(super::EvalError::ProverQueryError)?
+        {
+            EvalValue::complete(vec![(poly, Constraint::Assignment(value))])
+        } else {
+            EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
+                query_str,
+                poly.name.to_string(),
+            ))
+        };
+
+        if !assignments.is_empty() {
+            let assignments = assignments
+                .into_iter()
+                .map(|(poly, value)| {
+                    assert!(!poly.next);
+                    (
+                        // We need to find the reference in the rows to get a reference to the AlgebraicReference.
+                        &self.fixed_data.witness_cols[&poly.poly_id].poly,
+                        Constraint::Assignment(value),
+                    )
+                })
+                .collect::<Vec<_>>();
+            query_result.combine(EvalValue::complete(assignments));
+        }
+
+        Ok(query_result)
     }
 
     fn interpolate_query(
         &self,
         query: &'a Expression,
         rows: &RowPair<T>,
-    ) -> Result<String, EvalError> {
+    ) -> Result<(String, Vec<(AlgebraicReference, T)>), EvalError> {
         let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
             rows.current_row_index,
         ))))];
         let mut symbols = Symbols {
             fixed_data: self.fixed_data,
             rows,
+            assignments: vec![],
         };
         let fun = evaluator::evaluate(query, &mut symbols)?;
-        evaluator::evaluate_function_call(fun, arguments, &mut symbols).map(|v| v.to_string())
+        let result = evaluator::evaluate_function_call(fun, arguments, &mut symbols)?;
+
+        Ok((result.to_string(), symbols.assignments))
     }
 }
 
@@ -92,6 +110,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
 struct Symbols<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     rows: &'a RowPair<'a, 'a, T>,
+    assignments: Vec<(AlgebraicReference, T)>,
 }
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
@@ -149,5 +168,15 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
 
     fn eval_challenge(&self, challenge: &Challenge) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(Value::FieldElement(self.fixed_data.challenges[&challenge.id]).into())
+    }
+
+    fn set_expr(&mut self, expr: &AlgebraicExpression<T>, value: T) -> Result<(), EvalError> {
+        let AlgebraicExpression::Reference(reference) = expr else {
+            return Err(EvalError::Unsupported(
+                "Expected direct column or next reference in call to set()".to_string(),
+            ));
+        };
+        self.assignments.push((reference.clone(), value));
+        Ok(())
     }
 }

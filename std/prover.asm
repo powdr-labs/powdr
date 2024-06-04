@@ -3,6 +3,10 @@
 /// valid in query functions.
 let eval: expr -> fe = [];
 
+/// Sets an expression to a value. This is not constrained.
+/// TODO document properly.
+let set: expr, fe -> () = [];
+
 /// The return type of a prover query function.
 enum Query {
     /// Query a prover input element by index.

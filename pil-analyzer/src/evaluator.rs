@@ -345,6 +345,8 @@ pub enum BuiltinFunction {
     Degree,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
     Eval,
+    /// TODO document
+    Set,
 }
 
 impl<'a, T: Display> Display for Value<'a, T> {
@@ -530,6 +532,12 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         _reference: &AlgebraicReference,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::DataNotAvailable)
+    }
+
+    fn set_expr(&mut self, _expr: &AlgebraicExpression<T>, _value: T) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(
+            "Cannot set cell in this context.".to_string(),
+        ))
     }
 
     fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -1100,6 +1108,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::Challenge => 2,
         BuiltinFunction::Degree => 0,
         BuiltinFunction::Eval => 1,
+        BuiltinFunction::Set => 2,
     };
 
     if arguments.len() != params {
@@ -1176,6 +1185,19 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
                     v.type_formatted()
                 ),
             }
+        }
+        BuiltinFunction::Set => {
+            let [expr, value] = &arguments[..] else {
+                panic!()
+            };
+            let Value::Expression(expr) = expr.as_ref() else {
+                panic!()
+            };
+            let Value::FieldElement(value) = value.as_ref() else {
+                panic!()
+            };
+            symbols.set_expr(expr, *value)?;
+            Value::Tuple(vec![]).into()
         }
     })
 }
