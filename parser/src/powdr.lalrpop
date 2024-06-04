@@ -158,7 +158,7 @@ PolynomialConstantDefinition: PilStatement = {
 }
 
 FunctionDefinition: FunctionDefinition = {
-    <start:@L> "(" <params:ParameterList> ")" <body:BracedExpression> <end:@R> => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{kind: FunctionKind::Pure, params, body})),
+    <start:@L> "(" <params:ParameterList> ")" <body:BlockExpression> <end:@R> => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{kind: FunctionKind::Pure, params, body})),
     <start:@L> "=" <array:ArrayLiteralExpression> <end:@R> => FunctionDefinition::Array(array),
 }
 
@@ -624,14 +624,14 @@ IfExpression: Box<Expression> = {
     <start:@L> "if" <condition:BoxedExpression>
         <body:BlockExpression>
         "else"
-        <else_body:BracedExpression>
+        <else_body:BlockExpression>
         <end:@R> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start, end),
 }
 
 
 BlockExpression: Box<Expression> = {
-    <start:@L> "{" <statements:StatementInsideBlock*> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements, Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![]))}, start, end),
-    <start:@L> "{" <statements:StatementInsideBlock*> <expr:BoxedExpression> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
+    <start:@L> "{" <statements:StatementInsideBlock*> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![]))}, start, end),
+    <start:@L> "{" <statements:StatementInsideBlock*> <expr:BoxedExpression> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
 }
 
 StatementInsideBlock: StatementInsideBlock = {
