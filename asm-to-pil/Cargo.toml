@@ -16,6 +16,7 @@ powdr-parser-util.workspace = true
 lazy_static = "1.4.0"
 log = "0.4.17"
 pretty_assertions = "1.4.0"
+itertools = "^0.10"
 
 [dev-dependencies]
 powdr-analysis = { path = "../analysis" }

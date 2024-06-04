@@ -20,7 +20,12 @@ use powdr_ast::{
 use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_parser_util::SourceRef;
 
-use crate::common::{instruction_flag, return_instruction, RETURN_NAME};
+use itertools::Itertools;
+
+use crate::{
+    common::{instruction_flag, return_instruction, RETURN_NAME},
+    utils::{parse_expression, parse_pil_statement},
+};
 
 pub fn convert_machine<T: FieldElement>(machine: Machine, rom: Option<Rom>) -> Machine {
     let output_count = machine
@@ -1012,6 +1017,11 @@ impl<T: FieldElement> VMConverter<T> {
             .collect::<Vec<_>>();
         self.pil.extend(free_value_pil);
         for (name, values) in rom_constants {
+            // TODO printing and re-parsing is pretty horrible.
+            self.pil.push(parse_pil_statement(&format!(
+                "let {name}_lookup: fe[] = [{}];",
+                values.iter().join(", ")
+            )));
             let array_expression = if values.iter().all(|v| v == &values[0]) {
                 // Performance optimization: The block below converts every T to an Expression,
                 // which has a 7x larger memory footprint. This is wasteful for constant columns,
@@ -1049,7 +1059,14 @@ impl<T: FieldElement> VMConverter<T> {
     /// Creates a pair of witness and fixed column and matches them in the lookup.
     fn create_witness_fixed_pair(&mut self, source: SourceRef, name: &str) {
         let fixed_name = format!("p_{name}");
-        self.pil.push(witness_column(source, name, None));
+        self.pil.push(witness_column(
+            source,
+            name,
+            Some(FunctionDefinition::Expression(parse_expression(&format!(
+                "query |_| std::prover::Query::Hint({fixed_name}_lookup[std::convert::int(std::prover::eval({}))])",
+                self.pc_name.as_ref().unwrap()
+            )))),
+        ));
         self.line_lookup
             .push((name.to_string(), fixed_name.clone()));
         self.rom_constant_names.push(fixed_name);

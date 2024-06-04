@@ -44,8 +44,9 @@ pub mod utils {
     use powdr_number::FieldElement;
     use powdr_parser::{
         powdr::{
-            FunctionStatementParser, InstructionBodyParser, InstructionDeclarationParser,
-            InstructionParser, PilStatementParser, RegisterDeclarationParser,
+            ExpressionParser, FunctionStatementParser, InstructionBodyParser,
+            InstructionDeclarationParser, InstructionParser, PilStatementParser,
+            RegisterDeclarationParser,
         },
         ParserContext,
     };
@@ -57,6 +58,7 @@ pub mod utils {
         static ref FUNCTION_STATEMENT_PARSER: FunctionStatementParser = FunctionStatementParser::new();
         static ref PIL_STATEMENT_PARSER: PilStatementParser = PilStatementParser::new();
         static ref REGISTER_DECLARATION_PARSER: RegisterDeclarationParser = RegisterDeclarationParser::new();
+        static ref PIL_EXPRESSION_PARSER: ExpressionParser = ExpressionParser::new();
 
     }
 
@@ -143,5 +145,10 @@ pub mod utils {
             }
             _ => unreachable!(),
         }
+    }
+
+    pub fn parse_expression(input: &str) -> powdr_ast::parsed::Expression {
+        let ctx = ParserContext::new(None, input);
+        PIL_EXPRESSION_PARSER.parse(&ctx, input).unwrap()
     }
 }
