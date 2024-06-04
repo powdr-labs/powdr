@@ -450,36 +450,27 @@ impl<'a> TypeChecker<'a> {
     ) -> Result<(), Error> {
         self.infer_type_of_expression(expr).and_then(|ty| {
             let ty = self.type_into_substituted(ty);
-            if expected_type.allow_array {
-                let expected_type = if matches!(ty, Type::Array(_)) {
-                    Type::Array(ArrayType {
-                        base: Box::new(expected_type.ty.clone()),
-                        length: None,
-                    })
-                } else if ty == Type::Tuple(TupleType { items: vec![] }) {
-                    Type::Tuple(TupleType { items: vec![] })
-                } else {
-                    expected_type.ty.clone()
-                };
-
-                self.unifier
-                    .unify_types(ty.clone(), expected_type.clone())
-                    .map_err(|err| {
-                        // TODO list trait constraints
-                        expr.source_reference().with_error(format!(
-                            "Expected type {} but got type {}.\n{err}",
-                            self.type_into_substituted(expected_type),
-                            self.type_into_substituted(ty)
-                        ))
-                    })
+            let expected_type = if expected_type.allow_array & matches!(ty, Type::Array(_)) {
+                Type::Array(ArrayType {
+                    base: Box::new(expected_type.ty.clone()),
+                    length: None,
+                })
+            } else if expected_type.allow_empty & (ty == Type::Tuple(TupleType { items: vec![] })) {
+                Type::Tuple(TupleType { items: vec![] })
             } else {
-                let expected_type = if ty == Type::Tuple(TupleType { items: vec![] }) {
-                    Type::Tuple(TupleType { items: vec![] })
-                } else {
-                    expected_type.ty.clone()
-                };
-                self.expect_type(&expected_type, expr)
-            }
+                expected_type.ty.clone()
+            };
+
+            self.unifier
+                .unify_types(ty.clone(), expected_type.clone())
+                .map_err(|err| {
+                    // TODO list trait constraints
+                    expr.source_reference().with_error(format!(
+                        "Expected type {} but got type {}.\n{err}",
+                        self.type_into_substituted(expected_type.clone()),
+                        self.type_into_substituted(ty)
+                    ))
+                })
         })
     }
 
