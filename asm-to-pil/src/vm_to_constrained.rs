@@ -895,6 +895,18 @@ impl<T: FieldElement> VMConverter<T> {
                 .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()])),
             ),
         ));
+        self.pil.push(parse_pil_statement(&format!(
+                "let all_prover_hints = query || {{ let pc_val = std::convert::int(std::prover::eval({})); {}; std::prover::Query::None }};",
+                self.pc_name.as_ref().unwrap(),
+                self.rom_constant_names
+                    .iter()
+                    .map(|name| {
+                        let name = name.strip_prefix("p_").unwrap();
+                        format!("let _ = std::prover::set({name}, p_{name}_lookup[pc_val])")
+                    })
+                    .join("; ")
+            )));
+
         // TODO check that all of them are matched against execution trace witnesses.
         let mut rom_constants = self
             .rom_constant_names
@@ -1059,14 +1071,13 @@ impl<T: FieldElement> VMConverter<T> {
     /// Creates a pair of witness and fixed column and matches them in the lookup.
     fn create_witness_fixed_pair(&mut self, source: SourceRef, name: &str) {
         let fixed_name = format!("p_{name}");
-        self.pil.push(witness_column(
-            source,
-            name,
-            Some(FunctionDefinition::Expression(parse_expression(&format!(
-                "query |_| std::prover::Query::Hint({fixed_name}_lookup[std::convert::int(std::prover::eval({}))])",
-                self.pc_name.as_ref().unwrap()
-            )))),
-        ));
+        let value = self.rom_constant_names.is_empty().then(|| {
+            FunctionDefinition::Expression(parse_expression(&format!(
+                "query |_| all_prover_hints()"
+            )))
+        });
+
+        self.pil.push(witness_column(source, name, value));
         self.line_lookup
             .push((name.to_string(), fixed_name.clone()));
         self.rom_constant_names.push(fixed_name);
