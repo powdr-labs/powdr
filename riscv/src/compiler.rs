@@ -1480,7 +1480,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             // TODO does this fulfill the input requirements for branch_if_positive?
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(vec![format!("branch_if_positive {r1} - {r2}, {label};")])
+                .chain(vec![format!("branch_if_positive {r1} - {r2} + 1, {label};")])
                 .collect()
         }
         "bgez" => {
