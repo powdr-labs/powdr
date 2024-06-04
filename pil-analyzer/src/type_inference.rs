@@ -672,6 +672,7 @@ impl<'a> TypeChecker<'a> {
         })
     }
 
+    /// Returns the type expected at statement level, given the current function context.
     fn statement_type(&self) -> ExpectedType {
         if self.lambda_kind == FunctionKind::Constr {
             self.constr_function_statement_type.clone()
