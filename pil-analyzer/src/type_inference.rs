@@ -446,15 +446,15 @@ impl<'a> TypeChecker<'a> {
         expected_type: &ExpectedType,
         expr: &mut Expression,
     ) -> Result<(), Error> {
-        if expected_type.allow_array {
-            self.infer_type_of_expression(expr).and_then(|ty| {
-                let ty = self.type_into_substituted(ty);
+        self.infer_type_of_expression(expr).and_then(|ty| {
+            let ty = self.type_into_substituted(ty);
+            if expected_type.allow_array {
                 let expected_type = if matches!(ty, Type::Array(_)) {
                     Type::Array(ArrayType {
                         base: Box::new(expected_type.ty.clone()),
                         length: None,
                     })
-                } else if matches!(ty, Type::Tuple(_)) & expected_type.allow_empty {
+                } else if ty == Type::Tuple(TupleType { items: vec![] }) {
                     Type::Tuple(TupleType { items: vec![] })
                 } else {
                     expected_type.ty.clone()
@@ -470,10 +470,15 @@ impl<'a> TypeChecker<'a> {
                             self.type_into_substituted(ty)
                         ))
                     })
-            })
-        } else {
-            self.expect_type(&expected_type.ty, expr)
-        }
+            } else {
+                let expected_type = if ty == Type::Tuple(TupleType { items: vec![] }) {
+                    Type::Tuple(TupleType { items: vec![] })
+                } else {
+                    expected_type.ty.clone()
+                };
+                self.expect_type(&expected_type, expr)
+            }
+        })
     }
 
     /// Process an expression and return the type of the expression.
@@ -676,11 +681,7 @@ impl<'a> TypeChecker<'a> {
         if self.lambda_kind == FunctionKind::Constr {
             self.constr_function_statement_type.clone()
         } else {
-            ExpectedType {
-                ty: Type::Tuple(TupleType { items: vec![] }),
-                allow_array: false,
-                allow_empty: false,
-            }
+            Type::Tuple(TupleType { items: vec![] }).into()
         }
     }
 
