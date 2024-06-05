@@ -1884,7 +1884,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             assert_eq!(off, 0);
             // TODO: misaligned access should raise misaligned address exceptions
             [
-                "skip_if_zero lr_sc_reservation, 1;".into(),
+                "skip_if_zero lr_sc_reservation, 5;".into(),
                 format!("val1 <== get_reg({});", rs1.addr()),
                 format!("val2 <== get_reg({});", rs2.addr()),
                 format!("{} <== get_reg({});", rs1, rs1.addr()),
