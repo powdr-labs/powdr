@@ -70,6 +70,7 @@ pub mod utils {
                     instruction: Instruction {
                         params: instruction.params,
                         body: instruction.body,
+                        links: instruction.links,
                     },
                 }
             }
@@ -83,6 +84,7 @@ pub mod utils {
         Instruction {
             params: instr.params,
             body: instr.body,
+            links: instr.links,
         }
     }
 

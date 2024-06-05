@@ -15,7 +15,7 @@ use powdr_parser_util::SourceRef;
 use crate::parsed::{
     asm::{
         AbsoluteSymbolPath, AssignmentRegister, CallableRef, FunctionParams, InstructionBody,
-        InstructionParams, OperationId, OperationParams,
+        InstructionParams, LinkDeclaration, OperationId, OperationParams,
     },
     visitor::{ExpressionVisitable, VisitOrder},
     EnumDeclaration, NamespacedPolynomialReference, PilStatement, TypedExpression,
@@ -67,6 +67,7 @@ pub struct InstructionDefinitionStatement {
 pub struct Instruction {
     pub params: InstructionParams,
     pub body: InstructionBody,
+    pub links: Vec<LinkDeclaration>,
 }
 
 #[derive(Clone, Debug)]

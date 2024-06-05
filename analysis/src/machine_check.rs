@@ -379,6 +379,7 @@ impl TypeChecker {
         Ok(Instruction {
             params: instruction.params,
             body: instruction.body,
+            links: instruction.links,
         })
     }
 }
