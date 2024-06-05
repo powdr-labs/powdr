@@ -527,6 +527,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     instr add_new_2 Y { val1 + Y = val3' + wrap_bit * 2**32, val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
 
     instr add_new_signed { (val1 - val2) + 2**32 = val3' + wrap_bit * 2**32, val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
+    instr add_new_signed_2 Y { (-val1 + Y) + 2**32 = val3' + wrap_bit * 2**32, val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
 
     // =====bbbbbbbbb======
 
@@ -648,10 +649,10 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
     // halves of the result.
     // X is the lower half (least significant bits)
     // Y is the higher half (most significant bits)
-    instr mul Z, W -> X, Y {
-        Z * W = X + Y * 2**32,
-        X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-        Y = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+    instr mul {
+        val1 * val2 = val3' + val4' * 2**32,
+        val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+        val4' = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
     }
 "#
         }
@@ -667,7 +668,7 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
     // halves of the result.
     // X is the lower half (least significant bits)
     // Y is the higher half (most significant bits)
-    instr mul Z, W -> X, Y ~ split_gl.split Z * W -> X, Y;
+    instr mul ~ split_gl.split val1 * val2 -> val3', val4';
 "#
         }
     }
@@ -767,6 +768,7 @@ fn memory(with_bootloader: bool) -> String {
     reg val1;
     reg val2;
     reg val3;
+    reg val4;
 
     // =============== read-write memory =======================
     // Read-write memory. Columns are sorted by m_addr and
@@ -1012,6 +1014,10 @@ fn only_if_no_write_to_zero_val3(statement: String, reg: Register) -> Vec<String
     only_if_no_write_to_zero_vec_val3(vec![statement], reg)
 }
 
+fn only_if_no_write_to_zero_val4(statement: String, reg: Register) -> Vec<String> {
+    only_if_no_write_to_zero_vec_val4(vec![statement], reg)
+}
+
 fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<String> {
     if reg.is_zero() {
         vec![]
@@ -1030,6 +1036,17 @@ fn only_if_no_write_to_zero_vec_val3(statements: Vec<String>, reg: Register) -> 
         statements
             .into_iter()
             .chain([format!("set_reg {}, val3;", reg.addr())])
+            .collect()
+    }
+}
+
+fn only_if_no_write_to_zero_vec_val4(statements: Vec<String>, reg: Register) -> Vec<String> {
+    if reg.is_zero() {
+        vec![]
+    } else {
+        statements
+            .into_iter()
+            .chain([format!("set_reg {}, val4;", reg.addr())])
             .collect()
     }
 }
@@ -1162,8 +1179,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1) = args.rr()?;
             read_args(vec![r1])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd} <== wrap_signed(0 - {r1});"),
+                .chain(only_if_no_write_to_zero_val3(
+                    format!("add_new_signed_2(0);"),
                     rd,
                 ))
                 .collect()
@@ -1172,8 +1189,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd}, tmp1 <== mul({r1}, {r2});"),
+                .chain(only_if_no_write_to_zero_val3(
+                    format!("mul;"),
                     rd,
                 ))
                 .collect()
@@ -1182,8 +1199,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("tmp1, {rd} <== mul({r1}, {r2});"),
+                .chain(only_if_no_write_to_zero_val4(
+                    format!("mul;"),
                     rd,
                 ))
                 .collect()
@@ -1206,7 +1223,16 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         // If tmp2 is negative, convert to positive
                         "skip_if_zero 0, tmp4;".into(),
                         "tmp2 <=X= 0 - tmp2;".into(),
-                        format!("tmp1, {rd} <== mul(tmp1, tmp2);"),
+
+                        "val1 <=X= tmp1;".into(),
+                        "val2 <=X= tmp2;".into(),
+
+                        "mul;".into(),
+
+                        "tmp1 <=X= val3;".into(),
+                        format!("set_reg {} val4;", rd.addr()),
+                        format!("{rd} <== get_reg {}", rd.addr()),
+
                         // Determine the sign of the result based on the signs of tmp1 and tmp2
                         "tmp3 <== is_not_equal_zero(tmp3 - tmp4);".into(),
                         // If the result should be negative, convert back to negative
@@ -1230,7 +1256,16 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         // If negative, convert to positive
                         "skip_if_zero 0, tmp2;".into(),
                         "tmp1 <=X= 0 - tmp1;".into(),
-                        format!("tmp1, {rd} <== mul(tmp1, {r2});"),
+
+                        "val1 <=X= tmp1;".into(),
+                        format!("val2 <== get_reg {};", rd.addr()),
+
+                        format!("mul;"),
+
+                        "tmp1 <=X= val3;".into(),
+                        format!("set_reg {} val4;", rd.addr()),
+                        format!("{rd} <== get_reg {}", rd.addr()),
+
                         // If was negative before, convert back to negative
                         "skip_if_zero (1-tmp2), 2;".into(),
                         "tmp1 <== is_equal_zero(tmp1);".into(),
