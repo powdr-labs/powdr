@@ -1189,20 +1189,14 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_val3(
-                    format!("mul;"),
-                    rd,
-                ))
+                .chain(only_if_no_write_to_zero_val3(format!("mul;"), rd))
                 .collect()
         }
         "mulhu" => {
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_val4(
-                    format!("mul;"),
-                    rd,
-                ))
+                .chain(only_if_no_write_to_zero_val4(format!("mul;"), rd))
                 .collect()
         }
         "mulh" => {
@@ -1223,15 +1217,11 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         // If tmp2 is negative, convert to positive
                         "skip_if_zero 0, tmp4;".into(),
                         "tmp2 <=X= 0 - tmp2;".into(),
-
                         "val1 <=X= tmp1;".into(),
                         "val2 <=X= tmp2;".into(),
-
                         "mul;".into(),
-
                         "tmp1 <=X= val3;".into(),
                         format!("set_reg {}, val4;", rd.addr()),
-
                         // Determine the sign of the result based on the signs of tmp1 and tmp2
                         "tmp3 <== is_not_equal_zero(tmp3 - tmp4);".into(),
                         // If the result should be negative, convert back to negative
@@ -1256,15 +1246,11 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         // If negative, convert to positive
                         "skip_if_zero 0, tmp2;".into(),
                         "tmp1 <=X= 0 - tmp1;".into(),
-
                         "val1 <=X= tmp1;".into(),
                         format!("val2 <== get_reg({});", r2.addr()),
-
                         format!("mul;"),
-
                         "tmp1 <=X= val3;".into(),
                         format!("set_reg {}, val4;", rd.addr()),
-
                         // If was negative before, convert back to negative
                         "skip_if_zero (1-tmp2), 4;".into(),
                         "tmp1 <== is_equal_zero(tmp1);".into(),
