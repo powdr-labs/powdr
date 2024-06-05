@@ -119,22 +119,27 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         query: &'a Expression,
         rows: &'d RowPair<T>,
     ) -> Result<(String, Vec<(&'a AlgebraicReference, T)>), EvalError> {
-        match query {
-            Expression::LambdaExpression(_, LambdaExpression { body, .. }) => match body.as_ref() {
-                Expression::FunctionCall(_, FunctionCall { function, .. }) => {
-                    match function.as_ref() {
-                        Expression::Reference(
-                            _,
-                            Reference::Poly(PolynomialReference { name, .. }),
-                        ) if name == "main.all_prover_hints" => {
-                            return self.shortcut_exec.shortcut_exec(self.fixed_data, rows);
+        let use_rust = false;
+        if use_rust {
+            match query {
+                Expression::LambdaExpression(_, LambdaExpression { body, .. }) => {
+                    match body.as_ref() {
+                        Expression::FunctionCall(_, FunctionCall { function, .. }) => {
+                            match function.as_ref() {
+                                Expression::Reference(
+                                    _,
+                                    Reference::Poly(PolynomialReference { name, .. }),
+                                ) if name == "main.all_prover_hints" => {
+                                    return self.shortcut_exec.shortcut_exec(self.fixed_data, rows);
+                                }
+                                _ => {}
+                            }
                         }
                         _ => {}
                     }
                 }
                 _ => {}
-            },
-            _ => {}
+            }
         }
         let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
             rows.current_row_index,
@@ -148,15 +153,24 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         let fun = evaluator::evaluate(query, &mut symbols)?;
         let result = evaluator::evaluate_function_call(fun, arguments, &mut symbols)?;
 
+        let assignments = symbols
+            .assignments
+            .into_iter()
+            .map(|(poly_id, v)| {
+                let r = &self.fixed_data.witness_cols[&poly_id].poly;
+                (r, v)
+            })
+            .collect::<Vec<_>>();
+
         // TODO this ignores all assignments done trough set().
-        Ok((result.to_string(), vec![]))
+        Ok((result.to_string(), assignments))
     }
 }
 
 struct Symbols<'a, 'c, 'd, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     rows: &'d RowPair<'d, 'd, T>,
-    assignments: Vec<(AlgebraicReference, T)>,
+    assignments: Vec<(PolyID, T)>,
     cache: &'c Mutex<BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>>,
 }
 
@@ -232,7 +246,9 @@ impl<'a, 'c, 'd, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'c, 'd, T>
                 "Expected direct column or next reference in call to set()".to_string(),
             ));
         };
-        self.assignments.push((reference.clone(), value));
+        // TODO avoid cloning the string? Maybe just store the poly id?
+        assert!(!reference.next);
+        self.assignments.push((reference.poly_id, value));
         Ok(())
     }
 }
