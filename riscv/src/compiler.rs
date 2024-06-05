@@ -526,6 +526,8 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     instr add_new { val1 + val2 = val3' + wrap_bit * 2**32, val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
     instr add_new_2 Y { val1 + Y = val3' + wrap_bit * 2**32, val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
 
+    instr add_new_signed { (val1 - val2) + 2**32 = val3' + wrap_bit * 2**32, val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
+
     // =====bbbbbbbbb======
 
     // ================= logical instructions =================
@@ -1150,8 +1152,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd} <== wrap_signed({r1} - {r2});"),
+                .chain(only_if_no_write_to_zero_val3(
+                    format!("add_new_signed;"),
                     rd,
                 ))
                 .collect()
