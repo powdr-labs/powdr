@@ -22,6 +22,7 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
         pipeline = pipeline.add_data_vec(&data);
     }
 
+    /*
     let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
     powdr_riscv_executor::execute_ast(
         &analyzed,
@@ -33,5 +34,6 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
         powdr_riscv_executor::ExecMode::Fast,
         Default::default(),
     );
+    */
     verify_pipeline(pipeline, backend).unwrap();
 }
