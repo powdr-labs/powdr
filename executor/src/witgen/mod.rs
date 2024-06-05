@@ -1,14 +1,16 @@
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
     PolynomialType, SymbolKind, TypedExpression,
 };
+use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
+use powdr_pil_analyzer::evaluator::Value;
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -277,6 +279,8 @@ pub struct FixedData<'a, T: FieldElement> {
     column_by_name: HashMap<String, PolyID>,
     challenges: BTreeMap<u64, T>,
     global_range_constraints: GlobalConstraints<T>,
+    // TODO this really should not belong here.
+    symbol_cache: Mutex<BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>>,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -352,6 +356,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 .collect(),
             challenges,
             global_range_constraints,
+            symbol_cache: Default::default(),
         }
     }
 
@@ -400,6 +405,18 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .external_values
             .as_ref()
             .and_then(|v| v.get(row as usize).cloned())
+    }
+
+    // TODO these really should not be here.
+    pub fn symbol_cache_lookup(
+        &self,
+        key: &(String, Option<Vec<Type>>),
+    ) -> Option<Arc<Value<'a, T>>> {
+        self.symbol_cache.lock().unwrap().get(key).cloned()
+    }
+
+    pub fn symbol_cache_store(&self, key: (String, Option<Vec<Type>>), value: Arc<Value<'a, T>>) {
+        self.symbol_cache.lock().unwrap().insert(key, value);
     }
 }
 

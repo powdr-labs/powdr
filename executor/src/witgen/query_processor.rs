@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use powdr_ast::analyzed::{AlgebraicExpression, Challenge};
@@ -114,6 +115,9 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
     }
 }
 
+// TODO implement caching inside Definitions.
+type SymbolCacheKey = (String, Option<Vec<Type>>);
+
 #[derive(Clone)]
 struct Symbols<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
@@ -127,14 +131,19 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         name: &'a str,
         type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        match self.fixed_data.analyzed.intermediate_columns.get(name) {
+        let cache_key = (name.to_string(), type_args.clone());
+        if let Some(v) = self.fixed_data.symbol_cache_lookup(&cache_key) {
+            return Ok(v.clone());
+        }
+
+        let value = match self.fixed_data.analyzed.intermediate_columns.get(name) {
             // Intermediate polynomials (which includes challenges) are not inlined in hints,
             // so we need to look them up here.
             Some((symbol, expressions)) => {
                 if let Some(type_args) = &type_args {
                     assert!(type_args.is_empty());
                 }
-                Ok(if symbol.is_array() {
+                if symbol.is_array() {
                     Value::Array(
                         expressions
                             .clone()
@@ -146,15 +155,17 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
                     assert!(expressions.len() == 1);
                     Value::from(expressions[0].clone())
                 }
-                .into())
+                .into()
             }
             None => Definitions::lookup_with_symbols(
                 &self.fixed_data.analyzed.definitions,
                 name,
                 type_args,
                 self,
-            ),
-        }
+            )?,
+        };
+        self.fixed_data.symbol_cache_store(cache_key, value.clone());
+        Ok(value)
     }
     fn eval_reference(
         &self,
