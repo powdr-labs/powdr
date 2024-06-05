@@ -470,19 +470,17 @@ impl Runtime {
             // - __rust_alloc_error_handler_should_panic: needed by the default alloc error handler,
             //   not sure why it's not present in the asm.
             //   https://github.com/rust-lang/rust/blob/ae9d7b0c6434b27e4e2effe8f05b16d37e7ef33f/library/alloc/src/alloc.rs#L415
-            r".data
+            &format!(r".data
 .globl __rust_alloc_error_handler_should_panic
 __rust_alloc_error_handler_should_panic: .byte 0
 .globl __rust_no_alloc_shim_is_unstable
 __rust_no_alloc_shim_is_unstable: .byte 0
-.globl __powdr_stack_start
-"
-            + &format!(
-                ".set __powdr_stack_start, {stack_start}",
-            )
-            + r"
 .text
-"
+.globl _start
+_start:
+    li sp, {stack_start}
+    tail __runtime_start
+")
     }
 
     pub fn ecall_handler(&self) -> Vec<String> {
