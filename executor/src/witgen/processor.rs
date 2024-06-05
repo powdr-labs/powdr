@@ -88,7 +88,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     inputs: Vec<(PolyID, T)>,
     previously_set_inputs: BTreeMap<PolyID, usize>,
     copy_constraints: CopyConstraints<(PolyID, RowIndex)>,
-    shortcut_exec: ShortcutExec<T>,
+    shortcut_exec: ShortcutExec<'a, T>,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
@@ -117,7 +117,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             previously_set_inputs: BTreeMap::new(),
             // TODO(#1333): Get copy constraints from PIL.
             copy_constraints: Default::default(),
-            shortcut_exec: ShortcutExec::new(),
+            shortcut_exec: ShortcutExec::new(fixed_data),
         }
     }
 
