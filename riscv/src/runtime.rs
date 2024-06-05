@@ -476,8 +476,8 @@ __rust_alloc_error_handler_should_panic: .byte 0
 .globl __rust_no_alloc_shim_is_unstable
 __rust_no_alloc_shim_is_unstable: .byte 0
 .text
-.globl _start
-_start:
+.globl __stack_setup
+__stack_setup:
     li sp, {stack_start}
     tail __runtime_start
 ")

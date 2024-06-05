@@ -34,6 +34,8 @@ struct AsmProgram {
     statements: Vec<Statement>,
 }
 
+const START_FUNCTION: &str = "__stack_setup";
+
 impl<'a> RiscVProgram<'a> for AsmProgram {
     type InstructionArgs = [Argument];
     type Label = &'a str;
@@ -57,7 +59,7 @@ impl<'a> RiscVProgram<'a> for AsmProgram {
     }
 
     fn start_function(&self) -> &str {
-        "_start"
+        START_FUNCTION
     }
 }
 
@@ -209,7 +211,7 @@ fn compile_internal(mut assemblies: BTreeMap<String, String>, runtime: &Runtime)
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)
     let data_labels = reachability::filter_reachable_from::<_, _, RiscvArchitecture>(
-        "_start",
+        START_FUNCTION,
         &mut statements,
         &mut data_sections,
     );
