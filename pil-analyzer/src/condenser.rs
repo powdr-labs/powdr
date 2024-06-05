@@ -20,9 +20,9 @@ use powdr_ast::{
         types::{ArrayType, Type},
         SelectedExpressions,
     },
-    SourceRef,
 };
 use powdr_number::{DegreeType, FieldElement};
+use powdr_parser_util::SourceRef;
 
 use crate::{
     evaluator::{self, Definitions, EvalError, SymbolLookup, Value},

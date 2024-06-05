@@ -1,10 +1,7 @@
 #![deny(clippy::print_stdout)]
 
 use itertools::Itertools;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Result, Write};
-use std::sync::Arc;
 
 /// Analyzed PIL
 pub mod analyzed;
@@ -14,22 +11,6 @@ pub mod asm_analysis;
 pub mod object;
 /// A parsed ASM + PIL AST
 pub mod parsed;
-
-#[derive(
-    Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
-)]
-pub struct SourceRef {
-    pub file_name: Option<Arc<str>>,
-    pub file_contents: Option<Arc<str>>,
-    pub start: usize,
-    pub end: usize,
-}
-
-impl SourceRef {
-    pub fn unknown() -> Self {
-        Default::default()
-    }
-}
 
 /// quick and dirty String to String indentation
 pub fn indent<S: ToString>(s: S, indentation: usize) -> String {
