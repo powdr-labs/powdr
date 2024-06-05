@@ -180,6 +180,7 @@ impl<'a, 'c, 'd, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'c, 'd, T>
         name: &'a str,
         type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        // TODO avoid the to_string here?
         let cache_key = (name.to_string(), type_args.clone());
         if let Some(v) = self.cache.lock().unwrap().get(&cache_key).cloned() {
             return Ok(v.clone());
