@@ -316,7 +316,8 @@ pub InstructionDeclaration: MachineStatement = {
 }
 
 pub Instruction: Instruction = {
-    <params:Params> <body:InstructionBody> => Instruction { params, body }
+    <params:Params> <links:(<LinkDeclaration>)*> <body:InstructionBody> => Instruction { params, body },
+    <params:Params> <links:(<LinkDeclaration>)+> ";" => Instruction { params, body: InstructionBody::Local(vec![]) },
 }
 
 pub LinkDeclarationStatement: MachineStatement = {
@@ -336,7 +337,7 @@ pub InstructionBody: InstructionBody = {
 }
 
 pub CallableRef: CallableRef = {
-    <instance:Identifier> "." <callable:Identifier> <params:CallableParams> => CallableRef { instance, callable, params },
+    <instance:Identifier> "." <callable:Identifier> "(" <params:CallableParams> ")" => CallableRef { instance, callable, params },
 }
 
 CallableParams: CallableParams = {
