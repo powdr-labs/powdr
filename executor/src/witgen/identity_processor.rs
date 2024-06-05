@@ -74,6 +74,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
             fixed_lookup,
             machines: others,
             query_callback,
+            symbol_cache: Default::default(),
         };
 
         current.process_plookup_timed(&mut mutable_state, identity_id, caller_rows)

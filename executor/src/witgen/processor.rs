@@ -170,8 +170,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     }
 
     pub fn process_queries(&mut self, row_index: usize) -> Result<bool, EvalError<T>> {
-        let mut query_processor =
-            QueryProcessor::new(self.fixed_data, self.mutable_state.query_callback);
+        let mut query_processor = QueryProcessor::new(
+            self.fixed_data,
+            self.mutable_state.query_callback,
+            &self.mutable_state.symbol_cache,
+        );
         let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(
             &self.data[row_index],

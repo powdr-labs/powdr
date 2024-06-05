@@ -93,6 +93,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             fixed_lookup,
             machines: [].into_iter().into(),
             query_callback,
+            symbol_cache: Default::default(),
         };
 
         self.fill_remaining_rows(&mut mutable_state_no_machines);

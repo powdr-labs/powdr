@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use powdr_ast::analyzed::{AlgebraicExpression, Challenge};
 use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
@@ -9,23 +9,36 @@ use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, 
 
 use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
 
+type SymbolCacheKey = (String, Option<Vec<Type>>);
+
 /// Computes value updates that result from a query.
-pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
+pub struct QueryProcessor<'a, 'b, 'c, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
     query_callback: &'b mut QueryCallback,
+    // TODO the cache should really be somewhere else, possibly inside Definitions
+    cache: &'c Mutex<BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>>,
 }
 
-impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
-    QueryProcessor<'a, 'b, T, QueryCallback>
+impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>>
+    QueryProcessor<'a, 'b, 'c, T, QueryCallback>
 {
-    pub fn new(fixed_data: &'a FixedData<'a, T>, query_callback: &'b mut QueryCallback) -> Self {
+    pub fn new(
+        fixed_data: &'a FixedData<'a, T>,
+        query_callback: &'b mut QueryCallback,
+        cache: &'c Mutex<BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>>,
+    ) -> Self {
         Self {
             fixed_data,
             query_callback,
+            cache,
         }
     }
 
-    pub fn process_query(&mut self, rows: &RowPair<T>, poly_id: &PolyID) -> EvalResult<'a, T> {
+    pub fn process_query<'d>(
+        &mut self,
+        rows: &'d RowPair<T>,
+        poly_id: &PolyID,
+    ) -> EvalResult<'a, T> {
         let start = std::time::Instant::now();
         let column = &self.fixed_data.witness_cols[poly_id];
 
@@ -45,11 +58,11 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         Ok(EvalValue::complete(vec![]))
     }
 
-    fn process_witness_query(
+    fn process_witness_query<'d>(
         &mut self,
         query: &'a Expression,
         poly: &'a AlgebraicReference,
-        rows: &RowPair<T>,
+        rows: &'d RowPair<T>,
     ) -> EvalResult<'a, T> {
         let (query_str, assignments) = match self.interpolate_query(query, rows) {
             Ok(query) => query,
@@ -95,10 +108,10 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         Ok(query_result)
     }
 
-    fn interpolate_query(
+    fn interpolate_query<'d>(
         &self,
         query: &'a Expression,
-        rows: &RowPair<T>,
+        rows: &'d RowPair<T>,
     ) -> Result<(String, Vec<(AlgebraicReference, T)>), EvalError> {
         let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
             rows.current_row_index,
@@ -107,6 +120,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             fixed_data: self.fixed_data,
             rows,
             assignments: vec![],
+            cache: &self.cache,
         };
         let fun = evaluator::evaluate(query, &mut symbols)?;
         let result = evaluator::evaluate_function_call(fun, arguments, &mut symbols)?;
@@ -115,24 +129,21 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
     }
 }
 
-// TODO implement caching inside Definitions.
-type SymbolCacheKey = (String, Option<Vec<Type>>);
-
-#[derive(Clone)]
-struct Symbols<'a, T: FieldElement> {
+struct Symbols<'a, 'c, 'd, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    rows: &'a RowPair<'a, 'a, T>,
+    rows: &'d RowPair<'d, 'd, T>,
     assignments: Vec<(AlgebraicReference, T)>,
+    cache: &'c Mutex<BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>>,
 }
 
-impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
+impl<'a, 'c, 'd, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'c, 'd, T> {
     fn lookup<'b>(
         &mut self,
         name: &'a str,
         type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let cache_key = (name.to_string(), type_args.clone());
-        if let Some(v) = self.fixed_data.symbol_cache_lookup(&cache_key) {
+        if let Some(v) = self.cache.lock().unwrap().get(&cache_key).cloned() {
             return Ok(v.clone());
         }
 
@@ -164,7 +175,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
                 self,
             )?,
         };
-        self.fixed_data.symbol_cache_store(cache_key, value.clone());
+        self.cache.lock().unwrap().insert(cache_key, value.clone());
         Ok(value)
     }
     fn eval_reference(

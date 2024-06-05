@@ -1,6 +1,7 @@
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
@@ -105,6 +106,8 @@ pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
     pub fixed_lookup: &'b mut FixedLookup<T>,
     pub machines: Machines<'a, 'b, T>,
     pub query_callback: &'b mut Q,
+    // TODO this really should not belong here.
+    pub symbol_cache: Mutex<BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>>,
 }
 
 pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
@@ -198,6 +201,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             fixed_lookup: &mut fixed_lookup,
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
+            symbol_cache: Default::default(),
         };
         let mut generator = Generator::new(
             "Main Machine".to_string(),
@@ -279,8 +283,6 @@ pub struct FixedData<'a, T: FieldElement> {
     column_by_name: HashMap<String, PolyID>,
     challenges: BTreeMap<u64, T>,
     global_range_constraints: GlobalConstraints<T>,
-    // TODO this really should not belong here.
-    symbol_cache: Mutex<BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>>,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -356,7 +358,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 .collect(),
             challenges,
             global_range_constraints,
-            symbol_cache: Default::default(),
         }
     }
 
@@ -405,18 +406,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .external_values
             .as_ref()
             .and_then(|v| v.get(row as usize).cloned())
-    }
-
-    // TODO these really should not be here.
-    pub fn symbol_cache_lookup(
-        &self,
-        key: &(String, Option<Vec<Type>>),
-    ) -> Option<Arc<Value<'a, T>>> {
-        self.symbol_cache.lock().unwrap().get(key).cloned()
-    }
-
-    pub fn symbol_cache_store(&self, key: (String, Option<Vec<Type>>), value: Arc<Value<'a, T>>) {
-        self.symbol_cache.lock().unwrap().insert(key, value);
     }
 }
 
