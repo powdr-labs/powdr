@@ -364,6 +364,9 @@ mod builder {
 
         /// get current value of register by register index instead of name
         fn get_reg_idx(&self, idx: u16) -> Elem<F> {
+            if idx == self.pc_idx {
+                return self.get_pc();
+            }
             self.regs[idx as usize]
         }
 
