@@ -546,6 +546,7 @@ pub struct OperationId {
 pub struct Instruction {
     pub params: Params<Param>,
     pub body: InstructionBody,
+    pub links: Vec<LinkDeclaration>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

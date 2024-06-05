@@ -316,8 +316,8 @@ pub InstructionDeclaration: MachineStatement = {
 }
 
 pub Instruction: Instruction = {
-    <params:Params> <links:(<LinkDeclaration>)*> <body:InstructionBody> => Instruction { params, body },
-    <params:Params> <links:(<LinkDeclaration>)+> ";" => Instruction { params, body: InstructionBody::Local(vec![]) },
+    <params:Params> <links:(<LinkDeclaration>)*> <body:InstructionBody> => Instruction { params, body, links },
+    <params:Params> <links:(<LinkDeclaration>)+> ";" => Instruction { params, body: InstructionBody::Local(vec![]), links },
 }
 
 pub LinkDeclarationStatement: MachineStatement = {
