@@ -896,13 +896,13 @@ impl<T: FieldElement> VMConverter<T> {
             ),
         ));
         self.pil.push(parse_pil_statement(&format!(
-                "let all_prover_hints = query || {{ let pc_val = std::convert::int(std::prover::eval({})); {}; std::prover::Query::None }};",
+                "let all_prover_hints = query || {{ let pc_val = std::convert::int(std::prover::eval({})); let s = std::prover::set; {}; std::prover::Query::None }};",
                 self.pc_name.as_ref().unwrap(),
                 self.rom_constant_names
                     .iter()
                     .map(|name| {
                         let name = name.strip_prefix("p_").unwrap();
-                        format!("let _ = std::prover::set({name}, p_{name}_lookup[pc_val])")
+                        format!("let _ = s({name}, p_{name}_lookup[pc_val])")
                     })
                     .join("; ")
             )));
