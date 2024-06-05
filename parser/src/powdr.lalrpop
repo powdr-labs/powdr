@@ -325,8 +325,13 @@ pub LinkDeclarationStatement: MachineStatement = {
 }
 
 pub LinkDeclaration: LinkDeclaration = {
-    "link" <flag:Expression> "=>" <to:CallableRef> => LinkDeclaration { flag, to, is_permutation: false, },
-    "link" <flag:Expression> "~>" <to:CallableRef> => LinkDeclaration { flag, to, is_permutation: true, },
+    "link" <flag:LinkFlag> "=>" <to:CallableRef> => LinkDeclaration { flag, to, is_permutation: false, },
+    "link" <flag:LinkFlag> "~>" <to:CallableRef> => LinkDeclaration { flag, to, is_permutation: true, },
+}
+
+pub LinkFlag: Expression = {
+    "if" <Expression>,
+    => 1.into(),
 }
 
 pub InstructionBody: InstructionBody = {
