@@ -181,25 +181,25 @@ impl<T: FieldElement> VMConverter<T> {
 
         self.translate_code_lines();
 
-        self.pil.push(PilStatement::PlookupIdentity(
-            SourceRef::unknown(),
-            SelectedExpressions {
-                selector: None,
-                expressions: self
-                    .line_lookup
-                    .iter()
-                    .map(|x| direct_reference(&x.0))
-                    .collect(),
-            },
-            SelectedExpressions {
-                selector: None,
-                expressions: self
-                    .line_lookup
-                    .iter()
-                    .map(|x| direct_reference(&x.1))
-                    .collect(),
-            },
-        ));
+        // self.pil.push(PilStatement::PlookupIdentity(
+        //     SourceRef::unknown(),
+        //     SelectedExpressions {
+        //         selector: None,
+        //         expressions: self
+        //             .line_lookup
+        //             .iter()
+        //             .map(|x| direct_reference(&x.0))
+        //             .collect(),
+        //     },
+        //     SelectedExpressions {
+        //         selector: None,
+        //         expressions: self
+        //             .line_lookup
+        //             .iter()
+        //             .map(|x| direct_reference(&x.1))
+        //             .collect(),
+        //     },
+        // ));
 
         if !self.pil.is_empty() {
             input.pil.extend(self.pil);

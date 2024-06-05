@@ -25,13 +25,21 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
     }
 
     pub fn process_query(&mut self, rows: &RowPair<T>, poly_id: &PolyID) -> EvalResult<'a, T> {
+        let start = std::time::Instant::now();
         let column = &self.fixed_data.witness_cols[poly_id];
 
         if let Some(query) = column.query.as_ref() {
             if rows.get_value(&column.poly).is_none() {
-                return self.process_witness_query(query, &column.poly, rows);
+                let r = self.process_witness_query(query, &column.poly, rows);
+                let end = start.elapsed();
+                println!("Query processing time: {} us", end.as_micros());
+                if let Ok(ref r) = r {
+                    println!("Result size: {}", r.constraints.len());
+                }
+                return r;
             }
         }
+
         // Either no query or the value is already known.
         Ok(EvalValue::complete(vec![]))
     }
