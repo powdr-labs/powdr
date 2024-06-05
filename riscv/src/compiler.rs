@@ -1107,13 +1107,13 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
         // TODO check if it is OK to clear the lower order bits
         "lui" => {
             let (rd, imm) = args.ri()?;
-            only_if_no_write_to_zero(format!("{rd} <=X= {};", imm << 12), rd)
+            only_if_no_write_to_zero_val3(format!("val3 <=X= {};", imm << 12), rd)
         }
         "mv" => {
             let (rd, rs) = args.rr()?;
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(format!("{rd} <=X= {rs};"), rd))
+                .chain(only_if_no_write_to_zero_val3(format!("val3 <=X= val1;"), rd))
                 .collect()
         }
 
