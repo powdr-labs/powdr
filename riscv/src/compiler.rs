@@ -1209,7 +1209,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
+                .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("tmp1 <== to_signed({r1});"),
                         format!("tmp2 <== to_signed({r2});"),
@@ -1231,14 +1231,14 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
 
                         "tmp1 <=X= val3;".into(),
                         format!("set_reg {}, val4;", rd.addr()),
-                        format!("{rd} <== get_reg({});", rd.addr()),
 
                         // Determine the sign of the result based on the signs of tmp1 and tmp2
                         "tmp3 <== is_not_equal_zero(tmp3 - tmp4);".into(),
                         // If the result should be negative, convert back to negative
-                        "skip_if_zero tmp3, 2;".into(),
+                        "skip_if_zero tmp3, 4;".into(),
                         "tmp1 <== is_equal_zero(tmp1);".into(),
-                        format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
+                        format!("val1 <== get_reg({});", rd.addr()),
+                        format!("add_new_signed_2(- 1 + tmp1);"),
                     ],
                     rd,
                 ))
@@ -1248,7 +1248,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
+                .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("tmp1 <== to_signed({r1});"),
                         // tmp2 is 1 if tmp1 is non-negative
@@ -1264,14 +1264,14 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
 
                         "tmp1 <=X= val3;".into(),
                         format!("set_reg {}, val4;", rd.addr()),
-                        format!("{rd} <== get_reg({});", rd.addr()),
 
                         // If was negative before, convert back to negative
-                        "skip_if_zero (1-tmp2), 2;".into(),
+                        "skip_if_zero (1-tmp2), 4;".into(),
                         "tmp1 <== is_equal_zero(tmp1);".into(),
                         // If the lower bits are zero, return the two's complement,
                         // otherwise return one's complement.
-                        format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
+                        format!("val1 <== get_reg({});", rd.addr()),
+                        format!("add_new_signed_2(- 1 + tmp1);"),
                     ],
                     rd,
                 ))

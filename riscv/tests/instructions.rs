@@ -16,6 +16,7 @@ mod instruction_tests {
             false,
         );
 
+        println!("asm: {}", powdr_asm);
         verify_riscv_asm_string::<()>(
             &format!("{name}.asm"),
             &powdr_asm,
