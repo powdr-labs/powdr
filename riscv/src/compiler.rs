@@ -1306,18 +1306,15 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd} <== and({r1}, {r2});"),
-                    rd,
-                ))
+                .chain(only_if_no_write_to_zero_val3(format!("and 0;"), rd))
                 .collect()
         }
         "andi" => {
             let (rd, r1, imm) = args.rri()?;
             read_args(vec![r1])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd} <== and({r1}, {imm});"),
+                .chain(only_if_no_write_to_zero_vec_val3(
+                    vec![format!("val2 <=X= 0;"), format!("and {imm};")],
                     rd,
                 ))
                 .collect()
@@ -1378,7 +1375,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec(
                     vec![
-                        format!("tmp1 <== and({r2}, 0x1f);"),
+                        format!("val1 <== get_reg({});", r2.addr()),
+                        format!("val2 <=X= 0;"),
+                        format!("and 0x1f;"),
+                        format!("tmp1 <=X= val3;"),
                         format!("{rd} <== shl({r1}, tmp1);"),
                     ],
                     rd,
@@ -1404,7 +1404,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec(
                     vec![
-                        format!("tmp1 <== and({r2}, 0x1f);"),
+                        format!("val1 <== get_reg({});", r2.addr()),
+                        format!("val2 <=X= 0;"),
+                        format!("and 0x1f;"),
+                        format!("tmp1 <=X= val3;"),
                         format!("{rd} <== shr({r1}, tmp1);"),
                     ],
                     rd,
@@ -1763,11 +1766,14 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, rs, off) = args.rro()?;
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
+                .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("{rd}, tmp2 <== mload({rs} + {off});"),
                         format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                        format!("{rd} <== and({rd}, 0xff);"),
+                        format!("set_reg {}, {rd};", rd.addr()),
+                        format!("val1 <== get_reg({});", rd.addr()),
+                        format!("val2 <=X= 0;"),
+                        format!("and 0xff;"),
                     ],
                     rd,
                 ))
@@ -1795,11 +1801,14 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, rs, off) = args.rro()?;
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
+                .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("{rd}, tmp2 <== mload({rs} + {off});"),
                         format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                        format!("{rd} <== and({rd}, 0x0000ffff);"),
+                        format!("set_reg {}, {rd};", rd.addr()),
+                        format!("val1 <== get_reg({});", rd.addr()),
+                        format!("val2 <=X= 0;"),
+                        format!("and 0x0000ffff;"),
                     ],
                     rd,
                 ))
@@ -1827,8 +1836,14 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                     "val2 <=X= 0;".to_string(),
                     "xor 0xffffffff;".to_string(),
                     "tmp3 <=X= val3;".to_string(),
-                    "tmp1 <== and(tmp1, tmp3);".to_string(),
-                    format!("tmp3 <== and({rs}, 0xffff);"),
+                    "val1 <=X= tmp1;".to_string(),
+                    "val2 <=X= tmp3;".to_string(),
+                    "and 0;".to_string(),
+                    "tmp1 <=X= val3;".to_string(),
+                    format!("val1 <== get_reg({});", rs.addr()),
+                    "val2 <=X= 0;".to_string(),
+                    "and 0xffff;".to_string(),
+                    "tmp3 <=X= val3;".to_string(),
                     "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                     "tmp1 <== or(tmp1, tmp3);".to_string(),
                     format!("mstore {rd} + {off} - tmp2, tmp1;"),
@@ -1847,8 +1862,14 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                     "val2 <=X= 0;".to_string(),
                     "xor 0xffffffff;".to_string(),
                     "tmp3 <=X= val3;".to_string(),
-                    "tmp1 <== and(tmp1, tmp3);".to_string(),
-                    format!("tmp3 <== and({rs}, 0xff);"),
+                    "val1 <=X= tmp1;".to_string(),
+                    "val2 <=X= tmp3;".to_string(),
+                    "and 0;".to_string(),
+                    "tmp1 <=X= val3;".to_string(),
+                    format!("val1 <== get_reg({});", rs.addr()),
+                    "val2 <=X= 0;".to_string(),
+                    format!("and 0xff;"),
+                    "tmp3 <=X= val3;".to_string(),
                     "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                     "tmp1 <== or(tmp1, tmp3);".to_string(),
                     format!("mstore {rd} + {off} - tmp2, tmp1;"),

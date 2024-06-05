@@ -90,12 +90,12 @@ impl Runtime {
             None,
             "binary",
             [
-                "instr and Y, X -> Z ~ binary.and Y, X -> Z;",
+                "instr and Y ~ binary.and val1, (val2 + Y) -> val3';",
                 "instr or Y, X -> Z ~ binary.or Y, X -> Z;",
                 "instr xor Y ~ binary.xor val1, (val2 + Y) -> val3';",
             ],
             0,
-            ["x10 <== and(x10, x10);"],
+            ["and 0;"],
         );
 
         r.add_submachine(
