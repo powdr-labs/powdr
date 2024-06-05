@@ -48,9 +48,9 @@ impl fmt::Display for FunctionKind {
     }
 }
 
-pub enum Statement<'a, A: Args + ?Sized> {
+pub enum Statement<'a, L: AsRef<str>, A: Args + ?Sized> {
     DebugLoc { file: u64, line: u64, col: u64 },
-    Label(&'a str),
+    Label(L),
     Instruction { op: &'a str, args: &'a A },
 }
 
@@ -67,20 +67,22 @@ pub struct SourceFileInfo<'a> {
 }
 
 /// A RISC-V program that can be translated to POWDR ASM.
-pub trait RiscVProgram {
+pub trait RiscVProgram<'a> {
     type InstructionArgs: Args + ?Sized;
-    type Label;
+    type Label: AsRef<str> + 'a;
 
     // Source files to be used by the debug statements.
     fn source_files_info(&self) -> impl Iterator<Item = SourceFileInfo>;
 
     fn initial_mem(&self) -> impl Iterator<Item = MemEntry>;
-    fn executable_statements(&self) -> impl Iterator<Item = Statement<Self::InstructionArgs>>;
+    fn executable_statements(
+        &'a self,
+    ) -> impl Iterator<Item = Statement<Self::Label, Self::InstructionArgs>>;
     fn start_function(&self) -> &str;
 }
 
-pub fn translate_program<F: FieldElement>(
-    program: &impl RiscVProgram,
+pub fn translate_program<'a, F: FieldElement>(
+    program: &'a impl RiscVProgram<'a>,
     runtime: &Runtime,
     with_bootloader: bool,
 ) -> String {
@@ -97,8 +99,8 @@ pub fn translate_program<F: FieldElement>(
     )
 }
 
-fn translate_program_impl(
-    program: &impl RiscVProgram,
+fn translate_program_impl<'a>(
+    program: &'a impl RiscVProgram<'a>,
     runtime: &Runtime,
     with_bootloader: bool,
 ) -> (Vec<String>, Vec<String>, u64) {
@@ -193,7 +195,7 @@ fn translate_program_impl(
             Statement::DebugLoc { file, line, col } => {
                 statements.push(format!(".debug loc {file} {line} {col};"))
             }
-            Statement::Label(l) => statements.push(format!("{}:", escape_label(l))),
+            Statement::Label(l) => statements.push(format!("{}:", escape_label(l.as_ref()))),
             Statement::Instruction { op, args } => {
                 let processed_instr = match process_instruction(op, args) {
                     Ok(s) => s,

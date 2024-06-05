@@ -34,9 +34,9 @@ struct AsmProgram {
     statements: Vec<Statement>,
 }
 
-impl RiscVProgram for AsmProgram {
+impl<'a> RiscVProgram<'a> for AsmProgram {
     type InstructionArgs = [Argument];
-    type Label = String;
+    type Label = &'a str;
 
     fn source_files_info(&self) -> impl Iterator<Item = SourceFileInfo> {
         self.file_ids.iter().map(|(id, dir, file)| SourceFileInfo {
@@ -51,8 +51,8 @@ impl RiscVProgram for AsmProgram {
     }
 
     fn executable_statements(
-        &self,
-    ) -> impl Iterator<Item = code_gen::Statement<Self::InstructionArgs>> {
+        &'a self,
+    ) -> impl Iterator<Item = code_gen::Statement<&'a str, Self::InstructionArgs>> {
         self.statements.iter().filter_map(process_statement)
     }
 
@@ -376,7 +376,7 @@ fn substitute_symbols_with_values(
     statements
 }
 
-fn process_statement(s: &Statement) -> Option<code_gen::Statement<[Argument]>> {
+fn process_statement(s: &Statement) -> Option<code_gen::Statement<&str, [Argument]>> {
     match s {
         Statement::Label(l) => Some(code_gen::Statement::Label(l)),
         Statement::Directive(directive, args) => match (directive.as_str(), &args[..]) {
