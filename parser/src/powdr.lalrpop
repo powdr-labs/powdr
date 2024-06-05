@@ -285,7 +285,7 @@ MachineStatement: MachineStatement = {
     Submachine,
     RegisterDeclaration,
     InstructionDeclaration,
-    LinkDeclaration,
+    LinkDeclarationStatement,
     PilStatementInMachine,
     FunctionDeclaration,
     OperationDeclaration,
@@ -319,9 +319,13 @@ pub Instruction: Instruction = {
     <params:Params> <body:InstructionBody> => Instruction { params, body }
 }
 
-pub LinkDeclaration: MachineStatement = {
-    <start:@L> "link" <flag:Expression> "=>" <to:CallableRef> <end:@R> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start, end), LinkDeclaration { flag, to, is_permutation: false, }),
-    <start:@L> "link" <flag:Expression> "~>" <to:CallableRef> <end:@R> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start, end), LinkDeclaration { flag, to, is_permutation: true, }),
+pub LinkDeclarationStatement: MachineStatement = {
+    <start:@L> <link:LinkDeclaration> <end:@R> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start, end), link),
+}
+
+pub LinkDeclaration: LinkDeclaration = {
+    "link" <flag:Expression> "=>" <to:CallableRef> => LinkDeclaration { flag, to, is_permutation: false, },
+    "link" <flag:Expression> "~>" <to:CallableRef> => LinkDeclaration { flag, to, is_permutation: true, },
 }
 
 pub InstructionBody: InstructionBody = {
