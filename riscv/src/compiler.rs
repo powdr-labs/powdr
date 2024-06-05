@@ -173,7 +173,7 @@ pub fn compile<T: FieldElement>(
                     //
                     // TODO should be possible without temporary
                     data_code.extend([
-                        format!("tmp1 <== load_label({});", escape_label(sym)),
+                        format!("load_label({});", escape_label(sym)),
                         format!("mstore 0x{addr:x}, tmp1;"),
                     ]);
                 }
@@ -497,7 +497,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 
     // ============== control-flow instructions ==============
 
-    instr load_label l: label -> X { X = l }
+    instr load_label l: label { val3' = l }
 
     instr jump l: label -> Y { pc' = l, Y = pc + 1}
     instr jump_dyn X -> Y { pc' = X, Y = pc + 1}
@@ -998,6 +998,10 @@ fn only_if_no_write_to_zero(statement: String, reg: Register) -> Vec<String> {
     only_if_no_write_to_zero_vec(vec![statement], reg)
 }
 
+fn only_if_no_write_to_zero_val3(statement: String, reg: Register) -> Vec<String> {
+    only_if_no_write_to_zero_vec_val3(vec![statement], reg)
+}
+
 fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<String> {
     if reg.is_zero() {
         vec![]
@@ -1005,6 +1009,17 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
         statements
             .into_iter()
             .chain([format!("set_reg {}, {};", reg.addr(), reg)])
+            .collect()
+    }
+}
+
+fn only_if_no_write_to_zero_vec_val3(statements: Vec<String>, reg: Register) -> Vec<String> {
+    if reg.is_zero() {
+        vec![]
+    } else {
+        statements
+            .into_iter()
+            .chain([format!("set_reg {}, val3;", reg.addr())])
             .collect()
     }
 }
@@ -1083,7 +1098,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             // relative values. But since we work on a higher abstraction level,
             // for us they are the same thing.
             if let Ok((rd, label)) = args.rl() {
-                only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
+                only_if_no_write_to_zero_val3(format!("load_label({label});"), rd)
             } else {
                 let (rd, imm) = args.ri()?;
                 only_if_no_write_to_zero(format!("{rd} <=X= {imm};"), rd)
