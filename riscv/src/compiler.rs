@@ -1323,18 +1323,15 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd} <== or({r1}, {r2});"),
-                    rd,
-                ))
+                .chain(only_if_no_write_to_zero_val3(format!("or 0;"), rd))
                 .collect()
         }
         "ori" => {
             let (rd, r1, imm) = args.rri()?;
             read_args(vec![r1])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd} <== or({r1}, {imm});"),
+                .chain(only_if_no_write_to_zero_vec_val3(
+                    vec![format!("val2 <=X= 0;"), format!("or {imm};")],
                     rd,
                 ))
                 .collect()
@@ -1845,7 +1842,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                     "and 0xffff;".to_string(),
                     "tmp3 <=X= val3;".to_string(),
                     "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
-                    "tmp1 <== or(tmp1, tmp3);".to_string(),
+                    "val1 <=X= tmp1;".to_string(),
+                    "val2 <=X= tmp3;".to_string(),
+                    "or 0;".to_string(),
+                    "tmp1 <=X= val3;".to_string(),
                     format!("mstore {rd} + {off} - tmp2, tmp1;"),
                 ])
                 .collect()
@@ -1871,7 +1871,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                     format!("and 0xff;"),
                     "tmp3 <=X= val3;".to_string(),
                     "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
-                    "tmp1 <== or(tmp1, tmp3);".to_string(),
+                    "val1 <=X= tmp1;".to_string(),
+                    "val2 <=X= tmp3;".to_string(),
+                    "or 0;".to_string(),
+                    "tmp1 <=X= val3;".to_string(),
                     format!("mstore {rd} + {off} - tmp2, tmp1;"),
                 ])
                 .collect()

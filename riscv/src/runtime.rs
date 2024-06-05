@@ -91,7 +91,7 @@ impl Runtime {
             "binary",
             [
                 "instr and Y ~ binary.and val1, (val2 + Y) -> val3';",
-                "instr or Y, X -> Z ~ binary.or Y, X -> Z;",
+                "instr or Y ~ binary.or val1, (val2 + Y) -> val3';",
                 "instr xor Y ~ binary.xor val1, (val2 + Y) -> val3';",
             ],
             0,
