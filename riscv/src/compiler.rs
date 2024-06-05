@@ -1101,7 +1101,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 only_if_no_write_to_zero_val3(format!("load_label({label});"), rd)
             } else {
                 let (rd, imm) = args.ri()?;
-                only_if_no_write_to_zero(format!("{rd} <=X= {imm};"), rd)
+                only_if_no_write_to_zero_val3(format!("val3 <=X= {imm};"), rd)
             }
         }
         // TODO check if it is OK to clear the lower order bits
