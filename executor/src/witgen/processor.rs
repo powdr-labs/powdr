@@ -8,6 +8,7 @@ use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 
+use super::query_processor::ShortcutExec;
 use super::{
     affine_expression::AffineExpression,
     data_structures::{
@@ -87,6 +88,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     inputs: Vec<(PolyID, T)>,
     previously_set_inputs: BTreeMap<PolyID, usize>,
     copy_constraints: CopyConstraints<(PolyID, RowIndex)>,
+    shortcut_exec: ShortcutExec<T>,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
@@ -115,6 +117,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             previously_set_inputs: BTreeMap::new(),
             // TODO(#1333): Get copy constraints from PIL.
             copy_constraints: Default::default(),
+            shortcut_exec: ShortcutExec::new(),
         }
     }
 
@@ -174,6 +177,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             self.fixed_data,
             self.mutable_state.query_callback,
             &self.mutable_state.symbol_cache,
+            &self.shortcut_exec,
         );
         let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(
