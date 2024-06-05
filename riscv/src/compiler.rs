@@ -235,7 +235,7 @@ pub fn compile<T: FieldElement>(
         ["// This is the data initialization routine.\n__data_init:".to_string()].into_iter()
         .chain(data_code)
         .chain([
-            "// This is the end of the data initialization routine.\ntmp1 <== jump_dyn(x1);"
+            "// This is the end of the data initialization routine.\nval1 <== get_reg(1);\njump_dyn;"
                 .to_string(),
         ]));
     }
@@ -500,7 +500,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     instr load_label l: label { val3' = l }
 
     instr jump l: label -> Y { pc' = l, Y = pc + 1}
-    instr jump_dyn X -> Y { pc' = X, Y = pc + 1}
+    instr jump_dyn { pc' = val1, val3' = pc + 1}
 
     instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
     instr branch_if_zero X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
@@ -1649,7 +1649,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let rs = args.r()?;
             read_args(vec![rs])
                 .into_iter()
-                .chain(vec![format!("tmp1 <== jump_dyn({rs});")])
+                .chain(vec![
+                    format!("val1 <== get_reg({});", rs.addr()),
+                    format!("jump_dyn;"),
+                ])
                 .collect()
         }
         "jal" => {
@@ -1675,8 +1678,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 read_args(vec![rs])
                     .into_iter()
                     .chain([
+                        format!("val1 <== get_reg({});", rs.addr()),
                         "set_reg 1, pc + 2;".to_string(),
-                        format!("x1 <== jump_dyn({rs});"),
+                        format!("jump_dyn;"),
                     ])
                     .collect()
             } else {
@@ -1685,13 +1689,17 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 if rd.is_zero() {
                     read_args(vec![rs])
                         .into_iter()
-                        .chain([format!("tmp1 <== jump_dyn({rs});")])
+                        .chain([
+                            format!("val1 <== get_reg({});", rs.addr()),
+                            format!("jump_dyn;"),
+                        ])
                         .collect()
                 } else {
                     read_args(vec![rs])
                         .into_iter()
+                        .chain([format!("val1 <== get_reg({});", rs.addr())])
                         .chain([format!("set_reg {}, pc + 2;", rd.addr())])
-                        .chain([format!("{rd} <== jump_dyn({rs});")])
+                        .chain([format!("jump_dyn;")])
                         .collect()
                 }
             }
@@ -1726,8 +1734,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             args.empty()?;
             vec![
                 format!("val1 <== get_reg(1);"),
-                "x1 <== get_reg(1);".to_string(),
-                "tmp1 <== jump_dyn(x1);".to_string(),
+                "val1 <== get_reg(1);".to_string(),
+                "jump_dyn;".to_string(),
             ]
         }
 

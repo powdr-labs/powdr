@@ -509,7 +509,7 @@ __rust_no_alloc_shim_is_unstable: .byte 0
         let handlers = self.syscalls.iter().flat_map(|(syscall, implementation)| {
             std::iter::once(format!("__ecall_handler_{syscall}:"))
                 .chain(implementation.0.iter().map(|i| i.to_string()))
-                .chain(std::iter::once("tmp1 <== jump_dyn(x1);".to_string()))
+                .chain(["val1 <== get_reg(1);".to_string(), "jump_dyn;".to_string()])
         });
 
         ecall
