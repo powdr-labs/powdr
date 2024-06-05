@@ -615,26 +615,26 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     { REM_b4 } in { bytes };
 
     // implements Z = Y / X and W = Y % X.
-    instr divremu Y, X -> Z, W {
+    instr divremu Y, X {
         // main division algorithm:
         // Y is the known dividend
         // X is the known divisor
-        // Z is the unknown quotient
-        // W is the unknown remainder
+        // val3 is the unknown quotient
+        // val4 is the unknown remainder
         // if X is zero, remainder is set to dividend, as per RISC-V specification:
-        X * Z + W = Y,
+        X * val3' + val4' = Y,
 
         // remainder >= 0:
-        W = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
+        val4' = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
 
         // remainder < divisor, conditioned to X not being 0:
-        (1 - XIsZero) * (X - W - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
+        (1 - XIsZero) * (X - val4' - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
 
         // in case X is zero, we set quotient according to RISC-V specification
-        XIsZero * (Z - 0xffffffff) = 0,
+        XIsZero * (val3' - 0xffffffff) = 0,
 
         // quotient is 32 bits:
-        Z = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+        val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 "# + mul_instruction
 }
@@ -1267,8 +1267,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd}, tmp1 <== divremu({r1}, {r2});"),
+                .chain(only_if_no_write_to_zero_val3(
+                    format!("divremu val1, val2;"),
                     rd,
                 ))
                 .collect()
@@ -1277,8 +1277,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("tmp1, {rd} <== divremu({r1}, {r2});"),
+                .chain(only_if_no_write_to_zero_val4(
+                    format!("divremu val1, val2;"),
                     rd,
                 ))
                 .collect()
