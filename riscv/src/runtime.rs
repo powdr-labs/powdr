@@ -90,9 +90,9 @@ impl Runtime {
             None,
             "binary",
             [
-                "instr and Y, Z -> X ~ binary.and;",
-                "instr or Y, Z -> X ~ binary.or;",
-                "instr xor Y, Z -> X ~ binary.xor;",
+                "instr and Y, X -> Z ~ binary.and Y, X -> Z;",
+                "instr or Y, X -> Z ~ binary.or Y, X -> Z;",
+                "instr xor Y ~ binary.xor val1, (val2 + Y) -> val3';",
             ],
             0,
             ["x10 <== and(x10, x10);"],
