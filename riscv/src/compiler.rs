@@ -1258,7 +1258,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         "tmp1 <=X= 0 - tmp1;".into(),
 
                         "val1 <=X= tmp1;".into(),
-                        format!("val2 <== get_reg({});", rd.addr()),
+                        format!("val2 <== get_reg({});", r2.addr()),
 
                         format!("mul;"),
 
