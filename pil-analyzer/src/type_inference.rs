@@ -448,29 +448,28 @@ impl<'a> TypeChecker<'a> {
         expected_type: &ExpectedType,
         expr: &mut Expression,
     ) -> Result<(), Error> {
-        self.infer_type_of_expression(expr).and_then(|ty| {
-            let ty = self.type_into_substituted(ty);
-            let expected_type = if expected_type.allow_array && matches!(ty, Type::Array(_)) {
-                Type::Array(ArrayType {
-                    base: Box::new(expected_type.ty.clone()),
-                    length: None,
-                })
-            } else if expected_type.allow_empty && (ty == Type::Tuple(TupleType { items: vec![] })) {
-                Type::Tuple(TupleType { items: vec![] })
-            } else {
-                expected_type.ty.clone()
-            };
+        let ty = self.infer_type_of_expression(expr)?;
+        let ty = self.type_into_substituted(ty);
+        let expected_type = if expected_type.allow_array && matches!(ty, Type::Array(_)) {
+            Type::Array(ArrayType {
+                base: Box::new(expected_type.ty.clone()),
+                length: None,
+            })
+        } else if expected_type.allow_empty && (ty == Type::Tuple(TupleType { items: vec![] })) {
+            Type::Tuple(TupleType { items: vec![] })
+        } else {
+            expected_type.ty.clone()
+        };
 
-            self.unifier
-                .unify_types(ty.clone(), expected_type.clone())
-                .map_err(|err| {
-                    expr.source_reference().with_error(format!(
-                        "Expected type {} but got type {}.\n{err}",
-                        self.format_type_with_bounds(expected_type),
-                        self.format_type_with_bounds(ty),
-                    ))
-                })
-        })
+        self.unifier
+            .unify_types(ty.clone(), expected_type.clone())
+            .map_err(|err| {
+                expr.source_reference().with_error(format!(
+                    "Expected type {} but got type {}.\n{err}",
+                    self.format_type_with_bounds(expected_type),
+                    self.format_type_with_bounds(ty),
+                ))
+            })
     }
 
     /// Process an expression and return the type of the expression.
