@@ -39,7 +39,9 @@ pub fn infer_types(
 #[derive(Clone)]
 pub struct ExpectedType {
     pub ty: Type,
+    /// If true, arrays of `ty` are also allowed.
     pub allow_array: bool,
+    /// If true, the empty tuple is also allowed.
     pub allow_empty: bool,
 }
 
@@ -54,7 +56,7 @@ impl From<Type> for ExpectedType {
 }
 
 struct TypeChecker<'a> {
-    /// The expected type for expressions at statement level in block expressions.
+    /// The expected type for expressions at statement level in block expressions inside a constr function.
     constr_function_statement_type: &'a ExpectedType,
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
@@ -446,33 +448,28 @@ impl<'a> TypeChecker<'a> {
         expected_type: &ExpectedType,
         expr: &mut Expression,
     ) -> Result<(), Error> {
-        if expected_type.allow_array {
-            self.infer_type_of_expression(expr).and_then(|ty| {
-                let ty = self.type_into_substituted(ty);
-                let expected_type = if matches!(ty, Type::Array(_)) {
-                    Type::Array(ArrayType {
-                        base: Box::new(expected_type.ty.clone()),
-                        length: None,
-                    })
-                } else if matches!(ty, Type::Tuple(_)) & expected_type.allow_empty {
-                    Type::Tuple(TupleType { items: vec![] })
-                } else {
-                    expected_type.ty.clone()
-                };
-
-                self.unifier
-                    .unify_types(ty.clone(), expected_type.clone())
-                    .map_err(|err| {
-                        expr.source_reference().with_error(format!(
-                            "Expected type {} but got type {}.\n{err}",
-                            self.format_type_with_bounds(expected_type),
-                            self.format_type_with_bounds(ty)
-                        ))
-                    })
+        let ty = self.infer_type_of_expression(expr)?;
+        let ty = self.type_into_substituted(ty);
+        let expected_type = if expected_type.allow_array && matches!(ty, Type::Array(_)) {
+            Type::Array(ArrayType {
+                base: Box::new(expected_type.ty.clone()),
+                length: None,
             })
+        } else if expected_type.allow_empty && (ty == Type::Tuple(TupleType { items: vec![] })) {
+            Type::empty_tuple()
         } else {
-            self.expect_type(&expected_type.ty, expr)
-        }
+            expected_type.ty.clone()
+        };
+
+        self.unifier
+            .unify_types(ty.clone(), expected_type.clone())
+            .map_err(|err| {
+                expr.source_reference().with_error(format!(
+                    "Expected type {} but got type {}.\n{err}",
+                    self.format_type_with_bounds(expected_type),
+                    self.format_type_with_bounds(ty),
+                ))
+            })
     }
 
     /// Process an expression and return the type of the expression.
@@ -671,15 +668,12 @@ impl<'a> TypeChecker<'a> {
         })
     }
 
+    /// Returns the type expected at statement level, given the current function context.
     fn statement_type(&self) -> ExpectedType {
         if self.lambda_kind == FunctionKind::Constr {
             self.constr_function_statement_type.clone()
         } else {
-            ExpectedType {
-                ty: Type::Tuple(TupleType { items: vec![] }),
-                allow_array: false,
-                allow_empty: false,
-            }
+            Type::Tuple(TupleType { items: vec![] }).into()
         }
     }
 

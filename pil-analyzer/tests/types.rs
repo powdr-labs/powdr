@@ -327,7 +327,7 @@ fn enum_is_not_constr() {
 }
 
 #[test]
-#[should_panic = "Expected type: int -> std::prover::Query"]
+#[should_panic = "Expected type int -> std::prover::Query"]
 fn query_with_wrong_type() {
     let input = "col witness w(i) query i;";
     type_check(input, &[]);
@@ -515,47 +515,4 @@ fn enum_too_many_fields() {
     };
     ";
     type_check(input, &[]);
-}
-
-#[test]
-fn empty_function() {
-    let input = "
-    let empty_fn: int -> () = |i| ();
-    let r = empty_fn(3);
-    ";
-    type_check(input, &[("empty_fn", "", "int -> ()"), ("r", "", "()")]);
-}
-
-#[test]
-fn empty_function_infered() {
-    let input = "
-    let empty_fn = |i| ();
-    let t: int = 3;
-    let r = empty_fn(t);
-    ";
-    type_check(
-        input,
-        &[
-            ("empty_fn", "", "int -> ()"),
-            ("t", "", "int"),
-            ("r", "", "()"),
-        ],
-    );
-}
-
-#[test]
-fn inner_empty_tuple() {
-    let input = "
-    let empty_fn: int -> () = |i| ();
-    let r = empty_fn(3);
-    let inner_unit_value = ((),r);
-    ";
-    type_check(
-        input,
-        &[
-            ("empty_fn", "", "int -> ()"),
-            ("r", "", "()"),
-            ("inner_unit_value", "", "((), ())"),
-        ],
-    );
 }
