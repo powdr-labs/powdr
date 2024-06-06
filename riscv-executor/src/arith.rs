@@ -54,7 +54,7 @@ pub fn ec_double<F: FieldElement>(x: &[F], y: &[F]) -> ([F; 8], [F; 8]) {
 }
 
 /// add two points in secp256k1
-pub fn ec_add<F: FieldElement>(x1: &[F], y1: &[F], x2: &[F], y2: &[F]) -> ([F; 8], [F; 8]) {
+pub fn ec_add<F: FieldElement>(x1: &[F], y1: &[F], x2: &[F], y2: &[F]) -> ([F; 8], [F; 8]) {    
     assert_eq!(x1.len(), 8);
     assert_eq!(y1.len(), 8);
     assert_eq!(x2.len(), 8);
@@ -64,22 +64,59 @@ pub fn ec_add<F: FieldElement>(x1: &[F], y1: &[F], x2: &[F], y2: &[F]) -> ([F; 8
     let x2_bytes = fe_slice_to_u8_array(x2);
     let y2_bytes = fe_slice_to_u8_array(y2);
 
+    // println!("x1_bytes: {:?}", x1_bytes);
+    // println!("y1_bytes: {:?}", y1_bytes);
+    // println!("x2_bytes: {:?}", x2_bytes);
+    // println!("y2_bytes: {:?}", y2_bytes);
+
+    // println!("start ec_add");
+
     let ep1 = EncodedPoint::from_affine_coordinates(
         GenericArray::from_slice(&x1_bytes),
         GenericArray::from_slice(&y1_bytes),
         false,
     );
+
+    // println!("ep1: {:?}", ep1);
+
+    // println!("ep1 done");
+
     let pp1 = ProjectivePoint::from_encoded_point(&ep1).unwrap();
+
+    // println!("pp1: {:?}", pp1);
+    // println!("pp1 done");
 
     let ep2 = EncodedPoint::from_affine_coordinates(
         GenericArray::from_slice(&x2_bytes),
         GenericArray::from_slice(&y2_bytes),
         false,
     );
+
+    // println!("ep2: {:?}", ep1);
+
+    // println!("ep2 done");
+    
     let pp2 = ProjectivePoint::from_encoded_point(&ep2).unwrap();
+
+    // println!("pp2: {:?}", pp2);
+    // println!("pp2 done");
+
     let ep_sum = (pp1 + pp2).to_encoded_point(false);
+
+    // println!("ep_sum: {:?}", ep_sum);
+    // println!("ep_sum done");
+
     let x_res = ep_sum.x().unwrap();
+
+    // println!("x_res: {:?}", x_res);
+
     let y_res = ep_sum.y().unwrap();
+    // println!("y_res: {:?}", y_res);
+
+    // println!("x_res u8 array: {:?}", u8_array_to_fe_array::<F>(x_res));
+
+    // println!("y_res u8 array: {:?}", u8_array_to_fe_array::<F>(y_res));
+
     (u8_array_to_fe_array(x_res), u8_array_to_fe_array(y_res))
 }
 

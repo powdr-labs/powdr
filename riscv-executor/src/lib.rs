@@ -811,6 +811,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 vec![]
             }
             "ec_add" => {
+                log::debug!("ec_add");
                 assert!(args.is_empty());
                 // take input from registers
                 let x1 = (0..8)
@@ -1078,7 +1079,7 @@ pub fn execute_ast<T: FieldElement>(
     loop {
         let stm = statements[curr_pc as usize];
 
-        log::trace!("l {curr_pc}: {stm}",);
+        log::trace!("TESTl {curr_pc}: {stm}",);
 
         match stm {
             FunctionStatement::Assignment(a) => {

@@ -62,7 +62,8 @@ powdr-schemas = { path = "./schemas", version = "0.1.0-alpha.2" }
 [profile.pr-tests]
 inherits = "dev"
 opt-level = 3
-debug = "line-tables-only"
+# debug = "line-tables-only"
+debug = true
 debug-assertions = true
 overflow-checks = true
 panic = 'unwind'
