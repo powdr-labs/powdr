@@ -10,6 +10,9 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
+use crate::witgen::machines::profiling::{
+    record_end_identity, reset_and_print_profile_summary_identity,
+};
 use crate::witgen::IncompleteCause;
 
 use super::data_structures::finalizable_data::FinalizableData;
@@ -155,6 +158,20 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                         loop_detection_log_level,
                         "Found loop with period {p} starting at row {row_index}"
                     );
+                    record_end_identity(1234567);
+                    let id_to_name = self
+                        .fixed_data
+                        .analyzed
+                        .identities
+                        .iter()
+                        .map(|i| (i.id, i.to_string()))
+                        .chain(std::iter::once((1234567, "other".to_string())))
+                        .chain(std::iter::once((8887, "snippet7".to_string())))
+                        .chain(std::iter::once((8888, "snippet8".to_string())))
+                        .chain(std::iter::once((8889, "snippet9".to_string())))
+                        .chain(std::iter::once((123557, "apply_updates".to_string())))
+                        .collect();
+                    reset_and_print_profile_summary_identity(id_to_name);
                 }
             }
             if let Some(period) = looping_period {

@@ -249,11 +249,13 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             });
         }
 
+        record_start_identity(123557);
         let res = Ok(IdentityResult {
             progress: self.apply_updates(row_index, &updates, || identity.to_string())
                 || updates.side_effect,
             is_complete: updates.is_complete(),
         });
+        record_end_identity(123557);
         record_end_identity(identity.id);
         res
     }
