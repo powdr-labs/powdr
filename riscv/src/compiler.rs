@@ -552,9 +552,9 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     }
     // input X is required to be the difference of two 32-bit unsigend values.
     // i.e. -2**32 < X < 2**32
-    instr is_positive X -> Y {
-        X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
-        Y = wrap_bit
+    instr is_positive X, Y {
+        (val1 * Y + X + val2) + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
+        val3' = wrap_bit
     }
 
     // ======aaaaaaaaaaaa=========
@@ -1257,9 +1257,15 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         format!("to_signed;"),
                         format!("tmp2 <=X= val3;"),
                         // tmp3 is 1 if tmp1 is non-negative
-                        "tmp3 <== is_positive(tmp1 + 1);".into(),
+                        format!("val1 <=X= tmp1;"),
+                        format!("val2 <== get_reg(0);"),
+                        "is_positive 1, 1;".into(),
+                        format!("tmp3 <=X= val3;"),
                         // tmp4 is 1 if tmp2 is non-negative
-                        "tmp4 <== is_positive(tmp2 + 1);".into(),
+                        format!("val1 <=X= tmp2;"),
+                        format!("val2 <== get_reg(0);"),
+                        "is_positive 1, 1;".into(),
+                        format!("tmp4 <=X= val3;"),
                         // If tmp1 is negative, convert to positive
                         "skip_if_zero 0, tmp3;".into(),
                         "tmp1 <=X= 0 - tmp1;".into(),
@@ -1292,7 +1298,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         "to_signed;".into(),
                         "tmp1 <=X= val3;".into(),
                         // tmp2 is 1 if tmp1 is non-negative
-                        "tmp2 <== is_positive(tmp1 + 1);".into(),
+                        format!("val1 <=X= tmp1;"),
+                        format!("val2 <== get_reg(0);"),
+                        "is_positive 1, 1;".into(),
+                        format!("tmp2 <=X= val3;"),
                         // If negative, convert to positive
                         "skip_if_zero 0, tmp2;".into(),
                         "tmp1 <=X= 0 - tmp1;".into(),
@@ -1488,7 +1497,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                     vec![
                         "to_signed;".into(),
                         "tmp1 <=X= val3;".into(),
-                        format!("tmp1 <== is_positive(0 - tmp1);"),
+                        format!("val1 <=X= tmp1;"),
+                        format!("val2 <== get_reg(0);"),
+                        format!("is_positive 0, -1;"),
+                        format!("tmp1 <=X= val3;"),
                         format!("tmp1 <=X= tmp1 * 0xffffffff;"),
                         // Here, tmp1 is the full bit mask if rs is negative
                         // and zero otherwise.
@@ -1534,11 +1546,13 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, rs, imm) = args.rri()?;
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
+                .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         "to_signed;".into(),
                         "tmp1 <=X= val3;".into(),
-                        format!("{rd} <=Y= is_positive({} - tmp1);", imm as i32),
+                        format!("val1 <=X= tmp1;"),
+                        format!("val2 <== get_reg(0);"),
+                        format!("is_positive {}, -1;", imm as i32),
                     ],
                     rd,
                 ))
@@ -1548,14 +1562,16 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
+                .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         "to_signed;".into(),
                         "tmp1 <=X= val3;".into(),
                         format!("val1 <== get_reg({});", r2.addr()),
                         format!("to_signed;"),
                         "tmp2 <=X= val3;".into(),
-                        format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
+                        format!("val1 <=X= tmp1;"),
+                        format!("val2 <=X= tmp2;"),
+                        format!("is_positive 0, -1;"),
                     ],
                     rd,
                 ))
@@ -1565,8 +1581,11 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, rs, imm) = args.rri()?;
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd} <=Y= is_positive({imm} - {rs});"),
+                .chain(only_if_no_write_to_zero_vec_val3(
+                    vec![
+                        format!("val2 <== get_reg(0);"),
+                        format!("is_positive {imm}, -1;"),
+                    ],
                     rd,
                 ))
                 .collect()
@@ -1575,8 +1594,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd} <=Y= is_positive({r2} - {r1});"),
+                .chain(only_if_no_write_to_zero_val3(
+                    format!("is_positive 0, -1;"),
                     rd,
                 ))
                 .collect()
@@ -1585,11 +1604,13 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, rs) = args.rr()?;
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
+                .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         "to_signed;".into(),
                         "tmp1 <=X= val3;".into(),
-                        format!("{rd} <=Y= is_positive(tmp1);"),
+                        format!("val1 <=X= tmp1;"),
+                        format!("val2 <== get_reg(0);"),
+                        format!("is_positive 0, 1;"),
                     ],
                     rd,
                 ))
