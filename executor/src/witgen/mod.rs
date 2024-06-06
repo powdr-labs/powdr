@@ -2,6 +2,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::Arc;
 
+use machines::profiling::{
+    record_end_identity, record_start_identity, reset_and_print_profile_summary_identity,
+};
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
     PolynomialType, SymbolKind, TypedExpression,
@@ -43,6 +46,7 @@ mod util;
 mod vm_processor;
 
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
+static UNUSED_IDENTITY_ID: u64 = 1234567;
 
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
@@ -152,6 +156,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     /// @returns the values (in source order) and the degree of the polynomials.
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
         record_start(OUTER_CODE_NAME);
+        record_start_identity(UNUSED_IDENTITY_ID);
         let fixed = FixedData::new(
             self.analyzed,
             self.fixed_col_values,
@@ -164,6 +169,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .identities_with_inlined_intermediate_polynomials()
             .into_iter()
             .filter(|identity| {
+                assert_ne!(identity.id, UNUSED_IDENTITY_ID);
                 let discard = identity.expr_any(|expr| {
                     if let AlgebraicExpression::Challenge(challenge) = expr {
                         challenge.stage >= self.stage.into()
@@ -225,7 +231,14 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .collect::<BTreeMap<_, _>>();
 
         record_end(OUTER_CODE_NAME);
+        record_end_identity(UNUSED_IDENTITY_ID);
         reset_and_print_profile_summary();
+        let name_to_id = identities
+            .iter()
+            .map(|identity| (identity.id, format!("{identity}")))
+            .chain([(UNUSED_IDENTITY_ID, "other".to_string())])
+            .collect();
+        reset_and_print_profile_summary_identity(name_to_id);
 
         // Order columns according to the order of declaration.
         let witness_cols = self
