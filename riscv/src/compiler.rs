@@ -595,7 +595,9 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 
     // Removes up to 16 bits beyond 32
     // TODO is this really safe?
-    instr wrap16 Y -> X { Y = Y_b5 * 2**32 + Y_b6 * 2**40 + X, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
+    // Y = val1 * val2
+    // X = val3'
+    instr wrap16 { (val1 * val2) = Y_b5 * 2**32 + Y_b6 * 2**40 + val3', val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
     col witness Y_b5;
     col witness Y_b6;
     col witness Y_b7;
@@ -1350,8 +1352,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, rs) = args.rr()?;
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd} <== wrap_signed(-{rs} - 1);"),
+                .chain(only_if_no_write_to_zero_val3(
+                    format!("add_new_signed_2 -1;"),
                     rd,
                 ))
                 .collect()
@@ -1363,13 +1365,19 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             assert!(amount <= 31);
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
+                .chain(only_if_no_write_to_zero_vec_val3(
                     if amount <= 16 {
-                        vec![format!("{rd} <== wrap16({rs} * {});", 1 << amount)]
+                        // rs is already in val1
+                        vec![format!("val2 <=X= {};", 1 << amount), format!("wrap16;")]
                     } else {
                         vec![
-                            format!("tmp1 <== wrap16({rs} * {});", 1 << 16),
-                            format!("{rd} <== wrap16(tmp1 * {});", 1 << (amount - 16)),
+                            // rs is already in val1
+                            format!("val2 <=X= {};", 1 << 16),
+                            format!("wrap16;"),
+                            format!("tmp1 <=X= val3;"),
+                            format!("val1 <=X= tmp1;"),
+                            format!("val2 <=X= {};", 1 << (amount - 16)),
+                            format!("wrap16;"),
                         ]
                     },
                     rd,
