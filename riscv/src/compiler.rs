@@ -582,10 +582,10 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 
     // Input is a 32 but unsigned number (0 <= Y < 2**32) interpreted as a two's complement numbers.
     // Returns a signed number (-2**31 <= X < 2**31).
-    instr to_signed Y -> X {
+    instr to_signed {
         // wrap_bit is used as sign_bit here.
-        Y = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + Y_7bit * 0x1000000 + wrap_bit * 0x80000000,
-        X = Y - wrap_bit * 2**32
+        val1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + Y_7bit * 0x1000000 + wrap_bit * 0x80000000,
+        val3' = val1 - wrap_bit * 0x100000000
     }
 
     // ======================= assertions =========================
@@ -1211,12 +1211,16 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
         }
         "mulh" => {
             let (rd, r1, r2) = args.rrr()?;
+            // val1 = r1, val2 = r2
             read_args(vec![r1, r2])
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
-                        format!("tmp1 <== to_signed({r1});"),
-                        format!("tmp2 <== to_signed({r2});"),
+                        format!("to_signed;"),
+                        format!("tmp1 <=X= val3;"),
+                        format!("val1 <== get_reg({});", r2.addr()),
+                        format!("to_signed;"),
+                        format!("tmp2 <=X= val3;"),
                         // tmp3 is 1 if tmp1 is non-negative
                         "tmp3 <== is_positive(tmp1 + 1);".into(),
                         // tmp4 is 1 if tmp2 is non-negative
@@ -1250,7 +1254,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
-                        format!("tmp1 <== to_signed({r1});"),
+                        "to_signed;".into(),
+                        "tmp1 <=X= val3;".into(),
                         // tmp2 is 1 if tmp1 is non-negative
                         "tmp2 <== is_positive(tmp1 + 1);".into(),
                         // If negative, convert to positive
@@ -1446,7 +1451,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
-                        format!("tmp1 <== to_signed({rs});"),
+                        "to_signed;".into(),
+                        "tmp1 <=X= val3;".into(),
                         format!("tmp1 <== is_positive(0 - tmp1);"),
                         format!("tmp1 <=X= tmp1 * 0xffffffff;"),
                         // Here, tmp1 is the full bit mask if rs is negative
@@ -1495,7 +1501,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec(
                     vec![
-                        format!("tmp1 <== to_signed({rs});"),
+                        "to_signed;".into(),
+                        "tmp1 <=X= val3;".into(),
                         format!("{rd} <=Y= is_positive({} - tmp1);", imm as i32),
                     ],
                     rd,
@@ -1508,8 +1515,11 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec(
                     vec![
-                        format!("tmp1 <== to_signed({r1});"),
-                        format!("tmp2 <== to_signed({r2});"),
+                        "to_signed;".into(),
+                        "tmp1 <=X= val3;".into(),
+                        format!("val1 <== get_reg({});", r2.addr()),
+                        format!("to_signed;"),
+                        "tmp2 <=X= val3;".into(),
                         format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
                     ],
                     rd,
@@ -1542,7 +1552,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec(
                     vec![
-                        format!("tmp1 <== to_signed({rs});"),
+                        "to_signed;".into(),
+                        "tmp1 <=X= val3;".into(),
                         format!("{rd} <=Y= is_positive(tmp1);"),
                     ],
                     rd,
@@ -1580,7 +1591,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             read_args(vec![r1])
                 .into_iter()
                 .chain(vec![
-                    format!("tmp1 <== to_signed({r1});"),
+                    "to_signed;".into(),
+                    "tmp1 <=X= val3;".into(),
                     format!("branch_if_positive tmp1 + 1, {label};"),
                 ])
                 .collect()
@@ -1599,8 +1611,11 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             read_args(vec![r1, r2])
                 .into_iter()
                 .chain(vec![
-                    format!("tmp1 <== to_signed({r1});"),
-                    format!("tmp2 <== to_signed({r2});"),
+                    "to_signed;".into(),
+                    "tmp1 <=X= val3;".into(),
+                    format!("val1 <== get_reg({});", r2.addr()),
+                    "to_signed;".into(),
+                    "tmp2 <=X= val3;".into(),
                     format!("branch_if_positive tmp2 - tmp1, {label};"),
                 ])
                 .collect()
@@ -1612,8 +1627,11 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             read_args(vec![r1, r2])
                 .into_iter()
                 .chain(vec![
-                    format!("tmp1 <== to_signed({r1});"),
-                    format!("tmp2 <== to_signed({r2});"),
+                    "to_signed;".into(),
+                    "tmp1 <=X= val3;".into(),
+                    format!("val1 <== get_reg({});", r2.addr()),
+                    "to_signed;".into(),
+                    "tmp2 <=X= val3;".into(),
                     format!("branch_if_positive tmp1 - tmp2 + 1, {label};"),
                 ])
                 .collect()
@@ -1634,7 +1652,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             read_args(vec![r1])
                 .into_iter()
                 .chain(vec![
-                    format!("tmp1 <== to_signed({r1});"),
+                    "to_signed;".into(),
+                    "tmp1 <=X= val3;".into(),
                     format!("branch_if_positive -tmp1 + 1, {label};"),
                 ])
                 .collect()
@@ -1645,7 +1664,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             read_args(vec![r1])
                 .into_iter()
                 .chain(vec![
-                    format!("tmp1 <== to_signed({r1});"),
+                    "to_signed;".into(),
+                    "tmp1 <=X= val3;".into(),
                     format!("branch_if_positive tmp1, {label};"),
                 ])
                 .collect()
