@@ -2,8 +2,8 @@ use std::{io, path::Path};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement};
-use powdr_plonky3::{generate_setup, Plonky3Prover};
+use powdr_number::FieldElement;
+use powdr_plonky3::Plonky3Prover;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
@@ -20,20 +20,16 @@ impl<T: FieldElement> BackendFactory<T> for Plonky3ProverFactory {
         verification_app_key: Option<&mut dyn io::Read>,
         _: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, T> + 'a>, Error> {
+        if setup.is_some() {
+            return Err(Error::NoSetupAvailable);
+        }
+        if verification_key.is_some() {
+            return Err(Error::NoVerificationAvailable);
+        }
         if verification_app_key.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        let mut plonky3 = Box::new(Plonky3Prover::new(pil, fixed, setup)?);
-        if let Some(vk) = verification_key {
-            plonky3.add_verification_key(vk);
-        }
-        Ok(plonky3)
-    }
-
-    fn generate_setup(&self, _size: DegreeType, output: &mut dyn io::Write) -> Result<(), Error> {
-        serde_json::to_writer(output, &generate_setup()).unwrap();
-
-        Ok(())
+        Ok(Box::new(Plonky3Prover::new(pil, fixed)))
     }
 }
 
@@ -53,17 +49,5 @@ impl<'a, T: FieldElement> Backend<'a, T> for Plonky3Prover<'a, T> {
         }
 
         Ok(self.prove_ast(witness, witgen_callback)?)
-    }
-
-    fn export_setup(&self, output: &mut dyn io::Write) -> Result<(), Error> {
-        self.write_setup(output);
-
-        Ok(())
-    }
-
-    fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
-        self.write_vkey(output);
-
-        Ok(())
     }
 }

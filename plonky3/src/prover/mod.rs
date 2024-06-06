@@ -1,8 +1,6 @@
 //! A plonky3 prover using FRI and Poseidon
 
-mod types;
-
-use std::io::Read;
+mod params;
 
 use powdr_ast::analyzed::Analyzed;
 
@@ -11,22 +9,10 @@ use powdr_executor::witgen::WitgenCallback;
 use p3_air::BaseAir;
 use p3_uni_stark::{prove, verify, Proof};
 use powdr_number::{FieldElement, KnownField};
-use rand::{distributions::Standard, thread_rng, Rng};
 
-use crate::circuit_builder::{cast_to_goldilocks, PowdrCircuit, Val};
+use crate::circuit_builder::{cast_to_goldilocks, PowdrCircuit};
 
-use self::types::*;
-
-/// In the context of plonky3, "setup" generation is the process of instantiating Poseidon with randomly sampled constants
-pub fn generate_setup() -> Vec<Val> {
-    let num_rounds = 2 * HALF_NUM_FULL_ROUNDS + NUM_PARTIAL_ROUNDS;
-    let num_constants = WIDTH * num_rounds;
-
-    thread_rng()
-        .sample_iter(Standard)
-        .take(num_constants)
-        .collect()
-}
+use self::params::{get_challenger, get_config};
 
 #[derive(Clone)]
 pub struct Plonky3Prover<'a, T> {
@@ -34,46 +20,11 @@ pub struct Plonky3Prover<'a, T> {
     analyzed: &'a Analyzed<T>,
     /// The value of the fixed columns
     fixed: &'a [(String, Vec<T>)],
-    /// The constants which uniquely determine the prover, loosely interpreted as a setup
-    setup: Constants,
-    /// The constants which uniquely determine the prover, loosely interpreted as a verification key
-    vkey: Option<Constants>,
 }
 
 impl<'a, T> Plonky3Prover<'a, T> {
-    pub fn write_setup(&self, output: &mut dyn std::io::Write) {
-        serde_json::to_writer(output, &self.setup.values).unwrap();
-    }
-
-    pub fn write_vkey(&self, output: &mut dyn std::io::Write) {
-        let vk = self.verification_key();
-        serde_json::to_writer(output, &vk.values).unwrap();
-    }
-
-    pub fn verification_key(&self) -> &Constants {
-        &self.setup
-    }
-
-    pub fn new(
-        analyzed: &'a Analyzed<T>,
-        fixed: &'a [(String, Vec<T>)],
-        constants: Option<&mut dyn std::io::Read>,
-    ) -> Result<Self, std::io::Error> {
-        let constants = constants
-            .map(serde_json::from_reader)
-            .transpose()?
-            .unwrap_or_else(generate_setup);
-
-        Ok(Self {
-            analyzed,
-            fixed,
-            setup: Constants::new(constants),
-            vkey: None,
-        })
-    }
-
-    pub fn add_verification_key(&mut self, vkey: &mut dyn Read) {
-        self.vkey = Some(Constants::new(serde_json::de::from_reader(vkey).unwrap()));
+    pub fn new(analyzed: &'a Analyzed<T>, fixed: &'a [(String, Vec<T>)]) -> Self {
+        Self { analyzed, fixed }
     }
 }
 
@@ -92,13 +43,13 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
         let trace = circuit.preprocessed_trace().unwrap();
 
-        let (config, perm) = self.setup.to_config_and_perm(self.analyzed.degree());
+        let config = get_config(self.analyzed.degree());
 
-        let mut challenger = Challenger::new(perm.clone());
+        let mut challenger = get_challenger();
 
         let proof = prove(&config, &circuit, &mut challenger, trace, &publics);
 
-        let mut challenger = Challenger::new(perm);
+        let mut challenger = get_challenger();
 
         verify(&config, &circuit, &mut challenger, &proof, &publics).unwrap();
         Ok(serde_json::to_vec(&proof).unwrap())
@@ -113,13 +64,9 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
             .map(|v| cast_to_goldilocks(*v))
             .collect();
 
-        let (config, perm) = self
-            .vkey
-            .as_ref()
-            .unwrap()
-            .to_config_and_perm(self.analyzed.degree());
+        let config = get_config(self.analyzed.degree());
 
-        let mut challenger = Challenger::new(perm);
+        let mut challenger = get_challenger();
 
         verify(
             &config,
@@ -148,9 +95,7 @@ mod tests {
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
 
-        let proof = Plonky3Prover::new(&pil, &fixed_cols, None)
-            .unwrap()
-            .prove_ast(&witness, witness_callback);
+        let proof = Plonky3Prover::new(&pil, &fixed_cols).prove_ast(&witness, witness_callback);
 
         assert!(proof.is_ok());
     }

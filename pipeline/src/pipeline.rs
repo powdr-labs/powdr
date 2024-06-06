@@ -1078,11 +1078,13 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| BufReader::new(fs::File::open(path).unwrap()));
 
-        let mut vkey_file = if let Some(ref path) = self.arguments.vkey_file {
-            BufReader::new(fs::File::open(path).unwrap())
-        } else {
-            panic!("Verification key should have been provided for verification")
-        };
+        let mut vkey_file = self
+            .arguments
+            .vkey_file
+            .as_ref()
+            .map(fs::File::open)
+            .map(Result::unwrap)
+            .map(BufReader::new);
 
         let pil = self.compute_optimized_pil()?;
         let fixed_cols = self.compute_fixed_cols()?;
@@ -1095,7 +1097,9 @@ impl<T: FieldElement> Pipeline<T> {
                 setup_file
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),
-                Some(&mut vkey_file),
+                vkey_file
+                    .as_mut()
+                    .map(|file| file as &mut dyn std::io::Read),
                 // We shouldn't need the app verification key for this
                 None,
                 self.arguments.backend_options.clone(),

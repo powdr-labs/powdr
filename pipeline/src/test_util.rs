@@ -192,38 +192,12 @@ pub fn gen_plonky3_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         .with_prover_inputs(inputs)
         .with_backend(powdr_backend::BackendType::Plonky3, None);
 
-    // Generate a proof with the setup and verification key generated on the fly
-    pipeline.clone().compute_proof().unwrap();
-
-    // Repeat the proof generation, but with an externally generated setup and verification key
-    let pil = pipeline.compute_optimized_pil().unwrap();
-
-    // Setup
-    let setup_file_path = tmp_dir.as_path().join("params.bin");
-    buffered_write_file(&setup_file_path, |writer| {
-        powdr_backend::BackendType::Plonky3
-            .factory::<GoldilocksField>()
-            .generate_setup(pil.degree(), writer)
-            .unwrap()
-    })
-    .unwrap();
-    let mut pipeline = pipeline.with_setup_file(Some(setup_file_path));
-
-    // Verification Key
-    let vkey_file_path = tmp_dir.as_path().join("verification_key.bin");
-    buffered_write_file(&vkey_file_path, |writer| {
-        pipeline.export_verification_key(writer).unwrap()
-    })
-    .unwrap();
-
-    // Create the proof before adding the setup and vkey to the backend,
-    // so that they're generated during the proof
-    let proof: Vec<u8> = pipeline.compute_proof().unwrap().clone();
-
-    let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
+    // Generate a proof
+    let proof = pipeline.compute_proof().cloned().unwrap();
 
     let publics: Vec<GoldilocksField> = pipeline
         .publics()
+        .clone()
         .unwrap()
         .iter()
         .map(|(_name, v)| *v)

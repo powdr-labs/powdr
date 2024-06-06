@@ -16,7 +16,6 @@ use powdr_number::{FieldElement, LargeInt};
 
 pub type Val = p3_goldilocks::Goldilocks;
 
-#[derive(Clone)]
 pub(crate) struct PowdrCircuit<'a, T> {
     /// The analyzed PIL
     analyzed: &'a Analyzed<T>,
