@@ -216,13 +216,13 @@ pub fn compile<T: FieldElement>(
         .collect();
     if !data_code.is_empty() {
         program.push("set_reg 1, pc + 2;".to_string());
-        program.push("x1 <== jump(__data_init);".to_string());
+        program.push("jump __data_init;".to_string());
     }
     program.extend([
         format!("// Set stack pointer\nx2 <=X= {stack_start};"),
         "set_reg 2, x2;".to_string(),
         "set_reg 1, pc + 2;".to_string(),
-        "x1 <== jump(__runtime_start);".to_string(),
+        "jump __runtime_start;".to_string(),
         "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
     ]);
     program.extend(
@@ -499,7 +499,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 
     instr load_label l: label { val3' = l }
 
-    instr jump l: label -> Y { pc' = l, Y = pc + 1}
+    instr jump l: label { pc' = l, val3' = pc + 1}
     instr jump_dyn { pc' = val1, val3' = pc + 1}
 
     instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
@@ -1643,7 +1643,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
         // jump and call
         "j" | "tail" => {
             let label = args.l()?;
-            vec![format!("tmp1 <== jump({label});",)]
+            vec![format!("jump {label};",)]
         }
         "jr" => {
             let rs = args.r()?;
@@ -1657,18 +1657,15 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
         }
         "jal" => {
             if let Ok(label) = args.l() {
-                vec![
-                    "set_reg 1, pc + 2;".to_string(),
-                    format!("x1 <== jump({label});"),
-                ]
+                vec!["set_reg 1, pc + 2;".to_string(), format!("jump {label};")]
             } else {
                 let (rd, label) = args.rl()?;
                 if rd.is_zero() {
-                    vec![format!("tmp1 <== jump({label});")]
+                    vec![format!("jump {label};")]
                 } else {
                     vec![
                         format!("set_reg {}, pc + 2;", rd.addr()),
-                        format!("{rd} <== jump({label});"),
+                        format!("jump {label};"),
                     ]
                 }
             }
@@ -1708,7 +1705,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let label = args.l()?;
             vec![
                 format!("set_reg 1, pc + 2;"),
-                format!("x1 <== jump({label});")
+                format!("jump {label};")
             ]
         }
         "ecall" => {
@@ -1719,7 +1716,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 // jump to to handler
                 .chain([
                     "set_reg 1, pc + 2;".to_string(),
-                    "x1 <== jump(__ecall_handler);".to_string(),
+                    "jump __ecall_handler;".to_string(),
                 ])
                 // restore ra/x1
                 .chain(pop_register("x1"))
