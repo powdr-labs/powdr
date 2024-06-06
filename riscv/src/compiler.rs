@@ -562,22 +562,22 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     wrap_bit * (1 - wrap_bit) = 0;
 
     // Input is a 32 bit unsigned number. We check bit 7 and set all higher bits to that value.
-    instr sign_extend_byte Y -> X {
+    instr sign_extend_byte {
         // wrap_bit is used as sign_bit here.
-        Y = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-        X = Y_7bit + wrap_bit * 0xffffff80
+        val1 = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+        val3' = Y_7bit + wrap_bit * 0xffffff80
     }
     col fixed seven_bit(i) { i & 0x7f };
     col witness Y_7bit;
     { Y_7bit } in { seven_bit };
 
     // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
-    instr sign_extend_16_bits Y -> X {
+    instr sign_extend_16_bits {
         Y_15bit = X_b1 + Y_7bit * 0x100,
 
         // wrap_bit is used as sign_bit here.
-        Y = Y_15bit + wrap_bit * 0x8000 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-        X = Y_15bit + wrap_bit * 0xffff8000
+        val1 = Y_15bit + wrap_bit * 0x8000 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+        val3' = Y_15bit + wrap_bit * 0xffff8000
     }
     col witness Y_15bit;
 
@@ -1778,14 +1778,13 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, rs, off) = args.rro()?;
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
+                .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("val1, tmp2 <== mload(val1 + {off});"),
                         format!("val2 <=X= 8 * tmp2;"),
                         format!("shr;"),
                         format!("val1 <=X= val3;"),
-                        format!("{rd} <== sign_extend_byte(val1);"),
-                        format!("set_reg {}, {rd};", rd.addr()),
+                        format!("sign_extend_byte;"),
                     ],
                     rd,
                 ))
@@ -1817,14 +1816,13 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, rs, off) = args.rro()?;
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
+                .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("val1, tmp2 <== mload({rs} + {off});"),
                         format!("val2 <=X= 8 * tmp2;"),
                         format!("shr;"),
                         format!("val1 <=X= val3;"),
-                        format!("{rd} <== sign_extend_16_bits(val1);"),
-                        format!("set_reg {}, {rd};", rd.addr()),
+                        format!("sign_extend_16_bits;"),
                     ],
                     rd,
                 ))
