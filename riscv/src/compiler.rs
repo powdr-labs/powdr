@@ -46,7 +46,43 @@ impl powdr_asm_utils::ast::Register for Register {}
 
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "x{}", self.value)
+        if self.value < 32 {
+            // 0 indexed
+            write!(f, "x{}", self.value)
+        } else if self.value < 36 {
+            // 1 indexed
+            write!(f, "tmp{}", self.value - 31 + 1)
+        } else if self.value == 36 {
+            write!(f, "lr_sc_reservation")
+        } else {
+            // 0 indexed
+            write!(f, "xtra{}", self.value - 37)
+        }
+    }
+}
+
+impl From<&str> for Register {
+    fn from(s: &str) -> Self {
+        if s.starts_with("x") {
+            // 0 indexed
+            let value = s[1..].parse().expect("Invalid register");
+            assert!(value < 32, "Invalid register");
+            Self::new(value)
+        } else if s.starts_with("tmp") {
+            // 1 indexed
+            let value: u8 = s[3..].parse().expect("Invalid register");
+            assert!(value >= 1);
+            assert!(value <= 4);
+            Self::new(value - 1 + 32)
+        } else if s == "lr_sc_reservation" {
+            Self::new(36)
+        } else if s.starts_with("xtra") {
+            // 0 indexed
+            let value: u8 = s[4..].parse().expect("Invalid register");
+            Self::new(value + 37)
+        } else {
+            panic!("Invalid register")
+        }
     }
 }
 
@@ -1077,8 +1113,7 @@ fn read_args(input_regs: Vec<Register>) -> Vec<String> {
 
 fn name_to_register(name: &str) -> Option<Register> {
     if name.starts_with("x") {
-        let num = name[1..].parse().ok()?;
-        Some(Register::new(num))
+        Some(Register::from(name))
     } else {
         None
     }
