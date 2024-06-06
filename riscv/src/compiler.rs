@@ -502,7 +502,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     instr jump l: label { pc' = l, val3' = pc + 1}
     instr jump_dyn { pc' = val1, val3' = pc + 1}
 
-    instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
+    instr branch_if_nonzero l: label { XXIsZero = 1 - XX * XX_inv, XX = val1 - val2, pc' = (1 - XXIsZero) * l + XXIsZero * (pc + 1) }
     instr branch_if_zero X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
 
     // Skips Y instructions if X is zero
@@ -769,6 +769,16 @@ fn memory(with_bootloader: bool) -> String {
     reg val2;
     reg val3;
     reg val4;
+
+    col witness XX, XX_inv, XXIsZero;
+    std::utils::force_bool(XXIsZero);
+    XXIsZero * XX = 0;
+
+    // HACK: This constraint cannot be active globally, because when
+    // XX is not constrained, witgen will try to set XX, XX_inv and XXIsZero
+    // to zero, which fails this constraint. Therefore, we have to activate
+    // constrained whenever XXIsZero is used.
+    // XXIsZero = 1 - XX * XX_inv
 
     // =============== read-write memory =======================
     // Read-write memory. Columns are sorted by m_addr and
@@ -1629,14 +1639,15 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (r1, r2, label) = args.rrl()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(vec![format!("branch_if_nonzero {r1} - {r2}, {label};")])
+                .chain(vec![format!("branch_if_nonzero {label};")])
                 .collect()
         }
         "bnez" => {
             let (r1, label) = args.rl()?;
-            read_args(vec![r1])
+            // jump if (r1 - x0) = r1 != 0
+            read_args(vec![r1, Register::new(0)])
                 .into_iter()
-                .chain(vec![format!("branch_if_nonzero {r1}, {label};")])
+                .chain(vec![format!("branch_if_nonzero {label};")])
                 .collect()
         }
 
