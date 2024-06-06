@@ -1094,7 +1094,6 @@ impl<T: FieldElement> VMConverter<T> {
         counter: usize,
         expr: Expression,
     ) -> (usize, Expression) {
-        println!("linearize_rec: {expr}");
         match expr {
             Expression::BinaryOperation(
                 _,
