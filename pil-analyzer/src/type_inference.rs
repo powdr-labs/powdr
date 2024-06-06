@@ -455,7 +455,7 @@ impl<'a> TypeChecker<'a> {
                     base: Box::new(expected_type.ty.clone()),
                     length: None,
                 })
-            } else if expected_type.allow_empty & (ty == Type::Tuple(TupleType { items: vec![] })) {
+            } else if expected_type.allow_empty && (ty == Type::Tuple(TupleType { items: vec![] })) {
                 Type::Tuple(TupleType { items: vec![] })
             } else {
                 expected_type.ty.clone()
