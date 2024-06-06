@@ -1,0 +1,2697 @@
+events: Instructions
+
+fn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+400 10158
+402 10158
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1256 10151
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/mem/impls.rs
+0 34430
+32 10184
+33 5720
+45 252465
+46 465586
+63 315
+68 315
+72 6278
+74 2509
+76 12545
+81 2509
+100 10158
+103 10151
+107 10151
+109 10151
+110 10151
+111 10151
+118 10151
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/mut_ptr.rs
+1045 478766
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/const_ptr.rs
+0 487
+944 20822
+
+fn=memcpy
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+410 10158
+
+fn=compiler_builtins::mem::memset::h05c59719a26c8b04
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+400 35
+402 35
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1256 35
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/mem/impls.rs
+0 227
+229 80
+230 496
+247 514
+248 444
+253 35
+256 35
+259 35
+261 35
+264 35
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/mut_ptr.rs
+0 17
+1045 576
+
+fn=memset
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+410 35
+
+fn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+257 778
+
+fn=_ZN129_$LT$digest_dot__dot_core_api_dot__dot_ct_variable_dot__dot_CtVariableCoreWrapper$LT$T$C$OutSize$C$O$GT$$u20$as$u20$digest_dot__dot_core_api_dot__dot_FixedOutputCore$GT$19finalize_fixed_core17h56db94320821737aE
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/digest-0.10.7/src/core_api/ct_variable.rs
+114 60
+127 60
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/sha2-0.10.8/src/core_api.rs
+0 5
+62 45
+63 20
+66 40
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/block-buffer-0.10.4/src/lib.rs
+196 15
+239 40
+300 55
+302 10
+306 15
+322 10
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1157 40
+1181 100
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs
+162 5
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/index.rs
+0 5
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/mut_ptr.rs
+1045 5
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/intrinsics.rs
+2774 1710
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/sha2-0.10.8/src/sha256.rs
+cfn=sha2::sha256::compress256::h430d9065f295ea76
+calls=5 34
+239 22565
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=5 400
+322 355
+cfn=memset
+calls=5 410
+322 5
+
+fn=elliptic_curve::scalar::primitive::ScalarPrimitive<C>::from_slice::h60bc57d3db5b462d
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1181 8
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/elliptic-curve-0.13.8/src/scalar/primitive.rs
+76 36
+81 4
+85 12
+91 12
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/sub.rs
+0 38
+13 14
+14 4
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/convert/mod.rs
+758 6
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+0 2
+665 2
+666 32
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs
+0 2
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/lib.rs
+cfn=_ZN4k256129_$LT$impl$u20$elliptic_curve_dot__dot_field_dot__dot_FieldBytesEncoding$LT$k256_dot__dot_Secp256k1$GT$$u20$for$u20$crypto_bigint_dot__dot_uint_dot__dot_Uint$LT$_$GT$$GT$18decode_field_bytes17hf416fdf592fad04cE
+calls=2 132
+76 322
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+calls=2 257
+758 4
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=2 229
+758 28
+
+fn=ecdsa::signing::SigningKey<C>::from_bytes::hfb9b771c7c7606f8
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1181 8
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/elliptic-curve-0.13.8/src/scalar/primitive.rs
+76 20
+81 4
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/sub.rs
+0 38
+13 14
+14 4
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/convert/mod.rs
+758 10
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+665 2
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/mod.rs
+1658 32
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ecdsa-0.16.9/src/signing.rs
+92 26
+96 26
+420 8
+421 32
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/cmp.rs
+38 16
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/ct_choice.rs
+50 2
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/elliptic-curve-0.13.8/src/secret_key.rs
+148 2
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/result.rs
+0 2
+746 24
+828 2
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/elliptic-curve-0.13.8/src/public_key.rs
+115 16
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint.rs
+210 16
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/lib.rs
+cfn=_ZN4k256129_$LT$impl$u20$elliptic_curve_dot__dot_field_dot__dot_FieldBytesEncoding$LT$k256_dot__dot_Secp256k1$GT$$u20$for$u20$crypto_bigint_dot__dot_uint_dot__dot_Uint$LT$_$GT$$GT$18decode_field_bytes17hf416fdf592fad04cE
+calls=2 132
+76 322
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+calls=4 257
+758 8
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=4 229
+758 56
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+cfn=_ZN4k25610arithmetic10projective144_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$$RF$k256_dot__dot_arithmetic_dot__dot_projective_dot__dot_ProjectivePoint$GT$$u20$for$u20$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$GT$4from17hac9f69295c1fdd5aE
+calls=2 382
+421 442628
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=2 400
+746 328
+cfn=memcpy
+calls=2 410
+746 2
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+cfn=_ZN4k25610arithmetic3mul141_$LT$impl$u20$core_dot__dot_ops_dot__dot_arith_dot__dot_Mul$LT$$RF$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$GT$$u20$for$u20$k256_dot__dot_arithmetic_dot__dot_projective_dot__dot_ProjectivePoint$GT$3mul17h85d53656076f602cE
+calls=2 436
+115 1779360
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=2 400
+210 248
+cfn=memcpy
+calls=2 410
+210 2
+
+fn=_ZN78_$LT$hmac_dot__dot_simple_dot__dot_SimpleHmac$LT$D$GT$$u20$as$u20$digest_dot__dot_FixedOutputReset$GT$19finalize_into_reset17hafd20d5e3951a84bE
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/digest-0.10.7/src/core_api/ct_variable.rs
+157 120
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/sha2-0.10.8/src/core_api.rs
+36 50
+37 35
+62 40
+63 20
+66 40
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/block-buffer-0.10.4/src/lib.rs
+76 30
+155 5
+158 5
+196 30
+239 160
+300 55
+302 10
+306 15
+322 10
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+0 10
+1157 410
+1181 100
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs
+162 5
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/index.rs
+0 5
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/mut_ptr.rs
+1045 10
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/intrinsics.rs
+0 10
+2774 45
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/generic-array-0.14.7/src/lib.rs
+0 5
+194 5
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/hmac-0.12.1/src/simple.rs
+99 75
+102 5
+104 20
+105 70
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/digest-0.10.7/src/core_api/wrapper.rs
+23 115
+172 20
+185 5
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/digest-0.10.7/src/lib.rs
+116 45
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/sha2-0.10.8/src/sha256.rs
+cfn=sha2::sha256::compress256::h430d9065f295ea76
+calls=5 34
+66 22565
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=5 400
+76 385
+cfn=memset
+calls=5 410
+76 5
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/sha2-0.10.8/src/sha256.rs
+cfn=sha2::sha256::compress256::h430d9065f295ea76
+calls=5 34
+239 22565
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=5 400
+239 30
+cfn=memcpy
+calls=5 410
+239 5
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=5 400
+0 295
+cfn=memcpy
+calls=5 410
+0 5
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/sha2-0.10.8/src/sha256.rs
+cfn=sha2::sha256::compress256::h430d9065f295ea76
+calls=5 34
+2774 22565
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=5 400
+102 345
+cfn=memset
+calls=5 410
+102 5
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/digest-0.10.7/src/core_api/ct_variable.rs
+cfn=_ZN129_$LT$digest_dot__dot_core_api_dot__dot_ct_variable_dot__dot_CtVariableCoreWrapper$LT$T$C$OutSize$C$O$GT$$u20$as$u20$digest_dot__dot_core_api_dot__dot_FixedOutputCore$GT$19finalize_fixed_core17h56db94320821737aE
+calls=5 114
+105 25165
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=5 400
+172 795
+cfn=memcpy
+calls=5 410
+172 5
+
+fn=main
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/sha2-0.10.8/src/core_api.rs
+0 24
+36 32
+37 32
+62 8
+63 28
+66 56
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/block-buffer-0.10.4/src/lib.rs
+0 25
+76 26
+146 2
+155 14
+158 13
+196 42
+239 186
+300 40
+302 17
+306 12
+322 80
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1108 60
+1157 726
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs
+162 388
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/index.rs
+0 4
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/mut_ptr.rs
+1045 14
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/mem/manually_drop.rs
+89 104
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/intrinsics.rs
+0 1
+2774 100
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/mod.rs
+1974 2
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/sub.rs
+0 3
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/convert/mod.rs
+0 4
+758 11
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+0 5
+139 28
+168 1
+213 37
+257 209
+380 64
+381 1
+547 64
+665 1
+666 16
+703 3
+705 32
+735 4
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/mod.rs
+1658 32
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ecdsa-0.16.9/src/signing.rs
+0 3
+513 8
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/cmp.rs
+0 1
+38 19
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/ct_choice.rs
+50 2
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/result.rs
+0 2
+827 4
+828 19
+1029 18
+1071 4
+1072 12
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint.rs
+105 16
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/hmac-0.12.1/src/simple.rs
+37 3072
+42 46
+44 3072
+47 20
+48 15
+49 16
+51 15
+71 8
+72 8
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/digest-0.10.7/src/core_api/wrapper.rs
+23 103
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/digest-0.10.7/src/lib.rs
+0 2
+102 32
+115 15
+116 80
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/const_ptr.rs
+944 6
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/block-buffer-0.10.4/src/sealed.rs
+23 2
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/digest-0.10.7/src/digest.rs
+0 2
+70 156
+fl=/Users/steve/Documents/repo/ecdsa_powdr_test/src/lib.rs
+117 16
+119 22
+120 3
+123 8
+124 3
+130 1
+132 1
+134 15
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ecdsa-0.16.9/src/hazmat.rs
+0 2
+103 3
+104 3
+105 20
+143 8
+205 8
+235 1
+242 3
+245 6
+249 3
+250 6
+253 28
+256 16
+257 2
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/non_null.rs
+1796 1152
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rfc6979-0.4.0/src/lib.rs
+0 34
+82 1
+83 16
+115 8
+120 16
+124 8
+128 16
+131 176
+138 8
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/range.rs
+0 2
+546 6
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/hmac-0.12.1/src/lib.rs
+130 5
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/bit.rs
+378 256
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs
+308 128
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/rfc6979-0.4.0/src/ct_cmp.rs
+25 96
+27 32
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ff-0.13.0/src/lib.rs
+82 36
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+75 16
+673 22
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ecdsa-0.16.9/src/lib.rs
+0 2
+251 3
+252 3
+254 2
+306 16
+321 1
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/elliptic-curve-0.13.8/src/scalar/nonzero.rs
+198 5
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=4 400
+0 264
+cfn=memset
+calls=4 410
+0 4
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=2 400
+36 294
+cfn=memcpy
+calls=2 410
+36 2
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/sha2-0.10.8/src/sha256.rs
+cfn=sha2::sha256::compress256::h430d9065f295ea76
+calls=7 34
+66 31591
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=2 400
+0 128
+cfn=memset
+calls=2 410
+0 2
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=2 400
+76 638
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=1 400
+76 77
+cfn=memcpy
+calls=2 410
+76 2
+cfn=memset
+calls=1 410
+76 1
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=9 400
+158 531
+cfn=memcpy
+calls=9 410
+158 9
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=7 400
+196 1593
+cfn=memcpy
+calls=7 410
+196 7
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/sha2-0.10.8/src/sha256.rs
+cfn=sha2::sha256::compress256::h430d9065f295ea76
+calls=6 34
+239 27078
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=2 400
+239 324
+cfn=memcpy
+calls=2 410
+239 2
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=2 400
+1045 40
+cfn=memcpy
+calls=2 410
+1045 2
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=1 400
+89 99
+cfn=memcpy
+calls=1 410
+89 1
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=1 400
+2774 64
+cfn=memset
+calls=1 410
+2774 1
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+calls=2 257
+758 4
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=2 229
+758 28
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+cfn=_ZN67_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$ff_dot__dot_PrimeField$GT$9from_repr17h91b9dd8cba03960aE
+calls=1 332
+139 308
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=1 229
+168 14
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=37 229
+257 518
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=32 229
+547 448
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+cfn=_ZN62_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$ff_dot__dot_Field$GT$6invert17h0b6387a8772a9799E
+calls=1 250
+735 369264
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=1 400
+0 124
+cfn=memcpy
+calls=1 410
+0 1
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/elliptic-curve-0.13.8/src/scalar/primitive.rs
+cfn=elliptic_curve::scalar::primitive::ScalarPrimitive<C>::from_slice::h60bc57d3db5b462d
+calls=2 85
+827 526
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ecdsa-0.16.9/src/signing.rs
+cfn=ecdsa::signing::SigningKey<C>::from_bytes::hfb9b771c7c7606f8
+calls=2 92
+1071 2223258
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=2 400
+1072 328
+cfn=memcpy
+calls=2 410
+1072 2
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=1 400
+37 99
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=1 400
+37 67
+cfn=memcpy
+calls=1 410
+37 1
+cfn=memset
+calls=1 410
+37 1
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=1 400
+44 99
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=1 400
+44 67
+cfn=memcpy
+calls=1 410
+44 1
+cfn=memset
+calls=1 410
+44 1
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=6 400
+47 814
+cfn=memcpy
+calls=6 410
+47 6
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=4 400
+49 636
+cfn=memcpy
+calls=4 410
+49 4
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=3 400
+51 297
+cfn=memcpy
+calls=3 410
+51 3
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=5 400
+23 385
+cfn=memset
+calls=5 410
+23 5
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/hmac-0.12.1/src/simple.rs
+cfn=_ZN78_$LT$hmac_dot__dot_simple_dot__dot_SimpleHmac$LT$D$GT$$u20$as$u20$digest_dot__dot_FixedOutputReset$GT$19finalize_into_reset17hafd20d5e3951a84bE
+calls=5 99
+116 96320
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/sha2-0.10.8/src/sha256.rs
+cfn=sha2::sha256::compress256::h430d9065f295ea76
+calls=2 34
+23 9026
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=1 400
+70 124
+cfn=memcpy
+calls=1 410
+70 1
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/ecdsa.rs
+cfn=_ZN4k2565ecdsa121_$LT$impl$u20$ecdsa_dot__dot_hazmat_dot__dot_VerifyPrimitive$LT$k256_dot__dot_Secp256k1$GT$$u20$for$u20$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$GT$16verify_prehashed17h2c328e1524584d84E
+calls=1 202
+130 1919680
+cfn=_ZN4k2565ecdsa121_$LT$impl$u20$ecdsa_dot__dot_hazmat_dot__dot_VerifyPrimitive$LT$k256_dot__dot_Secp256k1$GT$$u20$for$u20$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$GT$16verify_prehashed17h2c328e1524584d84E
+calls=1 202
+132 1919680
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+cfn=_ZN4k25610arithmetic6scalar206_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$$RF$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$GT$$u20$for$u20$generic_array_dot__dot_GenericArray$LT$u8$C$$LT$k256_dot__dot_Secp256k1$u20$as$u20$elliptic_curve_dot__dot_Curve$GT$_dot__dot_FieldBytesSize$GT$$GT$4from17hfac29f93e0905c9bE
+calls=1 752
+0 297
+cfn=k256::arithmetic::scalar::Scalar::to_bytes::ha68a199903bcafee
+calls=1 91
+0 297
+cfn=_ZN122_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$elliptic_curve_dot__dot_ops_dot__dot_Reduce$LT$crypto_bigint_dot__dot_uint_dot__dot_Uint$LT$_$GT$$GT$$GT$6reduce17h7d37c208655a23a5E
+calls=1 665
+242 214
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+cfn=_ZN4k25610arithmetic3mul111_$LT$impl$u20$elliptic_curve_dot__dot_ops_dot__dot_MulByGenerator$u20$for$u20$k256_dot__dot_arithmetic_dot__dot_projective_dot__dot_ProjectivePoint$GT$16mul_by_generator17h5e85db89e1cc2003E
+calls=1 388
+245 887100
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+cfn=_ZN4k25610arithmetic10projective144_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$$RF$k256_dot__dot_arithmetic_dot__dot_projective_dot__dot_ProjectivePoint$GT$$u20$for$u20$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$GT$4from17hac9f69295c1fdd5aE
+calls=1 382
+249 221314
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+cfn=_ZN122_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$elliptic_curve_dot__dot_ops_dot__dot_Reduce$LT$crypto_bigint_dot__dot_uint_dot__dot_Uint$LT$_$GT$$GT$$GT$6reduce17h7d37c208655a23a5E
+calls=1 665
+250 214
+cfn=_ZN4k25610arithmetic6scalar206_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$$RF$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$GT$$u20$for$u20$generic_array_dot__dot_GenericArray$LT$u8$C$$LT$k256_dot__dot_Secp256k1$u20$as$u20$elliptic_curve_dot__dot_Curve$GT$_dot__dot_FieldBytesSize$GT$$GT$4from17hfac29f93e0905c9bE
+calls=1 752
+250 297
+cfn=_ZN118_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$core_dot__dot_ops_dot__dot_arith_dot__dot_Mul$LT$$RF$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$GT$$GT$3mul17h74a2fcb28d75d959E
+calls=1 645
+253 1260
+cfn=_ZN74_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$core_dot__dot_ops_dot__dot_arith_dot__dot_Add$GT$3add17hd371f594918b8ae1E
+calls=1 548
+253 225
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/affine.rs
+cfn=_ZN98_$LT$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$u20$as$u20$elliptic_curve_dot__dot_point_dot__dot_AffineCoordinates$GT$1x17h7f8df2c3fb7b1322E
+calls=1 113
+253 542
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+cfn=_ZN74_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$core_dot__dot_ops_dot__dot_arith_dot__dot_Mul$GT$3mul17h5dafde6b84315f79E
+calls=1 629
+256 1260
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=1 400
+131 319
+cfn=memcpy
+calls=1 410
+131 1
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=32 229
+378 448
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=1 229
+25 14
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+calls=3 257
+82 6
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=3 229
+82 42
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+cfn=_ZN75_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$subtle_dot__dot_ConstantTimeEq$GT$5ct_eq17h0d1777ce026c5f53E
+calls=3 516
+82 114
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/affine.rs
+cfn=_ZN98_$LT$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$u20$as$u20$elliptic_curve_dot__dot_point_dot__dot_AffineCoordinates$GT$1x17h7f8df2c3fb7b1322E
+calls=1 113
+673 542
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+cfn=_ZN4k25610arithmetic6scalar202_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$GT$$u20$for$u20$generic_array_dot__dot_GenericArray$LT$u8$C$$LT$k256_dot__dot_Secp256k1$u20$as$u20$elliptic_curve_dot__dot_Curve$GT$_dot__dot_FieldBytesSize$GT$$GT$4from17h25140c5fdc970243E
+calls=1 746
+251 297
+cfn=_ZN4k25610arithmetic6scalar202_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$GT$$u20$for$u20$generic_array_dot__dot_GenericArray$LT$u8$C$$LT$k256_dot__dot_Secp256k1$u20$as$u20$elliptic_curve_dot__dot_Curve$GT$_dot__dot_FieldBytesSize$GT$$GT$4from17h25140c5fdc970243E
+calls=1 746
+252 297
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+calls=1 257
+306 2
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=2 229
+306 28
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/sub.rs
+cfn=_ZN83_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$elliptic_curve_dot__dot_scalar_dot__dot_IsHigh$GT$7is_high17h51a147814c0aa629E
+calls=1 16
+306 37
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/affine.rs
+cfn=_ZN98_$LT$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$u20$as$u20$elliptic_curve_dot__dot_point_dot__dot_AffineCoordinates$GT$8y_is_odd17hb3277cfb20e17bb5E
+calls=1 117
+306 214
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+calls=1 257
+198 2
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=1 229
+198 14
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/sub.rs
+cfn=_ZN83_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$elliptic_curve_dot__dot_scalar_dot__dot_IsHigh$GT$7is_high17h51a147814c0aa629E
+calls=1 16
+198 37
+
+fn=_ZN98_$LT$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$u20$as$u20$elliptic_curve_dot__dot_point_dot__dot_AffineCoordinates$GT$1x17h7f8df2c3fb7b1322E
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/affine.rs
+113 2
+114 4
+115 6
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+cfn=k256::arithmetic::field::FieldElement::to_bytes::h75538fe49dd27e32
+calls=2 119
+115 1072
+
+fn=_ZN98_$LT$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$u20$as$u20$elliptic_curve_dot__dot_point_dot__dot_AffineCoordinates$GT$8y_is_odd17hb3277cfb20e17bb5E
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+257 4
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/affine.rs
+117 1
+118 2
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+85 1
+132 2
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::normalize::h0b25a8bc05321f1e
+calls=1 312
+85 204
+
+fn=_ZN89_$LT$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$u20$as$u20$subtle_dot__dot_ConditionallySelectable$GT$18conditional_select17h8571bcab5164d9edE
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+547 10
+549 175
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/affine.rs
+123 5
+124 140
+129 75
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/bit.rs
+378 440
+
+fn=k256::arithmetic::field::FieldElement::to_bytes::h75538fe49dd27e32
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+119 14
+120 4
+121 14
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+161 4
+162 2
+163 10
+164 2
+165 2
+167 4
+168 2
+169 2
+170 10
+171 2
+172 2
+173 10
+174 2
+175 2
+176 10
+177 2
+178 2
+180 4
+181 2
+182 2
+183 10
+184 2
+185 2
+186 10
+187 2
+188 2
+189 10
+190 2
+191 2
+193 512
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::normalize::h0b25a8bc05321f1e
+calls=2 312
+163 408
+
+fn=k256::arithmetic::field::FieldElement::square::h49d2ad82f9abe9fb
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+169 19125
+170 12750
+171 19125
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+0 141525
+466 1275
+467 1275
+468 1275
+469 1275
+470 1275
+471 1275
+472 1275
+473 1275
+474 1275
+475 1275
+496 38250
+508 6375
+513 2550
+516 5100
+517 10200
+521 5100
+522 12750
+528 6375
+529 7650
+535 12750
+538 35700
+542 5100
+543 10200
+549 5100
+550 2550
+556 22950
+559 14025
+563 5100
+564 10200
+570 5100
+571 2550
+577 25500
+580 26775
+584 5100
+585 8925
+589 1275
+590 5100
+591 2550
+597 17850
+600 14025
+604 5100
+605 8925
+609 1275
+610 5100
+611 2550
+617 31875
+620 20400
+624 5100
+625 8925
+629 1275
+630 5100
+631 2550
+637 17850
+640 20400
+644 5100
+645 8925
+649 1275
+650 5100
+651 2550
+657 39525
+660 12750
+664 3825
+665 8925
+671 1275
+672 5100
+673 2550
+679 5100
+680 12750
+683 6375
+687 3825
+688 8925
+711 1275
+712 5100
+713 6375
+718 16575
+721 2550
+722 5100
+723 11475
+730 20400
+733 1275
+734 3825
+739 15300
+744 1275
+745 3825
+751 3825
+
+fn=k256::arithmetic::field::FieldElement::invert::h2f5c412e80bfca1e
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+213 5
+257 15
+681 40
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+175 85
+177 8885
+179 300
+184 40
+213 35
+457 305
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+0 5
+237 10
+240 10
+241 10
+244 10
+247 10
+250 10
+253 10
+256 10
+259 10
+262 10
+265 10
+274 10
+275 10
+278 35
+279 15
+347 60
+348 50
+349 5
+357 5
+359 20
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/cmp.rs
+1573 880
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/range.rs
+729 880
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=5 229
+257 70
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=5 229
+681 70
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::mul::h4df472a030914fa8
+calls=15 764
+175 15690
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=10 400
+175 690
+cfn=memcpy
+calls=10 410
+175 10
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::mul::h4df472a030914fa8
+calls=50 764
+177 52300
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+cfn=k256::arithmetic::field::FieldElement::square::h49d2ad82f9abe9fb
+calls=1265 169
+177 899415
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=345 400
+177 23805
+cfn=memcpy
+calls=345 410
+177 345
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+cfn=k256::arithmetic::field::FieldElement::square::h49d2ad82f9abe9fb
+calls=10 169
+179 7110
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=50 400
+179 3450
+cfn=memcpy
+calls=50 410
+179 50
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::mul::h4df472a030914fa8
+calls=5 764
+457 5230
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=75 400
+457 5175
+cfn=memcpy
+calls=75 410
+457 75
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::mul::h4df472a030914fa8
+calls=5 764
+274 5230
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=880 400
+1573 60720
+cfn=memcpy
+calls=880 410
+1573 880
+
+fn=k256::arithmetic::mul::LookupTable::select::h4135b69e574263ee
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+257 8316
+380 7392
+449 30954
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+237 2310
+240 2772
+241 1848
+242 462
+244 1386
+245 462
+247 1386
+248 462
+250 1386
+251 462
+253 1386
+254 462
+256 1386
+257 462
+259 1386
+260 462
+262 1386
+263 462
+265 924
+266 462
+274 462
+275 1386
+411 462
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/bit.rs
+378 7392
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+90 5082
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+75 8316
+80 3234
+81 462
+87 3234
+91 462
+92 8778
+95 1848
+96 6930
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=4158 229
+257 58212
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+cfn=_ZN97_$LT$k256_dot__dot_arithmetic_dot__dot_projective_dot__dot_ProjectivePoint$u20$as$u20$subtle_dot__dot_ConditionallySelectable$GT$18conditional_select17hf5269de4feb6db98E
+calls=4158 400
+449 935550
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=3234 400
+378 546546
+cfn=memcpy
+calls=3234 410
+378 3234
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=462 400
+91 78078
+cfn=memcpy
+calls=462 410
+91 462
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=924 400
+92 63756
+cfn=memcpy
+calls=924 410
+92 924
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=462 400
+95 78078
+cfn=memcpy
+calls=462 410
+95 462
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=462 400
+96 78078
+cfn=memcpy
+calls=462 410
+96 462
+
+fn=k256::arithmetic::mul::Radix16Decomposition<_>::new::h65acaa50158fd74b
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs
+1887 56
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+251 14
+256 126
+262 2128
+263 2268
+268 4074
+269 4480
+270 5376
+273 42
+274 42
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/cmp.rs
+1573 896
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/range.rs
+729 448
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1157 56
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=14 400
+274 1806
+cfn=memcpy
+calls=14 410
+274 14
+
+fn=k256::arithmetic::mul::lincomb::h7efa8ea2058c7b00
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+0 14
+549 112
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+457 42
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/convert/mod.rs
+0 35
+758 28
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+0 28
+237 63
+240 63
+241 28
+242 14
+244 42
+245 14
+247 42
+248 14
+250 42
+251 14
+253 42
+254 14
+256 42
+257 14
+259 42
+260 14
+262 42
+263 14
+265 42
+266 14
+274 14
+275 28
+402 7
+403 7
+404 7
+405 7
+406 7
+407 7
+408 7
+409 14
+410 7
+411 35
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/bit.rs
+0 7
+378 224
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+0 7
+90 182
+93 28
+278 28
+279 35
+532 455
+560 4620
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+0 683
+67 392
+69 84
+232 28
+233 28
+237 126
+312 85
+318 203
+322 112
+327 70
+328 91
+329 49
+330 140
+334 77
+335 21
+336 35
+340 25
+342 7
+343 10
+345 49
+346 49
+351 5760
+355 2464
+356 5
+358 1568
+359 1344
+362 20
+363 80
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs
+0 211
+223 5
+229 160
+232 7
+237 42
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/enumerate.rs
+108 7
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/cmp.rs
+1573 924
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/range.rs
+0 185
+729 251
+774 165
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+0 960
+1181 553
+1256 160
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+549 42
+565 35
+630 98
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/sub.rs
+0 154
+13 693
+14 98
+15 35
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/cmp.rs
+0 14
+39 105
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/ct_choice.rs
+0 14
+68 14
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+calls=7 257
+0 14
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=7 229
+0 98
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+calls=7 257
+758 14
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=7 229
+758 98
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=7 400
+411 483
+cfn=memcpy
+calls=7 410
+411 7
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=7 400
+0 483
+cfn=memcpy
+calls=7 410
+0 7
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=14 400
+90 966
+cfn=memcpy
+calls=14 410
+90 14
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::mul::h4df472a030914fa8
+calls=7 764
+278 7322
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=7 400
+279 483
+cfn=memcpy
+calls=7 410
+279 7
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=98 400
+532 16562
+cfn=memcpy
+calls=98 410
+532 98
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=46 400
+560 7774
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+cfn=k256::arithmetic::projective::ProjectivePoint::add::h49864dde9ca190d6
+calls=462 98
+560 1564152
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+cfn=k256::arithmetic::mul::LookupTable::select::h4135b69e574263ee
+calls=462 75
+560 1960266
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=memcpy
+calls=46 410
+560 46
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+cfn=_ZN97_$LT$k256_dot__dot_arithmetic_dot__dot_projective_dot__dot_ProjectivePoint$u20$as$u20$subtle_dot__dot_ConditionallySelectable$GT$18conditional_select17hf5269de4feb6db98E
+calls=7 400
+0 1575
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=96 400
+0 16224
+cfn=memcpy
+calls=96 410
+0 96
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+cfn=k256::arithmetic::projective::ProjectivePoint::add::h49864dde9ca190d6
+calls=98 98
+67 359660
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=21 400
+69 10899
+cfn=memcpy
+calls=21 410
+69 21
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=7 111
+233 8778
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/add.rs
+cfn=k256::arithmetic::scalar::Scalar::add::h6f0407db16b67dca
+calls=7 15
+237 1533
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=7 400
+327 8533
+cfn=memcpy
+calls=7 410
+327 7
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+cfn=_ZN97_$LT$k256_dot__dot_arithmetic_dot__dot_projective_dot__dot_ProjectivePoint$u20$as$u20$subtle_dot__dot_ConditionallySelectable$GT$18conditional_select17hf5269de4feb6db98E
+calls=7 400
+328 1575
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=7 400
+328 1183
+cfn=memcpy
+calls=7 410
+328 7
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=14 400
+330 9016
+cfn=memcpy
+calls=14 410
+330 14
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=7 400
+334 722
+cfn=memcpy
+calls=7 410
+334 7
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=7 400
+335 8533
+cfn=memcpy
+calls=7 410
+335 7
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+cfn=k256::arithmetic::mul::Radix16Decomposition<_>::new::h65acaa50158fd74b
+calls=14 251
+336 21826
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=7 400
+346 1183
+cfn=memcpy
+calls=7 410
+346 7
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=492 400
+351 83148
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+cfn=k256::arithmetic::projective::ProjectivePoint::double::hffa8bea508a29821
+calls=640 217
+351 1294404
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=memcpy
+calls=492 410
+351 492
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=224 400
+355 20096
+cfn=memcpy
+calls=224 410
+355 224
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=224 400
+358 28896
+cfn=memcpy
+calls=224 410
+358 224
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=224 400
+359 37856
+cfn=memcpy
+calls=224 410
+359 224
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=5 400
+363 845
+cfn=memcpy
+calls=5 410
+363 5
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=7 400
+108 1140
+cfn=memcpy
+calls=7 410
+108 7
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=231 400
+1573 39039
+cfn=memcpy
+calls=231 410
+1573 231
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=160 400
+1256 27040
+cfn=memcpy
+calls=160 410
+1256 160
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=7 111
+549 8778
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=7 111
+565 8778
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/add.rs
+cfn=k256::arithmetic::scalar::Scalar::add::h6f0407db16b67dca
+calls=7 15
+630 1533
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar/wide32.rs
+cfn=k256::arithmetic::scalar::wide::WideScalar::mul_shift_vartime::hd2edd11b10a7d9e2
+calls=14 132
+630 11284
+
+fn=_ZN4k25610arithmetic3mul111_$LT$impl$u20$elliptic_curve_dot__dot_ops_dot__dot_MulByGenerator$u20$for$u20$k256_dot__dot_arithmetic_dot__dot_projective_dot__dot_ProjectivePoint$GT$16mul_by_generator17h5e85db89e1cc2003E
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+0 2
+60 18
+285 2
+291 9
+388 8
+390 7
+414 27
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/array/mod.rs
+439 66
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=3 400
+60 3807
+cfn=memcpy
+calls=3 410
+60 3
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=1 400
+285 169
+cfn=memcpy
+calls=1 410
+285 1
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=1 400
+291 87
+cfn=memset
+calls=1 410
+291 1
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+cfn=k256::arithmetic::mul::lincomb::h7efa8ea2058c7b00
+calls=1 312
+390 878913
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=1 400
+414 169
+cfn=memcpy
+calls=1 410
+414 1
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=16 400
+439 3794
+cfn=memcpy
+calls=16 410
+439 16
+
+fn=_ZN4k25610arithmetic3mul141_$LT$impl$u20$core_dot__dot_ops_dot__dot_arith_dot__dot_Mul$LT$$RF$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$GT$$u20$for$u20$k256_dot__dot_arithmetic_dot__dot_projective_dot__dot_ProjectivePoint$GT$3mul17h85d53656076f602cE
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+60 36
+285 4
+291 18
+414 50
+436 20
+438 14
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/array/mod.rs
+439 132
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=6 400
+60 7614
+cfn=memcpy
+calls=6 410
+60 6
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=2 400
+285 338
+cfn=memcpy
+calls=2 410
+285 2
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=2 400
+291 174
+cfn=memset
+calls=2 410
+291 2
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=2 400
+414 338
+cfn=memcpy
+calls=2 410
+414 2
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+cfn=k256::arithmetic::mul::lincomb::h7efa8ea2058c7b00
+calls=2 312
+438 1762990
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=32 400
+439 7588
+cfn=memcpy
+calls=32 410
+439 32
+
+fn=k256::arithmetic::projective::ProjectivePoint::to_affine::h3b230e4d6f9ef21d
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+549 55
+681 60
+729 30
+759 50
+762 15
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/affine.rs
+81 45
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+132 25
+457 35
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/bit.rs
+378 50
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+75 40
+76 15
+80 35
+84 5
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=5 400
+681 620
+cfn=memcpy
+calls=5 410
+681 5
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+cfn=k256::arithmetic::field::FieldElement::invert::h2f5c412e80bfca1e
+calls=5 184
+762 1092110
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::normalize::h0b25a8bc05321f1e
+calls=10 312
+81 2040
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::mul::h4df472a030914fa8
+calls=5 764
+132 5230
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/affine.rs
+cfn=_ZN89_$LT$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$u20$as$u20$subtle_dot__dot_ConditionallySelectable$GT$18conditional_select17h8571bcab5164d9edE
+calls=5 123
+80 845
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::mul::h4df472a030914fa8
+calls=5 764
+84 5230
+
+fn=k256::arithmetic::projective::ProjectivePoint::add::h49864dde9ca190d6
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+257 162
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+115 7196
+376 5007
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+0 1074
+75 1028
+81 7710
+83 2056
+84 3084
+86 4626
+87 2570
+88 2056
+89 4112
+90 2056
+95 2056
+101 6168
+103 2056
+104 3084
+106 4112
+107 1542
+108 1542
+109 3084
+110 2056
+115 2056
+121 5140
+123 2056
+199 2056
+200 2056
+201 2056
+202 13364
+203 3598
+204 2056
+205 13878
+206 3598
+207 2056
+208 13878
+209 3598
+210 2056
+211 2056
+212 3598
+213 3084
+214 3598
+215 13364
+216 3598
+217 2056
+218 13364
+219 3598
+220 2056
+221 13364
+222 3598
+223 2056
+224 2056
+225 3084
+226 3598
+227 3598
+228 13364
+229 3598
+230 3598
+237 162
+240 162
+241 162
+244 162
+247 162
+250 162
+253 162
+256 162
+259 162
+262 162
+265 162
+274 300
+275 81
+278 567
+279 208
+347 810
+348 810
+349 81
+357 81
+359 324
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+0 736
+98 9520
+100 2218
+103 1028
+105 1028
+107 572082
+108 1542
+111 10794
+114 46
+115 44
+116 35
+117 105
+160 7710
+fl=/Users/steve/.cargo/git/checkouts/powdr-5ad669c296f4e377/15f6208/riscv-runtime/src/ec.rs
+0 514
+46 5140
+53 109482
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=81 229
+257 1134
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::normalize::h0b25a8bc05321f1e
+calls=514 312
+115 104856
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=1109 229
+376 15526
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=_ZN98_$LT$k256_dot__dot_arithmetic_dot__dot_field_dot__dot_field_10x26_dot__dot_FieldElement10x26$u20$as$u20$subtle_dot__dot_ConstantTimeEq$GT$5ct_eq17h4ce730cf00e6374fE
+calls=1109 801
+376 378169
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=514 400
+107 35466
+cfn=memcpy
+calls=514 410
+107 514
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::normalize::h0b25a8bc05321f1e
+calls=1542 312
+199 314568
+cfi=/Users/steve/.cargo/git/checkouts/powdr-5ad669c296f4e377/15f6208/riscv-runtime/src/ec.rs
+cfn=__ecall_handler
+calls=514 46
+46 102286
+
+fn=k256::arithmetic::projective::ProjectivePoint::double::hffa8bea508a29821
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+257 24
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+115 3140
+376 3200
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+0 1268
+75 1256
+81 8792
+83 2512
+84 3768
+86 5024
+87 3140
+88 2512
+89 5024
+90 2512
+95 2512
+101 7536
+103 2512
+104 3768
+106 5024
+107 1884
+108 2512
+109 3768
+110 2512
+115 2512
+121 6280
+123 2512
+199 1256
+200 1256
+201 1256
+202 6908
+203 1884
+204 1256
+205 7536
+206 1884
+207 1256
+208 8164
+209 1884
+210 1256
+211 1256
+212 1884
+213 1256
+214 1256
+215 7536
+216 1884
+217 1256
+218 8164
+219 1884
+220 1256
+221 7536
+222 1884
+223 1256
+224 1256
+225 1884
+226 1256
+227 1256
+228 6908
+229 1884
+230 1884
+237 24
+240 24
+241 24
+244 24
+247 24
+250 24
+253 24
+256 24
+259 24
+262 24
+265 24
+274 48
+275 12
+278 84
+279 36
+347 120
+348 120
+349 12
+357 12
+359 48
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+217 11520
+218 1280
+221 1256
+222 337236
+223 1884
+226 13816
+229 12
+230 216
+262 9420
+fl=/Users/steve/.cargo/git/checkouts/powdr-5ad669c296f4e377/15f6208/riscv-runtime/src/ec.rs
+98 5024
+104 133136
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=12 229
+257 168
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=640 229
+376 8960
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=_ZN98_$LT$k256_dot__dot_arithmetic_dot__dot_field_dot__dot_field_10x26_dot__dot_FieldElement10x26$u20$as$u20$subtle_dot__dot_ConstantTimeEq$GT$5ct_eq17h4ce730cf00e6374fE
+calls=640 801
+376 218240
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=628 400
+107 43332
+cfn=memcpy
+calls=628 410
+107 628
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::normalize::h0b25a8bc05321f1e
+calls=1256 312
+199 256224
+cfi=/Users/steve/.cargo/git/checkouts/powdr-5ad669c296f4e377/15f6208/riscv-runtime/src/ec.rs
+cfn=__ecall_handler
+calls=628 98
+98 75360
+
+fn=_ZN4k25610arithmetic10projective144_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$$RF$k256_dot__dot_arithmetic_dot__dot_projective_dot__dot_ProjectivePoint$GT$$u20$for$u20$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$GT$4from17hac9f69295c1fdd5aE
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+382 3
+383 6
+384 9
+cfn=k256::arithmetic::projective::ProjectivePoint::to_affine::h3b230e4d6f9ef21d
+calls=3 75
+384 663924
+
+fn=_ZN97_$LT$k256_dot__dot_arithmetic_dot__dot_projective_dot__dot_ProjectivePoint$u20$as$u20$subtle_dot__dot_ConditionallySelectable$GT$18conditional_select17hf5269de4feb6db98E
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+549 187830
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/bit.rs
+378 530098
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+400 4174
+401 154438
+406 62610
+
+fn=k256::arithmetic::scalar::wide::WideScalar::mul_shift_vartime::hd2edd11b10a7d9e2
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+257 28
+549 112
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/bit.rs
+0 14
+378 238
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1157 4354
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+511 112
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint.rs
+131 224
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar/wide32.rs
+132 140
+230 112
+233 14
+234 70
+235 140
+437 1736
+444 672
+451 28
+452 14
+457 14
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/add.rs
+cfn=k256::arithmetic::scalar::Scalar::add::h6f0407db16b67dca
+calls=14 15
+257 3066
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=14 229
+378 196
+
+fn=k256::arithmetic::scalar::wide::WideScalar::reduce_impl::h3913fc8d4e8789dc
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+0 951
+183 317
+213 317
+257 1902
+549 2536
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/bit.rs
+0 317
+378 6657
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+0 1902
+1157 87492
+1181 11412
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/sub.rs
+12 634
+13 13314
+14 9193
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint.rs
+131 5072
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar/wide32.rs
+237 5706
+243 317
+372 317
+377 1902
+380 2536
+383 2536
+386 2536
+389 1585
+392 634
+395 634
+398 634
+406 317
+407 2536
+408 4755
+424 1268
+431 317
+437 17752
+438 11412
+439 1268
+451 1268
+453 317
+457 317
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=317 229
+0 4438
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=317 229
+183 4438
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=634 229
+257 8876
+
+fn=k256::arithmetic::scalar::Scalar::to_bytes::ha68a199903bcafee
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs
+1887 8
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1157 8
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/encoding.rs
+0 3
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/array.rs
+54 272
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+91 1
+93 5
+
+fn=k256::arithmetic::scalar::Scalar::add::h6f0407db16b67dca
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+0 58
+1181 957
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+102 232
+103 29
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/sub.rs
+13 1218
+14 899
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/add.rs
+15 464
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/add.rs
+0 261
+12 145
+14 2030
+15 29
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/bit_and.rs
+10 29
+
+fn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1157 98904
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+111 4755
+113 4755
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint.rs
+131 5072
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar/wide32.rs
+124 5706
+412 1268
+437 39308
+444 15216
+451 1585
+457 317
+cfn=k256::arithmetic::scalar::wide::WideScalar::reduce_impl::h3913fc8d4e8789dc
+calls=317 237
+113 220632
+
+fn=k256::arithmetic::scalar::Scalar::invert::h0b2751fc6a9c3b47
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+213 1
+257 1
+681 8
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/convert/mod.rs
+758 2
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/cmp.rs
+1573 56
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/range.rs
+729 56
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+0 2
+117 1012
+128 1
+131 5
+176 7
+215 33
+217 3947
+219 272
+646 148
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/cmp.rs
+57 8
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/ct_choice.rs
+50 1
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/cmp.rs
+38 8
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=1 229
+681 14
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+calls=1 257
+758 2
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=1 229
+758 14
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=30 111
+117 37620
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=1 111
+215 1254
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=252 111
+217 316008
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=1 111
+219 1254
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=5 111
+646 6270
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=1 111
+57 1254
+
+fn=_ZN62_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$ff_dot__dot_Field$GT$6invert17h0b6387a8772a9799E
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+250 1
+251 2
+252 3
+cfn=k256::arithmetic::scalar::Scalar::invert::h0b2751fc6a9c3b47
+calls=1 128
+252 369258
+
+fn=_ZN67_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$ff_dot__dot_PrimeField$GT$9from_repr17h91b9dd8cba03960aE
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+681 16
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/convert/mod.rs
+758 1
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+0 2
+1157 56
+1181 30
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+332 12
+333 96
+335 12
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/sub.rs
+13 36
+14 31
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+calls=1 257
+681 2
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=1 229
+681 14
+
+fn=_ZN80_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$elliptic_curve_dot__dot_ops_dot__dot_Invert$GT$14invert_vartime17h7ac0da8af9706038E
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+0 2076
+213 1430
+257 11772
+681 32
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/convert/mod.rs
+758 700
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/cmp.rs
+1178 346
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+0 2124
+1181 48640
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+0 36016
+434 32
+435 16
+440 348
+442 1068
+448 376
+455 706
+461 360
+468 346
+478 30
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/sub.rs
+0 6244
+11 4654
+13 70526
+14 31262
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/cmp.rs
+0 10
+57 18
+149 1038
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/ct_choice.rs
+50 350
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/cmp.rs
+0 1042
+38 4192
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/add.rs
+0 12404
+11 12352
+12 5632
+14 67058
+15 1408
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/bit_and.rs
+10 1408
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/shr.rs
+0 360
+67 736
+70 22816
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/bit_or.rs
+9 2422
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=3592 229
+257 50288
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=2 229
+681 28
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+calls=350 257
+758 700
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=350 229
+758 4900
+
+fn=_ZN83_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$elliptic_curve_dot__dot_scalar_dot__dot_IsHigh$GT$7is_high17h51a147814c0aa629E
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/convert/mod.rs
+758 2
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1181 4
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/sub.rs
+0 4
+13 34
+14 8
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/sub.rs
+16 22
+
+fn=_ZN75_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$subtle_dot__dot_ConstantTimeEq$GT$5ct_eq17h0d1777ce026c5f53E
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/convert/mod.rs
+758 9
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+516 3
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/cmp.rs
+0 3
+57 48
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/ct_choice.rs
+50 3
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/cmp.rs
+38 48
+
+fn=_ZN74_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$core_dot__dot_ops_dot__dot_arith_dot__dot_Add$GT$3add17hd371f594918b8ae1E
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+548 1
+549 2
+550 3
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/add.rs
+cfn=k256::arithmetic::scalar::Scalar::add::h6f0407db16b67dca
+calls=1 15
+550 219
+
+fn=_ZN74_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$core_dot__dot_ops_dot__dot_arith_dot__dot_Mul$GT$3mul17h5dafde6b84315f79E
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+629 1
+630 2
+631 3
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=1 111
+631 1254
+
+fn=_ZN118_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$core_dot__dot_ops_dot__dot_arith_dot__dot_Mul$LT$$RF$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$GT$$GT$3mul17h74a2fcb28d75d959E
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+645 1
+646 2
+647 3
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=1 111
+647 1254
+
+fn=_ZN122_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$elliptic_curve_dot__dot_ops_dot__dot_Reduce$LT$crypto_bigint_dot__dot_uint_dot__dot_Uint$LT$_$GT$$GT$$GT$6reduce17h7d37c208655a23a5E
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+0 4
+213 2
+257 6
+549 16
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/bit.rs
+378 42
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1181 70
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+665 30
+667 2
+668 16
+669 30
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/sub.rs
+13 72
+14 62
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/sub.rs
+0 4
+16 16
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=2 229
+0 28
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=2 229
+257 28
+
+fn=_ZN4k25610arithmetic6scalar202_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$GT$$u20$for$u20$generic_array_dot__dot_GenericArray$LT$u8$C$$LT$k256_dot__dot_Secp256k1$u20$as$u20$elliptic_curve_dot__dot_Curve$GT$_dot__dot_FieldBytesSize$GT$$GT$4from17h25140c5fdc970243E
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs
+1887 16
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1157 16
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/array.rs
+0 6
+54 544
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+746 2
+748 10
+
+fn=_ZN4k25610arithmetic6scalar206_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$$RF$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$GT$$u20$for$u20$generic_array_dot__dot_GenericArray$LT$u8$C$$LT$k256_dot__dot_Secp256k1$u20$as$u20$elliptic_curve_dot__dot_Curve$GT$_dot__dot_FieldBytesSize$GT$$GT$4from17hfac29f93e0905c9bE
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs
+1887 16
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1157 16
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint/array.rs
+0 6
+54 544
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+752 2
+754 10
+
+fn=_ZN4k2565ecdsa121_$LT$impl$u20$ecdsa_dot__dot_hazmat_dot__dot_VerifyPrimitive$LT$k256_dot__dot_Secp256k1$GT$$u20$for$u20$k256_dot__dot_arithmetic_dot__dot_affine_dot__dot_AffinePoint$GT$16verify_prehashed17h2c328e1524584d84E
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+0 20
+139 72
+160 2
+213 10
+257 34
+549 32
+703 8
+705 32
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field.rs
+120 10
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/convert/mod.rs
+758 22
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+0 10
+161 4
+163 10
+167 2
+169 2
+170 6
+173 8
+176 10
+177 2
+180 2
+181 2
+183 8
+185 2
+186 6
+189 8
+193 102
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/bit.rs
+0 2
+378 90
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+304 20
+306 6
+309 10
+504 6
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+0 12
+60 44
+285 6
+291 20
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/array/mod.rs
+439 132
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+0 6
+1157 282
+1181 144
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+385 16
+630 12
+667 4
+668 18
+673 192
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/sub.rs
+0 2
+13 200
+14 122
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/ct_choice.rs
+50 8
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/limb/cmp.rs
+38 64
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/ecdsa.rs
+0 52
+202 40
+203 2
+208 38
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ecdsa-0.16.9/src/lib.rs
+306 16
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ecdsa-0.16.9/src/hazmat.rs
+280 32
+283 16
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/elliptic-curve-0.13.8/src/scalar/nonzero.rs
+188 6
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/elliptic-curve-0.13.8/src/ops.rs
+187 50
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=4 229
+0 56
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+cfn=_ZN80_$LT$k256_dot__dot_arithmetic_dot__dot_scalar_dot__dot_Scalar$u20$as$u20$elliptic_curve_dot__dot_ops_dot__dot_Invert$GT$14invert_vartime17h7ac0da8af9706038E
+calls=2 434
+139 408266
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=12 229
+257 168
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=2 400
+257 138
+cfn=memcpy
+calls=2 410
+257 2
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+cfn=k256::arithmetic::projective::ProjectivePoint::to_affine::h3b230e4d6f9ef21d
+calls=2 75
+120 442616
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=_ZN13crypto_bigint9ct_choice106_$LT$impl$u20$core_dot__dot_convert_dot__dot_From$LT$crypto_bigint_dot__dot_ct_choice_dot__dot_CtChoice$GT$$u20$for$u20$subtle_dot__dot_Choice$GT$4from17h4af9a10c998c0d98E
+calls=10 257
+758 20
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=10 229
+758 140
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+cfn=k256::arithmetic::field::field_10x26::FieldElement10x26::normalize::h0b25a8bc05321f1e
+calls=2 312
+163 408
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=4 400
+304 276
+cfn=memcpy
+calls=4 410
+304 4
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/mul.rs
+cfn=k256::arithmetic::mul::lincomb::h7efa8ea2058c7b00
+calls=2 312
+504 2957946
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=2 400
+0 4838
+cfn=memcpy
+calls=2 410
+0 2
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=6 400
+60 7614
+cfn=memcpy
+calls=6 410
+60 6
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=2 400
+285 338
+cfn=memcpy
+calls=2 410
+285 2
+cfn=compiler_builtins::mem::memset::h05c59719a26c8b04
+calls=2 400
+291 236
+cfn=memset
+calls=2 410
+291 2
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=32 400
+439 7588
+cfn=memcpy
+calls=32 410
+439 32
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/projective.rs
+cfn=_ZN97_$LT$k256_dot__dot_arithmetic_dot__dot_projective_dot__dot_ProjectivePoint$u20$as$u20$subtle_dot__dot_ConditionallySelectable$GT$18conditional_select17hf5269de4feb6db98E
+calls=2 400
+673 450
+cfi=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/scalar.rs
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=2 111
+283 2508
+cfn=k256::arithmetic::scalar::Scalar::mul::hc3e6e342d7cea8fe
+calls=2 111
+187 2508
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/compiler_builtins-0.1.105/src/macros.rs
+cfn=compiler_builtins::mem::memcpy::h4f580c75a449fac1
+calls=6 400
+187 1094
+cfn=memcpy
+calls=6 410
+187 6
+
+fn=_ZN4k256129_$LT$impl$u20$elliptic_curve_dot__dot_field_dot__dot_FieldBytesEncoding$LT$k256_dot__dot_Secp256k1$GT$$u20$for$u20$crypto_bigint_dot__dot_uint_dot__dot_Uint$LT$_$GT$$GT$18decode_field_bytes17hf416fdf592fad04cE
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+1157 224
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/crypto-bigint-0.5.5/src/uint.rs
+105 32
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/lib.rs
+132 384
+133 4
+
+fn=k256::arithmetic::field::field_10x26::FieldElement10x26::normalize::h0b25a8bc05321f1e
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+0 3327
+257 3327
+549 39924
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+0 3327
+237 6654
+240 9981
+241 13308
+242 6654
+244 13308
+245 3327
+247 19962
+248 6654
+250 23289
+251 3327
+253 19962
+254 3327
+256 19962
+257 6654
+259 19962
+260 3327
+262 16635
+263 3327
+265 16635
+266 3327
+274 59886
+275 9981
+278 26616
+279 9981
+287 26616
+288 9981
+289 13308
+290 3327
+291 19962
+312 3327
+329 49905
+785 33270
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/bit.rs
+378 96483
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=3327 229
+0 46578
+
+fn=k256::arithmetic::field::field_10x26::FieldElement10x26::mul::h4df472a030914fa8
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+0 3404
+466 92
+467 92
+468 92
+469 92
+470 92
+471 92
+472 92
+473 92
+474 92
+475 92
+477 92
+478 92
+479 92
+480 92
+481 92
+482 92
+483 92
+484 92
+485 92
+486 92
+496 3680
+497 184
+498 184
+499 184
+500 184
+501 184
+502 184
+503 184
+504 184
+505 276
+508 368
+513 276
+516 368
+517 4876
+521 368
+522 736
+528 368
+529 552
+535 1196
+538 5428
+542 368
+543 736
+549 368
+550 552
+556 1840
+559 4324
+563 368
+564 828
+570 368
+571 552
+577 2576
+580 3864
+584 368
+585 828
+589 184
+590 368
+591 552
+597 3220
+600 3404
+604 368
+605 920
+609 276
+610 368
+611 644
+617 3864
+620 2576
+624 368
+625 828
+629 184
+630 368
+631 644
+637 4232
+640 1748
+644 368
+645 828
+649 184
+650 368
+651 552
+657 4600
+660 1288
+664 276
+665 1012
+671 184
+672 368
+673 552
+679 368
+680 5428
+683 460
+687 276
+688 736
+711 92
+712 368
+713 460
+718 1104
+721 184
+722 368
+723 828
+730 828
+733 92
+734 276
+739 1104
+744 184
+745 276
+751 276
+758 920
+764 1380
+766 1380
+
+fn=_ZN98_$LT$k256_dot__dot_arithmetic_dot__dot_field_dot__dot_field_10x26_dot__dot_FieldElement10x26$u20$as$u20$subtle_dot__dot_ConstantTimeEq$GT$5ct_eq17h4ce730cf00e6374fE
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+168 15741
+257 57717
+382 34980
+fl=/Users/steve/.cargo/git/checkouts/elliptic-curves-a4f0210f70283c37/ef621a3/k256/src/arithmetic/field/field_10x26.rs
+801 12243
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/bit.rs
+378 34980
+cfi=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=15741 229
+168 220374
+cfn=subtle::black_box::h7893a9e72daaa4ec
+calls=15741 229
+378 220374
+
+fn=__runtime_start
+fl=/Users/steve/.cargo/git/checkouts/powdr-5ad669c296f4e377/15f6208/riscv-runtime/src/lib.rs
+44 1
+
+fn=sha2::sha256::compress256::h430d9065f295ea76
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/sha2-0.10.8/src/sha256.rs
+0 455
+34 35
+40 525
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/sha2-0.10.8/src/sha256/soft.rs
+0 350
+7 1680
+17 13895
+22 3360
+66 1330
+67 1330
+68 1400
+69 1820
+101 2345
+102 3500
+105 7840
+118 2240
+119 3395
+122 5635
+210 315
+217 280
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs
+0 6860
+162 105
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/result.rs
+746 9765
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs
+0 770
+1157 88690
+fl=/Users/steve/.rustup/toolchains/nightly-2024-02-01-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/non_null.rs
+1796 35
+
+fn=subtle::black_box::h7893a9e72daaa4ec
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+229 415881
+243 231045
+
+fn=__ecall_handler
+fl=/Users/steve/.cargo/registry/src/index.crates.io-6f17d22bba15001f/subtle-2.5.0/src/lib.rs
+243 177646
+
