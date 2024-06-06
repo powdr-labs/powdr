@@ -523,9 +523,14 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 
     // ======aaaaaaaaaaaa=========
 
+    // Wraps a value in Y to 32 bits.
+    // Requires 0 <= Y < 2**33
+    // These are the old `wrap` instruction.
     instr add_new { val1 + val2 = val3' + wrap_bit * 2**32, val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
     instr add_new_2 Y { val1 + Y = val3' + wrap_bit * 2**32, val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
 
+    // Requires -2**32 <= Y < 2**32
+    // These are the old `wrap_signed` instruction.
     instr add_new_signed { (val1 - val2) + 2**32 = val3' + wrap_bit * 2**32, val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
     instr add_new_signed_2 Y { (-val1 + Y) + 2**32 = val3' + wrap_bit * 2**32, val3' = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
 
@@ -543,12 +548,6 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         .map(|s| format!("    {s}"))
         .join("\n")
         + r#"
-    // Wraps a value in Y to 32 bits.
-    // Requires 0 <= Y < 2**33
-    instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
-    instr wrap_new Y -> X { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
-    // Requires -2**32 <= Y < 2**32
-    instr wrap_signed Y -> X { Y + 2**32 = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
     col fixed bytes(i) { i & 0xff };
     col witness X_b1;
     col witness X_b2;
@@ -1092,17 +1091,17 @@ pub fn push_register(name: &str) -> Vec<String> {
 
     if let Some(reg) = name_to_register(name) {
         statements.push(format!("{} <== get_reg({});", reg, reg.addr()));
-        statements.push(format!("val1 <== get_reg({});", reg.addr()));
+        statements.push(format!("val2 <== get_reg({});", reg.addr()));
     }
 
     [
         statements,
         vec![
-            "val2 <== get_reg(2);".to_string(),
-            "x2 <== get_reg(2);".to_string(),
-            "x2 <=X= wrap(x2 - 4);".to_string(),
-            "set_reg 2, x2;".to_string(),
-            format!("mstore x2, {name};"),
+            "val1 <== get_reg(2);".to_string(),
+            "add_new_2 -4;".to_string(),
+            "set_reg 2, val3;".to_string(),
+            "val1 <== get_reg(2);".to_string(),
+            format!("mstore val1, val2;"),
         ],
     ]
     .concat()
@@ -1112,13 +1111,12 @@ pub fn push_register(name: &str) -> Vec<String> {
 pub fn pop_register(name: &str) -> Vec<String> {
     let mut instructions = vec![
         "val1 <== get_reg(2);".to_string(),
-        "x2 <== get_reg(2);".to_string(),
-        format!("{name}, tmp1 <== mload(x2);"),
-        "x2 <=X= wrap(x2 + 4);".to_string(),
-        "set_reg 2, x2;".to_string(),
+        format!("val2, tmp1 <== mload(val1);"),
+        "add_new_2 4;".to_string(),
+        "set_reg 2, val3;".to_string(),
     ];
     if let Some(reg) = name_to_register(name) {
-        instructions.push(format!("set_reg {}, {};", reg.addr(), reg));
+        instructions.push(format!("set_reg {}, val2;", reg.addr()));
     }
     instructions
 }
@@ -1939,9 +1937,12 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
 
             [
                 read_args(vec![rs1, rs2]),
+                // val1 = rs1, val2 = rs2
                 vec![
                     format!("tmp1, tmp2 <== mload({rs1});"),
-                    format!("tmp2 <== wrap(tmp1 + {rs2});"),
+                    format!("val1 <=X= tmp1;"),
+                    format!("add_new;"),
+                    format!("tmp2 <=X= val3;"),
                     format!("mstore {rs1}, tmp2;"),
                 ],
                 only_if_no_write_to_zero(format!("{rd} <=X= tmp1;"), rd),
