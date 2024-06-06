@@ -124,8 +124,8 @@ impl Runtime {
             Syscall::Input,
             [
                 "val1 <== get_reg(10);",
-                "x10 <=X= ${ std::prover::Query::Input(std::convert::int(std::prover::eval(x10))) };",
-                "set_reg 10, x10;"
+                "val3 <=X= ${ std::prover::Query::Input(std::convert::int(std::prover::eval(val1))) };",
+                "set_reg 10, val3;"
             ],
         );
 
@@ -134,8 +134,8 @@ impl Runtime {
             [
                 "val1 <== get_reg(10);",
                 "val2 <== get_reg(11);",
-                "x10 <=X= ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(x11)), std::convert::int(std::prover::eval(x10))) };",
-                "set_reg 10, x10;"
+                "val3 <=X= ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(val2)), std::convert::int(std::prover::eval(val1))) };",
+                "set_reg 10, val3;"
             ]
         );
 
@@ -146,7 +146,7 @@ impl Runtime {
             [
                 "val1 <== get_reg(10);",
                 "val2 <== get_reg(11);",
-                "x0 <=X= ${ std::prover::Query::Output(std::convert::int(std::prover::eval(x10)), std::convert::int(std::prover::eval(x11))) };"
+                "x0 <=X= ${ std::prover::Query::Output(std::convert::int(std::prover::eval(val1)), std::convert::int(std::prover::eval(val2))) };"
             ]
         );
 
