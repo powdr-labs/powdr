@@ -450,7 +450,7 @@ impl<'a> TypeChecker<'a> {
     ) -> Result<(), Error> {
         self.infer_type_of_expression(expr).and_then(|ty| {
             let ty = self.type_into_substituted(ty);
-            let expected_type = if expected_type.allow_array & matches!(ty, Type::Array(_)) {
+            let expected_type = if expected_type.allow_array && matches!(ty, Type::Array(_)) {
                 Type::Array(ArrayType {
                     base: Box::new(expected_type.ty.clone()),
                     length: None,
