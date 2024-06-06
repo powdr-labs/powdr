@@ -11,6 +11,7 @@ repository = { workspace = true }
 powdr-ast.workspace = true
 powdr-number.workspace = true
 powdr-parser.workspace = true
+powdr-parser-util.workspace = true
 
 pretty_assertions = "1.4.0"
 

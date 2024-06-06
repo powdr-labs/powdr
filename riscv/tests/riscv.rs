@@ -196,6 +196,13 @@ fn runtime_affine_256() {
     verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
 }
 
+#[test]
+#[ignore = "Too slow"]
+fn runtime_modmul_256() {
+    let case = "modmul_256";
+    verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
+}
+
 /*
 mstore(0, 666)
 return(0, 32)

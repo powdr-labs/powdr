@@ -1334,7 +1334,7 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
         }
 
         // jump and call
-        "j" => {
+        "j" | "tail" => {
             let label = args.l()?;
             vec![format!("tmp1 <== jump({label});",)]
         }
@@ -1366,10 +1366,9 @@ fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<St
                 format!("{rd} <== jump_dyn({rs});")
             }
         }],
-        "call" | "tail" => {
+        "call" => {
             let label = args.l()?;
-            let dest = if instr == "tail" { "tmp1" } else { "x1" };
-            vec![format!("{dest} <== jump({label});")]
+            vec![format!("x1 <== jump({label});")]
         }
         "ecall" => {
             args.empty()?;
