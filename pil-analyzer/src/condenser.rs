@@ -18,7 +18,6 @@ use powdr_ast::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        SelectedExpressions,
     },
 };
 use powdr_number::{DegreeType, FieldElement};
@@ -169,7 +168,7 @@ pub struct Condenser<'a, T> {
     new_witnesses: Vec<Symbol>,
     /// The names of all new witness columns ever generated, to avoid duplicates.
     all_new_witness_names: HashSet<String>,
-    new_constraints: Vec<IdentityWithoutID<AlgebraicExpression<T>>>,
+    new_constraints: Vec<IdentityWithoutID<T>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -178,8 +177,8 @@ pub struct IdentityWithoutID<Expr> {
     pub source: SourceRef,
     /// For a simple polynomial identity, the selector contains
     /// the actual expression (see expression_for_poly_id).
-    pub left: SelectedExpressions<Expr>,
-    pub right: SelectedExpressions<Expr>,
+    pub left: powdr_ast::analyzed::SelectedExpressions<Expr>,
+    pub right: powdr_ast::analyzed::SelectedExpressions<Expr>,
 }
 
 impl<Expr> IdentityWithoutID<Expr> {
@@ -188,7 +187,7 @@ impl<Expr> IdentityWithoutID<Expr> {
         Self {
             kind: IdentityKind::Polynomial,
             source,
-            left: SelectedExpressions {
+            left: powdr_ast::analyzed::SelectedExpressions {
                 selector: Some(identity),
                 expressions: vec![],
             },
@@ -274,24 +273,20 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Returns the new constraints generated since the last call to this function.
-    pub fn extract_new_constraints(&mut self) -> Vec<IdentityWithoutID<AlgebraicExpression<T>>> {
+    pub fn extract_new_constraints(&mut self) -> Vec<IdentityWithoutID<T>> {
         std::mem::take(&mut self.new_constraints)
     }
 
     fn condense_selected_expressions(
         &mut self,
-        sel_expr: &'a SelectedExpressions<Expression>,
-    ) -> SelectedExpressions<AlgebraicExpression<T>> {
-        SelectedExpressions {
+        sel_expr: &'a powdr_ast::parsed::SelectedExpressions<Expression>,
+    ) -> powdr_ast::analyzed::SelectedExpressions<T> {
+        powdr_ast::analyzed::SelectedExpressions {
             selector: sel_expr
                 .selector
                 .as_ref()
                 .map(|expr| self.condense_to_algebraic_expression(expr)),
-            expressions: sel_expr
-                .expressions
-                .iter()
-                .map(|expr| self.condense_to_algebraic_expression(expr))
-                .collect(),
+            expressions: self.condense_to_array_of_algebraic_expressions(&sel_expr.expressions),
         }
     }
 
@@ -447,11 +442,11 @@ fn to_constraint<T: FieldElement>(
             IdentityWithoutID {
                 kind: IdentityKind::Connect,
                 source,
-                left: SelectedExpressions {
+                left: analyzed::SelectedExpressions {
                     selector: None,
                     expressions: to_vec_expr(&fields[0]),
                 },
-                right: SelectedExpressions {
+                right: analyzed::SelectedExpressions {
                     selector: None,
                     expressions: to_vec_expr(&fields[1]),
                 },
@@ -465,7 +460,7 @@ fn to_selected_exprs<'a, T: Clone>(
     selector: &Value<'a, T>,
     exprs: &Value<'a, T>,
 ) -> SelectedExpressions<AlgebraicExpression<T>> {
-    SelectedExpressions {
+    analyzed::SelectedExpressions {
         selector: to_option_expr(selector),
         expressions: to_vec_expr(exprs),
     }

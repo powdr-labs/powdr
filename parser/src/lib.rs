@@ -225,11 +225,11 @@ mod test {
                 },
                 SelectedExpressions {
                     selector: None,
-                    expressions: vec![direct_reference("f")]
+                    expressions: Box::new(direct_reference("f"))
                 },
                 SelectedExpressions {
                     selector: None,
-                    expressions: vec![direct_reference("g")]
+                    expressions: Box::new(direct_reference("g"))
                 }
             )])
         );

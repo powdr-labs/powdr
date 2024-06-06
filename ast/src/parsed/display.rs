@@ -577,6 +577,20 @@ impl<E: Display> EnumDeclaration<E> {
     }
 }
 
+impl Display for SelectedExpressions {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}{{ {} }}",
+            self.selector
+                .as_ref()
+                .map(|s| format!("{s} "))
+                .unwrap_or_default(),
+            self.expressions
+        )
+    }
+}
+
 impl<E: Display> Display for EnumVariant<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.name)?;

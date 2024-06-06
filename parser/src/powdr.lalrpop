@@ -208,8 +208,7 @@ PlookupIdentity: PilStatement = {
 }
 
 SelectedExpressions: SelectedExpressions<Expression> = {
-    <selector:(<Expression> "$")?> "[" <expressions:ExpressionList> "]" => SelectedExpressions{<>},
-    Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
+    <selector:(<Expression> "$")?> <expr:Expression> => SelectedExpressions{selector, expressions: Box::new(expr)},
 }
 
 PermutationIdentityStatement: PilStatement = {
@@ -630,7 +629,7 @@ IfExpression: Box<Expression> = {
 
 
 BlockExpression: Box<Expression> = {
-    <start:@L> "{" <statements:StatementInsideBlock*> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![]))}, start, end),
+    <start:@L> "{" <statements:StatementInsideBlock*> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr: Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![]))}, start, end),
     <start:@L> "{" <statements:StatementInsideBlock*> <expr:BoxedExpression> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
 }
 

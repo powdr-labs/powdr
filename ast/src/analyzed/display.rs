@@ -267,25 +267,7 @@ impl Display for RepeatedArray {
     }
 }
 
-impl Display for Identity<Expression> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.kind {
-            IdentityKind::Polynomial => {
-                let (left, right) = self.as_polynomial_identity();
-                let right = right
-                    .as_ref()
-                    .map(|r| r.to_string())
-                    .unwrap_or_else(|| "0".into());
-                write!(f, "{left} = {right};")
-            }
-            IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
-            IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
-            IdentityKind::Connect => write!(f, "{} connect {};", self.left, self.right),
-        }
-    }
-}
-
-impl<T: Display> Display for Identity<AlgebraicExpression<T>> {
+impl<T: Display> Display for Identity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self.kind {
             IdentityKind::Polynomial => {

@@ -307,29 +307,33 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SelectedExpressions<Expr> {
-    pub selector: Option<Expr>,
-    pub expressions: Vec<Expr>,
+pub struct SelectedExpressions<E = Expression<NamespacedPolynomialReference>> {
+    pub selector: Option<E>,
+    pub expressions: Box<E>,
 }
 
-impl<Expr> Default for SelectedExpressions<Expr> {
+impl<T> Default for SelectedExpressions<Expression<T>> {
     fn default() -> Self {
         Self {
             selector: Default::default(),
-            expressions: Default::default(),
+            expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
         }
     }
 }
 
-impl<Expr> Children<Expr> for SelectedExpressions<Expr> {
+impl Children<Expression> for SelectedExpressions {
     /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
-    fn children(&self) -> Box<dyn Iterator<Item = &Expr> + '_> {
-        Box::new(self.selector.iter().chain(self.expressions.iter()))
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(self.selector.iter().chain(self.expressions.children()))
     }
 
     /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expr> + '_> {
-        Box::new(self.selector.iter_mut().chain(self.expressions.iter_mut()))
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(
+            self.selector
+                .iter_mut()
+                .chain(self.expressions.children_mut()),
+        )
     }
 }
 
