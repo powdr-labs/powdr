@@ -20,7 +20,7 @@ pub struct QueryProcessor<'a, 'b, 'c, T: FieldElement, QueryCallback: Send + Syn
     query_callback: &'b mut QueryCallback,
     // TODO the cache should really be somewhere else, possibly inside Definitions
     cache: &'c Mutex<BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>>,
-    shortcut_exec: &'c ShortcutExec<'a, T>,
+    //shortcut_exec: &'c ShortcutExec<'a, T>,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>>
@@ -30,13 +30,13 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         fixed_data: &'a FixedData<'a, T>,
         query_callback: &'b mut QueryCallback,
         cache: &'c Mutex<BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>>,
-        shortcut_exec: &'c ShortcutExec<'a, T>,
+        //shortcut_exec: &'c ShortcutExec<'a, T>,
     ) -> Self {
         Self {
             fixed_data,
             query_callback,
             cache,
-            shortcut_exec,
+            //shortcut_exec,
         }
     }
 
@@ -120,27 +120,27 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         rows: &'d RowPair<T>,
     ) -> Result<(String, Vec<(&'a AlgebraicReference, T)>), EvalError> {
         let use_rust = false;
-        if use_rust {
-            match query {
-                Expression::LambdaExpression(_, LambdaExpression { body, .. }) => {
-                    match body.as_ref() {
-                        Expression::FunctionCall(_, FunctionCall { function, .. }) => {
-                            match function.as_ref() {
-                                Expression::Reference(
-                                    _,
-                                    Reference::Poly(PolynomialReference { name, .. }),
-                                ) if name == "main.all_prover_hints" => {
-                                    return self.shortcut_exec.shortcut_exec(self.fixed_data, rows);
-                                }
-                                _ => {}
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                _ => {}
-            }
-        }
+        // if use_rust {
+        //     match query {
+        //         Expression::LambdaExpression(_, LambdaExpression { body, .. }) => {
+        //             match body.as_ref() {
+        //                 Expression::FunctionCall(_, FunctionCall { function, .. }) => {
+        //                     match function.as_ref() {
+        //                         Expression::Reference(
+        //                             _,
+        //                             Reference::Poly(PolynomialReference { name, .. }),
+        //                         ) if name == "main.all_prover_hints" => {
+        //                             return self.shortcut_exec.shortcut_exec(self.fixed_data, rows);
+        //                         }
+        //                         _ => {}
+        //                     }
+        //                 }
+        //                 _ => {}
+        //             }
+        //         }
+        //         _ => {}
+        //     }
+        // }
         let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
             rows.current_row_index,
         ))))];
