@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::{
     ast::{Argument, BinaryOpKind, Expression, FunctionOpKind, Register, Statement},
     utils::{alignment_size, split_at_first},
@@ -63,6 +65,16 @@ impl DataSections {
     fn append_section(&mut self) {
         self.sections.push(Vec::new())
     }
+
+    fn add_empty_section(&mut self, label: String) {
+        self.sections.push(vec![(Some(label), Vec::new())]);
+
+        // If there are other sections, the previous one is the active one, so we swap.
+        let len = self.sections.len();
+        if len > 1 {
+            self.sections.swap(len - 1, len - 2);
+        }
+    }
 }
 
 /// Extract all data objects from the list of statements.
@@ -70,7 +82,11 @@ impl DataSections {
 /// in the order in which they occur in the statements.
 pub fn extract_data_objects<R: Register, F: FunctionOpKind>(
     statements: &[Statement<R, F>],
-) -> Vec<Vec<(Option<String>, Vec<DataValue>)>> {
+) -> (
+    Vec<Vec<(Option<String>, Vec<DataValue>)>>,
+    BTreeMap<String, u32>,
+) {
+    let mut adhoc_symbols = BTreeMap::new();
     let mut data = DataSections::new();
 
     let mut is_in_data_section = false;
@@ -142,6 +158,18 @@ pub fn extract_data_objects<R: Register, F: FunctionOpKind>(
                         ));
                     }
                 }
+                (
+                    ".set",
+                    [Argument::Expression(Expression::Symbol(label)), Argument::Expression(Expression::Number(value))],
+                ) => {
+                    // This is a directive that sets a symbol to a value. We
+                    // create a phantom empty data section so reachability is
+                    // happy, but we also save it so we can replace the symbol
+                    // with the value when needed.
+                    data.add_empty_section(label.clone());
+                    adhoc_symbols.insert(label.clone(), *value as u32);
+                }
+
                 (n @ ".balign" | n @ ".p2align", arg) => {
                     // TODO: implement last optional argument of .balign and .p2align
                     unimplemented!("{n} {arg:?}");
@@ -151,7 +179,7 @@ pub fn extract_data_objects<R: Register, F: FunctionOpKind>(
             _ => {}
         }
     }
-    data.sections
+    (data.sections, adhoc_symbols)
 }
 
 fn is_data_section<R: Register, F: FunctionOpKind>(arg: &Argument<R, F>) -> bool {

@@ -34,7 +34,7 @@ struct AsmProgram {
     statements: Vec<Statement>,
 }
 
-const START_FUNCTION: &str = "__stack_setup";
+const START_FUNCTION: &str = "__runtime_start";
 
 impl<'a> RiscVProgram<'a> for AsmProgram {
     type InstructionArgs = [Argument];
@@ -203,7 +203,7 @@ fn compile_internal(mut assemblies: BTreeMap<String, String>) -> AsmProgram {
             .map(|(name, contents)| (name, parse_asm(RiscParser::default(), &contents)))
             .collect(),
     );
-    let mut data_sections = data_parser::extract_data_objects(&statements);
+    let (mut data_sections, mut data_positions) = data_parser::extract_data_objects(&statements);
 
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)
@@ -217,10 +217,14 @@ fn compile_internal(mut assemblies: BTreeMap<String, String>) -> AsmProgram {
     replace_dynamic_label_references(&mut statements, &data_labels);
 
     let mut mem_entries = Vec::new();
-    let data_positions =
-        store_data_objects(data_sections, data_start, &mut |label, addr, value| {
+    store_data_objects(
+        data_sections,
+        data_start,
+        &mut |label, addr, value| {
             mem_entries.push(MemEntry { label, addr, value });
-        });
+        },
+        &mut data_positions,
+    );
 
     let statements = substitute_symbols_with_values(statements, &data_positions);
 
@@ -395,6 +399,10 @@ fn process_statement(s: &Statement) -> Option<code_gen::Statement<&str, [Argumen
                 // We ignore ".size" directives
                 None
             }
+            (".option", _) => {
+                // We ignore ".option" directives
+                None
+            }
             _ if directive.starts_with(".cfi_") => None,
             _ => panic!(
                 "Leftover directive in code: {directive} {}",
@@ -557,19 +565,24 @@ fn global_declarations(stack_start: u32) -> String {
             .join("\n\n")
         +
         // some extra symbols expected by rust code:
-        // - __rust_no_alloc_shim_is_unstable: compilation time acknowledgment that this feature is unstable.
-        // - __rust_alloc_error_handler_should_panic: needed by the default alloc error handler,
-        //   not sure why it's not present in the asm.
+        // - __rust_no_alloc_shim_is_unstable: compilation time acknowledgment
+        //   that this feature is unstable.
+        // - __rust_alloc_error_handler_should_panic: needed by the default
+        //   alloc error handler, not sure why it's not present in the asm.
         //   https://github.com/rust-lang/rust/blob/ae9d7b0c6434b27e4e2effe8f05b16d37e7ef33f/library/alloc/src/alloc.rs#L415
+        // - __stack_start: the start of the stack
+        // - __global_pointer$: a RISC-V special symbol that we actually don't
+        //   use, but we define for compatibility with programs that expect it.
         &format!(r".data
 .globl __rust_alloc_error_handler_should_panic
 __rust_alloc_error_handler_should_panic: .byte 0
 .globl __rust_no_alloc_shim_is_unstable
 __rust_no_alloc_shim_is_unstable: .byte 0
+.globl __powdr_stack_start
+.set __powdr_stack_start, {stack_start}
+.globl __global_pointer$
+.set __global_pointer$, 0
+
 .text
-.globl __stack_setup
-__stack_setup:
-li sp, {stack_start}
-tail __runtime_start
 ")
 }
