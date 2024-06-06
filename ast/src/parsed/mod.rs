@@ -321,14 +321,14 @@ impl<T> Default for SelectedExpressions<Expression<T>> {
     }
 }
 
-impl Children<Expression> for SelectedExpressions {
+impl<T> Children<Expression<T>> for SelectedExpressions<Expression<T>> {
     /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<T>> + '_> {
         Box::new(self.selector.iter().chain(self.expressions.children()))
     }
 
     /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<T>> + '_> {
         Box::new(
             self.selector
                 .iter_mut()

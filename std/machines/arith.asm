@@ -442,12 +442,12 @@ machine Arith with
     // while still preventing overflows: The 32-bit carry gets added to 32 48-Bit values, which can't overflow
     // the Goldilocks field.
     pol witness carry_low[3], carry_high[3];
-    { carry_low[0] } in { BYTE2 };
-    { carry_low[1] } in { BYTE2 };
-    { carry_low[2] } in { BYTE2 };
-    { carry_high[0] } in { BYTE2 };
-    { carry_high[1] } in { BYTE2 };
-    { carry_high[2] } in { BYTE2 };
+    [ carry_low[0] ] in [ BYTE2 ];
+    [ carry_low[1] ] in [ BYTE2 ];
+    [ carry_low[2] ] in [ BYTE2 ];
+    [ carry_high[0] ] in [ BYTE2 ];
+    [ carry_high[1] ] in [ BYTE2 ];
+    [ carry_high[2] ] in [ BYTE2 ];
 
     // Carries can be any integer in the range [-2**31, 2**31 - 1)
     let carry: expr[3] = array::new(3, |i| carry_high[i] * 2**16 + carry_low[i] - 2 ** 31);

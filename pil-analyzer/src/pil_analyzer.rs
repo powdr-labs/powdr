@@ -12,7 +12,8 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+    self, ArrayLiteral, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
+    SymbolCategory,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
@@ -63,7 +64,7 @@ struct PILAnalyzer {
     /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    identities: Vec<Identity<Expression>>,
+    identities: Vec<Identity<SelectedExpressions<Expression>>>,
     /// The order in which definitions and identities
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
@@ -287,8 +288,14 @@ impl PILAnalyzer {
                     if let Some(selector) = &mut part.selector {
                         expressions.push((selector, Type::Expr.into()))
                     }
-                    for e in &mut part.expressions {
-                        expressions.push((e, Type::Expr.into()))
+                    if let Expression::ArrayLiteral(_, ArrayLiteral { items }) =
+                        part.expressions.as_mut()
+                    {
+                        for e in items.iter_mut() {
+                            expressions.push((e, Type::Expr.into()))
+                        }
+                    } else {
+                        unreachable!("Invalid expression") // TODO: better error handling
                     }
                 }
             }

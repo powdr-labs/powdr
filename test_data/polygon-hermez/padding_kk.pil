@@ -47,14 +47,14 @@ namespace PaddingKK(%N);
     firstHash' = lastHash;
 
     pol aFreeIn = (1 - (remIsZero + spare))*freeIn + remIsZero + lastHash*0x80;
-    r8valid {aFreeIn, r8Id, connected} in { PaddingKKBit.r8, PaddingKKBit.r8Id, PaddingKKBit.connected };
+    r8valid $ [aFreeIn, r8Id, connected] in [ PaddingKKBit.r8, PaddingKKBit.r8Id, PaddingKKBit.connected ];
 
     connected' * ( 1-lastBlock) = connected * (1-lastBlock);
     connected'*lastBlock = (1 - lastHash)*lastBlock;
 
     pol constant sOutId;
 
-    lastHashLatch {
+    lastHashLatch $ [
         hash0,
         hash1,
         hash2,
@@ -64,7 +64,7 @@ namespace PaddingKK(%N);
         hash6,
         hash7,
         sOutId
-     } in {
+     ] in [
         PaddingKKBit.sOut0,
         PaddingKKBit.sOut1,
         PaddingKKBit.sOut2,
@@ -74,7 +74,7 @@ namespace PaddingKK(%N);
         PaddingKKBit.sOut6,
         PaddingKKBit.sOut7,
         PaddingKKBit.sOutId
-     };
+     ];
 
     pol constant forceLastHash;
     (1-lastHash)*forceLastHash = 0;   // Force first block to be the beggining

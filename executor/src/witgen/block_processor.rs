@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID, SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
@@ -22,7 +22,7 @@ use super::{
 pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     processor: Processor<'a, 'b, 'c, T, Q>,
     /// The list of identities
-    identities: &'c [&'a Identity<Expression<T>>],
+    identities: &'c [&'a Identity<SelectedExpressions<Expression<T>>>],
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
@@ -30,7 +30,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         row_offset: RowIndex,
         data: FinalizableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
-        identities: &'c [&'a Identity<Expression<T>>],
+        identities: &'c [&'a Identity<SelectedExpressions<Expression<T>>>],
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
@@ -43,7 +43,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 
     pub fn from_processor(
         processor: Processor<'a, 'b, 'c, T, Q>,
-        identities: &'c [&'a Identity<Expression<T>>],
+        identities: &'c [&'a Identity<SelectedExpressions<Expression<T>>>],
     ) -> Self {
         Self {
             processor,

@@ -9,8 +9,8 @@ use powdr_ast::{
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BinaryOperation, BlockExpression,
         IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
-        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
-        SymbolCategory, UnaryOperation,
+        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, SourceReference,
+        StatementInsideBlock, SymbolCategory, UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
@@ -44,7 +44,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     ) -> SelectedExpressions<Expression> {
         SelectedExpressions {
             selector: expr.selector.map(|e| self.process_expression(e)),
-            expressions: self.process_expressions(expr.expressions),
+            expressions: Box::new(self.process_expression(*expr.expressions)),
         }
     }
 
@@ -82,6 +82,23 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             .into_iter()
             .map(|e| self.process_expression(e))
             .collect()
+    }
+
+    pub fn process_vec_into_array_literal(&mut self, exprs: Vec<parsed::Expression>) -> Expression {
+        let unknown = SourceRef::unknown();
+        let src = exprs
+            .first()
+            .map(|e| e.source_reference())
+            .unwrap_or(&unknown);
+        Expression::ArrayLiteral(
+            src.clone(),
+            ArrayLiteral {
+                items: exprs
+                    .into_iter()
+                    .map(|e| self.process_expression(e))
+                    .collect(),
+            },
+        )
     }
 
     pub fn process_expression(&mut self, expr: parsed::Expression) -> Expression {

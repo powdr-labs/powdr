@@ -7,6 +7,7 @@ use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind,
+    SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
@@ -126,7 +127,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     /// Returns the updates.
     pub fn process_identity(
         &mut self,
-        identity: &'a Identity<Expression<T>>,
+        identity: &'a Identity<SelectedExpressions<Expression<T>>>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         let result = match identity.kind {
@@ -148,7 +149,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
     fn process_polynomial_identity(
         &self,
-        identity: &'a Identity<Expression<T>>,
+        identity: &'a Identity<SelectedExpressions<Expression<T>>>,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
         match rows.evaluate(identity.expression_for_poly_id()) {
@@ -159,7 +160,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
     fn process_plookup(
         &mut self,
-        identity: &'a Identity<Expression<T>>,
+        identity: &'a Identity<SelectedExpressions<Expression<T>>>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         if let Some(left_selector) = &identity.left.selector {
@@ -290,7 +291,7 @@ lazy_static! {
 }
 
 fn report_identity_solving<T: FieldElement, K>(
-    identity: &Identity<Expression<T>>,
+    identity: &Identity<SelectedExpressions<Expression<T>>>,
     result: &EvalResult<T, K>,
 ) {
     let success = result.as_ref().map(|r| r.is_complete()).unwrap_or_default() as u64;

@@ -528,19 +528,19 @@ namespace Main(%N);
     (1 - hashP1) * hashP1 = 0;
     (1 - useElseAddr) * useElseAddr = 0;
 
-    {
+    [
         CONST0, CONST1, CONST2, CONST3, CONST4, CONST5, CONST6, CONST7,
         inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE,
         inCTX, inSP, inPC, inGAS, inMAXMEM, inHASHPOS, inSTEP, inRR, inHASHPOS, inRCX,
         inCntArith, inCntBinary, inCntKeccakF, inCntMemAlign, inCntPaddingPG, inCntPoseidonG,
         operations, offset, incStack, binOpcode, jmpAddr, elseAddr, zkPC
-    } in {
+     ] in [
         Rom.CONST0, Rom.CONST1, Rom.CONST2, Rom.CONST3, Rom.CONST4, Rom.CONST5, Rom.CONST6, Rom.CONST7,
         Rom.inA, Rom.inB, Rom.inC, Rom.inROTL_C, Rom.inD, Rom.inE, Rom.inSR, Rom.inFREE,
         Rom.inCTX, Rom.inSP, Rom.inPC, Rom.inGAS, Rom.inMAXMEM, Rom.inHASHPOS, Rom.inSTEP, Rom.inRR, Rom.inHASHPOS, Rom.inRCX,
         Rom.inCntArith, Rom.inCntBinary, Rom.inCntKeccakF, Rom.inCntMemAlign, Rom.inCntPaddingPG, Rom.inCntPoseidonG,
         Rom.operations, Rom.offset, Rom.incStack, Rom.binOpcode, Rom.jmpAddr, Rom.elseAddr, Rom.line
-    };
+     ];
 
     pol commit sKeyI[4];
     pol commit sKey[4];

@@ -1,5 +1,5 @@
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID, SelectedExpressions,
 };
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -24,9 +24,9 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
-    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<SelectedExpressions<Expression<T>>>>,
     fixed_data: &'a FixedData<'a, T>,
-    identities: Vec<&'a Identity<Expression<T>>>,
+    identities: Vec<&'a Identity<SelectedExpressions<Expression<T>>>>,
     witnesses: HashSet<PolyID>,
     data: FinalizableData<'a, T>,
     latch: Option<Expression<T>>,
@@ -109,8 +109,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
-        identities: Vec<&'a Identity<Expression<T>>>,
+        connecting_identities: &BTreeMap<u64, &'a Identity<SelectedExpressions<Expression<T>>>>,
+        identities: Vec<&'a Identity<SelectedExpressions<Expression<T>>>>,
         witnesses: HashSet<PolyID>,
         latch: Option<Expression<T>>,
     ) -> Self {

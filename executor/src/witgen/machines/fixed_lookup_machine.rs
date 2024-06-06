@@ -6,8 +6,8 @@ use std::num::NonZeroUsize;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
+    SelectedExpressions,
 };
-use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::FieldElement;
 
 use crate::witgen::affine_expression::AffineExpression;

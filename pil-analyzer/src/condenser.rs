@@ -11,10 +11,11 @@ use std::{
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-        Identity, IdentityKind, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol,
-        SymbolKind,
+        Identity, IdentityKind, PolynomialType, PublicDeclaration, SelectedExpressions,
+        StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
+        self,
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
@@ -32,7 +33,7 @@ pub fn condense<T: FieldElement>(
     degree: Option<DegreeType>,
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
-    identities: &[Identity<Expression>],
+    identities: &[Identity<parsed::SelectedExpressions<Expression>>],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
@@ -168,7 +169,7 @@ pub struct Condenser<'a, T> {
     new_witnesses: Vec<Symbol>,
     /// The names of all new witness columns ever generated, to avoid duplicates.
     all_new_witness_names: HashSet<String>,
-    new_constraints: Vec<IdentityWithoutID<T>>,
+    new_constraints: Vec<IdentityWithoutID<AlgebraicExpression<T>>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -195,7 +196,7 @@ impl<Expr> IdentityWithoutID<Expr> {
         }
     }
 
-    pub fn into_identity(self, id: u64) -> Identity<Expr> {
+    pub fn into_identity(self, id: u64) -> Identity<SelectedExpressions<Expr>> {
         Identity {
             id,
             kind: self.kind,
@@ -233,7 +234,10 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         }
     }
 
-    pub fn condense_identity(&mut self, identity: &'a Identity<Expression>) {
+    pub fn condense_identity(
+        &mut self,
+        identity: &'a Identity<parsed::SelectedExpressions<Expression>>,
+    ) {
         if identity.kind == IdentityKind::Polynomial {
             let expr = identity.expression_for_poly_id();
             evaluator::evaluate(expr, self)
@@ -273,14 +277,14 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Returns the new constraints generated since the last call to this function.
-    pub fn extract_new_constraints(&mut self) -> Vec<IdentityWithoutID<T>> {
+    pub fn extract_new_constraints(&mut self) -> Vec<IdentityWithoutID<AlgebraicExpression<T>>> {
         std::mem::take(&mut self.new_constraints)
     }
 
     fn condense_selected_expressions(
         &mut self,
         sel_expr: &'a powdr_ast::parsed::SelectedExpressions<Expression>,
-    ) -> powdr_ast::analyzed::SelectedExpressions<T> {
+    ) -> powdr_ast::analyzed::SelectedExpressions<AlgebraicExpression<T>> {
         powdr_ast::analyzed::SelectedExpressions {
             selector: sel_expr
                 .selector
@@ -442,11 +446,11 @@ fn to_constraint<T: FieldElement>(
             IdentityWithoutID {
                 kind: IdentityKind::Connect,
                 source,
-                left: analyzed::SelectedExpressions {
+                left: powdr_ast::analyzed::SelectedExpressions {
                     selector: None,
                     expressions: to_vec_expr(&fields[0]),
                 },
-                right: analyzed::SelectedExpressions {
+                right: powdr_ast::analyzed::SelectedExpressions {
                     selector: None,
                     expressions: to_vec_expr(&fields[1]),
                 },
@@ -459,8 +463,8 @@ fn to_constraint<T: FieldElement>(
 fn to_selected_exprs<'a, T: Clone>(
     selector: &Value<'a, T>,
     exprs: &Value<'a, T>,
-) -> SelectedExpressions<AlgebraicExpression<T>> {
-    analyzed::SelectedExpressions {
+) -> powdr_ast::analyzed::SelectedExpressions<AlgebraicExpression<T>> {
+    powdr_ast::analyzed::SelectedExpressions {
         selector: to_option_expr(selector),
         expressions: to_vec_expr(exprs),
     }

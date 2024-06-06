@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, HashSet};
 
-use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
 };
+use powdr_ast::analyzed::{PolynomialType, SelectedExpressions};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
@@ -27,7 +27,7 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
     /// Rows of the calling machine.
     pub caller_rows: &'b RowPair<'b, 'a, T>,
     /// Connecting identity.
-    pub connecting_identity: &'a Identity<Expression<T>>,
+    pub connecting_identity: &'a Identity<SelectedExpressions<Expression<T>>>,
     /// The left side of the connecting identity, evaluated.
     pub left: Left<'a, T>,
 }
@@ -35,7 +35,7 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
 impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
     pub fn new(
         caller_rows: &'b RowPair<'b, 'a, T>,
-        connecting_identity: &'a Identity<Expression<T>>,
+        connecting_identity: &'a Identity<SelectedExpressions<Expression<T>>>,
     ) -> Self {
         // Evaluate once, for performance reasons.
         let left = connecting_identity
@@ -194,7 +194,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     pub fn process_identity(
         &mut self,
         row_index: usize,
-        identity: &'a Identity<Expression<T>>,
+        identity: &'a Identity<SelectedExpressions<Expression<T>>>,
         unknown_strategy: UnknownStrategy,
     ) -> Result<IdentityResult, EvalError<T>> {
         // Create row pair
@@ -476,7 +476,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         &mut self,
         row_index: usize,
         proposed_row: &Row<'a, T>,
-        identity: &'a Identity<Expression<T>>,
+        identity: &'a Identity<SelectedExpressions<Expression<T>>>,
         // This could be computed from the identity, but should be pre-computed for performance reasons.
         has_next_reference: bool,
     ) -> bool {

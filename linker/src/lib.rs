@@ -8,7 +8,7 @@ use powdr_ast::{
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, namespaced_reference},
-        PILFile, PilStatement, SelectedExpressions, TypedExpression,
+        ArrayLiteral, PILFile, PilStatement, SelectedExpressions, TypedExpression,
     },
 };
 use powdr_parser_util::SourceRef;
@@ -146,10 +146,15 @@ fn process_link(link: Link) -> PilStatement {
         // permutation lhs is `flag { operation_id, inputs, outputs }`
         let lhs = SelectedExpressions {
             selector: Some(from.flag),
-            expressions: op_id
-                .chain(from.params.inputs)
-                .chain(from.params.outputs)
-                .collect(),
+            expressions: Box::new(
+                ArrayLiteral {
+                    items: op_id
+                        .chain(from.params.inputs)
+                        .chain(from.params.outputs)
+                        .collect(),
+                }
+                .into(),
+            ),
         };
 
         // permutation rhs is `(latch * selector[idx]) { operation_id, inputs, outputs }`
@@ -172,24 +177,35 @@ fn process_link(link: Link) -> PilStatement {
 
         let rhs = SelectedExpressions {
             selector: rhs_selector,
-            expressions: op_id
-                .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                    index_access(
-                        namespaced_reference(to_namespace.clone(), &i.name),
-                        i.index.clone(),
-                    )
-                }))
-                .collect(),
+            expressions: Box::new(
+                ArrayLiteral {
+                    items: op_id
+                        .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                            index_access(
+                                namespaced_reference(to_namespace.clone(), &i.name),
+                                i.index.clone(),
+                            )
+                        }))
+                        .collect(),
+                }
+                .into(),
+            ),
         };
+
         PilStatement::PermutationIdentity(SourceRef::unknown(), lhs, rhs)
     } else {
         // plookup lhs is `flag { operation_id, inputs, outputs }`
         let lhs = SelectedExpressions {
             selector: Some(from.flag),
-            expressions: op_id
-                .chain(from.params.inputs)
-                .chain(from.params.outputs)
-                .collect(),
+            expressions: Box::new(
+                ArrayLiteral {
+                    items: op_id
+                        .chain(from.params.inputs)
+                        .chain(from.params.outputs)
+                        .collect(),
+                }
+                .into(),
+            ),
         };
 
         let to_namespace = to.machine.location.clone().to_string();
@@ -207,14 +223,19 @@ fn process_link(link: Link) -> PilStatement {
 
         let rhs = SelectedExpressions {
             selector: latch,
-            expressions: op_id
-                .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                    index_access(
-                        namespaced_reference(to_namespace.clone(), &i.name),
-                        i.index.clone(),
-                    )
-                }))
-                .collect(),
+            expressions: Box::new(
+                ArrayLiteral {
+                    items: op_id
+                        .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                            index_access(
+                                namespaced_reference(to_namespace.clone(), &i.name),
+                                i.index.clone(),
+                            )
+                        }))
+                        .collect(),
+                }
+                .into(),
+            ),
         };
         PilStatement::PlookupIdentity(SourceRef::unknown(), lhs, rhs)
     }

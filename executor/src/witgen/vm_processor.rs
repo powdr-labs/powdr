@@ -2,6 +2,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+    SelectedExpressions,
 };
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
@@ -25,18 +26,22 @@ const REPORT_FREQUENCY: u64 = 1_000;
 
 /// A list of identities with a flag whether it is complete.
 struct CompletableIdentities<'a, T: FieldElement> {
-    identities_with_complete: Vec<(&'a Identity<Expression<T>>, bool)>,
+    identities_with_complete: Vec<(&'a Identity<SelectedExpressions<Expression<T>>>, bool)>,
 }
 
 impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
-    fn new(identities: impl Iterator<Item = &'a Identity<Expression<T>>>) -> Self {
+    fn new(
+        identities: impl Iterator<Item = &'a Identity<SelectedExpressions<Expression<T>>>>,
+    ) -> Self {
         Self {
             identities_with_complete: identities.map(|identity| (identity, false)).collect(),
         }
     }
 
     /// Yields immutable references to the identity and mutable references to the complete flag.
-    fn iter_mut(&mut self) -> impl Iterator<Item = (&'a Identity<Expression<T>>, &mut bool)> {
+    fn iter_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (&'a Identity<SelectedExpressions<Expression<T>>>, &mut bool)> {
         self.identities_with_complete
             .iter_mut()
             .map(|(identity, complete)| (*identity, complete))
@@ -51,10 +56,10 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     fixed_data: &'a FixedData<'a, T>,
     /// The subset of identities that contains a reference to the next row
     /// (precomputed once for performance reasons)
-    identities_with_next_ref: Vec<&'a Identity<Expression<T>>>,
+    identities_with_next_ref: Vec<&'a Identity<SelectedExpressions<Expression<T>>>>,
     /// The subset of identities that does not contain a reference to the next row
     /// (precomputed once for performance reasons)
-    identities_without_next_ref: Vec<&'a Identity<Expression<T>>>,
+    identities_without_next_ref: Vec<&'a Identity<SelectedExpressions<Expression<T>>>>,
     last_report: DegreeType,
     last_report_time: Instant,
     processor: Processor<'a, 'b, 'c, T, Q>,
@@ -65,7 +70,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     pub fn new(
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
-        identities: &[&'a Identity<Expression<T>>],
+        identities: &[&'a Identity<SelectedExpressions<Expression<T>>>],
         witnesses: &'c HashSet<PolyID>,
         data: FinalizableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,

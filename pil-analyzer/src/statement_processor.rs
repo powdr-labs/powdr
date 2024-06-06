@@ -8,7 +8,7 @@ use powdr_ast::analyzed::TypedExpression;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
-    EnumDeclaration, EnumVariant, FunctionDefinition, PilStatement, PolynomialName,
+    ArrayLiteral, EnumDeclaration, EnumVariant, FunctionDefinition, PilStatement, PolynomialName,
     SelectedExpressions,
 };
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
@@ -28,7 +28,7 @@ use crate::expression_processor::ExpressionProcessor;
 pub enum PILItem {
     Definition(Symbol, Option<FunctionValueDefinition>),
     PublicDeclaration(PublicDeclaration),
-    Identity(Identity<Expression>),
+    Identity(Identity<SelectedExpressions<Expression>>),
 }
 
 pub struct Counters {
@@ -312,14 +312,14 @@ where
             PilStatement::Expression(source, expression) => (
                 source,
                 IdentityKind::Polynomial,
-                SelectedExpressions {
+                powdr_ast::parsed::SelectedExpressions {
                     selector: Some(
                         self.expression_processor(&Default::default())
                             .process_expression(expression),
                     ),
-                    expressions: vec![],
+                    expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
                 },
-                SelectedExpressions::default(),
+                powdr_ast::parsed::SelectedExpressions::default(),
             ),
             PilStatement::PlookupIdentity(source, key, haystack) => (
                 source,
@@ -340,17 +340,19 @@ where
             PilStatement::ConnectIdentity(source, left, right) => (
                 source,
                 IdentityKind::Connect,
-                SelectedExpressions {
+                powdr_ast::parsed::SelectedExpressions {
                     selector: None,
-                    expressions: self
-                        .expression_processor(&Default::default())
-                        .process_expressions(left),
+                    expressions: Box::new(
+                        self.expression_processor(&Default::default())
+                            .process_vec_into_array_literal(left),
+                    ),
                 },
-                SelectedExpressions {
+                powdr_ast::parsed::SelectedExpressions {
                     selector: None,
-                    expressions: self
-                        .expression_processor(&Default::default())
-                        .process_expressions(right),
+                    expressions: Box::new(
+                        self.expression_processor(&Default::default())
+                            .process_vec_into_array_literal(right),
+                    ),
                 },
             ),
             // TODO at some point, these should all be caught by the type checker.

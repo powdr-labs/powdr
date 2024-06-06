@@ -78,7 +78,7 @@ machine SplitBN254 with
     // Compare the current byte with the corresponding byte of the maximum value.
     col witness lt;
     col witness gt;
-    { bytes, BYTES_MAX, lt, gt } in { P_A, P_B, P_LT, P_GT };
+    [ bytes, BYTES_MAX, lt, gt ] in [ P_A, P_B, P_LT, P_GT ];
 
     // Compute whether the current or any previous byte has been less than
     // the corresponding byte of the maximum value.
