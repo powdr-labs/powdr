@@ -352,6 +352,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                     progress |= true;
                 }
             }
+            progress |= self
+                .processor
+                .process_queries(row_index as usize)
+                .map_err(|e| vec![e])?;
 
             progress |= self.process_identities(row_index, identities, UnknownStrategy::Unknown)?;
             let row_index = row_index as usize;
