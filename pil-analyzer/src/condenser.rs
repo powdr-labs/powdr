@@ -240,7 +240,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             evaluator::evaluate(expr, self)
                 .and_then(|expr| {
                     if let Value::Tuple(items) = expr.as_ref() {
-                        assert_eq!(items.len(), 0);
+                        assert_eq!(items.is_empty());
                         Ok(())
                     } else {
                         self.add_constraints(expr, identity.source.clone())
