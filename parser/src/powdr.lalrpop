@@ -440,7 +440,7 @@ ExpressionList: Vec<Expression> = {
     <mut list:( <Expression> "," )*> <end:Expression>  => { list.push(end); list }
 }
 
-Expression: Expression = {
+pub Expression: Expression = {
     BoxedExpression => *<>,
 }
 

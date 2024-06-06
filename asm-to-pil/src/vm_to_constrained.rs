@@ -20,7 +20,10 @@ use powdr_ast::{
 use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_parser_util::SourceRef;
 
-use crate::common::{instruction_flag, return_instruction, RETURN_NAME};
+use crate::{
+    common::{instruction_flag, return_instruction, RETURN_NAME},
+    utils::parse_expression,
+};
 
 pub fn convert_machine<T: FieldElement>(machine: Machine, rom: Option<Rom>) -> Machine {
     let output_count = machine
@@ -302,6 +305,10 @@ impl<T: FieldElement> VMConverter<T> {
                 default_update = Some(direct_reference(&name));
             }
         };
+        // The column for an assignment register will be created in create_constraints_for_assignment_reg
+        if !matches!(ty, RegisterTy::Assignment) {
+            self.pil.push(witness_column(source, name.clone(), None));
+        }
         self.registers.insert(
             name.to_string(),
             Register {
@@ -310,7 +317,6 @@ impl<T: FieldElement> VMConverter<T> {
                 ty,
             },
         );
-        self.pil.push(witness_column(source, name, None));
     }
 
     fn handle_instruction_def(&mut self, input: &mut Machine, s: InstructionDefinitionStatement) {
@@ -864,14 +870,36 @@ impl<T: FieldElement> VMConverter<T> {
                 direct_reference(read_coefficient) * direct_reference(name.clone())
             })
             .chain([
-                direct_reference(assign_const),
-                direct_reference(read_free) * direct_reference(free_value),
+                direct_reference(&assign_const),
+                direct_reference(&read_free) * direct_reference(&free_value),
             ])
             .sum();
+
+        let hint = read_registers
+            .iter()
+            .map(|name| {
+                format!("std::prover::eval(read_{register}_{name}) * std::prover::eval({name})")
+            })
+            .chain([
+                format!("std::prover::eval({assign_const})"),
+                format!("std::prover::eval({read_free}) * std::prover::eval({free_value})"),
+            ])
+            .reduce(|a, b| format!("{a} + {b}"))
+            .unwrap();
+
+        self.pil.push(witness_column(
+            SourceRef::unknown(),
+            register.clone(),
+            Some(FunctionDefinition::Expression(
+                parse_expression(&format!("query |_| std::prover::Query::Hint({hint})")).into(),
+            )),
+        ));
         self.pil.push(PilStatement::Expression(
             SourceRef::unknown(),
             build::identity(direct_reference(register), assign_constraint),
         ));
+        // TODO just skip them in the def.
+        println!("Ass: {}", self.pil.last().unwrap());
     }
 
     /// Translates the code lines to fixed column but also fills

@@ -38,14 +38,15 @@ pub mod utils {
         },
         parsed::{
             asm::{AssignmentRegister, InstructionBody, MachineStatement, RegisterFlag},
-            PilStatement,
+            Expression, PilStatement,
         },
     };
     use powdr_number::FieldElement;
     use powdr_parser::{
         powdr::{
-            FunctionStatementParser, InstructionBodyParser, InstructionDeclarationParser,
-            InstructionParser, PilStatementParser, RegisterDeclarationParser,
+            ExpressionParser, FunctionStatementParser, InstructionBodyParser,
+            InstructionDeclarationParser, InstructionParser, PilStatementParser,
+            RegisterDeclarationParser,
         },
         ParserContext,
     };
@@ -56,6 +57,7 @@ pub mod utils {
         static ref INSTRUCTION_BODY_PARSER: InstructionBodyParser = InstructionBodyParser::new();
         static ref FUNCTION_STATEMENT_PARSER: FunctionStatementParser = FunctionStatementParser::new();
         static ref PIL_STATEMENT_PARSER: PilStatementParser = PilStatementParser::new();
+        static ref EXPRESSION_PARSER: ExpressionParser = ExpressionParser::new();
         static ref REGISTER_DECLARATION_PARSER: RegisterDeclarationParser = RegisterDeclarationParser::new();
 
     }
@@ -125,6 +127,11 @@ pub mod utils {
     pub fn parse_pil_statement(input: &str) -> PilStatement {
         let ctx = ParserContext::new(None, input);
         PIL_STATEMENT_PARSER.parse(&ctx, input).unwrap()
+    }
+
+    pub fn parse_expression(input: &str) -> Expression {
+        let ctx = ParserContext::new(None, input);
+        EXPRESSION_PARSER.parse(&ctx, input).unwrap()
     }
 
     pub fn parse_register_declaration<T: FieldElement>(
