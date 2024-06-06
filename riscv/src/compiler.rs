@@ -1388,13 +1388,15 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
+                .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("val1 <== get_reg({});", r2.addr()),
                         format!("val2 <=X= 0;"),
                         format!("and 0x1f;"),
                         format!("tmp1 <=X= val3;"),
-                        format!("{rd} <== shl({r1}, tmp1);"),
+                        format!("val1 <== get_reg({});", r1.addr()),
+                        format!("val2 <=X= tmp1;"),
+                        format!("shl;"),
                     ],
                     rd,
                 ))
@@ -1406,8 +1408,12 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             assert!(amount <= 31);
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd} <== shr({rs}, {amount});"),
+                .chain(only_if_no_write_to_zero_vec_val3(
+                    vec![
+                        // rs is already in val1
+                        format!("val2 <=X= {amount};"),
+                        format!("shr;"),
+                    ],
                     rd,
                 ))
                 .collect()
@@ -1417,13 +1423,15 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, r1, r2) = args.rrr()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
+                .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("val1 <== get_reg({});", r2.addr()),
                         format!("val2 <=X= 0;"),
                         format!("and 0x1f;"),
                         format!("tmp1 <=X= val3;"),
-                        format!("{rd} <== shr({r1}, tmp1);"),
+                        format!("val1 <== get_reg({});", r1.addr()),
+                        format!("val2 <=X= tmp1;"),
+                        format!("shr;"),
                     ],
                     rd,
                 ))
@@ -1449,9 +1457,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         format!("val2 <== get_reg({});", rs.addr()),
                         format!("xor 0;"),
                         format!("set_reg {}, val3;", rd.addr()),
-                        format!("{rd} <== get_reg({});", rd.addr()),
-                        format!("{rd} <== shr({rd}, {amount});"),
-                        format!("set_reg {}, {rd};", rd.addr()),
+                        format!("val1 <== get_reg({});", rd.addr()),
+                        format!("val2 <=X= {amount};"),
+                        format!("shr;"),
+                        format!("set_reg {}, val3;", rd.addr()),
                         format!("val1 <=X= tmp1;"),
                         format!("val2 <== get_reg({});", rd.addr()),
                         format!("xor 0;"),
@@ -1719,13 +1728,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         .collect()
                 }
             }
-        },
+        }
         "call" => {
             let label = args.l()?;
-            vec![
-                format!("set_reg 1, pc + 2;"),
-                format!("jump {label};")
-            ]
+            vec![format!("set_reg 1, pc + 2;"), format!("jump {label};")]
         }
         "ecall" => {
             args.empty()?;
@@ -1774,9 +1780,12 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec(
                     vec![
-                        format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                        format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                        format!("{rd} <== sign_extend_byte({rd});"),
+                        format!("val1, tmp2 <== mload(val1 + {off});"),
+                        format!("val2 <=X= 8 * tmp2;"),
+                        format!("shr;"),
+                        format!("val1 <=X= val3;"),
+                        format!("{rd} <== sign_extend_byte(val1);"),
+                        format!("set_reg {}, {rd};", rd.addr()),
                     ],
                     rd,
                 ))
@@ -1789,8 +1798,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
-                        format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                        format!("{rd} <== shr({rd}, 8 * tmp2);"),
+                        format!("val1, tmp2 <== mload(val1 + {off});"),
+                        format!("val2 <=X= 8 * tmp2;"),
+                        format!("shr;"),
+                        format!("{rd} <=X= val3;"),
                         format!("set_reg {}, {rd};", rd.addr()),
                         format!("val1 <== get_reg({});", rd.addr()),
                         format!("val2 <=X= 0;"),
@@ -1808,9 +1819,12 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec(
                     vec![
-                        format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                        format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                        format!("{rd} <== sign_extend_16_bits({rd});"),
+                        format!("val1, tmp2 <== mload({rs} + {off});"),
+                        format!("val2 <=X= 8 * tmp2;"),
+                        format!("shr;"),
+                        format!("val1 <=X= val3;"),
+                        format!("{rd} <== sign_extend_16_bits(val1);"),
+                        format!("set_reg {}, {rd};", rd.addr()),
                     ],
                     rd,
                 ))
@@ -1824,8 +1838,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
-                        format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                        format!("{rd} <== shr({rd}, 8 * tmp2);"),
+                        format!("val1, tmp2 <== mload({rs} + {off});"),
+                        format!("val2 <=X= 8 * tmp2;"),
+                        format!("shr;"),
+                        format!("{rd} <=X= val3;"),
                         format!("set_reg {}, {rd};", rd.addr()),
                         format!("val1 <== get_reg({});", rd.addr()),
                         format!("val2 <=X= 0;"),
@@ -1852,7 +1868,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(vec![
                     format!("tmp1, tmp2 <== mload({rd} + {off});"),
-                    "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
+                    "val1 <=X= 0xffff;".to_string(),
+                    "val2 <=X= 8 * tmp2;".to_string(),
+                    "shl;".to_string(),
+                    "tmp3 <=X= val3;".to_string(),
                     "val1 <=X= tmp3;".to_string(),
                     "val2 <=X= 0;".to_string(),
                     "xor 0xffffffff;".to_string(),
@@ -1865,7 +1884,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                     "val2 <=X= 0;".to_string(),
                     "and 0xffff;".to_string(),
                     "tmp3 <=X= val3;".to_string(),
-                    "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
+                    "val1 <=X= tmp3;".to_string(),
+                    "val2 <=X= 8 * tmp2;".to_string(),
+                    "shl;".to_string(),
+                    "tmp3 <=X= val3;".to_string(),
                     "val1 <=X= tmp1;".to_string(),
                     "val2 <=X= tmp3;".to_string(),
                     "or 0;".to_string(),
@@ -1881,7 +1903,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(vec![
                     format!("tmp1, tmp2 <== mload({rd} + {off});"),
-                    "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
+                    "val1 <=X= 0xff;".to_string(),
+                    "val2 <=X= 8 * tmp2;".to_string(),
+                    "shl;".to_string(),
+                    "tmp3 <=X= val3;".to_string(),
                     "val1 <=X= tmp3;".to_string(),
                     "val2 <=X= 0;".to_string(),
                     "xor 0xffffffff;".to_string(),
@@ -1894,7 +1919,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                     "val2 <=X= 0;".to_string(),
                     format!("and 0xff;"),
                     "tmp3 <=X= val3;".to_string(),
-                    "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
+                    "val1 <=X= tmp3;".to_string(),
+                    "val2 <=X= 8 * tmp2;".to_string(),
+                    "shl;".to_string(),
+                    "tmp3 <=X= val3;".to_string(),
                     "val1 <=X= tmp1;".to_string(),
                     "val2 <=X= tmp3;".to_string(),
                     "or 0;".to_string(),

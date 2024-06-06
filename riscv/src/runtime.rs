@@ -103,11 +103,11 @@ impl Runtime {
             None,
             "shift",
             [
-                "instr shl Y, Z -> X ~ shift.shl;",
-                "instr shr Y, Z -> X ~ shift.shr;",
+                "instr shl ~ shift.shl val1, val2 -> val3';",
+                "instr shr ~ shift.shr val1, val2 -> val3';",
             ],
             0,
-            ["x10 <== shl(x10, x10);"],
+            ["shl;"],
         );
 
         r.add_submachine(
