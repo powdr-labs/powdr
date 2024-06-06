@@ -824,16 +824,21 @@ fn memory(with_bootloader: bool) -> String {
     /// Loads one word from an address Y, where Y can be between 0 and 2**33 (sic!),
     /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
     /// Returns the loaded word and the remainder of the division by 4.
-    instr mload Y -> X, Z {
+    col witness please;
+    col witness please2;
+    // TODO FIXXXXXXXX
+    instr mload Y {
+        val3' = please,
+        val4' = please2,
         // Z * (Z - 1) * (Z - 2) * (Z - 3) = 0,
-        { Z } in { up_to_three },
-        Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z,
+        { please2 } in { up_to_three },
+        val1 + Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + please2,
         { X_b1 } in { six_bits },
         {
             0,
             X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4,
             STEP,
-            X
+            please
         } is m_selector_read { operation_id, m_addr, m_step, m_value }
         // If we could access the shift machine here, we
         // could even do the following to complete the mload:
@@ -1087,11 +1092,13 @@ fn name_to_register(name: &str) -> Option<Register> {
 /// Push register into the stack
 
 pub fn push_register(name: &str) -> Vec<String> {
+    assert!(name.starts_with("x"), "Only x registers are supported");
     let mut statements = vec![];
 
     if let Some(reg) = name_to_register(name) {
-        statements.push(format!("{} <== get_reg({});", reg, reg.addr()));
         statements.push(format!("val2 <== get_reg({});", reg.addr()));
+    } else {
+        panic!();
     }
 
     [
@@ -1109,14 +1116,18 @@ pub fn push_register(name: &str) -> Vec<String> {
 
 /// Pop register from the stack
 pub fn pop_register(name: &str) -> Vec<String> {
+    assert!(name.starts_with("x"), "Only x registers are supported");
     let mut instructions = vec![
         "val1 <== get_reg(2);".to_string(),
-        format!("val2, tmp1 <== mload(val1);"),
+        "mload 0;".to_string(),
+        "val2 <=X= val3;".to_string(),
         "add_new_2 4;".to_string(),
         "set_reg 2, val3;".to_string(),
     ];
     if let Some(reg) = name_to_register(name) {
         instructions.push(format!("set_reg {}, val2;", reg.addr()));
+    } else {
+        panic!();
     }
     instructions
 }
@@ -1806,10 +1817,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             // TODO we need to consider misaligned loads / stores
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero_vec(
-                    vec![format!("{rd}, tmp1 <== mload({rs} + {off});")],
-                    rd,
-                ))
+                .chain(only_if_no_write_to_zero_val3(format!("mload {off};"), rd))
                 .collect()
         }
         "lb" => {
@@ -1819,7 +1827,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
-                        format!("val1, tmp2 <== mload(val1 + {off});"),
+                        format!("mload {off};"),
+                        format!("val1 <=X= val3;"),
+                        format!("tmp2 <=X= val4;"),
                         format!("val2 <=X= 8 * tmp2;"),
                         format!("shr;"),
                         format!("val1 <=X= val3;"),
@@ -1836,7 +1846,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
-                        format!("val1, tmp2 <== mload(val1 + {off});"),
+                        format!("mload {off};"),
+                        format!("val1 <=X= val3;"),
+                        format!("tmp2 <=X= val4;"),
                         format!("val2 <=X= 8 * tmp2;"),
                         format!("shr;"),
                         format!("{rd} <=X= val3;"),
@@ -1857,7 +1869,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
-                        format!("val1, tmp2 <== mload({rs} + {off});"),
+                        format!("mload {off};"),
+                        format!("val1 <=X= val3;"),
+                        format!("tmp2 <=X= val4;"),
                         format!("val2 <=X= 8 * tmp2;"),
                         format!("shr;"),
                         format!("val1 <=X= val3;"),
@@ -1875,7 +1889,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
-                        format!("val1, tmp2 <== mload({rs} + {off});"),
+                        format!("mload {off};"),
+                        format!("val1 <=X= val3;"),
+                        format!("tmp2 <=X= val4;"),
                         format!("val2 <=X= 8 * tmp2;"),
                         format!("shr;"),
                         format!("{rd} <=X= val3;"),
@@ -1904,7 +1920,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             read_args(vec![rs, rd])
                 .into_iter()
                 .chain(vec![
-                    format!("tmp1, tmp2 <== mload({rd} + {off});"),
+                    format!("val1 <=X= val2;"),
+                    format!("mload {off};"),
+                    format!("tmp1 <=X= val3;"),
+                    format!("tmp2 <=X= val4;"),
                     "val1 <=X= 0xffff;".to_string(),
                     "val2 <=X= 8 * tmp2;".to_string(),
                     "shl;".to_string(),
@@ -1939,7 +1958,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             read_args(vec![rs, rd])
                 .into_iter()
                 .chain(vec![
-                    format!("tmp1, tmp2 <== mload({rd} + {off});"),
+                    format!("val1 <=X= val2;"),
+                    format!("mload {off};"),
+                    format!("tmp1 <=X= val3;"),
+                    format!("tmp2 <=X= val4;"),
                     "val1 <=X= 0xff;".to_string(),
                     "val2 <=X= 8 * tmp2;".to_string(),
                     "shl;".to_string(),
@@ -1980,7 +2002,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 read_args(vec![rs1, rs2]),
                 // val1 = rs1, val2 = rs2
                 vec![
-                    format!("tmp1, tmp2 <== mload({rs1});"),
+                    format!("mload 0;"),
+                    format!("tmp1 <=X= val3;"),
+                    format!("tmp2 <=X= val4;"),
                     format!("val1 <=X= tmp1;"),
                     format!("add_new;"),
                     format!("tmp2 <=X= val3;"),
@@ -1998,7 +2022,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             // TODO misaligned access should raise misaligned address exceptions
             [
                 read_args(vec![rs]),
-                only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs});")], rd),
+                only_if_no_write_to_zero_vec_val3(
+                    vec![format!("mload 0;"), format!("tmp1 <=X= val4;")],
+                    rd,
+                ),
                 vec!["lr_sc_reservation <=X= 1;".into()],
             ]
             .concat()
