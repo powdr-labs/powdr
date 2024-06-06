@@ -574,8 +574,8 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 
     // ================= logical instructions =================
 
-    instr is_equal_zero X -> Y { Y = XIsZero }
-    instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
+    instr is_equal_zero X { val3' = XIsZero }
+    instr is_not_equal_zero X { val3' = 1 - XIsZero }
 
     // ================= submachine instructions =================
 "# + &runtime
@@ -1289,10 +1289,12 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         "tmp1 <=X= val3;".into(),
                         format!("set_reg {}, val4;", rd.addr()),
                         // Determine the sign of the result based on the signs of tmp1 and tmp2
-                        "tmp3 <== is_not_equal_zero(tmp3 - tmp4);".into(),
+                        "is_not_equal_zero tmp3 - tmp4;".into(),
+                        "tmp3 <=X= val3;".into(),
                         // If the result should be negative, convert back to negative
-                        "skip_if_zero tmp3, 4;".into(),
-                        "tmp1 <== is_equal_zero(tmp1);".into(),
+                        "skip_if_zero tmp3, 5;".into(),
+                        "is_equal_zero tmp1;".into(),
+                        "tmp1 <=X= val3;".into(),
                         format!("val1 <== get_reg({});", rd.addr()),
                         format!("add_new_signed_2(- 1 + tmp1);"),
                     ],
@@ -1322,8 +1324,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         "tmp1 <=X= val3;".into(),
                         format!("set_reg {}, val4;", rd.addr()),
                         // If was negative before, convert back to negative
-                        "skip_if_zero (1-tmp2), 4;".into(),
-                        "tmp1 <== is_equal_zero(tmp1);".into(),
+                        "skip_if_zero (1-tmp2), 5;".into(),
+                        "is_equal_zero tmp1;".into(),
+                        "tmp1 <=X= val3;".into(),
                         // If the lower bits are zero, return the two's complement,
                         // otherwise return one's complement.
                         format!("val1 <== get_reg({});", rd.addr()),
@@ -1537,8 +1540,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, rs) = args.rr()?;
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd} <=Y= is_equal_zero({rs});"),
+                .chain(only_if_no_write_to_zero_val3(
+                    format!("is_equal_zero val1;"),
                     rd,
                 ))
                 .collect()
@@ -1547,8 +1550,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (rd, rs) = args.rr()?;
             read_args(vec![rs])
                 .into_iter()
-                .chain(only_if_no_write_to_zero(
-                    format!("{rd} <=Y= is_not_equal_zero({rs});"),
+                .chain(only_if_no_write_to_zero_val3(
+                    format!("is_not_equal_zero val1;"),
                     rd,
                 ))
                 .collect()
