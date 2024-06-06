@@ -170,6 +170,7 @@ mod tests {
             fixed_lookup: &mut fixed_lookup,
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
+            symbol_cache: Default::default(),
         };
         let row_offset = RowIndex::from_degree(0, fixed_data.degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();

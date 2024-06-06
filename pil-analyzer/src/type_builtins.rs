@@ -48,6 +48,7 @@ lazy_static! {
         ("std::prover::challenge", ("", "int, int -> expr")),
         ("std::prover::degree", ("", "-> int")),
         ("std::prover::eval", ("", "expr -> fe")),
+        ("std::prover::set", ("", "expr, fe -> ()")),
     ]
     .into_iter()
     .map(|(name, (vars, ty))| { (name.to_string(), parse_type_scheme(vars, ty)) })

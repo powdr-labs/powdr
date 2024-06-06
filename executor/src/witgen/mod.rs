@@ -1,14 +1,17 @@
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
     PolynomialType, SymbolKind, TypedExpression,
 };
+use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
+use powdr_pil_analyzer::evaluator::Value;
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -103,6 +106,8 @@ pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
     pub fixed_lookup: &'b mut FixedLookup<T>,
     pub machines: Machines<'a, 'b, T>,
     pub query_callback: &'b mut Q,
+    // TODO this really should not belong here.
+    pub symbol_cache: Mutex<BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>>,
 }
 
 pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
@@ -196,6 +201,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             fixed_lookup: &mut fixed_lookup,
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
+            symbol_cache: Default::default(),
         };
         let mut generator = Generator::new(
             "Main Machine".to_string(),

@@ -329,6 +329,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 fixed_lookup,
                 machines: vec![].into_iter().into(),
                 query_callback,
+                symbol_cache: Default::default(),
             };
             let mut processor = Processor::new(
                 row_offset,

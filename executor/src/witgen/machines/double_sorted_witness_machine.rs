@@ -78,7 +78,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 
     pub fn try_new(
         name: String,
-        fixed_data: &'a FixedData<T>,
+        fixed_data: &'a FixedData<'a, T>,
         connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
