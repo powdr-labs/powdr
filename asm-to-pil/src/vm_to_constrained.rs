@@ -9,7 +9,7 @@ use powdr_ast::{
         LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
-        asm::{CallableRef, InstructionBody, InstructionParams},
+        asm::{CallableRef, InstructionBody, InstructionParams, LinkDeclaration},
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperation, BinaryOperator, Expression, FunctionCall,
@@ -320,18 +320,24 @@ impl<T: FieldElement> VMConverter<T> {
 
         let params = s.instruction.params;
 
+        // validate instruction links and add to machine links
+        input.links.extend(s.instruction.links.into_iter().map(|l| {
+            self.handle_instruction_link(s.source.clone(), &instruction_flag, &params, l)
+        }));
+
+        // validate instruction body
         match s.instruction.body {
             InstructionBody::Local(body) => self.handle_local_instruction_def(
                 s.source,
                 &instruction_name,
-                instruction_flag,
+                &instruction_flag,
                 &params,
                 body,
             ),
             InstructionBody::CallablePlookup(callable) => {
                 let link = self.handle_external_instruction_def(
                     s.source,
-                    instruction_flag,
+                    &instruction_flag,
                     &params,
                     callable,
                 );
@@ -340,7 +346,7 @@ impl<T: FieldElement> VMConverter<T> {
             InstructionBody::CallablePermutation(callable) => {
                 let mut link = self.handle_external_instruction_def(
                     s.source,
-                    instruction_flag,
+                    &instruction_flag,
                     &params,
                     callable,
                 );
@@ -375,8 +381,8 @@ impl<T: FieldElement> VMConverter<T> {
     fn handle_local_instruction_def(
         &mut self,
         source: SourceRef,
-        name: &String,
-        flag: String,
+        name: &str,
+        flag: &str,
         params: &InstructionParams,
         mut body: Vec<PilStatement>,
     ) {
@@ -446,7 +452,7 @@ impl<T: FieldElement> VMConverter<T> {
             if let PilStatement::Expression(source, expr) = statement {
                 match extract_update(expr) {
                     (Some(var), expr) => {
-                        let reference = direct_reference(&flag);
+                        let reference = direct_reference(flag);
 
                         // reduce the update to linear by introducing intermediate variables
                         let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
@@ -459,7 +465,7 @@ impl<T: FieldElement> VMConverter<T> {
                     }
                     (None, expr) => self.pil.push(PilStatement::Expression(
                         source,
-                        build::identity(direct_reference(&flag) * expr.clone(), 0.into()),
+                        build::identity(direct_reference(flag) * expr.clone(), 0.into()),
                     )),
                 }
             } else {
@@ -470,7 +476,7 @@ impl<T: FieldElement> VMConverter<T> {
                                     left.selector.is_none(),
                                     "LHS selector not supported, could and-combine with instruction flag later."
                                 );
-                        left.selector = Some(direct_reference(&flag));
+                        left.selector = Some(direct_reference(flag));
                         self.pil.push(statement)
                     }
                     _ => {
@@ -485,7 +491,7 @@ impl<T: FieldElement> VMConverter<T> {
     fn handle_external_instruction_def(
         &mut self,
         source: SourceRef,
-        flag: String,
+        flag: &str,
         params: &InstructionParams,
         mut callable: CallableRef,
     ) -> LinkDefinitionStatement {
@@ -579,7 +585,7 @@ impl<T: FieldElement> VMConverter<T> {
                 let reg = self.registers.get_mut(&name).unwrap();
                 let value = next_reference(name);
                 reg.conditioned_updates
-                    .push((direct_reference(&flag), value));
+                    .push((direct_reference(flag), value));
             }
         }
 
@@ -588,6 +594,78 @@ impl<T: FieldElement> VMConverter<T> {
             flag: direct_reference(flag),
             to: callable,
             is_permutation: false,
+        }
+    }
+
+    /// validade instruction link params and transform it into a link definition
+    fn handle_instruction_link(
+        &mut self,
+        source: SourceRef,
+        instr_flag: &str,
+        instr_params: &InstructionParams,
+        mut link: LinkDeclaration,
+    ) -> LinkDefinitionStatement {
+        let lhs = instr_params;
+        let rhs = &mut link.to.params;
+
+        let mut rhs_assignment_registers = BTreeSet::new();
+        let mut rhs_next_write_registers = BTreeSet::new();
+
+        // collect assignment registers and next references to write registers used on rhs
+        for expr in rhs.inputs_and_outputs() {
+            expr.pre_visit_expressions(&mut |e| match e {
+                Expression::Reference(_, poly) => {
+                    poly.try_to_identifier()
+                        .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
+                        .filter(|(_, reg)| reg.ty == RegisterTy::Assignment)
+                        .map(|(name, _)| rhs_assignment_registers.insert(name.clone()));
+                }
+                Expression::UnaryOperation(
+                    _,
+                    UnaryOperation {
+                        op: UnaryOperator::Next,
+                        expr: e,
+                    },
+                ) => {
+                    if let Expression::Reference(_, poly) = e.as_ref() {
+                        poly.try_to_identifier()
+                            .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
+                            .filter(|(_, reg)| {
+                                [RegisterTy::Write, RegisterTy::Pc].contains(&reg.ty)
+                            })
+                            .map(|(name, _)| rhs_next_write_registers.insert(name.clone()));
+                    }
+                }
+                _ => {}
+            })
+        }
+
+        // any assignment register present on the rhs (input or output) must be
+        // present on the instruction params
+        for name in &rhs_assignment_registers {
+            assert!(
+                lhs.inputs_and_outputs().any(|p_lhs| p_lhs.name == *name),
+                "Assignment register '{name}' used on rhs must be present on instruction params"
+            );
+        }
+
+        // link is active only when the instruction is also active
+        let flag = direct_reference(instr_flag) * link.flag;
+
+        // if a write register next reference (R') is used in the instruction link,
+        // we must induce a tautology in the update clause (R' = R') when the
+        // link is active, to allow the operation plookup to match.
+        for name in rhs_next_write_registers {
+            let reg = self.registers.get_mut(&name).unwrap();
+            let value = next_reference(name);
+            reg.conditioned_updates.push((flag.clone(), value));
+        }
+
+        LinkDefinitionStatement {
+            source,
+            flag,
+            to: link.to,
+            is_permutation: link.is_permutation,
         }
     }
 
