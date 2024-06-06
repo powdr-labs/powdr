@@ -19,97 +19,37 @@ use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{EvalResult, FixedData};
 
+use super::profiling::{record_end_identity, record_start_identity};
 use super::record_end;
 
 type Application = (Vec<PolyID>, Vec<PolyID>);
-type Index<T> = BTreeMap<Vec<T>, IndexValue>;
+//type Index<T> = BTreeMap<Vec<T>, IndexValue>;
 
-#[derive(Debug)]
-struct IndexValue(Option<NonZeroUsize>);
+trait Index<T> {
+    fn get(&self, values: &[T]) -> Option<&IndexValue>;
+    fn len(&self) -> usize;
+}
 
-impl IndexValue {
-    pub fn multiple_matches() -> Self {
-        Self(None)
+struct BTreeIndex<T> {
+    index: BTreeMap<Vec<T>, IndexValue>,
+}
+
+impl<T: FieldElement> Index<T> for BTreeIndex<T> {
+    fn get(&self, values: &[T]) -> Option<&IndexValue> {
+        self.index.get(values)
     }
-    pub fn single_row(row: usize) -> Self {
-        // TODO check how expensive the check is
-        // We negate to make it actually nonzero.
-        Self(NonZeroUsize::new(!row))
-    }
-    fn row(&self) -> Option<usize> {
-        self.0.map(|row| (!row.get()))
+    fn len(&self) -> usize {
+        self.index.len()
     }
 }
 
-/// Indices for applications of fixed columns. For each application `(INPUT_COLS, OUTPUT_COLS)`, stores
-/// - `(V, None)` if there exists two different rows where `INPUT_COLS == V` match but `OUTPUT_COLS` differ. TODO: store bitmasks of all possible outputs instead.
-/// - `(V, Some(row)` if the value of `OUTPUT_COLS` is unique when `INPUT_COLS == V`, and `row` is the first row where `INPUT_COLS ==V`
-#[derive(Default)]
-pub struct IndexedColumns<T> {
-    indices: HashMap<Application, Index<T>>,
-}
-
-impl<T: FieldElement> IndexedColumns<T> {
-    /// get the row at which the assignment is satisfied uniquely
-    fn get_match(
-        &mut self,
+impl<T: FieldElement> BTreeIndex<T> {
+    pub fn new(
         fixed_data: &FixedData<T>,
-        mut assignment: Vec<(PolyID, T)>,
-        mut output_fixed_columns: Vec<PolyID>,
-    ) -> Option<&IndexValue> {
-        // sort in order to have a single index for [X, Y] and for [Y, X]
-        assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
-        let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
-        // sort the output as well
-        output_fixed_columns.sort();
-
-        let fixed_columns = (input_fixed_columns, output_fixed_columns);
-
-        self.ensure_index(fixed_data, &fixed_columns);
-
-        // get the rows at which the input matches
-        self.indices
-            .get(&fixed_columns)
-            .as_ref()
-            .unwrap()
-            .get(&values)
-    }
-
-    /// Create an index for a set of columns to be queried, if does not exist already
-    /// `input_fixed_columns` is assumed to be sorted
-    fn ensure_index(&mut self, fixed_data: &FixedData<T>, sorted_fixed_columns: &Application) {
-        // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
-        if self.indices.get(sorted_fixed_columns).is_some() {
-            return;
-        }
-
-        let (sorted_input_fixed_columns, sorted_output_fixed_columns) = &sorted_fixed_columns;
-
-        // create index for this lookup
-        log::trace!(
-            "Generating index for lookup in columns (in: {}, out: {})",
-            sorted_input_fixed_columns
-                .iter()
-                .map(|c| fixed_data.column_name(c).to_string())
-                .join(", "),
-            sorted_output_fixed_columns
-                .iter()
-                .map(|c| fixed_data.column_name(c).to_string())
-                .join(", ")
-        );
-
-        // get all values for the columns to be indexed
-        let input_column_values = sorted_input_fixed_columns
-            .iter()
-            .map(|id| fixed_data.fixed_cols[id].values)
-            .collect::<Vec<_>>();
-
-        let output_column_values = sorted_output_fixed_columns
-            .iter()
-            .map(|id| fixed_data.fixed_cols[id].values)
-            .collect::<Vec<_>>();
-
-        let index: BTreeMap<Vec<T>, IndexValue> = (0..fixed_data.degree as usize)
+        input_column_values: &[&Vec<T>],
+        output_column_values: &[&Vec<T>],
+    ) -> Self {
+        let index = (0..fixed_data.degree as usize)
             .fold(
                 (
                     BTreeMap::<Vec<T>, IndexValue>::default(),
@@ -144,8 +84,211 @@ impl<T: FieldElement> IndexedColumns<T> {
                 },
             )
             .0;
+        Self { index }
+    }
+}
 
-        log::trace!(
+struct FlatIndex {
+    index: Vec<Option<IndexValue>>,
+    multipliers: Vec<usize>,
+}
+
+impl<T: FieldElement> Index<T> for FlatIndex {
+    fn get(&self, values: &[T]) -> Option<&IndexValue> {
+        self.index
+            .get(Self::index_for(values, &self.multipliers)?)
+            .map(|o| o.as_ref())
+            .flatten()
+    }
+    fn len(&self) -> usize {
+        self.index.len()
+    }
+}
+
+impl FlatIndex {
+    pub fn try_new<T: FieldElement>(
+        fixed_data: &FixedData<T>,
+        input_column_values: &[&Vec<T>],
+        output_column_values: &[&Vec<T>],
+    ) -> Option<Box<dyn Index<T>>> {
+        if input_column_values.len() >= 3 {
+            return None;
+        }
+        let mut max_values = vec![0; input_column_values.len()];
+        for row in 0..fixed_data.degree as usize {
+            for (i, v) in input_column_values
+                .iter()
+                .map(|column| column[row])
+                .enumerate()
+            {
+                let v = usize::try_from(v.to_arbitrary_integer()).ok()?;
+                if v > 0xffff {
+                    return None;
+                }
+                max_values[i] = max_values[i].max(v);
+            }
+        }
+        let multipliers = max_values.into_iter().map(|v| v + 1).collect::<Vec<_>>();
+        println!("Multipliers: {multipliers:?}");
+        let index_size = multipliers
+            .iter()
+            .try_fold(1usize, |acc, v| acc.checked_mul(*v))?;
+        if index_size > 0xffffff {
+            return None;
+        }
+        let mut index = vec![None; index_size];
+        let mut seen_values = HashSet::new();
+
+        for row in 0..fixed_data.degree as usize {
+            let input: Vec<_> = input_column_values
+                .iter()
+                .map(|column| column[row])
+                .collect();
+
+            let output: Vec<_> = output_column_values
+                .iter()
+                .map(|column| column[row])
+                .collect();
+
+            let input_output = (input, output);
+
+            if !seen_values.contains(&input_output) {
+                seen_values.insert(input_output.clone());
+
+                let (input, _) = input_output;
+
+                let index_val = &mut index[Self::index_for(&input, &multipliers).unwrap()];
+                match index_val {
+                    None => *index_val = Some(IndexValue::single_row(row)),
+                    Some(v) => {
+                        // we have a new, different output, so we lose knowledge
+                        *v = IndexValue::multiple_matches();
+                    }
+                }
+            }
+        }
+        println!("Created flat index");
+        Some(Box::new(Self { index, multipliers }))
+    }
+
+    fn index_for<T: FieldElement>(values: &[T], multipliers: &[usize]) -> Option<usize> {
+        let mut ind = 0;
+        for (v, multiplier) in values.iter().zip(multipliers) {
+            let v = usize::try_from(v.to_arbitrary_integer()).ok()?;
+            if v >= *multiplier {
+                return None;
+            }
+            ind = ind * multiplier + v;
+        }
+        Some(ind)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct IndexValue(Option<NonZeroUsize>);
+
+impl IndexValue {
+    pub fn multiple_matches() -> Self {
+        Self(None)
+    }
+    pub fn single_row(row: usize) -> Self {
+        // TODO check how expensive the check is
+        // We negate to make it actually nonzero.
+        Self(NonZeroUsize::new(!row))
+    }
+    fn row(&self) -> Option<usize> {
+        self.0.map(|row| (!row.get()))
+    }
+}
+
+/// Indices for applications of fixed columns. For each application `(INPUT_COLS, OUTPUT_COLS)`, stores
+/// - `(V, None)` if there exists two different rows where `INPUT_COLS == V` match but `OUTPUT_COLS` differ. TODO: store bitmasks of all possible outputs instead.
+/// - `(V, Some(row)` if the value of `OUTPUT_COLS` is unique when `INPUT_COLS == V`, and `row` is the first row where `INPUT_COLS ==V`
+#[derive(Default)]
+pub struct IndexedColumns<T> {
+    indices: HashMap<Application, Box<dyn Index<T>>>,
+}
+
+impl<T: FieldElement> IndexedColumns<T> {
+    /// get the row at which the assignment is satisfied uniquely
+    fn get_match(
+        &mut self,
+        fixed_data: &FixedData<T>,
+        mut assignment: Vec<(PolyID, T)>,
+        mut output_fixed_columns: Vec<PolyID>,
+    ) -> Option<&IndexValue> {
+        record_start_identity(8887);
+
+        // sort in order to have a single index for [X, Y] and for [Y, X]
+        assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
+        let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
+        // sort the output as well
+        output_fixed_columns.sort();
+
+        let fixed_columns = (input_fixed_columns, output_fixed_columns);
+
+        self.ensure_index(fixed_data, &fixed_columns);
+
+        record_start_identity(8889);
+        // get the rows at which the input matches
+        let r = self
+            .indices
+            .get(&fixed_columns)
+            .as_ref()
+            .unwrap()
+            .get(&values);
+        record_end_identity(8889);
+
+        record_end_identity(8887);
+        r
+    }
+
+    /// Create an index for a set of columns to be queried, if does not exist already
+    /// `input_fixed_columns` is assumed to be sorted
+    fn ensure_index(&mut self, fixed_data: &FixedData<T>, sorted_fixed_columns: &Application) {
+        // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
+        if self.indices.get(sorted_fixed_columns).is_some() {
+            return;
+        }
+
+        record_start_identity(8888);
+
+        let (sorted_input_fixed_columns, sorted_output_fixed_columns) = &sorted_fixed_columns;
+
+        // create index for this lookup
+        log::debug!(
+            "Generating index for lookup in columns (in: {}, out: {})",
+            sorted_input_fixed_columns
+                .iter()
+                .map(|c| fixed_data.column_name(c).to_string())
+                .join(", "),
+            sorted_output_fixed_columns
+                .iter()
+                .map(|c| fixed_data.column_name(c).to_string())
+                .join(", ")
+        );
+
+        // get all values for the columns to be indexed
+        let input_column_values = sorted_input_fixed_columns
+            .iter()
+            .map(|id| fixed_data.fixed_cols[id].values)
+            .collect::<Vec<_>>();
+
+        let output_column_values = sorted_output_fixed_columns
+            .iter()
+            .map(|id| fixed_data.fixed_cols[id].values)
+            .collect::<Vec<_>>();
+
+        let index = FlatIndex::try_new(fixed_data, &input_column_values, &output_column_values)
+            .unwrap_or_else(|| {
+                Box::new(BTreeIndex::new(
+                    fixed_data,
+                    &input_column_values,
+                    &output_column_values,
+                ))
+            });
+
+        log::debug!(
             "Done creating index. Size (as flat list): entries * (num_inputs * input_size + row_pointer_size) = {} * ({} * {} bytes + {} bytes) = {} bytes",
             index.len(),
             input_column_values.len(),
@@ -160,6 +303,7 @@ impl<T: FieldElement> IndexedColumns<T> {
             ),
             index,
         );
+        record_end_identity(8888);
     }
 }
 
@@ -254,6 +398,7 @@ impl<T: FieldElement> FixedLookup<T> {
             .iter()
             .map(|(poly_ref, v)| (poly_ref.poly_id, *v))
             .collect();
+
         let index_value = self
             .indices
             .get_match(

@@ -10,9 +10,13 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
+use crate::witgen::machines::profiling::{
+    record_end_identity, reset_and_print_profile_summary_identity,
+};
 use crate::witgen::IncompleteCause;
 
 use super::data_structures::finalizable_data::FinalizableData;
+use super::machines::profiling::record_start_identity;
 use super::processor::{OuterQuery, Processor};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
@@ -155,6 +159,21 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                         loop_detection_log_level,
                         "Found loop with period {p} starting at row {row_index}"
                     );
+                    record_end_identity(1234567);
+                    let id_to_name = self
+                        .fixed_data
+                        .analyzed
+                        .identities
+                        .iter()
+                        .map(|i| (i.id, i.to_string()))
+                        .chain(std::iter::once((1234567, "other".to_string())))
+                        .chain(std::iter::once((8887, "snippet7".to_string())))
+                        .chain(std::iter::once((88899, "queries".to_string())))
+                        .chain(std::iter::once((8888, "snippet8".to_string())))
+                        .chain(std::iter::once((8889, "snippet9".to_string())))
+                        .chain(std::iter::once((123557, "apply_updates".to_string())))
+                        .collect();
+                    reset_and_print_profile_summary_identity(id_to_name);
                 }
             }
             if let Some(period) = looping_period {
@@ -314,9 +333,36 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         identities: &mut CompletableIdentities<'a, T>,
     ) -> Result<Constraints<&'a AlgebraicReference, T>, Vec<EvalError<T>>> {
         let mut outer_assignments = vec![];
+
+        // The PC lookup fills most of the columns and enables hints thus it should be run first.
+        // We find it as largest plookup identity.
+        let pc_lookup_index = identities
+            .iter_mut()
+            .enumerate()
+            .filter(|(_, (ident, _))| ident.kind == IdentityKind::Plookup)
+            .max_by_key(|(_, (ident, _))| ident.left.expressions.len())
+            .map(|(i, _)| i);
         loop {
-            let mut progress =
-                self.process_identities(row_index, identities, UnknownStrategy::Unknown)?;
+            let mut progress = false;
+            if let Some(pc_lookup_index) = pc_lookup_index {
+                let (identity, is_complete) =
+                    &mut identities.identities_with_complete[pc_lookup_index];
+                let result = self
+                    .process_identity(row_index, identity, is_complete, UnknownStrategy::Unknown)
+                    .map_err(|e| vec![e])?;
+                if result == Some(true) {
+                    progress |= true;
+                }
+            }
+            record_start_identity(88899);
+
+            progress |= self
+                .processor
+                .process_queries(row_index as usize)
+                .map_err(|e| vec![e])?;
+            record_end_identity(88899);
+
+            progress |= self.process_identities(row_index, identities, UnknownStrategy::Unknown)?;
             let row_index = row_index as usize;
             if let Some(true) = self.processor.latch_value(row_index) {
                 let (outer_query_progress, new_outer_assignments) = self
@@ -328,10 +374,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             }
 
             progress |= self.processor.set_inputs_if_unset(row_index);
+            record_start_identity(88899);
             progress |= self
                 .processor
                 .process_queries(row_index)
                 .map_err(|e| vec![e])?;
+            record_end_identity(88899);
 
             if !progress {
                 break;
@@ -358,35 +406,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         let mut errors = vec![];
 
         for (identity, is_complete) in identities.iter_mut() {
-            if *is_complete {
-                continue;
+            match self.process_identity(row_index, identity, is_complete, unknown_strategy) {
+                Ok(Some(result)) => progress |= result,
+                Ok(None) => (),
+                Err(e) => errors.push(e),
             }
-
-            let is_machine_call = matches!(
-                identity.kind,
-                IdentityKind::Plookup | IdentityKind::Permutation
-            );
-            if is_machine_call && unknown_strategy == UnknownStrategy::Zero {
-                // The fact that we got to the point where we assume 0 for unknown cells, but this identity
-                // is still not complete, means that either the inputs or the machine is under-constrained.
-                errors.push(format!("{identity}:\n{}",
-                    indent("This machine call could not be completed. Either some inputs are missing or the machine is under-constrained.", 1)).into());
-                continue;
-            }
-
-            let result =
-                self.processor
-                    .process_identity(row_index as usize, identity, unknown_strategy);
-
-            match result {
-                Ok(res) => {
-                    *is_complete = res.is_complete;
-                    progress |= res.progress;
-                }
-                Err(e) => {
-                    errors.push(e);
-                }
-            };
         }
 
         if errors.is_empty() {
@@ -394,6 +418,42 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         } else {
             Err(errors)
         }
+    }
+
+    /// Processes a single identity and updates the "is_complete" flag.
+    /// Returns:
+    /// * `Ok(Some(true)`: If progress was made.
+    /// * `Ok(Some(false)`: If no progress was made.
+    /// * `Ok(None)`: If the identity has been complete already.
+    /// * `Err(e)`: If an error occurred.
+    fn process_identity(
+        &mut self,
+        row_index: DegreeType,
+        identity: &'a Identity<Expression<T>>,
+        is_complete: &mut bool,
+        unknown_strategy: UnknownStrategy,
+    ) -> Result<Option<bool>, EvalError<T>> {
+        if *is_complete {
+            return Ok(None);
+        }
+
+        let is_machine_call = matches!(
+            identity.kind,
+            IdentityKind::Plookup | IdentityKind::Permutation
+        );
+        if is_machine_call && unknown_strategy == UnknownStrategy::Zero {
+            // The fact that we got to the point where we assume 0 for unknown cells, but this identity
+            // is still not complete, means that either the inputs or the machine is under-constrained.
+            return Err(format!(
+                "{identity}:\n    This machine call could not be completed. Either some inputs are missing or the machine is under-constrained."
+            ).into());
+        }
+
+        let result =
+            self.processor
+                .process_identity(row_index as usize, identity, unknown_strategy)?;
+        *is_complete = result.is_complete;
+        Ok(Some(result.progress))
     }
 
     fn report_failure_and_panic_unsatisfiable(
