@@ -551,7 +551,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     // input X is required to be the difference of two 32-bit unsigend values.
     // i.e. -2**32 < X < 2**32
     instr branch_if_positive X, l: label {
-        X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
+        (val1 - val2 + X) + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
         pc' = wrap_bit * l + (1 - wrap_bit) * (pc + 1)
     }
     // input X is required to be the difference of two 32-bit unsigend values.
@@ -1643,9 +1643,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             // TODO does this fulfill the input requirements for branch_if_positive?
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(vec![format!(
-                    "branch_if_positive {r1} - {r2} + 1, {label};"
-                )])
+                .chain(vec![format!("branch_if_positive 1, {label};")])
                 .collect()
         }
         "bgez" => {
@@ -1654,16 +1652,17 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(vec![
                     "to_signed;".into(),
-                    "tmp1 <=X= val3;".into(),
-                    format!("branch_if_positive tmp1 + 1, {label};"),
+                    "val1 <=X= val3;".into(),
+                    "val2 <== get_reg(0);".into(),
+                    format!("branch_if_positive 1, {label};"),
                 ])
                 .collect()
         }
         "bltu" => {
             let (r1, r2, label) = args.rrl()?;
-            read_args(vec![r1, r2])
+            read_args(vec![r2, r1])
                 .into_iter()
-                .chain(vec![format!("branch_if_positive {r2} - {r1}, {label};")])
+                .chain(vec![format!("branch_if_positive 0, {label};")])
                 .collect()
         }
         "blt" => {
@@ -1674,11 +1673,11 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(vec![
                     "to_signed;".into(),
-                    "tmp1 <=X= val3;".into(),
+                    "val2 <=X= val3;".into(),
                     format!("val1 <== get_reg({});", r2.addr()),
                     "to_signed;".into(),
-                    "tmp2 <=X= val3;".into(),
-                    format!("branch_if_positive tmp2 - tmp1, {label};"),
+                    "val1 <=X= val3;".into(),
+                    format!("branch_if_positive 0, {label};"),
                 ])
                 .collect()
         }
@@ -1693,8 +1692,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                     "tmp1 <=X= val3;".into(),
                     format!("val1 <== get_reg({});", r2.addr()),
                     "to_signed;".into(),
-                    "tmp2 <=X= val3;".into(),
-                    format!("branch_if_positive tmp1 - tmp2 + 1, {label};"),
+                    "val2 <=X= val3;".into(),
+                    "val1 <=X= tmp1;".into(),
+                    format!("branch_if_positive 1, {label};"),
                 ])
                 .collect()
         }
@@ -1703,9 +1703,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (r1, label) = args.rl()?;
             read_args(vec![r1])
                 .into_iter()
-                .chain(vec![format!(
-                    "branch_if_positive {r1} - 2**31 + 1, {label};"
-                )])
+                .chain(vec![
+                    format!("val2 <== get_reg(0);"),
+                    format!("branch_if_positive -2**31 + 1, {label};"),
+                ])
                 .collect()
         }
         "blez" => {
@@ -1715,8 +1716,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(vec![
                     "to_signed;".into(),
-                    "tmp1 <=X= val3;".into(),
-                    format!("branch_if_positive -tmp1 + 1, {label};"),
+                    "val1 <=X= -val3;".into(),
+                    "val2 <== get_reg(0);".into(),
+                    format!("branch_if_positive 1, {label};"),
                 ])
                 .collect()
         }
@@ -1727,8 +1729,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(vec![
                     "to_signed;".into(),
-                    "tmp1 <=X= val3;".into(),
-                    format!("branch_if_positive tmp1, {label};"),
+                    "val1 <=X= val3;".into(),
+                    "val2 <== get_reg(0);".into(),
+                    format!("branch_if_positive 0, {label};"),
                 ])
                 .collect()
         }
