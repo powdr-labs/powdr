@@ -499,10 +499,12 @@ __rust_no_alloc_shim_is_unstable: .byte 0
         ]
         .into_iter();
 
-        let jump_table = self
-            .syscalls
-            .keys()
-            .map(|s| format!("branch_if_zero x5 - {}, __ecall_handler_{};", *s as u32, s));
+        let jump_table = self.syscalls.keys().map(|s| {
+            format!(
+                "val1 <== get_reg(5);\nval2 <=X= {};branch_if_zero __ecall_handler_{};",
+                *s as u32, s
+            )
+        });
 
         let invalid_handler = ["__invalid_syscall:".to_string(), "fail;".to_string()].into_iter();
 

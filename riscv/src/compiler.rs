@@ -543,7 +543,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     instr jump_dyn { pc' = val1, val3' = pc + 1}
 
     instr branch_if_nonzero l: label { XXIsZero = 1 - XX * XX_inv, XX = val1 - val2, pc' = (1 - XXIsZero) * l + XXIsZero * (pc + 1) }
-    instr branch_if_zero X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
+    instr branch_if_zero l: label { XXIsZero = 1 - XX * XX_inv, XX = val1 - val2, pc' = XXIsZero * l + (1 - XXIsZero) * (pc + 1) }
 
     // Skips Y instructions if X is zero
     instr skip_if_zero X, Y { pc' = pc + 1 + (XIsZero * Y) }
@@ -1625,14 +1625,17 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (r1, r2, label) = args.rrl()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(vec![format!("branch_if_zero {r1} - {r2}, {label};")])
+                .chain(vec![format!("branch_if_zero {label};")])
                 .collect()
         }
         "beqz" => {
             let (r1, label) = args.rl()?;
             read_args(vec![r1])
                 .into_iter()
-                .chain(vec![format!("branch_if_zero {r1}, {label};")])
+                .chain(vec![
+                    format!("val2 <== get_reg(0);"),
+                    format!("branch_if_zero {label};"),
+                ])
                 .collect()
         }
         "bgeu" => {
