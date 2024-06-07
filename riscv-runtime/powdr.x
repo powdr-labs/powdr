@@ -4,7 +4,7 @@
 # "__global_pointer$" and "__powdr_stack_start" to be defined.
 #
 # This is an usable version with a 256 MB stack. If you are not building via powdr-rs,
-# you must manually specify "-C link-arg=-Tpowdr.x -C link-arg=pie" in rustc
+# to use this linker script you must manually specify "-C link-arg=-Tpowdr.x" in rustc
 # (e.g. via RUSTFLAGS).
 
 SECTIONS
