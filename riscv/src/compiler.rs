@@ -200,7 +200,9 @@ pub fn compile<T: FieldElement>(
                     } else {
                         // There is no bootloader to commit to memory, so we have to
                         // load it explicitly.
-                        data_code.push(format!("mstore 0x{addr:x}, 0x{v:x};"));
+                        data_code.push(format!("val2 <=X= 0x{v:x};"));
+                        data_code.push(format!("val1 <=X= 0x{addr:x};"));
+                        data_code.push(format!("mstore 0;"));
                     }
                 }
                 SingleDataValue::LabelReference(sym) => {
@@ -210,7 +212,9 @@ pub fn compile<T: FieldElement>(
                     // TODO should be possible without temporary
                     data_code.extend([
                         format!("load_label({});", escape_label(sym)),
-                        format!("mstore 0x{addr:x}, tmp1;"),
+                        format!("val2 <=X= tmp1;"),
+                        format!("val1 <=X= 0x{addr:x};"),
+                        format!("mstore 0;"),
                     ]);
                 }
                 SingleDataValue::Offset(_, _) => {
@@ -760,10 +764,10 @@ fn memory(with_bootloader: bool) -> String {
     col operation_id = m_is_write + 2 * m_is_bootloader_write;
 
     /// Like mstore, but setting the m_is_bootloader_write flag.
-    instr mstore_bootloader Y, Z {
-        { 2, X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_selector_bootloader_write { operation_id, m_addr, m_step, m_value },
+    instr mstore_bootloader Y {
+        { 2, X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, val2 } is m_selector_bootloader_write { operation_id, m_addr, m_step, m_value },
         // Wrap the addr value
-        Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
+        val1 + Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
 "#
     } else {
@@ -882,11 +886,11 @@ fn memory(with_bootloader: bool) -> String {
     }
 
     /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
-    /// Y should be a multiple of 4, but this instruction does not enforce it.
-    instr mstore Y, Z {
-        { 1, X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_selector_write { operation_id, m_addr, m_step, m_value },
+    /// val1 should be a multiple of 4, but this instruction does not enforce it.
+    instr mstore Y {
+        { 1, X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, val2 } is m_selector_write { operation_id, m_addr, m_step, m_value },
         // Wrap the addr value
-        Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
+        val1 + Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
     "#
 }
@@ -1058,27 +1062,12 @@ impl Args for [Argument] {
     }
 }
 
-fn only_if_no_write_to_zero(statement: String, reg: Register) -> Vec<String> {
-    only_if_no_write_to_zero_vec(vec![statement], reg)
-}
-
 fn only_if_no_write_to_zero_val3(statement: String, reg: Register) -> Vec<String> {
     only_if_no_write_to_zero_vec_val3(vec![statement], reg)
 }
 
 fn only_if_no_write_to_zero_val4(statement: String, reg: Register) -> Vec<String> {
     only_if_no_write_to_zero_vec_val4(vec![statement], reg)
-}
-
-fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<String> {
-    if reg.is_zero() {
-        vec![]
-    } else {
-        statements
-            .into_iter()
-            .chain([format!("set_reg {}, {};", reg.addr(), reg)])
-            .collect()
-    }
 }
 
 fn only_if_no_write_to_zero_vec_val3(statements: Vec<String>, reg: Register) -> Vec<String> {
@@ -1143,7 +1132,7 @@ pub fn push_register(name: &str) -> Vec<String> {
             "add_new_2 -4;".to_string(),
             "set_reg 2, val3;".to_string(),
             "val1 <== get_reg(2);".to_string(),
-            format!("mstore val1, val2;"),
+            format!("mstore 0;"),
         ],
     ]
     .concat()
@@ -1946,7 +1935,11 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             let (r1, r2, off) = args.rro()?;
             read_args(vec![r1, r2])
                 .into_iter()
-                .chain(vec![format!("mstore {r2} + {off}, {r1};")])
+                .chain(vec![
+                    format!("val2 <== get_reg({});", r1.addr()),
+                    format!("val1 <== get_reg({});", r2.addr()),
+                    format!("mstore {off};"),
+                ])
                 .collect()
         }
         "sh" => {
@@ -1986,7 +1979,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                     "val2 <=X= tmp3;".to_string(),
                     "or 0;".to_string(),
                     "tmp1 <=X= val3;".to_string(),
-                    format!("mstore {rd} + {off} - tmp2, tmp1;"),
+                    format!("val2 <=X= tmp1;"),
+                    format!("val1 <== get_reg({});", rd.addr()),
+                    format!("mstore {off} - tmp2;"),
                 ])
                 .collect()
         }
@@ -2024,7 +2019,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                     "val2 <=X= tmp3;".to_string(),
                     "or 0;".to_string(),
                     "tmp1 <=X= val3;".to_string(),
-                    format!("mstore {rd} + {off} - tmp2, tmp1;"),
+                    format!("val2 <=X= tmp1;"),
+                    format!("val1 <== get_reg({});", rd.addr()),
+                    format!("mstore {off} - tmp2;"),
                 ])
                 .collect()
         }
@@ -2046,9 +2043,11 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                     format!("val1 <=X= tmp1;"),
                     format!("add_new;"),
                     format!("tmp2 <=X= val3;"),
-                    format!("mstore {rs1}, tmp2;"),
+                    format!("val2 <=X= tmp2;"),
+                    format!("val1 <== get_reg({});", rs1.addr()),
+                    format!("mstore 0;"),
                 ],
-                only_if_no_write_to_zero(format!("{rd} <=X= tmp1;"), rd),
+                only_if_no_write_to_zero_val3(format!("val3 <=X= tmp1;"), rd),
             ]
             .concat()
         }
@@ -2075,16 +2074,14 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             assert_eq!(off, 0);
             // TODO: misaligned access should raise misaligned address exceptions
             [
-                "skip_if_zero lr_sc_reservation, 5;".into(),
+                "skip_if_zero lr_sc_reservation, 3;".into(),
                 format!("val1 <== get_reg({});", rs1.addr()),
                 format!("val2 <== get_reg({});", rs2.addr()),
-                format!("{} <== get_reg({});", rs1, rs1.addr()),
-                format!("{} <== get_reg({});", rs2, rs2.addr()),
-                format!("mstore {rs1}, {rs2};"),
+                format!("mstore 0;"),
             ]
             .into_iter()
-            .chain(only_if_no_write_to_zero(
-                format!("{rd} <=X= (1 - lr_sc_reservation);"),
+            .chain(only_if_no_write_to_zero_val3(
+                format!("val3 <=X= (1 - lr_sc_reservation);"),
                 rd,
             ))
             .chain(["lr_sc_reservation <=X= 0;".into()])
