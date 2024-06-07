@@ -63,7 +63,11 @@ impl fmt::Display for Register {
 
 impl From<&str> for Register {
     fn from(s: &str) -> Self {
-        if s.starts_with("x") {
+        if s.starts_with("xtra") {
+            // 0 indexed
+            let value: u8 = s[4..].parse().expect("Invalid register");
+            Self::new(value + 37)
+        } else if s.starts_with("x") {
             // 0 indexed
             let value = s[1..].parse().expect("Invalid register");
             assert!(value < 32, "Invalid register");
@@ -76,10 +80,6 @@ impl From<&str> for Register {
             Self::new(value - 1 + 32)
         } else if s == "lr_sc_reservation" {
             Self::new(36)
-        } else if s.starts_with("xtra") {
-            // 0 indexed
-            let value: u8 = s[4..].parse().expect("Invalid register");
-            Self::new(value + 37)
         } else {
             panic!("Invalid register")
         }
@@ -515,10 +515,6 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     reg lr_sc_reservation;
 "#
         .to_string()
-        // risc-v x* registers
-        + &(0..32)
-            .map(|i| format!("\t\treg x{i};\n"))
-            .join("")
         // runtime extra registers
         + &runtime
             .submachines_extra_registers()
@@ -1696,7 +1692,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(vec![
                     format!("val2 <== get_reg(0);"),
-                    format!("branch_if_positive -2**31 + 1, {label};"),
+                    format!("branch_if_positive -(2**31) + 1, {label};"),
                 ])
                 .collect()
         }
