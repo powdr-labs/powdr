@@ -212,7 +212,7 @@ pub fn compile<T: FieldElement>(
                     // TODO should be possible without temporary
                     data_code.extend([
                         format!("load_label({});", escape_label(sym)),
-                        format!("val2 <=X= tmp1;"),
+                        format!("val2 <== get_reg({});", Register::from("tmp1").addr()),
                         format!("val1 <=X= 0x{addr:x};"),
                         format!("mstore 0;"),
                     ]);
@@ -508,11 +508,6 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     reg Y[<=];
     reg Z[<=];
     reg W[<=];
-    reg tmp1;
-    reg tmp2;
-    reg tmp3;
-    reg tmp4;
-    reg lr_sc_reservation;
 "#
         .to_string()
         // runtime extra registers
@@ -1147,6 +1142,11 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
     instr: &str,
     args: &A,
 ) -> Result<Vec<String>, A::Error> {
+    let tmp1 = Register::from("tmp1");
+    let tmp2 = Register::from("tmp2");
+    let tmp3 = Register::from("tmp3");
+    let tmp4 = Register::from("tmp4");
+    let lr_sc_reservation = Register::from("lr_sc_reservation");
     log::debug!("Processing instruction: {instr}");
     log::debug!("      Arguments: {:?}", args);
     let statements = match instr {
@@ -1239,40 +1239,50 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("to_signed;"),
-                        format!("tmp1 <=X= val3;"),
+                        format!("set_reg {}, val3;", tmp1.addr()),
                         format!("val1 <== get_reg({});", r2.addr()),
                         format!("to_signed;"),
-                        format!("tmp2 <=X= val3;"),
+                        format!("set_reg {}, val3;", tmp2.addr()),
                         // tmp3 is 1 if tmp1 is non-negative
-                        format!("val1 <=X= tmp1;"),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
                         format!("val2 <== get_reg(0);"),
                         "is_positive 1, 1;".into(),
-                        format!("tmp3 <=X= val3;"),
+                        format!("set_reg {}, val3;", tmp3.addr()),
                         // tmp4 is 1 if tmp2 is non-negative
-                        format!("val1 <=X= tmp2;"),
+                        format!("val1 <== get_reg({});", tmp2.addr()),
                         format!("val2 <== get_reg(0);"),
                         "is_positive 1, 1;".into(),
-                        format!("tmp4 <=X= val3;"),
+                        format!("set_reg {}, val3;", tmp4.addr()),
                         // If tmp1 is negative, convert to positive
-                        "skip_if_zero 0, tmp3;".into(),
-                        "tmp1 <=X= 0 - tmp1;".into(),
+                        format!("val1 <== get_reg({});", tmp3.addr()),
+                        "skip_if_zero val1, 3;".into(),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
+                        "val3 <=X= 0 - val1;".into(),
+                        format!("set_reg {}, val3;", tmp1.addr()),
                         // If tmp2 is negative, convert to positive
-                        "skip_if_zero 0, tmp4;".into(),
-                        "tmp2 <=X= 0 - tmp2;".into(),
-                        "val1 <=X= tmp1;".into(),
-                        "val2 <=X= tmp2;".into(),
+                        format!("val1 <== get_reg({});", tmp4.addr()),
+                        "skip_if_zero val1, 2;".into(),
+                        format!("val2 <== get_reg({});", tmp2.addr()),
+                        format!("set_reg {}, -val2;", tmp2.addr()),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
+                        format!("val2 <== get_reg({});", tmp2.addr()),
                         "mul;".into(),
-                        "tmp1 <=X= val3;".into(),
+                        format!("set_reg {}, val3;", tmp1.addr()),
                         format!("set_reg {}, val4;", rd.addr()),
                         // Determine the sign of the result based on the signs of tmp1 and tmp2
-                        "is_not_equal_zero tmp3 - tmp4;".into(),
-                        "tmp3 <=X= val3;".into(),
+                        format!("val1 <== get_reg({});", tmp3.addr()),
+                        format!("val2 <== get_reg({});", tmp4.addr()),
+                        "is_not_equal_zero val1 - val2;".into(),
+                        format!("set_reg {}, val3;", tmp3.addr()),
                         // If the result should be negative, convert back to negative
-                        "skip_if_zero tmp3, 5;".into(),
-                        "is_equal_zero tmp1;".into(),
-                        "tmp1 <=X= val3;".into(),
-                        format!("val1 <== get_reg({});", rd.addr()),
-                        format!("add_new_signed_2(- 1 + tmp1);"),
+                        "skip_if_zero val3, 8;".into(),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
+                        "is_equal_zero val1;".into(),
+                        format!("set_reg {}, val3;", tmp1.addr()),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
+                        format!("val2 <== get_reg({});", rd.addr()),
+                        format!("val2 <=X= val2 + 1;"),
+                        format!("add_new_signed;"),
                     ],
                     rd,
                 ))
@@ -1285,28 +1295,33 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         "to_signed;".into(),
-                        "tmp1 <=X= val3;".into(),
+                        format!("set_reg {}, val3;", tmp1.addr()),
                         // tmp2 is 1 if tmp1 is non-negative
-                        format!("val1 <=X= tmp1;"),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
                         format!("val2 <== get_reg(0);"),
                         "is_positive 1, 1;".into(),
-                        format!("tmp2 <=X= val3;"),
+                        format!("set_reg {}, val3;", tmp2.addr()),
                         // If negative, convert to positive
-                        "skip_if_zero 0, tmp2;".into(),
-                        "tmp1 <=X= 0 - tmp1;".into(),
-                        "val1 <=X= tmp1;".into(),
+                        format!("val1 <== get_reg({});", tmp2.addr()),
+                        format!("val2 <== get_reg({});", tmp1.addr()),
+                        "skip_if_zero 0, val1;".into(),
+                        format!("set_reg {}, -val2;", tmp1.addr()),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
                         format!("val2 <== get_reg({});", r2.addr()),
                         format!("mul;"),
-                        "tmp1 <=X= val3;".into(),
+                        format!("set_reg {}, val3;", tmp1.addr()),
                         format!("set_reg {}, val4;", rd.addr()),
                         // If was negative before, convert back to negative
-                        "skip_if_zero (1-tmp2), 5;".into(),
-                        "is_equal_zero tmp1;".into(),
-                        "tmp1 <=X= val3;".into(),
+                        format!("val1 <== get_reg({});", tmp2.addr()),
+                        "skip_if_zero (1-val1), 7;".into(),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
+                        "is_equal_zero val1;".into(),
+                        format!("set_reg {}, val3;", tmp1.addr()),
                         // If the lower bits are zero, return the two's complement,
                         // otherwise return one's complement.
                         format!("val1 <== get_reg({});", rd.addr()),
-                        format!("add_new_signed_2(- 1 + tmp1);"),
+                        format!("val2 <== get_reg({});", tmp1.addr()),
+                        format!("add_new_signed_2(- 1 + val2);"),
                     ],
                     rd,
                 ))
@@ -1411,8 +1426,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                             // rs is already in val1
                             format!("val2 <=X= {};", 1 << 16),
                             format!("wrap16;"),
-                            format!("tmp1 <=X= val3;"),
-                            format!("val1 <=X= tmp1;"),
+                            format!("set_reg {}, val3;", tmp1.addr()),
+                            format!("val1 <== get_reg({});", tmp1.addr()),
                             format!("val2 <=X= {};", 1 << (amount - 16)),
                             format!("wrap16;"),
                         ]
@@ -1430,9 +1445,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         format!("val1 <== get_reg({});", r2.addr()),
                         format!("val2 <=X= 0;"),
                         format!("and 0x1f;"),
-                        format!("tmp1 <=X= val3;"),
+                        format!("set_reg {}, val3;", tmp1.addr()),
                         format!("val1 <== get_reg({});", r1.addr()),
-                        format!("val2 <=X= tmp1;"),
+                        format!("val2 <== get_reg({});", tmp1.addr()),
                         format!("shl;"),
                     ],
                     rd,
@@ -1465,9 +1480,9 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         format!("val1 <== get_reg({});", r2.addr()),
                         format!("val2 <=X= 0;"),
                         format!("and 0x1f;"),
-                        format!("tmp1 <=X= val3;"),
+                        format!("set_reg {}, val3;", tmp1.addr()),
                         format!("val1 <== get_reg({});", r1.addr()),
-                        format!("val2 <=X= tmp1;"),
+                        format!("val2 <== get_reg({});", tmp1.addr()),
                         format!("shr;"),
                     ],
                     rd,
@@ -1486,15 +1501,14 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         "to_signed;".into(),
-                        "tmp1 <=X= val3;".into(),
-                        format!("val1 <=X= tmp1;"),
+                        format!("set_reg {}, val3;", tmp1.addr()),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
                         format!("val2 <== get_reg(0);"),
                         format!("is_positive 0, -1;"),
-                        format!("tmp1 <=X= val3;"),
-                        format!("tmp1 <=X= tmp1 * 0xffffffff;"),
+                        format!("set_reg {}, val3 * 0xffffffff;", tmp1.addr()),
                         // Here, tmp1 is the full bit mask if rs is negative
                         // and zero otherwise.
-                        format!("val1 <=X= tmp1;"),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
                         format!("val2 <== get_reg({});", rs.addr()),
                         format!("xor 0;"),
                         format!("set_reg {}, val3;", rd.addr()),
@@ -1502,7 +1516,7 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         format!("val2 <=X= {amount};"),
                         format!("shr;"),
                         format!("set_reg {}, val3;", rd.addr()),
-                        format!("val1 <=X= tmp1;"),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
                         format!("val2 <== get_reg({});", rd.addr()),
                         format!("xor 0;"),
                     ],
@@ -1539,8 +1553,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         "to_signed;".into(),
-                        "tmp1 <=X= val3;".into(),
-                        format!("val1 <=X= tmp1;"),
+                        format!("set_reg {}, val3;", tmp1.addr()),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
                         format!("val2 <== get_reg(0);"),
                         format!("is_positive {}, -1;", imm as i32),
                     ],
@@ -1555,12 +1569,12 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         "to_signed;".into(),
-                        "tmp1 <=X= val3;".into(),
+                        format!("set_reg {}, val3;", tmp1.addr()),
                         format!("val1 <== get_reg({});", r2.addr()),
                         format!("to_signed;"),
-                        "tmp2 <=X= val3;".into(),
-                        format!("val1 <=X= tmp1;"),
-                        format!("val2 <=X= tmp2;"),
+                        format!("set_reg {}, val3;", tmp2.addr()),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
+                        format!("val2 <== get_reg({});", tmp2.addr()),
                         format!("is_positive 0, -1;"),
                     ],
                     rd,
@@ -1597,8 +1611,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         "to_signed;".into(),
-                        "tmp1 <=X= val3;".into(),
-                        format!("val1 <=X= tmp1;"),
+                        format!("set_reg {}, val3;", tmp1.addr()),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
                         format!("val2 <== get_reg(0);"),
                         format!("is_positive 0, 1;"),
                     ],
@@ -1676,11 +1690,11 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .into_iter()
                 .chain(vec![
                     "to_signed;".into(),
-                    "tmp1 <=X= val3;".into(),
+                    format!("set_reg {}, val3;", tmp1.addr()),
                     format!("val1 <== get_reg({});", r2.addr()),
                     "to_signed;".into(),
                     "val2 <=X= val3;".into(),
-                    "val1 <=X= tmp1;".into(),
+                    format!("val1 <== get_reg({});", tmp1.addr()),
                     format!("branch_if_positive 1, {label};"),
                 ])
                 .collect()
@@ -1848,9 +1862,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("mload {off};"),
-                        format!("val1 <=X= val3;"),
-                        format!("tmp2 <=X= val4;"),
-                        format!("val2 <=X= 8 * tmp2;"),
+                        format!("set_reg {}, val3;", tmp1.addr()),
+                        format!("set_reg {}, val4 * 8;", tmp2.addr()),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
+                        format!("val2 <== get_reg({});", tmp2.addr()),
                         format!("shr;"),
                         format!("val1 <=X= val3;"),
                         format!("sign_extend_byte;"),
@@ -1867,9 +1882,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("mload {off};"),
-                        format!("val1 <=X= val3;"),
-                        format!("tmp2 <=X= val4;"),
-                        format!("val2 <=X= 8 * tmp2;"),
+                        format!("set_reg {}, val3;", tmp1.addr()),
+                        format!("set_reg {}, val4 * 8;", tmp2.addr()),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
+                        format!("val2 <== get_reg({});", tmp2.addr()),
                         format!("shr;"),
                         format!("set_reg {}, val3;", rd.addr()),
                         format!("val1 <== get_reg({});", rd.addr()),
@@ -1889,9 +1905,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("mload {off};"),
-                        format!("val1 <=X= val3;"),
-                        format!("tmp2 <=X= val4;"),
-                        format!("val2 <=X= 8 * tmp2;"),
+                        format!("set_reg {}, val3;", tmp1.addr()),
+                        format!("set_reg {}, val4 * 8;", tmp2.addr()),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
+                        format!("val2 <== get_reg({});", tmp2.addr()),
                         format!("shr;"),
                         format!("val1 <=X= val3;"),
                         format!("sign_extend_16_bits;"),
@@ -1909,9 +1926,10 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .chain(only_if_no_write_to_zero_vec_val3(
                     vec![
                         format!("mload {off};"),
-                        format!("val1 <=X= val3;"),
-                        format!("tmp2 <=X= val4;"),
-                        format!("val2 <=X= 8 * tmp2;"),
+                        format!("set_reg {}, val3;", tmp1.addr()),
+                        format!("set_reg {}, val4 * 8;", tmp2.addr()),
+                        format!("val1 <== get_reg({});", tmp1.addr()),
+                        format!("val2 <== get_reg({});", tmp2.addr()),
                         format!("shr;"),
                         format!("set_reg {}, val3;", rd.addr()),
                         format!("val1 <== get_reg({});", rd.addr()),
@@ -1944,35 +1962,38 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .chain(vec![
                     format!("val1 <=X= val2;"),
                     format!("mload {off};"),
-                    format!("tmp1 <=X= val3;"),
-                    format!("tmp2 <=X= val4;"),
+                    format!("set_reg {}, val3;", tmp1.addr()),
+                    format!("set_reg {}, val4;", tmp2.addr()),
                     "val1 <=X= 0xffff;".to_string(),
-                    "val2 <=X= 8 * tmp2;".to_string(),
+                    format!("val2 <== get_reg({});", tmp2.addr()),
+                    "val2 <=X= val2 * 8;".to_string(),
                     "shl;".to_string(),
-                    "tmp3 <=X= val3;".to_string(),
-                    "val1 <=X= tmp3;".to_string(),
+                    format!("set_reg {}, val3;", tmp3.addr()),
+                    format!("val1 <== get_reg({});", tmp3.addr()),
                     "val2 <=X= 0;".to_string(),
                     "xor 0xffffffff;".to_string(),
-                    "tmp3 <=X= val3;".to_string(),
-                    "val1 <=X= tmp1;".to_string(),
-                    "val2 <=X= tmp3;".to_string(),
+                    format!("set_reg {}, val3;", tmp3.addr()),
+                    format!("val1 <== get_reg({});", tmp1.addr()),
+                    format!("val2 <== get_reg({});", tmp3.addr()),
                     "and 0;".to_string(),
-                    "tmp1 <=X= val3;".to_string(),
+                    format!("set_reg {}, val3;", tmp1.addr()),
                     format!("val1 <== get_reg({});", rs.addr()),
                     "val2 <=X= 0;".to_string(),
                     "and 0xffff;".to_string(),
-                    "tmp3 <=X= val3;".to_string(),
-                    "val1 <=X= tmp3;".to_string(),
-                    "val2 <=X= 8 * tmp2;".to_string(),
+                    format!("set_reg {}, val3;", tmp3.addr()),
+                    format!("val1 <== get_reg({});", tmp3.addr()),
+                    format!("val2 <== get_reg({});", tmp2.addr()),
+                    "val2 <=X= 8 * val2;".to_string(),
                     "shl;".to_string(),
-                    "tmp3 <=X= val3;".to_string(),
-                    "val1 <=X= tmp1;".to_string(),
-                    "val2 <=X= tmp3;".to_string(),
+                    format!("set_reg {}, val3;", tmp3.addr()),
+                    format!("val1 <== get_reg({});", tmp1.addr()),
+                    format!("val2 <== get_reg({});", tmp3.addr()),
                     "or 0;".to_string(),
-                    "tmp1 <=X= val3;".to_string(),
-                    format!("val2 <=X= tmp1;"),
+                    format!("set_reg {}, val3;", tmp1.addr()),
+                    format!("val2 <== get_reg({});", tmp1.addr()),
                     format!("val1 <== get_reg({});", rd.addr()),
-                    format!("mstore {off} - tmp2;"),
+                    format!("val3 <== get_reg({});", tmp2.addr()),
+                    format!("mstore {off} - val3;"),
                 ])
                 .collect()
         }
@@ -1984,35 +2005,38 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 .chain(vec![
                     format!("val1 <=X= val2;"),
                     format!("mload {off};"),
-                    format!("tmp1 <=X= val3;"),
-                    format!("tmp2 <=X= val4;"),
+                    format!("set_reg {}, val3;", tmp1.addr()),
+                    format!("set_reg {}, val4;", tmp2.addr()),
                     "val1 <=X= 0xff;".to_string(),
-                    "val2 <=X= 8 * tmp2;".to_string(),
+                    format!("val2 <== get_reg({});", tmp2.addr()),
+                    "val2 <=X= val2 * 8;".to_string(),
                     "shl;".to_string(),
-                    "tmp3 <=X= val3;".to_string(),
-                    "val1 <=X= tmp3;".to_string(),
+                    format!("set_reg {}, val3;", tmp3.addr()),
+                    format!("val1 <== get_reg({});", tmp3.addr()),
                     "val2 <=X= 0;".to_string(),
                     "xor 0xffffffff;".to_string(),
-                    "tmp3 <=X= val3;".to_string(),
-                    "val1 <=X= tmp1;".to_string(),
-                    "val2 <=X= tmp3;".to_string(),
+                    format!("set_reg {}, val3;", tmp3.addr()),
+                    format!("val1 <== get_reg({});", tmp1.addr()),
+                    format!("val2 <== get_reg({});", tmp3.addr()),
                     "and 0;".to_string(),
-                    "tmp1 <=X= val3;".to_string(),
+                    format!("set_reg {}, val3;", tmp1.addr()),
                     format!("val1 <== get_reg({});", rs.addr()),
                     "val2 <=X= 0;".to_string(),
                     format!("and 0xff;"),
-                    "tmp3 <=X= val3;".to_string(),
-                    "val1 <=X= tmp3;".to_string(),
-                    "val2 <=X= 8 * tmp2;".to_string(),
+                    format!("set_reg {}, val3;", tmp3.addr()),
+                    format!("val1 <== get_reg({});", tmp3.addr()),
+                    format!("val2 <== get_reg({});", tmp2.addr()),
+                    "val2 <=X= 8 * val2;".to_string(),
                     "shl;".to_string(),
-                    "tmp3 <=X= val3;".to_string(),
-                    "val1 <=X= tmp1;".to_string(),
-                    "val2 <=X= tmp3;".to_string(),
+                    format!("set_reg {}, val3;", tmp3.addr()),
+                    format!("val1 <== get_reg({});", tmp1.addr()),
+                    format!("val2 <== get_reg({});", tmp3.addr()),
                     "or 0;".to_string(),
-                    "tmp1 <=X= val3;".to_string(),
-                    format!("val2 <=X= tmp1;"),
+                    format!("set_reg {}, val3;", tmp1.addr()),
+                    format!("val2 <== get_reg({});", tmp1.addr()),
                     format!("val1 <== get_reg({});", rd.addr()),
-                    format!("mstore {off} - tmp2;"),
+                    format!("val3 <== get_reg({});", tmp2.addr()),
+                    format!("mstore {off} - val3;"),
                 ])
                 .collect()
         }
@@ -2029,16 +2053,16 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                 // val1 = rs1, val2 = rs2
                 vec![
                     format!("mload 0;"),
-                    format!("tmp1 <=X= val3;"),
-                    format!("tmp2 <=X= val4;"),
-                    format!("val1 <=X= tmp1;"),
+                    format!("set_reg {}, val3;", tmp1.addr()),
+                    format!("set_reg {}, val4;", tmp2.addr()),
+                    format!("val1 <== get_reg({});", tmp1.addr()),
                     format!("add_new;"),
-                    format!("tmp2 <=X= val3;"),
-                    format!("val2 <=X= tmp2;"),
+                    format!("set_reg {}, val3;", tmp2.addr()),
+                    format!("val2 <== get_reg({});", tmp2.addr()),
                     format!("val1 <== get_reg({});", rs1.addr()),
                     format!("mstore 0;"),
                 ],
-                only_if_no_write_to_zero_val3(format!("val3 <=X= tmp1;"), rd),
+                only_if_no_write_to_zero_val3(format!("val3 <== get_reg({});", tmp1.addr()), rd),
             ]
             .concat()
         }
@@ -2050,11 +2074,8 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             // TODO misaligned access should raise misaligned address exceptions
             [
                 read_args(vec![rs]),
-                only_if_no_write_to_zero_vec_val3(
-                    vec![format!("mload 0;"), format!("tmp1 <=X= val4;")],
-                    rd,
-                ),
-                vec!["lr_sc_reservation <=X= 1;".into()],
+                only_if_no_write_to_zero_vec_val3(vec![format!("mload 0;")], rd),
+                vec![format!("set_reg {}, 1;", lr_sc_reservation.addr())],
             ]
             .concat()
         }
@@ -2065,17 +2086,21 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
             assert_eq!(off, 0);
             // TODO: misaligned access should raise misaligned address exceptions
             [
-                "skip_if_zero lr_sc_reservation, 3;".into(),
+                format!("val1 <== get_reg({});", lr_sc_reservation.addr()),
+                "skip_if_zero val1, 3;".into(),
                 format!("val1 <== get_reg({});", rs1.addr()),
                 format!("val2 <== get_reg({});", rs2.addr()),
                 format!("mstore 0;"),
             ]
             .into_iter()
-            .chain(only_if_no_write_to_zero_val3(
-                format!("val3 <=X= (1 - lr_sc_reservation);"),
+            .chain(only_if_no_write_to_zero_vec_val3(
+                vec![
+                    format!("val1 <== get_reg({});", lr_sc_reservation.addr()),
+                    "val3 <=X= 1 - val1;".into(),
+                ],
                 rd,
             ))
-            .chain(["lr_sc_reservation <=X= 0;".into()])
+            .chain([format!("set_reg {}, 0;", lr_sc_reservation.addr())])
             .collect()
         }
 
