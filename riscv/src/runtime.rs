@@ -116,7 +116,11 @@ impl Runtime {
             "split_gl",
             ["instr split_gl Z -> X, Y ~ split_gl.split;"],
             0,
-            ["x10, x11 <== split_gl(x10);", "x10 <=X= 0;", "x11 <=X= 0;"],
+            [
+                "val1, val2 <== split_gl(val1);",
+                "val1 <=X= 0;",
+                "val2 <=X= 0;",
+            ],
         );
 
         // Base syscalls
@@ -146,7 +150,7 @@ impl Runtime {
             [
                 "val1 <== get_reg(10);",
                 "val2 <== get_reg(11);",
-                "x0 <=X= ${ std::prover::Query::Output(std::convert::int(std::prover::eval(val1)), std::convert::int(std::prover::eval(val2))) };"
+                "set_reg 0, ${ std::prover::Query::Output(std::convert::int(std::prover::eval(val1)), std::convert::int(std::prover::eval(val2))) };"
             ]
         );
 

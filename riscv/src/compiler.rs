@@ -259,8 +259,8 @@ pub fn compile<T: FieldElement>(
         program.push("jump __data_init;".to_string());
     }
     program.extend([
-        format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-        "set_reg 2, x2;".to_string(),
+        format!("// Set stack pointer"),
+        format!("set_reg 2, {stack_start};"),
         "set_reg 1, pc + 2;".to_string(),
         "jump __runtime_start;".to_string(),
         "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
@@ -528,10 +528,6 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         + &bootloader_preamble_if_included
         + &memory(with_bootloader)
         + r#"
-    // ============== Constraint on x0 =======================
-
-    x0 = 0;
-
     // ============== iszero check for X =======================
     let XIsZero = std::utils::is_zero(X);
 
@@ -1096,12 +1092,7 @@ fn read_args(input_regs: Vec<Register>) -> Vec<String> {
     input_regs
         .into_iter()
         .enumerate()
-        .flat_map(|(i, r)| {
-            [
-                format!("{} <== get_reg({});", r, r.addr()),
-                format!("val{} <== get_reg({});", i + 1, r.addr()),
-            ]
-        })
+        .flat_map(|(i, r)| [format!("val{} <== get_reg({});", i + 1, r.addr())])
         .collect()
 }
 
