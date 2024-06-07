@@ -791,7 +791,7 @@ fn memory(with_bootloader: bool) -> String {
 
     // =============== Register memory =======================
     std::machines::memory::Memory regs;
-    instr get_reg X -> Y ~ regs.mload X, STEP -> Y;
+    instr get_reg Y -> X ~ regs.mload Y, STEP -> X;
     instr set_reg X, Y -> ~ regs.mstore X, STEP, Y ->;
     reg val1;
     reg val2;
