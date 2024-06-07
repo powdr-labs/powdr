@@ -296,7 +296,7 @@ impl PILAnalyzer {
                             expressions.push((e, Type::Expr.into()))
                         }
                     } else {
-                        panic!("Selected expressions need to be provided as arrays. Expected [{}]. Found: {}",
+                        panic!("Selected expressions need to be provided as arrays.\n  Expected [{}].\n  Found: {}",
                         part.expressions, part.expressions)
                         // TODO: better error handling
                     }

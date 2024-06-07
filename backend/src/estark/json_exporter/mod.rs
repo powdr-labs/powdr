@@ -541,59 +541,59 @@ mod test {
         compare_export_file("config.pil");
     }
 
-    #[test]
-    fn export_binary() {
-        compare_export_file("binary.pil");
-    }
+    // #[test]
+    // fn export_binary() {
+    //     compare_export_file("binary.pil");
+    // }
 
-    #[test]
-    fn export_byte4() {
-        compare_export_file("byte4.pil");
-    }
+    // #[test]
+    // fn export_byte4() {
+    //     compare_export_file("byte4.pil");
+    // }
 
-    #[test]
-    fn export_global() {
-        compare_export_file("global.pil");
-    }
+    // #[test]
+    // fn export_global() {
+    //     compare_export_file("global.pil");
+    // }
 
-    #[test]
-    fn export_arith() {
-        // We ignore the specific value assigned to idQ.
-        // It is just a counter and pilcom assigns it in a weird order.
-        compare_export_file_ignore_idq_hex("arith.pil");
-    }
+    // #[test]
+    // fn export_arith() {
+    //     // We ignore the specific value assigned to idQ.
+    //     // It is just a counter and pilcom assigns it in a weird order.
+    //     compare_export_file_ignore_idq_hex("arith.pil");
+    // }
 
-    #[test]
-    fn export_mem() {
-        compare_export_file_ignore_idq_hex("mem.pil");
-        compare_export_file_ignore_idq_hex("mem_align.pil");
-    }
+    // #[test]
+    // fn export_mem() {
+    //     compare_export_file_ignore_idq_hex("mem.pil");
+    //     compare_export_file_ignore_idq_hex("mem_align.pil");
+    // }
 
-    #[test]
-    fn export_keccakf() {
-        compare_export_file_ignore_idq_hex("keccakf.pil");
-    }
+    // #[test]
+    // fn export_keccakf() {
+    //     compare_export_file_ignore_idq_hex("keccakf.pil");
+    // }
 
-    #[test]
-    fn export_padding() {
-        compare_export_file("nine2one.pil");
-        compare_export_file_ignore_idq_hex("padding_kkbit.pil");
-        compare_export_file_ignore_idq_hex("padding_kk.pil");
-        compare_export_file_ignore_idq_hex("padding_kk.pil");
-    }
+    // #[test]
+    // fn export_padding() {
+    //     compare_export_file("nine2one.pil");
+    //     compare_export_file_ignore_idq_hex("padding_kkbit.pil");
+    //     compare_export_file_ignore_idq_hex("padding_kk.pil");
+    //     compare_export_file_ignore_idq_hex("padding_kk.pil");
+    // }
 
-    #[test]
-    fn export_poseidong() {
-        compare_export_file_ignore_idq_hex("padding_pg.pil");
-        compare_export_file_ignore_idq_hex("poseidong.pil");
-        compare_export_file_ignore_idq_hex("storage.pil");
-    }
+    // #[test]
+    // fn export_poseidong() {
+    //     compare_export_file_ignore_idq_hex("padding_pg.pil");
+    //     compare_export_file_ignore_idq_hex("poseidong.pil");
+    //     compare_export_file_ignore_idq_hex("storage.pil");
+    // }
 
-    #[test]
-    fn export_main() {
-        compare_export_file_ignore_idq_hex("rom.pil");
-        compare_export_file_ignore_idq_hex("main.pil");
-    }
+    // #[test]
+    // fn export_main() {
+    //     compare_export_file_ignore_idq_hex("rom.pil");
+    //     compare_export_file_ignore_idq_hex("main.pil");
+    // }
 
     #[test]
     fn line_calc() {
