@@ -180,7 +180,10 @@ pub fn compile_rust_crate_to_riscv_asm(
 
 fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: bool) -> Command {
     let mut cmd = Command::new("cargo");
-    cmd.env("RUSTFLAGS", "--emit=asm -g");
+    cmd.env(
+        "RUSTFLAGS",
+        "--emit=asm -g -C link-args=-Tpowdr.x -C link-args=--emit-relocs",
+    );
 
     let args = as_ref![
         OsStr;
