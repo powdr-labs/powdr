@@ -455,7 +455,7 @@ impl<'a> TypeChecker<'a> {
                 base: Box::new(expected_type.ty.clone()),
                 length: None,
             })
-        } else if expected_type.allow_empty && (ty == Type::Tuple(TupleType { items: vec![] })) {
+        } else if expected_type.allow_empty && (ty == Type::empty_tuple()) {
             Type::empty_tuple()
         } else {
             expected_type.ty.clone()
@@ -673,7 +673,7 @@ impl<'a> TypeChecker<'a> {
         if self.lambda_kind == FunctionKind::Constr {
             self.constr_function_statement_type.clone()
         } else {
-            Type::Tuple(TupleType { items: vec![] }).into()
+            Type::empty_tuple().into()
         }
     }
 
