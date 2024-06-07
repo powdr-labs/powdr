@@ -61,7 +61,7 @@ namespace T(65536);
     col fixed p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0] + [0]*;
     col fixed p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-    { T.pc, T.reg_write_X_A, T.reg_write_X_CNT } in (1 - T.first_step) { T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT };
+    [T.pc, T.reg_write_X_A, T.reg_write_X_CNT] in (1 - T.first_step) $ [T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT];
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(input, formatted);
@@ -350,7 +350,7 @@ fn expression_but_expected_constraint() {
 fn constraint_but_expected_expression() {
     let input = r#"namespace N(16);
     col witness y;
-    { (N.y - 2) = 0 } in { N.y };
+    [ (N.y - 2) = 0 ] in [ N.y ];
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);

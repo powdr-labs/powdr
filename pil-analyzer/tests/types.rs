@@ -197,7 +197,7 @@ fn constraints() {
     let input = "
         let a;
         let BYTE: col = |i| std::convert::fe(i & 0xff);
-        { a + 1 } in {BYTE};
+        [ a + 1 ] in [BYTE];
         namespace std::convert(8);
         let fe = 18;
     ";

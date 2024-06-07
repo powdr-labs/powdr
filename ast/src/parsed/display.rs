@@ -496,7 +496,7 @@ impl Display for PilStatement {
             PilStatement::ConnectIdentity(_, left, right) => write_indented_by(
                 f,
                 format!(
-                    "{{ {} }} connect {{ {} }};",
+                    "[ {} ] connect [ {} ];",
                     format_list(left),
                     format_list(right)
                 ),
@@ -581,10 +581,10 @@ impl Display for SelectedExpressions {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{{ {} }}",
+            "{}{}",
             self.selector
                 .as_ref()
-                .map(|s| format!("{s} "))
+                .map(|s| format!("{s} $ "))
                 .unwrap_or_default(),
             self.expressions
         )

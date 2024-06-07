@@ -20,7 +20,7 @@ use powdr_number::FieldElement;
 /// A machine that can support a lookup in a set of columns that are sorted
 /// by one specific column and values in that column have to be unique.
 /// This means there is a column A and a constraint of the form
-/// NOTLAST { A' - A } in { POSITIVE }
+/// NOTLAST $ [ A' - A ] in [ POSITIVE ]
 /// Where
 ///  - NOTLAST is zero only on the last row
 ///  - POSITIVE has all values from 1 to half of the field size.
@@ -95,7 +95,7 @@ fn check_identity<T: FieldElement>(
     fixed_data: &FixedData<T>,
     id: &Identity<SelectedExpressions<Expression<T>>>,
 ) -> Option<PolyID> {
-    // Looking for NOTLAST { A' - A } in { POSITIVE }
+    // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
     if id.kind != IdentityKind::Plookup
         || id.right.selector.is_some()
         || id.left.expressions.len() != 1

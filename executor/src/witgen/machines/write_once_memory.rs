@@ -22,11 +22,11 @@ use super::{FixedLookup, Machine};
 /// let ADDR = |i| i;
 /// let v;
 /// // Stores a value, fails if the cell already has a value that's different
-/// instr mstore X, Y -> { {X, Y} in {ADDR, v} }
+/// instr mstore X, Y -> { [X, Y] in [ADDR, v] }
 /// // Loads a value. If the cell is empty, the prover can choose a value.
 /// // Note that this is the same lookup, only Y is considered an output instead
 /// // of an input.
-/// instr mload X -> Y { {X, Y} in {ADDR, v} }
+/// instr mload X -> Y { [X, Y] in [ADDR, v] }
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
     connecting_identities: BTreeMap<u64, &'a Identity<SelectedExpressions<Expression<T>>>>,

@@ -419,12 +419,12 @@ namespace Global(2**20);
     // A bit more complicated to see that the 'pattern matcher' works properly.
     (1 - A + 0) * (A + 1 - 1) = 0;
     col witness B;
-    { B } in { BYTE };
+    [ B ] in [ BYTE ];
     col witness C;
     C = A * 512 + B;
     col witness D;
-    { D } in { BYTE };
-    { D } in { SHIFTED };
+    [ D ] in [ BYTE ];
+    [ D ] in [ SHIFTED ];
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
         let constants = crate::constant_evaluator::generate(&analyzed);
@@ -487,7 +487,7 @@ namespace Global(2**20);
 namespace Global(1024);
     let bytes: col = |i| i % 256;
     let X;
-    { X * 4 } in { bytes };
+    [ X * 4 ] in [ bytes ];
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
         let known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]

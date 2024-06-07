@@ -181,7 +181,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             })
             .collect::<Vec<_>>();
 
-        // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
+        // Removes identities like X * (X - 1) = 0 or [ A ] in [ BYTES ]
         // These are already captured in the range constraints.
         let (fixed, retained_identities) =
             global_constraints::set_global_constraints(fixed, &identities);

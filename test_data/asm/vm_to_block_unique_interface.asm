@@ -16,7 +16,7 @@ machine Binary with
     col fixed P_X = [0, 0, 1, 1, 0, 0, 1, 1] + [1]*;
     col fixed P_Y = [0, 1, 0, 1, 0, 1, 0, 1] + [1]*;
     col fixed P_Z = [0, 0, 0, 1, 0, 1, 1, 1] + [1]*;
-    { operation_id, x, y, z } in { P_FUNCTION, P_X, P_Y, P_Z };
+    [ operation_id, x, y, z ] in [ P_FUNCTION, P_X, P_Y, P_Z ];
 }
 
 machine Arith with

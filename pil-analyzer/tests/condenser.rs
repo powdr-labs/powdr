@@ -14,7 +14,7 @@ fn new_witness_column() {
     let y;
     let z = new_wit();
     z = y;
-    z { z } in { even };
+    z $ [z] in [even];
     let t = new_wit_arr();
     t[0] = t[1];
     "#;
@@ -33,7 +33,7 @@ fn new_witness_column() {
     let z: expr = N.new_wit();
     col witness x_1;
     N.x_1 = N.y;
-    N.x_1 { N.x_1 } in { N.even };
+    N.x_1 $ [N.x_1] in [N.even];
     let t: expr[] = N.new_wit_arr();
     col witness x_2;
     N.x_2 = N.x_2;
@@ -168,9 +168,9 @@ pub fn constructed_constraints() {
     col witness y;
     col witness z;
     Main.x = Main.y;
-    1 { Main.x, 3 } in { Main.y, Main.z };
-    { Main.x, 3 } is Main.x { Main.y, Main.z };
-    { Main.x, Main.y } connect { Main.z, 3 };
+    1 $ [Main.x, 3] in [Main.y, Main.z];
+    [Main.x, 3] is Main.x $ [Main.y, Main.z];
+    [Main.x, Main.y] connect [Main.z, 3];
 "#;
     assert_eq!(formatted, expected);
 }

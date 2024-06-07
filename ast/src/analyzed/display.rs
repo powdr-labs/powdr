@@ -321,10 +321,10 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{{ {} }}",
+            "{}[{}]",
             self.selector
                 .as_ref()
-                .map(|s| format!("{s} "))
+                .map(|s| format!("{s} $ "))
                 .unwrap_or_default(),
             self.expressions.iter().format(", ")
         )

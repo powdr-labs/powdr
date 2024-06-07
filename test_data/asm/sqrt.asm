@@ -34,7 +34,7 @@ machine Sqrt with
     
     // Note that this is required to make the witness unique
     // (y := -y would also satisfy y * y = x, but we want the positive solution).
-    { y } in { range };
+    [ y ] in [ range ];
 }
 
 

@@ -30,7 +30,7 @@ machine Binary with
     B' = B * (1 - latch) + B_byte * FACTOR;
     C' = C * (1 - latch) + C_byte * FACTOR;
 
-    {A_byte, B_byte, C_byte} in {P_A, P_B, P_C};
+    [A_byte, B_byte, C_byte] in [P_A, P_B, P_C];
 }
 
 machine Main with degree: 65536 {

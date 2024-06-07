@@ -25,12 +25,12 @@ namespace SimpleDiv(%N);
     col witness X_b2;
     col witness R_b1;
     col witness R_b2;
-    { Y_b1 } in { BYTE };
-    { Y_b2 } in { BYTE };
-    { X_b1 } in { BYTE };
-    { X_b2 } in { BYTE };
-    { R_b1 } in { BYTE };
-    { R_b2 } in { BYTE };
+    [ Y_b1 ] in [ BYTE ];
+    [ Y_b2 ] in [ BYTE ];
+    [ X_b1 ] in [ BYTE ];
+    [ X_b2 ] in [ BYTE ];
+    [ R_b1 ] in [ BYTE ];
+    [ R_b2 ] in [ BYTE ];
 
     // now the check:
     col fixed CHECK = [0, 0, 0, 0, 0] + [1] + [0]*;
