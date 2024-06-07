@@ -30,7 +30,7 @@ machine Palindrome with degree: 1024 {
 
     // This enforces that addresses are stored in an ascending order
     // (and in particular, are unique).
-    NOTLAST $ [ m_addr' - m_addr ] in POSITIVE;
+    NOTLAST $ [ m_addr' - m_addr ] in [POSITIVE];
 
     instr jmpz X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
     instr jmp l: label { pc' = l }

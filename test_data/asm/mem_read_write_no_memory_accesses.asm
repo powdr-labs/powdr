@@ -44,7 +44,7 @@ machine MemReadWrite {
 
     // Except for the last row, if m_change is 1, then m_addr has to increase,
     // if it is zero, m_step has to increase.
-    (1 - LAST) $ [ m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) ] in POSITIVE;
+    (1 - LAST) $ [ m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) ] in [POSITIVE];
 
     // m_change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
     (1 - m_change) * LAST = 0;
