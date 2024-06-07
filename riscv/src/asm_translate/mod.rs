@@ -7,7 +7,7 @@ use itertools::Itertools;
 use parser::RiscParser;
 use powdr_asm_utils::{
     ast::{BinaryOpKind, UnaryOpKind},
-    data_parser,
+    data_parser::{self, DataObjects},
     data_storage::store_data_objects,
     parser::parse_asm,
     reachability::{self, symbols_in_args},
@@ -203,7 +203,10 @@ fn compile_internal(mut assemblies: BTreeMap<String, String>) -> AsmProgram {
             .map(|(name, contents)| (name, parse_asm(RiscParser::default(), &contents)))
             .collect(),
     );
-    let (mut data_sections, mut data_positions) = data_parser::extract_data_objects(&statements);
+    let DataObjects {
+        sections: mut data_sections,
+        adhoc_symbols: mut data_positions,
+    } = data_parser::extract_data_objects(&statements);
 
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)

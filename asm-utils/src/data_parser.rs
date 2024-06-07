@@ -77,15 +77,17 @@ impl DataSections {
     }
 }
 
+pub struct DataObjects {
+    pub sections: Vec<Vec<(Option<String>, Vec<DataValue>)>>,
+    pub adhoc_symbols: BTreeMap<String, u32>,
+}
+
 /// Extract all data objects from the list of statements.
 /// Returns the named data objects themselves and a vector of the names
 /// in the order in which they occur in the statements.
 pub fn extract_data_objects<R: Register, F: FunctionOpKind>(
     statements: &[Statement<R, F>],
-) -> (
-    Vec<Vec<(Option<String>, Vec<DataValue>)>>,
-    BTreeMap<String, u32>,
-) {
+) -> DataObjects {
     let mut adhoc_symbols = BTreeMap::new();
     let mut data = DataSections::new();
 
@@ -179,7 +181,10 @@ pub fn extract_data_objects<R: Register, F: FunctionOpKind>(
             _ => {}
         }
     }
-    (data.sections, adhoc_symbols)
+    DataObjects {
+        sections: data.sections,
+        adhoc_symbols,
+    }
 }
 
 fn is_data_section<R: Register, F: FunctionOpKind>(arg: &Argument<R, F>) -> bool {
