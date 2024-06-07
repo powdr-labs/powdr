@@ -249,7 +249,7 @@ fn output_files_from_cargo_build_plan(
                         .unwrap()
                         .strip_prefix("lib")
                         .unwrap()
-                } else if None == extension {
+                } else if extension.is_none() {
                     assert!(!executable_found, "Multiple executables found");
                     executable_found = true;
                     output.file_stem().unwrap().to_str().unwrap()
