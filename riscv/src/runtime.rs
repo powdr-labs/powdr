@@ -180,13 +180,12 @@ impl Runtime {
         let implementation =
             // The poseidon syscall uses x10 for input, we store it in tmp3 and
             // reuse x10 as input to the poseidon machine instruction.
-            std::iter::once("tmp3 <== get_reg(10);".to_string())
             // The poseidon instruction uses registers 0..12 as input/output.
             // The memory field elements are loaded into these registers before calling the instruction.
             // They might be in use by the riscv machine, so we save the registers on the stack.
-            .chain((0..12).flat_map(|i| load_gl_fe("tmp3", i as u32 * 8, &reg(i))))
+            (0..12).flat_map(|i| load_gl_fe(10, i as u32 * 8, &reg(i)))
             .chain(std::iter::once("poseidon_gl;".to_string()))
-            .chain((0..4).flat_map(|i| store_gl_fe("tmp3", i as u32 * 8, &reg(i))));
+            .chain((0..4).flat_map(|i| store_gl_fe(10, i as u32 * 8, &reg(i))));
 
         self.add_syscall(Syscall::PoseidonGL, implementation);
         self
@@ -528,27 +527,26 @@ fn instr_register_params(start_idx: usize, inputs: usize, outputs: usize) -> Str
 }
 
 /// Load gl field element from addr+offset into register
-fn load_gl_fe(addr: &str, offset: u32, reg: &str) -> [String; 6] {
+fn load_gl_fe(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 5] {
     let lo = offset;
     let hi = offset + 4;
     [
-        format!("val1 <=X= {addr};"),
+        format!("val1 <== get_reg({addr_reg_id});"),
         format!("mload {lo};"),
         format!("{reg} <=X= val3;"),
-        format!("val1 <=X= {addr};"),
         format!("mload {hi};"),
         format!("{reg} <=X= {reg} + val3 * 2**32;"),
     ]
 }
 
 /// Store gl field element from register into addr+offset
-fn store_gl_fe(addr: &str, offset: u32, reg: &str) -> [String; 7] {
+fn store_gl_fe(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 7] {
     let lo = offset;
     let hi = offset + 4;
     [
         format!("val1 <=X= {reg};"),
         format!("split_gl;"),
-        format!("val1 <=X= {addr};"),
+        format!("val1 <=X= get_reg({addr_reg_id});"),
         format!("val2 <=X= val3;"),
         format!("mstore {lo};"),
         format!("val2 <=X= val4;"),
