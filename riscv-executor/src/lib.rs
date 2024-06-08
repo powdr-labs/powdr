@@ -27,7 +27,7 @@ use powdr_ast::{
     },
 };
 use powdr_number::{FieldElement, LargeInt};
-use powdr_riscv_syscalls::SYSCALL_REGISTERS;
+//use powdr_riscv_syscalls::SYSCALL_REGISTERS;
 pub use profiler::ProfilerOptions;
 
 pub mod arith;
@@ -1210,22 +1210,6 @@ pub fn execute<F: FieldElement>(
 
 /// FIXME: copied from `riscv/runtime.rs` instead of adding dependency.
 /// Helper function for register names used in submachine instruction params.
-fn register_by_idx(mut idx: usize) -> String {
-    // s0..11 callee saved registers
-    static SAVED_REGS: [&str; 12] = [
-        "x8", "x9", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
-    ];
-
-    // first, use syscall_registers
-    if idx < SYSCALL_REGISTERS.len() {
-        return SYSCALL_REGISTERS[idx].to_string();
-    }
-    idx -= SYSCALL_REGISTERS.len();
-    // second, callee saved registers
-    if idx < SAVED_REGS.len() {
-        return SAVED_REGS[idx].to_string();
-    }
-    idx -= SAVED_REGS.len();
-    // lastly, use extra submachine registers
+fn register_by_idx(idx: usize) -> String {
     format!("xtra{idx}")
 }
