@@ -905,18 +905,24 @@ impl<T: FieldElement> VMConverter<T> {
         for (i, line) in self.code_lines.iter().enumerate() {
             for (assign_reg, writes) in &line.write_regs {
                 for reg in writes {
-                    rom_constants
-                        .get_mut(&format!("p_reg_write_{assign_reg}_{reg}"))
-                        .unwrap()[i] = 1.into();
+                    let r = rom_constants.get_mut(&format!("p_reg_write_{assign_reg}_{reg}"));
+                    if let Some(r) = r {
+                        r[i] = 1.into();
+                    } else {
+                        panic!("No constant for {assign_reg} -> {reg}.");
+                    }
                 }
             }
             for (assign_reg, value) in &line.value {
                 for (coeff, item) in value {
                     match item {
                         AffineExpressionComponent::Register(reg) => {
-                            rom_constants
-                                .get_mut(&format!("p_read_{assign_reg}_{reg}"))
-                                .unwrap()[i] += *coeff;
+                            let r = rom_constants.get_mut(&format!("p_read_{assign_reg}_{reg}"));
+                            if let Some(r) = r {
+                                r[i] += *coeff;
+                            } else {
+                                panic!("No constant for {assign_reg} -> {reg}.");
+                            }
                         }
                         AffineExpressionComponent::Constant => {
                             rom_constants
