@@ -2,14 +2,15 @@
 
 #![deny(clippy::print_stdout)]
 
-use std::sync::Arc;
+use std::{
+    fmt::{self, Debug, Formatter},
+    sync::Arc,
+};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
-)]
+#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub struct SourceRef {
     pub file_name: Option<Arc<str>>,
     pub file_contents: Option<Arc<str>>,
@@ -20,6 +21,26 @@ pub struct SourceRef {
 impl SourceRef {
     pub fn unknown() -> Self {
         Default::default()
+    }
+
+    /// Returns a new Error for this source reference.
+    pub fn with_error(&self, message: String) -> Error {
+        Error {
+            source_ref: self.clone(),
+            message,
+        }
+    }
+}
+
+impl Debug for SourceRef {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}:{}-{}",
+            self.file_name.as_deref().unwrap_or(""),
+            self.start,
+            self.end
+        )
     }
 }
 
@@ -49,6 +70,10 @@ impl Error {
             )]);
         let mut writer = StandardStream::stderr(ColorChoice::Always);
         term::emit(&mut writer, &config, &files, &diagnostic).unwrap()
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
     }
 }
 
