@@ -271,12 +271,26 @@ impl Display for parsed::SelectedExpressions<Expression> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{{ {} }}",
+            "{}[{}]",
             self.selector
                 .as_ref()
-                .map(|s| format!("{s} "))
+                .map(|s| format!("{s} $ "))
                 .unwrap_or_default(),
             self.expressions
+        )
+    }
+}
+
+impl<Expr: Display> Display for SelectedExpressions<Expr> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}[{}]",
+            self.selector
+                .as_ref()
+                .map(|s| format!("{s} $ "))
+                .unwrap_or_default(),
+            self.expressions.iter().format(", ")
         )
     }
 }
@@ -314,20 +328,6 @@ impl<T: Display> Display for Identity<SelectedExpressions<AlgebraicExpression<T>
             IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
             IdentityKind::Connect => write!(f, "{} connect {};", self.left, self.right),
         }
-    }
-}
-
-impl<Expr: Display> Display for SelectedExpressions<Expr> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}[{}]",
-            self.selector
-                .as_ref()
-                .map(|s| format!("{s} $ "))
-                .unwrap_or_default(),
-            self.expressions.iter().format(", ")
-        )
     }
 }
 

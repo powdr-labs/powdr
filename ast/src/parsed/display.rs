@@ -577,7 +577,7 @@ impl<E: Display> EnumDeclaration<E> {
     }
 }
 
-impl Display for SelectedExpressions {
+impl Display for SelectedExpressions<Expression> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
