@@ -456,7 +456,7 @@ impl<'a> TypeChecker<'a> {
             },
         ) = expr
         {
-            match expected_type.clone() {
+            match expected_type.ty.clone() {
                 Type::Int => *annotated_type = Some(Type::Int),
                 Type::Fe => *annotated_type = Some(Type::Fe),
                 Type::Expr => *annotated_type = Some(Type::Expr),
