@@ -448,7 +448,7 @@ impl<'a> TypeChecker<'a> {
         expected_type: &ExpectedType,
         expr: &mut Expression,
     ) -> Result<(), Error> {
-        type_if_literal(expr, expected_type);
+        update_type_if_literal(expr, &expected_type.ty);
 
         let ty = self.infer_type_of_expression(expr)?;
         let ty = self.type_into_substituted(ty);
@@ -720,7 +720,7 @@ impl<'a> TypeChecker<'a> {
     /// This function should be preferred over `infer_type_of_expression` if an expected type is known
     /// because we can create better error messages.
     fn expect_type(&mut self, expected_type: &Type, expr: &mut Expression) -> Result<(), Error> {
-        type_if_literal(expr, expected_type);
+        update_type_if_literal(expr, expected_type);
 
         let inferred_type = self.infer_type_of_expression(expr)?;
         self.unifier
@@ -944,9 +944,9 @@ impl<'a> TypeChecker<'a> {
     }
 }
 
-fn type_if_literal(
+fn update_type_if_literal(
     expr: &mut powdr_ast::parsed::Expression<Reference>,
-    expected_type: &ExpectedType,
+    expected_type: &Type,
 ) {
     // For literals, we try to store the type here already.
     // This avoids creating tons of type variables for large arrays.
@@ -958,7 +958,7 @@ fn type_if_literal(
         },
     ) = expr
     {
-        match expected_type.ty.clone() {
+        match expected_type.clone() {
             Type::Int => *annotated_type = Some(Type::Int),
             Type::Fe => *annotated_type = Some(Type::Fe),
             Type::Expr => *annotated_type = Some(Type::Expr),
