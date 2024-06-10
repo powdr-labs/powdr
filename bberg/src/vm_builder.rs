@@ -115,6 +115,8 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
         &all_cols_with_shifts,
     );
 
+    bb_files.create_circuit_builder_cpp(file_name, &all_cols);
+
     // ----------------------- Create the flavor file -----------------------
     bb_files.create_flavor_hpp(
         file_name,

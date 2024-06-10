@@ -116,8 +116,8 @@ fn flavor_includes(name: &str, relation_file_names: &[String], lookups: &[String
     let relation_imports = get_relations_imports(name, relation_file_names, lookups);
 
     format!(
-        "
-#pragma once
+        "#pragma once
+
 #include \"barretenberg/commitment_schemes/kzg/kzg.hpp\"
 #include \"barretenberg/ecc/curves/bn254/g1.hpp\"
 #include \"barretenberg/flavor/relation_definitions.hpp\"

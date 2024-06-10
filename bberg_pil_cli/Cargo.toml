@@ -6,7 +6,7 @@ authors = ["Maddiaa"]
 edition = "2021"
 
 [[bin]]
-name = "bberg_pil"
+name = "bb_pil"
 path = "src/main.rs"
 
 [dependencies]

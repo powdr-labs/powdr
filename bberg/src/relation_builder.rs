@@ -288,7 +288,11 @@ pub(crate) fn create_row_type(name: &str, all_rows: &[String]) -> String {
     let all_annotated = map_with_newline(all_rows, row_transformation);
 
     format!(
-        "template <typename FF> struct {name}Row {{ \n{}\n }}",
+        "template <typename FF> struct {name}Row {{
+        {}
+
+        [[maybe_unused]] static std::vector<std::string> names();
+        }}",
         all_annotated,
     )
 }

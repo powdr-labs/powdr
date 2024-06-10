@@ -15,6 +15,8 @@ pub trait CircuitBuilder {
         to_be_shifted: &[String],
         all_cols_with_shifts: &[String],
     );
+
+    fn create_circuit_builder_cpp(&mut self, name: &str, all_cols: &[String]);
 }
 
 fn circuit_hpp_includes(name: &str, relations: &[String], permutations: &[String]) -> String {
@@ -158,6 +160,8 @@ namespace bb {{
 
 {row_with_all_included};
 
+template <typename FF> std::ostream& operator<<(std::ostream& os, {name}FullRow<FF> const& row);
+
 class {name}CircuitBuilder {{
     public:
         using Flavor = bb::{name}Flavor;
@@ -252,6 +256,58 @@ class {name}CircuitBuilder {{
             &self.circuit,
             &format!("{}_circuit_builder.hpp", snake_case(name)),
             &circuit_hpp,
+        );
+    }
+
+    fn create_circuit_builder_cpp(&mut self, name: &str, all_cols: &[String]) {
+        let names_list = map_with_newline(all_cols, |name: &String| format!("\"{}\",", name));
+        let stream_all_relations = map_with_newline(all_cols, |name: &String| {
+            format!("<< field_to_string(row.{}) << \",\"", name)
+        });
+        let snake_name = snake_case(name);
+
+        let circuit_cpp = format!(
+            "
+#include \"barretenberg/vm/generated/{snake_name}_circuit_builder.hpp\"
+
+namespace bb {{
+namespace {{
+
+template <typename FF> std::string field_to_string(const FF& ff)
+{{
+    std::ostringstream os;
+    os << ff;
+    std::string raw = os.str();
+    auto first_not_zero = raw.find_first_not_of('0', 2);
+    std::string result = \"0x\" + (first_not_zero != std::string::npos ? raw.substr(first_not_zero) : \"0\");
+    return result;
+}}
+
+}} // namespace
+
+template <typename FF> std::vector<std::string> {name}FullRow<FF>::names() {{
+    return {{
+        {names_list}
+        \"\"
+    }};
+}}
+
+template <typename FF> std::ostream& operator<<(std::ostream& os, {name}FullRow<FF> const& row) {{
+    return os {stream_all_relations}
+    \"\";
+}}
+
+// Explicit template instantiation.
+template std::ostream& operator<<(std::ostream& os, AvmFullRow<bb::AvmFlavor::FF> const& row);
+template std::vector<std::string> AvmFullRow<bb::AvmFlavor::FF>::names();
+
+}} // namespace bb"
+        );
+
+        self.write_file(
+            &self.circuit,
+            &format!("{}_circuit_builder.cpp", snake_case(name)),
+            &circuit_cpp,
         );
     }
 }
