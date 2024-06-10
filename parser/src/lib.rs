@@ -139,8 +139,8 @@ pub fn unescape_string(s: &str) -> String {
 mod test {
     use super::*;
     use powdr_ast::parsed::{
-        asm::ASMProgram, build::direct_reference, PILFile, PilStatement, PolynomialName,
-        SelectedExpressions,
+        asm::ASMProgram, build::direct_reference, ArrayLiteral, PILFile, PilStatement,
+        PolynomialName, SelectedExpressions,
     };
     use powdr_parser_util::UnwrapErrToStderr;
     use pretty_assertions::assert_eq;
@@ -211,9 +211,11 @@ mod test {
 
     #[test]
     fn simple_plookup() {
-        let input = "f in g;";
+        let input = "[f] in [g];";
         let ctx = ParserContext::new(None, input);
-        let parsed = powdr::PILFileParser::new().parse(&ctx, "f in g;").unwrap();
+        let parsed = powdr::PILFileParser::new()
+            .parse(&ctx, "[f] in [g];")
+            .unwrap();
         assert_eq!(
             parsed,
             PILFile(vec![PilStatement::PlookupIdentity(
@@ -221,15 +223,25 @@ mod test {
                     file_name: None,
                     file_contents: Some(input.into()),
                     start: 0,
-                    end: 6,
+                    end: 10,
                 },
                 SelectedExpressions {
                     selector: None,
-                    expressions: Box::new(direct_reference("f"))
+                    expressions: Box::new(
+                        ArrayLiteral {
+                            items: vec![direct_reference("f")]
+                        }
+                        .into()
+                    )
                 },
                 SelectedExpressions {
                     selector: None,
-                    expressions: Box::new(direct_reference("g"))
+                    expressions: Box::new(
+                        ArrayLiteral {
+                            items: vec![direct_reference("g")]
+                        }
+                        .into()
+                    )
                 }
             )])
         );

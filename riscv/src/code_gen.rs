@@ -546,7 +546,7 @@ fn memory(with_bootloader: bool) -> String {
 
     /// Like mstore, but setting the m_is_bootloader_write flag.
     instr mstore_bootloader Y, Z {
-        { 2, X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_selector_bootloader_write { operation_id, m_addr, m_step, m_value },
+        [ 2, X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z ] is m_selector_bootloader_write $ [ operation_id, m_addr, m_step, m_value ],
         // Wrap the addr value
         Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
