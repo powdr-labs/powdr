@@ -12,6 +12,8 @@ use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::parsed::{BinaryOperation, BinaryOperator};
+
 use super::{
     visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, TypedExpression,
 };
@@ -178,6 +180,10 @@ impl SymbolPath {
 
     pub fn parts(&self) -> impl DoubleEndedIterator + ExactSizeIterator<Item = &Part> {
         self.parts.iter()
+    }
+
+    pub fn into_parts(self) -> impl DoubleEndedIterator + ExactSizeIterator<Item = Part> {
+        self.parts.into_iter()
     }
 }
 
@@ -563,7 +569,7 @@ pub enum MachineStatement {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct LinkDeclaration {
     pub flag: Expression,
-    pub to: CallableRef,
+    pub link: Expression,
     pub is_permutation: bool,
 }
 
@@ -574,11 +580,60 @@ pub struct CallableRef {
     pub params: CallableParams,
 }
 
+impl TryFrom<Expression> for CallableRef {
+    type Error = String;
+
+    fn try_from(value: Expression) -> Result<Self, Self::Error> {
+        let mut outputs = vec![];
+        let rhs = match value {
+            Expression::BinaryOperation(
+                _,
+                BinaryOperation {
+                    left,
+                    op: BinaryOperator::Identity,
+                    right,
+                },
+            ) => {
+                outputs = if let Expression::Tuple(_, elements) = *left {
+                    elements
+                } else {
+                    vec![*left]
+                };
+                *right
+            }
+            expr => expr,
+        };
+
+        // TODO(leandro): improve error messages here?
+        let Expression::FunctionCall(_, call) = rhs else {
+            return Err("link definition must call a `submachine.operation`".to_string());
+        };
+        let inputs = call.arguments;
+        match *call.function {
+            Expression::Reference(_, r) if r.path.parts().len() == 2 => {
+                let (left_part, right_part) = r.path.into_parts().next_tuple().unwrap();
+                let instance = left_part.try_into().unwrap();
+                let callable = right_part.try_into().unwrap();
+                if r.type_args.is_some() {
+                    return Err("types not expected in link definition".to_string());
+                }
+
+                Ok(CallableRef {
+                    instance,
+                    callable,
+                    params: CallableParams { inputs, outputs },
+                })
+            }
+            _ => Err("link definition must call a `submachine.operation`".to_string()),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum InstructionBody {
     Local(Vec<PilStatement>),
-    CallablePlookup(CallableRef),
-    CallablePermutation(CallableRef),
+    CallablePlookup(Expression),
+    CallablePermutation(Expression),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

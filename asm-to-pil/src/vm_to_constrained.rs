@@ -493,9 +493,11 @@ impl<T: FieldElement> VMConverter<T> {
         source: SourceRef,
         flag: &str,
         params: &InstructionParams,
-        mut callable: CallableRef,
+        link: Expression,
     ) -> LinkDefinitionStatement {
         let lhs = params;
+        // TODO(leandro): proper error
+        let mut callable: CallableRef = link.try_into().unwrap();
         let rhs = &mut callable.params;
 
         // lhs params must all be assignment registers when mapping instruction to operation
@@ -603,10 +605,18 @@ impl<T: FieldElement> VMConverter<T> {
         source: SourceRef,
         instr_flag: &str,
         instr_params: &InstructionParams,
-        mut link: LinkDeclaration,
+        link_decl: LinkDeclaration,
     ) -> LinkDefinitionStatement {
         let lhs = instr_params;
-        let rhs = &mut link.to.params;
+
+        // TODO(leandro): bubble error up
+        let mut callable: CallableRef = link_decl
+            .link
+            .try_into()
+            .map_err(|e| source.with_error(e))
+            .unwrap();
+
+        let rhs = &mut callable.params;
 
         let mut rhs_assignment_registers = BTreeSet::new();
         let mut rhs_next_write_registers = BTreeSet::new();
@@ -650,7 +660,7 @@ impl<T: FieldElement> VMConverter<T> {
         }
 
         // link is active only when the instruction is also active
-        let flag = direct_reference(instr_flag) * link.flag;
+        let flag = direct_reference(instr_flag) * link_decl.flag;
 
         // if a write register next reference (R') is used in the instruction link,
         // we must induce a tautology in the update clause (R' = R') when the
@@ -664,8 +674,8 @@ impl<T: FieldElement> VMConverter<T> {
         LinkDefinitionStatement {
             source,
             flag,
-            to: link.to,
-            is_permutation: link.is_permutation,
+            to: callable,
+            is_permutation: link_decl.is_permutation,
         }
     }
 

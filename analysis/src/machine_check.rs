@@ -73,17 +73,18 @@ impl TypeChecker {
                     source,
                     LinkDeclaration {
                         flag,
-                        to,
+                        link,
                         is_permutation,
                     },
-                ) => {
-                    links.push(LinkDefinitionStatement {
+                ) => match link.try_into() {
+                    Ok(to) => links.push(LinkDefinitionStatement {
                         source,
                         flag,
                         to,
                         is_permutation,
-                    });
-                }
+                    }),
+                    Err(e) => errors.push(e),
+                },
                 MachineStatement::Pil(_source, statement) => {
                     pil.push(statement);
                 }

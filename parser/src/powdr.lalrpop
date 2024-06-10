@@ -325,8 +325,8 @@ pub LinkDeclarationStatement: MachineStatement = {
 }
 
 pub LinkDeclaration: LinkDeclaration = {
-    "link" <flag:LinkFlag> "=>" <to:CallableRef> => LinkDeclaration { flag, to, is_permutation: false, },
-    "link" <flag:LinkFlag> "~>" <to:CallableRef> => LinkDeclaration { flag, to, is_permutation: true, },
+    "link" <flag:LinkFlag> "=>" <link:Expression> => LinkDeclaration { flag, link, is_permutation: false, },
+    "link" <flag:LinkFlag> "~>" <link:Expression> => LinkDeclaration { flag, link, is_permutation: true, },
 }
 
 pub LinkFlag: Expression = {
@@ -337,18 +337,8 @@ pub LinkFlag: Expression = {
 pub InstructionBody: InstructionBody = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
-    "=" <f_ref:CallableRef> ";" => InstructionBody::CallablePlookup(f_ref),
-    "~" <f_ref:CallableRef> ";" => InstructionBody::CallablePermutation(f_ref),
-}
-
-pub CallableRef: CallableRef = {
-    <instance:Identifier> "." <callable:Identifier> "(" <params:CallableParams> ")" => CallableRef { instance, callable, params },
-}
-
-CallableParams: CallableParams = {
-    <inputs: ExpressionList> "->" <output: ExpressionList> => CallableParams::new(inputs, output),
-    // we can ommit the arrow if there are no outputs
-    <inputs: ExpressionList> => CallableParams::new(inputs, vec![])
+    "=>" <link:Expression> ";" => InstructionBody::CallablePlookup(link),
+    "~>" <link:Expression> ";" => InstructionBody::CallablePermutation(link),
 }
 
 InstructionBodyElements: Vec<PilStatement> = {

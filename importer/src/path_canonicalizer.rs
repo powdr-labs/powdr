@@ -7,9 +7,9 @@ use std::{
 
 use powdr_ast::parsed::{
     asm::{
-        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Instruction,
-        InstructionBody, LinkDeclaration, Machine, MachineStatement, Module, ModuleRef,
-        ModuleStatement, SymbolDefinition, SymbolPath, SymbolValue, SymbolValueRef,
+        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, CallableRef, Import,
+        Instruction, InstructionBody, LinkDeclaration, Machine, MachineStatement, Module,
+        ModuleRef, ModuleStatement, SymbolDefinition, SymbolPath, SymbolValue, SymbolValueRef,
     },
     folder::Folder,
     types::{Type, TypeScheme},
@@ -613,31 +613,31 @@ fn check_machine(
                 })?
             }
             // check rhs input expressions for `instr` and `link` declarations
-            MachineStatement::LinkDeclaration(
-                _,
-                LinkDeclaration {
-                    to: callable_ref, ..
-                },
-            )
+            MachineStatement::LinkDeclaration(source_ref, LinkDeclaration { link, .. })
             | MachineStatement::InstructionDeclaration(
-                _,
+                source_ref,
                 _,
                 Instruction {
-                    body: InstructionBody::CallablePlookup(callable_ref),
+                    body: InstructionBody::CallablePlookup(link),
                     ..
                 },
             )
             | MachineStatement::InstructionDeclaration(
-                _,
+                source_ref,
                 _,
                 Instruction {
-                    body: InstructionBody::CallablePermutation(callable_ref),
+                    body: InstructionBody::CallablePermutation(link),
                     ..
                 },
             ) => {
-                callable_ref.params.inputs.iter().try_for_each(|e| {
-                    check_expression(&module_location, e, state, &local_variables)
-                })?;
+                // check input/output expressions for link definition
+                let callable_ref: CallableRef = link
+                    .clone()
+                    .try_into()
+                    .map_err(|e| source_ref.with_error(e))?;
+                for expr in callable_ref.params.inputs_and_outputs() {
+                    check_expression(&module_location, expr, state, &local_variables)?;
+                }
             }
             _ => {}
         }
