@@ -14,6 +14,7 @@ use super::{
     affine_expression::{AffineExpression, AffineResult},
     data_structures::column_map::WitnessColumnMap,
     expression_evaluator::ExpressionEvaluator,
+    flat_algebraic_expression::FlatAlgebraicExpression,
     global_constraints::RangeConstraintSet,
     range_constraints::RangeConstraint,
     symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
@@ -33,6 +34,7 @@ impl From<RowIndex> for DegreeType {
     fn from(row_index: RowIndex) -> Self {
         // Ensure that 0 <= index < num_rows
         if row_index.index >= 0 {
+            // TODO in most cases, this could be a subtraction.
             (row_index.index as DegreeType) % row_index.num_rows
         } else {
             assert!(row_index.index > -(row_index.num_rows as i64));
@@ -418,6 +420,8 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         ))
         .evaluate(expr)
     }
+
+    // TODO also add an "evaluate_flat" function?
 }
 
 impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'_, '_, T> {
