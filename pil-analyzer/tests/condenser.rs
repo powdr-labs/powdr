@@ -174,3 +174,95 @@ pub fn constructed_constraints() {
 "#;
     assert_eq!(formatted, expected);
 }
+
+#[test]
+#[should_panic = "There are pre-existing constraints or witness columns"]
+pub fn capture_stage_non_fresh_wit() {
+    let input = r#"
+        namespace std::prover;
+            let capture_stage: (-> int) -> Constr[] = 9;
+
+        namespace Main(1024);
+            col witness x;
+            let f = constr || { x = 2; 1024 };
+            std::prover::capture_stage(f);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "There are pre-existing constraints or witness columns"]
+pub fn capture_stage_non_fresh_inter() {
+    let input = r#"
+        namespace std::prover;
+            let capture_stage: (-> int) -> Constr[] = 9;
+
+        namespace Main(1024);
+            col x = 3;
+            let f = constr || { x = 2; 1024 };
+            std::prover::capture_stage(f);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "There are pre-existing constraints or witness columns"]
+pub fn capture_stage_non_fresh_constr() {
+    let input = r#"
+        namespace std::prover;
+            let capture_stage: (-> int) -> Constr[] = 9;
+
+        namespace Main(1024);
+            4 = 5;
+            let f = constr || 1024;
+            std::prover::capture_stage(f);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "returned degree 2048, but the degree has already been set to 1024."]
+pub fn capture_stage_set_different_degree() {
+    let input = r#"
+        namespace std::prover;
+            let capture_stage: (-> int) -> Constr[] = 9;
+
+        namespace Main(1024);
+            let f = constr || 2048;
+            std::prover::capture_stage(f);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+pub fn capture_stage_working() {
+    let input = r#"
+        namespace std::prover;
+            let capture_stage: (-> int) -> Constr[] = 9;
+
+        namespace Main;
+            let f = constr || { let x; let y; x + y = 2; x = 8; 1024 };
+            // Just use the second constraint.
+            std::prover::capture_stage(f)[1];
+            let w;
+            w = 10;
+    "#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = "namespace std::prover(1024);
+    let capture_stage: (-> int) -> std::prelude::Constr[] = 9;
+namespace Main(1024);
+    let f: -> int = (constr || {
+        let x;
+        let y;
+        x + y = 2;
+        x = 8;
+        1024
+    });
+    col witness x;
+    col witness y;
+    Main.x = 8;
+    col witness stage(1) w;
+    Main.w = 10;
+";
+    assert_eq!(formatted, expected);
+}

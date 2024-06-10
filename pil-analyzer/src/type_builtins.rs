@@ -45,6 +45,10 @@ lazy_static! {
             ("T: ToString", "T -> std::prelude::Constr[]")
         ),
         ("std::field::modulus", ("", "-> int")),
+        (
+            "std::prover::capture_stage",
+            ("", "(-> int) -> std::prelude::Constr[]")
+        ),
         ("std::prover::challenge", ("", "int, int -> expr")),
         ("std::prover::degree", ("", "-> int")),
         ("std::prover::eval", ("", "expr -> fe")),
