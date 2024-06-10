@@ -496,8 +496,7 @@ impl<T: FieldElement> VMConverter<T> {
         link: Expression,
     ) -> LinkDefinitionStatement {
         let lhs = params;
-        // TODO(leandro): proper error
-        let mut callable: CallableRef = link.try_into().unwrap();
+        let mut callable: CallableRef = link.try_into().map_err(|e| source.with_error(e)).unwrap();
         let rhs = &mut callable.params;
 
         // lhs params must all be assignment registers when mapping instruction to operation
@@ -609,7 +608,6 @@ impl<T: FieldElement> VMConverter<T> {
     ) -> LinkDefinitionStatement {
         let lhs = instr_params;
 
-        // TODO(leandro): bubble error up
         let mut callable: CallableRef = link_decl
             .link
             .try_into()
