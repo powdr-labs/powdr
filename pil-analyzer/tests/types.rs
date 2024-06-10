@@ -516,3 +516,13 @@ fn enum_too_many_fields() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+fn empty_blocks() {
+    let input = "
+    let f: int -> () = |i| { };
+    let g: int -> () = |i| {
+        f(i);
+    };";
+    type_check(input, &[]);
+}
