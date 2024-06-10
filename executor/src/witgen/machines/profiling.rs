@@ -128,15 +128,15 @@ fn reset_and_print_profile_summary_impl(
         );
 
         for (i, (id, duration)) in time_by_machine.iter().enumerate() {
-            if i > 10 {
+            if i > 50 {
                 break;
             }
             let percentage = (duration.as_secs_f64() / total_time.as_secs_f64()) * 100.0;
             log::debug!(
-                "  {:>5.1}% ({:>8.1?}): {}",
+                "  {:>5.5}% ({:>8.5?}): {}",
                 percentage,
                 duration,
-                id_to_name[&id]
+                id_to_name[&id].to_string().chars().take(200).collect::<String>()
             );
         }
         log::debug!("  ---------------------------");
