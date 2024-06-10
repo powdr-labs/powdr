@@ -521,12 +521,16 @@ impl<T: FieldElement> VMConverter<T> {
         for name in &rhs_assignment_registers {
             assert!(
                 lhs.inputs_and_outputs().any(|p_lhs| p_lhs.name == *name),
-                "Assignment register '{name}' used on rhs must be present on instruction params"
+                "Assignment register '{name}' used in link definition must be present in instruction params"
             );
         }
 
-        // link is active only when the instruction is also active
-        let flag = direct_reference(instr_flag) * link_decl.flag;
+        // link is active only if the instruction is also active
+        let flag = if link_decl.flag == 1.into() {
+            direct_reference(instr_flag)
+        } else {
+            direct_reference(instr_flag) * link_decl.flag
+        };
 
         // if a write register next reference (R') is used in the instruction link,
         // we must induce a tautology in the update clause (R' = R') when the
@@ -1239,7 +1243,9 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Assignment register 'Y' used on rhs must be present on lhs params")]
+    #[should_panic(
+        expected = "Assignment register 'Y' used in link definition must be present in instruction params"
+    )]
     fn instr_external_rhs_register_not_on_lhs() {
         let asm = r"
 machine Main {
@@ -1248,7 +1254,7 @@ machine Main {
   reg Y[<=];
   reg A;
 
-  instr foo X = vm.foo X -> Y;
+  instr foo X link => Y = vm.foo(X);
 
   function main {
     foo;
