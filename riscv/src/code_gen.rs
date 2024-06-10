@@ -1174,7 +1174,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
                 format!("mstore {rd} + {off} - tmp2, tmp1;"),
             ]
         }
-        "fence" | "fence.i" | "nop" => vec![],
+        "fence" | "nop" => vec![],
         "unimp" => vec!["fail;".to_string()],
 
         // atomic instructions
