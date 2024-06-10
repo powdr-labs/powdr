@@ -7,7 +7,7 @@ use powdr_ast::parsed::asm::{FunctionStatement, MachineStatement, SymbolPath};
 use itertools::Itertools;
 use powdr_parser::ParserContext;
 
-use crate::compiler::{pop_register, push_register};
+use crate::code_gen::{pop_register, push_register};
 
 static EXTRA_REG_PREFIX: &str = "xtra";
 
@@ -434,49 +434,6 @@ impl Runtime {
         (0..count)
             .map(|i| format!("reg {EXTRA_REG_PREFIX}{i};"))
             .collect()
-    }
-
-    pub fn global_declarations(&self) -> String {
-        [
-            "__divdi3",
-            "__udivdi3",
-            "__udivti3",
-            "__divdf3",
-            "__muldf3",
-            "__moddi3",
-            "__umoddi3",
-            "__umodti3",
-            "__eqdf2",
-            "__ltdf2",
-            "__nedf2",
-            "__unorddf2",
-            "__floatundidf",
-            "__extendsfdf2",
-            "memcpy",
-            "memmove",
-            "memset",
-            "memcmp",
-            "bcmp",
-            "strlen",
-        ]
-        .map(|n| format!(".globl {n}@plt\n.globl {n}\n.set {n}@plt, {n}\n"))
-        .join("\n\n")
-            + &[("__rust_alloc_error_handler", "__rg_oom")]
-                .map(|(n, m)| format!(".globl {n}\n.set {n}, {m}\n"))
-                .join("\n\n")
-            +
-            // some extra symbols expected by rust code:
-            // - __rust_no_alloc_shim_is_unstable: compilation time acknowledgment that this feature is unstable.
-            // - __rust_alloc_error_handler_should_panic: needed by the default alloc error handler,
-            //   not sure why it's not present in the asm.
-            //   https://github.com/rust-lang/rust/blob/ae9d7b0c6434b27e4e2effe8f05b16d37e7ef33f/library/alloc/src/alloc.rs#L415
-            r".data
-.globl __rust_alloc_error_handler_should_panic
-__rust_alloc_error_handler_should_panic: .byte 0
-.globl __rust_no_alloc_shim_is_unstable
-__rust_no_alloc_shim_is_unstable: .byte 0
-.text
-"
     }
 
     pub fn ecall_handler(&self) -> Vec<String> {
