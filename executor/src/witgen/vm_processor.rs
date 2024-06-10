@@ -406,7 +406,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     fn process_identity(
         &mut self,
         row_index: DegreeType,
-        identity: &'a Identity<Expression<T>>,
+        identity: &'a Identity<SelectedExpressions<Expression<T>>>,
         is_complete: &mut bool,
         unknown_strategy: UnknownStrategy,
     ) -> Result<Option<bool>, EvalError<T>> {
