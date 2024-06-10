@@ -448,6 +448,23 @@ impl<'a> TypeChecker<'a> {
         expected_type: &ExpectedType,
         expr: &mut Expression,
     ) -> Result<(), Error> {
+        if let Expression::Number(
+            _,
+            Number {
+                type_: annotated_type @ None,
+                ..
+            },
+        ) = expr
+        {
+            match expected_type.clone() {
+                Type::Int => *annotated_type = Some(Type::Int),
+                Type::Fe => *annotated_type = Some(Type::Fe),
+                Type::Expr => *annotated_type = Some(Type::Expr),
+                Type::TypeVar(tv) => *annotated_type = Some(Type::TypeVar(tv.clone())),
+                _ => {}
+            };
+        }
+
         let ty = self.infer_type_of_expression(expr)?;
         let ty = self.type_into_substituted(ty);
         let expected_type = if expected_type.allow_array && matches!(ty, Type::Array(_)) {
