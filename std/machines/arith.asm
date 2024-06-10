@@ -324,7 +324,7 @@ machine Arith with
     // limbs of the prime, so the result is within 48 bits, still far from overflowing the
     // Goldilocks field.
     pol witness q0_15_high, q0_15_low, q1_15_high, q1_15_low, q2_15_high, q2_15_low;
-    q0_15_high * CLK32[0] + q0_15_low * CLK32[1] + q1_15_high * CLK32[2] + q1_15_low * CLK32[3] + q2_15_high * CLK32[4] + q2_15_low * CLK32[5] in BYTE2;
+    [q0_15_high * CLK32[0] + q0_15_low * CLK32[1] + q1_15_high * CLK32[2] + q1_15_low * CLK32[3] + q2_15_high * CLK32[4] + q2_15_low * CLK32[5]] in [BYTE2];
 
     fixed_inside_32_block(q0_15_high);
     fixed_inside_32_block(q0_15_low);
