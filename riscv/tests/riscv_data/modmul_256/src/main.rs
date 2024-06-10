@@ -1,3 +1,4 @@
+#![no_main]
 #![no_std]
 
 use hex_literal::hex;
@@ -36,7 +37,7 @@ pub fn main() {
     let r = [0, 0, 0, 0, 0, 0, 0, 0];
     assert_eq!(modmul_256(a, b, m), r);
 
-    // (0xffffffffeeeeeeeeddddddddccccccccbbbbbbbbaaaaaaaa0000000099999999 * 
+    // (0xffffffffeeeeeeeeddddddddccccccccbbbbbbbbaaaaaaaa0000000099999999 *
     //  0x8888888877777777666666665555555544444444333333332222222211111111 %
     //  0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f) =
     //  0x 30eca800 38e38dd9 54320f92 93e93e3d 091a2ae9 72ea6053 69d03be7 2229e43e
@@ -50,10 +51,11 @@ pub fn main() {
     ];
     // secp modulus
     let m = [
-        0xfffffc2f, 0xfffffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 
+        0xfffffc2f, 0xfffffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
         0xffffffff,
     ];
-    let r = [0x2229e43e, 0x69d03be7, 0x72ea6053, 0x091a2ae9, 0x93e93e3d, 0x54320f92, 0x38e38dd9, 
+    let r = [
+        0x2229e43e, 0x69d03be7, 0x72ea6053, 0x091a2ae9, 0x93e93e3d, 0x54320f92, 0x38e38dd9,
         0x30eca800,
     ];
     assert_eq!(modmul_256(a, b, m), r);
