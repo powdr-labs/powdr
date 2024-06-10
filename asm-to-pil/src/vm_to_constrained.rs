@@ -326,34 +326,13 @@ impl<T: FieldElement> VMConverter<T> {
         }));
 
         // validate instruction body
-        match s.instruction.body {
-            InstructionBody::Local(body) => self.handle_local_instruction_def(
-                s.source,
-                &instruction_name,
-                &instruction_flag,
-                &params,
-                body,
-            ),
-            InstructionBody::CallablePlookup(callable) => {
-                let link = self.handle_external_instruction_def(
-                    s.source,
-                    &instruction_flag,
-                    &params,
-                    callable,
-                );
-                input.links.push(link);
-            }
-            InstructionBody::CallablePermutation(callable) => {
-                let mut link = self.handle_external_instruction_def(
-                    s.source,
-                    &instruction_flag,
-                    &params,
-                    callable,
-                );
-                link.is_permutation = true;
-                input.links.push(link);
-            }
-        }
+        self.handle_instruction_body(
+            s.source,
+            &instruction_name,
+            &instruction_flag,
+            &params,
+            s.instruction.body,
+        );
 
         let inputs: Vec<_> = params
             .inputs
@@ -378,13 +357,13 @@ impl<T: FieldElement> VMConverter<T> {
     }
 
     /// check parameters are valid and extend PIL from the definition
-    fn handle_local_instruction_def(
+    fn handle_instruction_body(
         &mut self,
         source: SourceRef,
         name: &str,
         flag: &str,
         params: &InstructionParams,
-        mut body: Vec<PilStatement>,
+        mut body: InstructionBody,
     ) {
         // check inputs are literals or assignment registers
         let mut literal_arg_names = vec![];
@@ -436,7 +415,7 @@ impl<T: FieldElement> VMConverter<T> {
                 (arg_name.clone(), param_col_name)
             })
             .collect::<HashMap<_, _>>();
-        body.iter_mut().for_each(|s| {
+        body.0.iter_mut().for_each(|s| {
             s.post_visit_expressions_mut(&mut |e| {
                 if let Expression::Reference(_, r) = e {
                     if let Some(name) = r.try_to_identifier() {
@@ -448,7 +427,7 @@ impl<T: FieldElement> VMConverter<T> {
             });
         });
 
-        for mut statement in body {
+        for mut statement in body.0 {
             if let PilStatement::Expression(source, expr) = statement {
                 match extract_update(expr) {
                     (Some(var), expr) => {
@@ -484,117 +463,6 @@ impl<T: FieldElement> VMConverter<T> {
                     }
                 }
             }
-        }
-    }
-
-    /// check parameters on LHS and RHS are valid, and create a link from the definition
-    fn handle_external_instruction_def(
-        &mut self,
-        source: SourceRef,
-        flag: &str,
-        params: &InstructionParams,
-        link: Expression,
-    ) -> LinkDefinitionStatement {
-        let lhs = params;
-        let mut callable: CallableRef = link.try_into().map_err(|e| source.with_error(e)).unwrap();
-        let rhs = &mut callable.params;
-
-        // lhs params must all be assignment registers when mapping instruction to operation
-        lhs.inputs_and_outputs().for_each(|p| {
-            assert!(
-                p.index.is_none(),
-                "Cannot use array elements for lhs params"
-            );
-
-            let is_assignment_register = self
-                .registers
-                .get(&p.name)
-                .is_some_and(|r| r.ty.is_assignment());
-
-            assert!(
-                p.ty.is_none() && is_assignment_register,
-                "All lhs params must be assignment registers"
-            );
-        });
-
-        if rhs.is_empty() {
-            // we allow declarations with an empty RHS as syntactic sugar for when RHS = LHS.
-            rhs.inputs = lhs
-                .inputs
-                .iter()
-                .map(|p| direct_reference(p.name.clone()))
-                .collect();
-            rhs.outputs = lhs
-                .outputs
-                .iter()
-                .map(|p| direct_reference(p.name.clone()))
-                .collect();
-        } else {
-            let mut rhs_assignment_registers = BTreeSet::new();
-            let mut rhs_next_write_registers = BTreeSet::new();
-
-            // collect assignment registers and next references to write registers used on rhs
-            for expr in rhs.inputs_and_outputs() {
-                expr.pre_visit_expressions(&mut |e| match e {
-                    Expression::Reference(_, poly) => {
-                        poly.try_to_identifier()
-                            .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
-                            .filter(|(_, reg)| reg.ty == RegisterTy::Assignment)
-                            .map(|(name, _)| rhs_assignment_registers.insert(name.clone()));
-                    }
-                    Expression::UnaryOperation(
-                        _,
-                        UnaryOperation {
-                            op: UnaryOperator::Next,
-                            expr: e,
-                        },
-                    ) => {
-                        if let Expression::Reference(_, poly) = e.as_ref() {
-                            poly.try_to_identifier()
-                                .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
-                                .filter(|(_, reg)| {
-                                    [RegisterTy::Write, RegisterTy::Pc].contains(&reg.ty)
-                                })
-                                .map(|(name, _)| rhs_next_write_registers.insert(name.clone()));
-                        }
-                    }
-                    _ => {}
-                })
-            }
-
-            // any assignment register present on the rhs (input or output) must be present on the lhs
-            for name in &rhs_assignment_registers {
-                assert!(
-                    lhs.inputs_and_outputs().any(|p_lhs| p_lhs.name == *name),
-                    "Assignment register '{name}' used on rhs must be present on lhs params"
-                );
-            }
-
-            // all lhs assignment registers must be used on rhs
-            lhs.inputs_and_outputs().for_each(|p| {
-                assert!(
-                    rhs_assignment_registers.contains(&p.name),
-                    "'{}' is declared on lhs but not used on the rhs",
-                    p.name
-                )
-            });
-
-            // if a write register next reference (R') is used in the instruction mapping,
-            // we must induce a tautology in the update clause (R' = R') when the
-            // instruction is active, to allow the operation plookup to match.
-            for name in rhs_next_write_registers {
-                let reg = self.registers.get_mut(&name).unwrap();
-                let value = next_reference(name);
-                reg.conditioned_updates
-                    .push((direct_reference(flag), value));
-            }
-        }
-
-        LinkDefinitionStatement {
-            source,
-            flag: direct_reference(flag),
-            to: callable,
-            is_permutation: false,
         }
     }
 
@@ -1368,44 +1236,6 @@ mod test {
         let parsed = load_dependencies_and_resolve_str(input);
         let analyzed = powdr_analysis::analyze(parsed).unwrap();
         compile::<T>(analyzed)
-    }
-
-    #[test]
-    #[should_panic(expected = "All lhs params must be assignment registers")]
-    fn instr_external_lhs_not_assignment_reg() {
-        let asm = r"
-machine Main {
-  reg pc[@pc];
-  reg A;
-
-  instr foo A = vm.foo A;
-
-  function main {
-    foo;
-  }
-}
-";
-        parse_analyze_and_compile::<GoldilocksField>(asm);
-    }
-
-    #[test]
-    #[should_panic(expected = "'X' is declared on lhs but not used on the rhs")]
-    fn instr_external_lhs_register_not_used() {
-        let asm = r"
-machine Main {
-  reg pc[@pc];
-  reg X[<=];
-  reg Y[<=];
-  reg A;
-
-  instr foo X -> Y = vm.foo Y;
-
-  function main {
-    foo;
-  }
-}
-";
-        parse_analyze_and_compile::<GoldilocksField>(asm);
     }
 
     #[test]

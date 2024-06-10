@@ -109,7 +109,7 @@ impl Display for LinkDefinitionStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "link {} {} {};",
+            "link if {} {} {};",
             self.flag,
             if self.is_permutation { "~>" } else { "=>" },
             self.to

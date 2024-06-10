@@ -317,7 +317,7 @@ pub InstructionDeclaration: MachineStatement = {
 
 pub Instruction: Instruction = {
     <params:Params> <links:(<LinkDeclaration>)*> <body:InstructionBody> => Instruction { params, body, links },
-    <params:Params> <links:(<LinkDeclaration>)+> ";" => Instruction { params, body: InstructionBody::Local(vec![]), links },
+    <params:Params> <links:(<LinkDeclaration>)+> ";" => Instruction { params, body: InstructionBody(vec![]), links },
 }
 
 pub LinkDeclarationStatement: MachineStatement = {
@@ -335,10 +335,8 @@ pub LinkFlag: Expression = {
 }
 
 pub InstructionBody: InstructionBody = {
-    "{}" => InstructionBody::Local(vec![]),
-    "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
-    "=>" <link:Expression> ";" => InstructionBody::CallablePlookup(link),
-    "~>" <link:Expression> ";" => InstructionBody::CallablePermutation(link),
+    "{}" => InstructionBody(vec![]),
+    "{" <InstructionBodyElements> "}" => InstructionBody(<>),
 }
 
 InstructionBodyElements: Vec<PilStatement> = {

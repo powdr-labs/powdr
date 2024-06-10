@@ -630,11 +630,7 @@ impl TryFrom<Expression> for CallableRef {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum InstructionBody {
-    Local(Vec<PilStatement>),
-    CallablePlookup(Expression),
-    CallablePermutation(Expression),
-}
+pub struct InstructionBody(pub Vec<PilStatement>);
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AssignmentRegister {

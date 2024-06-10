@@ -14,8 +14,8 @@ use powdr_ast::{
         self,
         asm::{
             self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
-            InstructionBody, LinkDeclaration, MachineProperties, MachineStatement, ModuleStatement,
-            RegisterFlag, SymbolDefinition,
+            LinkDeclaration, MachineProperties, MachineStatement, ModuleStatement, RegisterFlag,
+            SymbolDefinition,
         },
     },
 };
@@ -243,10 +243,10 @@ impl TypeChecker {
                     "Machine {ctx} should not have call_selectors as it has a pc"
                 ));
             }
-            for l in &links {
+            for _ in &links {
                 errors.push(format!(
-                    "Machine {} should not have links as it has a pc, found `{}`. Use an external instruction instead",
-                    ctx, l.flag
+                    "Machine {} has a pc, links cannot be used outside of instructions.",
+                    ctx
                 ));
             }
             for o in callable.operation_definitions() {
@@ -359,23 +359,23 @@ impl TypeChecker {
             return Err(vec!["Instruction cannot use reserved name `return`".into()]);
         }
 
-        if let InstructionBody::Local(statements) = &instruction.body {
-            let errors: Vec<_> = statements
-                .iter()
-                .filter_map(|s| match s {
-                    // TODO this could be a function call that returns an identity including a selector in the future.
-                    powdr_ast::parsed::PilStatement::Expression(_, _) => None,
-                    powdr_ast::parsed::PilStatement::PermutationIdentity(_, l, _)
-                    | powdr_ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
-                        .selector
-                        .is_some()
-                        .then_some(format!("LHS selector not yet supported in {s}.")),
-                    _ => Some(format!("Statement not allowed in instruction body: {s}")),
-                })
-                .collect();
-            if !errors.is_empty() {
-                return Err(errors);
-            }
+        let errors: Vec<_> = instruction
+            .body
+            .0
+            .iter()
+            .filter_map(|s| match s {
+                // TODO this could be a function call that returns an identity including a selector in the future.
+                powdr_ast::parsed::PilStatement::Expression(_, _) => None,
+                powdr_ast::parsed::PilStatement::PermutationIdentity(_, l, _)
+                | powdr_ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
+                    .selector
+                    .is_some()
+                    .then_some(format!("LHS selector not yet supported in {s}.")),
+                _ => Some(format!("Statement not allowed in instruction body: {s}")),
+            })
+            .collect();
+        if !errors.is_empty() {
+            return Err(errors);
         }
         Ok(Instruction {
             params: instruction.params,
@@ -443,13 +443,13 @@ machine Main {
    reg A;
    reg B;
 
-   link foo => submachine.foo A -> B;
+   link => B = submachine.foo(A);
 }
 "#;
         expect_check_str(
             src,
             Err(vec![
-                "Machine ::Main should not have links as it has a pc, found `foo`. Use an external instruction instead",
+                "Machine ::Main has a pc, links cannot be used outside of instructions.",
             ]),
         );
     }
