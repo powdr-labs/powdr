@@ -309,12 +309,12 @@ machine Arith with
     *
     *****/
 
-    sum(16, |i| x1[i] * CLK32[i]) + sum(16, |i| y1[i] * CLK32[16 + i]) in BYTE2;
-    sum(16, |i| x2[i] * CLK32[i]) + sum(16, |i| y2[i] * CLK32[16 + i]) in BYTE2;
-    sum(16, |i| x3[i] * CLK32[i]) + sum(16, |i| y3[i] * CLK32[16 + i]) in BYTE2;
+    [sum(16, |i| x1[i] * CLK32[i]) + sum(16, |i| y1[i] * CLK32[16 + i])] in [BYTE2];
+    [sum(16, |i| x2[i] * CLK32[i]) + sum(16, |i| y2[i] * CLK32[16 + i])] in [BYTE2];
+    [sum(16, |i| x3[i] * CLK32[i]) + sum(16, |i| y3[i] * CLK32[16 + i])] in [BYTE2];
     // Note that for q0-q2, we only range-constrain the first 15 limbs here
-    sum(16, |i| s[i] * CLK32[i]) + sum(15, |i| q0[i] * CLK32[16 + i]) in BYTE2;
-    sum(15, |i| q1[i] * CLK32[i]) + sum(15, |i| q2[i] * CLK32[16 + i]) in BYTE2;
+    [sum(16, |i| s[i] * CLK32[i]) + sum(15, |i| q0[i] * CLK32[16 + i])] in [BYTE2];
+    [sum(15, |i| q1[i] * CLK32[i]) + sum(15, |i| q2[i] * CLK32[16 + i])] in [BYTE2];
 
     // The most significant limbs of q0-q2 are constrained to be 32 bits
     // In Polygon's version they are 19 bits, but that requires increasing the minimum degree
