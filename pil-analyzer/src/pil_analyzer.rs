@@ -288,7 +288,6 @@ impl PILAnalyzer {
                     if let Some(selector) = &mut part.selector {
                         expressions.push((selector, Type::Expr.into()))
                     }
-                    println!("{}", part.expressions);
                     if let Expression::ArrayLiteral(_, ArrayLiteral { items }) =
                         part.expressions.as_mut()
                     {
