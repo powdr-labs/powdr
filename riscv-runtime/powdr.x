@@ -3,9 +3,10 @@
 # If you are using powdr-riscv-runtime, it expects the symbols
 # "__global_pointer$" and "__powdr_stack_start" to be defined.
 #
-# This is an usable version with a 256 MB stack. If you are not building via powdr-rs,
-# to use this linker script you must manually specify "-C link-arg=-Tpowdr.x" in rustc
-# (e.g. via RUSTFLAGS).
+# This linker script provides usable definitions to these
+# symbols, with a 256 MB stack. If you are not building via
+# powdr-rs, you must manually specify "-C link-arg=-Tpowdr.x"
+# in rustc to use this linker script (e.g. via RUSTFLAGS).
 
 SECTIONS
 {
@@ -23,4 +24,5 @@ SECTIONS
   __powdr_stack_start = 0x10000000;
 }
 
+# Specify the entry point function provided by powdr-riscv-runtime:
 ENTRY(__runtime_start)
