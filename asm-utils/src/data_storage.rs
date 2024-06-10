@@ -7,9 +7,15 @@ use crate::{
     utils::{alignment_size, next_aligned},
 };
 
+/// A single 32-bit data value.
 pub enum SingleDataValue {
+    /// A literal value.
     Value(u32),
+    /// The value of a pointer to a text label. Since there is no 1-to-1
+    /// correspondence between RISC-V and Powdr ASM instructions, this is
+    /// passed unresolved to the code generator.
     LabelReference(String),
+    /// Currently not supported.
     Offset(String, String),
 }
 

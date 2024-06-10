@@ -1,13 +1,10 @@
-use std::{
-    cell::Cell,
-    collections::{BTreeMap, BTreeSet, HashSet},
-};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
 use parser::RiscParser;
 use powdr_asm_utils::{
     ast::{BinaryOpKind, UnaryOpKind},
-    data_parser,
+    data_parser::{self, DataObjects},
     data_storage::store_data_objects,
     parser::parse_asm,
     reachability::{self, symbols_in_args},
@@ -17,7 +14,9 @@ use powdr_asm_utils::{
 use powdr_number::FieldElement;
 
 use crate::{
-    code_gen::{self, Args, FunctionKind, MemEntry, Register, RiscVProgram, SourceFileInfo},
+    code_gen::{
+        self, FunctionKind, InstructionArgs, MemEntry, Register, RiscVProgram, SourceFileInfo,
+    },
     Runtime,
 };
 
@@ -30,17 +29,16 @@ type Expression = powdr_asm_utils::ast::Expression<FunctionKind>;
 
 struct AsmProgram {
     file_ids: Vec<(i64, String, String)>,
-    mem_entries: Cell<Option<Vec<MemEntry>>>,
+    mem_entries: Option<Vec<MemEntry>>,
     statements: Vec<Statement>,
 }
 
 const START_FUNCTION: &str = "__runtime_start";
 
-impl<'a> RiscVProgram<'a> for AsmProgram {
-    type InstructionArgs = [Argument];
-    type Label = &'a str;
+impl RiscVProgram for AsmProgram {
+    type Args = [Argument];
 
-    fn source_files_info(&self) -> impl Iterator<Item = SourceFileInfo> {
+    fn take_source_files_info(&mut self) -> impl Iterator<Item = SourceFileInfo> {
         self.file_ids.iter().map(|(id, dir, file)| SourceFileInfo {
             id: *id as u32,
             dir,
@@ -48,13 +46,13 @@ impl<'a> RiscVProgram<'a> for AsmProgram {
         })
     }
 
-    fn initial_mem(&self) -> impl Iterator<Item = MemEntry> {
-        self.mem_entries.take().into_iter().flatten()
+    fn take_initial_mem(&mut self) -> impl Iterator<Item = MemEntry> {
+        std::mem::take(&mut self.mem_entries).unwrap().into_iter()
     }
 
-    fn executable_statements(
-        &'a self,
-    ) -> impl Iterator<Item = code_gen::Statement<&'a str, Self::InstructionArgs>> {
+    fn take_executable_statements(
+        &mut self,
+    ) -> impl Iterator<Item = code_gen::Statement<&str, Self::Args>> {
         self.statements.iter().filter_map(process_statement)
     }
 
@@ -63,7 +61,7 @@ impl<'a> RiscVProgram<'a> for AsmProgram {
     }
 }
 
-impl Args for [Argument] {
+impl InstructionArgs for [Argument] {
     type Error = &'static str;
 
     fn l(&self) -> Result<String, &'static str> {
@@ -183,7 +181,7 @@ pub fn compile<F: FieldElement>(
 ) -> String {
     let asm_program = compile_internal(assemblies);
 
-    code_gen::translate_program::<F>(&asm_program, runtime, with_bootloader)
+    code_gen::translate_program::<F>(asm_program, runtime, with_bootloader)
 }
 
 fn compile_internal(mut assemblies: BTreeMap<String, String>) -> AsmProgram {
@@ -203,7 +201,10 @@ fn compile_internal(mut assemblies: BTreeMap<String, String>) -> AsmProgram {
             .map(|(name, contents)| (name, parse_asm(RiscParser::default(), &contents)))
             .collect(),
     );
-    let (mut data_sections, mut data_positions) = data_parser::extract_data_objects(&statements);
+    let DataObjects {
+        sections: mut data_sections,
+        adhoc_symbols: mut data_positions,
+    } = data_parser::extract_data_objects(&statements);
 
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)
@@ -230,7 +231,7 @@ fn compile_internal(mut assemblies: BTreeMap<String, String>) -> AsmProgram {
 
     AsmProgram {
         file_ids,
-        mem_entries: Cell::new(Some(mem_entries)),
+        mem_entries: Some(mem_entries),
         statements,
     }
 }

@@ -9,7 +9,7 @@ lalrpop_mod!(
     #[allow(clippy::all)]
     #[allow(clippy::uninlined_format_args)]
     riscv_asm,
-    "/asm_translate/riscv_asm.rs"
+    "/asm/riscv_asm.rs"
 );
 
 pub struct RiscParser {

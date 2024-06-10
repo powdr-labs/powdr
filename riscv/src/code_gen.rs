@@ -48,7 +48,7 @@ impl fmt::Display for FunctionKind {
     }
 }
 
-pub enum Statement<'a, L: AsRef<str>, A: Args + ?Sized> {
+pub enum Statement<'a, L: AsRef<str> + 'a, A: InstructionArgs + ?Sized + 'a> {
     DebugLoc { file: u64, line: u64, col: u64 },
     Label(L),
     Instruction { op: &'a str, args: &'a A },
@@ -67,22 +67,29 @@ pub struct SourceFileInfo<'a> {
 }
 
 /// A RISC-V program that can be translated to POWDR ASM.
-pub trait RiscVProgram<'a> {
-    type InstructionArgs: Args + ?Sized;
-    type Label: AsRef<str> + 'a;
+pub trait RiscVProgram {
+    type Args: InstructionArgs + ?Sized;
 
-    // Source files to be used by the debug statements.
-    fn source_files_info(&self) -> impl Iterator<Item = SourceFileInfo>;
+    /// Takes the listing of source files, to be used in the debug statements.
+    fn take_source_files_info(&mut self) -> impl Iterator<Item = SourceFileInfo>;
 
-    fn initial_mem(&self) -> impl Iterator<Item = MemEntry>;
-    fn executable_statements(
-        &'a self,
-    ) -> impl Iterator<Item = Statement<Self::Label, Self::InstructionArgs>>;
+    /// Takes the initial memory snapshot.
+    fn take_initial_mem(&mut self) -> impl Iterator<Item = MemEntry>;
+
+    /// Takes the executable statements and labels.
+    fn take_executable_statements(
+        &mut self,
+    ) -> impl Iterator<Item = Statement<impl AsRef<str>, Self::Args>>;
+
+    /// The name of the function that should be called to start the program.
     fn start_function(&self) -> &str;
 }
 
-pub fn translate_program<'a, F: FieldElement>(
-    program: &'a impl RiscVProgram<'a>,
+/// Translates a RISC-V program to POWDR ASM.
+///
+/// Will call each of the methods in the `RiscVProgram` just once.
+pub fn translate_program<F: FieldElement>(
+    program: impl RiscVProgram,
     runtime: &Runtime,
     with_bootloader: bool,
 ) -> String {
@@ -99,14 +106,14 @@ pub fn translate_program<'a, F: FieldElement>(
     )
 }
 
-fn translate_program_impl<'a>(
-    program: &'a impl RiscVProgram<'a>,
+fn translate_program_impl(
+    mut program: impl RiscVProgram,
     runtime: &Runtime,
     with_bootloader: bool,
 ) -> (Vec<String>, Vec<String>, u64) {
     let mut initial_mem = Vec::new();
     let mut data_code = Vec::new();
-    for MemEntry { label, addr, value } in program.initial_mem() {
+    for MemEntry { label, addr, value } in program.take_initial_mem() {
         if let Some(label) = label {
             // This is a comment, so we don't need to escape the label.
             let comment = format!(" // data {label}");
@@ -173,7 +180,7 @@ fn translate_program_impl<'a>(
     };
 
     let mut statements: Vec<String> = program
-        .source_files_info()
+        .take_source_files_info()
         .map(
             |SourceFileInfo {
                  id,
@@ -190,7 +197,7 @@ fn translate_program_impl<'a>(
         format!("x1 <== jump({});", program.start_function()),
         "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
     ]);
-    for s in program.executable_statements() {
+    for s in program.take_executable_statements() {
         match s {
             Statement::DebugLoc { file, line, col } => {
                 statements.push(format!(".debug loc {file} {line} {col};"))
@@ -645,7 +652,7 @@ fn memory(with_bootloader: bool) -> String {
     "#
 }
 
-pub trait Args {
+pub trait InstructionArgs {
     type Error: fmt::Display;
 
     fn l(&self) -> Result<String, Self::Error>;
@@ -689,7 +696,10 @@ pub fn pop_register(name: &str) -> [String; 2] {
     ]
 }
 
-fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<String>, A::Error> {
+fn process_instruction<A: InstructionArgs + ?Sized>(
+    instr: &str,
+    args: &A,
+) -> Result<Vec<String>, A::Error> {
     Ok(match instr {
         // load/store registers
         "li" | "la" => {
