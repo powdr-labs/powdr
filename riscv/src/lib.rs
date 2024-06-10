@@ -15,7 +15,7 @@ use std::fs;
 
 pub use crate::runtime::Runtime;
 
-pub mod asm_translate;
+pub mod asm;
 mod code_gen;
 pub mod continuations;
 pub mod runtime;
@@ -99,7 +99,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
         return None;
     }
 
-    let powdr_asm = asm_translate::compile::<T>(riscv_asm_files, runtime, with_bootloader);
+    let powdr_asm = asm::compile::<T>(riscv_asm_files, runtime, with_bootloader);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());

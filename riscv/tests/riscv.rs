@@ -22,8 +22,7 @@ pub fn test_continuations(case: &str) {
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    let powdr_asm =
-        powdr_riscv::asm_translate::compile::<GoldilocksField>(riscv_asm, &runtime, true);
+    let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, true);
 
     // Manually create tmp dir, so that it is the same in all chunks.
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
@@ -275,8 +274,7 @@ fn many_chunks_dry() {
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    let powdr_asm =
-        powdr_riscv::asm_translate::compile::<GoldilocksField>(riscv_asm, &runtime, true);
+    let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, true);
 
     let mut pipeline = Pipeline::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
@@ -301,8 +299,7 @@ fn output_syscall() {
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    let powdr_asm =
-        powdr_riscv::asm_translate::compile::<GoldilocksField>(riscv_asm, &runtime, false);
+    let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, false);
 
     let inputs = vec![1u32, 2, 3]
         .into_iter()
@@ -376,5 +373,5 @@ fn compile_riscv_crate<T: FieldElement>(case: &str, runtime: &Runtime) -> String
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    powdr_riscv::asm_translate::compile::<T>(riscv_asm, runtime, false)
+    powdr_riscv::asm::compile::<T>(riscv_asm, runtime, false)
 }
