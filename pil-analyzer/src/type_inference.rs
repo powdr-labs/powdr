@@ -478,23 +478,6 @@ impl<'a> TypeChecker<'a> {
             expected_type.ty.clone()
         };
 
-        if let Expression::Number(
-            _,
-            Number {
-                type_: annotated_type @ None,
-                ..
-            },
-        ) = expr
-        {
-            match expected_type.clone() {
-                Type::Int => *annotated_type = Some(Type::Int),
-                Type::Fe => *annotated_type = Some(Type::Fe),
-                Type::Expr => *annotated_type = Some(Type::Expr),
-                Type::TypeVar(tv) => *annotated_type = Some(Type::TypeVar(tv.clone())),
-                _ => {}
-            };
-        }
-
         self.unifier
             .unify_types(ty.clone(), expected_type.clone())
             .map_err(|err| {
