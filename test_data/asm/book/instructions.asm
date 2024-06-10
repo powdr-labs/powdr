@@ -40,20 +40,20 @@ machine Main {
 // ANCHOR: trivial
     SubMachine submachine;
 
-    instr add X, Y -> Z = submachine.add; // - trivial usage, equivalent to:
+    instr add X, Y -> Z link => Z = submachine.add(X, Y); // - trivial usage, equivalent to:
                                           //   instr add X, Y -> Z = submachine.add X, Y -> Z;
 // ANCHOR_END: trivial
-    instr add_to_A X, Y = submachine.add X, Y -> A';// - output to a regular register
-    instr addAB -> X = submachine.add A, B -> X;    // - inputs from regular registers
-    instr addAB_to_C = submachine.add A, B -> C';   // - inputs and output from regular registers
-    instr addAB_to_A = submachine.add A, B -> A';   // - reusing an input register as output
-    instr sub X, Y -> Z = submachine.add Y, Z -> X; // - swapping input/output
+    instr add_to_A X, Y link => A' = submachine.add(X, Y);// - output to a regular register
+    instr addAB -> X link => X = submachine.add(A, B);    // - inputs from regular registers
+    instr addAB_to_C link => C' = submachine.add(A, B);   // - inputs and output from regular registers
+    instr addAB_to_A link => A' = submachine.add(A, B);   // - reusing an input register as output
+    instr sub X, Y -> Z link => X = submachine.add(Y, Z); // - swapping input/output
     // any expression can be used in the external call
-    instr add5 X -> Z = submachine.add X, 3+2 -> Z; // - literal expression as argument
+    instr add5 X -> Z link => Z = submachine.add(X, 3+2); // - literal expression as argument
     col fixed STEP(i) { i };
-    instr add_current_time_step X -> Z = submachine.add X, STEP -> Z;// - columns can be referenced
+    instr add_current_time_step X -> Z link => Z = submachine.add(X, STEP);// - columns can be referenced
     let arr = [1,2,3,4,5];                          // - functions can be used
-    instr add_arr_sum X -> Z = submachine.add X, std::array::sum(arr) -> Z;
+    instr add_arr_sum X -> Z link => Z = submachine.add(X, std::array::sum(arr));
 
     instr assert_eq X, Y { X = Y }
 
