@@ -507,34 +507,34 @@ mod test {
 
     /// Normalizes the json in that it replaces all idQ values by "99"
     /// and converts hex numbers to decimal.
-    fn normalize_idq_and_hex(v: &mut JsonValue) {
-        match v {
-            JsonValue::Object(obj) => obj.iter_mut().for_each(|(key, value)| {
-                if key == "idQ" {
-                    *value = 99.into();
-                } else if key == "value" {
-                    match value.as_str() {
-                        Some(v) if v.starts_with("0x") => {
-                            *value =
-                                format!("{}", i64::from_str_radix(&v[2..], 16).unwrap()).into();
-                        }
-                        _ => {}
-                    }
-                } else {
-                    normalize_idq_and_hex(value)
-                }
-            }),
-            JsonValue::Array(arr) => arr.iter_mut().for_each(normalize_idq_and_hex),
-            _ => {}
-        }
-    }
+    // fn normalize_idq_and_hex(v: &mut JsonValue) {
+    //     match v {
+    //         JsonValue::Object(obj) => obj.iter_mut().for_each(|(key, value)| {
+    //             if key == "idQ" {
+    //                 *value = 99.into();
+    //             } else if key == "value" {
+    //                 match value.as_str() {
+    //                     Some(v) if v.starts_with("0x") => {
+    //                         *value =
+    //                             format!("{}", i64::from_str_radix(&v[2..], 16).unwrap()).into();
+    //                     }
+    //                     _ => {}
+    //                 }
+    //             } else {
+    //                 normalize_idq_and_hex(value)
+    //             }
+    //         }),
+    //         JsonValue::Array(arr) => arr.iter_mut().for_each(normalize_idq_and_hex),
+    //         _ => {}
+    //     }
+    // }
 
-    fn compare_export_file_ignore_idq_hex(file: &str) {
-        let (mut json_out, mut pilcom_parsed) = generate_json_pair(file);
-        normalize_idq_and_hex(&mut json_out);
-        normalize_idq_and_hex(&mut pilcom_parsed);
-        assert_eq!(json_out, pilcom_parsed);
-    }
+    // fn compare_export_file_ignore_idq_hex(file: &str) {
+    //     let (mut json_out, mut pilcom_parsed) = generate_json_pair(file);
+    //     normalize_idq_and_hex(&mut json_out);
+    //     normalize_idq_and_hex(&mut pilcom_parsed);
+    //     assert_eq!(json_out, pilcom_parsed);
+    // }
 
     #[test]
     fn export_config() {
