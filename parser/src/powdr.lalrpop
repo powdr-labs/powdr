@@ -113,7 +113,7 @@ pub PilStatement = {
     PolynomialConstantDeclaration,
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
-    <start:@L> <decl:EnumDeclaration> => PilStatement::EnumDeclaration(ctx.source_ref(start), decl),
+    <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
     PlookupIdentityStatement,
     PermutationIdentityStatement,
     ConnectIdentityStatement,
@@ -121,45 +121,45 @@ pub PilStatement = {
 };
 
 Include: PilStatement = {
-    <start:@L> "include" <file:StringLiteral> ";" => PilStatement::Include(ctx.source_ref(start), file)
+    <start:@L> "include" <file:StringLiteral> <end:@R> ";" => PilStatement::Include(ctx.source_ref(start, end), file)
 };
 
 Namespace: PilStatement = {
-    <start:@L> "namespace" <name:SymbolPath> <pol_degree:("(" <Expression> ")")?> ";" => PilStatement::Namespace(ctx.source_ref(start), name, pol_degree)
+    <start:@L> "namespace" <name:SymbolPath> <pol_degree:("(" <Expression> ")")?> <end:@R> ";" => PilStatement::Namespace(ctx.source_ref(start, end), name, pol_degree)
 }
 
 LetStatement: PilStatement = {
-    <start:@L> "let" <name:GenericTypedName> <expr:( "=" <Expression> )?> ";" =>
-        PilStatement::LetStatement(ctx.source_ref(start), name.0, name.1, expr)
+    <start:@L> "let" <name:GenericTypedName> <expr:( "=" <Expression> )?> <end:@R> ";" =>
+        PilStatement::LetStatement(ctx.source_ref(start, end), name.0, name.1, expr)
 }
 
 ConstantDefinition: PilStatement = {
-    <start:@L> "constant" <id:ConstantIdentifier> "=" <expr:Expression> ";" => PilStatement::ConstantDefinition(ctx.source_ref(start), id, expr)
+    <start:@L> "constant" <id:ConstantIdentifier> "=" <expr:Expression> <end:@R> ";" => PilStatement::ConstantDefinition(ctx.source_ref(start, end), id, expr)
 }
 
 PolynomialDefinition: PilStatement = {
-    <start:@L> PolCol <id:Identifier> "=" <expr:Expression> ";" => PilStatement::PolynomialDefinition(ctx.source_ref(start), id, expr)
+    <start:@L> PolCol <id:Identifier> "=" <expr:Expression> <end:@R> ";" => PilStatement::PolynomialDefinition(ctx.source_ref(start, end), id, expr)
 }
 
 PublicDeclaration: PilStatement = {
     <start:@L> "public" <id:Identifier> "="
         <poly:NamespacedPolynomialReference>
         <expr1:("[" <Expression> "]")?>
-        "(" <expr2:Expression> ")" ";" => PilStatement::PublicDeclaration(ctx.source_ref(start), id, poly, expr1, expr2)
+        "(" <expr2:Expression> ")" <end:@R> ";" => PilStatement::PublicDeclaration(ctx.source_ref(start, end), id, poly, expr1, expr2)
 }
 
 PolynomialConstantDeclaration: PilStatement = {
-    <start:@L> PolCol ConstantFixed <list:PolynomialNameList> ";" => PilStatement::PolynomialConstantDeclaration(ctx.source_ref(start), list)
+    <start:@L> PolCol ConstantFixed <list:PolynomialNameList> <end:@R> ";" => PilStatement::PolynomialConstantDeclaration(ctx.source_ref(start, end), list)
 }
 
 PolynomialConstantDefinition: PilStatement = {
-    <start:@L> PolCol ConstantFixed <id:Identifier> <def:FunctionDefinition> ";"
-        => PilStatement::PolynomialConstantDefinition(ctx.source_ref(start), id, def)
+    <start:@L> PolCol ConstantFixed <id:Identifier> <def:FunctionDefinition> <end:@R> ";"
+        => PilStatement::PolynomialConstantDefinition(ctx.source_ref(start, end), id, def)
 }
 
 FunctionDefinition: FunctionDefinition = {
-    <start:@L> "(" <params:ParameterList> ")" <body:BracedExpression> => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start), LambdaExpression{kind: FunctionKind::Pure, params, body})),
-    <start:@L> "=" <array:ArrayLiteralExpression> => FunctionDefinition::Array(array),
+    <start:@L> "(" <params:ParameterList> ")" <body:BracedExpression> <end:@R> => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{kind: FunctionKind::Pure, params, body})),
+    <start:@L> "=" <array:ArrayLiteralExpression> <end:@R> => FunctionDefinition::Array(array),
 }
 
 ParameterList: Vec<Pattern> = {
@@ -177,13 +177,13 @@ ArrayLiteralTerm: ArrayExpression = {
 }
 
 PolynomialCommitDeclaration: PilStatement = {
-    <start:@L> PolCol CommitWitness <stage:Stage?> <list:PolynomialNameList> ";" => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start), stage, list, None),
-    <start:@L> PolCol CommitWitness <stage:Stage?> <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression> ";"
+    <start:@L> PolCol CommitWitness <stage:Stage?> <list:PolynomialNameList> <end:@R> ";" => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start, end), stage, list, None),
+    <start:@L> PolCol CommitWitness <stage:Stage?> <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression> <end:@R> ";"
      => PilStatement::PolynomialCommitDeclaration(
-        ctx.source_ref(start),
+        ctx.source_ref(start, end),
         stage,
         vec![name],
-        Some(FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start), LambdaExpression{kind: FunctionKind::Query, params, body})))
+        Some(FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{kind: FunctionKind::Query, params, body})))
     )
 }
 
@@ -204,7 +204,7 @@ PlookupIdentityStatement: PilStatement = {
 }
 
 PlookupIdentity: PilStatement = {
-    <start:@L> <se1:SelectedExpressions> "in" <se2:SelectedExpressions> => PilStatement::PlookupIdentity(ctx.source_ref(start), se1, se2)
+    <start:@L> <se1:SelectedExpressions> "in" <se2:SelectedExpressions> <end:@R> => PilStatement::PlookupIdentity(ctx.source_ref(start, end), se1, se2)
 }
 
 SelectedExpressions: SelectedExpressions<Expression> = {
@@ -217,7 +217,7 @@ PermutationIdentityStatement: PilStatement = {
 }
 
 PermutationIdentity: PilStatement = {
-    <start:@L> <se1:SelectedExpressions> "is" <se2:SelectedExpressions> => PilStatement::PermutationIdentity(ctx.source_ref(start), se1, se2)
+    <start:@L> <se1:SelectedExpressions> "is" <se2:SelectedExpressions> <end:@R> => PilStatement::PermutationIdentity(ctx.source_ref(start, end), se1, se2)
 }
 
 ConnectIdentityStatement: PilStatement = {
@@ -225,7 +225,7 @@ ConnectIdentityStatement: PilStatement = {
 }
 
 ConnectIdentity: PilStatement = {
-    <start:@L> "{" <list1:ExpressionList> "}" "connect" "{" <list2:ExpressionList> "}" => PilStatement::ConnectIdentity(ctx.source_ref(start), list1, list2)
+    <start:@L> "{" <list1:ExpressionList> "}" "connect" "{" <list2:ExpressionList> "}" <end:@R> => PilStatement::ConnectIdentity(ctx.source_ref(start, end), list1, list2)
 }
 
 ExpressionStatement: PilStatement = {
@@ -233,7 +233,7 @@ ExpressionStatement: PilStatement = {
 }
 
 ExpressionStatementWithoutSemicolon: PilStatement = {
-    <start:@L> <expr:Expression> => PilStatement::Expression(ctx.source_ref(start), expr)
+    <start:@L> <expr:Expression> <end:@R> => PilStatement::Expression(ctx.source_ref(start, end), expr)
 }
 
 PolCol = {
@@ -292,16 +292,16 @@ MachineStatement: MachineStatement = {
 }
 
 PilStatementInMachine: MachineStatement = {
-    <start:@L> <stmt:PilStatement> => MachineStatement::Pil(ctx.source_ref(start), stmt)
+    <start:@L> <stmt:PilStatement> <end:@R> => MachineStatement::Pil(ctx.source_ref(start, end), stmt)
 }
 
 Submachine: MachineStatement = {
-    <start:@L> <path:SymbolPath> <id:Identifier> ";" => MachineStatement::Submachine(ctx.source_ref(start), path, id)
+    <start:@L> <path:SymbolPath> <id:Identifier> <end:@R> ";" => MachineStatement::Submachine(ctx.source_ref(start, end), path, id)
 }
 
 pub RegisterDeclaration: MachineStatement = {
     // TODO default update
-    <start:@L> "reg" <id:Identifier> <flag:( "[" <RegisterFlag> "]" )?> ";" => MachineStatement::RegisterDeclaration(ctx.source_ref(start), id, flag)
+    <start:@L> "reg" <id:Identifier> <flag:( "[" <RegisterFlag> "]" )?> <end:@R> ";" => MachineStatement::RegisterDeclaration(ctx.source_ref(start, end), id, flag)
 
 }
 
@@ -312,7 +312,7 @@ RegisterFlag: RegisterFlag = {
 }
 
 pub InstructionDeclaration: MachineStatement = {
-    <start:@L> "instr" <id:Identifier> <instr:Instruction> => MachineStatement::InstructionDeclaration(ctx.source_ref(start), id, instr)
+    <start:@L> "instr" <id:Identifier> <instr:Instruction> <end:@R> => MachineStatement::InstructionDeclaration(ctx.source_ref(start, end), id, instr)
 }
 
 pub Instruction: Instruction = {
@@ -320,8 +320,8 @@ pub Instruction: Instruction = {
 }
 
 pub LinkDeclaration: MachineStatement = {
-    <start:@L> "link" <flag:Expression> "=>" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start), LinkDeclaration { flag, to, is_permutation: false, }),
-    <start:@L> "link" <flag:Expression> "~>" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start), LinkDeclaration { flag, to, is_permutation: true, }),
+    <start:@L> "link" <flag:Expression> "=>" <to:CallableRef> <end:@R> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start, end), LinkDeclaration { flag, to, is_permutation: false, }),
+    <start:@L> "link" <flag:Expression> "~>" <to:CallableRef> <end:@R> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start, end), LinkDeclaration { flag, to, is_permutation: true, }),
 }
 
 pub InstructionBody: InstructionBody = {
@@ -368,11 +368,11 @@ Param: Param = {
 }
 
 FunctionDeclaration: MachineStatement = {
-    <start:@L> "function" <id:Identifier> <params:Params> "{" <stmt:(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(ctx.source_ref(start), id, params, stmt)
+    <start:@L> "function" <id:Identifier> <params:Params> "{" <stmt:(<FunctionStatement>)*> "}" <end:@R> => MachineStatement::FunctionDeclaration(ctx.source_ref(start, end), id, params, stmt)
 }
 
 OperationDeclaration: MachineStatement = {
-    <start:@L> "operation" <id:Identifier> <op:OperationId> <params:Params> ";" => MachineStatement::OperationDeclaration(ctx.source_ref(start), id, op, params)
+    <start:@L> "operation" <id:Identifier> <op:OperationId> <params:Params> <end:@R> ";" => MachineStatement::OperationDeclaration(ctx.source_ref(start, end), id, op, params)
 }
 
 OperationId: OperationId = {
@@ -389,7 +389,7 @@ pub FunctionStatement: FunctionStatement = {
 }
 
 AssignmentStatement: FunctionStatement = {
-    <start:@L> <ids:IdentifierList> <op:AssignOperator> <expr:BoxedExpression> ";" => FunctionStatement::Assignment(ctx.source_ref(start), ids, op, expr)
+    <start:@L> <ids:IdentifierList> <op:AssignOperator> <expr:BoxedExpression> <end:@R> ";" => FunctionStatement::Assignment(ctx.source_ref(start, end), ids, op, expr)
 }
 
 IdentifierList: Vec<String> = {
@@ -413,24 +413,24 @@ AssignmentRegister: AssignmentRegister = {
 }
 
 ReturnStatement: FunctionStatement = {
-    <start:@L> "return" <list:ExpressionList> ";" => FunctionStatement::Return(ctx.source_ref(start), list)
+    <start:@L> "return" <list:ExpressionList> <end:@R> ";" => FunctionStatement::Return(ctx.source_ref(start, end), list)
 }
 
 InstructionStatement: FunctionStatement = {
-    <start:@L> <id:Identifier> <list:ExpressionList> ";" => FunctionStatement::Instruction(ctx.source_ref(start), id, list)
+    <start:@L> <id:Identifier> <list:ExpressionList> <end:@R> ";" => FunctionStatement::Instruction(ctx.source_ref(start, end), id, list)
 }
 
 DebugDirectiveStatement: FunctionStatement = {
-    <start:@L> ".debug" "file" <n:UnsignedInteger> <d:StringLiteral> <f:StringLiteral> ";"
-        => FunctionStatement::DebugDirective(ctx.source_ref(start), DebugDirective::File(n.try_into().unwrap(), d, f)),
-    <start:@L> ".debug" "loc" <f:UnsignedInteger> <line:UnsignedInteger> <col:UnsignedInteger> ";"
-        => FunctionStatement::DebugDirective(ctx.source_ref(start), DebugDirective::Loc(f.try_into().unwrap(), line.try_into().unwrap(), col.try_into().unwrap())),
-    <start:@L> ".debug" "insn" <insn:StringLiteral> ";"
-        => FunctionStatement::DebugDirective(ctx.source_ref(start), DebugDirective::OriginalInstruction(insn)),
+    <start:@L> ".debug" "file" <n:UnsignedInteger> <d:StringLiteral> <f:StringLiteral> <end:@R> ";"
+        => FunctionStatement::DebugDirective(ctx.source_ref(start, end), DebugDirective::File(n.try_into().unwrap(), d, f)),
+    <start:@L> ".debug" "loc" <f:UnsignedInteger> <line:UnsignedInteger> <col:UnsignedInteger> <end:@R> ";"
+        => FunctionStatement::DebugDirective(ctx.source_ref(start, end), DebugDirective::Loc(f.try_into().unwrap(), line.try_into().unwrap(), col.try_into().unwrap())),
+    <start:@L> ".debug" "insn" <insn:StringLiteral> <end:@R> ";"
+        => FunctionStatement::DebugDirective(ctx.source_ref(start, end), DebugDirective::OriginalInstruction(insn)),
 }
 
 LabelStatement: FunctionStatement = {
-    <start:@L> <id:Identifier> ":" => FunctionStatement::Label(ctx.source_ref(start), id)
+    <start:@L> <id:Identifier> ":" <end:@R> => FunctionStatement::Label(ctx.source_ref(start, end), id)
 }
 
 // ---------------------------- Expressions -----------------------------
@@ -449,8 +449,8 @@ BoxedExpression: Box<Expression> = {
 }
 
 LambdaExpression: Box<Expression> = {
-    <start:@L> <kind:FunctionKind> "||" <body:BoxedExpression> => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body}, start),
-    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:BoxedExpression> => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body}, start),
+    <start:@L> <kind:FunctionKind> "||" <body:BoxedExpression> <end:@R> => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body}, start, end),
+    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:BoxedExpression> <end:@R> => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body}, start, end),
     LogicalOr
 }
 
@@ -461,17 +461,17 @@ FunctionKind: FunctionKind = {
 }
 
 LogicalOr: Box<Expression> = {
-    <start:@L> <left:LogicalOr> "||" <right:LogicalAnd> => ctx.to_expr_with_source_ref(BinaryOperation { left, op: BinaryOperator::LogicalOr, right }, start),
+    <start:@L> <left:LogicalOr> "||" <right:LogicalAnd> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op: BinaryOperator::LogicalOr, right }, start, end),
     LogicalAnd,
 }
 
 LogicalAnd: Box<Expression> = {
-    <start:@L> <left:LogicalAnd> "&&" <right:Comparison> => ctx.to_expr_with_source_ref(BinaryOperation { left, op: BinaryOperator::LogicalAnd, right }, start),
+    <start:@L> <left:LogicalAnd> "&&" <right:Comparison> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op: BinaryOperator::LogicalAnd, right }, start, end),
     Comparison,
 }
 
 Comparison: Box<Expression> = {
-    <start:@L> <left:BinaryOr> <op:ComparisonOp> <right:BinaryOr> => ctx.to_expr_with_source_ref(BinaryOperation { left, op: op, right }, start),
+    <start:@L> <left:BinaryOr> <op:ComparisonOp> <right:BinaryOr> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op: op, right }, start, end),
     BinaryOr
 }
 
@@ -486,7 +486,7 @@ ComparisonOp: BinaryOperator = {
 }
 
 BinaryOr: Box<Expression> = {
-    <start:@L> <left:BinaryOr> <op:BinaryOrOp> <right:BinaryXor> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
+    <start:@L> <left:BinaryOr> <op:BinaryOrOp> <right:BinaryXor> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
     BinaryXor,
 }
 
@@ -495,7 +495,7 @@ BinaryOrOp: BinaryOperator = {
 }
 
 BinaryXor: Box<Expression> = {
-    <start:@L> <left:BinaryXor> <op:BinaryXorOp> <right:BinaryAnd> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
+    <start:@L> <left:BinaryXor> <op:BinaryXorOp> <right:BinaryAnd> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
     BinaryAnd,
 }
 
@@ -504,7 +504,7 @@ BinaryXorOp: BinaryOperator = {
 }
 
 BinaryAnd: Box<Expression> = {
-    <start:@L> <left:BinaryAnd> <op:BinaryAndOp> <right:BitShift> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
+    <start:@L> <left:BinaryAnd> <op:BinaryAndOp> <right:BitShift> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
     BitShift,
 }
 
@@ -513,7 +513,7 @@ BinaryAndOp: BinaryOperator = {
 }
 
 BitShift: Box<Expression> = {
-    <start:@L> <left:BitShift> <op:BitShiftOp> <right:Sum> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
+    <start:@L> <left:BitShift> <op:BitShiftOp> <right:Sum> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
     Sum,
 }
 
@@ -523,7 +523,7 @@ BitShiftOp: BinaryOperator = {
 }
 
 Sum: Box<Expression> = {
-    <start:@L> <left:Sum> <op:SumOp> <right:Product> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
+    <start:@L> <left:Sum> <op:SumOp> <right:Product> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
     Product,
 }
 
@@ -533,7 +533,7 @@ SumOp: BinaryOperator = {
 }
 
 Product: Box<Expression> = {
-    <start:@L> <left:Product> <op:ProductOp> <right:Power> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
+    <start:@L> <left:Product> <op:ProductOp> <right:Power> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
     Power,
 }
 
@@ -544,7 +544,7 @@ ProductOp: BinaryOperator = {
 }
 
 Power: Box<Expression> = {
-    <start:@L> <left:Term> <op:PowOp> <right:Power> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start),
+    <start:@L> <left:Term> <op:PowOp> <right:Power> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
     Unary,
 }
 
@@ -553,7 +553,7 @@ PowOp: BinaryOperator = {
 }
 
 Unary: Box<Expression> = {
-    <start:@L> <op:PrefixUnaryOp> <expr:PostfixUnary> => ctx.to_expr_with_source_ref(UnaryOperation{op, expr}, start),
+    <start:@L> <op:PrefixUnaryOp> <expr:PostfixUnary> <end:@R> => ctx.to_expr_with_source_ref(UnaryOperation{op, expr}, start, end),
     PostfixUnary,
 }
 
@@ -563,7 +563,7 @@ PrefixUnaryOp: UnaryOperator = {
 }
 
 PostfixUnary: Box<Expression> = {
-    <start:@L> <t:Term> <op:PostfixUnaryOp> => ctx.to_expr_with_source_ref(UnaryOperation{op, expr: t}, start),
+    <start:@L> <t:Term> <op:PostfixUnaryOp> <end:@R> => ctx.to_expr_with_source_ref(UnaryOperation{op, expr: t}, start, end),
     Term,
 }
 
@@ -572,21 +572,21 @@ PostfixUnaryOp: UnaryOperator = {
 }
 
 Term: Box<Expression> = {
-    <start:@L> <i:IndexAccess> => ctx.to_expr_with_source_ref(i, start),
-    <start:@L> <f:FunctionCall> => ctx.to_expr_with_source_ref(f, start),
-    <start:@L> <i:ConstantIdentifier> => ctx.to_expr_with_source_ref(NamespacedPolynomialReference::from_identifier(i), start),
-    <start:@L> <g:GenericReference> => ctx.to_expr_with_source_ref(g, start),
-    <start:@L> <p:PublicIdentifier> => Box::new(Expression::PublicReference(ctx.source_ref(start), p)),
-    <start:@L> <value:Number> => ctx.to_expr_with_source_ref(Number {value: value.into(), type_: None}, start),
-    <start:@L> <s:StringLiteral> => Box::new(Expression::String(ctx.source_ref(start), s)),
+    <start:@L> <i:IndexAccess> <end:@R> => ctx.to_expr_with_source_ref(i, start, end),
+    <start:@L> <f:FunctionCall> <end:@R> => ctx.to_expr_with_source_ref(f, start, end),
+    <start:@L> <i:ConstantIdentifier> <end:@R> => ctx.to_expr_with_source_ref(NamespacedPolynomialReference::from_identifier(i), start, end),
+    <start:@L> <g:GenericReference> <end:@R> => ctx.to_expr_with_source_ref(g, start, end),
+    <start:@L> <p:PublicIdentifier> <end:@R> => Box::new(Expression::PublicReference(ctx.source_ref(start, end), p)),
+    <start:@L> <value:Number> <end:@R> => ctx.to_expr_with_source_ref(Number {value: value.into(), type_: None}, start, end),
+    <start:@L> <s:StringLiteral> <end:@R> => Box::new(Expression::String(ctx.source_ref(start, end), s)),
     MatchExpression,
     IfExpression,
     BlockExpression,
-    <start:@L> "[" <items:ExpressionList> "]" => ctx.to_expr_with_source_ref(ArrayLiteral{items}, start),
-    <start:@L> "(" <head:Expression> "," <tail:ExpressionList> ")" => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start), list)) },
-    <start:@L> "(" ")" => Box::new(Expression::Tuple(ctx.source_ref(start), vec![])),
+    <start:@L> "[" <items:ExpressionList> "]" <end:@R> => ctx.to_expr_with_source_ref(ArrayLiteral{items}, start, end),
+    <start:@L> "(" <head:Expression> "," <tail:ExpressionList> ")" <end:@R> => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start, end), list)) },
+    <start:@L> "(" ")" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
     "(" <BoxedExpression> ")",
-    <start:@L> "${" <b:BoxedExpression> "}" => Box::new(Expression::FreeInput(ctx.source_ref(start), b))
+    <start:@L> "${" <b:BoxedExpression> "}" <end:@R> => Box::new(Expression::FreeInput(ctx.source_ref(start, end), b))
 }
 
 IndexAccess: IndexAccess = {
@@ -608,7 +608,7 @@ GenericReference: NamespacedPolynomialReference = {
 }
 
 MatchExpression: Box<Expression> = {
-    <start:@L> "match" <scrutinee:BoxedExpression> "{" <arms:MatchArms> "}" => ctx.to_expr_with_source_ref(MatchExpression{scrutinee, arms}, start),
+    <start:@L> "match" <scrutinee:BoxedExpression> "{" <arms:MatchArms> "}" <end:@R> => ctx.to_expr_with_source_ref(MatchExpression{scrutinee, arms}, start, end),
 }
 
 MatchArms: Vec<MatchArm> = {
@@ -624,16 +624,17 @@ IfExpression: Box<Expression> = {
     <start:@L> "if" <condition:BoxedExpression>
         <body:BracedExpression>
         "else"
-        <else_body:BracedExpression> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start),
+        <else_body:BracedExpression>
+        <end:@R> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start, end),
 }
 
 BlockExpression: Box<Expression> = {
-    <start:@L> "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start),
+    <start:@L> "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
 }
 
 BracedExpression: Box<Expression> = {
-    <start:@L> "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start),
-    <start:@L> "{" <expr:BoxedExpression> "}" => ctx.to_expr_with_source_ref(BlockExpression{statements: vec![], expr}, start),
+    <start:@L> "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
+    <start:@L> "{" <expr:BoxedExpression> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements: vec![], expr}, start, end),
 }
 
 StatementInsideBlock: StatementInsideBlock = {

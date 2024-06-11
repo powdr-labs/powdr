@@ -13,7 +13,7 @@
 use std::str::FromStr;
 use powdr_asm_utils::ast::{unescape_string, BinaryOpKind as BOp, UnaryOpKind as UOp,
     new_binary_op as bin_op, new_unary_op as un_op, new_function_op as fn_op};
-use crate::{Argument, Register, Statement, FunctionKind as FOp, Expression, map_insn_i};
+use super::super::{Argument, Register, Statement, FunctionKind as FOp, Expression, map_insn_i};
 
 grammar;
 

@@ -12,9 +12,9 @@ use powdr_ast::{
         NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
         SymbolCategory, UnaryOperation,
     },
-    SourceRef,
 };
 use powdr_number::DegreeType;
+use powdr_parser_util::SourceRef;
 
 use crate::{type_processor::TypeProcessor, AnalysisDriver};
 

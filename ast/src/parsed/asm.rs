@@ -8,10 +8,9 @@ use itertools::Itertools;
 use powdr_number::BigUint;
 
 use derive_more::From;
+use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use crate::SourceRef;
 
 use super::{
     visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, TypedExpression,
