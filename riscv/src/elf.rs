@@ -128,7 +128,7 @@ fn load_elf(file_name: &str) -> ElfProgram {
         data_map,
         text_labels: referenced_text_addrs,
         instructions: lifted_text_sections,
-        entry_point: format!("{:08x}", elf.entry),
+        entry_point: Label(elf.entry as u32).to_string(),
     }
 }
 
@@ -287,11 +287,11 @@ impl InstructionArgs for HighLevelArgs {
                 rs2: None,
             } => Ok((Register::new(*rs1 as u8), addr.to_string())),
             HighLevelArgs {
-                imm: HighLevelImmediate::None,
+                imm: HighLevelImmediate::CodeLabel(addr),
                 rd: Some(rd),
                 rs1: None,
                 rs2: None,
-            } => Ok((Register::new(*rd as u8), "".to_string())),
+            } => Ok((Register::new(*rd as u8), addr.to_string())),
             _ => Err(format!("Expected: {{rs1|rd}}, label, got {:?}", self)),
         }
     }
