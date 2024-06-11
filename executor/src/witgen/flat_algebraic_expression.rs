@@ -26,7 +26,8 @@ pub struct FlatAlgebraicExpression<T> {
     quadratic_linear: Vec<((AlgebraicReference, AlgebraicReference), T)>,
     /// Quadratic terms with each side being an affine expression.
     complex: Vec<(FlatAffine<T>, FlatAffine<T>)>,
-    contains_duplicate_references: bool,
+    /// If all AlgebraicReferences in this expression are unique.
+    unique_references: bool,
 }
 
 #[derive(Default, Clone)]
@@ -132,7 +133,7 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
         }
         constant += self.base.evaluate(fixed_data, rows, &mut linear)?;
         linear.sort_by(|(a, _), (b, _)| a.cmp(b));
-        if self.contains_duplicate_references {
+        if !self.unique_references {
             linear = linear
                 .into_iter()
                 .coalesce(|(a, c1), (b, c2)| {
@@ -146,6 +147,11 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
                 .collect();
         }
         Ok(AffineExpression::from_sorted_coefficients(linear, constant))
+    }
+
+    pub fn simplify(&mut self) {
+        self.base.simplify();
+        // TODO simplify quadratic terms
     }
 }
 
@@ -192,6 +198,49 @@ impl<T: FieldElement> FlatAffine<T> {
         }
         Ok(constant)
     }
+
+    pub fn simplify(&mut self) {
+        let mut linear = std::mem::take(&mut self.positive)
+            .into_iter()
+            .map(|r| (r, T::one()))
+            .chain(
+                std::mem::take(&mut self.negative)
+                    .into_iter()
+                    .map(|r| (r, (-1).into()))
+                    .chain(
+                        std::mem::take(&mut self.linear)
+                            .into_iter()
+                            .map(|(r, c)| (r, c)),
+                    ),
+            )
+            .collect::<Vec<_>>();
+        self.positive.clear();
+        self.negative.clear();
+
+        linear.sort_by(|(a, _), (b, _)| a.cmp(b));
+        self.linear = linear
+            .into_iter()
+            .coalesce(|(a, c1), (b, c2)| {
+                if a == b {
+                    Ok((a, c1 + c2))
+                } else {
+                    Err(((a, c1), (b, c2)))
+                }
+            })
+            .filter(|(_, c)| !c.is_zero())
+            .filter(|(r, c)| {
+                if c.is_one() {
+                    self.positive.push(r.clone());
+                    false
+                } else if (-*c).is_one() {
+                    self.negative.push(r.clone());
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect();
+    }
 }
 
 impl<T: FieldElement> FlatAlgebraicExpression<T> {
@@ -210,9 +259,9 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
         self.try_to_affine()?.try_to_monomial()
     }
 
-    fn set_duplicate_flag(mut self) -> Self {
+    fn set_uniqueness_flag(mut self) -> Self {
         // TODO simplify this
-        self.contains_duplicate_references = self
+        self.unique_references = self
             .base
             .positive
             .iter()
@@ -245,7 +294,7 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
             }))
             .duplicates()
             .next()
-            .is_some();
+            .is_none();
         self
     }
 }
@@ -292,10 +341,10 @@ impl<T: FieldElement> TryFrom<&AlgebraicExpression<T>> for FlatAlgebraicExpressi
                 ..Default::default()
             }),
             AlgebraicExpression::BinaryOperation(l, op, r) => {
-                Ok(try_from_binary_operation(l.as_ref(), *op, r.as_ref())?.set_duplicate_flag())
+                Ok(try_from_binary_operation(l.as_ref(), *op, r.as_ref())?.set_uniqueness_flag())
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperator::Minus, inner) => {
-                Ok(-(Self::try_from(inner.as_ref())?).set_duplicate_flag())
+                Ok(-(Self::try_from(inner.as_ref())?).set_uniqueness_flag())
             }
         }
     }
@@ -332,7 +381,7 @@ fn try_from_product<T: FieldElement>(
             if c.is_zero() {
                 return Ok(FlatAlgebraicExpression::default());
             } else if c.is_one() {
-                // TODO maybe implement a "simplify" function instead.
+                // TODO implement "simplify" on quadratic terms
                 return Ok(FlatAlgebraicExpression {
                     positive_quadratic: vec![(r1, r2)],
                     ..Default::default()
@@ -349,33 +398,7 @@ fn try_from_product<T: FieldElement>(
                 });
             }
         }
-        (None, Some((c2, r2))) => {
-            return Ok(FlatAlgebraicExpression {
-                complex: vec![(
-                    left.base,
-                    FlatAffine {
-                        // TODO simplify if c2 is one
-                        linear: vec![(r2, c2)],
-                        ..Default::default()
-                    },
-                )],
-                ..Default::default()
-            });
-        }
-        (Some((c1, r1)), None) => {
-            return Ok(FlatAlgebraicExpression {
-                complex: vec![(
-                    FlatAffine {
-                        // TODO simplify if c1 is one
-                        linear: vec![(r1, c1)],
-                        ..Default::default()
-                    },
-                    right.base,
-                )],
-                ..Default::default()
-            });
-        }
-        (None, None) => {
+        _ => {
             return Ok(FlatAlgebraicExpression {
                 complex: vec![(left.base, right.base)],
                 ..Default::default()
@@ -400,7 +423,7 @@ impl<T: FieldElement> Add for FlatAlgebraicExpression<T> {
             quadratic_linear: join_adding_duplicates(self.quadratic_linear, other.quadratic_linear),
             // TODO Does it make sense to avoid duplicates here?
             complex: self.complex.into_iter().chain(other.complex).collect(),
-            contains_duplicate_references: false, // will be set later.
+            unique_references: false, // will be set later.
         })
     }
 }
@@ -437,7 +460,7 @@ impl<T: FieldElement> Neg for FlatAlgebraicExpression<T> {
                 .map(|(r, c)| (r, -c))
                 .collect(),
             complex: self.complex.into_iter().map(|(l, r)| (-l, r)).collect(),
-            contains_duplicate_references: self.contains_duplicate_references,
+            unique_references: self.unique_references,
         }
     }
 }
