@@ -133,7 +133,17 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
         constant += self.base.evaluate(fixed_data, rows, &mut linear)?;
         linear.sort_by(|(a, _), (b, _)| a.cmp(b));
         if self.contains_duplicate_references {
-            unimplemented!("Need to eliminate duplicates from the list")
+            linear = linear
+                .into_iter()
+                .coalesce(|(a, c1), (b, c2)| {
+                    if a == b {
+                        Ok((a, c1 + c2))
+                    } else {
+                        Err(((a, c1), (b, c2)))
+                    }
+                })
+                .filter(|(_, c)| !c.is_zero())
+                .collect();
         }
         Ok(AffineExpression::from_sorted_coefficients(linear, constant))
     }
