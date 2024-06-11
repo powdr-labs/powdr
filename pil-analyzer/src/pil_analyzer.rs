@@ -270,15 +270,18 @@ impl PILAnalyzer {
                 Some((name.clone(), (type_scheme, expr)))
             })
             .collect();
-        // Collect all expressions in identities.
-        let statement_type = ExpectedType {
+        let constr_function_statement_type = ExpectedType {
             ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
             allow_array: true,
+            allow_empty: true,
         };
         for id in &mut self.identities {
             if id.kind == IdentityKind::Polynomial {
-                // At statement level, we allow Constr or Constr[].
-                expressions.push((id.expression_for_poly_id_mut(), statement_type.clone()));
+                // At statement level, we allow Constr, Constr[] or ().
+                expressions.push((
+                    id.expression_for_poly_id_mut(),
+                    constr_function_statement_type.clone(),
+                ));
             } else {
                 for part in [&mut id.left, &mut id.right] {
                     if let Some(selector) = &mut part.selector {
@@ -290,15 +293,19 @@ impl PILAnalyzer {
                 }
             }
         }
-        let inferred_types = infer_types(definitions, &mut expressions, &statement_type)
-            .map_err(|mut errors| {
-                eprintln!("\nError during type inference:");
-                for e in &errors {
-                    e.output_to_stderr();
-                }
-                errors.pop().unwrap()
-            })
-            .unwrap();
+        let inferred_types = infer_types(
+            definitions,
+            &mut expressions,
+            &constr_function_statement_type,
+        )
+        .map_err(|mut errors| {
+            eprintln!("\nError during type inference:");
+            for e in &errors {
+                e.output_to_stderr();
+            }
+            errors.pop().unwrap()
+        })
+        .unwrap();
         // Store the inferred types.
         for (name, ty) in inferred_types {
             let Some(FunctionValueDefinition::Expression(TypedExpression {

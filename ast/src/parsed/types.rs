@@ -126,6 +126,10 @@ impl<E> Type<E> {
     pub fn contained_type_vars(&self) -> impl Iterator<Item = &String> {
         self.contained_type_vars_with_repetitions().unique()
     }
+
+    pub fn empty_tuple() -> Type<E> {
+        Type::Tuple(TupleType { items: vec![] })
+    }
 }
 impl<E: Clone> Type<E> {
     /// Substitutes all occurrences of the given type variables with the given types.
