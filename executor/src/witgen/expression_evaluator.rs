@@ -45,12 +45,8 @@ where
         match expr {
             Expression::Reference(poly) => self.variables.value(poly),
             Expression::Number(n) => Ok((*n).into()),
-            Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                self.evaluate_binary_operation(left, op, right)
-            }
-            Expression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                self.evaluate_unary_operation(op, expr)
-            }
+            Expression::BinaryOperation(e) => self.evaluate_binary_operation(e),
+            Expression::UnaryOperation(e) => self.evaluate_unary_operation(e),
             Expression::Challenge(challenge) => self.variables.challenge(challenge),
             e => unimplemented!("Unexpected expression: {}", e),
         }
@@ -58,9 +54,7 @@ where
 
     fn evaluate_binary_operation<'a>(
         &self,
-        left: &'a Expression<T>,
-        op: &AlgebraicBinaryOperator,
-        right: &'a Expression<T>,
+        AlgebraicBinaryOperation { left, op, right }: &'a AlgebraicBinaryOperation<T>,
     ) -> AffineResult<&'a AlgebraicReference, T> {
         match op {
             AlgebraicBinaryOperator::Add => {
@@ -125,8 +119,7 @@ where
 
     fn evaluate_unary_operation<'a>(
         &self,
-        op: &AlgebraicUnaryOperator,
-        expr: &'a Expression<T>,
+        AlgebraicUnaryOperation { op, expr }: &'a AlgebraicUnaryOperation<T>,
     ) -> AffineResult<&'a AlgebraicReference, T> {
         self.evaluate(expr).map(|v| match op {
             AlgebraicUnaryOperator::Minus => -v,
