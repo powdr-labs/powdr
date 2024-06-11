@@ -62,6 +62,8 @@ impl Display for SymbolDefinition {
                 )
             }
             SymbolValue::TypeDeclaration(ty) => write!(f, "{ty}"),
+            SymbolValue::TraitDeclaration(trait_decl) => write!(f, "{trait_decl}"),
+            SymbolValue::TraitImplementation(trait_impl) => write!(f, "{trait_impl}"),
         }
     }
 }
@@ -507,6 +509,8 @@ impl Display for PilStatement {
             }
             PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
+            PilStatement::TraitDeclaration(_, trait_decl) => write_indented_by(f, trait_decl, 1),
+            PilStatement::TraitImplementation(_, trait_impl) => write_indented_by(f, trait_impl, 1),
         }
     }
 }
@@ -550,6 +554,50 @@ impl Display for FunctionDefinition {
                 panic!("Should not use this formatting function.")
             }
         }
+    }
+}
+
+impl Display for TraitDeclaration<Expression> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = if self.type_vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_vars)
+        };
+        write!(
+            f,
+            "trait {name} {type_vars} {{\n{methods}}}",
+            name = self.name,
+            methods = indent(self.methods.iter().map(|m| format!("{m},\n")).format(""), 1)
+        )
+    }
+}
+
+impl Display for TraitMethod<Expression> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self._type)
+    }
+}
+
+impl Display for TraitImplementation<Expression> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = if self.type_vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_vars)
+        };
+        write!(
+            f,
+            "impl {trait_name} for {type_vars} {{\n{methods}}}",
+            trait_name = self.name,
+            methods = indent(self.methods.iter().map(|m| format!("{m},\n")).format(""), 1)
+        )
+    }
+}
+
+impl Display for ImplMethod<Expression> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self.body)
     }
 }
 

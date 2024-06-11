@@ -103,6 +103,16 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 }
                                 Some(Ok(SymbolValue::TypeDeclaration(enum_decl)))
                             }
+                            SymbolValue::TraitDeclaration(_) => {
+                                todo!(
+                                    "trait declarations are not yet supported in fold_module_value"
+                                )
+                            }
+                            SymbolValue::TraitImplementation(_) => {
+                                todo!(
+                                    "trait implementations are not yet supported in fold_module_value"
+                                )
+                            }
                         }
                         .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
                     }
@@ -475,6 +485,12 @@ fn check_path_internal<'a>(
                                 chain,
                             )
                         }),
+                    SymbolValueRef::TraitDeclaration(_) => {
+                        todo!("trait declarations are not yet supported in check_path_internal")
+                    }
+                    SymbolValueRef::TraitImplementation(_) => {
+                        todo!("trait implementations are not yet supported in check_path_internal")
+                    }
                 }
             },
         )
@@ -564,6 +580,12 @@ fn check_module(
             SymbolValue::TypeDeclaration(enum_decl) => {
                 check_type_declaration(&location, enum_decl, state)
                     .map_err(|e| SourceRef::default().with_error(e))?
+            }
+            SymbolValue::TraitDeclaration(_trait_decl) => {
+                todo!("trait declarations are not yet supported in check_module")
+            }
+            SymbolValue::TraitImplementation(_trait_impl) => {
+                todo!("trait implementations are not yet supported in check_module")
             }
         }
     }

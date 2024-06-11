@@ -337,6 +337,20 @@ impl TypeChecker {
                                 Item::TypeDeclaration(enum_decl),
                             );
                         }
+                        asm::SymbolValue::TraitDeclaration(trait_decl) => {
+                            //TODO GZ: check trait declaration
+                            res.insert(
+                                ctx.clone().with_part(&name),
+                                Item::TraitDeclaration(trait_decl),
+                            );
+                        }
+                        asm::SymbolValue::TraitImplementation(trait_impl) => {
+                            //TODO GZ: check trait implementation
+                            res.insert(
+                                ctx.clone().with_part(&name),
+                                Item::TraitImplementation(trait_impl),
+                            );
+                        }
                     }
                 }
             }

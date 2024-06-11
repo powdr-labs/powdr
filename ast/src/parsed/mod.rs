@@ -101,6 +101,8 @@ pub enum PilStatement {
     ConnectIdentity(SourceRef, Vec<Expression>, Vec<Expression>),
     ConstantDefinition(SourceRef, String, Expression),
     EnumDeclaration(SourceRef, EnumDeclaration<Expression>),
+    TraitDeclaration(SourceRef, TraitDeclaration<Expression>),
+    TraitImplementation(SourceRef, TraitImplementation<Expression>),
     Expression(SourceRef, Expression),
 }
 
@@ -138,6 +140,18 @@ impl PilStatement {
                         .map(move |v| (name, Some(&v.name), SymbolCategory::TypeConstructor)),
                 ),
             ),
+            PilStatement::TraitDeclaration(_, TraitDeclaration { name, .. }) => {
+                Box::new(once((name, None, SymbolCategory::Type))) //TODO GZ: Check type
+            }
+            PilStatement::TraitImplementation(_, TraitImplementation { name, methods, .. }) => {
+                Box::new(
+                    once((name, None, SymbolCategory::Value)).chain(
+                        methods
+                            .iter()
+                            .map(move |m| (name, Some(&m.name), SymbolCategory::Value)),
+                    ),
+                ) //TODO GZ: Check type
+            }
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
             | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => Box::new(
                 polynomials
@@ -172,7 +186,8 @@ impl Children<Expression> for PilStatement {
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children(),
-
+            PilStatement::TraitDeclaration(_, trait_decl) => trait_decl.children(),
+            PilStatement::TraitImplementation(_, trait_impl) => trait_impl.children(),
             PilStatement::LetStatement(_, _, type_scheme, value) => Box::new(
                 type_scheme
                     .iter()
@@ -207,6 +222,8 @@ impl Children<Expression> for PilStatement {
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children_mut(),
+            PilStatement::TraitDeclaration(_, trait_decl) => trait_decl.children_mut(),
+            PilStatement::TraitImplementation(_, trait_impl) => trait_impl.children_mut(),
 
             PilStatement::LetStatement(_, _, ty, value) => {
                 Box::new(ty.iter_mut().flat_map(|t| t.ty.children_mut()).chain(value))
@@ -304,6 +321,51 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
                 .flat_map(|f| f.children_mut()),
         )
     }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TraitDeclaration<Expression> {
+    pub name: String,
+    pub type_vars: TypeBounds,
+    pub methods: Vec<TraitMethod<Expression>>,
+}
+
+impl Children<Expression> for TraitDeclaration<Expression> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(empty())
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TraitMethod<Expression> {
+    pub name: String,
+    pub _type: Type<Expression>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TraitImplementation<Expression> {
+    pub name: String,
+    pub type_vars: TypeBounds,
+    pub trait_vars: Vec<(String, TypeBounds)>,
+    pub methods: Vec<ImplMethod<Expression>>,
+}
+
+impl Children<Expression> for TraitImplementation<Expression> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(self.methods.iter().flat_map(|m| m.body.children()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(self.methods.iter_mut().flat_map(|m| m.body.children_mut()))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ImplMethod<Expression> {
+    pub name: String,
+    pub body: Box<Expression>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]

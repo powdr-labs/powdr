@@ -32,6 +32,14 @@ ModuleStatement: ModuleStatement = {
             name: <>.name.clone(),
             value: SymbolValue::TypeDeclaration(<>),
         }),
+    <TraitDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
+            name: <>.name.clone(),
+            value: SymbolValue::TraitDeclaration(<>),
+        }),
+    <ImplDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
+            name: <>.name.clone(),
+            value: SymbolValue::TraitImplementation(<>),
+        }),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
@@ -114,6 +122,8 @@ pub PilStatement = {
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <impl_:ImplDeclaration> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_), 
     PlookupIdentityStatement,
     PermutationIdentityStatement,
     ConnectIdentityStatement,
@@ -682,6 +692,44 @@ EnumPattern: Pattern = {
 PatternList: Vec<Pattern> = {
     <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
     => vec![]
+}
+
+// ---------------------------- Trait/Impl Declaration -----------------------------
+
+TraitDeclaration: TraitDeclaration<Expression> = {
+    "trait" <name:Identifier> <type_vars:("<" <TypeVarBounds> ">")?> "{" <methods:TraitMethods> "}" => TraitDeclaration { name, type_vars: type_vars.unwrap_or_default(), methods }
+}
+
+TraitMethods: Vec<TraitMethod<Expression>> = {
+    => vec![],
+    <mut list:( <TraitMethod> "," )*> <end:TraitMethod> ","  => { list.push(end); list }
+}
+
+TraitMethod: TraitMethod<Expression> = {
+    <name:Identifier> ":" <params:TypeTermList> "->" <value:TypeTermBox> => TraitMethod { name, _type: Type::Function(FunctionType{params, value}) }
+}
+
+ImplDeclaration: TraitImplementation<Expression> = {
+    "impl" <type_vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <trait_vars:("<" <TraitTypeList> ">")> "{" <methods:ImplMethods> "}" => TraitImplementation { name, type_vars: type_vars.unwrap_or_default(), trait_vars, methods }
+}
+
+// This should be represented in a better way
+TraitTypeList: Vec<(String, TypeBounds)> = {
+    => vec![],
+    <mut list:( <TraitType> "," )*> <end:TraitType> ","  => { list.push(end); list }
+}
+
+TraitType: (String, TypeBounds) = {
+    <name:Identifier> <ty:("<" <TypeVarBounds> ">")?> => (name, ty.unwrap_or_default())
+}
+
+ImplMethods: Vec<ImplMethod<Expression>> = {
+    => vec![],
+    <mut list:( <ImplMethod> "," )*> <end:ImplMethod> ","  => { list.push(end); list }
+}
+
+ImplMethod: ImplMethod<Expression> = {
+    <name:Identifier> ":" <body:BoxedExpression> => ImplMethod { name, body }
 }
 
 // ---------------------------- Type Declarations -----------------------------

@@ -1,7 +1,5 @@
 //! Parser for powdr assembly and PIL
 
-#![deny(clippy::print_stdout)]
-
 use lalrpop_util::*;
 use powdr_ast::parsed::{
     asm::ASMProgram,
@@ -311,7 +309,9 @@ mod test {
                 SymbolValue::Module(Module::External(_))
                 | SymbolValue::Import(_)
                 | SymbolValue::Expression(_)
-                | SymbolValue::TypeDeclaration(_) => (),
+                | SymbolValue::TypeDeclaration(_)
+                | SymbolValue::TraitDeclaration(_)
+                | SymbolValue::TraitImplementation(_) => (),
             }
         }
 
@@ -526,6 +526,38 @@ namespace N(2);
     let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
     let seven = max::<int>(3, 7);
 "#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trait() {
+        let input = r#"
+    trait Add<T> {
+        add: T, T -> T,
+    }"#;
+
+        let expected = r#"
+    trait Add <T> {
+        add: T, T -> T,
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_impl() {
+        let input = r#"
+        impl<T> Iterator<ArrayIterator<T>, T> {
+            next: |it| if it.pos >= array::len(it.arr) { (it, none) } else { some((increment(it), it.arr[it.pos])) },
+        }"#;
+
+        let expected = r#"
+        impl <T> Iterator <ArrayIterator <T>, T> {
+            next: |it| if it.pos >= array::len(it.arr) { (it, none) } else { some((increment(it), it.arr[it.pos])) },
+        }"#;
+
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(expected.trim(), printed.trim());
     }
