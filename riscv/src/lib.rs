@@ -18,7 +18,7 @@ pub use crate::runtime::Runtime;
 pub mod asm;
 mod code_gen;
 pub mod continuations;
-mod elf_translate;
+mod elf;
 pub mod runtime;
 
 /// Compiles a rust file all the way down to PIL and generates
@@ -143,7 +143,7 @@ pub fn compile_riscv_elf<T: FieldElement>(
     runtime: &Runtime,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
-    elf_translate::elf_translate(input_file);
+    elf::elf_translate(input_file);
     todo!()
 }
 

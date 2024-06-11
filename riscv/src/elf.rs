@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, HashSet},
+    fmt::Display,
     fs,
 };
 
@@ -9,6 +10,8 @@ use raki::{
     instruction::{Extensions, Instruction as Ins, OpcodeKind as Op},
     Isa,
 };
+
+use crate::code_gen::{InstructionArgs, Register, RiscVProgram};
 
 pub fn elf_translate(file_name: &str) {
     let file_buffer = fs::read(file_name).unwrap();
@@ -30,7 +33,7 @@ pub fn elf_translate(file_name: &str) {
     let mut data_map = BTreeMap::new();
 
     // Keep a list of referenced text addresses, so we can generate the labels.
-    let mut referenced_text_addrs = HashSet::from([elf.entry.try_into().unwrap()]);
+    let mut referenced_text_addrs = HashSet::from([Label(u32::try_from(elf.entry).unwrap())]);
     println!("entry: {:08x}:", elf.entry);
 
     for p in elf.program_headers.iter() {
@@ -68,7 +71,7 @@ pub fn elf_translate(file_name: &str) {
 
                 // We also need to add the referenced address to the list of text
                 // addresses, so we can generate the label.
-                referenced_text_addrs.insert(original_addr);
+                referenced_text_addrs.insert(Label(original_addr));
                 println!("reloc: {:08x}:", original_addr);
             } else {
                 data_map.insert(addr, Data::Value(original_addr));
@@ -82,7 +85,7 @@ pub fn elf_translate(file_name: &str) {
 
     println!("Text labels:");
     for label in referenced_text_addrs {
-        println!("  label_{:08x}:", label);
+        println!("  {label}:");
     }
 
     println!("Non-zero data:");
@@ -91,6 +94,191 @@ pub fn elf_translate(file_name: &str) {
     }
 
     todo!();
+}
+
+struct ElfProgram {
+    entry_point: String,
+}
+
+impl RiscVProgram for ElfProgram {
+    type Args = HighLevelArgs;
+
+    fn take_source_files_info(&mut self) -> impl Iterator<Item = crate::code_gen::SourceFileInfo> {
+        todo!()
+    }
+
+    fn take_initial_mem(&mut self) -> impl Iterator<Item = crate::code_gen::MemEntry> {
+        todo!()
+    }
+
+    fn take_executable_statements(
+        &mut self,
+    ) -> impl Iterator<Item = crate::code_gen::Statement<impl AsRef<str>, Self::Args>> {
+        todo!()
+    }
+
+    fn start_function(&self) -> &str {
+        &self.entry_point
+    }
+}
+
+impl InstructionArgs for HighLevelArgs {
+    type Error = String;
+
+    fn l(&self) -> Result<String, Self::Error> {
+        match self {
+            HighLevelArgs {
+                imm: HighLevelImmediate::CodeLabel(addr),
+                rd: None,
+                rs1: None,
+                rs2: None,
+            } => Ok(addr.to_string()),
+            _ => Err(format!("Expected: label, got {:?}", self)),
+        }
+    }
+
+    fn r(&self) -> Result<Register, Self::Error> {
+        match self {
+            HighLevelArgs {
+                imm: HighLevelImmediate::None,
+                rd: None,
+                rs1: Some(rs1),
+                rs2: None,
+            } => Ok(Register::new(*rs1 as u8)),
+            _ => Err(format!("Expected: rs1, got {:?}", self)),
+        }
+    }
+
+    fn rri(&self) -> Result<(Register, Register, u32), Self::Error> {
+        match self {
+            HighLevelArgs {
+                imm: HighLevelImmediate::Value(imm),
+                rd: Some(rd),
+                rs1: Some(rs1),
+                rs2: None,
+            } => Ok((
+                Register::new(*rd as u8),
+                Register::new(*rs1 as u8),
+                *imm as u32,
+            )),
+            _ => Err(format!("Expected: rd, rs1, imm, got {:?}", self)),
+        }
+    }
+
+    fn rrr(&self) -> Result<(Register, Register, Register), Self::Error> {
+        match self {
+            HighLevelArgs {
+                imm: HighLevelImmediate::None,
+                rd: Some(rd),
+                rs1: Some(rs1),
+                rs2: Some(rs2),
+            } => Ok((
+                Register::new(*rd as u8),
+                Register::new(*rs1 as u8),
+                Register::new(*rs2 as u8),
+            )),
+            _ => Err(format!("Expected: rd, rs1, rs2, got {:?}", self)),
+        }
+    }
+
+    fn ri(&self) -> Result<(Register, u32), Self::Error> {
+        match self {
+            HighLevelArgs {
+                imm: HighLevelImmediate::Value(imm),
+                rd: Some(rd),
+                rs1: None,
+                rs2: None,
+            } => Ok((Register::new(*rd as u8), *imm as u32)),
+            _ => Err(format!("Expected: rd, imm, got {:?}", self)),
+        }
+    }
+
+    fn rr(&self) -> Result<(Register, Register), Self::Error> {
+        match self {
+            HighLevelArgs {
+                imm: HighLevelImmediate::None,
+                rd: Some(rd),
+                rs1: Some(rs1),
+                rs2: None,
+            } => Ok((Register::new(*rd as u8), Register::new(*rs1 as u8))),
+            _ => Err(format!("Expected: rd, rs1, got {:?}", self)),
+        }
+    }
+
+    fn rrl(&self) -> Result<(Register, Register, String), Self::Error> {
+        match self {
+            HighLevelArgs {
+                imm: HighLevelImmediate::CodeLabel(addr),
+                rd: None,
+                rs1: Some(rs1),
+                rs2: Some(rs2),
+            } => Ok((
+                Register::new(*rs1 as u8),
+                Register::new(*rs2 as u8),
+                addr.to_string(),
+            )),
+            _ => Err(format!("Expected: rs1, rs2, label, got {:?}", self)),
+        }
+    }
+
+    fn rl(&self) -> Result<(Register, String), Self::Error> {
+        match self {
+            HighLevelArgs {
+                imm: HighLevelImmediate::CodeLabel(addr),
+                rd: None,
+                rs1: Some(rs1),
+                rs2: None,
+            } => Ok((Register::new(*rs1 as u8), addr.to_string())),
+            HighLevelArgs {
+                imm: HighLevelImmediate::None,
+                rd: Some(rd),
+                rs1: None,
+                rs2: None,
+            } => Ok((Register::new(*rd as u8), "".to_string())),
+            _ => Err(format!("Expected: {{rs1|rd}}, label, got {:?}", self)),
+        }
+    }
+
+    fn rro(&self) -> Result<(Register, Register, u32), Self::Error> {
+        match self {
+            HighLevelArgs {
+                imm: HighLevelImmediate::Value(imm),
+                rd: Some(rd),
+                rs1: Some(rs1),
+                rs2: None,
+            } => Ok((
+                Register::new(*rd as u8),
+                Register::new(*rs1 as u8),
+                *imm as u32,
+            )),
+            HighLevelArgs {
+                imm: HighLevelImmediate::Value(imm),
+                rd: None,
+                rs1: Some(rs1),
+                rs2: Some(rs2),
+            } => Ok((
+                Register::new(*rs1 as u8),
+                Register::new(*rs2 as u8),
+                *imm as u32,
+            )),
+            _ => Err(format!(
+                "Expected: {{rd, rs1 | rs1, rs2}}, imm, got {:?}",
+                self
+            )),
+        }
+    }
+
+    fn empty(&self) -> Result<(), Self::Error> {
+        match self {
+            HighLevelArgs {
+                imm: HighLevelImmediate::None,
+                rd: None,
+                rs1: None,
+                rs2: None,
+            } => Ok(()),
+            _ => Err(format!("Expected: no args, got {:?}", self)),
+        }
+    }
 }
 
 struct AddressMap<'a>(BTreeMap<u32, &'a program_header::ProgramHeader>);
@@ -162,25 +350,59 @@ impl From<Ins> for MaybeInstruction {
     }
 }
 
+/// The value is the original address
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct Label(u32);
+
+impl From<i32> for Label {
+    fn from(addr: i32) -> Self {
+        Label(addr as u32)
+    }
+}
+
+impl Display for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "L{:08x}", self.0)
+    }
+}
+
+#[derive(Debug)]
 enum HighLevelImmediate {
     None,
-    CodeLabel(i32), // The value is the original address
+    CodeLabel(Label),
     Value(i32),
 }
 
-struct HighLevelInsn {
-    original_address: u32,
-    op: &'static str,
+#[derive(Debug)]
+struct HighLevelArgs {
     rd: Option<u32>,
     rs1: Option<u32>,
     rs2: Option<u32>,
     imm: HighLevelImmediate,
 }
 
+/// The default args are all empty.
+impl Default for HighLevelArgs {
+    fn default() -> Self {
+        HighLevelArgs {
+            rd: None,
+            rs1: None,
+            rs2: None,
+            imm: HighLevelImmediate::None,
+        }
+    }
+}
+
+struct HighLevelInsn {
+    original_address: u32,
+    op: &'static str,
+    args: HighLevelArgs,
+}
+
 struct InstructionLifter<'a> {
     base_addr: u32,
     address_map: &'a AddressMap<'a>,
-    referenced_text_addrs: &'a mut HashSet<u32>,
+    referenced_text_addrs: &'a mut HashSet<Label>,
 }
 
 impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
@@ -212,10 +434,11 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 },
             ) if rd_lui == rd_addi && rd_lui == rs1_addi => HighLevelInsn {
                 op: "li",
-                rd: Some(*rd_lui as u32),
-                rs1: None,
-                rs2: None,
-                imm: HighLevelImmediate::Value(*hi | *lo),
+                args: HighLevelArgs {
+                    rd: Some(*rd_lui as u32),
+                    imm: HighLevelImmediate::Value(*hi | *lo),
+                    ..Default::default()
+                },
                 original_address: self.base_addr,
             },
             (
@@ -242,23 +465,24 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     } if rd_auipc == rd_addi && rd_auipc == rs1_addi => {
                         let imm_addr = hi + lo;
                         let imm = if self.address_map.is_in_text_section(imm_addr as u32) {
-                            HighLevelImmediate::CodeLabel(imm_addr)
+                            HighLevelImmediate::CodeLabel(imm_addr.into())
                         } else {
                             HighLevelImmediate::Value(imm_addr)
                         };
                         HighLevelInsn {
                             op: "la",
-                            rd: Some(*rd_auipc as u32),
-                            rs1: None,
-                            rs2: None,
-                            imm,
+                            args: HighLevelArgs {
+                                rd: Some(*rd_auipc as u32),
+                                imm,
+                                ..Default::default()
+                            },
                             original_address: self.base_addr,
                         }
                     }
                     // TODO: uncomment when powdr supports the pseudoinstruction
                     // version of l{b|h|w} and s{b|h|w}. For now, it is better
                     // to just fail here if we encounter this usage of auipc.
-                    /*
+
                     // l{b|h|w} rd, symbol
                     Ins {
                         opc: l_op,
@@ -273,10 +497,11 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     {
                         HighLevelInsn {
                             op: l_op.to_string(),
-                            rd: Some(*rd_l as u32),
-                            rs1: None,
-                            rs2: None,
-                            imm: HighLevelImmediate::Value(hi + lo),
+                            args: HighLevelArgs {
+                                rd: Some(*rd_l as u32),
+                                imm: HighLevelImmediate::Value(hi + lo),
+                                ..Default::default()
+                            },
                             original_address: self.base_addr,
                         }
                     }
@@ -291,18 +516,20 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     } if matches!(l_op, Op::LB | Op::LH | Op::LW) && rd_auipc == rt_l => {
                         HighLevelInsn {
                             op: l_op.to_string(),
-                            rd: None,
-                            // TODO: If this pseudoinstruction is ever
-                            // implemented in powdr, rs1 should end up
-                            // containing the output of auipc, a value which
-                            // doen't make sense in powdr.
-                            rs1: Some(*rd_auipc as u32),
-                            rs2: Some(*rd as u32),
-                            imm: HighLevelImmediate::Value(hi + lo),
+                            args: HighLevelArgs {
+                                // TODO: If this pseudoinstruction is ever
+                                // implemented in powdr, rs1 should end up
+                                // containing the output of auipc, a value which
+                                // doen't make sense in powdr.
+                                rs1: Some(*rd_auipc as u32),
+                                rs2: Some(*rd as u32),
+                                imm: HighLevelImmediate::Value(hi + lo),
+                                ..Default::default()
+                            },
                             original_address: self.base_addr,
                         }
                     }
-                    */
+
                     // call offset
                     Ins {
                         opc: Op::JALR,
@@ -313,10 +540,10 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         ..
                     } if *rd_auipc == 1 => HighLevelInsn {
                         op: "call",
-                        rd: None,
-                        rs1: None,
-                        rs2: None,
-                        imm: HighLevelImmediate::CodeLabel(hi + lo),
+                        args: HighLevelArgs {
+                            imm: HighLevelImmediate::CodeLabel((hi + lo).into()),
+                            ..Default::default()
+                        },
                         original_address: self.base_addr,
                     },
                     // tail offset
@@ -329,10 +556,10 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         ..
                     } if *rd_auipc == 6 => HighLevelInsn {
                         op: "tail",
-                        rd: None,
-                        rs1: None,
-                        rs2: None,
-                        imm: HighLevelImmediate::CodeLabel(hi + lo),
+                        args: HighLevelArgs {
+                            imm: HighLevelImmediate::CodeLabel((hi + lo).into()),
+                            ..Default::default()
+                        },
                         original_address: self.base_addr,
                     },
                     _ => panic!("auipc could not be joined!"),
@@ -343,9 +570,9 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
 
         self.base_addr += [insn1, insn2].map(ins_size).into_iter().sum::<u32>();
 
-        if let HighLevelImmediate::CodeLabel(addr) = &result.imm {
-            self.referenced_text_addrs.insert(*addr as u32);
-            println!("insn {}: {:08x}", result.op, addr);
+        if let HighLevelImmediate::CodeLabel(addr) = &result.args.imm {
+            self.referenced_text_addrs.insert(*addr);
+            println!("insn {}: {:08x}", result.op, addr.0);
         }
 
         Some(result)
@@ -355,10 +582,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         let MaybeInstruction::Valid(insn) = insn else {
             return HighLevelInsn {
                 op: "unimp",
-                rd: None,
-                rs1: None,
-                rs2: None,
-                imm: HighLevelImmediate::None,
+                args: Default::default(),
                 original_address: self.base_addr,
             };
         };
@@ -366,8 +590,8 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         let imm = match insn.opc {
             // All jump instructions that have the immediate as an address
             Op::JAL | Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
-                let addr = insn.imm.unwrap() + self.base_addr as i32;
-                self.referenced_text_addrs.insert(addr as u32);
+                let addr = (insn.imm.unwrap() + self.base_addr as i32).into();
+                self.referenced_text_addrs.insert(addr);
 
                 HighLevelImmediate::CodeLabel(addr)
             }
@@ -391,14 +615,16 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
 
         // We don't need to lift the branch instructions to their Z versions,
         // because powdr's optimizer should be able to figure out the comparison is
-        // against a constant. But if needed, we could do it here...
+        // against a constant (x0). But if needed, we could do it here...
 
         let result = HighLevelInsn {
             op: insn.opc.to_string(),
-            rd: insn.rd.map(|x| x as u32),
-            rs1: insn.rs1.map(|x| x as u32),
-            rs2: insn.rs2.map(|x| x as u32),
-            imm,
+            args: HighLevelArgs {
+                rd: insn.rd.map(|x| x as u32),
+                rs1: insn.rs1.map(|x| x as u32),
+                rs2: insn.rs2.map(|x| x as u32),
+                imm,
+            },
             original_address: self.base_addr,
         };
 
@@ -416,7 +642,7 @@ fn lift_instructions(
     base_addr: u32,
     data: &[u8],
     address_map: &AddressMap,
-    referenced_text_addrs: &mut HashSet<u32>,
+    referenced_text_addrs: &mut HashSet<Label>,
 ) -> Vec<HighLevelInsn> {
     let instructions = RiscVInstructionIterator::new(data);
 

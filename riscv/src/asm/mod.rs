@@ -94,6 +94,11 @@ impl InstructionArgs for [Argument] {
             [Argument::Register(r1), Argument::Register(r2), Argument::Register(r3)] => {
                 Ok((*r1, *r2, *r3))
             }
+            [Argument::Register(r1), Argument::Register(r2), Argument::RegOffset(None, r3)] => {
+                // Special syntax used by sc.w
+                Ok((*r1, *r2, *r3))
+            }
+
             _ => Err("Expected: register, register, register"),
         }
     }
@@ -109,6 +114,10 @@ impl InstructionArgs for [Argument] {
     fn rr(&self) -> Result<(Register, Register), &'static str> {
         match self {
             [Argument::Register(r1), Argument::Register(r2)] => Ok((*r1, *r2)),
+            [Argument::Register(r1), Argument::RegOffset(None, r2)] => {
+                // Special syntax used by lr.w
+                Ok((*r1, *r2))
+            }
             _ => Err("Expected: register, register"),
         }
     }
@@ -132,11 +141,8 @@ impl InstructionArgs for [Argument] {
     }
 
     fn rro(&self) -> Result<(Register, Register, u32), &'static str> {
-        if let [Argument::Register(r1), Argument::RegOffset(off, r2)] = self {
-            if let Some(off) = expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0)))
-            {
-                return Ok((*r1, *r2, off));
-            }
+        if let [Argument::Register(r1), Argument::RegOffset(Some(off), r2)] = self {
+            return Ok((*r1, *r2, expression_to_number(off)));
         }
         if let [Argument::Register(r1), Argument::Expression(off)] = self {
             if let Some(off) = expression_to_number(off) {
@@ -146,23 +152,6 @@ impl InstructionArgs for [Argument] {
         }
 
         Err("Expected: register, offset(register)")
-    }
-
-    fn rrro(&self) -> Result<(Register, Register, Register, u32), &'static str> {
-        if let [Argument::Register(r1), Argument::Register(r2), Argument::RegOffset(off, r3)] = self
-        {
-            if let Some(off) = expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0)))
-            {
-                return Ok((*r1, *r2, *r3, off));
-            }
-        }
-        if let [Argument::Register(r1), Argument::Register(r2), Argument::Expression(off)] = self {
-            if let Some(off) = expression_to_number(off) {
-                // If the register is not specified, it defaults to x0
-                return Ok((*r1, *r2, Register::new(0), off));
-            }
-        }
-        Err("Expected: register, register, offset(register)")
     }
 
     fn empty(&self) -> Result<(), &'static str> {

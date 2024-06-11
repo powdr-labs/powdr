@@ -664,7 +664,6 @@ pub trait InstructionArgs {
     fn rrl(&self) -> Result<(Register, Register, String), Self::Error>;
     fn rl(&self) -> Result<(Register, String), Self::Error>;
     fn rro(&self) -> Result<(Register, Register, u32), Self::Error>;
-    fn rrro(&self) -> Result<(Register, Register, Register, u32), Self::Error>;
     fn empty(&self) -> Result<(), Self::Error>;
 }
 
@@ -1148,30 +1147,30 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
             // TODO this code assumes it is at least aligned on
             // a two-byte boundary
 
-            let (rs, rd, off) = args.rro()?;
+            let (r1, r2, off) = args.rro()?;
             vec![
-                format!("tmp1, tmp2 <== mload({rd} + {off});"),
+                format!("tmp1, tmp2 <== mload({r2} + {off});"),
                 "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
                 "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
                 "tmp1 <== and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <== and({rs}, 0xffff);"),
+                format!("tmp3 <== and({r1}, 0xffff);"),
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
-                format!("mstore {rd} + {off} - tmp2, tmp1;"),
+                format!("mstore {r2} + {off} - tmp2, tmp1;"),
             ]
         }
         "sb" => {
             // store byte
-            let (rs, rd, off) = args.rro()?;
+            let (r1, r2, off) = args.rro()?;
             vec![
-                format!("tmp1, tmp2 <== mload({rd} + {off});"),
+                format!("tmp1, tmp2 <== mload({r2} + {off});"),
                 "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
                 "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
                 "tmp1 <== and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <== and({rs}, 0xff);"),
+                format!("tmp3 <== and({r1}, 0xff);"),
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
-                format!("mstore {rd} + {off} - tmp2, tmp1;"),
+                format!("mstore {r2} + {off} - tmp2, tmp1;"),
             ]
         }
         "fence" | "nop" => vec![],
@@ -1195,8 +1194,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
 
         insn if insn.starts_with("lr.w") => {
             // Very similar to "lw":
-            let (rd, rs, off) = args.rro()?;
-            assert_eq!(off, 0);
+            let (rd, rs) = args.rr()?;
             // TODO misaligned access should raise misaligned address exceptions
             let mut statements =
                 only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs});")], rd);
@@ -1206,8 +1204,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
 
         insn if insn.starts_with("sc.w") => {
             // Some overlap with "sw", but also writes 0 to rd on success
-            let (rd, rs2, rs1, off) = args.rrro()?;
-            assert_eq!(off, 0);
+            let (rd, rs2, rs1) = args.rrr()?;
             // TODO: misaligned access should raise misaligned address exceptions
             let mut statements = vec![
                 "skip_if_zero lr_sc_reservation, 1;".into(),
