@@ -158,9 +158,9 @@ pub fn constructed_constraints() {
             let y;
             let z;
             Constr::Identity(x, y);
-            Constr::Lookup(Option::Some(1), [x, 3], Option::None, [y, z]);
-            Constr::Permutation(Option::None, [x, 3], Option::Some(x), [y, z]);
-            Constr::Connection([x, y], [z, 3]);
+            Constr::Lookup((Option::Some(1), Option::None), [(x, y), (3, z)]);
+            Constr::Permutation((Option::None, Option::Some(x)), [(x, y), (3, z)]);
+            Constr::Connection([(x, z), (y, 3)]);
     "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     let expected = r#"namespace Main(1024);
