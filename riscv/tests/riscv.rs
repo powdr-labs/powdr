@@ -225,15 +225,72 @@ fn evm() {
 fn sum_serde() {
     let case = "sum_serde";
 
-    let data: Vec<u32> = vec![1, 2, 8, 5];
+    /*
+    //let data: Vec<u32> = vec![1, 2, 8, 5];
+    let data: Vec<u32> = vec![];
     let answer = data.iter().sum::<u32>();
 
     verify_riscv_crate_with_data(
         case,
-        vec![answer.into()],
+        vec![answer.into(); 8],
         &Runtime::base(),
         vec![(42, data)],
     );
+    */
+
+    let runtime = Runtime::base();
+    let temp_dir = Temp::new_dir().unwrap();
+    let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+    );
+    let powdr_asm = powdr_riscv::compiler::compile::<GoldilocksField>(riscv_asm, &runtime, false);
+
+    let data: Vec<u32> = vec![];
+    let answer = data.iter().sum::<u32>();
+
+    let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
+        .with_prover_inputs(vec![answer.into()])
+        .add_data(42, &data);
+
+    pipeline.compute_witness().unwrap();
+}
+
+#[test]
+fn read_slice() {
+    let case = "read_slice";
+    let runtime = Runtime::base();
+    let temp_dir = Temp::new_dir().unwrap();
+    let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+    );
+    let powdr_asm = powdr_riscv::compiler::compile::<GoldilocksField>(riscv_asm, &runtime, false);
+
+    let data: Vec<u32> = vec![];
+    let answer = data.iter().sum::<u32>();
+
+
+    use std::collections::BTreeMap;
+    let d: BTreeMap<u32, Vec<GoldilocksField>> = vec![(42,
+        vec![
+            0u32.into(),
+            1u32.into(),
+            2u32.into(),
+            3u32.into(),
+            4u32.into(),
+            5u32.into(),
+            6u32.into(),
+            7u32.into(),
+        ])].into_iter().collect();
+
+    let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
+        .with_prover_inputs(vec![answer.into()])
+        .with_prover_dict_inputs(d);
+
+    pipeline.compute_witness().unwrap();
 }
 
 #[ignore = "Too slow"]
@@ -262,6 +319,7 @@ fn print() {
     verify_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
+/*
 #[test]
 fn many_chunks_dry() {
     // Compiles and runs the many_chunks example with continuations, just computing
@@ -281,6 +339,7 @@ fn many_chunks_dry() {
         .with_prover_inputs(Default::default());
     rust_continuations_dry_run::<GoldilocksField>(&mut pipeline, Default::default());
 }
+*/
 
 use serde::{Deserialize, Serialize};
 

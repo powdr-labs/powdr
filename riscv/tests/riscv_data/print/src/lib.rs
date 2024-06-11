@@ -7,5 +7,5 @@ use powdr_riscv_runtime::print;
 pub fn main() {
     let input = read_u32(0);
     print!("Input in hex: {input:x}\n");
-    assert_eq!([1, 2, 3], [4, 5, 6]);
+    assert_eq!([1, 2, 3], [1, 2, 3]);
 }

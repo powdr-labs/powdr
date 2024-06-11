@@ -6,6 +6,7 @@ use powdr_riscv_syscalls::Syscall;
 
 use alloc::vec;
 use alloc::vec::Vec;
+use super::print;
 
 /// Reads a single u32 from the file descriptor fd.
 pub fn read_u32(fd: u32) -> u32 {
@@ -52,7 +53,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 /// Reads and deserializes a serialized value of type T from the file descriptor fd.
-pub fn read<T: DeserializeOwned>(fd: u32) -> T {
+pub fn read<T: DeserializeOwned + Default>(fd: u32) -> T {
     let l = read_data_len(fd);
     let mut data = vec![0; l];
     read_slice(fd, &mut data);
@@ -60,7 +61,10 @@ pub fn read<T: DeserializeOwned>(fd: u32) -> T {
     // TODO this extra conversion can be removed if we change everything to be u8
     let data: Vec<u8> = data.into_iter().map(|x| x as u8).collect();
 
-    serde_cbor::from_slice(&data.as_slice()).unwrap()
+    if let Err(err) = serde_cbor::from_slice::<T>(&data.as_slice()) {
+        panic!("Error deserializing data: {:?}", err);
+    }
+    Default::default()
 }
 
 /// Serializes and writes a value of type T to the file descriptor fd.

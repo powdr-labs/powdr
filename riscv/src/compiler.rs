@@ -261,6 +261,7 @@ pub fn compile<T: FieldElement>(
     program.extend([
         format!("// Set stack pointer"),
         format!("set_reg 2, {stack_start};"),
+        "set_reg 0, 0;".to_string(),
         "set_reg 1, pc + 2;".to_string(),
         "jump __runtime_start;".to_string(),
         "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
@@ -1255,13 +1256,18 @@ fn process_instruction<A: Args + ?Sized + std::fmt::Debug>(
                         format!("set_reg {}, val3;", tmp4.addr()),
                         // If tmp1 is negative, convert to positive
                         format!("val1 <== get_reg({});", tmp3.addr()),
-                        "skip_if_zero val1, 3;".into(),
+
+                        // "skip_if_zero 0, tmp3;".into(), <== old impl
+                        // always skip tmp3
+                        // if tmp3 is 0, skip nothing
+
+                        "skip_if_zero 1 - val1, 3;".into(),
                         format!("val1 <== get_reg({});", tmp1.addr()),
                         "val3 <=X= 0 - val1;".into(),
                         format!("set_reg {}, val3;", tmp1.addr()),
                         // If tmp2 is negative, convert to positive
                         format!("val1 <== get_reg({});", tmp4.addr()),
-                        "skip_if_zero val1, 2;".into(),
+                        "skip_if_zero 1 - val1, 2;".into(),
                         format!("val2 <== get_reg({});", tmp2.addr()),
                         format!("set_reg {}, -val2;", tmp2.addr()),
                         format!("val1 <== get_reg({});", tmp1.addr()),
