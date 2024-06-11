@@ -94,7 +94,8 @@ impl InstructionArgs for [Argument] {
             [Argument::Register(r1), Argument::Register(r2), Argument::Register(r3)] => {
                 Ok((*r1, *r2, *r3))
             }
-            [Argument::Register(r1), Argument::Register(r2), Argument::RegOffset(None, r3)] => {
+            [Argument::Register(r1), Argument::Register(r2), Argument::RegOffset(None | Some(Expression::Number(0)), r3)] =>
+            {
                 // Special syntax used by atomic instructions
                 Ok((*r1, *r2, *r3))
             }
@@ -144,9 +145,11 @@ impl InstructionArgs for [Argument] {
         const ERR: &str = "Expected: register, offset(register)";
 
         match self {
-            [Argument::Register(r1), Argument::RegOffset(Some(off), r2)] => {
-                Ok((*r1, *r2, expression_to_number(off).ok_or(ERR)?))
-            }
+            [Argument::Register(r1), Argument::RegOffset(off, r2)] => Ok((
+                *r1,
+                *r2,
+                expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0))).ok_or(ERR)?,
+            )),
             [Argument::Register(r1), Argument::Expression(off)] => {
                 Ok((*r1, Register::new(0), expression_to_number(off).ok_or(ERR)?))
             }
