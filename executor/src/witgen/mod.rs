@@ -359,19 +359,20 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         // TODO what about the range-constraint-only identities?
         // TODO is this the right location for this code?
         let flat_identities: HashMap<_, _> = analyzed
-            .identities
+            // TODO we are doing this twice now, also in the generator
+            .identities_with_inlined_intermediate_polynomials()
             .iter()
             .flat_map(|identity| {
                 if identity.kind == IdentityKind::Polynomial {
                     let e = identity.expression_for_poly_id();
-                    println!("Trying to convert {e}");
                     match FlatAlgebraicExpression::try_from(e) {
                         Ok(flat) => {
+                            println!("Complex: {e}");
                             println!("Flat: {flat}");
                             Some((identity.id, flat))
                         }
                         Err(_) => {
-                            println!("Nope.");
+                            println!("Nope: {e}");
                             None
                         }
                     }

@@ -3,6 +3,7 @@ use std::{
     ops::{Add, Neg, Sub},
 };
 
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
 };
@@ -17,19 +18,23 @@ use super::{
 /// A "flat" version of AlgebraicExpression that is optimized for sums of quadratic terms.
 #[derive(Default)]
 pub struct FlatAlgebraicExpression<T> {
-    /// The constant term.
-    pub constant: T,
-    /// The positive linear terms.
-    pub positive: Vec<AlgebraicReference>,
-    /// The negative linear terms.
-    pub negative: Vec<AlgebraicReference>,
-    /// Other linear terms.
-    pub linear: Vec<(AlgebraicReference, T)>,
+    base: FlatAffine<T>,
     /// The quadratic terms.
-    pub positive_quadratic: Vec<(AlgebraicReference, AlgebraicReference)>,
-    pub negative_quadratic: Vec<(AlgebraicReference, AlgebraicReference)>,
+    positive_quadratic: Vec<(AlgebraicReference, AlgebraicReference)>,
+    negative_quadratic: Vec<(AlgebraicReference, AlgebraicReference)>,
     /// The quadratic terms with coefficients.
-    pub quadratic_linear: Vec<((AlgebraicReference, AlgebraicReference), T)>,
+    quadratic_linear: Vec<((AlgebraicReference, AlgebraicReference), T)>,
+    /// Quadratic terms with each side being an affine expression.
+    complex: Vec<(FlatAffine<T>, FlatAffine<T>)>,
+    contains_duplicate_references: bool,
+}
+
+#[derive(Default, Clone)]
+struct FlatAffine<T> {
+    constant: T,
+    positive: Vec<AlgebraicReference>,
+    negative: Vec<AlgebraicReference>,
+    linear: Vec<(AlgebraicReference, T)>,
 }
 
 impl<T: FieldElement> FlatAlgebraicExpression<T> {
@@ -41,13 +46,11 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
         fixed_data: &FixedData<T>,
         rows: &RowPair<T>,
     ) -> AffineResult<&'b AlgebraicReference, T> {
-        let mut constant: T = self.constant;
+        let mut constant: T = self.base.constant;
         let mut linear = vec![];
+        // We start with the quadratic terms because those might fail.
         for (a, b) in self.positive_quadratic.iter() {
-            match (
-                Self::lookup(a, fixed_data, rows),
-                Self::lookup(b, fixed_data, rows),
-            ) {
+            match (lookup(a, fixed_data, rows), lookup(b, fixed_data, rows)) {
                 (Some(c1), Some(c2)) => constant += c1 * c2,
                 (Some(c1), None) => {
                     if !c1.is_zero() {
@@ -63,10 +66,7 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
             }
         }
         for (a, b) in self.negative_quadratic.iter() {
-            match (
-                Self::lookup(a, fixed_data, rows),
-                Self::lookup(b, fixed_data, rows),
-            ) {
+            match (lookup(a, fixed_data, rows), lookup(b, fixed_data, rows)) {
                 (Some(c1), Some(c2)) => constant -= c1 * c2,
                 (Some(c1), None) => {
                     if !c1.is_zero() {
@@ -82,14 +82,7 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
             }
         }
         for ((a, b), c) in self.quadratic_linear.iter() {
-            if c.is_zero() {
-                // TODO assert false
-                continue;
-            }
-            match (
-                Self::lookup(a, fixed_data, rows),
-                Self::lookup(b, fixed_data, rows),
-            ) {
+            match (lookup(a, fixed_data, rows), lookup(b, fixed_data, rows)) {
                 (Some(c1), Some(c2)) => constant += c1 * c2 * *c,
                 (Some(c1), None) => {
                     if !c1.is_zero() {
@@ -104,59 +97,166 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
                 (None, None) => return Err(IncompleteCause::QuadraticTerm),
             }
         }
+        for (l, r) in self.complex.iter() {
+            let mut left_linear = vec![];
+            let left_constant = l.evaluate(fixed_data, rows, &mut left_linear)?;
+            if left_constant.is_zero() {
+                continue;
+            }
+            let mut right_linear = vec![];
+            let right_constant = r.evaluate(fixed_data, rows, &mut right_linear)?;
+            if right_constant.is_zero() {
+                continue;
+            }
+            constant += left_constant * right_constant;
+            if left_linear.is_empty() && right_linear.is_empty() {
+            } else if left_linear.is_empty() && left_constant.is_one() {
+                linear.extend(right_linear);
+            } else if left_linear.is_empty() {
+                linear.extend(
+                    right_linear
+                        .into_iter()
+                        .map(|(r, c)| (r, c * left_constant)),
+                );
+            } else if right_linear.is_empty() && right_constant.is_one() {
+                linear.extend(left_linear);
+            } else if right_linear.is_empty() {
+                linear.extend(
+                    left_linear
+                        .into_iter()
+                        .map(|(r, c)| (r, c * right_constant)),
+                );
+            } else {
+                return Err(IncompleteCause::QuadraticTerm);
+            }
+        }
+        constant += self.base.evaluate(fixed_data, rows, &mut linear)?;
+        linear.sort_by(|(a, _), (b, _)| a.cmp(b));
+        if self.contains_duplicate_references {
+            unimplemented!("Need to eliminate duplicates from the list")
+        }
+        Ok(AffineExpression::from_sorted_coefficients(linear, constant))
+    }
+}
+
+#[inline]
+fn lookup<'b, T: FieldElement>(
+    reference: &'b AlgebraicReference,
+    fixed_data: &FixedData<T>,
+    rows: &RowPair<T>,
+) -> Option<T> {
+    if reference.is_witness() {
+        rows.get_value(reference)
+    } else {
+        let values = fixed_data.fixed_cols[&reference.poly_id].values;
+        let row = rows.current_row_index + if reference.next { 1 } else { 0 };
+        Some(values[usize::from(row)])
+    }
+}
+
+impl<T: FieldElement> FlatAffine<T> {
+    fn evaluate<'b>(
+        &'b self,
+        fixed_data: &FixedData<T>,
+        rows: &RowPair<T>,
+        linear: &mut Vec<(&'b AlgebraicReference, T)>,
+    ) -> Result<T, IncompleteCause<&'b AlgebraicReference>> {
+        let mut constant = self.constant;
         for r in self.positive.iter() {
-            match Self::lookup(r, fixed_data, rows) {
+            match lookup(r, fixed_data, rows) {
                 Some(c) => constant += c,
                 None => linear.push((r, T::one())),
             }
         }
         for r in self.negative.iter() {
-            match Self::lookup(r, fixed_data, rows) {
+            match lookup(r, fixed_data, rows) {
                 Some(c) => constant -= c,
                 None => linear.push((r, (-1).into())),
             }
         }
         for (r, c) in self.linear.iter() {
-            if c.is_zero() {
-                // TODO assert false
-                continue;
-            }
-            match Self::lookup(r, fixed_data, rows) {
+            match lookup(r, fixed_data, rows) {
                 Some(c2) => constant += c2 * *c,
                 None => linear.push((r, *c)),
             }
         }
-        linear.sort_by(|(a, _), (b, _)| a.cmp(b));
-        // TODO we would need to eliminate duplicates, but we skip that for now.
-        Ok(AffineExpression::from_sorted_coefficients(linear, constant))
-    }
-
-    #[inline]
-    fn lookup<'b>(
-        reference: &'b AlgebraicReference,
-        fixed_data: &FixedData<T>,
-        rows: &RowPair<T>,
-    ) -> Option<T> {
-        if reference.is_witness() {
-            rows.get_value(reference)
-        } else {
-            let values = fixed_data.fixed_cols[&reference.poly_id].values;
-            let row = rows.current_row_index + if reference.next { 1 } else { 0 };
-            Some(values[usize::from(row)])
-        }
+        Ok(constant)
     }
 }
 
-impl<T> FlatAlgebraicExpression<T> {
-    pub fn is_linear(&self) -> bool {
+impl<T: FieldElement> FlatAlgebraicExpression<T> {
+    pub fn is_affine(&self) -> bool {
         self.positive_quadratic.is_empty()
             && self.negative_quadratic.is_empty()
             && self.quadratic_linear.is_empty()
+            && self.complex.is_empty()
+    }
+
+    pub fn try_to_affine(&self) -> Option<FlatAffine<T>> {
+        (self.is_affine()).then(|| self.base.clone())
+    }
+
+    pub fn try_to_monomial(&self) -> Option<(T, AlgebraicReference)> {
+        self.try_to_affine()?.try_to_monomial()
+    }
+
+    fn set_duplicate_flag(mut self) -> Self {
+        // TODO simplify this
+        self.contains_duplicate_references = self
+            .base
+            .positive
+            .iter()
+            .chain(self.base.negative.iter())
+            .chain(self.base.linear.iter().map(|(r, _)| r))
+            .chain(
+                self.positive_quadratic
+                    .iter()
+                    .flat_map(|(r1, r2)| vec![r1, r2]),
+            )
+            .chain(
+                self.negative_quadratic
+                    .iter()
+                    .flat_map(|(r1, r2)| vec![r1, r2]),
+            )
+            .chain(
+                self.quadratic_linear
+                    .iter()
+                    .flat_map(|((r1, r2), _)| vec![r1, r2]),
+            )
+            .chain(self.complex.iter().flat_map(|(l, r)| {
+                // TODO use a trait
+                l.positive
+                    .iter()
+                    .chain(l.negative.iter())
+                    .chain(l.linear.iter().map(|(r, _)| r))
+                    .chain(r.positive.iter())
+                    .chain(r.negative.iter())
+                    .chain(r.linear.iter().map(|(r, _)| r))
+            }))
+            .duplicates()
+            .next()
+            .is_some();
+        self
     }
 }
 
-// TODO if we convert this into an AffineExpression value later on, we have to make sure that the variables are all unique.
-// TODO We could even have a flag that tells if all variables in this expression are unique, then we only have to sort.
+impl<T: FieldElement> FlatAffine<T> {
+    pub fn try_to_monomial(&self) -> Option<(T, AlgebraicReference)> {
+        if !self.constant.is_zero() {
+            return None;
+        }
+        if self.positive.len() == 1 && self.negative.is_empty() && self.linear.is_empty() {
+            return Some((1.into(), self.positive[0].clone()));
+        }
+        if self.negative.len() == 1 && self.positive.is_empty() && self.linear.is_empty() {
+            return Some(((-1).into(), self.negative[0].clone()));
+        }
+        if self.linear.len() == 1 && self.positive.is_empty() && self.negative.is_empty() {
+            return Some((self.linear[0].1, self.linear[0].0.clone()));
+        }
+        None
+    }
+}
 
 impl<T: FieldElement> TryFrom<&AlgebraicExpression<T>> for FlatAlgebraicExpression<T> {
     type Error = ();
@@ -166,20 +266,26 @@ impl<T: FieldElement> TryFrom<&AlgebraicExpression<T>> for FlatAlgebraicExpressi
     ) -> Result<FlatAlgebraicExpression<T>, Self::Error> {
         match expression {
             AlgebraicExpression::Reference(r) => Ok(FlatAlgebraicExpression {
-                positive: vec![r.clone()],
+                base: FlatAffine {
+                    positive: vec![r.clone()],
+                    ..Default::default()
+                },
                 ..Default::default()
             }),
             AlgebraicExpression::PublicReference(_) => Err(()),
             AlgebraicExpression::Challenge(_) => Err(()),
             AlgebraicExpression::Number(n) => Ok(FlatAlgebraicExpression {
-                constant: *n,
+                base: FlatAffine {
+                    constant: *n,
+                    ..Default::default()
+                },
                 ..Default::default()
             }),
             AlgebraicExpression::BinaryOperation(l, op, r) => {
-                try_from_binary_operation(l.as_ref(), *op, r.as_ref())
+                Ok(try_from_binary_operation(l.as_ref(), *op, r.as_ref())?.set_duplicate_flag())
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperator::Minus, inner) => {
-                Ok(-(Self::try_from(inner.as_ref())?))
+                Ok(-(Self::try_from(inner.as_ref())?).set_duplicate_flag())
             }
         }
     }
@@ -202,51 +308,101 @@ fn try_from_binary_operation<T: FieldElement>(
     }
 }
 
-// TODO this only handles "x * y" for now.
 fn try_from_product<T: FieldElement>(
-    mut left: FlatAlgebraicExpression<T>,
-    mut right: FlatAlgebraicExpression<T>,
+    left: FlatAlgebraicExpression<T>,
+    right: FlatAlgebraicExpression<T>,
 ) -> Result<FlatAlgebraicExpression<T>, ()> {
-    if !left.is_linear() || !right.is_linear() {
+    if !left.is_affine() || !right.is_affine() {
         return Err(());
     }
-    if !left.negative.is_empty() || !right.negative.is_empty() {
-        return Err(());
+    match (left.try_to_monomial(), right.try_to_monomial()) {
+        (Some((c1, r1)), Some((c2, r2))) => {
+            let c = c1 * c2;
+            // Result is c * r1 * r2.
+            if c.is_zero() {
+                return Ok(FlatAlgebraicExpression::default());
+            } else if c.is_one() {
+                // TODO maybe implement a "simplify" function instead.
+                return Ok(FlatAlgebraicExpression {
+                    positive_quadratic: vec![(r1, r2)],
+                    ..Default::default()
+                });
+            } else if (-c).is_one() {
+                return Ok(FlatAlgebraicExpression {
+                    negative_quadratic: vec![(r1, r2)],
+                    ..Default::default()
+                });
+            } else {
+                return Ok(FlatAlgebraicExpression {
+                    quadratic_linear: vec![((r1, r2), c)],
+                    ..Default::default()
+                });
+            }
+        }
+        (None, Some((c2, r2))) => {
+            return Ok(FlatAlgebraicExpression {
+                complex: vec![(
+                    left.base,
+                    FlatAffine {
+                        // TODO simplify if c2 is one
+                        linear: vec![(r2, c2)],
+                        ..Default::default()
+                    },
+                )],
+                ..Default::default()
+            });
+        }
+        (Some((c1, r1)), None) => {
+            return Ok(FlatAlgebraicExpression {
+                complex: vec![(
+                    FlatAffine {
+                        // TODO simplify if c1 is one
+                        linear: vec![(r1, c1)],
+                        ..Default::default()
+                    },
+                    right.base,
+                )],
+                ..Default::default()
+            });
+        }
+        (None, None) => {
+            return Ok(FlatAlgebraicExpression {
+                complex: vec![(left.base, right.base)],
+                ..Default::default()
+            });
+        }
     }
-    if !left.linear.is_empty() || !right.linear.is_empty() {
-        return Err(());
-    }
-    if left.constant != T::zero() || right.constant != T::zero() {
-        return Err(());
-    }
-    if left.positive.len() != 1 || right.positive.len() != 1 {
-        return Err(());
-    }
-    // This is the case "x1 * x2".
-    Ok(FlatAlgebraicExpression {
-        positive_quadratic: vec![(left.positive.pop().unwrap(), right.positive.pop().unwrap())],
-        ..Default::default()
-    })
 }
 
 impl<T: FieldElement> Add for FlatAlgebraicExpression<T> {
     type Output = Result<FlatAlgebraicExpression<T>, ()>;
     fn add(self, other: FlatAlgebraicExpression<T>) -> Result<FlatAlgebraicExpression<T>, ()> {
         Ok(FlatAlgebraicExpression {
-            constant: self.constant + other.constant,
-            positive: join_without_duplicates(self.positive, other.positive)?,
-            negative: join_without_duplicates(self.negative, other.negative)?,
-            linear: join_adding_duplicates(self.linear, other.linear),
+            base: FlatAffine::add(self.base, other.base)?,
             positive_quadratic: join_without_duplicates(
                 self.positive_quadratic,
                 other.positive_quadratic,
             )?,
-
             negative_quadratic: join_without_duplicates(
                 self.negative_quadratic,
                 other.negative_quadratic,
             )?,
             quadratic_linear: join_adding_duplicates(self.quadratic_linear, other.quadratic_linear),
+            // TODO Does it make sense to avoid duplicates here?
+            complex: self.complex.into_iter().chain(other.complex).collect(),
+            contains_duplicate_references: false, // will be set later.
+        })
+    }
+}
+
+impl<T: FieldElement> Add for FlatAffine<T> {
+    type Output = Result<FlatAffine<T>, ()>;
+    fn add(self, other: FlatAffine<T>) -> Result<FlatAffine<T>, ()> {
+        Ok(FlatAffine {
+            constant: self.constant + other.constant,
+            positive: join_without_duplicates(self.positive, other.positive)?,
+            negative: join_without_duplicates(self.negative, other.negative)?,
+            linear: join_adding_duplicates(self.linear, other.linear),
         })
     }
 }
@@ -262,10 +418,7 @@ impl<T: FieldElement> Neg for FlatAlgebraicExpression<T> {
     type Output = FlatAlgebraicExpression<T>;
     fn neg(self) -> FlatAlgebraicExpression<T> {
         FlatAlgebraicExpression {
-            constant: -self.constant,
-            positive: self.negative,
-            negative: self.positive,
-            linear: self.linear.into_iter().map(|(r, c)| (r, -c)).collect(),
+            base: -self.base,
             positive_quadratic: self.negative_quadratic,
             negative_quadratic: self.positive_quadratic,
             quadratic_linear: self
@@ -273,6 +426,20 @@ impl<T: FieldElement> Neg for FlatAlgebraicExpression<T> {
                 .into_iter()
                 .map(|(r, c)| (r, -c))
                 .collect(),
+            complex: self.complex.into_iter().map(|(l, r)| (-l, r)).collect(),
+            contains_duplicate_references: self.contains_duplicate_references,
+        }
+    }
+}
+
+impl<T: FieldElement> Neg for FlatAffine<T> {
+    type Output = FlatAffine<T>;
+    fn neg(self) -> FlatAffine<T> {
+        FlatAffine {
+            constant: -self.constant,
+            positive: self.negative,
+            negative: self.positive,
+            linear: self.linear.into_iter().map(|(r, c)| (r, -c)).collect(),
         }
     }
 }
@@ -299,7 +466,7 @@ fn join_adding_duplicates<T: FieldElement, R: Eq>(
     for (r, c) in right {
         if let Some((_, existing)) = result.iter_mut().find(|(x, _)| x == &r) {
             *existing += c;
-        } else {
+        } else if !c.is_zero() {
             result.push((r, c));
         }
     }
@@ -307,6 +474,25 @@ fn join_adding_duplicates<T: FieldElement, R: Eq>(
 }
 
 impl<T: FieldElement> Display for FlatAlgebraicExpression<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.base)?;
+        for (r1, r2) in &self.positive_quadratic {
+            write!(f, " + {r1} * {r2}")?;
+        }
+        for (r1, r2) in &self.negative_quadratic {
+            write!(f, " - {r1} * {r2}")?;
+        }
+        for ((r1, r2), c) in &self.quadratic_linear {
+            write!(f, " + {c} * {r1} * {r2}")?;
+        }
+        for (l, r) in &self.complex {
+            write!(f, " + ({l}) * ({r})")?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: FieldElement> Display for FlatAffine<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.constant)?;
         for r in &self.positive {
@@ -317,15 +503,6 @@ impl<T: FieldElement> Display for FlatAlgebraicExpression<T> {
         }
         for (r, c) in &self.linear {
             write!(f, " + {c} * {r}")?;
-        }
-        for (r1, r2) in &self.positive_quadratic {
-            write!(f, " + {r1} * {r2}")?;
-        }
-        for (r1, r2) in &self.negative_quadratic {
-            write!(f, " - {r1} * {r2}")?;
-        }
-        for ((r1, r2), c) in &self.quadratic_linear {
-            write!(f, " + {c} * {r1} * {r2}")?;
         }
         Ok(())
     }
