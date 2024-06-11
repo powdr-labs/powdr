@@ -67,8 +67,7 @@ enum Commands {
         #[arg(default_value_t = false)]
         continuations: bool,
     },
-    /// Compiles riscv assembly to powdr assembly and then to PIL
-    /// and generates fixed and witness columns.
+    /// Compiles riscv assembly to powdr assembly.
     RiscvAsm {
         /// Input files
         #[arg(required = true)]
@@ -94,8 +93,7 @@ enum Commands {
         #[arg(default_value_t = false)]
         continuations: bool,
     },
-    /// Translates a RISC-V statically liked executable to powdr assembly and
-    /// then to PIL and generates fixed and witness columns.
+    /// Translates a RISC-V statically liked executable to powdr assembly.
     RiscvElf {
         /// Input file
         #[arg(required = true)]
