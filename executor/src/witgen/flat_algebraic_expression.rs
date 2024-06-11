@@ -47,7 +47,7 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
         fixed_data: &FixedData<T>,
         rows: &RowPair<T>,
     ) -> AffineResult<&'b AlgebraicReference, T> {
-        let mut constant: T = self.base.constant;
+        let mut constant: T = T::zero();
         let mut linear = vec![];
         // We start with the quadratic terms because those might fail.
         for (a, b) in self.positive_quadratic.iter() {
@@ -86,12 +86,14 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
             match (lookup(a, fixed_data, rows), lookup(b, fixed_data, rows)) {
                 (Some(c1), Some(c2)) => constant += c1 * c2 * *c,
                 (Some(c1), None) => {
-                    if !c1.is_zero() {
+                    if !c1.is_zero() && !c.is_zero() {
+                        // TODO last check should be done earlier
                         linear.push((b, c1 * *c))
                     }
                 }
                 (None, Some(c2)) => {
-                    if !c2.is_zero() {
+                    if !c2.is_zero() && !c.is_zero() {
+                        // TODO last check should be done earlier
                         linear.push((a, c2 * *c))
                     }
                 }
@@ -101,32 +103,38 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
         for (l, r) in self.complex.iter() {
             let mut left_linear = vec![];
             let left_constant = l.evaluate(fixed_data, rows, &mut left_linear)?;
-            if left_constant.is_zero() {
-                continue;
-            }
+            // if left_constant.is_zero() {
+            //     continue;
+            // }
             let mut right_linear = vec![];
             let right_constant = r.evaluate(fixed_data, rows, &mut right_linear)?;
-            if right_constant.is_zero() {
-                continue;
-            }
+            // if right_constant.is_zero() {
+            //     continue;
+            // }
             constant += left_constant * right_constant;
             if left_linear.is_empty() && right_linear.is_empty() {
             } else if left_linear.is_empty() && left_constant.is_one() {
                 linear.extend(right_linear);
             } else if left_linear.is_empty() {
-                linear.extend(
-                    right_linear
-                        .into_iter()
-                        .map(|(r, c)| (r, c * left_constant)),
-                );
+                // TODO also check for (-left_constant).is_one()?
+                if !left_constant.is_zero() {
+                    linear.extend(
+                        right_linear
+                            .into_iter()
+                            .map(|(r, c)| (r, c * left_constant)),
+                    );
+                }
             } else if right_linear.is_empty() && right_constant.is_one() {
                 linear.extend(left_linear);
             } else if right_linear.is_empty() {
-                linear.extend(
-                    left_linear
-                        .into_iter()
-                        .map(|(r, c)| (r, c * right_constant)),
-                );
+                // TODO also check for (-right_constant).is_one()?
+                if !right_constant.is_zero() {
+                    linear.extend(
+                        left_linear
+                            .into_iter()
+                            .map(|(r, c)| (r, c * right_constant)),
+                    );
+                }
             } else {
                 return Err(IncompleteCause::QuadraticTerm);
             }
