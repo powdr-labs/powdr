@@ -80,6 +80,7 @@ fn constant_value<T: FieldElement>(function: &FunctionValueDefinition<T>) -> Opt
         }
         FunctionValueDefinition::Query(_) => None,
         FunctionValueDefinition::Expression(_) => None,
+        FunctionValueDefinition::Number(_) => None,
     }
 }
 

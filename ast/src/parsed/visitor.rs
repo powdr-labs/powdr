@@ -304,6 +304,7 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionDefinition<T> {
             FunctionDefinition::Query(_, e) => e.visit_expressions_mut(f, o),
             FunctionDefinition::Array(ae) => ae.visit_expressions_mut(f, o),
             FunctionDefinition::Expression(e) => e.visit_expressions_mut(f, o),
+            FunctionDefinition::Number(_) => ControlFlow::Continue(()),
         }
     }
 
@@ -315,6 +316,7 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionDefinition<T> {
             FunctionDefinition::Query(_, e) => e.visit_expressions(f, o),
             FunctionDefinition::Array(ae) => ae.visit_expressions(f, o),
             FunctionDefinition::Expression(e) => e.visit_expressions(f, o),
+            FunctionDefinition::Number(_) => ControlFlow::Continue(()),
         }
     }
 }

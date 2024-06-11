@@ -120,7 +120,7 @@ fn permutation_settings_includes() -> &'static str {
 }
 
 fn create_permutation_settings_file(permutation: &Permutation) -> String {
-    println!("Permutation: {:?}", permutation);
+    log::trace!("Permutation: {:?}", permutation);
     let columns_per_set = permutation.left.cols.len();
     // TODO(md): In the future we will need to condense off the back of this - combining those with the same inverse column
     let permutation_name = permutation

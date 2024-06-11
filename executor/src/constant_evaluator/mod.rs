@@ -36,6 +36,7 @@ fn generate_values<T: FieldElement>(
     };
     // TODO we should maybe pre-compute some symbols here.
     match body {
+        FunctionValueDefinition::Number(n) => vec![T::from(*n as u64)],
         FunctionValueDefinition::Expression(e) => (0..degree)
             .into_par_iter()
             .map(|i| {

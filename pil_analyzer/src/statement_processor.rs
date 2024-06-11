@@ -110,12 +110,7 @@ where
                 self.handle_public_declaration(start, name, polynomial, array_index, index)
             }
             PilStatement::PolynomialConstantDeclaration(start, polynomials) => self
-                .handle_polynomial_declarations(
-                    start,
-                    polynomials,
-                    PolynomialType::Constant,
-                    false,
-                ),
+                .handle_polynomial_declarations(start, polynomials, PolynomialType::Constant, None),
             PilStatement::PolynomialConstantDefinition(start, name, definition) => self
                 .handle_symbol_definition(
                     start,
@@ -124,13 +119,14 @@ where
                     SymbolKind::Poly(PolynomialType::Constant),
                     Some(definition),
                 ),
-            PilStatement::PolynomialCommitDeclaration(start, polynomials, None, is_public) => self
-                .handle_polynomial_declarations(
+            PilStatement::PolynomialCommitDeclaration(start, polynomials, None, public_info) => {
+                self.handle_polynomial_declarations(
                     start,
                     polynomials,
                     PolynomialType::Committed,
-                    is_public,
-                ),
+                    public_info,
+                )
+            }
             PilStatement::PolynomialCommitDeclaration(
                 start,
                 mut polynomials,
@@ -280,16 +276,21 @@ where
         start: usize,
         polynomials: Vec<PolynomialName<T>>,
         polynomial_type: PolynomialType,
-        is_public: bool,
+        public_info: Option<usize>,
     ) -> Vec<PILItem<T>> {
+        if public_info.is_some() {
+            assert!(polynomials.len() == 1);
+        }
         polynomials
             .into_iter()
             .flat_map(|PolynomialName { name, array_size }| {
-                // hack(https://github.com/AztecProtocol/aztec-packages/issues/6359): add an is_public modifier to the end of a committed polynomial
-                let name = if is_public {
-                    format!("{name}__is_public")
+                let value = if let Some(idx) = public_info {
+                    // let formatted = format!("{name}__public_input_{idx}");
+                    // println!("Formatted: {formatted}");
+                    // formatted
+                    Some(FunctionDefinition::Number(idx))
                 } else {
-                    name
+                    None
                 };
 
                 self.handle_symbol_definition(
@@ -297,7 +298,7 @@ where
                     name,
                     array_size,
                     SymbolKind::Poly(polynomial_type),
-                    None,
+                    value,
                 )
             })
             .collect()
@@ -330,6 +331,7 @@ where
         };
 
         let value = value.map(|v| match v {
+            FunctionDefinition::Number(n) => FunctionValueDefinition::Number(n),
             FunctionDefinition::Expression(expr) => {
                 assert!(!have_array_size);
                 assert!(symbol_kind != SymbolKind::Poly(PolynomialType::Committed));

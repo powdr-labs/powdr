@@ -37,7 +37,7 @@ pub enum PilStatement<T> {
         usize,
         Vec<PolynomialName<T>>,
         Option<FunctionDefinition<T>>,
-        /*public=*/ bool,
+        Option<usize>,
     ),
     PolynomialIdentity(usize, Option<String>, Expression<T>),
     PlookupIdentity(
@@ -82,6 +82,7 @@ pub enum Expression<T, Ref = NamespacedPolynomialReference> {
     Reference(Ref),
     PublicReference(String),
     Number(T),
+    // LiteralNumber(usize),
     String(String),
     Tuple(Vec<Expression<T, Ref>>),
     LambdaExpression(LambdaExpression<T, Ref>),
@@ -270,6 +271,8 @@ pub enum FunctionDefinition<T> {
     Query(Vec<String>, Expression<T>),
     /// Generic expression
     Expression(Expression<T>),
+    /// Constant for public inputs
+    Number(usize),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

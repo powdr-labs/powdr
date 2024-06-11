@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use ast::parsed::{*, asm::*};
 use number::{AbstractNumberType, FieldElement};
-use num_traits::Num;
+use num_traits::{Num, ToPrimitive};
 
 grammar<T> where T: FieldElement;
 
@@ -122,10 +122,10 @@ ArrayLiteralTerm: ArrayExpression<T> = {
 }
 
 PolynomialCommitDeclaration: PilStatement<T> = {
-    <@L> PolCol CommitWitness <PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(<>, None, false),
-    <@L> PolCol "public" <PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(<>, None, true),
+    <@L> PolCol CommitWitness <PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(<>, None, None),
+    <start:@L> PolCol "public" "(" <n:Integer> ")" <name:PolynomialName> => PilStatement::PolynomialCommitDeclaration(start, vec![name], None, Some(n.to_usize().unwrap())),
     <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <param:ParameterList> ")" "query" <value:Expression>
-     => PilStatement::PolynomialCommitDeclaration(start, vec![name], Some(FunctionDefinition::Query(param, value)), false)
+     => PilStatement::PolynomialCommitDeclaration(start, vec![name], Some(FunctionDefinition::Query(param, value)), None)
 }
 
 PolynomialIdentity: PilStatement<T> = {

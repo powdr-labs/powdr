@@ -96,6 +96,9 @@ impl<T: Display> Display for Analyzed<T> {
 impl<T: Display> Display for FunctionValueDefinition<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
+            FunctionValueDefinition::Number(n) => {
+                write!(f, "{}", n)
+            }
             FunctionValueDefinition::Array(items) => {
                 write!(f, " = {}", items.iter().format(" + "))
             }

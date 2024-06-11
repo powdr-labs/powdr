@@ -9,10 +9,10 @@ pub trait VerifierBuilder {
         name: &str,
         witness: &[String],
         inverses: &[String],
-        public_cols: &[String],
+        public_cols: &[(String, usize)],
     );
 
-    fn create_verifier_hpp(&mut self, name: &str, public_cols: &[String]);
+    fn create_verifier_hpp(&mut self, name: &str, public_cols: &[(String, usize)]);
 }
 
 impl VerifierBuilder for BBFiles {
@@ -21,7 +21,7 @@ impl VerifierBuilder for BBFiles {
         name: &str,
         witness: &[String],
         inverses: &[String],
-        public_cols: &[String],
+        public_cols: &[(String, usize)],
     ) {
         let include_str = includes_cpp(&snake_case(name));
 
@@ -52,22 +52,22 @@ impl VerifierBuilder for BBFiles {
             format!("bool {name}Verifier::verify_proof(const HonkProof& proof)")
         };
 
-        let public_inputs_column_transformation = |public_inputs_column_name: &String, i: usize| {
-            format!(
+        let public_inputs_column_transformation =
+            |public_inputs_column_name: &String, idx: usize| {
+                format!(
                 "
-        FF {public_inputs_column_name}_evaluation = evaluate_public_input_column(public_inputs[{i}], circuit_size, multivariate_challenge);
+        FF {public_inputs_column_name}_evaluation = evaluate_public_input_column(public_inputs[{idx}], circuit_size, multivariate_challenge);
         if ({public_inputs_column_name}_evaluation != claimed_evaluations.{public_inputs_column_name}) {{
             return false;
         }}
                 "
             )
-        };
+            };
 
         let (public_inputs_check, evaluate_public_inputs) = if has_public_input_columns {
             let inputs_check = public_cols
                 .iter()
-                .enumerate()
-                .map(|(i, col_name)| public_inputs_column_transformation(col_name, i))
+                .map(|(col_name, idx)| public_inputs_column_transformation(col_name, *idx))
                 .collect::<String>();
 
             let evaluate_public_inputs = format!(
@@ -207,7 +207,7 @@ impl VerifierBuilder for BBFiles {
         );
     }
 
-    fn create_verifier_hpp(&mut self, name: &str, public_cols: &[String]) {
+    fn create_verifier_hpp(&mut self, name: &str, public_cols: &[(String, usize)]) {
         let include_str = include_hpp(&snake_case(name));
 
         // If there are public input columns, then the generated verifier must take them in as an argument for the verify_proof

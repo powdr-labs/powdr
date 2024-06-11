@@ -290,6 +290,7 @@ impl<T> Analyzed<T> {
                     .flat_map(|e| e.pattern.iter_mut())
                     .for_each(|e| e.post_visit_expressions_mut(f)),
                 Some(FunctionValueDefinition::Expression(e)) => e.post_visit_expressions_mut(f),
+                Some(FunctionValueDefinition::Number(_)) => {}
                 None => {}
             });
     }
@@ -446,6 +447,7 @@ pub enum FunctionValueDefinition<T> {
     Array(Vec<RepeatedArray<T>>),
     Query(Expression<T>),
     Expression(Expression<T>),
+    Number(usize),
 }
 
 /// An array of elements that might be repeated.

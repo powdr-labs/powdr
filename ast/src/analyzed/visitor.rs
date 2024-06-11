@@ -93,6 +93,7 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
                 .iter_mut()
                 .flat_map(|a| a.pattern.iter_mut())
                 .try_for_each(move |item| item.visit_expressions_mut(f, o)),
+            FunctionValueDefinition::Number(_) => ControlFlow::Continue(()),
         }
     }
 
@@ -108,6 +109,7 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
                 .iter()
                 .flat_map(|a| a.pattern().iter())
                 .try_for_each(move |item| item.visit_expressions(f, o)),
+            FunctionValueDefinition::Number(_) => ControlFlow::Continue(()),
         }
     }
 }

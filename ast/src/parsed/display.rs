@@ -379,7 +379,11 @@ impl<T: Display> Display for PilStatement<T> {
                 write!(
                     f,
                     "pol commit {}{}{};",
-                    if *public { "public " } else { " " },
+                    if let Some(n) = public {
+                        format!("public : {n}")
+                    } else {
+                        " ".to_string()
+                    },
                     names.iter().format(", "),
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default(),
                 )
@@ -431,6 +435,9 @@ impl<T: Display> Display for ArrayExpression<T> {
 impl<T: Display> Display for FunctionDefinition<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
+            FunctionDefinition::Number(n) => {
+                write!(f, "{n}")
+            }
             FunctionDefinition::Array(array_expression) => {
                 write!(f, " = {array_expression}")
             }

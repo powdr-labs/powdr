@@ -306,7 +306,7 @@ fn create_identity<T: FieldElement>(
 
     if let Some(expr) = &expression.selector {
         let x = craft_expression(expr, collected_cols, collected_public_identities);
-        println!("{:?}", x);
+        log::trace!("expression {:?}", x);
         Some(x)
     } else {
         None
@@ -464,8 +464,10 @@ pub(crate) fn create_identities<F: FieldElement>(
 
     // Print a warning to the user about usage of public identities
     if !collected_public_identities.is_empty() {
-        println!("Public Identities are not supported yet in codegen, however some were collected");
-        println!("Public Identities: {:?}", collected_public_identities);
+        log::warn!(
+            "Public Identities are not supported yet in codegen, however some were collected"
+        );
+        log::warn!("Public Identities: {:?}", collected_public_identities);
     }
 
     let mut collected_cols: Vec<String> = collected_cols.drain().collect();

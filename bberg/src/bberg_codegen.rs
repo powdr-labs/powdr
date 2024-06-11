@@ -22,7 +22,7 @@ impl BBergCodegen {
     }
 
     pub fn new_from_setup(_input: &mut impl io::Read) -> Result<Self, io::Error> {
-        println!("warning bberg: new_from_setup not implemented");
+        log::warn!("warning bberg: new_from_setup not implemented");
         Ok(Self {})
     }
 
