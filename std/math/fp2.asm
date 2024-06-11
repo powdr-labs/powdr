@@ -58,7 +58,7 @@ let eq_ext: Fp2<fe>, Fp2<fe> -> bool = |a, b| match (a, b) {
     (Fp2::Fp2(a0, a1), Fp2::Fp2(b0, b1)) => (a0 == b0) && (a1 == b1)
 };
 
-/// Adds constraints that two extension field elements are equal
+/// Returns constraints that two extension field elements are equal
 let constrain_eq_ext: Fp2<expr>, Fp2<expr> -> Constr[] = |a, b| match (a, b) {
     (Fp2::Fp2(a0, a1), Fp2::Fp2(b0, b1)) => [a0 = b0, a1 = b1]
 };

@@ -86,11 +86,31 @@ let compute_next_z: Fp2<expr>, Constr -> fe[] = query |acc, permutation_constrai
     }
 };
 
-/// Adds constraints that enforce that lhs is a permutation of rhs
-/// Arguments:
+/// Returns constraints that enforce that lhs is a permutation of rhs
+///
+/// # Arguments:
 /// - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
 ///        are done on the F_{p^2} extension field.
 /// - permutation_constraint: The permutation constraint
+///
+/// # Returns:
+/// - Constraints to be added to enforce the permutation
+///
+/// # Implementation:
+/// This function implements a permutation argument described e.g. in
+/// https://people.cs.georgetown.edu/jthaler/ProofsArgsAndZK.pdf, section 6.6.2,
+/// page 99, paragraph "Multiset equality checking (a.k.a. permutation checking)
+/// via fingerprinting". In short:
+/// 1. The LHS and RHS are Reed-Solomon fingerprinted using challenge $\alpha$
+///    (see `compress_expression_array`).
+/// 2. If the selector is one, the accumulator is updated as:
+///    `acc' = acc * (beta - lhs) / (beta - rhs)`.
+/// This iteratively evaluates the fraction of polynomials $\prod_i (X - lhs_i)$
+/// and $\prod_i (X - rhs_i)$, evaluated at $X = \beta$. With high probability, this fraction
+/// is equal to 1 if and only if the permutation holds. This is enforced by exploiting
+/// the wrapping behavior: The first accumulator is constrained to be 1, and the last
+/// accumulator is the same as the first one, because of wrapping.
+/// For small fields, this computation should happen in the extension field.
 let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
