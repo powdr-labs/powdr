@@ -211,7 +211,7 @@ fn symbolic_functions() {
     let constrain_equal_expr: expr, expr -> expr = (|A, B| A - B);
     let on_regular_row: expr -> expr = (|cond| (1 - N.ISLAST) * cond);
     (1 - N.ISLAST) * (N.x' - N.y) = 0;
-    (1 - N.ISLAST) * (N.y' - N.x + N.y) = 0;
+    (1 - N.ISLAST) * (N.y' - (N.x + N.y)) = 0;
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
