@@ -5,17 +5,16 @@ use std::{
 
 use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
-use powdr_ast::{
-    analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind},
-    parsed::SelectedExpressions,
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind,
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::{machines::Machine, EvalError};
+use crate::witgen::{global_constraints::CombinedRangeConstraintSet, machines::Machine, EvalError};
 
 use super::{
-    affine_expression::AffineExpression,
     machines::{FixedLookup, KnownMachine},
+    processor::OuterQuery,
     rows::RowPair,
     EvalResult, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
@@ -61,7 +60,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
     pub fn call<Q: QueryCallback<T>>(
         &mut self,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
         fixed_lookup: &mut FixedLookup<T>,
         query_callback: &mut Q,
     ) -> EvalResult<'a, T> {
@@ -77,7 +76,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
             query_callback,
         };
 
-        current.process_plookup_timed(&mut mutable_state, identity_id, args)
+        current.process_plookup_timed(&mut mutable_state, identity_id, caller_rows)
     }
 }
 
@@ -205,7 +204,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
         self.mutable_state.machines.call(
             identity.id,
-            &left,
+            rows,
             self.mutable_state.fixed_lookup,
             self.mutable_state.query_callback,
         )
@@ -221,10 +220,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     /// - `Err(e)`: If the constraint system is not satisfiable.
     pub fn process_link(
         &mut self,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
-        right: &'a SelectedExpressions<Expression<T>>,
+        outer_query: &OuterQuery<'a, '_, T>,
         current_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
+        let right = &outer_query.connecting_identity.right;
         // sanity check that the right hand side selector is active
         let selector_value = right
             .selector
@@ -239,12 +238,15 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             .unwrap_or(Ok(T::one()))?;
         assert_eq!(selector_value, T::one());
 
+        let range_constraint =
+            CombinedRangeConstraintSet::new(outer_query.caller_rows, current_rows);
+
         let mut updates = EvalValue::complete(vec![]);
 
-        for (l, r) in left.iter().zip(right.expressions.iter()) {
+        for (l, r) in outer_query.left.iter().zip(right.expressions.iter()) {
             match current_rows.evaluate(r) {
                 Ok(r) => {
-                    let result = (l.clone() - r).solve_with_range_constraints(current_rows)?;
+                    let result = (l.clone() - r).solve_with_range_constraints(&range_constraint)?;
                     updates.combine(result);
                 }
                 Err(e) => {

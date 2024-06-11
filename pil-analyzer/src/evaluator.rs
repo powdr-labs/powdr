@@ -20,9 +20,9 @@ use powdr_ast::{
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
         Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
     },
-    SourceRef,
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
+use powdr_parser_util::SourceRef;
 
 /// Evaluates an expression given a hash map of definitions.
 pub fn evaluate_expression<'a, T: FieldElement>(

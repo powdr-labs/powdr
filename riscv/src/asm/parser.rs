@@ -1,16 +1,15 @@
 use lalrpop_util::*;
 
-use crate::{
-    compiler::{FunctionKind, Register},
-    Statement,
-};
+use crate::code_gen::{FunctionKind, Register};
 use powdr_parser_util::handle_parse_error;
+
+use super::Statement;
 
 lalrpop_mod!(
     #[allow(clippy::all)]
     #[allow(clippy::uninlined_format_args)]
     riscv_asm,
-    "/riscv_asm.rs"
+    "/asm/riscv_asm.rs"
 );
 
 pub struct RiscParser {

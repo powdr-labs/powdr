@@ -7,7 +7,7 @@ use powdr_ast::parsed::asm::{FunctionStatement, MachineStatement, SymbolPath};
 use itertools::Itertools;
 use powdr_parser::ParserContext;
 
-use crate::compiler::{pop_register, push_register};
+use crate::code_gen::{pop_register, push_register};
 
 static EXTRA_REG_PREFIX: &str = "xtra";
 
@@ -207,6 +207,10 @@ impl Runtime {
                     "instr ec_double ~ arith.ec_double {};",
                     instr_register_params(2, 16, 16) // will use registers 2..18
                 ),
+                format!(
+                    "instr mod_256 ~ arith.mod_256 {};",
+                    instr_register_params(3, 24, 8) // will use registers 3..27
+                ),
             ],
             // machine uses the 26 registers from risc-v plus 10 extra registers
             10,
@@ -271,6 +275,27 @@ impl Runtime {
                     .rev()
                     .flat_map(|i| pop_register(&reg(i))));
         self.add_syscall(Syscall::Affine256, affine256);
+
+        // The mod_256 syscall takes as input the addresses of y2, y3, and x1.
+        let mod256 =
+            // Save instruction registers
+            (3..27).flat_map(|i| push_register(&reg(i)))
+            // Load y2 in 3..11
+            .chain((0..8).flat_map(|i| load_word(&reg(0), i as u32 *4 , &reg(i + 3))))
+            // Load y3 in 11..19
+            .chain((0..8).flat_map(|i| load_word(&reg(1), i as u32 *4 , &reg(i + 11))))
+            // Load x1 in 19..27
+            .chain((0..8).flat_map(|i| load_word(&reg(2), i as u32 *4 , &reg(i + 19))))
+            // Call instruction
+            .chain(std::iter::once("mod_256;".to_string()))
+            // Store result x2 in y2's memory
+            .chain((0..8).flat_map(|i| store_word(&reg(0), i as u32 *4 , &reg(i + 3))))
+            // Restore instruction registers
+            .chain(
+                (3..27)
+                    .rev()
+                    .flat_map(|i| pop_register(&reg(i))));
+        self.add_syscall(Syscall::Mod256, mod256);
 
         // The ec_add syscall takes as input the four addresses of x1, y1, x2, y2.
         let ec_add =
@@ -409,49 +434,6 @@ impl Runtime {
         (0..count)
             .map(|i| format!("reg {EXTRA_REG_PREFIX}{i};"))
             .collect()
-    }
-
-    pub fn global_declarations(&self) -> String {
-        [
-            "__divdi3",
-            "__udivdi3",
-            "__udivti3",
-            "__divdf3",
-            "__muldf3",
-            "__moddi3",
-            "__umoddi3",
-            "__umodti3",
-            "__eqdf2",
-            "__ltdf2",
-            "__nedf2",
-            "__unorddf2",
-            "__floatundidf",
-            "__extendsfdf2",
-            "memcpy",
-            "memmove",
-            "memset",
-            "memcmp",
-            "bcmp",
-            "strlen",
-        ]
-        .map(|n| format!(".globl {n}@plt\n.globl {n}\n.set {n}@plt, {n}\n"))
-        .join("\n\n")
-            + &[("__rust_alloc_error_handler", "__rg_oom")]
-                .map(|(n, m)| format!(".globl {n}\n.set {n}, {m}\n"))
-                .join("\n\n")
-            +
-            // some extra symbols expected by rust code:
-            // - __rust_no_alloc_shim_is_unstable: compilation time acknowledgment that this feature is unstable.
-            // - __rust_alloc_error_handler_should_panic: needed by the default alloc error handler,
-            //   not sure why it's not present in the asm.
-            //   https://github.com/rust-lang/rust/blob/ae9d7b0c6434b27e4e2effe8f05b16d37e7ef33f/library/alloc/src/alloc.rs#L415
-            r".data
-.globl __rust_alloc_error_handler_should_panic
-__rust_alloc_error_handler_should_panic: .byte 0
-.globl __rust_no_alloc_shim_is_unstable
-__rust_no_alloc_shim_is_unstable: .byte 0
-.text
-"
     }
 
     pub fn ecall_handler(&self) -> Vec<String> {
