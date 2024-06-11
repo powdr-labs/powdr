@@ -26,7 +26,7 @@ namespace T(65536);
     col witness pc;
     col witness XInv;
     col witness XIsZero;
-    T.XIsZero = 1 - (T.X * T.XInv);
+    T.XIsZero = 1 - T.X * T.XInv;
     T.XIsZero * T.X = 0;
     T.XIsZero * (1 - T.XIsZero) = 0;
     col witness instr_jmpz;
