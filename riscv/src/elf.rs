@@ -1,19 +1,41 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     fmt::Display,
     fs,
 };
 
 use goblin::elf::{program_header, Elf};
+use itertools::{Either, Itertools};
+use powdr_asm_utils::data_storage::SingleDataValue;
+use powdr_number::FieldElement;
 use raki::{
     decode::Decode,
     instruction::{Extensions, Instruction as Ins, OpcodeKind as Op},
     Isa,
 };
 
-use crate::code_gen::{InstructionArgs, Register, RiscVProgram};
+use crate::{
+    code_gen::{self, InstructionArgs, MemEntry, Register, RiscVProgram, Statement},
+    Runtime,
+};
 
-pub fn elf_translate(file_name: &str) {
+struct ElfProgram {
+    data_map: BTreeMap<u32, Data>,
+    text_labels: BTreeSet<Label>,
+    instructions: Vec<HighLevelInsn>,
+    entry_point: String,
+}
+
+pub fn elf_translate<F: FieldElement>(
+    file_name: &str,
+    runtime: &Runtime,
+    with_bootloader: bool,
+) -> String {
+    let elf_program = load_elf(file_name);
+    code_gen::translate_program::<F>(elf_program, runtime, with_bootloader)
+}
+
+fn load_elf(file_name: &str) -> ElfProgram {
     let file_buffer = fs::read(file_name).unwrap();
 
     let elf = Elf::parse(&file_buffer).unwrap();
@@ -33,7 +55,7 @@ pub fn elf_translate(file_name: &str) {
     let mut data_map = BTreeMap::new();
 
     // Keep a list of referenced text addresses, so we can generate the labels.
-    let mut referenced_text_addrs = HashSet::from([Label(u32::try_from(elf.entry).unwrap())]);
+    let mut referenced_text_addrs = BTreeSet::from([Label(u32::try_from(elf.entry).unwrap())]);
     println!("entry: {:08x}:", elf.entry);
 
     for p in elf.program_headers.iter() {
@@ -48,12 +70,21 @@ pub fn elf_translate(file_name: &str) {
             if p.p_flags & 1 == 1 {
                 let insns =
                     lift_instructions(addr, section_data, &address_map, &mut referenced_text_addrs);
-                lifted_text_sections.push(insns);
+                if !insns.is_empty() {
+                    lifted_text_sections.push(insns);
+                }
             } else {
                 load_data_section(addr, section_data, &mut data_map);
             }
         }
     }
+
+    // Sort text sections by address and flatten them.
+    lifted_text_sections.sort_by_key(|insns| insns[0].original_address);
+    let lifted_text_sections = lifted_text_sections
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
 
     // All the references to code address have been lifted into labels in the
     // instructions, but not the data sections. Luckily, that is just a matter of
@@ -77,44 +108,70 @@ pub fn elf_translate(file_name: &str) {
                 data_map.insert(addr, Data::Value(original_addr));
             }
         } else {
-            panic!("Unsupported relocation in non-data section!\nTODO: maybe this is fine. Maybe the lifting of instructions have already taken care of this.");
+            // We just assume the lifting of the instructions has already handled non-data relocation.
         }
     }
 
     assert_eq!(elf.dynrels.len(), 0, "Unsupported relocation type!");
 
     println!("Text labels:");
-    for label in referenced_text_addrs {
-        println!("  {label}:");
+    for label in referenced_text_addrs.iter() {
+        println!("  {label}");
     }
 
     println!("Non-zero data:");
-    for (addr, data) in data_map {
-        println!("  {addr:08x}: {data:?}:");
+    for (addr, data) in data_map.iter() {
+        println!("  {addr:08x}: {data:?}");
     }
 
-    todo!();
-}
-
-struct ElfProgram {
-    entry_point: String,
+    ElfProgram {
+        data_map,
+        text_labels: referenced_text_addrs,
+        instructions: lifted_text_sections,
+        entry_point: format!("{:08x}", elf.entry),
+    }
 }
 
 impl RiscVProgram for ElfProgram {
     type Args = HighLevelArgs;
 
     fn take_source_files_info(&mut self) -> impl Iterator<Item = crate::code_gen::SourceFileInfo> {
-        todo!()
+        // TODO: read the source files from the debug information.
+        std::iter::empty()
     }
 
     fn take_initial_mem(&mut self) -> impl Iterator<Item = crate::code_gen::MemEntry> {
-        todo!()
+        self.data_map.iter().map(|(addr, data)| {
+            let value = match data {
+                Data::TextLabel(label) => SingleDataValue::LabelReference(label.to_string()),
+                Data::Value(value) => SingleDataValue::Value(*value),
+            };
+
+            MemEntry {
+                label: None,
+                addr: *addr,
+                value,
+            }
+        })
     }
 
     fn take_executable_statements(
         &mut self,
     ) -> impl Iterator<Item = crate::code_gen::Statement<impl AsRef<str>, Self::Args>> {
-        todo!()
+        let labels = self.text_labels.iter();
+        let instructions = self.instructions.iter();
+
+        labels
+            .merge_join_by(instructions, |next_label, next_insn| {
+                next_label.0 <= next_insn.original_address
+            })
+            .map(|result| match result {
+                Either::Left(label) => Statement::Label(label.to_string()),
+                Either::Right(insn) => Statement::Instruction {
+                    op: insn.op,
+                    args: &insn.args,
+                },
+            })
     }
 
     fn start_function(&self) -> &str {
@@ -351,7 +408,7 @@ impl From<Ins> for MaybeInstruction {
 }
 
 /// The value is the original address
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Label(u32);
 
 impl From<i32> for Label {
@@ -402,7 +459,7 @@ struct HighLevelInsn {
 struct InstructionLifter<'a> {
     base_addr: u32,
     address_map: &'a AddressMap<'a>,
-    referenced_text_addrs: &'a mut HashSet<Label>,
+    referenced_text_addrs: &'a mut BTreeSet<Label>,
 }
 
 impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
@@ -642,7 +699,7 @@ fn lift_instructions(
     base_addr: u32,
     data: &[u8],
     address_map: &AddressMap,
-    referenced_text_addrs: &mut HashSet<Label>,
+    referenced_text_addrs: &mut BTreeSet<Label>,
 ) -> Vec<HighLevelInsn> {
     let instructions = RiscVInstructionIterator::new(data);
 

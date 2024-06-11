@@ -1178,8 +1178,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
 
         // atomic instructions
         insn if insn.starts_with("amoadd.w") => {
-            let (rd, rs2, rs1, off) = args.rrro()?;
-            assert_eq!(off, 0);
+            let (rd, rs2, rs1) = args.rrr()?;
 
             [
                 vec![

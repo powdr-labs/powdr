@@ -95,7 +95,7 @@ impl InstructionArgs for [Argument] {
                 Ok((*r1, *r2, *r3))
             }
             [Argument::Register(r1), Argument::Register(r2), Argument::RegOffset(None, r3)] => {
-                // Special syntax used by sc.w
+                // Special syntax used by atomic instructions
                 Ok((*r1, *r2, *r3))
             }
 
@@ -141,17 +141,17 @@ impl InstructionArgs for [Argument] {
     }
 
     fn rro(&self) -> Result<(Register, Register, u32), &'static str> {
-        if let [Argument::Register(r1), Argument::RegOffset(Some(off), r2)] = self {
-            return Ok((*r1, *r2, expression_to_number(off)));
-        }
-        if let [Argument::Register(r1), Argument::Expression(off)] = self {
-            if let Some(off) = expression_to_number(off) {
-                // If the register is not specified, it defaults to x0
-                return Ok((*r1, Register::new(0), off));
-            }
-        }
+        const ERR: &str = "Expected: register, offset(register)";
 
-        Err("Expected: register, offset(register)")
+        match self {
+            [Argument::Register(r1), Argument::RegOffset(Some(off), r2)] => {
+                Ok((*r1, *r2, expression_to_number(off).ok_or(ERR)?))
+            }
+            [Argument::Register(r1), Argument::Expression(off)] => {
+                Ok((*r1, Register::new(0), expression_to_number(off).ok_or(ERR)?))
+            }
+            _ => Err(ERR),
+        }
     }
 
     fn empty(&self) -> Result<(), &'static str> {

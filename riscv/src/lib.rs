@@ -21,8 +21,7 @@ pub mod continuations;
 mod elf;
 pub mod runtime;
 
-/// Compiles a rust file all the way down to PIL and generates
-/// fixed and witness columns.
+/// Compiles a rust file to Pordr asm.
 #[allow(clippy::print_stderr)]
 pub fn compile_rust<T: FieldElement>(
     file_name: &str,
@@ -75,14 +74,14 @@ pub fn compile_rust<T: FieldElement>(
     )
 }
 
-#[allow(clippy::print_stderr)]
-pub fn compile_riscv_asm_bundle<T: FieldElement>(
+fn compile_program<F: FieldElement, P>(
     original_file_name: &str,
-    riscv_asm_files: BTreeMap<String, String>,
+    input_program: P,
     output_dir: &Path,
     force_overwrite: bool,
     runtime: &Runtime,
     with_bootloader: bool,
+    translator: impl FnOnce(P, &Runtime, bool) -> String,
 ) -> Option<(PathBuf, String)> {
     let powdr_asm_file_name = output_dir.join(format!(
         "{}.asm",
@@ -100,7 +99,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
         return None;
     }
 
-    let powdr_asm = asm::compile::<T>(riscv_asm_files, runtime, with_bootloader);
+    let powdr_asm = translator(input_program, runtime, with_bootloader);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -108,8 +107,27 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
     Some((powdr_asm_file_name, powdr_asm))
 }
 
-/// Compiles a riscv asm file all the way down to PIL and generates
-/// fixed and witness columns.
+#[allow(clippy::print_stderr)]
+pub fn compile_riscv_asm_bundle<T: FieldElement>(
+    original_file_name: &str,
+    riscv_asm_files: BTreeMap<String, String>,
+    output_dir: &Path,
+    force_overwrite: bool,
+    runtime: &Runtime,
+    with_bootloader: bool,
+) -> Option<(PathBuf, String)> {
+    compile_program::<T, BTreeMap<String, String>>(
+        original_file_name,
+        riscv_asm_files,
+        output_dir,
+        force_overwrite,
+        runtime,
+        with_bootloader,
+        asm::compile::<T>,
+    )
+}
+
+/// Compiles a riscv asm file to Powdr asm.
 pub fn compile_riscv_asm<T: FieldElement>(
     original_file_name: &str,
     file_names: impl Iterator<Item = String>,
@@ -133,8 +151,7 @@ pub fn compile_riscv_asm<T: FieldElement>(
     )
 }
 
-/// Translates a RISC-V ELF file all the way down to PIL and generates fixed and
-/// witness columns.
+/// Translates a RISC-V ELF file to powdr asm.
 pub fn compile_riscv_elf<T: FieldElement>(
     original_file_name: &str,
     input_file: &str,
@@ -143,8 +160,15 @@ pub fn compile_riscv_elf<T: FieldElement>(
     runtime: &Runtime,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
-    elf::elf_translate(input_file);
-    todo!()
+    compile_program::<T, &str>(
+        original_file_name,
+        input_file,
+        output_dir,
+        force_overwrite,
+        runtime,
+        with_bootloader,
+        elf::elf_translate::<T>,
+    )
 }
 
 macro_rules! as_ref [
