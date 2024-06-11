@@ -6,9 +6,9 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::iter::once;
 
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
-    Analyzed, Expression, FunctionValueDefinition, IdentityKind, PolyID, PolynomialReference,
-    Reference, SymbolKind, TypedExpression,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Expression, FunctionValueDefinition,
+    IdentityKind, PolyID, PolynomialReference, Reference, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
@@ -250,7 +250,7 @@ fn simplify_expression<T: FieldElement>(mut e: AlgebraicExpression<T>) -> Algebr
 }
 
 fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
-    if let AlgebraicExpression::BinaryOperation(left, op, right) = e {
+    if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) = e {
         if let (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) =
             (left.as_ref(), right.as_ref())
         {
@@ -266,7 +266,7 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
             }
         }
     }
-    if let AlgebraicExpression::UnaryOperation(op, inner) = e {
+    if let AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr: inner }) = e {
         if let AlgebraicExpression::Number(inner) = **inner {
             *e = AlgebraicExpression::Number(match op {
                 AlgebraicUnaryOperator::Minus => -inner,
@@ -275,7 +275,11 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
         }
     }
     match e {
-        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Mul, right) => {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Mul,
+            right,
+        }) => {
             if let AlgebraicExpression::Number(n) = left.as_mut() {
                 if *n == 0.into() {
                     *e = AlgebraicExpression::Number(0.into());
@@ -304,7 +308,11 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
                 }
             }
         }
-        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Add, right) => {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Add,
+            right,
+        }) => {
             if let AlgebraicExpression::Number(n) = left.as_mut() {
                 if *n == 0.into() {
                     let mut tmp = AlgebraicExpression::Number(1.into());
@@ -321,7 +329,11 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
                 }
             }
         }
-        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) => {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Sub,
+            right,
+        }) => {
             if let AlgebraicExpression::Number(n) = right.as_mut() {
                 if *n == 0.into() {
                     let mut tmp = AlgebraicExpression::Number(1.into());
@@ -451,7 +463,11 @@ fn constrained_to_constant<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
 ) -> Option<(PolyID, BigUint)> {
     match expr {
-        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) => {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Sub,
+            right,
+        }) => {
             match (left.as_ref(), right.as_ref()) {
                 (AlgebraicExpression::Number(n), AlgebraicExpression::Reference(poly))
                 | (AlgebraicExpression::Reference(poly), AlgebraicExpression::Number(n)) => {

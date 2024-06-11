@@ -56,7 +56,7 @@ fn new_witness_column_name_clash() {
     col witness x;
     col witness x_1;
     col witness x_2;
-    N.x = (N.x_1 + N.x_2);
+    N.x = N.x_1 + N.x_2;
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -100,10 +100,10 @@ fn create_constraints() {
     col witness y;
     col witness x_is_zero_1;
     col witness x_inv;
-    (N.x_is_zero_1 * (1 - N.x_is_zero_1)) = 0;
-    N.x_is_zero_1 = (1 - (N.x * N.x_inv));
-    (N.x_is_zero_1 * N.x) = 0;
-    N.y = (N.x_is_zero_1 + 2);
+    N.x_is_zero_1 * (1 - N.x_is_zero_1) = 0;
+    N.x_is_zero_1 = 1 - N.x * N.x_inv;
+    N.x_is_zero_1 * N.x = 0;
+    N.y = N.x_is_zero_1 + 2;
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);

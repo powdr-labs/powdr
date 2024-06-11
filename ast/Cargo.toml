@@ -18,9 +18,13 @@ serde = { version = "1.0", default-features = false, features = ["alloc", "deriv
 schemars = { version = "0.8.16", features = ["preserve_order"]}
 serde_cbor = "0.11.2"
 auto_enums = "0.8.5"
+test-log = "0.2.12"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
+powdr-pil-analyzer.workspace = true
+powdr-parser.workspace = true
+
 
 [lints.clippy]
 uninlined_format_args = "deny"
