@@ -185,8 +185,8 @@ impl TypeChecker {
                 for o in callable.operation_definitions() {
                     if o.operation.id.id.is_none() {
                         errors.push(format!(
-                            "Operation `{}` in machine {} needs an operation id because the machine has an operation id column",
-                            o.name, ctx
+                            "Operation `{}` in machine {ctx} needs an operation id because the machine has an operation id column",
+                            o.name
                         ))
                     }
                 }
@@ -200,8 +200,8 @@ impl TypeChecker {
                 if let Some(o) = callable.operation_definitions().next() {
                     if o.operation.id.id.is_some() {
                         errors.push(format!(
-                            "Operation `{}` in machine {} can't have an operation id because the machine does not have an operation id column",
-                            o.name, ctx
+                            "Operation `{}` in machine {ctx} can't have an operation id because the machine does not have an operation id column",
+                            o.name
                         ))
                     }
                 }
@@ -209,22 +209,22 @@ impl TypeChecker {
 
             for r in &registers {
                 errors.push(format!(
-                    "Machine {} should not have registers as it does not have a pc, found `{}`",
-                    ctx, r.name
+                    "Machine {ctx} should not have registers as it does not have a pc, found `{}`",
+                    r.name
                 ));
             }
 
             for f in callable.function_definitions() {
                 errors.push(format!(
-                    "Machine {} should not have functions as it does not have a pc, found `{}`",
-                    ctx, f.name
+                    "Machine {ctx} should not have functions as it does not have a pc, found `{}`",
+                    f.name
                 ))
             }
 
             for i in &instructions {
                 errors.push(format!(
-                    "Machine {} should not have instructions as it does not have a pc, found `{}`",
-                    ctx, i.name
+                    "Machine {ctx} should not have instructions as it does not have a pc, found `{}`",
+                    i.name
                 ))
             }
         } else {
@@ -245,14 +245,13 @@ impl TypeChecker {
             }
             for _ in &links {
                 errors.push(format!(
-                    "Machine {} has a pc, links cannot be used outside of instructions.",
-                    ctx
+                    "Machine {ctx} has a pc, links cannot be used outside of instructions."
                 ));
             }
             for o in callable.operation_definitions() {
                 errors.push(format!(
-                    "Machine {} should not have operations as it has a pc, found `{}`",
-                    ctx, o.name
+                    "Machine {ctx} should not have operations as it has a pc, found `{}`",
+                    o.name
                 ))
             }
         }
