@@ -586,9 +586,27 @@ impl Display for TraitImplementation<Expression> {
         } else {
             format!("<{}>", self.type_vars)
         };
+
+        let trait_vars = if self.trait_vars.is_empty() {
+            Default::default()
+        } else {
+            let formatted_elements: Vec<String> = self
+                .trait_vars
+                .iter()
+                .map(|(s, t)| {
+                    if t.is_empty() {
+                        format!("{}", s)
+                    } else {
+                        format!("{}<{}>", s, t)
+                    }
+                })
+                .collect();
+            format!("<{}>", formatted_elements.join(", "))
+        };
+
         write!(
             f,
-            "impl {trait_name} for {type_vars} {{\n{methods}}}",
+            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
             trait_name = self.name,
             methods = indent(self.methods.iter().map(|m| format!("{m},\n")).format(""), 1)
         )

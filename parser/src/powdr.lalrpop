@@ -716,7 +716,7 @@ ImplDeclaration: TraitImplementation<Expression> = {
 // This should be represented in a better way
 TraitTypeList: Vec<(String, TypeBounds)> = {
     => vec![],
-    <mut list:( <TraitType> "," )*> <end:TraitType> ","  => { list.push(end); list }
+    <mut list:( <TraitType> "," )*> <end:TraitType> ","?  => { list.push(end); list }
 }
 
 TraitType: (String, TypeBounds) = {
