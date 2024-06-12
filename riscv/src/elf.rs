@@ -114,16 +114,6 @@ fn load_elf(file_name: &str) -> ElfProgram {
 
     assert_eq!(elf.dynrels.len(), 0, "Unsupported relocation type!");
 
-    println!("Text labels:");
-    for label in referenced_text_addrs.iter() {
-        println!("  {label}");
-    }
-
-    println!("Non-zero data:");
-    for (addr, data) in data_map.iter() {
-        println!("  {addr:08x}: {data:?}");
-    }
-
     ElfProgram {
         data_map,
         text_labels: referenced_text_addrs,
@@ -166,11 +156,17 @@ impl RiscVProgram for ElfProgram {
                 next_label.0 <= next_insn.original_address
             })
             .map(|result| match result {
-                Either::Left(label) => Statement::Label(label.to_string()),
-                Either::Right(insn) => Statement::Instruction {
-                    op: insn.op,
-                    args: &insn.args,
-                },
+                Either::Left(label) => {
+                    println!("{label}:");
+                    Statement::Label(label.to_string())
+                }
+                Either::Right(insn) => {
+                    println!("    {} {:?}", insn.op, insn.args);
+                    Statement::Instruction {
+                        op: insn.op,
+                        args: &insn.args,
+                    }
+                }
             })
     }
 
@@ -539,7 +535,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     // TODO: uncomment when powdr supports the pseudoinstruction
                     // version of l{b|h|w} and s{b|h|w}. For now, it is better
                     // to just fail here if we encounter this usage of auipc.
-
+                    /*
                     // l{b|h|w} rd, symbol
                     Ins {
                         opc: l_op,
@@ -586,7 +582,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                             original_address: self.base_addr,
                         }
                     }
-
+                    */
                     // call offset
                     Ins {
                         opc: Op::JALR,
@@ -847,7 +843,7 @@ fn to_32bit_equivalent(mut insn: Ins) -> Ins {
                 ..insn
             };
         }
-        Op::C_SLLI => Op::C_SLLI,
+        Op::C_SLLI => Op::SLLI,
         Op::C_LWSP => {
             return Ins {
                 opc: Op::LW,
@@ -858,8 +854,13 @@ fn to_32bit_equivalent(mut insn: Ins) -> Ins {
         Op::C_JR => {
             return Ins {
                 opc: Op::JALR,
-                rd: Some(0),  // discard the return address
-                imm: Some(0), // jump to the exact address
+                // discard the return address:
+                rd: Some(0),
+                // There is a binary value for rs2 in C.JR (set to 0), which is
+                // returned by the decoder, but there isn't an equivalent to the
+                // expanded JALR instruction, so we must set None here:
+                rs2: None,
+                imm: Some(0),
                 ..insn
             };
         }
@@ -874,7 +875,12 @@ fn to_32bit_equivalent(mut insn: Ins) -> Ins {
         Op::C_JALR => {
             return Ins {
                 opc: Op::JALR,
-                rd: Some(1),  // output to x1 (return address)
+                // output to x1 (return address):
+                rd: Some(1),
+                // There is a binary value for rs2 in C.JALR (set to 0), which
+                // is returned by the decoder, but there isn't an equivalent to
+                // the expanded JALR instruction, so we must set None here:
+                rs2: None,
                 imm: Some(0), // jump to the exact address
                 ..insn
             };
