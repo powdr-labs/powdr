@@ -1,5 +1,6 @@
 use std::prover::challenge;
 use std::array::fold;
+use std::array::map;
 use std::utils::unwrap_or_else;
 use std::array::len;
 use std::check::assert;
@@ -32,7 +33,12 @@ let beta1: expr = challenge(0, 3);
 let beta2: expr = challenge(0, 4);
 
 let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |permutation_constraint| match permutation_constraint {
-    Constr::Permutation(lhs_selector, lhs, rhs_selector, rhs) => (unwrap_or_else(lhs_selector, || 1), lhs, unwrap_or_else(rhs_selector, || 1), rhs),
+    Constr::Permutation((lhs_selector, rhs_selector), values) => (
+        unwrap_or_else(lhs_selector, || 1),
+        map(values, |(lhs, _)| lhs),
+        unwrap_or_else(rhs_selector, || 1),
+        map(values, |(_, rhs)| rhs)
+    ),
     _ => panic("Expected permutation constraint")
 };
 
@@ -124,7 +130,7 @@ let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
 
     let _ = if !with_extension {
         assert(!needs_extension(), || "The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!")
-    } else { [] };
+    } else { () };
 
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
