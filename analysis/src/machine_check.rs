@@ -5,17 +5,16 @@ use std::collections::BTreeMap;
 use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
-        FunctionBody, FunctionStatements, FunctionSymbol, Instruction,
-        InstructionDefinitionStatement, InstructionStatement, Item, LabelStatement,
-        LinkDefinitionStatement, Machine, OperationSymbol, RegisterDeclarationStatement,
-        RegisterTy, Return, SubmachineDeclaration,
+        FunctionBody, FunctionStatements, FunctionSymbol, InstructionDefinitionStatement,
+        InstructionStatement, Item, LabelStatement, LinkDefinitionStatement, Machine,
+        OperationSymbol, RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
     },
     parsed::{
         self,
         asm::{
             self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
-            LinkDeclaration, MachineProperties, MachineStatement, ModuleStatement, RegisterFlag,
-            SymbolDefinition,
+            Instruction, LinkDeclaration, MachineProperties, MachineStatement, ModuleStatement,
+            RegisterFlag, SymbolDefinition,
         },
     },
 };

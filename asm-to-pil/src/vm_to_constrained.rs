@@ -9,6 +9,7 @@ use powdr_ast::{
         LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
+        self,
         asm::{CallableRef, InstructionBody, InstructionParams, LinkDeclaration},
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
@@ -1035,7 +1036,7 @@ impl<T: FieldElement> VMConverter<T> {
             .filter_map(|(n, r)| r.ty.is_read_only().then_some(n))
     }
 
-    fn return_instruction(&self) -> powdr_ast::asm_analysis::Instruction {
+    fn return_instruction(&self) -> parsed::asm::Instruction {
         return_instruction(self.output_count, self.pc_name.as_ref().unwrap())
     }
 

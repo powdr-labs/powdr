@@ -33,11 +33,13 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
 pub mod utils {
     use powdr_ast::{
         asm_analysis::{
-            AssignmentStatement, FunctionStatement, Instruction, InstructionDefinitionStatement,
+            AssignmentStatement, FunctionStatement, InstructionDefinitionStatement,
             InstructionStatement, LabelStatement, RegisterDeclarationStatement, RegisterTy,
         },
         parsed::{
-            asm::{AssignmentRegister, InstructionBody, MachineStatement, RegisterFlag},
+            asm::{
+                AssignmentRegister, Instruction, InstructionBody, MachineStatement, RegisterFlag,
+            },
             PilStatement,
         },
     };
