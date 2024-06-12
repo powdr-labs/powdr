@@ -36,8 +36,6 @@ struct AsmProgram {
 const START_FUNCTION: &str = "__runtime_start";
 
 impl RiscVProgram for AsmProgram {
-    type Args = [Argument];
-
     fn take_source_files_info(&mut self) -> impl Iterator<Item = SourceFileInfo> {
         self.file_ids.iter().map(|(id, dir, file)| SourceFileInfo {
             id: *id as u32,
@@ -52,7 +50,7 @@ impl RiscVProgram for AsmProgram {
 
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = code_gen::Statement<&str, Self::Args>> {
+    ) -> impl Iterator<Item = code_gen::Statement<&str, &[Argument]>> {
         self.statements.iter().filter_map(process_statement)
     }
 
@@ -61,7 +59,7 @@ impl RiscVProgram for AsmProgram {
     }
 }
 
-impl InstructionArgs for [Argument] {
+impl InstructionArgs for &[Argument] {
     type Error = &'static str;
 
     fn l(&self) -> Result<String, &'static str> {
@@ -372,7 +370,7 @@ fn substitute_symbols_with_values(
     statements
 }
 
-fn process_statement(s: &Statement) -> Option<code_gen::Statement<&str, [Argument]>> {
+fn process_statement(s: &Statement) -> Option<code_gen::Statement<&str, &[Argument]>> {
     match s {
         Statement::Label(l) => Some(code_gen::Statement::Label(l)),
         Statement::Directive(directive, args) => match (directive.as_str(), &args[..]) {

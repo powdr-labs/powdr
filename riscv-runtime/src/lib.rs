@@ -45,6 +45,7 @@ unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
 global_asm!(
     r"
 .global __runtime_start
+.type __runtime_start, @function
 __runtime_start:
     .option push
     .option norelax

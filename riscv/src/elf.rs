@@ -1,10 +1,14 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::Display,
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs,
 };
 
-use goblin::elf::{program_header, Elf};
+use goblin::{
+    elf::sym::STT_OBJECT,
+    elf::{program_header, Elf},
+    elf64::sym::STT_FUNC,
+};
 use itertools::{Either, Itertools};
 use powdr_asm_utils::data_storage::SingleDataValue;
 use powdr_number::FieldElement;
@@ -20,10 +24,11 @@ use crate::{
 };
 
 struct ElfProgram {
+    symbol_table: SymbolTable,
     data_map: BTreeMap<u32, Data>,
-    text_labels: BTreeSet<Label>,
+    text_labels: BTreeSet<u32>,
     instructions: Vec<HighLevelInsn>,
-    entry_point: String,
+    entry_point: u32,
 }
 
 pub fn elf_translate<F: FieldElement>(
@@ -40,6 +45,12 @@ fn load_elf(file_name: &str) -> ElfProgram {
 
     let elf = Elf::parse(&file_buffer).unwrap();
 
+    // Assert this in an 32-bit ELF file.
+    assert_eq!(
+        elf.header.e_ident[4], 1,
+        "Only 32-bit ELF files are supported!"
+    );
+
     // Map of addresses into memory sections, so we can know what address belong
     // in what section.
     let mut address_map = AddressMap(BTreeMap::new());
@@ -55,8 +66,7 @@ fn load_elf(file_name: &str) -> ElfProgram {
     let mut data_map = BTreeMap::new();
 
     // Keep a list of referenced text addresses, so we can generate the labels.
-    let mut referenced_text_addrs = BTreeSet::from([Label(u32::try_from(elf.entry).unwrap())]);
-    println!("entry: {:08x}:", elf.entry);
+    let mut referenced_text_addrs = BTreeSet::from([elf.entry as u32]);
 
     for p in elf.program_headers.iter() {
         if p.p_type == program_header::PT_LOAD {
@@ -102,8 +112,7 @@ fn load_elf(file_name: &str) -> ElfProgram {
 
                 // We also need to add the referenced address to the list of text
                 // addresses, so we can generate the label.
-                referenced_text_addrs.insert(Label(original_addr));
-                println!("reloc: {:08x}:", original_addr);
+                referenced_text_addrs.insert(original_addr);
             } else {
                 data_map.insert(addr, Data::Value(original_addr));
             }
@@ -115,16 +124,51 @@ fn load_elf(file_name: &str) -> ElfProgram {
     assert_eq!(elf.dynrels.len(), 0, "Unsupported relocation type!");
 
     ElfProgram {
+        symbol_table: SymbolTable::new(&elf),
         data_map,
         text_labels: referenced_text_addrs,
         instructions: lifted_text_sections,
-        entry_point: Label(elf.entry as u32).to_string(),
+        entry_point: elf.entry as u32,
+    }
+}
+
+struct SymbolTable(HashMap<u32, String>);
+
+impl SymbolTable {
+    fn new(elf: &Elf) -> SymbolTable {
+        let mut result = HashMap::new();
+
+        for sym in elf.syms.iter() {
+            if sym.st_name == 0 || (sym.st_type() != STT_OBJECT && sym.st_type() != STT_FUNC) {
+                continue;
+            }
+            result.insert(sym.st_value as u32, elf.strtab[sym.st_name].to_string());
+        }
+
+        for (addr, name) in result.iter() {
+            println!("### {:08x}: {}", addr, name);
+        }
+
+        Self(result)
+    }
+
+    fn try_get(&self, addr: u32) -> Option<&str> {
+        self.0.get(&addr).map(|name| name.as_str())
+    }
+
+    fn get(&self, addr: u32) -> Cow<str> {
+        self.0
+            .get(&addr)
+            .map(|name| Cow::Borrowed(name.as_str()))
+            .unwrap_or_else(|| Cow::Owned(format!("L{:08x}", addr)))
+    }
+
+    fn get_as_string(&self, addr: u32) -> String {
+        self.get(addr).into_owned()
     }
 }
 
 impl RiscVProgram for ElfProgram {
-    type Args = HighLevelArgs;
-
     fn take_source_files_info(&mut self) -> impl Iterator<Item = crate::code_gen::SourceFileInfo> {
         // TODO: read the source files from the debug information.
         std::iter::empty()
@@ -133,12 +177,14 @@ impl RiscVProgram for ElfProgram {
     fn take_initial_mem(&mut self) -> impl Iterator<Item = crate::code_gen::MemEntry> {
         self.data_map.iter().map(|(addr, data)| {
             let value = match data {
-                Data::TextLabel(label) => SingleDataValue::LabelReference(label.to_string()),
+                Data::TextLabel(label) => {
+                    SingleDataValue::LabelReference(self.symbol_table.get_as_string(*label))
+                }
                 Data::Value(value) => SingleDataValue::Value(*value),
             };
 
             MemEntry {
-                label: None,
+                label: self.symbol_table.try_get(*addr).map(|s| s.to_string()),
                 addr: *addr,
                 value,
             }
@@ -147,63 +193,65 @@ impl RiscVProgram for ElfProgram {
 
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = crate::code_gen::Statement<impl AsRef<str>, Self::Args>> {
+    ) -> impl Iterator<Item = crate::code_gen::Statement<impl AsRef<str>, WrappedArgs>> {
         let labels = self.text_labels.iter();
         let instructions = self.instructions.iter();
 
         labels
             .merge_join_by(instructions, |next_label, next_insn| {
-                next_label.0 <= next_insn.original_address
+                **next_label <= next_insn.original_address
             })
             .map(|result| match result {
-                Either::Left(label) => {
-                    println!("{label}:");
-                    Statement::Label(label.to_string())
-                }
-                Either::Right(insn) => {
-                    println!("    {} {:?}", insn.op, insn.args);
-                    Statement::Instruction {
-                        op: insn.op,
+                Either::Left(label) => Statement::Label(self.symbol_table.get(*label)),
+                Either::Right(insn) => Statement::Instruction {
+                    op: insn.op,
+                    args: WrappedArgs {
                         args: &insn.args,
-                    }
-                }
+                        symbol_table: &self.symbol_table,
+                    },
+                },
             })
     }
 
-    fn start_function(&self) -> &str {
-        &self.entry_point
+    fn start_function(&self) -> Cow<str> {
+        self.symbol_table.get(self.entry_point)
     }
 }
 
-impl InstructionArgs for HighLevelArgs {
+struct WrappedArgs<'a> {
+    args: &'a HighLevelArgs,
+    symbol_table: &'a SymbolTable,
+}
+
+impl<'a> InstructionArgs for WrappedArgs<'a> {
     type Error = String;
 
     fn l(&self) -> Result<String, Self::Error> {
-        match self {
+        match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
                 rd: None,
                 rs1: None,
                 rs2: None,
-            } => Ok(addr.to_string()),
-            _ => Err(format!("Expected: label, got {:?}", self)),
+            } => Ok(self.symbol_table.get_as_string(*addr)),
+            _ => Err(format!("Expected: label, got {:?}", self.args)),
         }
     }
 
     fn r(&self) -> Result<Register, Self::Error> {
-        match self {
+        match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::None,
                 rd: None,
                 rs1: Some(rs1),
                 rs2: None,
             } => Ok(Register::new(*rs1 as u8)),
-            _ => Err(format!("Expected: rs1, got {:?}", self)),
+            _ => Err(format!("Expected: rs1, got {:?}", self.args)),
         }
     }
 
     fn rri(&self) -> Result<(Register, Register, u32), Self::Error> {
-        match self {
+        match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::Value(imm),
                 rd: Some(rd),
@@ -214,12 +262,12 @@ impl InstructionArgs for HighLevelArgs {
                 Register::new(*rs1 as u8),
                 *imm as u32,
             )),
-            _ => Err(format!("Expected: rd, rs1, imm, got {:?}", self)),
+            _ => Err(format!("Expected: rd, rs1, imm, got {:?}", self.args)),
         }
     }
 
     fn rrr(&self) -> Result<(Register, Register, Register), Self::Error> {
-        match self {
+        match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::None,
                 rd: Some(rd),
@@ -230,36 +278,36 @@ impl InstructionArgs for HighLevelArgs {
                 Register::new(*rs1 as u8),
                 Register::new(*rs2 as u8),
             )),
-            _ => Err(format!("Expected: rd, rs1, rs2, got {:?}", self)),
+            _ => Err(format!("Expected: rd, rs1, rs2, got {:?}", self.args)),
         }
     }
 
     fn ri(&self) -> Result<(Register, u32), Self::Error> {
-        match self {
+        match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::Value(imm),
                 rd: Some(rd),
                 rs1: None,
                 rs2: None,
             } => Ok((Register::new(*rd as u8), *imm as u32)),
-            _ => Err(format!("Expected: rd, imm, got {:?}", self)),
+            _ => Err(format!("Expected: rd, imm, got {:?}", self.args)),
         }
     }
 
     fn rr(&self) -> Result<(Register, Register), Self::Error> {
-        match self {
+        match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::None,
                 rd: Some(rd),
                 rs1: Some(rs1),
                 rs2: None,
             } => Ok((Register::new(*rd as u8), Register::new(*rs1 as u8))),
-            _ => Err(format!("Expected: rd, rs1, got {:?}", self)),
+            _ => Err(format!("Expected: rd, rs1, got {:?}", self.args)),
         }
     }
 
     fn rrl(&self) -> Result<(Register, Register, String), Self::Error> {
-        match self {
+        match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
                 rd: None,
@@ -268,32 +316,38 @@ impl InstructionArgs for HighLevelArgs {
             } => Ok((
                 Register::new(*rs1 as u8),
                 Register::new(*rs2 as u8),
-                addr.to_string(),
+                self.symbol_table.get_as_string(*addr),
             )),
-            _ => Err(format!("Expected: rs1, rs2, label, got {:?}", self)),
+            _ => Err(format!("Expected: rs1, rs2, label, got {:?}", self.args)),
         }
     }
 
     fn rl(&self) -> Result<(Register, String), Self::Error> {
-        match self {
+        match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
                 rd: None,
                 rs1: Some(rs1),
                 rs2: None,
-            } => Ok((Register::new(*rs1 as u8), addr.to_string())),
+            } => Ok((
+                Register::new(*rs1 as u8),
+                self.symbol_table.get_as_string(*addr),
+            )),
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
                 rd: Some(rd),
                 rs1: None,
                 rs2: None,
-            } => Ok((Register::new(*rd as u8), addr.to_string())),
-            _ => Err(format!("Expected: {{rs1|rd}}, label, got {:?}", self)),
+            } => Ok((
+                Register::new(*rd as u8),
+                self.symbol_table.get_as_string(*addr),
+            )),
+            _ => Err(format!("Expected: {{rs1|rd}}, label, got {:?}", self.args)),
         }
     }
 
     fn rro(&self) -> Result<(Register, Register, u32), Self::Error> {
-        match self {
+        match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::Value(imm),
                 rd: Some(rd),
@@ -316,20 +370,20 @@ impl InstructionArgs for HighLevelArgs {
             )),
             _ => Err(format!(
                 "Expected: {{rd, rs1 | rs1, rs2}}, imm, got {:?}",
-                self
+                self.args
             )),
         }
     }
 
     fn empty(&self) -> Result<(), Self::Error> {
-        match self {
+        match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::None,
                 rd: None,
                 rs1: None,
                 rs2: None,
             } => Ok(()),
-            _ => Err(format!("Expected: no args, got {:?}", self)),
+            _ => Err(format!("Expected: no args, got {:?}", self.args)),
         }
     }
 }
@@ -403,26 +457,10 @@ impl From<Ins> for MaybeInstruction {
     }
 }
 
-/// The value is the original address
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct Label(u32);
-
-impl From<i32> for Label {
-    fn from(addr: i32) -> Self {
-        Label(addr as u32)
-    }
-}
-
-impl Display for Label {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "L{:08x}", self.0)
-    }
-}
-
 #[derive(Debug)]
 enum HighLevelImmediate {
     None,
-    CodeLabel(Label),
+    CodeLabel(u32),
     Value(i32),
 }
 
@@ -455,7 +493,7 @@ struct HighLevelInsn {
 struct InstructionLifter<'a> {
     base_addr: u32,
     address_map: &'a AddressMap<'a>,
-    referenced_text_addrs: &'a mut BTreeSet<Label>,
+    referenced_text_addrs: &'a mut BTreeSet<u32>,
 }
 
 impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
@@ -518,7 +556,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     } if rd_auipc == rd_addi && rd_auipc == rs1_addi => {
                         let imm_addr = hi + lo;
                         let imm = if self.address_map.is_in_text_section(imm_addr as u32) {
-                            HighLevelImmediate::CodeLabel(imm_addr.into())
+                            HighLevelImmediate::CodeLabel(imm_addr as u32)
                         } else {
                             HighLevelImmediate::Value(imm_addr)
                         };
@@ -594,7 +632,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     } if *rd_auipc == 1 => HighLevelInsn {
                         op: "call",
                         args: HighLevelArgs {
-                            imm: HighLevelImmediate::CodeLabel((hi + lo).into()),
+                            imm: HighLevelImmediate::CodeLabel((hi + lo) as u32),
                             ..Default::default()
                         },
                         original_address: self.base_addr,
@@ -610,7 +648,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     } if *rd_auipc == 6 => HighLevelInsn {
                         op: "tail",
                         args: HighLevelArgs {
-                            imm: HighLevelImmediate::CodeLabel((hi + lo).into()),
+                            imm: HighLevelImmediate::CodeLabel((hi + lo) as u32),
                             ..Default::default()
                         },
                         original_address: self.base_addr,
@@ -625,7 +663,6 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
 
         if let HighLevelImmediate::CodeLabel(addr) = &result.args.imm {
             self.referenced_text_addrs.insert(*addr);
-            println!("insn {}: {:08x}", result.op, addr.0);
         }
 
         Some(result)
@@ -643,7 +680,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         let imm = match insn.opc {
             // All jump instructions that have the immediate as an address
             Op::JAL | Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
-                let addr = (insn.imm.unwrap() + self.base_addr as i32).into();
+                let addr = (insn.imm.unwrap() + self.base_addr as i32) as u32;
                 self.referenced_text_addrs.insert(addr);
 
                 HighLevelImmediate::CodeLabel(addr)
@@ -695,7 +732,7 @@ fn lift_instructions(
     base_addr: u32,
     data: &[u8],
     address_map: &AddressMap,
-    referenced_text_addrs: &mut BTreeSet<Label>,
+    referenced_text_addrs: &mut BTreeSet<u32>,
 ) -> Vec<HighLevelInsn> {
     let instructions = RiscVInstructionIterator::new(data);
 

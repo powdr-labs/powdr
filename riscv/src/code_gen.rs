@@ -48,10 +48,10 @@ impl fmt::Display for FunctionKind {
     }
 }
 
-pub enum Statement<'a, L: AsRef<str> + 'a, A: InstructionArgs + ?Sized + 'a> {
+pub enum Statement<'a, L: AsRef<str>, A: InstructionArgs> {
     DebugLoc { file: u64, line: u64, col: u64 },
     Label(L),
-    Instruction { op: &'a str, args: &'a A },
+    Instruction { op: &'a str, args: A },
 }
 
 pub struct MemEntry {
@@ -68,8 +68,6 @@ pub struct SourceFileInfo<'a> {
 
 /// A RISC-V program that can be translated to POWDR ASM.
 pub trait RiscVProgram {
-    type Args: InstructionArgs + ?Sized;
-
     /// Takes the listing of source files, to be used in the debug statements.
     fn take_source_files_info(&mut self) -> impl Iterator<Item = SourceFileInfo>;
 
@@ -79,10 +77,10 @@ pub trait RiscVProgram {
     /// Takes the executable statements and labels.
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = Statement<impl AsRef<str>, Self::Args>>;
+    ) -> impl Iterator<Item = Statement<impl AsRef<str>, impl InstructionArgs>>;
 
     /// The name of the function that should be called to start the program.
-    fn start_function(&self) -> &str;
+    fn start_function(&self) -> impl AsRef<str>;
 }
 
 /// Translates a RISC-V program to POWDR ASM.
@@ -194,7 +192,7 @@ fn translate_program_impl(
         statements.push("x1 <== jump(__data_init);".to_string());
     }
     statements.extend([
-        format!("x1 <== jump({});", program.start_function()),
+        format!("x1 <== jump({});", program.start_function().as_ref()),
         "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
     ]);
     for s in program.take_executable_statements() {
@@ -695,10 +693,7 @@ pub fn pop_register(name: &str) -> [String; 2] {
     ]
 }
 
-fn process_instruction<A: InstructionArgs + ?Sized>(
-    instr: &str,
-    args: &A,
-) -> Result<Vec<String>, A::Error> {
+fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<String>, A::Error> {
     Ok(match instr {
         // load/store registers
         "li" | "la" => {
