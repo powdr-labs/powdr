@@ -15,9 +15,9 @@ use powdr_ast::parsed::{
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
-    FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
-    MatchExpression, Pattern, PilStatement, SourceReference, StatementInsideBlock, TypedExpression,
-    UnaryOperation,
+    FunctionCall, ImplMethod, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
+    MatchExpression, Pattern, PilStatement, SourceReference, StatementInsideBlock,
+    TraitDeclaration, TraitImplementation, TraitMethod, TypedExpression, UnaryOperation,
 };
 use powdr_parser_util::{Error, SourceRef};
 
@@ -438,7 +438,8 @@ fn check_path_internal<'a>(
                     // machines, expressions and enum variants do not expose symbols
                     SymbolValueRef::Machine(_)
                     | SymbolValueRef::Expression(_)
-                    | SymbolValueRef::TypeConstructor(_) => {
+                    | SymbolValueRef::TypeConstructor(_)
+                    | SymbolValueRef::TraitDeclaration(_) => {
                         Err(format!("symbol not found in `{location}`: `{member}`"))
                     }
                     // modules expose symbols
@@ -485,12 +486,18 @@ fn check_path_internal<'a>(
                                 chain,
                             )
                         }),
-                    SymbolValueRef::TraitDeclaration(_) => {
-                        todo!("trait declarations are not yet supported in check_path_internal")
-                    }
-                    SymbolValueRef::TraitImplementation(_) => {
-                        todo!("trait implementations are not yet supported in check_path_internal")
-                    }
+                    SymbolValueRef::TraitImplementation(trait_impl) => trait_impl
+                        .methods
+                        .iter()
+                        .find(|method| method.name == member)
+                        .ok_or_else(|| format!("symbol not found in `{location}`: `{member}`"))
+                        .map(|method| {
+                            (
+                                location.with_part(member),
+                                SymbolValueRef::TraitImplementation(trait_impl), // This should expose the inner method: maybe we need a new SymbolValueRef?
+                                chain,
+                            )
+                        }),
                 }
             },
         )
@@ -581,11 +588,13 @@ fn check_module(
                 check_type_declaration(&location, enum_decl, state)
                     .map_err(|e| SourceRef::default().with_error(e))?
             }
-            SymbolValue::TraitDeclaration(_trait_decl) => {
-                todo!("trait declarations are not yet supported in check_module")
+            SymbolValue::TraitDeclaration(trait_decl) => {
+                check_trait_declaration(&location, trait_decl, state)
+                    .map_err(|e| SourceRef::default().with_error(e))?
             }
-            SymbolValue::TraitImplementation(_trait_impl) => {
-                todo!("trait implementations are not yet supported in check_module")
+            SymbolValue::TraitImplementation(trait_impl) => {
+                check_trait_implementation(&location, trait_impl, state)
+                    .map_err(|e| SourceRef::default().with_error(e))?
             }
         }
     }
@@ -899,6 +908,55 @@ fn check_type(
     ty.children().try_for_each(|e| {
         check_expression(location, e, state, local_variables).map_err(|e| e.message().to_string())
     })
+}
+
+fn check_trait_implementation(
+    location: &AbsoluteSymbolPath,
+    trait_impl: &TraitImplementation<Expression>,
+    state: &mut State<'_>,
+) -> Result<(), String> {
+    trait_impl.methods.iter().try_fold(
+        BTreeSet::default(),
+        |mut acc, ImplMethod { name, .. }| {
+            acc.insert(name.clone()).then_some(acc).ok_or(format!(
+                "Duplicate implementation for method `{name}` in impl `{location}`"
+            ))
+        },
+    )?;
+
+    trait_impl
+        .methods
+        .iter()
+        .try_for_each(|ImplMethod { name, body }| {
+            check_expression(location, body, state, &HashSet::default()).map_err(|err| {
+                // Transformar el error e incluir el nombre del método
+                format!(
+                    "Error checking method '{name}' in {location}: {}",
+                    err.message()
+                )
+            })
+        })?;
+
+    Ok(())
+}
+
+fn check_trait_declaration(
+    location: &AbsoluteSymbolPath,
+    trait_decl: &TraitDeclaration<Expression>,
+    state: &mut State<'_>,
+) -> Result<(), String> {
+    let symbol_path = SymbolPath::from_identifier(trait_decl.name.clone());
+    check_path(location.clone().join(symbol_path), state)?;
+    trait_decl.methods.iter().try_fold(
+        BTreeSet::default(),
+        |mut acc, TraitMethod { name, .. }| {
+            acc.insert(name.clone()).then_some(acc).ok_or(format!(
+                "Duplicate method `{name}` defined in trait `{location}`"
+            ))
+        },
+    )?;
+
+    Ok(())
 }
 
 #[cfg(test)]

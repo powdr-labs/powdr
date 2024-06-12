@@ -141,7 +141,7 @@ impl PilStatement {
                 ),
             ),
             PilStatement::TraitDeclaration(_, TraitDeclaration { name, .. }) => {
-                Box::new(once((name, None, SymbolCategory::Type))) //TODO GZ: Check type
+                Box::new(once((name, None, SymbolCategory::Type)))
             }
             PilStatement::TraitImplementation(_, TraitImplementation { name, methods, .. }) => {
                 Box::new(
@@ -150,7 +150,7 @@ impl PilStatement {
                             .iter()
                             .map(move |m| (name, Some(&m.name), SymbolCategory::Value)),
                     ),
-                ) //TODO GZ: Check type
+                )
             }
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
             | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => Box::new(
@@ -349,7 +349,7 @@ pub struct TraitMethod<Expression> {
 pub struct TraitImplementation<Expression> {
     pub name: String,
     pub type_vars: TypeBounds,
-    pub trait_vars: Vec<(String, TypeBounds)>,
+    pub trait_vars: Vec<(String, TypeBounds)>, //TODO GZ This should be his own type maybe?
     pub methods: Vec<ImplMethod<Expression>>,
 }
 
