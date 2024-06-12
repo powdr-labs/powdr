@@ -634,10 +634,6 @@ fn check_machine(
                     for expr in callable_ref.params.inputs_and_outputs() {
                         check_expression(&module_location, expr, state, &local_variables)?;
                     }
-
-                    for expr in callable_ref.params.inputs_and_outputs() {
-                        check_expression(&module_location, expr, state, &local_variables)?;
-                    }
                 }
             }
             _ => {}
