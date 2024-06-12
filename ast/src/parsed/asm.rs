@@ -606,7 +606,7 @@ impl TryFrom<Expression> for CallableRef {
 
         // TODO(leandro): improve error messages here?
         let Expression::FunctionCall(_, call) = rhs else {
-            return Err("link definition must call a `submachine.operation`".to_string());
+            return Err("link definition RHS must be a call to `submachine.operation`".to_string());
         };
         let inputs = call.arguments;
         match *call.function {
@@ -624,7 +624,7 @@ impl TryFrom<Expression> for CallableRef {
                     params: CallableParams { inputs, outputs },
                 })
             }
-            _ => Err("link definition must call a `submachine.operation`".to_string()),
+            _ => Err("link definition RHS must be a call to `submachine.operation`".to_string()),
         }
     }
 }
