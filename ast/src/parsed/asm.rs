@@ -604,28 +604,26 @@ impl TryFrom<Expression> for CallableRef {
             expr => expr,
         };
 
-        // TODO(leandro): improve error messages here?
-        let Expression::FunctionCall(_, call) = rhs else {
-            return Err("link definition RHS must be a call to `submachine.operation`".to_string());
-        };
-        let inputs = call.arguments;
-        match *call.function {
-            Expression::Reference(_, r) if r.path.parts().len() == 2 => {
-                let (left_part, right_part) = r.path.into_parts().next_tuple().unwrap();
-                let instance = left_part.try_into().unwrap();
-                let callable = right_part.try_into().unwrap();
-                if r.type_args.is_some() {
-                    return Err("types not expected in link definition".to_string());
+        if let Expression::FunctionCall(_, call) = rhs {
+            let inputs = call.arguments;
+            match *call.function {
+                Expression::Reference(_, reference) if reference.path.parts().len() == 2 => {
+                    if reference.type_args.is_some() {
+                        return Err("types not expected in link definition".to_string());
+                    }
+                    let (l, r) = reference.path.into_parts().next_tuple().unwrap();
+                    let instance = l.try_into().unwrap();
+                    let callable = r.try_into().unwrap();
+                    return Ok(CallableRef {
+                        instance,
+                        callable,
+                        params: CallableParams { inputs, outputs },
+                    });
                 }
-
-                Ok(CallableRef {
-                    instance,
-                    callable,
-                    params: CallableParams { inputs, outputs },
-                })
+                _ => (),
             }
-            _ => Err("link definition RHS must be a call to `submachine.operation`".to_string()),
         }
+        Err("link definition RHS must be a call to `submachine.operation`".to_string())
     }
 }
 
