@@ -493,8 +493,8 @@ fn check_path_internal<'a>(
                         .ok_or_else(|| format!("symbol not found in `{location}`: `{member}`"))
                         .map(|method| {
                             (
-                                location.with_part(member),
-                                SymbolValueRef::TraitImplementation(trait_impl), // This should expose the inner method: maybe we need a new SymbolValueRef?
+                                location.with_part(&trait_impl.name).with_part(member),
+                                SymbolValueRef::TraitImplementation(trait_impl), // This should expose `method`: maybe we need a new SymbolValueRef?
                                 chain,
                             )
                         }),
