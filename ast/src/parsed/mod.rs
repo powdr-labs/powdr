@@ -19,6 +19,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use powdr_parser_util::SourceRef;
+use types::TraitScheme;
 
 use self::{
     asm::{Part, SymbolPath},
@@ -122,6 +123,8 @@ impl PilStatement {
     /// and their category.
     /// For an enum, returns the name of the enum and all the variants, where the first
     /// component is the name of the enum and the second the name of the variant.
+    /// Similarly, for a trait implementation, returns the name of the trait and all the functions,
+    /// where the first component is the name of the trait and the rest the name of the functions.
     pub fn symbol_definition_names_and_contained(
         &self,
     ) -> Box<dyn Iterator<Item = (&String, Option<&String>, SymbolCategory)> + '_> {
@@ -143,15 +146,18 @@ impl PilStatement {
             PilStatement::TraitDeclaration(_, TraitDeclaration { name, .. }) => {
                 Box::new(once((name, None, SymbolCategory::Type)))
             }
-            PilStatement::TraitImplementation(_, TraitImplementation { name, methods, .. }) => {
-                Box::new(
-                    once((name, None, SymbolCategory::Value)).chain(
-                        methods
-                            .iter()
-                            .map(move |m| (name, Some(&m.name), SymbolCategory::Value)),
-                    ),
-                )
-            }
+            PilStatement::TraitImplementation(
+                _,
+                TraitImplementation {
+                    name, functions, ..
+                },
+            ) => Box::new(
+                once((name, None, SymbolCategory::Type)).chain(
+                    functions
+                        .iter()
+                        .map(move |m| (name, Some(&m.name), SymbolCategory::Value)),
+                ),
+            ),
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
             | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => Box::new(
                 polynomials
@@ -327,7 +333,7 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
 pub struct TraitDeclaration<Expression> {
     pub name: String,
     pub type_vars: TypeBounds,
-    pub methods: Vec<TraitMethod<Expression>>,
+    pub functions: Vec<TraitFunction<Expression>>,
 }
 
 impl Children<Expression> for TraitDeclaration<Expression> {
@@ -340,7 +346,7 @@ impl Children<Expression> for TraitDeclaration<Expression> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TraitMethod<Expression> {
+pub struct TraitFunction<Expression> {
     pub name: String,
     pub _type: Type<Expression>,
 }
@@ -348,22 +354,25 @@ pub struct TraitMethod<Expression> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TraitImplementation<Expression> {
     pub name: String,
-    pub type_vars: TypeBounds,
-    pub trait_vars: Vec<(String, TypeBounds)>, //TODO GZ This should be his own type maybe?
-    pub methods: Vec<ImplMethod<Expression>>,
+    pub type_scheme: Option<TraitScheme<Expression>>,
+    pub functions: Vec<NamedExpression<Expression>>,
 }
 
 impl Children<Expression> for TraitImplementation<Expression> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
-        Box::new(self.methods.iter().flat_map(|m| m.body.children()))
+        Box::new(self.functions.iter().flat_map(|m| m.body.children()))
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
-        Box::new(self.methods.iter_mut().flat_map(|m| m.body.children_mut()))
+        Box::new(
+            self.functions
+                .iter_mut()
+                .flat_map(|m| m.body.children_mut()),
+        )
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ImplMethod<Expression> {
+pub struct NamedExpression<Expression> {
     pub name: String,
     pub body: Box<Expression>,
 }

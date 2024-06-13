@@ -36,10 +36,7 @@ ModuleStatement: ModuleStatement = {
             name: <>.name.clone(),
             value: SymbolValue::TraitDeclaration(<>),
         }),
-    <ImplDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
-            name: <>.name.clone(),
-            value: SymbolValue::TraitImplementation(<>),
-        }),
+    <ImplDeclaration> => ModuleStatement::TraitImplementation(<>),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
@@ -261,7 +258,7 @@ ConstantFixed = {
 GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
     <name:Identifier> => (name, None),
     <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <ty:(":" <Type>)> =>
-        (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), ty }))
+        (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), vec![ty] }))
 }
 
 
@@ -697,39 +694,35 @@ PatternList: Vec<Pattern> = {
 // ---------------------------- Trait/Impl Declaration -----------------------------
 
 TraitDeclaration: TraitDeclaration<Expression> = {
-    "trait" <name:Identifier> <type_vars:("<" <TypeVarBounds> ">")?> "{" <methods:TraitMethods> "}" => TraitDeclaration { name, type_vars: type_vars.unwrap_or_default(), methods }
+    "trait" <name:Identifier> <type_vars:("<" <TypeVarBounds> ">")?> "{" <functions:TraitFunctions> "}" => TraitDeclaration { name, type_vars: type_vars.unwrap_or_default(), functions }
 }
 
-TraitMethods: Vec<TraitMethod<Expression>> = {
+TraitFunctions: Vec<TraitFunction<Expression>> = {
     => vec![],
-    <mut list:( <TraitMethod> "," )*> <end:TraitMethod> ","  => { list.push(end); list }
+    <mut list:( <TraitFunction> "," )*> <end:TraitFunction> ","  => { list.push(end); list }
 }
 
-TraitMethod: TraitMethod<Expression> = {
-    <name:Identifier> ":" <params:TypeTermList> "->" <value:TypeTermBox> => TraitMethod { name, _type: Type::Function(FunctionType{params, value}) }
+TraitFunction: TraitFunction<Expression> = {
+    <name:Identifier> ":" <params:TypeTermList> "->" <value:TypeTermBox> => TraitFunction { name, _type: Type::Function(FunctionType{params, value}) }
+}
+
+GenericTraitName: (String, Option<TypeScheme<Expression>>) = {
+    <name:Identifier> => (name, None),
+    <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <types:("<" <TypeTermList> ">")> =>
+        (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), types }))
 }
 
 ImplDeclaration: TraitImplementation<Expression> = {
-    "impl" <type_vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <trait_vars:("<" <TraitTypeList> ">")> "{" <methods:ImplMethods> "}" => TraitImplementation { name, type_vars: type_vars.unwrap_or_default(), trait_vars, methods }
+    "impl" <type_scheme: GenericTraitName> "{" <functions:ImplFunctions> "}" => TraitImplementation { name: type_scheme.0, type_scheme: type_scheme.1, functions }
 }
 
-// This should be represented in a better way
-TraitTypeList: Vec<(String, TypeBounds)> = {
+ImplFunctions: Vec<NamedExpression<Expression>> = {
     => vec![],
-    <mut list:( <TraitType> "," )*> <end:TraitType> ","?  => { list.push(end); list }
+    <mut list:( <ImplFunction> "," )*> <end:ImplFunction> ","  => { list.push(end); list }
 }
 
-TraitType: (String, TypeBounds) = {
-    <name:Identifier> <ty:("<" <TypeVarBounds> ">")?> => (name, ty.unwrap_or_default())
-}
-
-ImplMethods: Vec<ImplMethod<Expression>> = {
-    => vec![],
-    <mut list:( <ImplMethod> "," )*> <end:ImplMethod> ","  => { list.push(end); list }
-}
-
-ImplMethod: ImplMethod<Expression> = {
-    <name:Identifier> ":" <body:BoxedExpression> => ImplMethod { name, body }
+ImplFunction: NamedExpression<Expression> = {
+    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
 }
 
 // ---------------------------- Type Declarations -----------------------------

@@ -29,8 +29,9 @@ pub struct ASMModule {
 
 impl ASMModule {
     pub fn symbol_definitions(&self) -> impl Iterator<Item = &SymbolDefinition> {
-        self.statements.iter().map(|s| match s {
-            ModuleStatement::SymbolDefinition(d) => d,
+        self.statements.iter().filter_map(|s| match s {
+            ModuleStatement::SymbolDefinition(d) => Some(d),
+            ModuleStatement::TraitImplementation(_) => None,
         })
     }
 }
@@ -38,6 +39,8 @@ impl ASMModule {
 #[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum ModuleStatement {
     SymbolDefinition(SymbolDefinition),
+    /// A trait implementation
+    TraitImplementation(TraitImplementation<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,8 +63,6 @@ pub enum SymbolValue {
     TypeDeclaration(EnumDeclaration<Expression>),
     /// A trait declaration
     TraitDeclaration(TraitDeclaration<Expression>),
-    /// A trait implementation
-    TraitImplementation(TraitImplementation<Expression>),
 }
 
 impl SymbolValue {
@@ -73,7 +74,6 @@ impl SymbolValue {
             SymbolValue::Expression(e) => SymbolValueRef::Expression(e),
             SymbolValue::TypeDeclaration(t) => SymbolValueRef::TypeDeclaration(t),
             SymbolValue::TraitDeclaration(t) => SymbolValueRef::TraitDeclaration(t),
-            SymbolValue::TraitImplementation(t) => SymbolValueRef::TraitImplementation(t),
         }
     }
 }
@@ -94,8 +94,6 @@ pub enum SymbolValueRef<'a> {
     TypeConstructor(&'a EnumVariant<Expression>),
     /// A trait declaration
     TraitDeclaration(&'a TraitDeclaration<Expression>),
-    /// A trait implementation
-    TraitImplementation(&'a TraitImplementation<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]

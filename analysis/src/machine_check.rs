@@ -343,13 +343,10 @@ impl TypeChecker {
                                 Item::TraitDeclaration(trait_decl),
                             );
                         }
-                        asm::SymbolValue::TraitImplementation(trait_impl) => {
-                            res.insert(
-                                ctx.clone().with_part(&name),
-                                Item::TraitImplementation(trait_impl),
-                            );
-                        }
                     }
+                }
+                ModuleStatement::TraitImplementation(trait_impl) => {
+                    res.insert(ctx.clone(), Item::TraitImplementation(trait_impl));
                 }
             }
         }

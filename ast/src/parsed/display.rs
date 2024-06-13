@@ -34,6 +34,7 @@ impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(symbol_def) => write!(f, "{symbol_def}"),
+            ModuleStatement::TraitImplementation(trait_impl) => write!(f, "{trait_impl}"),
         }
     }
 }
@@ -63,7 +64,6 @@ impl Display for SymbolDefinition {
             }
             SymbolValue::TypeDeclaration(ty) => write!(f, "{ty}"),
             SymbolValue::TraitDeclaration(trait_decl) => write!(f, "{trait_decl}"),
-            SymbolValue::TraitImplementation(trait_impl) => write!(f, "{trait_impl}"),
         }
     }
 }
@@ -566,14 +566,17 @@ impl Display for TraitDeclaration<Expression> {
         };
         write!(
             f,
-            "trait {name} {type_vars} {{\n{methods}}}",
+            "trait {name} {type_vars} {{\n{functions}}}",
             name = self.name,
-            methods = indent(self.methods.iter().map(|m| format!("{m},\n")).format(""), 1)
+            functions = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
         )
     }
 }
 
-impl Display for TraitMethod<Expression> {
+impl Display for TraitFunction<Expression> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}: {}", self.name, self._type)
     }
@@ -581,39 +584,42 @@ impl Display for TraitMethod<Expression> {
 
 impl Display for TraitImplementation<Expression> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let type_vars = if self.type_vars.is_empty() {
-            Default::default()
-        } else {
-            format!("<{}>", self.type_vars)
-        };
-
-        let trait_vars = if self.trait_vars.is_empty() {
-            Default::default()
-        } else {
-            let formatted_elements: Vec<String> = self
-                .trait_vars
-                .iter()
-                .map(|(s, t)| {
-                    if t.is_empty() {
-                        format!("{}", s)
-                    } else {
-                        format!("{}<{}>", s, t)
-                    }
-                })
-                .collect();
-            format!("<{}>", formatted_elements.join(", "))
-        };
+        let type_vars = self.type_scheme.as_ref().map_or_else(
+            || Default::default(),
+            |scheme| {
+                if scheme.vars.is_empty() {
+                    Default::default()
+                } else {
+                    format!("<{}>", scheme.vars)
+                }
+            },
+        );
+        let trait_vars = self.type_scheme.as_ref().map_or_else(
+            || Default::default(),
+            |scheme| {
+                if scheme.types.is_empty() {
+                    Default::default()
+                } else {
+                    let formatted_elements: Vec<String> =
+                        scheme.types.iter().map(|t| format!("{t}")).collect();
+                    format!("<{}>", formatted_elements.join(", "))
+                }
+            },
+        );
 
         write!(
             f,
             "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
             trait_name = self.name,
-            methods = indent(self.methods.iter().map(|m| format!("{m},\n")).format(""), 1)
+            methods = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
         )
     }
 }
 
-impl Display for ImplMethod<Expression> {
+impl Display for NamedExpression<Expression> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}: {}", self.name, self.body)
     }
