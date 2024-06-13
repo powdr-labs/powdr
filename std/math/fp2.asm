@@ -58,6 +58,11 @@ let eq_ext: Fp2<fe>, Fp2<fe> -> bool = |a, b| match (a, b) {
     (Fp2::Fp2(a0, a1), Fp2::Fp2(b0, b1)) => (a0 == b0) && (a1 == b1)
 };
 
+/// Returns constraints that two extension field elements are equal
+let constrain_eq_ext: Fp2<expr>, Fp2<expr> -> Constr[] = |a, b| match (a, b) {
+    (Fp2::Fp2(a0, a1), Fp2::Fp2(b0, b1)) => [a0 = b0, a1 = b1]
+};
+
 /// Field inversion (defined on fe instead of int)
 let inv_field: fe -> fe = |x| fe(std::math::ff::inverse(int(x), modulus()));
 
@@ -73,6 +78,16 @@ let inv_ext: Fp2<fe> -> Fp2<fe> = |a| match a {
         let factor = inv_field(7 * a1 * a1 - a0 * a0);
         Fp2::Fp2(-a0 * factor, a1 * factor)
     }
+};
+
+/// Applies the next operator to both components of the extension field element
+let next_ext: Fp2<expr> -> Fp2<expr> = |a| match a {
+    Fp2::Fp2(a0, a1) => Fp2::Fp2(a0', a1')
+};
+
+/// Returns the two components of the extension field element
+let<T> unpack_ext: Fp2<T> -> (T, T) = |a| match a {
+    Fp2::Fp2(a0, a1) => (a0, a1)
 };
 
 mod test {
