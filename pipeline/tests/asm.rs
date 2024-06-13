@@ -25,6 +25,12 @@ fn sqrt_asm() {
 }
 
 #[test]
+fn challenges_asm() {
+    let f = "asm/challenges.asm";
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
@@ -385,8 +391,24 @@ fn enum_in_asm() {
 }
 
 #[test]
+fn pass_range_constraints() {
+    let f = "asm/pass_range_constraints.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn side_effects() {
     let f = "asm/side_effects.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn multiple_signatures() {
+    let f = "asm/multiple_signatures.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());

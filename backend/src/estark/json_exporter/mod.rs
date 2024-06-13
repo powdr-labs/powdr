@@ -6,6 +6,7 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicUnaryOperator, Analyzed,
     IdentityKind, PolyID, PolynomialType, StatementIdentifier, SymbolKind,
 };
+use powdr_parser_util::SourceRef;
 use starky::types::{
     ConnectionIdentity, Expression as StarkyExpr, PermutationIdentity, PlookupIdentity,
     PolIdentity, Reference, PIL,
@@ -34,6 +35,10 @@ struct Exporter<'a, T> {
     /// polynomials.
     intermediate_poly_expression_ids: HashMap<u64, u64>,
     number_q: u64,
+    /// A cache to improve computing the line from a file offset.
+    /// Comparison is by raw pointer value because the data comes
+    /// from Arcs and we assume the actual data is not cloned.
+    line_starts: HashMap<*const u8, Vec<usize>>,
 }
 
 pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
@@ -82,7 +87,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                 // PILCOM strips the path from filenames, we do the same here for compatibility
                 let file_name = identity
                     .source
-                    .file
+                    .file_name
                     .as_deref()
                     .and_then(|s| {
                         PathBuf::from(s)
@@ -91,7 +96,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                             .map(String::from)
                     })
                     .unwrap_or_default();
-                let line = identity.source.line;
+                let line = exporter.line_of_source_ref(&identity.source);
                 let selector_degree = if identity.kind == IdentityKind::Polynomial {
                     2
                 } else {
@@ -205,6 +210,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             expressions: vec![],
             intermediate_poly_expression_ids: compute_intermediate_expression_ids(analyzed),
             number_q: 0,
+            line_starts: Default::default(),
         }
     }
 
@@ -379,6 +385,33 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
         };
         (1, poly)
     }
+
+    fn line_of_source_ref(&mut self, source: &SourceRef) -> usize {
+        let Some(file_contents) = source.file_contents.as_ref() else {
+            return 0;
+        };
+        let line_starts = self
+            .line_starts
+            .entry(file_contents.as_ptr())
+            .or_insert_with(|| compute_line_starts(file_contents));
+        offset_to_line_col(source.start, line_starts).0
+    }
+}
+
+fn compute_line_starts(source: &str) -> Vec<usize> {
+    std::iter::once(0)
+        .chain(source.match_indices('\n').map(|(i, _)| i + 1))
+        .collect::<Vec<_>>()
+}
+
+/// Returns a tuple `(line, col)` given the file offset of line starts.
+/// `line` is 1 based and `col` is 0 based.
+fn offset_to_line_col(offset: usize, line_starts: &[usize]) -> (usize, usize) {
+    let line = match line_starts.binary_search(&offset) {
+        Ok(line) => line + 1,
+        Err(next_line) => next_line,
+    };
+    (line, offset - line_starts[line - 1])
 }
 
 #[cfg(test)]
@@ -560,5 +593,42 @@ mod test {
     fn export_main() {
         compare_export_file_ignore_idq_hex("rom.pil");
         compare_export_file_ignore_idq_hex("main.pil");
+    }
+
+    #[test]
+    fn line_calc() {
+        let input = "abc\nde";
+        let breaks = compute_line_starts(input);
+        let line_col_pairs = (0..input.len())
+            .map(|o| offset_to_line_col(o, &breaks))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            line_col_pairs,
+            [(1, 0), (1, 1), (1, 2), (1, 3), (2, 0), (2, 1)]
+        );
+    }
+
+    #[test]
+    fn line_calc_empty_start() {
+        let input = "\nab\n\nc\nde\n";
+        let breaks = compute_line_starts(input);
+        let line_col_pairs = (0..input.len())
+            .map(|o| offset_to_line_col(o, &breaks))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            line_col_pairs,
+            [
+                (1, 0),
+                (2, 0),
+                (2, 1),
+                (2, 2),
+                (3, 0),
+                (4, 0),
+                (4, 1),
+                (5, 0),
+                (5, 1),
+                (5, 2)
+            ]
+        );
     }
 }

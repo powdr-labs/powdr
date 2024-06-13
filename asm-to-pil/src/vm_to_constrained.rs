@@ -16,9 +16,9 @@ use powdr_ast::{
         FunctionDefinition, FunctionKind, LambdaExpression, MatchArm, MatchExpression, Number,
         Pattern, PilStatement, PolynomialName, SelectedExpressions, UnaryOperation, UnaryOperator,
     },
-    SourceRef,
 };
 use powdr_number::{BigUint, FieldElement, LargeInt};
+use powdr_parser_util::SourceRef;
 
 use crate::common::{instruction_flag, return_instruction, RETURN_NAME};
 

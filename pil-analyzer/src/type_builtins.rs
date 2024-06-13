@@ -40,10 +40,7 @@ lazy_static! {
         ("std::convert::fe", ("T: FromLiteral", "T -> fe")),
         ("std::convert::int", ("T: FromLiteral", "T -> int")),
         ("std::convert::expr", ("T: FromLiteral", "T -> expr")),
-        (
-            "std::debug::print",
-            ("T: ToString", "T -> std::prelude::Constr[]")
-        ),
+        ("std::debug::print", ("T: ToString", "T -> ()")),
         ("std::field::modulus", ("", "-> int")),
         ("std::prover::challenge", ("", "int, int -> expr")),
         ("std::prover::degree", ("", "-> int")),
