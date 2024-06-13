@@ -330,32 +330,41 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TraitDeclaration<Expression> {
+pub struct TraitDeclaration<E = u64> {
     pub name: String,
     pub type_vars: TypeBounds,
-    pub functions: Vec<TraitFunction<Expression>>,
+    pub functions: Vec<TraitFunction<E>>,
 }
 
-impl<T> Children<T> for TraitDeclaration<T> {
-    fn children(&self) -> Box<dyn Iterator<Item = &T> + '_> {
+impl<R> Children<Expression<R>> for TraitDeclaration<u64> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(empty())
     }
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut T> + '_> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(empty())
+    }
+}
+
+impl<R> Children<Expression<R>> for TraitDeclaration<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         Box::new(empty())
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TraitFunction<Expression> {
+pub struct TraitFunction<E = u64> {
     pub name: String,
-    pub _type: Type<Expression>,
+    pub _type: Type<E>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TraitImplementation<Expression> {
+pub struct TraitImplementation<Expr> {
     pub name: String,
-    pub type_scheme: Option<TraitScheme<Expression>>,
-    pub functions: Vec<NamedExpression<Expression>>,
+    pub type_scheme: Option<TraitScheme<Expr>>,
+    pub functions: Vec<NamedExpression<Expr>>,
 }
 
 impl Children<Expression> for TraitImplementation<Expression> {
@@ -372,9 +381,9 @@ impl Children<Expression> for TraitImplementation<Expression> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct NamedExpression<Expression> {
+pub struct NamedExpression<Expr> {
     pub name: String,
-    pub body: Box<Expression>,
+    pub body: Box<Expr>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]

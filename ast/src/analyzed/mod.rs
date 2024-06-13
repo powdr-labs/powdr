@@ -518,7 +518,7 @@ pub enum FunctionValueDefinition {
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
-    TraitDeclaration(TraitDeclaration<Expression>),
+    TraitDeclaration(TraitDeclaration),
 }
 
 impl Children<Expression> for FunctionValueDefinition {

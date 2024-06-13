@@ -258,7 +258,7 @@ ConstantFixed = {
 GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
     <name:Identifier> => (name, None),
     <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <ty:(":" <Type>)> =>
-        (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), vec![ty] }))
+        (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), ty }))
 }
 
 
@@ -706,10 +706,10 @@ TraitFunction: TraitFunction<Expression> = {
     <name:Identifier> ":" <params:TypeTermList> "->" <value:TypeTermBox> => TraitFunction { name, _type: Type::Function(FunctionType{params, value}) }
 }
 
-GenericTraitName: (String, Option<TypeScheme<Expression>>) = {
+GenericTraitName: (String, Option<TraitScheme<Expression>>) = {
     <name:Identifier> => (name, None),
     <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <types:("<" <TypeTermList> ">")> =>
-        (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), types }))
+        (name, Some(TraitScheme{ vars: vars.unwrap_or_default(), types }))
 }
 
 ImplDeclaration: TraitImplementation<Expression> = {

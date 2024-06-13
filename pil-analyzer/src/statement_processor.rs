@@ -11,7 +11,7 @@ use powdr_ast::parsed::{
     EnumDeclaration, EnumVariant, FunctionDefinition, PilStatement, PolynomialName,
     SelectedExpressions,
 };
-use powdr_ast::parsed::{FunctionKind, LambdaExpression};
+use powdr_ast::parsed::{FunctionKind, LambdaExpression, TraitDeclaration, TraitFunction};
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
 
@@ -181,13 +181,15 @@ where
                 ),
             PilStatement::TraitDeclaration(source, trait_decl) => self.handle_symbol_definition(
                 source,
-                trait_decl.name,
+                trait_decl.name.clone(),
                 SymbolKind::Other(),
                 None,
                 None,
-                Some(FunctionDefinition::TraitDeclaration(trait_impl.clone())),
+                Some(FunctionDefinition::TraitDeclaration(trait_decl.clone())),
             ),
-            PilStatement::TraitImplementation(source, trait_impl) => {} // TODO GZ
+            PilStatement::TraitImplementation(_source, _trait_impl) => {
+                vec![]
+            } // TODO GZ
             _ => self.handle_identity_statement(statement),
         }
     }
@@ -468,6 +470,7 @@ where
 
         if let Some(FunctionDefinition::TraitDeclaration(trait_decl)) = value {
             let trait_decl = self.process_trait_declaration(trait_decl);
+            //let shared_trait_decl = Arc::new(trait_decl.clone());
             let trait_functions = trait_decl.functions.iter().map(|f| {
                 let f_symbol = Symbol {
                     id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
@@ -480,12 +483,14 @@ where
                     kind: SymbolKind::Other(),
                     length: None,
                 };
-                let value = FunctionValueDefinition::TraitFunction(trait_decl.clone(), f.clone());
-                PILItem::Definition(f_symbol, Some(value))
+                //let value = FunctionValueDefinition::TraitDeclaration(trait_decl.clone()); // TODO GZ: TraitConstructor or similar?
+                PILItem::Definition(f_symbol, None) //Some(value))
             });
             return iter::once(PILItem::Definition(
                 symbol,
-                Some(FunctionValueDefinition::TraitDeclaration(trait_decl)),
+                Some(FunctionValueDefinition::TraitDeclaration(
+                    trait_decl.clone(),
+                )),
             ))
             .chain(trait_functions)
             .collect();
@@ -530,8 +535,9 @@ where
                 assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
                 FunctionValueDefinition::Array(expression)
             }
-            FunctionDefinition::TypeDeclaration(_enum_declaration)
-            | FunctionDefinition::TraitDeclaration(_trait_declaration) => unreachable!(),
+            FunctionDefinition::TypeDeclaration(_) | FunctionDefinition::TraitDeclaration(_) => {
+                unreachable!()
+            }
         });
         vec![PILItem::Definition(symbol, value)]
     }
@@ -616,11 +622,15 @@ where
         &self,
         trait_decl: parsed::TraitDeclaration<parsed::Expression>,
     ) -> TraitDeclaration {
-        let type_vars = trait_decl.type_vars.vars().collect();
         let functions = trait_decl
             .functions
             .into_iter()
-            .map(|f| self.process_function_definition(f, &type_vars))
+            .map(|f| TraitFunction {
+                name: f.name,
+                _type: self
+                    .type_processor(&Default::default())
+                    .process_type(f._type),
+            })
             .collect();
         TraitDeclaration {
             name: self.driver.resolve_decl(&trait_decl.name),
