@@ -296,12 +296,12 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         self.stage_is_fresh = false;
     }
 
-    /// Returns the current stage.
+    /// Returns the current stage (index).
     pub fn stage(&self) -> u32 {
         self.stage
     }
 
-    /// Returns the degree (potentially modified through the "capture_stage" builtin.
+    /// Returns the degree (potentially modified through the "capture_stage" builtin).
     pub fn degree(&self) -> Option<u64> {
         self.degree
     }
@@ -466,7 +466,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         self.stage += 1;
         self.stage_is_fresh = true;
 
-        // TODO use degree
         Ok(Value::Array(
             self.extract_new_constraints()
                 .into_iter()
