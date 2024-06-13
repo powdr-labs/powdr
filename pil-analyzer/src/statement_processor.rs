@@ -179,6 +179,15 @@ where
                         enum_declaration.clone(),
                     )),
                 ),
+            PilStatement::TraitDeclaration(source, trait_decl) => self.handle_symbol_definition(
+                source,
+                trait_decl.name,
+                SymbolKind::Other(),
+                None,
+                None,
+                Some(FunctionDefinition::TraitDeclaration(trait_impl.clone())),
+            ),
+            PilStatement::TraitImplementation(source, trait_impl) => {} // TODO GZ
             _ => self.handle_identity_statement(statement),
         }
     }
@@ -457,6 +466,31 @@ where
             .collect();
         }
 
+        if let Some(FunctionDefinition::TraitDeclaration(trait_decl)) = value {
+            let trait_decl = self.process_trait_declaration(trait_decl);
+            let trait_functions = trait_decl.functions.iter().map(|f| {
+                let f_symbol = Symbol {
+                    id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
+                    source: source.clone(),
+                    absolute_name: self
+                        .driver
+                        .resolve_namespaced_decl(&[&name, &f.name])
+                        .to_dotted_string(),
+                    stage: None,
+                    kind: SymbolKind::Other(),
+                    length: None,
+                };
+                let value = FunctionValueDefinition::TraitFunction(trait_decl.clone(), f.clone());
+                PILItem::Definition(f_symbol, Some(value))
+            });
+            return iter::once(PILItem::Definition(
+                symbol,
+                Some(FunctionValueDefinition::TraitDeclaration(trait_decl)),
+            ))
+            .chain(trait_functions)
+            .collect();
+        }
+
         let value = value.map(|v| match v {
             FunctionDefinition::Expression(expr) => {
                 if symbol_kind == SymbolKind::Poly(PolynomialType::Committed) {
@@ -496,7 +530,8 @@ where
                 assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
                 FunctionValueDefinition::Array(expression)
             }
-            FunctionDefinition::TypeDeclaration(_enum_declaration) => unreachable!(),
+            FunctionDefinition::TypeDeclaration(_enum_declaration)
+            | FunctionDefinition::TraitDeclaration(_trait_declaration) => unreachable!(),
         });
         vec![PILItem::Definition(symbol, value)]
     }
@@ -574,6 +609,23 @@ where
                     .map(|ty| self.type_processor(type_vars).process_type(ty))
                     .collect()
             }),
+        }
+    }
+
+    fn process_trait_declaration(
+        &self,
+        trait_decl: parsed::TraitDeclaration<parsed::Expression>,
+    ) -> TraitDeclaration {
+        let type_vars = trait_decl.type_vars.vars().collect();
+        let functions = trait_decl
+            .functions
+            .into_iter()
+            .map(|f| self.process_function_definition(f, &type_vars))
+            .collect();
+        TraitDeclaration {
+            name: self.driver.resolve_decl(&trait_decl.name),
+            type_vars: trait_decl.type_vars,
+            functions,
         }
     }
 }

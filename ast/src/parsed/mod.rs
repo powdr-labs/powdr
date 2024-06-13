@@ -336,11 +336,11 @@ pub struct TraitDeclaration<Expression> {
     pub functions: Vec<TraitFunction<Expression>>,
 }
 
-impl Children<Expression> for TraitDeclaration<Expression> {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+impl<T> Children<T> for TraitDeclaration<T> {
+    fn children(&self) -> Box<dyn Iterator<Item = &T> + '_> {
         Box::new(empty())
     }
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut T> + '_> {
         Box::new(empty())
     }
 }
@@ -1117,6 +1117,8 @@ pub enum FunctionDefinition {
     Expression(Expression),
     /// A type declaration.
     TypeDeclaration(EnumDeclaration<Expression>),
+    /// A trait declaration.
+    TraitDeclaration(TraitDeclaration<Expression>),
 }
 
 impl Children<Expression> for FunctionDefinition {
@@ -1125,6 +1127,7 @@ impl Children<Expression> for FunctionDefinition {
             FunctionDefinition::Array(ae) => ae.children(),
             FunctionDefinition::Expression(e) => Box::new(once(e)),
             FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
+            FunctionDefinition::TraitDeclaration(_trait_declaration) => todo!("trait declaration"),
         }
     }
 
@@ -1133,6 +1136,7 @@ impl Children<Expression> for FunctionDefinition {
             FunctionDefinition::Array(ae) => ae.children_mut(),
             FunctionDefinition::Expression(e) => Box::new(once(e)),
             FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
+            FunctionDefinition::TraitDeclaration(_trait_declaration) => todo!("trait declaration"),
         }
     }
 }

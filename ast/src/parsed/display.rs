@@ -550,7 +550,8 @@ impl Display for FunctionDefinition {
                 )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
-            FunctionDefinition::TypeDeclaration(_) => {
+            FunctionDefinition::TypeDeclaration(_) | FunctionDefinition::TraitDeclaration(_) => {
+                // TODO GZ
                 panic!("Should not use this formatting function.")
             }
         }
@@ -584,19 +585,20 @@ impl Display for TraitFunction<Expression> {
 
 impl Display for TraitImplementation<Expression> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let type_vars = self.type_scheme.as_ref().map_or_else(
-            || Default::default(),
-            |scheme| {
+        let type_vars = self
+            .type_scheme
+            .as_ref()
+            .map_or_else(Default::default, |scheme| {
                 if scheme.vars.is_empty() {
                     Default::default()
                 } else {
                     format!("<{}>", scheme.vars)
                 }
-            },
-        );
-        let trait_vars = self.type_scheme.as_ref().map_or_else(
-            || Default::default(),
-            |scheme| {
+            });
+        let trait_vars = self
+            .type_scheme
+            .as_ref()
+            .map_or_else(Default::default, |scheme| {
                 if scheme.types.is_empty() {
                     Default::default()
                 } else {
@@ -604,8 +606,7 @@ impl Display for TraitImplementation<Expression> {
                         scheme.types.iter().map(|t| format!("{t}")).collect();
                     format!("<{}>", formatted_elements.join(", "))
                 }
-            },
-        );
+            });
 
         write!(
             f,

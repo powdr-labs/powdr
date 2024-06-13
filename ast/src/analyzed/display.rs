@@ -223,7 +223,8 @@ impl Display for FunctionValueDefinition {
                 write!(f, ": {} = {e}", ts.ty)
             }
             FunctionValueDefinition::TypeDeclaration(_)
-            | FunctionValueDefinition::TypeConstructor(_, _) => {
+            | FunctionValueDefinition::TypeConstructor(_, _)
+            | FunctionValueDefinition::TraitDeclaration(_) => {
                 panic!("Should not use this formatting function.")
             }
         }
