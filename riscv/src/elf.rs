@@ -14,7 +14,7 @@ use powdr_asm_utils::data_storage::SingleDataValue;
 use powdr_number::FieldElement;
 use raki::{
     decode::Decode,
-    instruction::{Extensions, Instruction as Ins, OpcodeKind as Op},
+    instruction::{Instruction as Ins, OpcodeKind as Op},
     Isa,
 };
 
@@ -479,15 +479,9 @@ fn load_data_section(mut addr: u32, data: &[u8], data_map: &mut BTreeMap<u32, Da
     }
 }
 
-enum MaybeInstruction {
-    Unimplemented,
-    Valid(Ins),
-}
-
-impl From<Ins> for MaybeInstruction {
-    fn from(insn: Ins) -> Self {
-        MaybeInstruction::Valid(insn)
-    }
+struct MaybeInstruction {
+    address: u32,
+    insn: Option<Ins>,
 }
 
 #[derive(Debug)]
@@ -524,7 +518,6 @@ struct HighLevelInsn {
 }
 
 struct InstructionLifter<'a> {
-    base_addr: u32,
     address_map: &'a AddressMap<'a>,
     referenced_text_addrs: &'a mut BTreeSet<u32>,
 }
@@ -535,9 +528,9 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         insn1: &MaybeInstruction,
         insn2: &MaybeInstruction,
     ) -> Option<HighLevelInsn> {
-        let (insn1, insn2) = match (insn1, insn2) {
-            (MaybeInstruction::Valid(insn1), MaybeInstruction::Valid(insn2)) => (insn1, insn2),
-            _ => return None,
+        let original_address = insn1.address;
+        let (Some(insn1), Some(insn2)) = (&insn1.insn, &insn2.insn) else {
+            return None;
         };
 
         let result = match (insn1, insn2) {
@@ -560,10 +553,10 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 op: "li",
                 args: HighLevelArgs {
                     rd: Some(*rd_lui as u32),
-                    imm: HighLevelImmediate::Value(*hi + *lo),
+                    imm: HighLevelImmediate::Value(hi.wrapping_add(*lo)),
                     ..Default::default()
                 },
-                original_address: self.base_addr,
+                original_address,
             },
             (
                 // All other double instructions we can lift starts with auipc.
@@ -577,7 +570,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 },
                 insn2,
             ) => {
-                let hi = self.base_addr as i32 + *hi;
+                let hi = hi.wrapping_add(original_address as i32);
                 match insn2 {
                     // la rd, symbol
                     Ins {
@@ -587,7 +580,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         imm: Some(lo),
                         ..
                     } if rd_auipc == rd_addi && rd_auipc == rs1_addi => {
-                        let imm_addr = hi + lo;
+                        let imm_addr = hi.wrapping_add(*lo);
                         let imm = if self.address_map.is_in_text_section(imm_addr as u32) {
                             HighLevelImmediate::CodeLabel(imm_addr as u32)
                         } else {
@@ -600,13 +593,13 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                                 imm,
                                 ..Default::default()
                             },
-                            original_address: self.base_addr,
+                            original_address,
                         }
                     }
                     // TODO: uncomment when powdr supports the pseudoinstruction
                     // version of l{b|h|w} and s{b|h|w}. For now, it is better
                     // to just fail here if we encounter this usage of auipc.
-                    /*
+
                     // l{b|h|w} rd, symbol
                     Ins {
                         opc: l_op,
@@ -623,10 +616,10 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                             op: l_op.to_string(),
                             args: HighLevelArgs {
                                 rd: Some(*rd_l as u32),
-                                imm: HighLevelImmediate::Value(hi + lo),
+                                imm: HighLevelImmediate::Value(hi.wrapping_add(*lo)),
                                 ..Default::default()
                             },
-                            original_address: self.base_addr,
+                            original_address,
                         }
                     }
                     // s{b|h|w} rd, symbol, rt
@@ -647,13 +640,13 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                                 // doen't make sense in powdr.
                                 rs1: Some(*rd_auipc as u32),
                                 rs2: Some(*rd as u32),
-                                imm: HighLevelImmediate::Value(hi + lo),
+                                imm: HighLevelImmediate::Value(hi.wrapping_add(*lo)),
                                 ..Default::default()
                             },
-                            original_address: self.base_addr,
+                            original_address,
                         }
                     }
-                    */
+
                     // call offset
                     Ins {
                         opc: Op::JALR,
@@ -665,10 +658,10 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     } if *rd_auipc == 1 => HighLevelInsn {
                         op: "call",
                         args: HighLevelArgs {
-                            imm: HighLevelImmediate::CodeLabel((hi + lo) as u32),
+                            imm: HighLevelImmediate::CodeLabel(hi.wrapping_add(*lo) as u32),
                             ..Default::default()
                         },
-                        original_address: self.base_addr,
+                        original_address,
                     },
                     // tail offset
                     Ins {
@@ -681,18 +674,18 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     } if *rd_auipc == 6 => HighLevelInsn {
                         op: "tail",
                         args: HighLevelArgs {
-                            imm: HighLevelImmediate::CodeLabel((hi + lo) as u32),
+                            imm: HighLevelImmediate::CodeLabel(hi.wrapping_add(*lo) as u32),
                             ..Default::default()
                         },
-                        original_address: self.base_addr,
+                        original_address,
                     },
-                    _ => panic!("auipc at 0x{:08x} could not be joined!", self.base_addr),
+                    _ => panic!("auipc at 0x{:08x} could not be joined!", original_address),
                 }
             }
             _ => return None,
         };
 
-        self.base_addr += [insn1, insn2].map(ins_size).into_iter().sum::<u32>();
+        // TODO: implement here other kinds of RISC-V fusions as optimization.
 
         if let HighLevelImmediate::CodeLabel(addr) = &result.args.imm {
             self.referenced_text_addrs.insert(*addr);
@@ -702,18 +695,19 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
     }
 
     fn map_one(&mut self, insn: MaybeInstruction) -> HighLevelInsn {
-        let MaybeInstruction::Valid(insn) = insn else {
+        let original_address = insn.address;
+        let Some(insn) = insn.insn else {
             return HighLevelInsn {
                 op: "unimp",
                 args: Default::default(),
-                original_address: self.base_addr,
+                original_address,
             };
         };
 
         let imm = match insn.opc {
             // All jump instructions that have the immediate as an address
             Op::JAL | Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
-                let addr = (insn.imm.unwrap() + self.base_addr as i32) as u32;
+                let addr = (insn.imm.unwrap() + original_address as i32) as u32;
                 self.referenced_text_addrs.insert(addr);
 
                 HighLevelImmediate::CodeLabel(addr)
@@ -736,9 +730,9 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             },
         };
 
-        // We don't need to lift the branch instructions to their Z versions,
-        // because powdr's optimizer should be able to figure out the comparison is
-        // against a constant (x0). But if needed, we could do it here...
+        // TODO: lift other instructions to their pseudoinstructions,
+        // because they can have simplified implementations (like the
+        // branch-Z variants and add to x0).
 
         let result = HighLevelInsn {
             op: insn.opc.to_string(),
@@ -748,10 +742,8 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 rs2: insn.rs2.map(|x| x as u32),
                 imm,
             },
-            original_address: self.base_addr,
+            original_address,
         };
-
-        self.base_addr += ins_size(&insn);
 
         result
     }
@@ -767,10 +759,9 @@ fn lift_instructions(
     address_map: &AddressMap,
     referenced_text_addrs: &mut BTreeSet<u32>,
 ) -> Vec<HighLevelInsn> {
-    let instructions = RiscVInstructionIterator::new(data);
+    let instructions = RiscVInstructionIterator::new(base_addr, data);
 
     let pseudo_converter = InstructionLifter {
-        base_addr,
         address_map,
         referenced_text_addrs,
     };
@@ -778,12 +769,14 @@ fn lift_instructions(
 }
 
 struct RiscVInstructionIterator<'a> {
+    curr_address: u32,
     remaining_data: &'a [u8],
 }
 
 impl RiscVInstructionIterator<'_> {
-    fn new(data: &[u8]) -> RiscVInstructionIterator {
+    fn new(base_addr: u32, data: &[u8]) -> RiscVInstructionIterator {
         RiscVInstructionIterator {
+            curr_address: base_addr,
             remaining_data: data,
         }
     }
@@ -799,18 +792,22 @@ impl Iterator for RiscVInstructionIterator<'_> {
 
         // Decide if the next instruction is 32 bits or 16 bits ("C" extension):
         let advance;
-        let insn;
+        let maybe_insn;
         if self.remaining_data[0] & 0b11 == 0b11 {
             // 32 bits
             advance = 4;
-            insn = u32::from_le_bytes(
+            let insn = u32::from_le_bytes(
                 self.remaining_data[0..4]
                     .try_into()
                     .expect("Not enough bytes to complete a 32-bit instruction!"),
             )
             .decode(Isa::Rv32)
-            .expect("Failed to decode instruction.")
-            .into()
+            .expect("Failed to decode instruction.");
+
+            maybe_insn = MaybeInstruction {
+                address: self.curr_address as u32,
+                insn: Some(insn),
+            };
         } else {
             // 16 bits
             advance = 2;
@@ -819,33 +816,29 @@ impl Iterator for RiscVInstructionIterator<'_> {
                     .try_into()
                     .expect("Not enough bytes to complete a 16-bit instruction!"),
             );
-            insn = match bin_instruction.decode(Isa::Rv32) {
-                Ok(c_insn) => to_32bit_equivalent(c_insn).into(),
-                Err(raki::decode::DecodingError::IllegalInstruction) => {
-                    // Although not a real RISC-V instruction, sometimes 0x0000
-                    // is used on purpose as an illegal instruction (it even has
-                    // its own mnemonic "unimp"), so we support it here.
-                    // Otherwise, there is something more fishy going on, and we
-                    // panic.
-                    assert_eq!(bin_instruction, 0, "Illegal instruction found!");
-                    MaybeInstruction::Unimplemented
-                }
-                Err(err) => panic!("Unexpected decoding error: {err:?}"),
+            maybe_insn = MaybeInstruction {
+                address: self.curr_address as u32,
+                insn: match bin_instruction.decode(Isa::Rv32) {
+                    Ok(c_insn) => Some(to_32bit_equivalent(c_insn)),
+                    Err(raki::decode::DecodingError::IllegalInstruction) => {
+                        // Although not a real RISC-V instruction, sometimes 0x0000
+                        // is used on purpose as an illegal instruction (it even has
+                        // its own mnemonic "unimp"), so we support it here.
+                        // Otherwise, there is something more fishy going on, and we
+                        // panic.
+                        assert_eq!(bin_instruction, 0, "Illegal instruction found!");
+                        None
+                    }
+                    Err(err) => panic!("Unexpected decoding error: {err:?}"),
+                },
             };
         }
 
-        // Advance the iterator
-        self.remaining_data = &self.remaining_data[advance..];
+        // Advance the address and the data
+        self.curr_address += advance;
+        self.remaining_data = &self.remaining_data[advance as usize..];
 
-        Some(insn)
-    }
-}
-
-/// Get the size, in bytes, of an instruction.
-fn ins_size(ins: &Ins) -> u32 {
-    match ins.extension {
-        Extensions::C => 2,
-        _ => 4,
+        Some(maybe_insn)
     }
 }
 
