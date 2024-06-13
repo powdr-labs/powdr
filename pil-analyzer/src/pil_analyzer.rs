@@ -31,11 +31,11 @@ use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
 pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     let files = import_all_dependencies(path);
-    analyze::<T>(files)
+    analyze(files)
 }
 
 pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Analyzed<T> {
-    analyze::<T>(vec![pil_file])
+    analyze(vec![pil_file])
 }
 
 pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
@@ -52,7 +52,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     analyzer.process(files);
     analyzer.side_effect_check();
     analyzer.type_check();
-    analyzer.condense::<T>()
+    analyzer.condense()
 }
 
 #[derive(Default)]
@@ -329,7 +329,7 @@ impl PILAnalyzer {
     }
 
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
-        condenser::condense::<T>(
+        condenser::condense(
             self.polynomial_degree,
             self.definitions,
             self.public_declarations,

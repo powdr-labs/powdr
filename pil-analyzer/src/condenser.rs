@@ -178,8 +178,8 @@ pub struct IdentityWithoutID<Expr> {
     pub source: SourceRef,
     /// For a simple polynomial identity, the selector contains
     /// the actual expression (see expression_for_poly_id).
-    pub left: powdr_ast::analyzed::SelectedExpressions<Expr>,
-    pub right: powdr_ast::analyzed::SelectedExpressions<Expr>,
+    pub left: SelectedExpressions<Expr>,
+    pub right: SelectedExpressions<Expr>,
 }
 
 impl<Expr> IdentityWithoutID<Expr> {
@@ -428,31 +428,70 @@ fn to_constraint<T: FieldElement>(
             )
         }
         Value::Enum(kind @ "Lookup" | kind @ "Permutation", Some(fields)) => {
-            assert_eq!(fields.len(), 4);
+            assert_eq!(fields.len(), 2);
             let kind = if *kind == "Lookup" {
                 IdentityKind::Plookup
             } else {
                 IdentityKind::Permutation
             };
+
+            let (sel_from, sel_to) = if let Value::Tuple(t) = fields[0].as_ref() {
+                assert_eq!(t.len(), 2);
+                (&t[0], &t[1])
+            } else {
+                unreachable!()
+            };
+
+            let (from, to): (Vec<_>, Vec<_>) = if let Value::Array(a) = fields[1].as_ref() {
+                a.iter()
+                    .map(|pair| {
+                        if let Value::Tuple(pair) = pair.as_ref() {
+                            assert_eq!(pair.len(), 2);
+                            (pair[0].as_ref(), pair[1].as_ref())
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                    .unzip()
+            } else {
+                unreachable!()
+            };
+
             IdentityWithoutID {
                 kind,
                 source,
-                left: to_selected_exprs(&fields[0], &fields[1]),
-                right: to_selected_exprs(&fields[2], &fields[3]),
+                left: to_selected_exprs(sel_from, from),
+                right: to_selected_exprs(sel_to, to),
             }
         }
         Value::Enum("Connection", Some(fields)) => {
-            assert_eq!(fields.len(), 2);
+            assert_eq!(fields.len(), 1);
+
+            let (from, to): (Vec<_>, Vec<_>) = if let Value::Array(a) = fields[0].as_ref() {
+                a.iter()
+                    .map(|pair| {
+                        if let Value::Tuple(pair) = pair.as_ref() {
+                            assert_eq!(pair.len(), 2);
+                            (pair[0].as_ref(), pair[1].as_ref())
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                    .unzip()
+            } else {
+                unreachable!()
+            };
+
             IdentityWithoutID {
                 kind: IdentityKind::Connect,
                 source,
                 left: powdr_ast::analyzed::SelectedExpressions {
                     selector: None,
-                    expressions: to_vec_expr(&fields[0]),
+                    expressions: from.into_iter().map(to_expr).collect(),
                 },
                 right: powdr_ast::analyzed::SelectedExpressions {
                     selector: None,
-                    expressions: to_vec_expr(&fields[1]),
+                    expressions: to.into_iter().map(to_expr).collect(),
                 },
             }
         }
@@ -462,11 +501,11 @@ fn to_constraint<T: FieldElement>(
 
 fn to_selected_exprs<'a, T: Clone>(
     selector: &Value<'a, T>,
-    exprs: &Value<'a, T>,
-) -> powdr_ast::analyzed::SelectedExpressions<AlgebraicExpression<T>> {
-    powdr_ast::analyzed::SelectedExpressions {
+    exprs: Vec<&Value<'a, T>>,
+) -> SelectedExpressions<AlgebraicExpression<T>> {
+    SelectedExpressions {
         selector: to_option_expr(selector),
-        expressions: to_vec_expr(exprs),
+        expressions: exprs.into_iter().map(to_expr).collect(),
     }
 }
 
@@ -477,13 +516,6 @@ fn to_option_expr<T: Clone>(value: &Value<'_, T>) -> Option<AlgebraicExpression<
             assert_eq!(fields.len(), 1);
             Some(to_expr(&fields[0]))
         }
-        _ => panic!(),
-    }
-}
-
-fn to_vec_expr<T: Clone>(value: &Value<'_, T>) -> Vec<AlgebraicExpression<T>> {
-    match value {
-        Value::Array(items) => items.iter().map(|item| to_expr(item)).collect(),
         _ => panic!(),
     }
 }
