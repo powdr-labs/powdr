@@ -243,8 +243,8 @@ macro_rules! powdr_field {
                 v.try_into().ok()
             }
 
-            fn from_hex(s: &str) -> Result<Self, ()> {
-                BigUint::from_str_radix(s, 16).map_err(|_| ())?.try_into()
+            fn from_hex(s: &str) -> Self {
+                BigUint::from_str_radix(s, 16).unwrap().try_into().unwrap()
             }
         }
 
