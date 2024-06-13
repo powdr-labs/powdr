@@ -822,24 +822,17 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     }
                     (UnaryOperator::LogicalNot, Value::Bool(b)) => Value::Bool(!b).into(),
                     (UnaryOperator::Minus, Value::Integer(n)) => Value::Integer(-n).into(),
-                    (UnaryOperator::Next, Value::Expression(e)) => {
-                        let AlgebraicExpression::Reference(reference) = e else {
-                            return Err(EvalError::TypeError(format!(
-                                "Expected column for \"'\" operator, but got: {e}"
-                            )));
-                        };
-
-                        if reference.next {
-                            return Err(EvalError::TypeError(format!(
-                                "Double application of \"'\" on: {reference}"
-                            )));
-                        }
-                        Value::from(AlgebraicExpression::Reference(AlgebraicReference {
-                            next: true,
-                            ..reference.clone()
-                        }))
-                        .into()
-                    }
+                    (UnaryOperator::Next, Value::Expression(e)) => e
+                        .clone()
+                        .next()
+                        .map(|next| Value::from(next).into())
+                        // a reference already had its `next` flag on
+                        .map_err(|reference| {
+                            EvalError::TypeError(format!(
+                                "Double application of \"'\" on: {}",
+                                reference.name
+                            ))
+                        })?,
                     (op, Value::Expression(e)) => Value::from(AlgebraicExpression::new_unary(
                         (*op).try_into().unwrap(),
                         e.clone(),

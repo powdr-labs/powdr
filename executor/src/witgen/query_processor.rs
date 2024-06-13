@@ -148,6 +148,17 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     }
 
     fn eval_challenge(&self, challenge: &Challenge) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Ok(Value::FieldElement(self.fixed_data.challenges[&challenge.id]).into())
+        let challenge = *self
+            .fixed_data
+            .challenges
+            .get(&challenge.id)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Challenge {} not found! Available challenges: {:?}",
+                    challenge.id,
+                    self.fixed_data.challenges.keys()
+                )
+            });
+        Ok(Value::FieldElement(challenge).into())
     }
 }

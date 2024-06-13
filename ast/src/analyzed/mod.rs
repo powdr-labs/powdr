@@ -955,6 +955,33 @@ impl<T> AlgebraicExpression<T> {
             }
         }
     }
+
+    /// Apply `'` to the expression, returning a new expression
+    /// For example, `x + 1` becomes `x' + 1`
+    ///
+    /// # Errors
+    ///
+    /// If the `next` flag is already active on an `AlgebraicReference`, it is returned as an error
+    pub fn next(self) -> Result<Self, AlgebraicReference> {
+        use AlgebraicExpression::*;
+
+        match self {
+            Reference(r) => {
+                if r.next {
+                    Err(r)
+                } else {
+                    Ok(Self::Reference(AlgebraicReference { next: true, ..r }))
+                }
+            }
+            e @ PublicReference(..) | e @ Challenge(..) | e @ Number(..) => Ok(e),
+            BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                Ok(Self::new_binary(left.next()?, op, right.next()?))
+            }
+            UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+                Ok(Self::new_unary(op, expr.next()?))
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
