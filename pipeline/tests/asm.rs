@@ -229,8 +229,8 @@ fn vm_to_vm_to_vm() {
 }
 
 #[test]
-fn vm_to_vm_multiple_links() {
-    let f = "asm/vm_to_vm_multiple_links.asm";
+fn vm_to_block_multiple_links() {
+    let f = "asm/permutations/vm_to_block_multiple_links.asm";
     let i = [];
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));

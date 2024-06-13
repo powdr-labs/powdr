@@ -580,6 +580,10 @@ pub struct CallableRef {
     pub params: CallableParams,
 }
 
+/// RHS of instruction link definitions are parsed as `Expression`s which should conform to:
+/// `OUT = submachine.operation(IN1, IN2, ..., INn)`
+/// or
+/// `(OUT1, OUT2, ..., OUTn) = submachine.operation(IN1, IN2, ..., INn)`
 impl TryFrom<Expression> for CallableRef {
     type Error = String;
 
