@@ -29,7 +29,7 @@ impl<'a, T> Plonky3Prover<'a, T> {
 }
 
 impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
-    pub fn prove_ast(
+    pub fn prove(
         &self,
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
@@ -39,7 +39,8 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
         let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
-        let publics = circuit.instance_column();
+
+        let publics = vec![];
 
         let trace = circuit.preprocessed_trace().unwrap();
 
@@ -95,12 +96,13 @@ mod tests {
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
 
-        let proof = Plonky3Prover::new(&pil, &fixed_cols).prove_ast(&witness, witness_callback);
+        let proof = Plonky3Prover::new(&pil, &fixed_cols).prove(&witness, witness_callback);
 
         assert!(proof.is_ok());
     }
 
     #[test]
+    #[should_panic = "not implemented"]
     fn publics() {
         let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
         run_test_goldilocks(content);

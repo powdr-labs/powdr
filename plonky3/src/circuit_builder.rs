@@ -2,7 +2,7 @@
 //! Since plonky3 does not have fixed columns, we encode them as witness columns.
 //! The encoded plonky3 columns are chosen to be the powdr witness columns followed by the powdr fixed columns
 
-use std::collections::BTreeMap;
+use std::any::TypeId;
 
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::AbstractField;
@@ -12,7 +12,7 @@ use powdr_ast::analyzed::{
     PolynomialType,
 };
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 
 pub type Val = p3_goldilocks::Goldilocks;
 
@@ -21,40 +21,33 @@ pub(crate) struct PowdrCircuit<'a, T> {
     analyzed: &'a Analyzed<T>,
     /// The number of committed polynomials, computed from `analyzed` and cached
     commitment_count: usize,
+    /// The number of constant polynomials, computed from `analyzed` and cached
+    constant_count: usize,
     /// The value of the fixed columns
     fixed: &'a [(String, Vec<T>)],
     /// The value of the witness columns, if set
     witness: Option<&'a [(String, Vec<T>)]>,
-    /// Column name and index of the public cells
-    publics: Vec<(String, usize)>,
     /// Callback to augment the witness in the later stages
     _witgen_callback: Option<WitgenCallback<T>>,
 }
 
 pub fn cast_to_goldilocks<T: FieldElement>(v: T) -> Val {
+    assert_eq!(TypeId::of::<T>(), TypeId::of::<GoldilocksField>());
     Val::from_canonical_u64(v.to_integer().try_into_u64().unwrap())
 }
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub(crate) fn new(analyzed: &'a Analyzed<T>, fixed: &'a [(String, Vec<T>)]) -> Self {
-        let mut publics = analyzed
-            .public_declarations
-            .values()
-            .map(|public_declaration| {
-                let witness_name = public_declaration.referenced_poly_name();
-                let witness_offset = public_declaration.index as usize;
-                (witness_name, witness_offset)
-            })
-            .collect::<Vec<_>>();
-        // Sort, so that the order is deterministic
-        publics.sort();
+        if !analyzed.public_declarations.is_empty() {
+            unimplemented!("Public declarations are not supported in Plonky3");
+        }
 
         Self {
             analyzed,
             commitment_count: analyzed.commitment_count(),
+            constant_count: analyzed.constant_count(),
             fixed,
             witness: None,
-            publics,
             _witgen_callback: None,
         }
     }
@@ -77,22 +70,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         }
     }
 
-    /// Computes the instance column from the witness
-    pub(crate) fn instance_column(&self) -> Vec<Val> {
-        let witness = self
-            .witness
-            .as_ref()
-            .expect("Witness needs to be set")
-            .iter()
-            .map(|(name, values)| (name, values))
-            .collect::<BTreeMap<_, _>>();
-
-        self.publics
-            .iter()
-            .map(|(col_name, i)| cast_to_goldilocks(witness.get(col_name).unwrap()[*i]))
-            .collect()
-    }
-
     /// Conversion to plonky3 expression
     fn to_plonky3_expr<AB: AirBuilder<F = Val>>(
         &self,
@@ -112,8 +89,20 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
                 // witness columns indexes are unchanged, fixed ones are offset by `commitment_count`
                 let index = match poly_id.ptype {
-                    PolynomialType::Committed => r.poly_id.id as usize,
-                    PolynomialType::Constant => self.commitment_count + r.poly_id.id as usize,
+                    PolynomialType::Committed => {
+                        assert!(
+                            r.poly_id.id < self.commitment_count as u64,
+                            "Plonky3 expects `poly_id` to be contiguous"
+                        );
+                        r.poly_id.id as usize
+                    }
+                    PolynomialType::Constant => {
+                        assert!(
+                            r.poly_id.id < self.constant_count as u64,
+                            "Plonky3 expects `poly_id` to be contiguous"
+                        );
+                        self.commitment_count + r.poly_id.id as usize
+                    }
                     PolynomialType::Intermediate => {
                         unreachable!("intermediate polynomials should have been inlined")
                     }
@@ -155,7 +144,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
-        self.commitment_count + self.analyzed.constant_count()
+        self.commitment_count + self.constant_count
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
@@ -194,7 +183,9 @@ impl<'a, T: FieldElement, AB: AirBuilder<F = Val>> Air<AB> for PowdrCircuit<'a, 
                     builder.assert_zero(left);
                 }
                 IdentityKind::Plookup => unimplemented!("Plonky3 does not support plookup"),
-                IdentityKind::Permutation => unimplemented!("Plonky does not support permutations"),
+                IdentityKind::Permutation => {
+                    unimplemented!("Plonky3 does not support permutations")
+                }
                 IdentityKind::Connect => unimplemented!("Plonky3 does not support connections"),
             }
         }

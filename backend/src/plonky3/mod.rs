@@ -48,6 +48,6 @@ impl<'a, T: FieldElement> Backend<'a, T> for Plonky3Prover<'a, T> {
             return Err(Error::NoAggregationAvailable);
         }
 
-        Ok(self.prove_ast(witness, witgen_callback)?)
+        Ok(self.prove(witness, witgen_callback)?)
     }
 }

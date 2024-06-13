@@ -91,7 +91,6 @@ fn fibonacci() {
     verify_pil(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
-    test_plonky3(f, Default::default());
 }
 
 #[test]
@@ -238,6 +237,7 @@ fn halo_without_lookup() {
     verify_pil(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
+    test_plonky3(f, Default::default());
 }
 
 #[test]
