@@ -49,6 +49,7 @@ mod vm_processor;
 
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 static UNUSED_IDENTITY_ID: u64 = 1234567;
+static IDENTITY_LOOKUP_CACHE: u64 = UNUSED_IDENTITY_ID + 1;
 
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
@@ -239,6 +240,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .iter()
             .map(|identity| (identity.id, format!("{identity}")))
             .chain([(UNUSED_IDENTITY_ID, "other".to_string())])
+            .chain([(IDENTITY_LOOKUP_CACHE, "lookup cache creation".to_string())])
             .collect();
         reset_and_print_profile_summary_identity(name_to_id);
 
