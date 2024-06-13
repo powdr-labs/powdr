@@ -481,13 +481,18 @@ mod test {
             ("x + y + z", "x + y + z"),
             ("x * y * z", "x * y * z"),
             ("x ** 2", "x ** 2"),
+            ("x ** 2 * y", "x ** 2 * y"),
+            ("x * y ** 2", "x * y ** 2"),
             // Remove unneeded
             ("(-x) + y * (z)", "-x + y * z"),
             ("(x * y) * z", "x * y * z"),
             ("(x - (y + z))", "x - (y + z)"),
             ("(x ** 2)", "x ** 2"),
+            ("(x ** 2) * y", "x ** 2 * y"),
+            ("x * (y ** 2)", "x * y ** 2"),
             // Observe associativity
             ("x * (y * z)", "x * (y * z)"),
+            ("x + (y + z)", "x + (y + z)"),
             // Don't remove needed
             ("(x + y) * z", "(x + y) * z"),
             ("((x + y) * z)", "(x + y) * z"),
