@@ -721,6 +721,9 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
 
                 HighLevelImmediate::Value(0)
             }
+            // LUI is special because the decoder already shifts the immediate,
+            // but the code gen expects it unshifted, so we have to undo.
+            Op::LUI => HighLevelImmediate::Value(insn.imm.unwrap() >> 12),
             // We currently don't support auipc by itself
             Op::AUIPC => panic!("auipc could not be joined!"),
             // All other instructions, which have the immediate as a value
@@ -732,7 +735,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
 
         // TODO: lift other instructions to their pseudoinstructions,
         // because they can have simplified implementations (like the
-        // branch-Z variants and add to x0).
+        // branch-zero variants and add to x0).
 
         let result = HighLevelInsn {
             op: insn.opc.to_string(),
