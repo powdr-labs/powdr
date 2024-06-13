@@ -224,7 +224,9 @@ impl Display for FunctionValueDefinition {
             }
             FunctionValueDefinition::TypeDeclaration(_)
             | FunctionValueDefinition::TypeConstructor(_, _)
-            | FunctionValueDefinition::TraitDeclaration(_) => {
+            | FunctionValueDefinition::TraitDeclaration(_)
+            | FunctionValueDefinition::TraitFunction(_, _) => {
+                //TODO GZ check this
                 panic!("Should not use this formatting function.")
             }
         }

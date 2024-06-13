@@ -470,21 +470,24 @@ where
 
         if let Some(FunctionDefinition::TraitDeclaration(trait_decl)) = value {
             let trait_decl = self.process_trait_declaration(trait_decl);
-            //let shared_trait_decl = Arc::new(trait_decl.clone());
-            let trait_functions = trait_decl.functions.iter().map(|f| {
+            let shared_trait_decl = Arc::new(trait_decl.clone());
+            let trait_functions = trait_decl.functions.iter().map(|function| {
                 let f_symbol = Symbol {
                     id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
                     source: source.clone(),
                     absolute_name: self
                         .driver
-                        .resolve_namespaced_decl(&[&name, &f.name])
+                        .resolve_namespaced_decl(&[&name, &function.name])
                         .to_dotted_string(),
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
                 };
-                //let value = FunctionValueDefinition::TraitDeclaration(trait_decl.clone()); // TODO GZ: TraitConstructor or similar?
-                PILItem::Definition(f_symbol, None) //Some(value))
+                let value = FunctionValueDefinition::TraitFunction(
+                    shared_trait_decl.clone(),
+                    function.clone(),
+                );
+                PILItem::Definition(f_symbol, Some(value))
             });
             return iter::once(PILItem::Definition(
                 symbol,
@@ -622,14 +625,13 @@ where
         &self,
         trait_decl: parsed::TraitDeclaration<parsed::Expression>,
     ) -> TraitDeclaration {
+        let type_vars = trait_decl.type_vars.vars().collect();
         let functions = trait_decl
             .functions
             .into_iter()
             .map(|f| TraitFunction {
                 name: f.name,
-                _type: self
-                    .type_processor(&Default::default())
-                    .process_type(f._type),
+                _type: self.type_processor(&type_vars).process_type(f._type),
             })
             .collect();
         TraitDeclaration {

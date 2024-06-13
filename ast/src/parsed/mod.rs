@@ -360,6 +360,15 @@ pub struct TraitFunction<E = u64> {
     pub _type: Type<E>,
 }
 
+impl<R> Children<Expression<R>> for TraitFunction<u64> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(empty())
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TraitImplementation<Expr> {
     pub name: String,
