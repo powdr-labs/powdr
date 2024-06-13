@@ -653,7 +653,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         },
                         original_address: self.base_addr,
                     },
-                    _ => panic!("auipc could not be joined!"),
+                    _ => panic!("auipc at 0x{:08x} could not be joined!", self.base_addr),
                 }
             }
             _ => return None,

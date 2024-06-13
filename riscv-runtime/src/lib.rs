@@ -58,8 +58,8 @@ __runtime_start:
 "
 );
 
-// TODO: ideally, the above code would use `la` instead of `lui` + `addi`, but
-// for some reason rustc automatically expands it to `auipc %pcrel_hi(...)`
-// + `addi %pcrel_lo(...)`, which our asm converter doesn't support on multiple
-// levels. We can't use `li` either, because rustc doesn't like `li` with
-// symbols.
+// TODO: ideally, the above code would use `lla` instead of `lui` + `addi`, but
+// for some reason rustc automatically expands it instead of just passing along
+// the `lla` pseudoinstruction, and our asm converter doesn't support the
+// expanded form on multiple levels. Using `lui` + `addi` also makes it
+// impossible to link in PIE mode (which we also don't support, anyway)...
