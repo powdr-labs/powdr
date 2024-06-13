@@ -599,7 +599,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     // TODO: uncomment when powdr supports the pseudoinstruction
                     // version of l{b|h|w} and s{b|h|w}. For now, it is better
                     // to just fail here if we encounter this usage of auipc.
-
+                    /*
                     // l{b|h|w} rd, symbol
                     Ins {
                         opc: l_op,
@@ -646,7 +646,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                             original_address,
                         }
                     }
-
+                    */
                     // call offset
                     Ins {
                         opc: Op::JALR,
