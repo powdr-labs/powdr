@@ -49,11 +49,9 @@ global_asm!(
 __runtime_start:
     .option push
     .option norelax
-    lui gp, %hi(__global_pointer$)
-    addi gp, gp, %lo(__global_pointer$)
+    lla gp, __global_pointer$
     .option pop
-    lui sp, %hi(__powdr_stack_start)
-    addi sp, sp, %lo(__powdr_stack_start)
+    lla sp, __powdr_stack_start
     tail main
 "
 );

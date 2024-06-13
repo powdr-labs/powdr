@@ -1,13 +1,17 @@
 use std::{
     borrow::Cow,
-    collections::{btree_map::Entry, BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs,
 };
 
 use goblin::{
     elf::sym::STT_OBJECT,
-    elf::{program_header, Elf},
-    elf64::{header::ET_DYN, sym::STT_FUNC},
+    elf::{
+        header::{EI_CLASS, ELFCLASS32, EM_RISCV, ET_DYN},
+        program_header,
+        sym::STT_FUNC,
+        Elf,
+    },
 };
 use itertools::{Either, Itertools};
 use powdr_asm_utils::data_storage::SingleDataValue;
@@ -47,8 +51,17 @@ fn load_elf(file_name: &str) -> ElfProgram {
 
     // Assert this in an 32-bit ELF file.
     assert_eq!(
-        elf.header.e_ident[4], 1,
+        elf.header.e_ident[EI_CLASS], ELFCLASS32 as u8,
         "Only 32-bit ELF files are supported!"
+    );
+
+    // Assert this in a PIE file.
+    assert_eq!(elf.header.e_type, ET_DYN, "Only PIE files are supported!");
+
+    // Assert this is a RISC-V ELF file.
+    assert_eq!(
+        elf.header.e_machine, EM_RISCV,
+        "Only RISC-V ELF files are supported!"
     );
 
     // Map of addresses into memory sections, so we can know what address belong
@@ -99,62 +112,27 @@ fn load_elf(file_name: &str) -> ElfProgram {
     let symbol_table = SymbolTable::new(&elf);
 
     // All the references to code address have been lifted into labels in the
-    // instructions, but not the data sections. Need to do it for data.
-    if elf.header.e_type == ET_DYN {
-        // In PIE files, that is just a matter of reading the dynamic relocation
-        // table.
-        for r in elf.dynrelas.iter() {
-            let addr = r.r_offset as u32;
-            if address_map.is_in_data_section(addr) {
-                // We only support the R_RISCV_RELATIVE relocation type:
-                assert_eq!(r.r_type, 3, "Unsupported relocation type!");
+    // instructions, but not the data sections. Need to do it for data. In PIE
+    // files, that is just a matter of reading the dynamic relocation table.
+    for r in elf.dynrelas.iter() {
+        let addr = r.r_offset as u32;
+        if address_map.is_in_data_section(addr) {
+            // We only support the R_RISCV_RELATIVE relocation type:
+            assert_eq!(r.r_type, 3, "Unsupported relocation type!");
 
-                let original_addr = r.r_addend.unwrap() as u32;
+            let original_addr = r.r_addend.unwrap() as u32;
 
-                if address_map.is_in_text_section(original_addr) {
-                    data_map.insert(addr, Data::TextLabel(original_addr));
+            if address_map.is_in_text_section(original_addr) {
+                data_map.insert(addr, Data::TextLabel(original_addr));
 
-                    // We also need to add the referenced address to the list of text
-                    // addresses, so we can generate the label.
-                    referenced_text_addrs.insert(original_addr);
-                } else {
-                    data_map.insert(addr, Data::Value(original_addr));
-                }
+                // We also need to add the referenced address to the list of text
+                // addresses, so we can generate the label.
+                referenced_text_addrs.insert(original_addr);
             } else {
-                // We just assume the lifting of the instructions has already handled non-data relocation.
+                data_map.insert(addr, Data::Value(original_addr));
             }
-        }
-    } else {
-        // In non-PIE files, we need to use the linking relocation table.
-        for r in elf.shdr_relocs.iter().flat_map(|(_, relocs)| relocs.iter()) {
-            let addr = r.r_offset as u32;
-            if address_map.is_in_data_section(addr) {
-                // We only support the R_RISCV_32 relocation type:
-                assert_eq!(r.r_type, 1, "Unsupported relocation type!");
-
-                let Entry::Occupied(mut entry) = data_map.entry(r.r_offset as u32) else {
-                    panic!("Unexpected 0 in relocated data entry!");
-                };
-
-                let Data::Value(original_addr) = *entry.get() else {
-                    panic!("Related entry already replaced with a label!");
-                };
-
-                if address_map.is_in_text_section(original_addr) {
-                    entry.insert(Data::TextLabel(original_addr));
-
-                    // We also need to add the referenced address to the list of text
-                    // addresses, so we can generate the label.
-                    referenced_text_addrs.insert(original_addr);
-
-                    println!(
-                        "Relocated {addr:08x} to {}",
-                        symbol_table.get(original_addr)
-                    );
-                }
-            } else {
-                // We just assume the lifting of the instructions has already handled non-data relocation.
-            }
+        } else {
+            unimplemented!("We assumed all dynamic relocations were data relocations!");
         }
     }
 
@@ -679,7 +657,10 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         },
                         original_address,
                     },
-                    _ => panic!("auipc at 0x{:08x} could not be joined!", original_address),
+                    _ => {
+                        // We assume that the auipc is not referencing a text address.
+                        return None;
+                    }
                 }
             }
             _ => return None,
@@ -724,8 +705,28 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             // LUI is special because the decoder already shifts the immediate,
             // but the code gen expects it unshifted, so we have to undo.
             Op::LUI => HighLevelImmediate::Value(insn.imm.unwrap() >> 12),
-            // We currently don't support auipc by itself
-            Op::AUIPC => panic!("auipc could not be joined!"),
+            // We don't support AUIPC, but it is trivial to transform one to an
+            // LI. We hope this is not referencing a text address.
+            //
+            // TODO: find a better solution to this. Maybe handle this in the
+            // two-by-two mapping, and assert this is is not referencing a text
+            // address. Then we would need to deal with the fact that LLVM
+            // sometimes decides not to use the same register in the AUIPC and
+            // the ADDI, which opens the possibility of reuse of the output of
+            // AUIPC (but I have never seen it happening).
+            Op::AUIPC => {
+                return HighLevelInsn {
+                    op: "li",
+                    args: HighLevelArgs {
+                        rd: insn.rd.map(|x| x as u32),
+                        imm: HighLevelImmediate::Value(
+                            insn.imm.unwrap().wrapping_add(original_address as i32),
+                        ),
+                        ..Default::default()
+                    },
+                    original_address,
+                };
+            }
             // All other instructions, which have the immediate as a value
             _ => match insn.imm {
                 Some(imm) => HighLevelImmediate::Value(imm as i32),
