@@ -653,14 +653,14 @@ fn memory(with_bootloader: bool) -> String {
 pub trait InstructionArgs {
     type Error: fmt::Display;
 
-    fn l(&self) -> Result<String, Self::Error>;
+    fn l(&self) -> Result<impl AsRef<str>, Self::Error>;
     fn r(&self) -> Result<Register, Self::Error>;
     fn rri(&self) -> Result<(Register, Register, u32), Self::Error>;
     fn rrr(&self) -> Result<(Register, Register, Register), Self::Error>;
     fn ri(&self) -> Result<(Register, u32), Self::Error>;
     fn rr(&self) -> Result<(Register, Register), Self::Error>;
-    fn rrl(&self) -> Result<(Register, Register, String), Self::Error>;
-    fn rl(&self) -> Result<(Register, String), Self::Error>;
+    fn rrl(&self) -> Result<(Register, Register, impl AsRef<str>), Self::Error>;
+    fn rl(&self) -> Result<(Register, impl AsRef<str>), Self::Error>;
     fn rro(&self) -> Result<(Register, Register, u32), Self::Error>;
     fn empty(&self) -> Result<(), Self::Error>;
 }
@@ -702,6 +702,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             // relative values. But since we work on a higher abstraction level,
             // for us they are the same thing.
             if let Ok((rd, label)) = args.rl() {
+                let label = escape_label(label.as_ref());
                 only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
             } else {
                 let (rd, imm) = args.ri()?;
@@ -947,19 +948,23 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         // branching
         "beq" => {
             let (r1, r2, label) = args.rrl()?;
+            let label = escape_label(label.as_ref());
             vec![format!("branch_if_zero {r1} - {r2}, {label};")]
         }
         "beqz" => {
             let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
             vec![format!("branch_if_zero {r1}, {label};")]
         }
         "bgeu" => {
             let (r1, r2, label) = args.rrl()?;
+            let label = escape_label(label.as_ref());
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![format!("branch_if_positive {r1} - {r2} + 1, {label};")]
         }
         "bgez" => {
             let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
             vec![
                 format!("tmp1 <== to_signed({r1});"),
                 format!("branch_if_positive tmp1 + 1, {label};"),
@@ -967,10 +972,12 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         }
         "bltu" => {
             let (r1, r2, label) = args.rrl()?;
+            let label = escape_label(label.as_ref());
             vec![format!("branch_if_positive {r2} - {r1}, {label};")]
         }
         "blt" => {
             let (r1, r2, label) = args.rrl()?;
+            let label = escape_label(label.as_ref());
             // Branch if r1 < r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![
@@ -981,6 +988,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         }
         "bge" => {
             let (r1, r2, label) = args.rrl()?;
+            let label = escape_label(label.as_ref());
             // Branch if r1 >= r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![
@@ -992,11 +1000,13 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         "bltz" => {
             // branch if 2**31 <= r1 < 2**32
             let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
             vec![format!("branch_if_positive {r1} - 2**31 + 1, {label};")]
         }
         "blez" => {
             // branch less or equal zero
             let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
             vec![
                 format!("tmp1 <== to_signed({r1});"),
                 format!("branch_if_positive -tmp1 + 1, {label};"),
@@ -1005,6 +1015,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         "bgtz" => {
             // branch if 0 < r1 < 2**31
             let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
             vec![
                 format!("tmp1 <== to_signed({r1});"),
                 format!("branch_if_positive tmp1, {label};"),
@@ -1012,16 +1023,19 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         }
         "bne" => {
             let (r1, r2, label) = args.rrl()?;
+            let label = escape_label(label.as_ref());
             vec![format!("branch_if_nonzero {r1} - {r2}, {label};")]
         }
         "bnez" => {
             let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
             vec![format!("branch_if_nonzero {r1}, {label};")]
         }
 
         // jump and call
         "j" | "tail" => {
             let label = args.l()?;
+            let label = escape_label(label.as_ref());
             vec![format!("tmp1 <== jump({label});",)]
         }
         "jr" => {
@@ -1030,9 +1044,11 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         }
         "jal" => {
             if let Ok(label) = args.l() {
+                let label = escape_label(label.as_ref());
                 vec![format!("x1 <== jump({label});")]
             } else {
                 let (rd, label) = args.rl()?;
+                let label = escape_label(label.as_ref());
                 let statement = if rd.is_zero() {
                     format!("tmp1 <== jump({label});")
                 } else {
@@ -1054,6 +1070,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         }],
         "call" => {
             let label = args.l()?;
+            let label = escape_label(label.as_ref());
             vec![format!("x1 <== jump({label});")]
         }
         "ecall" => {
@@ -1134,38 +1151,38 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             )
         }
         "sw" => {
-            let (r1, r2, off) = args.rro()?;
-            vec![format!("mstore {r2} + {off}, {r1};")]
+            let (r2, r1, off) = args.rro()?;
+            vec![format!("mstore {r1} + {off}, {r2};")]
         }
         "sh" => {
             // store half word (two bytes)
             // TODO this code assumes it is at least aligned on
             // a two-byte boundary
 
-            let (r1, r2, off) = args.rro()?;
+            let (r2, r1, off) = args.rro()?;
             vec![
-                format!("tmp1, tmp2 <== mload({r2} + {off});"),
+                format!("tmp1, tmp2 <== mload({r1} + {off});"),
                 "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
                 "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
                 "tmp1 <== and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <== and({r1}, 0xffff);"),
+                format!("tmp3 <== and({r2}, 0xffff);"),
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
-                format!("mstore {r2} + {off} - tmp2, tmp1;"),
+                format!("mstore {r1} + {off} - tmp2, tmp1;"),
             ]
         }
         "sb" => {
             // store byte
-            let (r1, r2, off) = args.rro()?;
+            let (r2, r1, off) = args.rro()?;
             vec![
-                format!("tmp1, tmp2 <== mload({r2} + {off});"),
+                format!("tmp1, tmp2 <== mload({r1} + {off});"),
                 "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
                 "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
                 "tmp1 <== and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <== and({r1}, 0xff);"),
+                format!("tmp3 <== and({r2}, 0xff);"),
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
-                format!("mstore {r2} + {off} - tmp2, tmp1;"),
+                format!("mstore {r1} + {off} - tmp2, tmp1;"),
             ]
         }
         "fence" | "nop" => vec![],

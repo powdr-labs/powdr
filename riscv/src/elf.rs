@@ -1,13 +1,13 @@
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet, HashMap},
     fs,
 };
 
 use goblin::{
     elf::sym::STT_OBJECT,
     elf::{program_header, Elf},
-    elf64::sym::STT_FUNC,
+    elf64::{header::ET_DYN, sym::STT_FUNC},
 };
 use itertools::{Either, Itertools};
 use powdr_asm_utils::data_storage::SingleDataValue;
@@ -96,35 +96,72 @@ fn load_elf(file_name: &str) -> ElfProgram {
         .flatten()
         .collect::<Vec<_>>();
 
+    let symbol_table = SymbolTable::new(&elf);
+
     // All the references to code address have been lifted into labels in the
-    // instructions, but not the data sections. Luckily, that is just a matter of
-    // reading the dynamic relocation table.
-    for r in elf.dynrelas.iter() {
-        let addr = r.r_offset as u32;
-        if address_map.is_in_data_section(addr) {
-            // We only support the R_RISCV_RELATIVE relocation type:
-            assert_eq!(r.r_type, 3, "Unsupported relocation type!");
+    // instructions, but not the data sections. Need to do it for data.
+    if elf.header.e_type == ET_DYN {
+        // In PIE files, that is just a matter of reading the dynamic relocation
+        // table.
+        for r in elf.dynrelas.iter() {
+            let addr = r.r_offset as u32;
+            if address_map.is_in_data_section(addr) {
+                // We only support the R_RISCV_RELATIVE relocation type:
+                assert_eq!(r.r_type, 3, "Unsupported relocation type!");
 
-            let original_addr = r.r_addend.unwrap() as u32;
+                let original_addr = r.r_addend.unwrap() as u32;
 
-            if address_map.is_in_text_section(original_addr) {
-                data_map.insert(addr, Data::TextLabel(original_addr));
+                if address_map.is_in_text_section(original_addr) {
+                    data_map.insert(addr, Data::TextLabel(original_addr));
 
-                // We also need to add the referenced address to the list of text
-                // addresses, so we can generate the label.
-                referenced_text_addrs.insert(original_addr);
+                    // We also need to add the referenced address to the list of text
+                    // addresses, so we can generate the label.
+                    referenced_text_addrs.insert(original_addr);
+                } else {
+                    data_map.insert(addr, Data::Value(original_addr));
+                }
             } else {
-                data_map.insert(addr, Data::Value(original_addr));
+                // We just assume the lifting of the instructions has already handled non-data relocation.
             }
-        } else {
-            // We just assume the lifting of the instructions has already handled non-data relocation.
+        }
+    } else {
+        // In non-PIE files, we need to use the linking relocation table.
+        for r in elf.shdr_relocs.iter().flat_map(|(_, relocs)| relocs.iter()) {
+            let addr = r.r_offset as u32;
+            if address_map.is_in_data_section(addr) {
+                // We only support the R_RISCV_32 relocation type:
+                assert_eq!(r.r_type, 1, "Unsupported relocation type!");
+
+                let Entry::Occupied(mut entry) = data_map.entry(r.r_offset as u32) else {
+                    panic!("Unexpected 0 in relocated data entry!");
+                };
+
+                let Data::Value(original_addr) = *entry.get() else {
+                    panic!("Related entry already replaced with a label!");
+                };
+
+                if address_map.is_in_text_section(original_addr) {
+                    entry.insert(Data::TextLabel(original_addr));
+
+                    // We also need to add the referenced address to the list of text
+                    // addresses, so we can generate the label.
+                    referenced_text_addrs.insert(original_addr);
+
+                    println!(
+                        "Relocated {addr:08x} to {}",
+                        symbol_table.get(original_addr)
+                    );
+                }
+            } else {
+                // We just assume the lifting of the instructions has already handled non-data relocation.
+            }
         }
     }
 
     assert_eq!(elf.dynrels.len(), 0, "Unsupported relocation type!");
 
     ElfProgram {
-        symbol_table: SymbolTable::new(&elf),
+        symbol_table,
         data_map,
         text_labels: referenced_text_addrs,
         instructions: lifted_text_sections,
@@ -143,10 +180,6 @@ impl SymbolTable {
                 continue;
             }
             result.insert(sym.st_value as u32, elf.strtab[sym.st_name].to_string());
-        }
-
-        for (addr, name) in result.iter() {
-            println!("### {:08x}: {}", addr, name);
         }
 
         Self(result)
@@ -364,12 +397,12 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 rs1: Some(rs1),
                 rs2: Some(rs2),
             } => Ok((
-                Register::new(*rs1 as u8),
                 Register::new(*rs2 as u8),
+                Register::new(*rs1 as u8),
                 *imm as u32,
             )),
             _ => Err(format!(
-                "Expected: {{rd, rs1 | rs1, rs2}}, imm, got {:?}",
+                "Expected: {{rd, rs2 | rs1, rs1}}, imm, got {:?}",
                 self.args
             )),
         }
@@ -527,7 +560,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 op: "li",
                 args: HighLevelArgs {
                     rd: Some(*rd_lui as u32),
-                    imm: HighLevelImmediate::Value(*hi | *lo),
+                    imm: HighLevelImmediate::Value(*hi + *lo),
                     ..Default::default()
                 },
                 original_address: self.base_addr,

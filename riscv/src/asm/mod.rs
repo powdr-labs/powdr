@@ -8,7 +8,7 @@ use powdr_asm_utils::{
     data_storage::store_data_objects,
     parser::parse_asm,
     reachability::{self, symbols_in_args},
-    utils::{argument_to_escaped_symbol, argument_to_number, expression_to_number},
+    utils::{argument_to_number, argument_to_symbol, expression_to_number},
     Architecture,
 };
 use powdr_number::FieldElement;
@@ -62,10 +62,10 @@ impl RiscVProgram for AsmProgram {
 impl InstructionArgs for &[Argument] {
     type Error = &'static str;
 
-    fn l(&self) -> Result<String, &'static str> {
+    fn l(&self) -> Result<&str, &'static str> {
         const ERR: &str = "Expected: label";
         match self {
-            [l] => Ok(argument_to_escaped_symbol(l).ok_or(ERR)?),
+            [l] => Ok(argument_to_symbol(l).ok_or(ERR)?),
             _ => Err(ERR),
         }
     }
@@ -121,20 +121,20 @@ impl InstructionArgs for &[Argument] {
         }
     }
 
-    fn rrl(&self) -> Result<(Register, Register, String), &'static str> {
+    fn rrl(&self) -> Result<(Register, Register, &str), &'static str> {
         const ERR: &str = "Expected: register, register, label";
         match self {
             [Argument::Register(r1), Argument::Register(r2), l] => {
-                Ok((*r1, *r2, argument_to_escaped_symbol(l).ok_or(ERR)?))
+                Ok((*r1, *r2, argument_to_symbol(l).ok_or(ERR)?))
             }
             _ => Err(ERR),
         }
     }
 
-    fn rl(&self) -> Result<(Register, String), &'static str> {
+    fn rl(&self) -> Result<(Register, &str), &'static str> {
         const ERR: &str = "Expected: register, label";
         match self {
-            [Argument::Register(r1), l] => Ok((*r1, argument_to_escaped_symbol(l).ok_or(ERR)?)),
+            [Argument::Register(r1), l] => Ok((*r1, argument_to_symbol(l).ok_or(ERR)?)),
             _ => Err(ERR),
         }
     }
