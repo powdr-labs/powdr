@@ -5,6 +5,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use powdr_number::FieldElement;
+
+use crate::witgen::{FixedData, IDENTITY_LOOKUP_CACHE, UNUSED_IDENTITY_ID};
+
 #[derive(PartialEq, Debug, Copy, Clone)]
 enum Event {
     Start,
@@ -64,7 +68,16 @@ pub fn reset_and_print_profile_summary() {
     });
     reset_and_print_profile_summary_impl(&EVENT_LOG, id_to_name)
 }
-pub fn reset_and_print_profile_summary_identity(id_to_name: BTreeMap<u64, String>) {
+pub fn reset_and_print_profile_summary_identity<T: FieldElement>(fixed_data: &FixedData<T>) {
+    let id_to_name = fixed_data
+        .analyzed
+        .identities
+        .iter()
+        .map(|identity| (identity.id, format!("{identity}")))
+        .chain([(UNUSED_IDENTITY_ID, "other".to_string())])
+        .chain([(IDENTITY_LOOKUP_CACHE, "lookup cache creation".to_string())])
+        .collect();
+
     reset_and_print_profile_summary_impl(&EVENT_LOG_BY_IDENTITY, id_to_name)
 }
 

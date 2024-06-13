@@ -10,6 +10,7 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
+use crate::witgen::machines::profiling::reset_and_print_profile_summary_identity;
 use crate::witgen::IncompleteCause;
 
 use super::data_structures::finalizable_data::FinalizableData;
@@ -151,6 +152,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             if looping_period.is_none() && row_index % 100 == 0 && row_index > 0 {
                 looping_period = self.rows_are_repeating(row_index);
                 if let Some(p) = looping_period {
+                    reset_and_print_profile_summary_identity(self.fixed_data);
+
                     log::log!(
                         loop_detection_log_level,
                         "Found loop with period {p} starting at row {row_index}"

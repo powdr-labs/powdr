@@ -236,13 +236,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         record_end(OUTER_CODE_NAME);
         record_end_identity(UNUSED_IDENTITY_ID);
         reset_and_print_profile_summary();
-        let name_to_id = identities
-            .iter()
-            .map(|identity| (identity.id, format!("{identity}")))
-            .chain([(UNUSED_IDENTITY_ID, "other".to_string())])
-            .chain([(IDENTITY_LOOKUP_CACHE, "lookup cache creation".to_string())])
-            .collect();
-        reset_and_print_profile_summary_identity(name_to_id);
+        reset_and_print_profile_summary_identity(&fixed);
 
         // Order columns according to the order of declaration.
         let witness_cols = self
