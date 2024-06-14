@@ -1,4 +1,7 @@
+#![no_main]
 #![no_std]
+
+extern crate powdr_riscv_runtime;
 
 // This is stored as a data with the ".zero" directive,
 // but in the variant where it repeats something else than zero.

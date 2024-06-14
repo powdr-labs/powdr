@@ -1,3 +1,4 @@
+#![no_main]
 #![no_std]
 
 extern crate alloc;
@@ -13,9 +14,7 @@ pub fn main() {
     let len = read_u32(1) as usize;
     // Read the numbers from the prover and store them
     // in a vector.
-    let data: Vec<_> = (2..(len + 2))
-        .map(|idx| read_u32(idx as u32))
-        .collect();
+    let data: Vec<_> = (2..(len + 2)).map(|idx| read_u32(idx as u32)).collect();
     // Compute the sum.
     let sum: u32 = data.iter().sum();
     // Check that our sum matches the prover's.

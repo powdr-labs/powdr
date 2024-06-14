@@ -1,6 +1,8 @@
+#![no_main]
 #![no_std]
 
 extern crate alloc;
+extern crate powdr_riscv_runtime;
 use alloc::vec::Vec;
 
 const N: usize = 20000;
