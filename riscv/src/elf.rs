@@ -100,7 +100,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
     // Keep a list of referenced text addresses, so we can generate the labels.
     let mut referenced_text_addrs = BTreeSet::from([elf.entry as u32]);
 
-    // Load the text addresses from text sections and all the data sections.
+    // Find the text addresses referenced from text sections and load the data sections.
     let mut data_map = BTreeMap::new();
     for (&addr, &p) in address_map.0.iter() {
         let section_data = &file_buffer[p.p_offset as usize..(p.p_offset + p.p_filesz) as usize];
@@ -119,8 +119,8 @@ fn load_elf(file_name: &Path) -> ElfProgram {
         }
     }
 
-    // Lift all the references to text addresses in data sections, and collect
-    // them. How to do this depends on whether the file is PIE or not.
+    // Lift all the references to text addresses in data sections, and add them
+    // to the set. How to do this depends on whether the file is PIE or not.
     (if elf.header.e_type == ET_DYN {
         pie_relocate_data_sections
     } else {
