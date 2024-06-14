@@ -174,3 +174,32 @@ pub fn constructed_constraints() {
 "#;
     assert_eq!(formatted, expected);
 }
+
+#[test]
+fn next() {
+    let input = r#"namespace N(16);
+        col witness x;
+        col witness y;
+        x * y = 1';
+        x * y = (1 + x)';
+    "#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace N(16);
+    col witness x;
+    col witness y;
+    (N.x * N.y) = 1;
+    (N.x * N.y) = (1 + N.x');
+"#;
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+#[should_panic = "Double application of \\\"'\\\" on: N.x"]
+fn double_next() {
+    let input = r#"namespace N(16);
+        col witness x;
+        col witness y;
+        x * y = (1 + x')';
+    "#;
+    analyze_string::<GoldilocksField>(input).to_string();
+}

@@ -843,6 +843,33 @@ impl<T> AlgebraicExpression<T> {
             AlgebraicExpression::UnaryOperation(_, e) => Box::new([e.as_mut()].into_iter()),
         }
     }
+
+    /// Apply `'` to the expression, returning a new expression
+    /// For example, `x + 1` becomes `x' + 1`
+    ///
+    /// # Errors
+    ///
+    /// If the `next` flag is already active on an `AlgebraicReference`, it is returned as an error
+    pub fn next(self) -> Result<Self, AlgebraicReference> {
+        use AlgebraicExpression::*;
+
+        match self {
+            Reference(r) => {
+                if r.next {
+                    Err(r)
+                } else {
+                    Ok(Self::Reference(AlgebraicReference { next: true, ..r }))
+                }
+            }
+            e @ PublicReference(..) | e @ Challenge(..) | e @ Number(..) => Ok(e),
+            BinaryOperation(left, op, right) => Ok(BinaryOperation(
+                Box::new(left.next()?),
+                op,
+                Box::new(right.next()?),
+            )),
+            UnaryOperation(op, e) => Ok(UnaryOperation(op, Box::new(e.next()?))),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
