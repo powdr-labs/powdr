@@ -29,18 +29,20 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         }
     }
 
-    pub fn process_query(&mut self, rows: &RowPair<T>, poly_id: &PolyID) -> EvalResult<'a, T> {
+    pub fn process_query(
+        &mut self,
+        rows: &RowPair<T>,
+        poly_id: &PolyID,
+    ) -> Option<EvalResult<'a, T>> {
         let column = &self.fixed_data.witness_cols[poly_id];
 
-        if let Some(query) = column.query.as_ref() {
-            if rows.get_value(&column.poly).is_none() {
-                let r = self.process_witness_query(query, &column.poly, rows);
-
-                return r;
-            }
+        if rows.get_value(&column.poly).is_none() {
+            // Document that query must be present.
+            Some(self.process_witness_query(column.query.unwrap(), &column.poly, rows))
+        } else {
+            // Either no query or the value is already known.
+            None
         }
-        // Either no query or the value is already known.
-        Ok(EvalValue::complete(vec![]))
     }
 
     fn process_witness_query(
