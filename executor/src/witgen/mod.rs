@@ -50,6 +50,11 @@ mod vm_processor;
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 static UNUSED_IDENTITY_ID: u64 = 1234567;
 static IDENTITY_LOOKUP_CACHE: u64 = UNUSED_IDENTITY_ID + 1;
+static IDENTITY_SNIPPET_ID: u64 = UNUSED_IDENTITY_ID + 2;
+static IDENTITY_FINALIZE_ID: u64 = UNUSED_IDENTITY_ID + 3;
+static PROCESS_OUTER_QUERY_ID: u64 = UNUSED_IDENTITY_ID + 4;
+static PROCESS_PROVER_QUERIES_ID: u64 = UNUSED_IDENTITY_ID + 5;
+static IDENTITY_SNIPPET2_ID: u64 = UNUSED_IDENTITY_ID + 6;
 
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}

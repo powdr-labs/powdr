@@ -229,7 +229,9 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Pattern::CatchAll => Some(vec![]),
             Pattern::Number(n) => match v.as_ref() {
                 Value::Integer(x) if x == n => Some(vec![]),
-                Value::FieldElement(x) if BigInt::from(x.to_arbitrary_integer()) == *n => {
+                Value::FieldElement(x) if 
+                // TODO avoid this conversion
+                BigInt::from(x.to_arbitrary_integer()) == *n => {
                     Some(vec![])
                 }
                 _ => None,

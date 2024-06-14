@@ -1,3 +1,6 @@
+use std::borrow::BorrowMut;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use powdr_ast::analyzed::Challenge;
@@ -6,6 +9,8 @@ use powdr_ast::parsed::types::Type;
 use powdr_number::{BigInt, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
 
+use super::machines::profiling::{record_end_identity, record_start_identity};
+use super::IDENTITY_SNIPPET_ID;
 use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
 
 /// Computes value updates that result from a query.
@@ -29,7 +34,9 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
 
         if let Some(query) = column.query.as_ref() {
             if rows.get_value(&column.poly).is_none() {
-                return self.process_witness_query(query, &column.poly, rows);
+                let r = self.process_witness_query(query, &column.poly, rows);
+
+                return r;
             }
         }
         // Either no query or the value is already known.
@@ -42,9 +49,41 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         poly: &'a AlgebraicReference,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
+        record_start_identity(IDENTITY_SNIPPET_ID);
+
+        // TODO
+        // the X_free_value is the main query that is evaluated and it is done
+        // twice per row.
+        // One second of execution time for 6 seconds.
+        // Number of rows: 39200
+        // => 12.7 microseconds per evaluation.
+        // Comparison: Constraint for X takes 52 milliseconds in total, meaning
+        // 1.3 microseconds per evaluation.
+
+        // But this function only has 2% of witgen time.
+
+        // let poly_id = poly.poly_id;
+        // COUNT_PER_POLY.with(|c| {
+        //     c.borrow_mut()
+        //         .entry(poly_id)
+        //         .and_modify(|c| {
+        //             *c += 1;
+        //             let r: u64 = rows.current_row_index.into();
+
+        //             if *c % 1000 == 0 {
+        //                 println!(
+        //                     "Count for {poly}: {c}, calls per row: {}",
+        //                     (*c as f64) / (r as f64)
+        //                 );
+        //             }
+        //         })
+        //         .or_default();
+        // });
         let query_str = match self.interpolate_query(query, rows) {
             Ok(query) => query,
             Err(e) => {
+                record_end_identity(IDENTITY_SNIPPET_ID);
+
                 return match e {
                     EvalError::DataNotAvailable => {
                         Ok(EvalValue::incomplete(IncompleteCause::DataNotYetAvailable))
@@ -57,7 +96,8 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
                 };
             }
         };
-        Ok(
+
+        let r = Ok(
             if let Some(value) =
                 (self.query_callback)(&query_str).map_err(super::EvalError::ProverQueryError)?
             {
@@ -68,7 +108,10 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
                     poly.name.to_string(),
                 ))
             },
-        )
+        );
+        record_end_identity(IDENTITY_SNIPPET_ID);
+
+        r
     }
 
     fn interpolate_query(
@@ -83,9 +126,16 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             fixed_data: self.fixed_data,
             rows,
         };
+        // From here to the end it's only 88 ms / 1.7%
         let fun = evaluator::evaluate(query, &mut symbols)?;
-        evaluator::evaluate_function_call(fun, arguments, &mut symbols).map(|v| v.to_string())
+        let r =
+            evaluator::evaluate_function_call(fun, arguments, &mut symbols).map(|v| v.to_string());
+        r
     }
+}
+
+thread_local! {
+    static COUNT_PER_POLY: RefCell<BTreeMap<PolyID, usize>> = const { RefCell::new(BTreeMap::new()) };
 }
 
 #[derive(Clone)]

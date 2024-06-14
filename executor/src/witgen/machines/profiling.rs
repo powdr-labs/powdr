@@ -7,7 +7,10 @@ use std::{
 
 use powdr_number::FieldElement;
 
-use crate::witgen::{FixedData, IDENTITY_LOOKUP_CACHE, UNUSED_IDENTITY_ID};
+use crate::witgen::{
+    FixedData, IDENTITY_FINALIZE_ID, IDENTITY_LOOKUP_CACHE, IDENTITY_SNIPPET2_ID,
+    IDENTITY_SNIPPET_ID, PROCESS_OUTER_QUERY_ID, PROCESS_PROVER_QUERIES_ID, UNUSED_IDENTITY_ID,
+};
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 enum Event {
@@ -76,6 +79,14 @@ pub fn reset_and_print_profile_summary_identity<T: FieldElement>(fixed_data: &Fi
         .map(|identity| (identity.id, format!("{identity}")))
         .chain([(UNUSED_IDENTITY_ID, "other".to_string())])
         .chain([(IDENTITY_LOOKUP_CACHE, "lookup cache creation".to_string())])
+        .chain([(IDENTITY_SNIPPET_ID, "snippet1".to_string())])
+        .chain([(IDENTITY_SNIPPET2_ID, "snippet2".to_string())])
+        .chain([(IDENTITY_FINALIZE_ID, "finalize".to_string())])
+        .chain([(PROCESS_OUTER_QUERY_ID, "process outer query".to_string())])
+        .chain([(
+            PROCESS_PROVER_QUERIES_ID,
+            "process prover queries".to_string(),
+        )])
         .collect();
 
     reset_and_print_profile_summary_impl(&EVENT_LOG_BY_IDENTITY, id_to_name)
@@ -93,6 +104,7 @@ fn reset_and_print_profile_summary_impl(
 
         // Aggregate time spent in each machine.
         let mut time_by_machine = BTreeMap::new();
+        let mut machine_invocations = BTreeMap::new();
         assert_eq!(event_log[0].0, Event::Start);
         let mut current_time = event_log[0].2;
         let mut call_stack = vec![event_log[0].1];
@@ -116,6 +128,10 @@ fn reset_and_print_profile_summary_impl(
             match event {
                 Event::Start => {
                     assert!(current_machine_id != id, "Unexpected recursive call!");
+                    machine_invocations
+                        .entry(id)
+                        .and_modify(|c| *c += 1)
+                        .or_insert(1);
                     call_stack.push(id);
                 }
                 Event::End => {
@@ -146,9 +162,10 @@ fn reset_and_print_profile_summary_impl(
             }
             let percentage = (duration.as_secs_f64() / total_time.as_secs_f64()) * 100.0;
             log::debug!(
-                "  {:>5.5}% ({:>8.5?}): {}",
+                "  {:>5.5}% ({:>8.5?}), {} runs: {}",
                 percentage,
                 duration,
+                machine_invocations.get(id).cloned().unwrap_or_default(),
                 id_to_name[&id].to_string().chars().take(200).collect::<String>()
             );
         }

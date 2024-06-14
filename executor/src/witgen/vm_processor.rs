@@ -10,14 +10,22 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
-use crate::witgen::machines::profiling::reset_and_print_profile_summary_identity;
-use crate::witgen::IncompleteCause;
+use crate::witgen::machines::profiling::{
+    record_end_identity, record_start_identity, reset_and_print_profile_summary_identity,
+};
+use crate::witgen::{
+    IncompleteCause, IDENTITY_FINALIZE_ID, IDENTITY_LOOKUP_CACHE, IDENTITY_SNIPPET_ID,
+    UNUSED_IDENTITY_ID,
+};
 
 use super::data_structures::finalizable_data::FinalizableData;
 use super::processor::{OuterQuery, Processor};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
-use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
+use super::{
+    Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback,
+    PROCESS_PROVER_QUERIES_ID,
+};
 
 /// Maximal period checked during loop detection.
 const MAX_PERIOD: usize = 4;
@@ -137,9 +145,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             if (row_index + 1) % 10000 == 0 {
                 // Periodically make sure most rows are finalized.
                 // Row 0 and the last MAX_PERIOD rows might be needed later, so they are not finalized.
+                record_start_identity(IDENTITY_FINALIZE_ID);
                 let finalize_end = row_index as usize - MAX_PERIOD;
                 self.processor.finalize_range(finalize_start..finalize_end);
                 finalize_start = finalize_end;
+                record_end_identity(IDENTITY_FINALIZE_ID);
             }
 
             if row_index >= rows_left - 2 {
@@ -152,12 +162,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             if looping_period.is_none() && row_index % 100 == 0 && row_index > 0 {
                 looping_period = self.rows_are_repeating(row_index);
                 if let Some(p) = looping_period {
-                    reset_and_print_profile_summary_identity(self.fixed_data);
-
                     log::log!(
                         loop_detection_log_level,
                         "Found loop with period {p} starting at row {row_index}"
                     );
+                    record_end_identity(UNUSED_IDENTITY_ID);
+                    reset_and_print_profile_summary_identity(self.fixed_data);
+                    record_start_identity(UNUSED_IDENTITY_ID);
                 }
             }
             if let Some(period) = looping_period {
@@ -251,6 +262,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             "===== Starting to process row: {}",
             row_index + self.row_offset
         );
+
+        // TOOD this function still has 20% of the "other" time.
 
         log::trace!("  Going over all identities until no more progress is made");
         // First, go over identities that don't reference the next row,
@@ -351,15 +364,18 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             }
 
             progress |= self.processor.set_inputs_if_unset(row_index);
-            progress |= self
-                .processor
-                .process_queries(row_index)
-                .map_err(|e| vec![e])?;
+            record_start_identity(PROCESS_PROVER_QUERIES_ID);
+            progress |= self.processor.process_queries(row_index).map_err(|e| {
+                record_end_identity(PROCESS_PROVER_QUERIES_ID);
+                vec![e]
+            })?;
+            record_end_identity(PROCESS_PROVER_QUERIES_ID);
 
             if !progress {
                 break;
             }
         }
+
         Ok(outer_assignments)
     }
 

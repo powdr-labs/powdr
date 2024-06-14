@@ -19,6 +19,7 @@ use super::{
     rows::{CellValue, Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
     Constraints, EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
+use super::{IDENTITY_SNIPPET2_ID, IDENTITY_SNIPPET_ID, PROCESS_OUTER_QUERY_ID};
 
 type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
 
@@ -181,13 +182,18 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             self.fixed_data,
             UnknownStrategy::Unknown,
         );
+        record_start_identity(IDENTITY_SNIPPET2_ID);
+
         let mut updates = EvalValue::complete(vec![]);
         for poly_id in self.fixed_data.witness_cols.keys() {
             if self.is_relevant_witness[&poly_id] {
                 updates.combine(query_processor.process_query(&row_pair, &poly_id)?);
             }
         }
-        Ok(self.apply_updates(row_index, &updates, || "queries".to_string()))
+        let r = Ok(self.apply_updates(row_index, &updates, || "queries".to_string()));
+        record_end_identity(IDENTITY_SNIPPET2_ID);
+
+        r
     }
 
     /// Given a row and identity index, computes any updates and applies them.
@@ -243,6 +249,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         if unknown_strategy == UnknownStrategy::Zero {
             assert!(updates.constraints.is_empty());
             assert!(!updates.side_effect);
+            record_end_identity(identity.id);
             return Ok(IdentityResult {
                 progress: false,
                 is_complete: false,
@@ -262,6 +269,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         &mut self,
         row_index: usize,
     ) -> Result<(bool, Constraints<&'a AlgebraicReference, T>), EvalError<T>> {
+        record_start_identity(PROCESS_OUTER_QUERY_ID);
         let mut progress = false;
         let right = &self.outer_query.as_ref().unwrap().connecting_identity.right;
         if let Some(selector) = right.selector.as_ref() {
@@ -311,6 +319,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             })
             .collect::<Vec<_>>();
 
+        record_end_identity(PROCESS_OUTER_QUERY_ID);
         Ok((progress, outer_assignments))
     }
 
