@@ -74,7 +74,7 @@ pub fn compile_rust<T: FieldElement>(
     )
 }
 
-fn compile_program<F: FieldElement, P>(
+fn compile_program<P>(
     original_file_name: &str,
     input_program: P,
     output_dir: &Path,
@@ -116,7 +116,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
     runtime: &Runtime,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
-    compile_program::<T, BTreeMap<String, String>>(
+    compile_program::<BTreeMap<String, String>>(
         original_file_name,
         riscv_asm_files,
         output_dir,
@@ -160,7 +160,7 @@ pub fn compile_riscv_elf<T: FieldElement>(
     runtime: &Runtime,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
-    compile_program::<T, &Path>(
+    compile_program::<&Path>(
         original_file_name,
         input_file,
         output_dir,
@@ -185,7 +185,7 @@ pub fn compile_rust_crate_to_riscv(
     // which object file to use, and once to perform the actual building.
 
     // Real build run.
-    let build_status = build_cargo_command(input_dir, &target_dir, false)
+    let build_status = build_cargo_command(input_dir, target_dir, false)
         .status()
         .unwrap();
     assert!(build_status.success());
