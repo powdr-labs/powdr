@@ -97,36 +97,54 @@ fn load_elf(file_name: &Path) -> ElfProgram {
         .filter_map(|r| (r.r_type == R_RISCV_HI20).then(|| r.r_offset as u32))
         .collect();
 
-    // We simply extract all the text and data sections. There is no need to
-    // perform reachability search, because we trust the linker to have done
-    // that already.
-    //
-    // TODO: maybe exclude the section mapping the ELF header itself? But with
-    // VADCOP, unused memory is practically free.
-    let mut lifted_text_sections = Vec::new();
-    let mut data_map = BTreeMap::new();
-
     // Keep a list of referenced text addresses, so we can generate the labels.
     let mut referenced_text_addrs = BTreeSet::from([elf.entry as u32]);
 
-    // Actually load the sections.
+    // Load the text addresses from text sections and all the data sections.
+    let mut data_map = BTreeMap::new();
     for (&addr, &p) in address_map.0.iter() {
         let section_data = &file_buffer[p.p_offset as usize..(p.p_offset + p.p_filesz) as usize];
 
         // Test if executable
         if p.p_flags & 1 == 1 {
-            let insns = lift_instructions(
+            search_text_addrs(
                 addr,
                 section_data,
                 &address_map,
                 &text_rellocs_set,
                 &mut referenced_text_addrs,
             );
-            if !insns.is_empty() {
-                lifted_text_sections.push(insns);
-            }
         } else {
             load_data_section(addr, section_data, &mut data_map);
+        }
+    }
+
+    // Lift all the references to text addresses in data sections, and collect
+    // them. How to do this depends on whether the file is PIE or not.
+    (if elf.header.e_type == ET_DYN {
+        pie_relocate_data_sections
+    } else {
+        static_relocate_data_sections
+    })(
+        &elf,
+        &address_map,
+        &mut data_map,
+        &mut referenced_text_addrs,
+    );
+
+    // Load all the text sections.
+    let mut lifted_text_sections = Vec::new();
+    for (&addr, &p) in address_map.0.iter().filter(|(_, p)| p.p_flags & 1 == 1) {
+        let section_data = &file_buffer[p.p_offset as usize..(p.p_offset + p.p_filesz) as usize];
+        let insns = lift_instructions(
+            addr,
+            section_data,
+            &address_map,
+            &text_rellocs_set,
+            &mut referenced_text_addrs,
+        );
+        if !insns.is_empty() {
+            lifted_text_sections.push(insns);
         }
     }
 
@@ -139,21 +157,6 @@ fn load_elf(file_name: &Path) -> ElfProgram {
 
     let symbol_table = SymbolTable::new(&elf);
 
-    // All the references to code address have been lifted into labels in the
-    // instructions, but not the data sections. Need to do it for data.
-    (if elf.header.e_type == ET_DYN {
-        pie_relocate_data_section
-    } else {
-        static_relocate_data_section
-    })(
-        &elf,
-        &address_map,
-        &mut data_map,
-        &mut referenced_text_addrs,
-    );
-
-    assert_eq!(elf.dynrels.len(), 0, "Unsupported relocation type!");
-
     ElfProgram {
         symbol_table,
         data_map,
@@ -163,7 +166,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
     }
 }
 
-fn pie_relocate_data_section(
+fn pie_relocate_data_sections(
     elf: &Elf,
     address_map: &AddressMap,
     data_map: &mut BTreeMap<u32, Data>,
@@ -191,9 +194,11 @@ fn pie_relocate_data_section(
             data_map.insert(addr, Data::Value(original_addr));
         }
     }
+
+    assert_eq!(elf.dynrels.len(), 0, "Unsupported relocation type!");
 }
 
-fn static_relocate_data_section(
+fn static_relocate_data_sections(
     elf: &Elf,
     address_map: &AddressMap,
     data_map: &mut BTreeMap<u32, Data>,
@@ -585,10 +590,15 @@ struct HighLevelInsn {
     args: HighLevelArgs,
 }
 
+enum ReadOrWrite<'a, T> {
+    Read(&'a T),
+    Write(&'a mut T),
+}
+
 struct InstructionLifter<'a> {
     rellocs_set: &'a BTreeSet<u32>,
     address_map: &'a AddressMap<'a>,
-    referenced_text_addrs: &'a mut BTreeSet<u32>,
+    referenced_text_addrs: ReadOrWrite<'a, BTreeSet<u32>>,
 }
 
 impl InstructionLifter<'_> {
@@ -598,6 +608,7 @@ impl InstructionLifter<'_> {
         lo: i32,
         rd_ui: usize,
         rd_addi: usize,
+        insn2_addr: u32,
         is_address: bool,
     ) -> Option<(&'static str, HighLevelArgs)> {
         let immediate = hi.wrapping_add(lo);
@@ -614,11 +625,13 @@ impl InstructionLifter<'_> {
             // and it has worked so far.
             ("la", HighLevelImmediate::CodeLabel(immediate as u32))
         } else if rd_ui == rd_addi {
-            // TODO: to be continued...
-            // We can only join the two instructions if there is no jump to the second,
-            // and to figure that out, we need to do two passes:
-            // - one to get all the targets of jumps (plus data relocations),
-            // - and another to actually lift the instructions.
+            if let ReadOrWrite::Read(referenced_text_addrs) = &self.referenced_text_addrs {
+                if referenced_text_addrs.contains(&insn2_addr) {
+                    // We can't join the two instructions because there is a
+                    // jump to the second. Let each one be handled separately.
+                    return None;
+                }
+            }
             ("li", HighLevelImmediate::Value(immediate))
         } else {
             // This pair of instructions leaks rd_ui. Since this is not a
@@ -645,6 +658,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         insn2: &MaybeInstruction,
     ) -> Option<HighLevelInsn> {
         let original_address = insn1.address;
+        let insn2_addr = insn2.address;
         let (Some(insn1), Some(insn2)) = (&insn1.insn, &insn2.insn) else {
             return None;
         };
@@ -668,11 +682,11 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             ) if rd_lui == rs1_addi => {
                 // Sometimes, in non-PIE code, this pair of instructions is used
                 // to load an address into a register. We must check if this is
-                // the case, and if the address is in the text section, so we
-                // must load it from a label.
+                // the case, and if the address points to the text section, so
+                // we must load it from a label.
                 let is_address = self.rellocs_set.contains(&original_address);
                 let (op, args) =
-                    self.composed_immediate(*hi, *lo, *rd_lui, *rd_addi, is_address)?;
+                    self.composed_immediate(*hi, *lo, *rd_lui, *rd_addi, insn2_addr, is_address)?;
 
                 HighLevelInsn {
                     op,
@@ -703,8 +717,8 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         ..
                     } if rd_auipc == rs1_addi => {
                         // AUIPC obviously always refer to an address.
-                        let (op, args) =
-                            self.composed_immediate(hi, *lo, *rd_auipc, *rd_addi, true)?;
+                        let (op, args) = self
+                            .composed_immediate(hi, *lo, *rd_auipc, *rd_addi, insn2_addr, true)?;
 
                         HighLevelInsn {
                             op,
@@ -808,8 +822,10 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
 
         // TODO: implement here other kinds of RISC-V fusions as optimization.
 
-        if let HighLevelImmediate::CodeLabel(addr) = &result.args.imm {
-            self.referenced_text_addrs.insert(*addr);
+        if let (ReadOrWrite::Write(refs), HighLevelImmediate::CodeLabel(addr)) =
+            (&mut self.referenced_text_addrs, &result.args.imm)
+        {
+            refs.insert(*addr);
         }
 
         Some(result)
@@ -829,7 +845,9 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             // All jump instructions that have the immediate as an address
             Op::JAL | Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
                 let addr = (insn.imm.unwrap() + original_address as i32) as u32;
-                self.referenced_text_addrs.insert(addr);
+                if let ReadOrWrite::Write(refs) = &mut self.referenced_text_addrs {
+                    refs.insert(addr);
+                }
 
                 HighLevelImmediate::CodeLabel(addr)
             }
@@ -887,6 +905,25 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
     }
 }
 
+/// Find all the references to text addresses in the instructions and add them
+/// to the set.
+fn search_text_addrs(
+    base_addr: u32,
+    data: &[u8],
+    address_map: &AddressMap,
+    rellocs_set: &BTreeSet<u32>,
+    referenced_text_addrs: &mut BTreeSet<u32>,
+) {
+    try_map_two_by_two(
+        RiscVInstructionIterator::new(base_addr, data),
+        InstructionLifter {
+            rellocs_set,
+            address_map,
+            referenced_text_addrs: ReadOrWrite::Write(referenced_text_addrs),
+        },
+    );
+}
+
 /// Lift the instructions back to higher-level instructions.
 ///
 /// Turn addresses into labels and and merge instructions into
@@ -896,16 +933,16 @@ fn lift_instructions(
     data: &[u8],
     address_map: &AddressMap,
     rellocs_set: &BTreeSet<u32>,
-    referenced_text_addrs: &mut BTreeSet<u32>,
+    referenced_text_addrs: &BTreeSet<u32>,
 ) -> Vec<HighLevelInsn> {
-    let instructions = RiscVInstructionIterator::new(base_addr, data);
-
-    let pseudo_converter = InstructionLifter {
-        rellocs_set,
-        address_map,
-        referenced_text_addrs,
-    };
-    try_map_two_by_two(instructions, pseudo_converter)
+    try_map_two_by_two(
+        RiscVInstructionIterator::new(base_addr, data),
+        InstructionLifter {
+            rellocs_set,
+            address_map,
+            referenced_text_addrs: ReadOrWrite::Read(referenced_text_addrs),
+        },
+    )
 }
 
 struct RiscVInstructionIterator<'a> {
