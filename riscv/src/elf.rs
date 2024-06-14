@@ -609,11 +609,16 @@ impl InstructionLifter<'_> {
             rd_addi != 3;
 
         let (op, imm) = if is_ref_to_text {
-            // If rd_ui != rd_addi, we don't set rd_ui, thus and our behavior is
-            // not conformant, but it is probably fine for compiler generated
-            // code, and it has worked so far.
+            // If rd_ui != rd_addi, we don't set rd_ui, thus our behavior is not
+            // conformant, but it is probably fine for compiler generated code,
+            // and it has worked so far.
             ("la", HighLevelImmediate::CodeLabel(immediate as u32))
         } else if rd_ui == rd_addi {
+            // TODO: to be continued...
+            // We can only join the two instructions if there is no jump to the second,
+            // and to figure that out, we need to do two passes:
+            // - one to get all the targets of jumps (plus data relocations),
+            // - and another to actually lift the instructions.
             ("li", HighLevelImmediate::Value(immediate))
         } else {
             // This pair of instructions leaks rd_ui. Since this is not a
