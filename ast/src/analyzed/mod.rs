@@ -14,7 +14,7 @@ use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::parsed::types::{ArrayType, Type, TypeScheme};
+use crate::parsed::types::{ArrayType, TraitScheme, Type, TypeScheme};
 use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
@@ -430,6 +430,9 @@ pub fn type_from_definition(
                     ty: trait_func._type.clone(),
                 })
             }
+            FunctionValueDefinition::TraitImplementation(_trait_impl) => {
+                panic!("Requested type of trait declaration.") // TODO GZ
+            }
         }
     } else {
         assert!(
@@ -529,6 +532,7 @@ pub enum FunctionValueDefinition {
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
     TraitDeclaration(TraitDeclaration),
     TraitFunction(Arc<TraitDeclaration>, TraitFunction),
+    TraitImplementation(TraitImplementation<Expression>),
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -546,6 +550,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
+            FunctionValueDefinition::TraitImplementation(trait_impl) => trait_impl.children(),
         }
     }
 
@@ -563,6 +568,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
+            FunctionValueDefinition::TraitImplementation(trait_impl) => trait_impl.children_mut(),
         }
     }
 }
@@ -1059,6 +1065,32 @@ impl Display for PolynomialType {
             }
         )
     }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TraitImplementation<Expr, E = u64> {
+    pub name: String,
+    pub type_scheme: Option<TraitScheme<E>>,
+    pub functions: Vec<NamedExpression<Expr>>,
+}
+
+impl Children<Expression> for TraitImplementation<Expression> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(self.functions.iter().flat_map(|m| m.body.children()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(
+            self.functions
+                .iter_mut()
+                .flat_map(|m| m.body.children_mut()),
+        )
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct NamedExpression<Expr> {
+    pub name: String,
+    pub body: Box<Expr>,
 }
 
 #[cfg(test)]

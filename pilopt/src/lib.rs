@@ -237,7 +237,8 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
         | FunctionValueDefinition::TypeDeclaration(_)
         | FunctionValueDefinition::TypeConstructor(_, _)
         | FunctionValueDefinition::TraitDeclaration(_)
-        | FunctionValueDefinition::TraitFunction(_, _) => None,
+        | FunctionValueDefinition::TraitFunction(_, _)
+        | FunctionValueDefinition::TraitImplementation(_) => None,
     }
 }
 

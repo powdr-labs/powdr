@@ -233,7 +233,8 @@ impl Display for FunctionValueDefinition {
             FunctionValueDefinition::TypeDeclaration(_)
             | FunctionValueDefinition::TypeConstructor(_, _)
             | FunctionValueDefinition::TraitDeclaration(_)
-            | FunctionValueDefinition::TraitFunction(_, _) => {
+            | FunctionValueDefinition::TraitFunction(_, _)
+            | FunctionValueDefinition::TraitImplementation(_) => {
                 //TODO GZ check this
                 panic!("Should not use this formatting function.")
             }

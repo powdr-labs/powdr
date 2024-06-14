@@ -123,7 +123,8 @@ fn generate_values<T: FieldElement>(
         FunctionValueDefinition::TypeDeclaration(_)
         | FunctionValueDefinition::TypeConstructor(_, _)
         | FunctionValueDefinition::TraitDeclaration(_)
-        | FunctionValueDefinition::TraitFunction(_, _) => panic!(),
+        | FunctionValueDefinition::TraitFunction(_, _)
+        | FunctionValueDefinition::TraitImplementation(_) => panic!(),
     };
     match result {
         Err(err) => {

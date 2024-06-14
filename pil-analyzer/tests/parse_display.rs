@@ -737,3 +737,22 @@ fn trait_def() {
     let analyzed = analyze_string::<GoldilocksField>(input);
     assert_eq!(expected, analyzed.to_string())
 }
+
+#[test]
+fn trait_impl() {
+    let input = "trait Add<T: Add, Q> {
+        add: T, T -> Q,
+    }
+    impl Add<int, int> {
+        add: |a, b| a + b,
+    }";
+
+    let _expected = "    trait Add <T: Add, Q> {
+        add: T, T -> Q,
+    }
+    impl Add<int, int> {
+        add: |a, b| a + b,
+    }";
+
+    let analyzed = analyze_string::<GoldilocksField>(input);
+}

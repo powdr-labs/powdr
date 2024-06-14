@@ -36,6 +36,8 @@ pub enum SymbolCategory {
     /// A type constructor, i.e. an enum variant, which can be used as a function or constant inside an expression
     /// or to deconstruct a value in a pattern.
     TypeConstructor,
+    /// A trait declaration, which can be used as a type.
+    TraitDeclaration,
 }
 impl SymbolCategory {
     /// Returns if a symbol of a given category can satisfy a request for a certain category.
@@ -47,6 +49,7 @@ impl SymbolCategory {
                 // Type constructors can also satisfy requests for values.
                 request == SymbolCategory::TypeConstructor || request == SymbolCategory::Value
             }
+            SymbolCategory::TraitDeclaration => request == SymbolCategory::Type,
         }
     }
 }
@@ -144,7 +147,7 @@ impl PilStatement {
                 ),
             ),
             PilStatement::TraitDeclaration(_, TraitDeclaration { name, .. }) => {
-                Box::new(once((name, None, SymbolCategory::Type)))
+                Box::new(once((name, None, SymbolCategory::TraitDeclaration)))
             }
             PilStatement::TraitImplementation(
                 _,
@@ -376,11 +379,11 @@ pub struct TraitImplementation<Expr> {
     pub functions: Vec<NamedExpression<Expr>>,
 }
 
-impl Children<Expression> for TraitImplementation<Expression> {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(self.functions.iter().flat_map(|m| m.body.children()))
     }
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         Box::new(
             self.functions
                 .iter_mut()

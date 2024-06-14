@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::{fs, vec};
 
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
@@ -333,6 +333,10 @@ impl PILAnalyzer {
                 vec![]
             }
             PilStatement::Include(_, _) => unreachable!(),
+            PilStatement::TraitDeclaration(_, _) => {
+                //vec![(trait_decl.name.clone(), SymbolCategory::TraitDeclaration)]
+                vec![]
+            }
             _ => {
                 let names = statement
                     .symbol_definition_names_and_contained()
@@ -385,6 +389,9 @@ impl PILAnalyzer {
                             assert!(is_new, "{name} already defined.");
                             self.source_order
                                 .push(StatementIdentifier::Definition(name));
+                        }
+                        PILItem::TraitImplementation(_symbol, _trait_impl) => {
+                            // TODO GZ: Keep track of trait implementations? self.implementations?
                         }
                         PILItem::PublicDeclaration(decl) => {
                             let name = decl.name.clone();

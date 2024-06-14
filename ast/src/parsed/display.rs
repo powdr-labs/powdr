@@ -608,7 +608,7 @@ impl Display for TraitFunction {
     }
 }
 
-impl Display for TraitImplementation<Expression> {
+impl<E: Display> Display for TraitImplementation<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let type_vars = self
             .type_scheme
@@ -645,7 +645,7 @@ impl Display for TraitImplementation<Expression> {
     }
 }
 
-impl Display for NamedExpression<Expression> {
+impl<E: Display> Display for NamedExpression<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}: {}", self.name, self.body)
     }
