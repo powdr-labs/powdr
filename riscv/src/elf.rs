@@ -3,6 +3,7 @@ use std::{
     cmp::Ordering,
     collections::{btree_map::Entry, BTreeMap, BTreeSet, HashMap},
     fs,
+    path::Path,
 };
 
 use goblin::{
@@ -38,7 +39,7 @@ struct ElfProgram {
 }
 
 pub fn elf_translate<F: FieldElement>(
-    file_name: &str,
+    file_name: &Path,
     runtime: &Runtime,
     with_bootloader: bool,
 ) -> String {
@@ -46,7 +47,8 @@ pub fn elf_translate<F: FieldElement>(
     code_gen::translate_program::<F>(elf_program, runtime, with_bootloader)
 }
 
-fn load_elf(file_name: &str) -> ElfProgram {
+fn load_elf(file_name: &Path) -> ElfProgram {
+    println!("Loading ELF file: {:?}", file_name);
     let file_buffer = fs::read(file_name).unwrap();
 
     let elf = Elf::parse(&file_buffer).unwrap();

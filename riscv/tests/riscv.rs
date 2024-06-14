@@ -369,9 +369,10 @@ fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
 
 fn compile_riscv_crate<T: FieldElement>(case: &str, runtime: &Runtime) -> String {
     let temp_dir = Temp::new_dir().unwrap();
-    let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
+    let executable = powdr_riscv::compile_rust_crate_to_riscv_bin(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    powdr_riscv::asm::compile::<T>(riscv_asm, runtime, false)
+    //powdr_riscv::asm::compile::<T>(riscv_asm, runtime, false)
+    powdr_riscv::elf::elf_translate::<T>(&executable, runtime, false)
 }
