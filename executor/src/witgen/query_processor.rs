@@ -51,7 +51,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         poly: &'a AlgebraicReference,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
-        record_start_identity(IDENTITY_SNIPPET_ID);
+        //record_start_identity(IDENTITY_SNIPPET_ID);
 
         // TODO
         // the X_free_value is the main query that is evaluated and it is done
@@ -84,7 +84,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         let query_str = match self.interpolate_query(query, rows) {
             Ok(query) => query,
             Err(e) => {
-                record_end_identity(IDENTITY_SNIPPET_ID);
+                //record_end_identity(IDENTITY_SNIPPET_ID);
 
                 return match e {
                     EvalError::DataNotAvailable => {
@@ -107,11 +107,12 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             } else {
                 EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
                     query_str,
+                    // TODO What about this one? Is this called often?
                     poly.name.to_string(),
                 ))
             },
         );
-        record_end_identity(IDENTITY_SNIPPET_ID);
+        //record_end_identity(IDENTITY_SNIPPET_ID);
 
         r
     }

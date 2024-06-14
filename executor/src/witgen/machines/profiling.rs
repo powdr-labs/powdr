@@ -128,14 +128,14 @@ fn reset_and_print_profile_summary_impl(
             match event {
                 Event::Start => {
                     assert!(current_machine_id != id, "Unexpected recursive call!");
-                    machine_invocations
-                        .entry(id)
-                        .and_modify(|c| *c += 1)
-                        .or_insert(1);
                     call_stack.push(id);
                 }
                 Event::End => {
                     assert_eq!(current_machine_id, id, "Unexpected end of call!");
+                    machine_invocations
+                        .entry(id)
+                        .and_modify(|c| *c += 1)
+                        .or_insert(1);
                     call_stack.pop().unwrap();
                 }
             }

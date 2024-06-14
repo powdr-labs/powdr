@@ -192,7 +192,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             self.fixed_data,
             UnknownStrategy::Unknown,
         );
-        record_start_identity(IDENTITY_SNIPPET2_ID);
 
         let mut updates = EvalValue::complete(vec![]);
         for poly_id in &self.prover_query_witnesses {
@@ -201,7 +200,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             }
         }
         let r = Ok(self.apply_updates(row_index, &updates, || "queries".to_string()));
-        record_end_identity(IDENTITY_SNIPPET2_ID);
 
         r
     }
