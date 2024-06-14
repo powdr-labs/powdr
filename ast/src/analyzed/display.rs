@@ -447,6 +447,8 @@ mod test {
     use pretty_assertions::assert_eq;
     use test_log::test;
 
+    use super::{AlgebraicBinaryOperator, AlgebraicExpression};
+
     type TestCase<'a> = (&'a str, &'a str);
 
     fn test_paren(to_declare: &[&str], (input, expected): &TestCase) {
@@ -475,7 +477,55 @@ mod test {
     }
 
     #[test]
-    fn test_binary_op_parentheses() {
+    fn exp_assoc() {
+        // we test this separately from other expressions, since although `x ** y ** z` is allowed in `AlgebraicExpression`, it is not produced by the analyzer due to type system restrictions
+
+        let x = AlgebraicExpression::Reference(super::AlgebraicReference {
+            name: "x".into(),
+            poly_id: super::PolyID {
+                id: 0,
+                ptype: super::PolynomialType::Committed,
+            },
+            next: false,
+        });
+        let y = AlgebraicExpression::Reference(super::AlgebraicReference {
+            name: "y".into(),
+            poly_id: super::PolyID {
+                id: 1,
+                ptype: super::PolynomialType::Committed,
+            },
+            next: false,
+        });
+        let z = AlgebraicExpression::Reference(super::AlgebraicReference {
+            name: "z".into(),
+            poly_id: super::PolyID {
+                id: 2,
+                ptype: super::PolynomialType::Committed,
+            },
+            next: false,
+        });
+
+        // define `x ** (y ** z)`
+        let x_yz: AlgebraicExpression<GoldilocksField> = AlgebraicExpression::new_binary(
+            x.clone(),
+            AlgebraicBinaryOperator::Pow,
+            AlgebraicExpression::new_binary(y.clone(), AlgebraicBinaryOperator::Pow, z.clone()),
+        );
+        // In principle, no parentheses needed as `**` is right-associative. However, we keep parentheses to match behavior of the parsed AST.
+        assert_eq!(x_yz.to_string(), "x ** (y ** z)");
+
+        // define `(x ** y) ** z`
+        let xy_z = AlgebraicExpression::new_binary(
+            AlgebraicExpression::new_binary(x.clone(), AlgebraicBinaryOperator::Pow, y.clone()),
+            AlgebraicBinaryOperator::Pow,
+            z.clone()
+        );
+        // parentheses needed because `**` is right-associative
+        assert_eq!(xy_z.to_string(), "(x ** y) ** z");
+    }
+
+    #[test]
+    fn binary_op() {
         let test_cases: Vec<TestCase> = vec![
             // Don't add extra
             ("x + y + z", "x + y + z"),
@@ -506,7 +556,7 @@ mod test {
     }
 
     #[test]
-    fn test_access() {
+    fn access() {
         let array_test_cases: Vec<TestCase> = vec![
             ("-x[2]", "-x[2]"),
             ("-(x[2])", "-x[2]"),

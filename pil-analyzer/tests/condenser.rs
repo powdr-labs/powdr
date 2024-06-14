@@ -187,8 +187,8 @@ fn next() {
     let expected = r#"namespace N(16);
     col witness x;
     col witness y;
-    (N.x * N.y) = 1;
-    (N.x * N.y) = (1 + N.x');
+    N.x * N.y = 1;
+    N.x * N.y = 1 + N.x';
 "#;
     assert_eq!(formatted, expected);
 }
