@@ -48,18 +48,18 @@ pub fn elf_translate<F: FieldElement>(
 }
 
 fn load_elf(file_name: &Path) -> ElfProgram {
-    println!("Loading ELF file: {:?}", file_name);
+    log::info!("Loading ELF file: {}", file_name.display());
     let file_buffer = fs::read(file_name).unwrap();
 
     let elf = Elf::parse(&file_buffer).unwrap();
 
-    // Assert this in an 32-bit ELF file.
+    // Assert this is an 32-bit ELF file.
     assert_eq!(
         elf.header.e_ident[EI_CLASS], ELFCLASS32 as u8,
         "Only 32-bit ELF files are supported!"
     );
 
-    // Assert this in a little-endian ELF file.
+    // Assert this is a little-endian ELF file.
     assert_eq!(
         elf.header.e_ident[EI_DATA], ELFDATA2LSB as u8,
         "Only little-endian ELF files are supported!"
@@ -182,16 +182,16 @@ fn pie_relocate_data_sections(
         // We only support the R_RISCV_RELATIVE relocation type:
         assert_eq!(r.r_type, R_RISCV_RELATIVE, "Unsupported relocation type!");
 
-        let original_addr = r.r_addend.unwrap() as u32;
+        let data_value = r.r_addend.unwrap() as u32;
 
-        if address_map.is_in_text_section(original_addr) {
-            data_map.insert(addr, Data::TextLabel(original_addr));
+        if address_map.is_in_text_section(data_value) {
+            data_map.insert(addr, Data::TextLabel(data_value));
 
             // We also need to add the referenced address to the list of text
             // addresses, so we can generate the label.
-            referenced_text_addrs.insert(original_addr);
+            referenced_text_addrs.insert(data_value);
         } else {
-            data_map.insert(addr, Data::Value(original_addr));
+            data_map.insert(addr, Data::Value(data_value));
         }
     }
 

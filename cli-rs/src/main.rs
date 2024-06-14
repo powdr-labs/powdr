@@ -93,7 +93,7 @@ enum Commands {
         #[arg(default_value_t = false)]
         continuations: bool,
     },
-    /// Translates a RISC-V statically liked executable to powdr assembly.
+    /// Translates a RISC-V statically linked executable to powdr assembly.
     RiscvElf {
         /// Input file
         #[arg(required = true)]
