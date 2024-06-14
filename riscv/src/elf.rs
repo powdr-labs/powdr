@@ -55,13 +55,13 @@ fn load_elf(file_name: &Path) -> ElfProgram {
 
     // Assert this is an 32-bit ELF file.
     assert_eq!(
-        elf.header.e_ident[EI_CLASS], ELFCLASS32 as u8,
+        elf.header.e_ident[EI_CLASS], ELFCLASS32,
         "Only 32-bit ELF files are supported!"
     );
 
     // Assert this is a little-endian ELF file.
     assert_eq!(
-        elf.header.e_ident[EI_DATA], ELFDATA2LSB as u8,
+        elf.header.e_ident[EI_DATA], ELFDATA2LSB,
         "Only little-endian ELF files are supported!"
     );
 
@@ -84,7 +84,8 @@ fn load_elf(file_name: &Path) -> ElfProgram {
     let address_map = AddressMap(
         elf.program_headers
             .iter()
-            .filter_map(|p| (p.p_type == program_header::PT_LOAD).then(|| (p.p_vaddr as u32, p)))
+            .filter(|p| p.p_type == program_header::PT_LOAD)
+            .map(|p| (p.p_vaddr as u32, p))
             .collect(),
     );
 
@@ -94,7 +95,8 @@ fn load_elf(file_name: &Path) -> ElfProgram {
         .shdr_relocs
         .iter()
         .flat_map(|(_, r)| r.iter())
-        .filter_map(|r| (r.r_type == R_RISCV_HI20).then(|| r.r_offset as u32))
+        .filter(|r| r.r_type == R_RISCV_HI20)
+        .map(|r| r.r_offset as u32)
         .collect();
 
     // Keep a list of referenced text addresses, so we can generate the labels.
@@ -141,7 +143,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
             section_data,
             &address_map,
             &text_rellocs_set,
-            &mut referenced_text_addrs,
+            &referenced_text_addrs,
         );
         if !insns.is_empty() {
             lifted_text_sections.push(insns);
@@ -262,7 +264,7 @@ impl SymbolTable {
         self.0
             .get(&addr)
             .map(|name| Cow::Borrowed(name.as_str()))
-            .unwrap_or_else(|| Cow::Owned(format!("L{:08x}", addr)))
+            .unwrap_or_else(|| Cow::Owned(format!("L{addr:08x}")))
     }
 
     fn get_as_string(&self, addr: u32) -> String {
@@ -696,8 +698,6 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             }
             (
                 // All other double instructions we can lift starts with auipc.
-                // Furthermore, we have to join every auipc, as we don't support
-                // it independently.
                 Ins {
                     opc: Op::AUIPC,
                     rd: Some(rd_auipc),
@@ -708,7 +708,6 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             ) => {
                 let hi = hi.wrapping_add(original_address as i32);
                 match insn2 {
-                    // la rd, symbol
                     Ins {
                         opc: Op::ADDI,
                         rd: Some(rd_addi),
@@ -717,8 +716,10 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         ..
                     } if rd_auipc == rs1_addi => {
                         // AUIPC obviously always refer to an address.
-                        let (op, args) = self
-                            .composed_immediate(hi, *lo, *rd_auipc, *rd_addi, insn2_addr, true)?;
+                        const IS_ADDRESS: bool = true;
+                        let (op, args) = self.composed_immediate(
+                            hi, *lo, *rd_auipc, *rd_addi, insn2_addr, IS_ADDRESS,
+                        )?;
 
                         HighLevelInsn {
                             op,
@@ -811,8 +812,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     },
                     _ => {
                         panic!(
-                            "Unexpected instruction after AUIPC: {:?} at {:08x}",
-                            insn2, original_address
+                            "Unexpected instruction after AUIPC: {insn2:?} at {original_address:08x}"
                         );
                     }
                 }
@@ -881,7 +881,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             }
             // All other instructions, which have the immediate as a value
             _ => match insn.imm {
-                Some(imm) => HighLevelImmediate::Value(imm as i32),
+                Some(imm) => HighLevelImmediate::Value(imm),
                 None => HighLevelImmediate::None,
             },
         };
@@ -890,7 +890,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         // because they can have simplified implementations (like the
         // branch-zero variants and add to x0).
 
-        let result = HighLevelInsn {
+        HighLevelInsn {
             op: insn.opc.to_string(),
             args: HighLevelArgs {
                 rd: insn.rd.map(|x| x as u32),
@@ -899,9 +899,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 imm,
             },
             original_address,
-        };
-
-        result
+        }
     }
 }
 
@@ -982,7 +980,7 @@ impl Iterator for RiscVInstructionIterator<'_> {
             .expect("Failed to decode instruction.");
 
             maybe_insn = MaybeInstruction {
-                address: self.curr_address as u32,
+                address: self.curr_address,
                 insn: Some(insn),
             };
         } else {
@@ -994,7 +992,7 @@ impl Iterator for RiscVInstructionIterator<'_> {
                     .expect("Not enough bytes to complete a 16-bit instruction!"),
             );
             maybe_insn = MaybeInstruction {
-                address: self.curr_address as u32,
+                address: self.curr_address,
                 insn: match bin_instruction.decode(Isa::Rv32) {
                     Ok(c_insn) => Some(to_32bit_equivalent(c_insn)),
                     Err(raki::decode::DecodingError::IllegalInstruction) => {
