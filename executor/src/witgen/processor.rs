@@ -82,6 +82,8 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     witness_cols: &'c HashSet<PolyID>,
     /// Whether a given witness column is relevant for this machine (faster than doing a contains check on witness_cols)
     is_relevant_witness: WitnessColumnMap<bool>,
+    /// Relevant witness columns that have a prover query function attached.
+    prover_query_witnesses: Vec<PolyID>,
     /// The outer query, if any. If there is none, processing an outer query will fail.
     outer_query: Option<OuterQuery<'a, 'c, T>>,
     inputs: Vec<(PolyID, T)>,
@@ -103,6 +105,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
                 .keys()
                 .map(|poly_id| witness_cols.contains(&poly_id)),
         );
+        let prover_query_witnesses = fixed_data
+            .witness_cols
+            .iter()
+            .filter(|(poly_id, col)| witness_cols.contains(&poly_id) && col.query.is_some())
+            .map(|(poly_id, _)| poly_id)
+            .collect();
+
         Self {
             row_offset,
             data,
@@ -110,6 +119,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             fixed_data,
             witness_cols,
             is_relevant_witness,
+            prover_query_witnesses,
             outer_query: None,
             inputs: Vec::new(),
             previously_set_inputs: BTreeMap::new(),
@@ -181,9 +191,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             UnknownStrategy::Unknown,
         );
         let mut updates = EvalValue::complete(vec![]);
-        for poly_id in self.fixed_data.witness_cols.keys() {
-            if self.is_relevant_witness[&poly_id] {
-                updates.combine(query_processor.process_query(&row_pair, &poly_id)?);
+        for poly_id in &self.prover_query_witnesses {
+            if let Some(r) = query_processor.process_query(&row_pair, &poly_id) {
+                updates.combine(r?);
             }
         }
         Ok(self.apply_updates(row_index, &updates, || "queries".to_string()))
