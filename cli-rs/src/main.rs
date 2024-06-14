@@ -372,7 +372,7 @@ fn compile_riscv_elf<F: FieldElement>(
 
     powdr_riscv::compile_riscv_elf::<F>(
         input_file,
-        input_file,
+        Path::new(input_file),
         output_dir,
         true,
         &runtime,

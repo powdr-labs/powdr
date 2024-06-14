@@ -232,16 +232,21 @@ struct SymbolTable(HashMap<u32, String>);
 
 impl SymbolTable {
     fn new(elf: &Elf) -> SymbolTable {
-        let mut result = HashMap::new();
-
+        // TODO: read the symbols from the debug information to be more comprehensive.
+        let mut deduplicator = HashMap::new();
         for sym in elf.syms.iter() {
             if sym.st_name == 0 || (sym.st_type() != STT_OBJECT && sym.st_type() != STT_FUNC) {
                 continue;
             }
-            result.insert(sym.st_value as u32, elf.strtab[sym.st_name].to_string());
+            deduplicator.insert(elf.strtab[sym.st_name].to_string(), sym.st_value as u32);
         }
 
-        Self(result)
+        Self(
+            deduplicator
+                .into_iter()
+                .map(|(name, addr)| (addr, name))
+                .collect(),
+        )
     }
 
     fn try_get(&self, addr: u32) -> Option<&str> {
