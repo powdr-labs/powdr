@@ -577,7 +577,32 @@ impl Display for TraitDeclaration<Expression> {
     }
 }
 
+impl Display for TraitDeclaration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = if self.type_vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_vars)
+        };
+        write!(
+            f,
+            "trait {name} {type_vars} {{\n{functions}}}",
+            name = self.name,
+            functions = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        )
+    }
+}
+
 impl Display for TraitFunction<Expression> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self._type)
+    }
+}
+
+impl Display for TraitFunction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}: {}", self.name, self._type)
     }

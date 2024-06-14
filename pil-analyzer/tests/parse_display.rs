@@ -724,10 +724,16 @@ namespace T(8);
 
 #[test]
 fn trait_def() {
-    let input = "
-    trait Add<T: Add, Q> {
+    let input = "trait Add<T: Add, Q> {
         add: T, T -> Q,
-    }";
+    }
+";
+
+    let expected = "    trait Add <T: Add, Q> {
+        add: T, T -> Q,
+    }
+";
 
     let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(expected, analyzed.to_string())
 }

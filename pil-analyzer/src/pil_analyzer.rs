@@ -229,6 +229,7 @@ impl PILAnalyzer {
             .iter_mut()
             .filter(|(_name, (_symbol, value))| {
                 !matches!(value, Some(FunctionValueDefinition::TypeDeclaration(_)))
+                    && !matches!(value, Some(FunctionValueDefinition::TraitDeclaration(_)))
             })
             .flat_map(|(name, (symbol, value))| {
                 let (type_scheme, expr) = match (symbol.kind, value) {

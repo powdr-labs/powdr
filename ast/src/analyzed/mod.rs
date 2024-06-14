@@ -423,8 +423,12 @@ pub fn type_from_definition(
             FunctionValueDefinition::TraitDeclaration(_) => {
                 panic!("Requested type of trait declaration.") // TODO GZ
             }
-            FunctionValueDefinition::TraitFunction(_, _trait_func) => {
-                todo!("GZ: Requested type of trait function.")
+            FunctionValueDefinition::TraitFunction(trait_decl, trait_func) => {
+                let vars = trait_decl.type_vars.clone();
+                Some(TypeScheme {
+                    vars,
+                    ty: trait_func._type.clone(),
+                })
             }
         }
     } else {
