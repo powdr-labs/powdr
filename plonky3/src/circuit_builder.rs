@@ -68,10 +68,8 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     fn to_plonky3_expr<AB: AirBuilder<F = Val>>(
         &self,
         e: &AlgebraicExpression<T>,
-        builder: &AB,
+        matrix: &AB::M,
     ) -> AB::Expr {
-        let matrix = builder.main();
-
         let res = match e {
             AlgebraicExpression::Reference(r) => {
                 let poly_id = r.poly_id;
@@ -109,8 +107,8 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             ),
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
             AlgebraicExpression::BinaryOperation(left, op, right) => {
-                let left = self.to_plonky3_expr(left, builder);
-                let right = self.to_plonky3_expr(right, builder);
+                let left = self.to_plonky3_expr::<AB>(left, matrix);
+                let right = self.to_plonky3_expr::<AB>(right, matrix);
 
                 match op {
                     AlgebraicBinaryOperator::Add => left + right,
@@ -122,7 +120,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::UnaryOperation(op, e) => {
-                let e: <AB as AirBuilder>::Expr = self.to_plonky3_expr(e, builder);
+                let e: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(e, matrix);
 
                 match op {
                     AlgebraicUnaryOperator::Minus => -e,
@@ -161,6 +159,8 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
 
 impl<'a, T: FieldElement, AB: AirBuilder<F = Val>> Air<AB> for PowdrCircuit<'a, T> {
     fn eval(&self, builder: &mut AB) {
+        let matrix = builder.main();
+
         for identity in &self
             .analyzed
             .identities_with_inlined_intermediate_polynomials()
@@ -171,8 +171,8 @@ impl<'a, T: FieldElement, AB: AirBuilder<F = Val>> Air<AB> for PowdrCircuit<'a, 
                     assert_eq!(identity.right.expressions.len(), 0);
                     assert!(identity.right.selector.is_none());
 
-                    let left =
-                        self.to_plonky3_expr(identity.left.selector.as_ref().unwrap(), builder);
+                    let left = self
+                        .to_plonky3_expr::<AB>(identity.left.selector.as_ref().unwrap(), &matrix);
 
                     builder.assert_zero(left);
                 }
