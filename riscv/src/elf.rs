@@ -71,7 +71,7 @@ fn load_elf(file_name: &str) -> ElfProgram {
 
     // Assert this is either a PIE file, or that we have the relocation symbols
     // available. This is needed because we need to lift all the references to
-    // code addresses into labels,
+    // code addresses into labels.
     assert!(
         elf.header.e_type == ET_DYN || !elf.shdr_relocs.is_empty(),
         "We can only translate PIE ELFs (-pie) or ELFs with relocation symbols (--emit-relocs)."
@@ -87,7 +87,7 @@ fn load_elf(file_name: &str) -> ElfProgram {
     );
 
     // Set of R_RISCV_HI20 relocations, needed in non-PIE code to identify
-    // loading of absolute loading of addresses.
+    // loading of absolute addresses to text.
     let text_rellocs_set: BTreeSet<u32> = elf
         .shdr_relocs
         .iter()
@@ -595,25 +595,24 @@ impl InstructionLifter<'_> {
     ) -> Option<(&'static str, HighLevelArgs)> {
         let immediate = hi.wrapping_add(lo);
 
-        let leaks_reg = rd_ui != rd_addi;
         let is_ref_to_text = is_address && self.address_map.is_in_text_section(immediate as u32) &&
             // This is very sad: sometimes the global pointer lands in the
             // middle of the text section, so we have to make an exception when
             // setting the gp (x3).
             rd_addi != 3;
 
-        let (op, imm) = match (is_ref_to_text, leaks_reg) {
-            (false, false) => ("li", HighLevelImmediate::Value(immediate)),
-            (false, true) => {
-                // Since this is not a reference to text we can handle each
-                // instruction separately, and let the higher part of the
-                // address leak.
-                return None;
-            }
-            (true, _) => ("la", HighLevelImmediate::CodeLabel(immediate as u32)),
-            /*(true, true) => {
-                panic!("Intruction leaks partial address to text section!")
-            }*/
+        let (op, imm) = if is_ref_to_text {
+            // If rd_ui != rd_addi, we don't set rd_ui, thus and our behavior is
+            // not conformant, but it is probably fine for compiler generated
+            // code, and it has worked so far.
+            ("la", HighLevelImmediate::CodeLabel(immediate as u32))
+        } else if rd_ui == rd_addi {
+            ("li", HighLevelImmediate::Value(immediate))
+        } else {
+            // This pair of instructions leaks rd_ui. Since this is not a
+            // reference to text, we can afford to be more conformant and handle
+            // each instruction separately.
+            return None;
         };
 
         Some((
