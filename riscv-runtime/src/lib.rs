@@ -42,6 +42,7 @@ unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
 // 3. Tail call the main function (in powdr, the return address register is already
 //    set, so that returning from the entry point function will cause the execution
 //    to succeed).
+// TODO: support Position Independent Executables (PIE) by using lla.
 global_asm!(
     r"
 .global __runtime_start
@@ -49,15 +50,13 @@ global_asm!(
 __runtime_start:
     .option push
     .option norelax
-    lla gp, __global_pointer$
+    #lla gp, __global_pointer$
+    lui gp, %hi(__global_pointer$)
+    addi gp, gp, %lo(__global_pointer$)
     .option pop
-    lla sp, __powdr_stack_start
+    #lla sp, __powdr_stack_start
+    lui sp, %hi(__powdr_stack_start)
+    addi sp, sp, %lo(__powdr_stack_start)
     tail main
 "
 );
-
-// TODO: ideally, the above code would use `lla` instead of `lui` + `addi`, but
-// for some reason rustc automatically expands it instead of just passing along
-// the `lla` pseudoinstruction, and our asm converter doesn't support the
-// expanded form on multiple levels. Using `lui` + `addi` also makes it
-// impossible to link in PIE mode (which we also don't support, anyway)...

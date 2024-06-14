@@ -1,14 +1,16 @@
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    cmp::Ordering,
+    collections::{btree_map::Entry, BTreeMap, BTreeSet, HashMap},
     fs,
 };
 
 use goblin::{
     elf::sym::STT_OBJECT,
     elf::{
-        header::{EI_CLASS, ELFCLASS32, EM_RISCV, ET_DYN},
+        header::{EI_CLASS, EI_DATA, ELFCLASS32, ELFDATA2LSB, EM_RISCV, ET_DYN},
         program_header,
+        reloc::{R_RISCV_32, R_RISCV_HI20, R_RISCV_RELATIVE},
         sym::STT_FUNC,
         Elf,
     },
@@ -55,8 +57,11 @@ fn load_elf(file_name: &str) -> ElfProgram {
         "Only 32-bit ELF files are supported!"
     );
 
-    // Assert this in a PIE file.
-    assert_eq!(elf.header.e_type, ET_DYN, "Only PIE files are supported!");
+    // Assert this in a little-endian ELF file.
+    assert_eq!(
+        elf.header.e_ident[EI_DATA], ELFDATA2LSB as u8,
+        "Only little-endian ELF files are supported!"
+    );
 
     // Assert this is a RISC-V ELF file.
     assert_eq!(
@@ -64,41 +69,62 @@ fn load_elf(file_name: &str) -> ElfProgram {
         "Only RISC-V ELF files are supported!"
     );
 
+    // Assert this is either a PIE file, or that we have the relocation symbols
+    // available. This is needed because we need to lift all the references to
+    // code addresses into labels,
+    assert!(
+        elf.header.e_type == ET_DYN || !elf.shdr_relocs.is_empty(),
+        "We can only translate PIE ELFs (-pie) or ELFs with relocation symbols (--emit-relocs)."
+    );
+
     // Map of addresses into memory sections, so we can know what address belong
     // in what section.
-    let mut address_map = AddressMap(BTreeMap::new());
+    let address_map = AddressMap(
+        elf.program_headers
+            .iter()
+            .filter_map(|p| (p.p_type == program_header::PT_LOAD).then(|| (p.p_vaddr as u32, p)))
+            .collect(),
+    );
+
+    // Set of R_RISCV_HI20 relocations, needed in non-PIE code to identify
+    // loading of absolute loading of addresses.
+    let text_rellocs_set: BTreeSet<u32> = elf
+        .shdr_relocs
+        .iter()
+        .flat_map(|(_, r)| r.iter())
+        .filter_map(|r| (r.r_type == R_RISCV_HI20).then(|| r.r_offset as u32))
+        .collect();
 
     // We simply extract all the text and data sections. There is no need to
     // perform reachability search, because we trust the linker to have done
     // that already.
     //
-    // TODO: maybe exclude the section mapping the ELF header itself? There is
-    // also this dynamic section that I think we can ignore. But with
-    // continuations on, unused memory is practically free.
+    // TODO: maybe exclude the section mapping the ELF header itself? But with
+    // VADCOP, unused memory is practically free.
     let mut lifted_text_sections = Vec::new();
     let mut data_map = BTreeMap::new();
 
     // Keep a list of referenced text addresses, so we can generate the labels.
     let mut referenced_text_addrs = BTreeSet::from([elf.entry as u32]);
 
-    for p in elf.program_headers.iter() {
-        if p.p_type == program_header::PT_LOAD {
-            let addr = p.p_vaddr as u32;
-            let section_data =
-                &file_buffer[p.p_offset as usize..(p.p_offset + p.p_filesz) as usize];
+    // Actually load the sections.
+    for (&addr, &p) in address_map.0.iter() {
+        let section_data = &file_buffer[p.p_offset as usize..(p.p_offset + p.p_filesz) as usize];
 
-            address_map.0.insert(addr, p);
-
-            // Test if executable
-            if p.p_flags & 1 == 1 {
-                let insns =
-                    lift_instructions(addr, section_data, &address_map, &mut referenced_text_addrs);
-                if !insns.is_empty() {
-                    lifted_text_sections.push(insns);
-                }
-            } else {
-                load_data_section(addr, section_data, &mut data_map);
+        // Test if executable
+        if p.p_flags & 1 == 1 {
+            let insns = lift_instructions(
+                addr,
+                section_data,
+                &address_map,
+                &text_rellocs_set,
+                &mut referenced_text_addrs,
+            );
+            if !insns.is_empty() {
+                lifted_text_sections.push(insns);
             }
+        } else {
+            load_data_section(addr, section_data, &mut data_map);
         }
     }
 
@@ -112,29 +138,17 @@ fn load_elf(file_name: &str) -> ElfProgram {
     let symbol_table = SymbolTable::new(&elf);
 
     // All the references to code address have been lifted into labels in the
-    // instructions, but not the data sections. Need to do it for data. In PIE
-    // files, that is just a matter of reading the dynamic relocation table.
-    for r in elf.dynrelas.iter() {
-        let addr = r.r_offset as u32;
-        if address_map.is_in_data_section(addr) {
-            // We only support the R_RISCV_RELATIVE relocation type:
-            assert_eq!(r.r_type, 3, "Unsupported relocation type!");
-
-            let original_addr = r.r_addend.unwrap() as u32;
-
-            if address_map.is_in_text_section(original_addr) {
-                data_map.insert(addr, Data::TextLabel(original_addr));
-
-                // We also need to add the referenced address to the list of text
-                // addresses, so we can generate the label.
-                referenced_text_addrs.insert(original_addr);
-            } else {
-                data_map.insert(addr, Data::Value(original_addr));
-            }
-        } else {
-            unimplemented!("We assumed all dynamic relocations were data relocations!");
-        }
-    }
+    // instructions, but not the data sections. Need to do it for data.
+    (if elf.header.e_type == ET_DYN {
+        pie_relocate_data_section
+    } else {
+        static_relocate_data_section
+    })(
+        &elf,
+        &address_map,
+        &mut data_map,
+        &mut referenced_text_addrs,
+    );
 
     assert_eq!(elf.dynrels.len(), 0, "Unsupported relocation type!");
 
@@ -144,6 +158,71 @@ fn load_elf(file_name: &str) -> ElfProgram {
         text_labels: referenced_text_addrs,
         instructions: lifted_text_sections,
         entry_point: elf.entry as u32,
+    }
+}
+
+fn pie_relocate_data_section(
+    elf: &Elf,
+    address_map: &AddressMap,
+    data_map: &mut BTreeMap<u32, Data>,
+    referenced_text_addrs: &mut BTreeSet<u32>,
+) {
+    // In PIE files, we can read the dynamic relocation table.
+    for r in elf.dynrelas.iter() {
+        let addr = r.r_offset as u32;
+        if !address_map.is_in_data_section(addr) {
+            unimplemented!("We assumed all dynamic relocations were data relocations!");
+        }
+
+        // We only support the R_RISCV_RELATIVE relocation type:
+        assert_eq!(r.r_type, R_RISCV_RELATIVE, "Unsupported relocation type!");
+
+        let original_addr = r.r_addend.unwrap() as u32;
+
+        if address_map.is_in_text_section(original_addr) {
+            data_map.insert(addr, Data::TextLabel(original_addr));
+
+            // We also need to add the referenced address to the list of text
+            // addresses, so we can generate the label.
+            referenced_text_addrs.insert(original_addr);
+        } else {
+            data_map.insert(addr, Data::Value(original_addr));
+        }
+    }
+}
+
+fn static_relocate_data_section(
+    elf: &Elf,
+    address_map: &AddressMap,
+    data_map: &mut BTreeMap<u32, Data>,
+    referenced_text_addrs: &mut BTreeSet<u32>,
+) {
+    // In non-PIE files, we need to use the linking relocation table.
+    for r in elf.shdr_relocs.iter().flat_map(|(_, relocs)| relocs.iter()) {
+        let addr = r.r_offset as u32;
+        if !address_map.is_in_data_section(addr) {
+            // Relocation of the text section has already been handled in instruction lifting.
+            continue;
+        }
+
+        // We only support the R_RISCV_32 relocation type for the data section:
+        assert_eq!(r.r_type, R_RISCV_32, "Unsupported relocation type!");
+
+        let Entry::Occupied(mut entry) = data_map.entry(r.r_offset as u32) else {
+            panic!("Unexpected 0 in relocated data entry!");
+        };
+
+        let Data::Value(original_addr) = *entry.get() else {
+            panic!("Related entry already replaced with a label!");
+        };
+
+        if address_map.is_in_text_section(original_addr) {
+            entry.insert(Data::TextLabel(original_addr));
+
+            // We also need to add the referenced address to the list of text
+            // addresses, so we can generate the label.
+            referenced_text_addrs.insert(original_addr);
+        }
     }
 }
 
@@ -209,8 +288,12 @@ impl RiscVProgram for ElfProgram {
         let instructions = self.instructions.iter();
 
         labels
-            .merge_join_by(instructions, |next_label, next_insn| {
-                **next_label <= next_insn.original_address
+            .merge_join_by(instructions, |&&next_label, next_insn| {
+                match next_label.cmp(&next_insn.original_address) {
+                    Ordering::Less => panic!("Label {next_label:08x} doesn't match exact address!"),
+                    Ordering::Equal => true,
+                    Ordering::Greater => false,
+                }
             })
             .map(|result| match result {
                 Either::Left(label) => Statement::Label(self.symbol_table.get(*label)),
@@ -496,8 +579,52 @@ struct HighLevelInsn {
 }
 
 struct InstructionLifter<'a> {
+    rellocs_set: &'a BTreeSet<u32>,
     address_map: &'a AddressMap<'a>,
     referenced_text_addrs: &'a mut BTreeSet<u32>,
+}
+
+impl InstructionLifter<'_> {
+    fn composed_immediate(
+        &self,
+        hi: i32,
+        lo: i32,
+        rd_ui: usize,
+        rd_addi: usize,
+        is_address: bool,
+    ) -> Option<(&'static str, HighLevelArgs)> {
+        let immediate = hi.wrapping_add(lo);
+
+        let leaks_reg = rd_ui != rd_addi;
+        let is_ref_to_text = is_address && self.address_map.is_in_text_section(immediate as u32) &&
+            // This is very sad: sometimes the global pointer lands in the
+            // middle of the text section, so we have to make an exception when
+            // setting the gp (x3).
+            rd_addi != 3;
+
+        let (op, imm) = match (is_ref_to_text, leaks_reg) {
+            (false, false) => ("li", HighLevelImmediate::Value(immediate)),
+            (false, true) => {
+                // Since this is not a reference to text we can handle each
+                // instruction separately, and let the higher part of the
+                // address leak.
+                return None;
+            }
+            (true, _) => ("la", HighLevelImmediate::CodeLabel(immediate as u32)),
+            /*(true, true) => {
+                panic!("Intruction leaks partial address to text section!")
+            }*/
+        };
+
+        Some((
+            op,
+            HighLevelArgs {
+                rd: Some(rd_ui as u32),
+                imm,
+                ..Default::default()
+            },
+        ))
+    }
 }
 
 impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
@@ -527,15 +654,21 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     imm: Some(lo),
                     ..
                 },
-            ) if rd_lui == rd_addi && rd_lui == rs1_addi => HighLevelInsn {
-                op: "li",
-                args: HighLevelArgs {
-                    rd: Some(*rd_lui as u32),
-                    imm: HighLevelImmediate::Value(hi.wrapping_add(*lo)),
-                    ..Default::default()
-                },
-                original_address,
-            },
+            ) if rd_lui == rs1_addi => {
+                // Sometimes, in non-PIE code, this pair of instructions is used
+                // to load an address into a register. We must check if this is
+                // the case, and if the address is in the text section, so we
+                // must load it from a label.
+                let is_address = self.rellocs_set.contains(&original_address);
+                let (op, args) =
+                    self.composed_immediate(*hi, *lo, *rd_lui, *rd_addi, is_address)?;
+
+                HighLevelInsn {
+                    op,
+                    args,
+                    original_address,
+                }
+            }
             (
                 // All other double instructions we can lift starts with auipc.
                 // Furthermore, we have to join every auipc, as we don't support
@@ -557,20 +690,14 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         rs1: Some(rs1_addi),
                         imm: Some(lo),
                         ..
-                    } if rd_auipc == rd_addi && rd_auipc == rs1_addi => {
-                        let imm_addr = hi.wrapping_add(*lo);
-                        let imm = if self.address_map.is_in_text_section(imm_addr as u32) {
-                            HighLevelImmediate::CodeLabel(imm_addr as u32)
-                        } else {
-                            HighLevelImmediate::Value(imm_addr)
-                        };
+                    } if rd_auipc == rs1_addi => {
+                        // AUIPC obviously always refer to an address.
+                        let (op, args) =
+                            self.composed_immediate(hi, *lo, *rd_auipc, *rd_addi, true)?;
+
                         HighLevelInsn {
-                            op: "la",
-                            args: HighLevelArgs {
-                                rd: Some(*rd_auipc as u32),
-                                imm,
-                                ..Default::default()
-                            },
+                            op,
+                            args,
                             original_address,
                         }
                     }
@@ -658,8 +785,10 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         original_address,
                     },
                     _ => {
-                        // We assume that the auipc is not referencing a text address.
-                        return None;
+                        panic!(
+                            "Unexpected instruction after AUIPC: {:?} at {:08x}",
+                            insn2, original_address
+                        );
                     }
                 }
             }
@@ -705,15 +834,9 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             // LUI is special because the decoder already shifts the immediate,
             // but the code gen expects it unshifted, so we have to undo.
             Op::LUI => HighLevelImmediate::Value(insn.imm.unwrap() >> 12),
-            // We don't support AUIPC, but it is trivial to transform one to an
-            // LI. We hope this is not referencing a text address.
-            //
-            // TODO: find a better solution to this. Maybe handle this in the
-            // two-by-two mapping, and assert this is is not referencing a text
-            // address. Then we would need to deal with the fact that LLVM
-            // sometimes decides not to use the same register in the AUIPC and
-            // the ADDI, which opens the possibility of reuse of the output of
-            // AUIPC (but I have never seen it happening).
+            // We don't support arbitrary AUIPCs, but it is trivial to transform
+            // one to an LI. If it passed the two-by-two transformation and got
+            // here, this is a reference to data, so it is safe to transform it.
             Op::AUIPC => {
                 return HighLevelInsn {
                     op: "li",
@@ -761,11 +884,13 @@ fn lift_instructions(
     base_addr: u32,
     data: &[u8],
     address_map: &AddressMap,
+    rellocs_set: &BTreeSet<u32>,
     referenced_text_addrs: &mut BTreeSet<u32>,
 ) -> Vec<HighLevelInsn> {
     let instructions = RiscVInstructionIterator::new(base_addr, data);
 
     let pseudo_converter = InstructionLifter {
+        rellocs_set,
         address_map,
         referenced_text_addrs,
     };

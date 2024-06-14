@@ -221,7 +221,7 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
     let mut cmd = Command::new("cargo");
     cmd.env(
         "RUSTFLAGS",
-        "--emit=asm -g -C link-args=-Tpowdr.x -C link-args=-pie -C relocation-model=pie",
+        "--emit=asm -g -C link-args=-Tpowdr.x -C link-args=--emit-relocs",
     );
 
     let args = as_ref![
