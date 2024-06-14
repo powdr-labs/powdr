@@ -518,7 +518,7 @@ mod test {
         let xy_z = AlgebraicExpression::new_binary(
             AlgebraicExpression::new_binary(x.clone(), AlgebraicBinaryOperator::Pow, y.clone()),
             AlgebraicBinaryOperator::Pow,
-            z.clone()
+            z.clone(),
         );
         // parentheses needed because `**` is right-associative
         assert_eq!(xy_z.to_string(), "(x ** y) ** z");
