@@ -147,7 +147,7 @@ fn extract_replacements<R: Register, F: FunctionOpKind>(
                         Some((from.to_string(), to.to_string()))
                     },
                     [Argument::Expression(Expression::Symbol(_)), Argument::Expression(Expression::Number(_))] => {
-                        // Handled elsewhere...
+                        // Not a replacement, but not an error either, so ignore.
                         None
                     }
                     _ =>{
