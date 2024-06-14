@@ -19,10 +19,6 @@ pub type Val = p3_goldilocks::Goldilocks;
 pub(crate) struct PowdrCircuit<'a, T> {
     /// The analyzed PIL
     analyzed: &'a Analyzed<T>,
-    /// The number of committed polynomials, computed from `analyzed` and cached
-    commitment_count: usize,
-    /// The number of constant polynomials, computed from `analyzed` and cached
-    constant_count: usize,
     /// The value of the fixed columns
     fixed: &'a [(String, Vec<T>)],
     /// The value of the witness columns, if set
@@ -44,8 +40,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
         Self {
             analyzed,
-            commitment_count: analyzed.commitment_count(),
-            constant_count: analyzed.constant_count(),
             fixed,
             witness: None,
             _witgen_callback: None,
@@ -91,17 +85,17 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 let index = match poly_id.ptype {
                     PolynomialType::Committed => {
                         assert!(
-                            r.poly_id.id < self.commitment_count as u64,
+                            r.poly_id.id < self.analyzed.commitment_count() as u64,
                             "Plonky3 expects `poly_id` to be contiguous"
                         );
                         r.poly_id.id as usize
                     }
                     PolynomialType::Constant => {
                         assert!(
-                            r.poly_id.id < self.constant_count as u64,
+                            r.poly_id.id < self.analyzed.constant_count() as u64,
                             "Plonky3 expects `poly_id` to be contiguous"
                         );
-                        self.commitment_count + r.poly_id.id as usize
+                        self.analyzed.commitment_count() + r.poly_id.id as usize
                     }
                     PolynomialType::Intermediate => {
                         unreachable!("intermediate polynomials should have been inlined")
@@ -144,7 +138,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
-        self.commitment_count + self.constant_count
+        self.analyzed.commitment_count() + self.analyzed.constant_count()
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
