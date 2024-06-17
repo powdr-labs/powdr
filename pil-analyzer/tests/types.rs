@@ -516,3 +516,28 @@ fn enum_too_many_fields() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+#[should_panic = "Trait Add not found."]
+fn undefined_trait() {
+    let input = "
+    impl Add<int, int> {
+        add: (|a, b| a + b),
+    }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn defined_trait() {
+    let input = "
+    trait Add<T: Add, Q> {
+        add: T, T -> Q,
+    }
+    
+    impl Add<int, int> {
+        add: (|a, b| a + b),
+    }
+    ";
+    type_check(input, &[]);
+}

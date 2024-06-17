@@ -2,10 +2,12 @@ use std::collections::{BTreeSet, HashMap};
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Expression, PolynomialReference, Reference},
+    analyzed::{
+        Expression, FunctionValueDefinition, PolynomialReference, Reference, TraitImplementation,
+    },
     parsed::{
         display::format_type_scheme_around_name,
-        types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
+        types::{ArrayType, FunctionType, TraitScheme, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
         ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
         LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number, Pattern,
@@ -30,9 +32,10 @@ use crate::{
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
+    implementations: &HashMap<String, TraitImplementation<Expression>>,
     statement_type: &ExpectedType,
 ) -> Result<Vec<(String, Type)>, Vec<Error>> {
-    TypeChecker::new(statement_type).infer_types(definitions, expressions)
+    TypeChecker::new(statement_type).infer_types(definitions, expressions, implementations)
 }
 
 /// A type to expect and a flag that says if arrays of that type are also fine.
@@ -92,9 +95,10 @@ impl<'a> TypeChecker<'a> {
         mut self,
         mut definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
         expressions: &mut [(&mut Expression, ExpectedType)],
+        implementations: &HashMap<String, TraitImplementation<Expression>>,
     ) -> Result<Vec<(String, Type)>, Vec<Error>> {
         let type_var_mapping = self
-            .infer_types_inner(&mut definitions, expressions)
+            .infer_types_inner(&mut definitions, expressions, implementations)
             .map_err(|e| vec![e])?;
         self.update_type_args(&mut definitions, expressions, &type_var_mapping)?;
         Ok(definitions
@@ -116,6 +120,7 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
         expressions: &mut [(&mut Expression, ExpectedType)],
+        implementations: &HashMap<String, TraitImplementation<Expression>>,
     ) -> Result<HashMap<String, HashMap<String, Type>>, Error> {
         // TODO in order to fix type inference on recursive functions, we need to:
         // - collect all groups of functions that call each other recursively
@@ -164,6 +169,12 @@ impl<'a> TypeChecker<'a> {
         self.declared_type_vars.clear();
 
         self.check_expressions(expressions)?;
+
+        //let trait_decl = definitions.iter_mut().filter(|(_name, (_symbol, value))| {
+        //    matches!(value, Some(FunctionValueDefinition::TraitDeclaration(_)))
+        //});
+
+        self.check_implementations(implementations, definitions)?;
 
         // From this point on, the substitutions are fixed.
 
@@ -438,6 +449,29 @@ impl<'a> TypeChecker<'a> {
     ) -> Result<(), Error> {
         for (e, expected_type) in expressions {
             self.expect_type_with_flexibility(expected_type, e)?;
+        }
+        Ok(())
+    }
+
+    /// Type-checks the trait implementations.
+    fn check_implementations(
+        &mut self,
+        implementations: &HashMap<String, TraitImplementation<Expression>>,
+        definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
+    ) -> Result<(), Error> {
+        for (trait_name, impls) in implementations {
+            let TraitImplementation {
+                name,
+                type_scheme,
+                functions,
+            } = impls;
+
+            let (types, args) = self.instantiate_trait_scheme(&mut type_scheme.clone());
+            let typed_refs = types.iter().map(type_for_reference).collect::<Vec<_>>();
+            let trait_decl = definitions.get(name);
+            if trait_decl.is_none() {
+                panic!("Trait {name} not found.");
+            }
         }
         Ok(())
     }
@@ -900,6 +934,39 @@ impl<'a> TypeChecker<'a> {
         let substitutions = scheme.vars.vars().cloned().zip(vars.clone()).collect();
         ty.substitute_type_vars(&substitutions);
         (ty, vars)
+    }
+
+    fn instantiate_trait_scheme(
+        &mut self,
+        scheme: &mut Option<TraitScheme>,
+    ) -> (Vec<Type>, Vec<Type>) {
+        scheme.clone().map_or_else(
+            || (Vec::new(), Vec::new()),
+            |scheme| {
+                let vars = scheme
+                    .vars
+                    .bounds()
+                    .map(|(_, bounds)| {
+                        let new_var = self.new_type_var();
+                        for b in bounds {
+                            self.unifier.ensure_bound(&new_var, b.clone()).unwrap();
+                        }
+                        new_var
+                    })
+                    .collect::<Vec<_>>();
+                let substitutions = scheme.vars.vars().cloned().zip(vars.clone()).collect();
+                let trait_types = scheme
+                    .clone()
+                    .types
+                    .iter_mut()
+                    .map(|ty| {
+                        ty.substitute_type_vars(&substitutions);
+                        ty.clone()
+                    })
+                    .collect();
+                (trait_types, vars)
+            },
+        )
     }
 
     fn format_type_with_bounds(&self, ty: Type) -> String {

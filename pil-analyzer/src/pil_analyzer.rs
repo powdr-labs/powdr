@@ -301,6 +301,7 @@ impl PILAnalyzer {
         let inferred_types = infer_types(
             definitions,
             &mut expressions,
+            &self.implementations,
             &constr_function_statement_type,
         )
         .map_err(|mut errors| {
