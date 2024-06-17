@@ -3,11 +3,12 @@ use std::collections::BTreeSet;
 use powdr_ast::parsed::{*, asm::*, types::*};
 use powdr_number::{BigInt, BigUint};
 use crate::{ParserContext, unescape_string};
+use powdr_parser_util::Error;
 
 grammar(ctx: &ParserContext);
 
 extern {
-    type Error = String;
+    type Error = Error;
 }
 
 match {
@@ -262,9 +263,9 @@ MachineDefinition: SymbolDefinition = {
 }
 
 MachineProperties: MachineProperties = {
-    <mut list:( <MachineProperty> "," )*> <end:MachineProperty> ","? =>? {
-        list.push(end);
-        MachineProperties::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
+    <start:@L> <mut list:( <MachineProperty> "," )*> <last:MachineProperty> ","? <end:@R> =>? {
+        list.push(last);
+        Ok(MachineProperties::try_from_prop_list(ctx.source_ref(start, end), list)?)
     }
 }
 
@@ -275,9 +276,9 @@ MachineProperty: (String, Expression) = {
 MachineArguments: MachineArguments = {
     => MachineArguments::default(),
     "(" ")" => MachineArguments::default(),
-    "(" <mut list:( <Param> "," )*> <end:Param> ","? ")" =>? {
-        list.push(end);
-        MachineArguments::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
+    <start:@L> "(" <mut list:( <Param> "," )*> <last:Param> ","? ")" <end:@R> =>? {
+        list.push(last);
+        Ok(MachineArguments::try_from_params(ctx.source_ref(start, end), list)?)
     }
 }
 
@@ -325,8 +326,8 @@ pub LinkDeclarationStatement: MachineStatement = {
 }
 
 pub LinkDeclaration: LinkDeclaration = {
-    "link" <flag:LinkFlag> "=>" <link:Expression> => LinkDeclaration { flag, link, is_permutation: false, },
-    "link" <flag:LinkFlag> "~>" <link:Expression> => LinkDeclaration { flag, link, is_permutation: true, },
+    "link" <flag:LinkFlag> "=>" <link:Expression> =>? Ok(LinkDeclaration { flag, link: link.try_into()?, is_permutation: false, }),
+    "link" <flag:LinkFlag> "~>" <link:Expression> =>? Ok(LinkDeclaration { flag, link: link.try_into()?, is_permutation: true, }),
 }
 
 pub LinkFlag: Expression = {

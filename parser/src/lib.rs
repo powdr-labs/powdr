@@ -281,7 +281,10 @@ mod test {
                     body.0.iter_mut().for_each(pil_statement_clear_source_ref);
                     links.iter_mut().for_each(|l| {
                         pil_expression_clear_source_ref(&mut l.flag);
-                        pil_expression_clear_source_ref(&mut l.link);
+                        l.link
+                            .params
+                            .inputs_and_outputs_mut()
+                            .for_each(pil_expression_clear_source_ref);
                     });
                 }
                 MachineStatement::FunctionDeclaration(s, _, _, statements) => {

@@ -190,15 +190,15 @@ impl Display for CallableRef {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{}.{} {}",
-            match self.params.inputs.len() {
-                0 => "".to_string(),
-                1 => format!("{} = ", self.params.inputs[0]),
-                _ => format!("({}) = ", self.params.inputs.iter().join(" ")),
+            "{}{}.{}({})",
+            match &self.params.outputs[..] {
+                [] => "".to_string(),
+                [output] => format!("{output} = "),
+                outputs => format!("({}) = ", outputs.iter().join(", ")),
             },
             self.instance,
             self.callable,
-            self.params.outputs.iter().join(" "),
+            self.params.inputs.iter().join(", ")
         )
     }
 }

@@ -7,9 +7,9 @@ use std::{
 
 use powdr_ast::parsed::{
     asm::{
-        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, CallableRef, Import,
-        LinkDeclaration, Machine, MachineStatement, Module, ModuleRef, ModuleStatement,
-        SymbolDefinition, SymbolPath, SymbolValue, SymbolValueRef,
+        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, Import, LinkDeclaration,
+        Machine, MachineStatement, Module, ModuleRef, ModuleStatement, SymbolDefinition,
+        SymbolPath, SymbolValue, SymbolValueRef,
     },
     folder::Folder,
     types::{Type, TypeScheme},
@@ -612,28 +612,22 @@ fn check_machine(
                     check_expression(&module_location, e, state, &local_variables)
                 })?
             }
-            MachineStatement::LinkDeclaration(source_ref, LinkDeclaration { flag, link, .. }) => {
-                // check input/output expressions for link definition
+            MachineStatement::LinkDeclaration(_, LinkDeclaration { flag, link, .. }) => {
                 check_expression(&module_location, flag, state, &local_variables)?;
-                let callable_ref: CallableRef = link
-                    .clone()
-                    .try_into()
-                    .map_err(|e| source_ref.with_error(e))?;
-                for expr in callable_ref.params.inputs_and_outputs() {
-                    check_expression(&module_location, expr, state, &local_variables)?;
-                }
+                link.params.inputs_and_outputs().try_for_each(|e| {
+                    check_expression(&module_location, e, state, &local_variables)
+                })?;
             }
-            MachineStatement::InstructionDeclaration(source_ref, _, instr) => {
+            MachineStatement::InstructionDeclaration(_, _, instr) => {
                 for link_decl in &instr.links {
                     check_expression(&module_location, &link_decl.flag, state, &local_variables)?;
-                    let callable_ref: CallableRef = link_decl
+                    link_decl
                         .link
-                        .clone()
-                        .try_into()
-                        .map_err(|e| source_ref.with_error(e))?;
-                    for expr in callable_ref.params.inputs_and_outputs() {
-                        check_expression(&module_location, expr, state, &local_variables)?;
-                    }
+                        .params
+                        .inputs_and_outputs()
+                        .try_for_each(|e| {
+                            check_expression(&module_location, e, state, &local_variables)
+                        })?;
                 }
             }
             _ => {}

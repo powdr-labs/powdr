@@ -475,15 +475,9 @@ impl<T: FieldElement> VMConverter<T> {
         instr_params: &InstructionParams,
         link_decl: LinkDeclaration,
     ) -> LinkDefinitionStatement {
+        let callable: CallableRef = link_decl.link;
         let lhs = instr_params;
-
-        let mut callable: CallableRef = link_decl
-            .link
-            .try_into()
-            .map_err(|e| source.with_error(e))
-            .unwrap();
-
-        let rhs = &mut callable.params;
+        let rhs = &callable.params;
 
         let mut rhs_assignment_registers = BTreeSet::new();
         let mut rhs_next_write_registers = BTreeSet::new();
