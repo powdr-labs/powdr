@@ -18,7 +18,8 @@ use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
+    PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind,
+    TraitImplementation, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
@@ -70,6 +71,8 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
+    /// Trait implementations.
+    implementations: HashMap<String, TraitImplementation<Expression>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -322,6 +325,7 @@ impl PILAnalyzer {
             &self.identities,
             self.source_order,
             self.auto_added_symbols,
+            self.implementations,
         )
     }
 
@@ -390,8 +394,11 @@ impl PILAnalyzer {
                             self.source_order
                                 .push(StatementIdentifier::Definition(name));
                         }
-                        PILItem::TraitImplementation(_symbol, _trait_impl) => {
-                            // TODO GZ: Keep track of trait implementations? self.implementations?
+                        PILItem::TraitImplementation(_symbol, trait_impl) => {
+                            let name = trait_impl.name.clone();
+                            self.implementations.insert(name.clone(), trait_impl);
+                            self.source_order
+                                .push(StatementIdentifier::TraitImplementation(name));
                         }
                         PILItem::PublicDeclaration(decl) => {
                             let name = decl.name.clone();

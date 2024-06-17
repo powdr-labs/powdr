@@ -12,7 +12,7 @@ use powdr_ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
         Identity, IdentityKind, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol,
-        SymbolKind,
+        SymbolKind, TraitImplementation,
     },
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
@@ -36,6 +36,7 @@ pub fn condense<T: FieldElement>(
     identities: &[Identity<Expression>],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
+    implementations: HashMap<String, TraitImplementation<Expression>>,
 ) -> Analyzed<T> {
     let mut condenser = Condenser::new(&definitions, degree);
 
@@ -151,6 +152,7 @@ pub fn condense<T: FieldElement>(
         identities: condensed_identities,
         source_order,
         auto_added_symbols,
+        implementations: implementations.clone(), //TODO GZ
     }
 }
 

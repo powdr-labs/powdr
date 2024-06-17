@@ -29,6 +29,8 @@ pub enum StatementIdentifier {
     PublicDeclaration(String),
     /// Index into the vector of identities.
     Identity(usize),
+    /// Trait implementation
+    TraitImplementation(String),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
@@ -44,6 +46,8 @@ pub struct Analyzed<T> {
     pub source_order: Vec<StatementIdentifier>,
     /// Symbols from the core that were added automatically but will not be printed.
     pub auto_added_symbols: HashSet<String>,
+    /// Traits implemented by this program.
+    pub implementations: HashMap<String, TraitImplementation<Expression>>,
 }
 
 impl<T> Analyzed<T> {

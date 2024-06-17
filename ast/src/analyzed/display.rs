@@ -10,7 +10,7 @@ use std::{
 
 use itertools::Itertools;
 
-use crate::{parsed::FunctionKind, writeln_indented, writeln_indented_by};
+use crate::{indent, parsed::FunctionKind, writeln_indented, writeln_indented_by};
 
 use self::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
@@ -147,6 +147,11 @@ impl<T: Display> Display for Analyzed<T> {
                 }
                 StatementIdentifier::Identity(i) => {
                     writeln_indented(f, &self.identities[*i])?;
+                }
+                StatementIdentifier::TraitImplementation(trait_impl) => {
+                    let trait_impl = &self.implementations[trait_impl];
+                    let (name, is_local) = update_namespace(&trait_impl.name, f)?;
+                    writeln_indented_by(f, format!("{trait_impl}",), is_local.into())?;
                 }
             }
         }
@@ -388,5 +393,49 @@ impl Display for PolynomialReference {
             }
         }
         Ok(())
+    }
+}
+
+impl<E: Display> Display for TraitImplementation<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = self
+            .type_scheme
+            .as_ref()
+            .map_or_else(Default::default, |scheme| {
+                if scheme.vars.is_empty() {
+                    Default::default()
+                } else {
+                    format!("<{}>", scheme.vars)
+                }
+            });
+        let trait_vars = self
+            .type_scheme
+            .as_ref()
+            .map_or_else(Default::default, |scheme| {
+                if scheme.types.is_empty() {
+                    Default::default()
+                } else {
+                    let formatted_elements: Vec<String> =
+                        scheme.types.iter().map(|t| format!("{t}")).collect();
+                    format!("<{}>", formatted_elements.join(", "))
+                }
+            });
+
+        let s = format!(
+            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+            trait_name = self.name,
+            methods = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        );
+
+        writeln_indented(f, s)
+    }
+}
+
+impl<E: Display> Display for NamedExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self.body)
     }
 }
