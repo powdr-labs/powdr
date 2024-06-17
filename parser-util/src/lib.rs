@@ -52,7 +52,7 @@ pub struct Error {
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
+        write!(f, "{} at {:?}", self.message, self.source_ref)
     }
 }
 
