@@ -2,32 +2,83 @@
 
 mod params;
 
+use p3_matrix::dense::RowMajorMatrix;
 use std::sync::Arc;
 
+use params::{Challenger, StarkProvingKey, StarkVerifyingKey};
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use p3_uni_stark::{prove, verify, Proof};
+use p3_uni_stark::{prove, verify, Proof, StarkGenericConfig};
 use powdr_number::{FieldElement, KnownField};
 
 use crate::circuit_builder::{cast_to_goldilocks, PowdrCircuit};
 
 use self::params::{get_challenger, get_config};
 
-#[derive(Clone)]
 pub struct Plonky3Prover<T> {
     /// The analyzed PIL
     analyzed: Arc<Analyzed<T>>,
+    /// The value of the fixed columns
+    fixed: Arc<Vec<(String, Vec<T>)>>,
+    /// Proving key
+    proving_key: Option<StarkProvingKey>,
+    /// Verifying key
+    verifying_key: Option<StarkVerifyingKey>,
 }
 
 impl<T> Plonky3Prover<T> {
-    pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
-        Self { analyzed }
+    pub fn new(analyzed: Arc<Analyzed<T>>, fixed: Arc<Vec<(String, Vec<T>)>>) -> Self {
+        Self {
+            analyzed,
+            fixed,
+            proving_key: None,
+            verifying_key: None,
+        }
     }
 }
 
 impl<T: FieldElement> Plonky3Prover<T> {
+    pub fn setup(&mut self) {
+        // get fixed columns
+        let fixed = &self.fixed;
+
+        // get the config
+        let config = get_config(self.analyzed.degree());
+
+        // commit to the fixed columns
+        let pcs = config.pcs();
+        let domain = <_ as p3_commit::Pcs<_, Challenger>>::natural_domain_for_degree(
+            pcs,
+            self.analyzed.degree() as usize,
+        );
+        // write fixed into matrix row by row. I'm not sure ordering them like this makes a difference
+        let matrix = RowMajorMatrix::new(
+            (0..self.analyzed.degree())
+                .flat_map(|i| {
+                    fixed
+                        .iter()
+                        .map(move |(_, values)| cast_to_goldilocks(values[i as usize]))
+                })
+                .collect(),
+            self.fixed.len(),
+        );
+        let evaluations = vec![(domain, matrix)];
+
+        // commit to the evaluations
+        let (commit, data) = <_ as p3_commit::Pcs<_, Challenger>>::commit(pcs, evaluations);
+
+        let proving_key = StarkProvingKey {
+            // commit,
+            data,
+        };
+        let verifying_key = StarkVerifyingKey { commit };
+
+        self.proving_key = Some(proving_key);
+        self.verifying_key = Some(verifying_key);
+    }
+
     pub fn prove(
         &self,
         witness: &[(String, Vec<T>)],
@@ -97,8 +148,9 @@ mod tests {
         let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
+        let fixed = pipeline.compute_fixed_cols().unwrap();
 
-        let prover = Plonky3Prover::new(pil);
+        let prover = Plonky3Prover::new(pil, fixed);
         let proof = prover.prove(&witness, witness_callback);
 
         assert!(proof.is_ok());

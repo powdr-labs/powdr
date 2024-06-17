@@ -40,11 +40,24 @@ type ValMmcs = FieldMerkleTreeMmcs<
     Compress,
     DIGEST_ELEMS,
 >;
-type Challenger = DuplexChallenger<Val, Perm, WIDTH>;
+pub type Challenger = DuplexChallenger<Val, Perm, WIDTH>;
 type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
 type Dft = Radix2DitParallel;
 type Pcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
 type Config = StarkConfig<Pcs, Challenge, Challenger>;
+
+pub type PcsProverData = <Pcs as p3_commit::Pcs<Challenge, Challenger>>::ProverData;
+
+pub type Commitment = <Pcs as p3_commit::Pcs<Challenge, Challenger>>::Commitment;
+pub struct StarkProvingKey {
+    // I'm not sure this is needed in our case
+    // pub commit: Commitment,
+    pub data: PcsProverData,
+}
+
+pub struct StarkVerifyingKey {
+    pub commit: Commitment,
+}
 
 const HALF_NUM_FULL_ROUNDS: usize = 4;
 const NUM_PARTIAL_ROUNDS: usize = 22;
