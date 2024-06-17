@@ -531,15 +531,15 @@ fn undefined_trait() {
 #[test]
 fn defined_trait() {
     let input = "
-    trait Add<T: Add, Q> {
-        add: T, T -> Q,
+    trait Add<T: Add> {
+        add: T, T -> T,
     }
 
-    impl Add<int, int> {
+    impl Add<int> {
         add: (|a, b| a + b),
     }
 
     let r: int = Add::add(3, 4);
     ";
-    type_check(input, &[]);
+    type_check(input, &[("r", "", "int")]);
 }

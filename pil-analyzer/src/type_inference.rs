@@ -168,7 +168,8 @@ impl<'a> TypeChecker<'a> {
 
         self.check_expressions(expressions)?;
 
-        self.check_implementations(implementations)?;
+        let infered = self.check_implementations(implementations)?;
+        inferred_types.extend(infered);
 
         // From this point on, the substitutions are fixed.
 
@@ -451,7 +452,9 @@ impl<'a> TypeChecker<'a> {
     fn check_implementations(
         &mut self,
         implementations: &HashMap<String, TraitImplementation<Expression>>,
-    ) -> Result<(), Error> {
+    ) -> Result<HashMap<String, Type>, Error> {
+        let mut inferred_types: HashMap<String, Type> = Default::default();
+
         for (trait_name, impls) in implementations {
             let TraitImplementation {
                 name,
@@ -483,9 +486,11 @@ impl<'a> TypeChecker<'a> {
                             "Expected type {expr_type} for trait function {f_name}, but got {declared_type}.\n{err}",
                         ))
                     })?;
+
+                inferred_types.insert(f_name, expr_type);
             }
         }
-        Ok(())
+        Ok(inferred_types)
     }
 
     /// Process an expression, inferring its type and expecting either a certain type or potentially an array of that type.
