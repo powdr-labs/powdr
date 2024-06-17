@@ -21,7 +21,7 @@ pub mod continuations;
 pub mod elf;
 pub mod runtime;
 
-/// Compiles a rust file to Pordr asm.
+/// Compiles a rust file to Powdr asm.
 #[allow(clippy::print_stderr)]
 pub fn compile_rust<T: FieldElement>(
     file_name: &str,
