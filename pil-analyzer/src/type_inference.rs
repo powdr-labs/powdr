@@ -2,9 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{
-        Expression, FunctionValueDefinition, PolynomialReference, Reference, TraitImplementation,
-    },
+    analyzed::{Expression, PolynomialReference, Reference, TraitImplementation},
     parsed::{
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TraitScheme, TupleType, Type, TypeBounds, TypeScheme},
@@ -170,11 +168,7 @@ impl<'a> TypeChecker<'a> {
 
         self.check_expressions(expressions)?;
 
-        //let trait_decl = definitions.iter_mut().filter(|(_name, (_symbol, value))| {
-        //    matches!(value, Some(FunctionValueDefinition::TraitDeclaration(_)))
-        //});
-
-        self.check_implementations(implementations, definitions)?;
+        self.check_implementations(implementations)?;
 
         // From this point on, the substitutions are fixed.
 
@@ -457,7 +451,6 @@ impl<'a> TypeChecker<'a> {
     fn check_implementations(
         &mut self,
         implementations: &HashMap<String, TraitImplementation<Expression>>,
-        definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     ) -> Result<(), Error> {
         for (trait_name, impls) in implementations {
             let TraitImplementation {
@@ -466,11 +459,30 @@ impl<'a> TypeChecker<'a> {
                 functions,
             } = impls;
 
-            let (types, args) = self.instantiate_trait_scheme(&mut type_scheme.clone());
-            let typed_refs = types.iter().map(type_for_reference).collect::<Vec<_>>();
-            let trait_decl = definitions.get(name);
-            if trait_decl.is_none() {
-                panic!("Trait {name} not found.");
+            // let types = type_scheme
+            //     .as_ref()
+            //     .map_or_else(|| vec![], |f| f.types.clone());
+            for f in functions.clone().iter_mut() {
+                let f_name = format!("{trait_name}.{fname}", fname = f.name);
+                // TODO GZ: This is a temporal hack, we should not clone the whole declared_types
+                let declared_types = self.declared_types.clone();
+                let trait_decl = declared_types.get(&f_name);
+                if trait_decl.is_none() {
+                    panic!("Trait function {f_name} not defined in {name}.");
+                }
+
+                let (source_ref, type_scheme) = trait_decl.unwrap();
+                let (declared_type, _) = self.instantiate_scheme(type_scheme.clone());
+
+                let expr_type = self.infer_type_of_expression(&mut f.body)?;
+
+                self.unifier
+                    .unify_types(expr_type.clone(), declared_type.clone())
+                    .map_err(|err| {
+                        source_ref.with_error(format!(
+                            "Expected type {expr_type} for trait function {f_name}, but got {declared_type}.\n{err}",
+                        ))
+                    })?;
             }
         }
         Ok(())

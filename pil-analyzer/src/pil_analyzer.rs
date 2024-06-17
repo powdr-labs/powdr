@@ -402,8 +402,8 @@ impl PILAnalyzer {
                             self.source_order
                                 .push(StatementIdentifier::Definition(name));
                         }
-                        PILItem::TraitImplementation(_symbol, trait_impl) => {
-                            let name = trait_impl.name.clone();
+                        PILItem::TraitImplementation(symbol, trait_impl) => {
+                            let name = symbol.absolute_name.clone();
                             self.implementations.insert(name.clone(), trait_impl);
                             self.source_order
                                 .push(StatementIdentifier::TraitImplementation(name));
