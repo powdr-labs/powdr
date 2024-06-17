@@ -26,16 +26,16 @@ namespace T(65536);
     col witness pc;
     col witness XInv;
     col witness XIsZero;
-    T.XIsZero = (1 - (T.X * T.XInv));
-    (T.XIsZero * T.X) = 0;
-    (T.XIsZero * (1 - T.XIsZero)) = 0;
+    T.XIsZero = 1 - T.X * T.XInv;
+    T.XIsZero * T.X = 0;
+    T.XIsZero * (1 - T.XIsZero) = 0;
     col witness instr_jmpz;
     col witness instr_jmpz_param_l;
     col witness instr_jmp;
     col witness instr_jmp_param_l;
     col witness instr_dec_CNT;
     col witness instr_assert_zero;
-    (T.instr_assert_zero * (T.XIsZero - 1)) = 0;
+    T.instr_assert_zero * (T.XIsZero - 1) = 0;
     col witness X;
     col witness X_const;
     col witness X_read_free;
@@ -46,8 +46,8 @@ namespace T(65536);
     col witness reg_write_X_CNT;
     col witness read_X_pc;
     col witness reg_write_X_A;
-    T.X = ((((T.read_X_A * T.A) + (T.read_X_CNT * T.CNT)) + T.X_const) + (T.X_read_free * T.X_free_value));
-    T.A' = (((T.first_step' * 0) + (T.reg_write_X_A * T.X)) + ((1 - (T.first_step' + T.reg_write_X_A)) * T.A));
+    T.X = T.read_X_A * T.A + T.read_X_CNT * T.CNT + T.X_const + T.X_read_free * T.X_free_value;
+    T.A' = T.first_step' * 0 + T.reg_write_X_A * T.X + (1 - (T.first_step' + T.reg_write_X_A)) * T.A;
     col witness X_free_value(__i) query match std::prover::eval(T.pc) {
         0 => std::prover::Query::Input(1),
         3 => std::prover::Query::Input(std::convert::int::<fe>(std::prover::eval(T.CNT) + 1)),
@@ -61,7 +61,7 @@ namespace T(65536);
     col fixed p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0] + [0]*;
     col fixed p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-    { T.pc, T.reg_write_X_A, T.reg_write_X_CNT } in (1 - T.first_step) { T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT };
+    { T.pc, T.reg_write_X_A, T.reg_write_X_CNT } in 1 - T.first_step { T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT };
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(input, formatted);
@@ -96,8 +96,8 @@ fn intermediate_nested() {
     col witness x;
     col intermediate = N.x;
     col int2 = N.intermediate;
-    col int3 = (N.int2 + N.intermediate);
-    N.int3 = (2 * N.x);
+    col int3 = N.int2 + N.intermediate;
+    N.int3 = 2 * N.x;
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -130,8 +130,8 @@ fn reparse_arrays() {
     let input = r#"public out = N.y[1](2);
 namespace N(16);
     col witness y[3];
-    (N.y[1] - 2) = 0;
-    (N.y[2]' - 2) = 0;
+    N.y[1] - 2 = 0;
+    N.y[2]' - 2 = 0;
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);
@@ -210,8 +210,8 @@ fn symbolic_functions() {
     col witness y;
     let constrain_equal_expr: expr, expr -> expr = (|A, B| A - B);
     let on_regular_row: expr -> expr = (|cond| (1 - N.ISLAST) * cond);
-    ((1 - N.ISLAST) * (N.x' - N.y)) = 0;
-    ((1 - N.ISLAST) * (N.y' - (N.x + N.y))) = 0;
+    (1 - N.ISLAST) * (N.x' - N.y) = 0;
+    (1 - N.ISLAST) * (N.y' - (N.x + N.y)) = 0;
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -229,7 +229,7 @@ fn next_op_on_param() {
     col witness x;
     col witness y;
     let next_is_seven: expr -> expr = (|t| t' - 7);
-    (N.y' - 7) = 0;
+    N.y' - 7 = 0;
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -251,7 +251,7 @@ fn fixed_symbolic() {
     col fixed ISLAST(i) { N.islast(i) };
     col witness x;
     col witness y;
-    (N.x - N.ISLAST) = 0;
+    N.x - N.ISLAST = 0;
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -396,7 +396,7 @@ fn to_expr() {
 namespace N(16);
     let mul_two: int -> int = (|i| i * 2);
     col witness y;
-    N.y = (N.y * 14);
+    N.y = N.y * 14;
 "#;
     assert_eq!(formatted, expected);
 }
@@ -425,7 +425,7 @@ namespace main(16);
     col witness x2[16];
     let t: int = std::array::len::<expr>(main.x1);
     let r: int = std::array::len::<expr>(main.x2);
-    (main.x1[0] * 16) = (main.x2[0] * 16);
+    main.x1[0] * 16 = main.x2[0] * 16;
 "#;
     assert_eq!(formatted, expected);
 }
@@ -467,8 +467,8 @@ namespace Main(8);
     col witness x;
     col witness stage(2) y;
     col a = std::prover::challenge(2, 1);
-    Main.x' = ((Main.x + 1) * (1 - Main.first));
-    Main.y' = ((Main.x + Main.a) * (1 - Main.first));
+    Main.x' = (Main.x + 1) * (1 - Main.first);
+    Main.y' = (Main.x + Main.a) * (1 - Main.first);
 "#;
     assert_eq!(formatted, expected);
 }

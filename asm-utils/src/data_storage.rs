@@ -110,22 +110,19 @@ pub fn store_data_objects(
     sections: Vec<Vec<(Option<String>, Vec<DataValue>)>>,
     memory_start: u32,
     code_gen: &mut dyn FnMut(Option<String>, u32, SingleDataValue),
-) -> BTreeMap<String, u32> {
+    positions: &mut BTreeMap<String, u32>,
+) {
     let mut writer = WordWriter::new(memory_start, code_gen);
 
-    let positions = {
-        let mut positions = BTreeMap::new();
-        let mut current_pos = writer.current_position();
-        for (name, data) in sections.iter().flatten() {
-            if let Some(name) = name {
-                positions.insert(name.clone(), current_pos);
-            }
-            for d in data.iter() {
-                current_pos += d.size(current_pos as usize) as u32;
-            }
+    let mut current_pos = writer.current_position();
+    for (name, data) in sections.iter().flatten() {
+        if let Some(name) = name {
+            positions.insert(name.clone(), current_pos);
         }
-        positions
-    };
+        for d in data.iter() {
+            current_pos += d.size(current_pos as usize) as u32;
+        }
+    }
 
     for (name, data) in sections.into_iter().flatten() {
         if let Some(name) = name {
@@ -157,6 +154,4 @@ pub fn store_data_objects(
         }
     }
     writer.finish();
-
-    positions
 }

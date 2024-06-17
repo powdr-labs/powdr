@@ -6,7 +6,7 @@
     round_char_boundary
 )]
 
-use core::arch::asm;
+use core::arch::{asm, global_asm};
 use core::panic::PanicInfo;
 
 use crate::fmt::print_str;
@@ -34,13 +34,31 @@ unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
     loop {}
 }
 
-extern "Rust" {
-    fn main();
-}
-#[no_mangle]
-#[start]
-pub unsafe extern "C" fn __runtime_start() {
-    unsafe {
-        main();
-    }
-}
+// Entry point function __runtime_start:
+// 1. Sets the global pointer register (the symbol __global_pointer$ is standard
+//    in RISC-V, and it is set by the linker).
+// 2. Sets the stack pointer to the extern symbol __powdr_stack_start (this must
+//    also be set by the linker, but the name is powdr specific).
+// 3. Tail call the main function (in powdr, the return address register is already
+//    set, so that returning from the entry point function will cause the execution
+//    to succeed).
+global_asm!(
+    r"
+.global __runtime_start
+__runtime_start:
+    .option push
+    .option norelax
+    lui gp, %hi(__global_pointer$)
+    addi gp, gp, %lo(__global_pointer$)
+    .option pop
+    lui sp, %hi(__powdr_stack_start)
+    addi sp, sp, %lo(__powdr_stack_start)
+    tail main
+"
+);
+
+// TODO: ideally, the above code would use `la` instead of `lui` + `addi`, but
+// for some reason rustc automatically expands it to `auipc %pcrel_hi(...)`
+// + `addi %pcrel_lo(...)`, which our asm converter doesn't support on multiple
+// levels. We can't use `li` either, because rustc doesn't like `li` with
+// symbols.
