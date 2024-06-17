@@ -580,8 +580,8 @@ impl LargeInt for GLLargeInt {
         u32::try_from(self.0).ok()
     }
 
-    fn from_hex(s: &str) -> Result<Self, ()> {
-        u64::from_str_radix(s, 16).map_err(|_| ()).map(Self)
+    fn from_hex(s: &str) -> Self {
+        Self(u64::from_str_radix(s, 16).unwrap())
     }
 }
 

@@ -5,7 +5,8 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -348,12 +349,16 @@ impl<T: FieldElement> TryFrom<&AlgebraicExpression<T>> for FlatAlgebraicExpressi
                 },
                 ..Default::default()
             }),
-            AlgebraicExpression::BinaryOperation(l, op, r) => {
-                Ok(try_from_binary_operation(l.as_ref(), *op, r.as_ref())?.set_uniqueness_flag())
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                Ok(
+                    try_from_binary_operation(left.as_ref(), *op, right.as_ref())?
+                        .set_uniqueness_flag(),
+                )
             }
-            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperator::Minus, inner) => {
-                Ok(-(Self::try_from(inner.as_ref())?).set_uniqueness_flag())
-            }
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+                op: AlgebraicUnaryOperator::Minus,
+                expr,
+            }) => Ok(-(Self::try_from(expr.as_ref())?).set_uniqueness_flag()),
         }
     }
 }
