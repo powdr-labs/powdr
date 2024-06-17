@@ -12,7 +12,7 @@ use halo2_proofs::{
 use powdr_executor::witgen::WitgenCallback;
 
 use powdr_ast::{
-    analyzed::{AlgebraicBinaryOperator, AlgebraicExpression},
+    analyzed::{AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression},
     parsed::SelectedExpressions,
 };
 use powdr_ast::{
@@ -519,7 +519,11 @@ fn to_halo2_expression<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(
                 panic!("Unknown reference: {}", polyref.name)
             }
         }
-        AlgebraicExpression::BinaryOperation(lhe, op, powdr_rhe) => {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left: lhe,
+            op,
+            right: powdr_rhe,
+        }) => {
             let lhe = to_halo2_expression(lhe, config, meta);
             let rhe = to_halo2_expression(powdr_rhe, config, meta);
             match op {

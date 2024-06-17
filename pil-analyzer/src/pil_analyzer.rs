@@ -31,11 +31,11 @@ use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
 pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     let files = import_all_dependencies(path);
-    analyze::<T>(files)
+    analyze(files)
 }
 
 pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Analyzed<T> {
-    analyze::<T>(vec![pil_file])
+    analyze(vec![pil_file])
 }
 
 pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
@@ -52,7 +52,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     analyzer.process(files);
     analyzer.side_effect_check();
     analyzer.type_check();
-    analyzer.condense::<T>()
+    analyzer.condense()
 }
 
 #[derive(Default)]
@@ -275,15 +275,18 @@ impl PILAnalyzer {
                 Some((name.clone(), (type_scheme, expr)))
             })
             .collect();
-        // Collect all expressions in identities.
-        let statement_type = ExpectedType {
+        let constr_function_statement_type = ExpectedType {
             ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
             allow_array: true,
+            allow_empty: true,
         };
         for id in &mut self.identities {
             if id.kind == IdentityKind::Polynomial {
-                // At statement level, we allow Constr or Constr[].
-                expressions.push((id.expression_for_poly_id_mut(), statement_type.clone()));
+                // At statement level, we allow Constr, Constr[] or ().
+                expressions.push((
+                    id.expression_for_poly_id_mut(),
+                    constr_function_statement_type.clone(),
+                ));
             } else {
                 for part in [&mut id.left, &mut id.right] {
                     if let Some(selector) = &mut part.selector {
@@ -295,15 +298,19 @@ impl PILAnalyzer {
                 }
             }
         }
-        let inferred_types = infer_types(definitions, &mut expressions, &statement_type)
-            .map_err(|mut errors| {
-                eprintln!("\nError during type inference:");
-                for e in &errors {
-                    e.output_to_stderr();
-                }
-                errors.pop().unwrap()
-            })
-            .unwrap();
+        let inferred_types = infer_types(
+            definitions,
+            &mut expressions,
+            &constr_function_statement_type,
+        )
+        .map_err(|mut errors| {
+            eprintln!("\nError during type inference:");
+            for e in &errors {
+                e.output_to_stderr();
+            }
+            errors.pop().unwrap()
+        })
+        .unwrap();
         // Store the inferred types.
         for (name, ty) in inferred_types {
             let Some(FunctionValueDefinition::Expression(TypedExpression {
@@ -318,7 +325,7 @@ impl PILAnalyzer {
     }
 
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
-        condenser::condense::<T>(
+        condenser::condense(
             self.polynomial_degree,
             self.definitions,
             self.public_declarations,

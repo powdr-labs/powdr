@@ -705,9 +705,11 @@ impl<T> Identity<AlgebraicExpression<T>> {
     ) -> (&AlgebraicExpression<T>, Option<&AlgebraicExpression<T>>) {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         match self.expression_for_poly_id() {
-            AlgebraicExpression::BinaryOperation(a, AlgebraicBinaryOperator::Sub, b) => {
-                (a.as_ref(), Some(b.as_ref()))
-            }
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left: a,
+                op: AlgebraicBinaryOperator::Sub,
+                right: b,
+            }) => (a.as_ref(), Some(b.as_ref())),
             a => (a, None),
         }
     }
@@ -829,13 +831,119 @@ pub enum AlgebraicExpression<T> {
     PublicReference(String),
     Challenge(Challenge),
     Number(T),
-    BinaryOperation(
-        Box<AlgebraicExpression<T>>,
-        AlgebraicBinaryOperator,
-        Box<AlgebraicExpression<T>>,
-    ),
+    BinaryOperation(AlgebraicBinaryOperation<T>),
+    UnaryOperation(AlgebraicUnaryOperation<T>),
+}
 
-    UnaryOperation(AlgebraicUnaryOperator, Box<AlgebraicExpression<T>>),
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AlgebraicBinaryOperation<T> {
+    pub left: Box<AlgebraicExpression<T>>,
+    pub op: AlgebraicBinaryOperator,
+    pub right: Box<AlgebraicExpression<T>>,
+}
+impl<T> AlgebraicBinaryOperation<T> {
+    fn new(
+        left: AlgebraicExpression<T>,
+        op: AlgebraicBinaryOperator,
+        right: AlgebraicExpression<T>,
+    ) -> Self {
+        Self {
+            left: Box::new(left),
+            op,
+            right: Box::new(right),
+        }
+    }
+}
+
+impl<T> From<AlgebraicBinaryOperation<T>> for AlgebraicExpression<T> {
+    fn from(value: AlgebraicBinaryOperation<T>) -> Self {
+        Self::BinaryOperation(value)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AlgebraicUnaryOperation<T> {
+    pub op: AlgebraicUnaryOperator,
+    pub expr: Box<AlgebraicExpression<T>>,
+}
+impl<T> AlgebraicUnaryOperation<T> {
+    fn new(op: AlgebraicUnaryOperator, expr: AlgebraicExpression<T>) -> Self {
+        Self {
+            op,
+            expr: Box::new(expr),
+        }
+    }
+}
+
+impl<T> From<AlgebraicUnaryOperation<T>> for AlgebraicExpression<T> {
+    fn from(value: AlgebraicUnaryOperation<T>) -> Self {
+        Self::UnaryOperation(value)
+    }
+}
+
+pub type ExpressionPrecedence = u64;
+trait Precedence {
+    fn precedence(&self) -> Option<ExpressionPrecedence>;
+}
+
+impl Precedence for AlgebraicUnaryOperator {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        use AlgebraicUnaryOperator::*;
+        let precedence = match self {
+            // NOTE: Any modification must be done with care to not overlap with BinaryOperator's precedence
+            Minus => 1,
+        };
+
+        Some(precedence)
+    }
+}
+
+impl Precedence for AlgebraicBinaryOperator {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        use AlgebraicBinaryOperator::*;
+        let precedence = match self {
+            // NOTE: Any modification must be done with care to not overlap with LambdaExpression's precedence
+            // Unary Oprators
+            // **
+            Pow => 2,
+            // * / %
+            Mul => 3,
+            // + -
+            Add | Sub => 4,
+        };
+
+        Some(precedence)
+    }
+}
+
+impl<E> Precedence for AlgebraicExpression<E> {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        match self {
+            AlgebraicExpression::UnaryOperation(operation) => operation.op.precedence(),
+            AlgebraicExpression::BinaryOperation(operation) => operation.op.precedence(),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AlgebraicBinaryOperatorAssociativity {
+    Left,
+    Right,
+    RequireParentheses,
+}
+
+impl AlgebraicBinaryOperator {
+    pub fn associativity(&self) -> AlgebraicBinaryOperatorAssociativity {
+        use AlgebraicBinaryOperator::*;
+        use AlgebraicBinaryOperatorAssociativity::*;
+        match self {
+            Pow => Right,
+
+            // .. ..= => RequireParentheses,
+            _ => Left,
+        }
+    }
 }
 
 impl<T> AlgebraicExpression<T> {
@@ -849,10 +957,12 @@ impl<T> AlgebraicExpression<T> {
             | AlgebraicExpression::PublicReference(_)
             | AlgebraicExpression::Challenge(_)
             | AlgebraicExpression::Number(_) => Box::new(iter::empty()),
-            AlgebraicExpression::BinaryOperation(left, _, right) => {
-                Box::new([left.as_ref(), right.as_ref()].into_iter())
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left, right, ..
+            }) => Box::new([left.as_ref(), right.as_ref()].into_iter()),
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { expr: e, .. }) => {
+                Box::new([e.as_ref()].into_iter())
             }
-            AlgebraicExpression::UnaryOperation(_, e) => Box::new([e.as_ref()].into_iter()),
         }
     }
     /// Returns an iterator over all (top-level) expressions in this expression.
@@ -865,10 +975,39 @@ impl<T> AlgebraicExpression<T> {
             | AlgebraicExpression::PublicReference(_)
             | AlgebraicExpression::Challenge(_)
             | AlgebraicExpression::Number(_) => Box::new(iter::empty()),
-            AlgebraicExpression::BinaryOperation(left, _, right) => {
-                Box::new([left.as_mut(), right.as_mut()].into_iter())
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left, right, ..
+            }) => Box::new([left.as_mut(), right.as_mut()].into_iter()),
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { expr: e, .. }) => {
+                Box::new([e.as_mut()].into_iter())
             }
-            AlgebraicExpression::UnaryOperation(_, e) => Box::new([e.as_mut()].into_iter()),
+        }
+    }
+
+    /// Apply `'` to the expression, returning a new expression
+    /// For example, `x + 1` becomes `x' + 1`
+    ///
+    /// # Errors
+    ///
+    /// If the `next` flag is already active on an `AlgebraicReference`, it is returned as an error
+    pub fn next(self) -> Result<Self, AlgebraicReference> {
+        use AlgebraicExpression::*;
+
+        match self {
+            Reference(r) => {
+                if r.next {
+                    Err(r)
+                } else {
+                    Ok(Self::Reference(AlgebraicReference { next: true, ..r }))
+                }
+            }
+            e @ PublicReference(..) | e @ Challenge(..) | e @ Number(..) => Ok(e),
+            BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                Ok(Self::new_binary(left.next()?, op, right.next()?))
+            }
+            UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+                Ok(Self::new_unary(op, expr.next()?))
+            }
         }
     }
 }
@@ -925,6 +1064,15 @@ pub enum AlgebraicUnaryOperator {
     Minus,
 }
 
+impl AlgebraicUnaryOperator {
+    /// Returns true if the operator is a prefix-operator and false if it is a postfix operator.
+    pub fn is_prefix(&self) -> bool {
+        match self {
+            AlgebraicUnaryOperator::Minus => true,
+        }
+    }
+}
+
 impl From<AlgebraicUnaryOperator> for UnaryOperator {
     fn from(op: AlgebraicUnaryOperator) -> UnaryOperator {
         match op {
@@ -948,7 +1096,11 @@ impl TryFrom<UnaryOperator> for AlgebraicUnaryOperator {
 
 impl<T> AlgebraicExpression<T> {
     pub fn new_binary(left: Self, op: AlgebraicBinaryOperator, right: Self) -> Self {
-        AlgebraicExpression::BinaryOperation(Box::new(left), op, Box::new(right))
+        AlgebraicBinaryOperation::new(left, op, right).into()
+    }
+
+    pub fn new_unary(op: AlgebraicUnaryOperator, expr: Self) -> Self {
+        AlgebraicUnaryOperation::new(op, expr).into()
     }
 
     /// @returns true if the expression contains a reference to a next value of a
