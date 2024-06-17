@@ -5,7 +5,7 @@ use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, TraitImplementation},
     parsed::{
         display::format_type_scheme_around_name,
-        types::{ArrayType, FunctionType, TraitScheme, TupleType, Type, TypeBounds, TypeScheme},
+        types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
         ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
         LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number, Pattern,
@@ -457,14 +457,9 @@ impl<'a> TypeChecker<'a> {
 
         for (trait_name, impls) in implementations {
             let TraitImplementation {
-                name,
-                type_scheme,
-                functions,
+                name, functions, ..
             } = impls;
 
-            // let types = type_scheme
-            //     .as_ref()
-            //     .map_or_else(|| vec![], |f| f.types.clone());
             for f in functions.clone().iter_mut() {
                 let f_name = format!("{trait_name}.{fname}", fname = f.name);
                 // TODO GZ: This is a temporal hack, we should not clone the whole declared_types
@@ -951,39 +946,6 @@ impl<'a> TypeChecker<'a> {
         let substitutions = scheme.vars.vars().cloned().zip(vars.clone()).collect();
         ty.substitute_type_vars(&substitutions);
         (ty, vars)
-    }
-
-    fn instantiate_trait_scheme(
-        &mut self,
-        scheme: &mut Option<TraitScheme>,
-    ) -> (Vec<Type>, Vec<Type>) {
-        scheme.clone().map_or_else(
-            || (Vec::new(), Vec::new()),
-            |scheme| {
-                let vars = scheme
-                    .vars
-                    .bounds()
-                    .map(|(_, bounds)| {
-                        let new_var = self.new_type_var();
-                        for b in bounds {
-                            self.unifier.ensure_bound(&new_var, b.clone()).unwrap();
-                        }
-                        new_var
-                    })
-                    .collect::<Vec<_>>();
-                let substitutions = scheme.vars.vars().cloned().zip(vars.clone()).collect();
-                let trait_types = scheme
-                    .clone()
-                    .types
-                    .iter_mut()
-                    .map(|ty| {
-                        ty.substitute_type_vars(&substitutions);
-                        ty.clone()
-                    })
-                    .collect();
-                (trait_types, vars)
-            },
-        )
     }
 
     fn format_type_with_bounds(&self, ty: Type) -> String {

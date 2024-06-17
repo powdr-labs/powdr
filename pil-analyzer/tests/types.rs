@@ -543,3 +543,20 @@ fn defined_trait() {
     ";
     type_check(input, &[("r", "", "int")]);
 }
+
+#[test]
+#[should_panic = "Type bool does not satisfy trait Add."]
+fn invalid_type_trait() {
+    let input = "
+    trait Add<T: Add> {
+        add: T, T -> T,
+    }
+
+    impl Add<int> {
+        add: (|a, b| a + b),
+    }
+
+    let r: bool = Add::add(3, 4);
+    ";
+    type_check(input, &[("r", "", "bool")]);
+}
