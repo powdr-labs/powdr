@@ -1,6 +1,7 @@
+#![no_main]
 #![no_std]
 
-use powdr_riscv_runtime::io::{read_u32, write_u8, write_slice, write};
+use powdr_riscv_runtime::io::{read_u32, write, write_slice, write_u8};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]

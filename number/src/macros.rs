@@ -242,6 +242,10 @@ macro_rules! powdr_field {
                 let v = self.try_into_u64()?;
                 v.try_into().ok()
             }
+
+            fn from_hex(s: &str) -> Self {
+                BigUint::from_str_radix(s, 16).unwrap().try_into().unwrap()
+            }
         }
 
         impl ConstZero for LargeIntImpl {
@@ -356,18 +360,6 @@ macro_rules! powdr_field {
                 Self {
                     value: self.value.pow(exponent.value),
                 }
-            }
-
-            fn integer_div(self, other: Self) -> Self {
-                (self.to_arbitrary_integer() / other.to_arbitrary_integer())
-                    .try_into()
-                    .unwrap()
-            }
-
-            fn integer_mod(self, other: Self) -> Self {
-                (self.to_arbitrary_integer() % other.to_arbitrary_integer())
-                    .try_into()
-                    .unwrap()
             }
 
             fn to_bytes_le(&self) -> Vec<u8> {
