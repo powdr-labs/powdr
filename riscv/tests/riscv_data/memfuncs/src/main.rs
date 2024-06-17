@@ -1,4 +1,7 @@
+#![no_main]
 #![no_std]
+
+extern crate powdr_riscv_runtime;
 
 extern "C" {
     fn memset(s: *mut u8, c: core::ffi::c_int, n: usize) -> *mut u8;

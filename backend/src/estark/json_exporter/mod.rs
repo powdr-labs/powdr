@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use std::{cmp, path::PathBuf};
 
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicUnaryOperator, Analyzed,
-    IdentityKind, PolyID, PolynomialType, StatementIdentifier, SymbolKind,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolyID,
+    PolynomialType, StatementIdentifier, SymbolKind,
 };
 use powdr_parser_util::SourceRef;
 use starky::types::{
@@ -323,7 +324,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     ..DEFAULT_EXPR
                 },
             ),
-            Expression::BinaryOperation(left, op, right) => {
+            Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let (deg_left, left) = self.expression_to_json(left);
                 let (deg_right, right) = self.expression_to_json(right);
                 let (op, degree) = match op {
@@ -349,7 +350,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     },
                 )
             }
-            Expression::UnaryOperation(op, value) => {
+            Expression::UnaryOperation(AlgebraicUnaryOperation { op, expr: value }) => {
                 let (deg, value) = self.expression_to_json(value);
                 match op {
                     AlgebraicUnaryOperator::Minus => (

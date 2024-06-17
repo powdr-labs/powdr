@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![no_main]
 #![no_std]
+
+extern crate powdr_riscv_runtime;
 
 pub struct PasswordRequest {
     pub password: &'static str,
@@ -25,7 +28,7 @@ pub fn main() {
         // Uncomment \/ to see it fail
         //password: "12345678",
         password: "S00perSecr1t!!!",
-        salt: [0xaa; 32]
+        salt: [0xaa; 32],
     };
 
     let policy = PasswordPolicy {

@@ -1,5 +1,7 @@
+#![no_main]
 #![no_std]
 
+extern crate powdr_riscv_runtime;
 use tiny_keccak::{Hasher, Keccak};
 
 #[no_mangle]

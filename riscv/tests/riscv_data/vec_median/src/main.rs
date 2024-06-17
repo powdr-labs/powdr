@@ -8,9 +8,11 @@
 //! vector [15,75,6,5,1,4,7,3,2,9,2] and compare the result with the expected
 //! value of 5:
 //! ```
-//! cargo run --release rust riscv/tests/riscv_data/vec_median -o tmp -f -i 5,11,15,75,6,5,1,4,7,3,2,9,2
+//! cargo run -r --bin powdr-rs compile riscv/tests/riscv_data/vec_median -o tmp
+//! cargo run -r --bin powdr -- pil tmp/vec_median.asm -o tmp -i 5,11,15,75,6,5,1,4,7,3,2,9,2
 //! ```
 
+#![no_main]
 #![no_std]
 
 extern crate alloc;

@@ -25,6 +25,12 @@ fn sqrt_asm() {
 }
 
 #[test]
+fn challenges_asm() {
+    let f = "asm/challenges.asm";
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];

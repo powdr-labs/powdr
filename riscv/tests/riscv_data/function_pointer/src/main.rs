@@ -1,3 +1,4 @@
+#![no_main]
 #![no_std]
 
 use powdr_riscv_runtime::io::read_u32;
@@ -15,7 +16,7 @@ fn sub(a: u32, b: u32) -> u32 {
 }
 
 #[no_mangle]
-fn main() {
+pub fn main() {
     let a = read_u32(0);
     let b = read_u32(1);
     let expected = read_u32(2);

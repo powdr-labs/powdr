@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 
-use crate::{Argument, Expression, Statement};
+use super::{Argument, Expression, Statement};
 
 /// Disambiguates the collection of assembly files and concatenates it to a single list of statements.
 /// Also disambiguates file ids (debugging information) and returns a list of all files with new IDs.

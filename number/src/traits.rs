@@ -58,7 +58,8 @@ pub trait LargeInt:
     fn try_into_u32(&self) -> Option<u32>;
 
     /// Creates a LargeInt from a hex string.
-    fn from_hex(s: &str) -> Result<Self, ()>;
+    /// Panics on failure - intended for testing.
+    fn from_hex(s: &str) -> Self;
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -149,5 +150,5 @@ pub trait FieldElement:
 
 #[cfg(test)]
 pub fn int_from_hex_str<T: FieldElement>(s: &str) -> T::Integer {
-    T::Integer::from_hex(s).unwrap()
+    T::Integer::from_hex(s)
 }
