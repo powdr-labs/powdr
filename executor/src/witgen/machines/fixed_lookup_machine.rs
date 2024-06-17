@@ -61,12 +61,14 @@ impl<T: FieldElement> IndexedColumns<T> {
         mut output_fixed_columns: Vec<PolyID>,
     ) -> Option<&IndexValue> {
         // sort in order to have a single index for [X, Y] and for [Y, X]
-        assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
+        //assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
         let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
         // sort the output as well
-        output_fixed_columns.sort();
+        //output_fixed_columns.sort();
 
         let fixed_columns = (input_fixed_columns, output_fixed_columns);
+
+        record_end_identity(IDENTITY_SNIPPET_ID);
 
         self.ensure_index(fixed_data, &fixed_columns);
 
@@ -243,6 +245,8 @@ impl<T: FieldElement> FixedLookup<T> {
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
         // {1, 2, x} in {A, B, C} -> [[(A, 1), (B, 2)], [C, x]]
 
+        record_start_identity(IDENTITY_SNIPPET_ID);
+
         let mut input_assignment = vec![];
         let mut output_columns = vec![];
         let mut output_expressions = vec![];
@@ -290,7 +294,6 @@ impl<T: FieldElement> FixedLookup<T> {
             .iter()
             .map(|column| fixed_data.fixed_cols[column].values[row]);
 
-        record_start_identity(IDENTITY_SNIPPET_ID);
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {
             if let Some(v) = l.try_to_var() {
@@ -303,7 +306,6 @@ impl<T: FieldElement> FixedLookup<T> {
                         result.combine(constraints);
                     }
                     Err(_) => {
-                        record_end_identity(IDENTITY_SNIPPET_ID);
                         // Fail the whole lookup
                         return Err(EvalError::ConstraintUnsatisfiable(format!(
                             "Constraint is invalid ({l} != {r}).",
@@ -312,7 +314,6 @@ impl<T: FieldElement> FixedLookup<T> {
                 }
             }
         }
-        record_end_identity(IDENTITY_SNIPPET_ID);
 
         Ok(result)
     }
