@@ -133,6 +133,13 @@ where
     K: Copy + Ord + Display + 'x,
     T: FieldElement,
 {
+    pub fn try_to_var(&self) -> Option<K> {
+        match self {
+            // TODO can we avoid these checks?
+            AffineExpression::OneVar((v, c), offset) if c.is_one() && offset.is_zero() => Some(*v),
+            _ => None,
+        }
+    }
     /// If the affine expression has only a single variable (with nonzero coefficient),
     /// returns the index of the variable and the assignment that evaluates the
     /// affine expression to zero.
@@ -156,6 +163,7 @@ where
                 ));
             }
         };
+        // TODO avoid that, single-element EvalValue is very expensive
         Ok(EvalValue::complete(vec![(
             *v,
             Constraint::Assignment(if c.is_one() {
@@ -382,6 +390,7 @@ where
             } else {
                 covered_bits |= mask;
             }
+            // TODO call combine_single_complete
             assignments.combine(EvalValue::complete(vec![(
                 *i,
                 Constraint::Assignment(

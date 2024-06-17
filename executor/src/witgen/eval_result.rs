@@ -132,6 +132,7 @@ impl<K, T: FieldElement> EvalValue<K, T> {
         Self::new(constraints, EvalStatus::Incomplete(cause))
     }
 
+    // TODO this function is very expensive if used on a single-element vector.
     pub fn complete(constraints: Vec<(K, Constraint<T>)>) -> Self {
         Self::new(constraints, EvalStatus::Complete)
     }

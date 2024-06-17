@@ -17,7 +17,9 @@ use crate::witgen::machines::record_start;
 use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly_ref;
-use crate::witgen::{EvalError, EvalValue, IncompleteCause, IDENTITY_LOOKUP_CACHE};
+use crate::witgen::{
+    Constraint, EvalError, EvalValue, IncompleteCause, IDENTITY_LOOKUP_CACHE, IDENTITY_SNIPPET_ID,
+};
 use crate::witgen::{EvalResult, FixedData};
 
 use super::record_end;
@@ -288,22 +290,37 @@ impl<T: FieldElement> FixedLookup<T> {
             .iter()
             .map(|column| fixed_data.fixed_cols[column].values[row]);
 
+        record_start_identity(IDENTITY_SNIPPET_ID);
         let mut result = EvalValue::complete(vec![]);
+        let mut direct_vars = vec![];
         for (l, r) in output_expressions.into_iter().zip(output) {
-            let evaluated = l.clone() - r.into();
-            // TODO we could use bit constraints here
-            match evaluated.solve() {
-                Ok(constraints) => {
-                    result.combine(constraints);
-                }
-                Err(_) => {
-                    // Fail the whole lookup
-                    return Err(EvalError::ConstraintUnsatisfiable(format!(
-                        "Constraint is invalid ({l} != {r}).",
-                    )));
+            if let Some(v) = l.try_to_var() {
+                direct_vars.push((v, r));
+            } else {
+                let evaluated = l.clone() - r.into();
+                // TODO we could use bit constraints here
+                match evaluated.solve() {
+                    Ok(constraints) => {
+                        // TODO does it make sense to create a simpler version?
+                        result.combine(constraints);
+                    }
+                    Err(_) => {
+                        record_end_identity(IDENTITY_SNIPPET_ID);
+                        // Fail the whole lookup
+                        return Err(EvalError::ConstraintUnsatisfiable(format!(
+                            "Constraint is invalid ({l} != {r}).",
+                        )));
+                    }
                 }
             }
         }
+        result.combine(EvalValue::complete(
+            direct_vars
+                .into_iter()
+                .map(|(var, r)| (var, Constraint::Assignment(r)))
+                .collect(),
+        ));
+        record_end_identity(IDENTITY_SNIPPET_ID);
 
         Ok(result)
     }
