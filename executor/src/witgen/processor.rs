@@ -342,10 +342,8 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             match &self.data[row_index][poly_id].value {
                 CellValue::Known(_) => {}
                 CellValue::RangeConstraint(_) | CellValue::Unknown => {
-                    input_updates.combine(EvalValue::complete(vec![(
-                        &self.fixed_data.witness_cols[poly_id].poly,
-                        Constraint::Assignment(*value),
-                    )]));
+                    input_updates
+                        .combine_assignment(&self.fixed_data.witness_cols[poly_id].poly, *value);
                 }
             };
         }

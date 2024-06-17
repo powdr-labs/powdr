@@ -390,13 +390,10 @@ where
             } else {
                 covered_bits |= mask;
             }
-            // TODO call combine_single_complete
-            assignments.combine(EvalValue::complete(vec![(
+            assignments.combine_assignment(
                 *i,
-                Constraint::Assignment(
-                    ((offset & mask).to_arbitrary_integer() / coeff.to_arbitrary_integer()).into(),
-                ),
-            )]));
+                ((offset & mask).to_arbitrary_integer() / coeff.to_arbitrary_integer()).into(),
+            );
             offset &= !mask;
         }
 

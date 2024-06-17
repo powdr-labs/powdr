@@ -153,6 +153,11 @@ impl<K, T: FieldElement> EvalValue<K, T> {
         self.side_effect |= other.side_effect;
     }
 
+    /// Add a simple complete assignment to this EvalValue.
+    pub fn combine_assignment(&mut self, var: K, value: T) {
+        self.constraints.push((var, Constraint::Assignment(value)));
+    }
+
     pub fn report_side_effect(mut self) -> Self {
         self.side_effect = true;
         self

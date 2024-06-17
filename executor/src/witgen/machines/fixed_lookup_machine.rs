@@ -292,16 +292,14 @@ impl<T: FieldElement> FixedLookup<T> {
 
         record_start_identity(IDENTITY_SNIPPET_ID);
         let mut result = EvalValue::complete(vec![]);
-        let mut direct_vars = vec![];
         for (l, r) in output_expressions.into_iter().zip(output) {
             if let Some(v) = l.try_to_var() {
-                direct_vars.push((v, r));
+                result.combine_assignment(v, r);
             } else {
                 let evaluated = l.clone() - r.into();
                 // TODO we could use bit constraints here
                 match evaluated.solve() {
                     Ok(constraints) => {
-                        // TODO does it make sense to create a simpler version?
                         result.combine(constraints);
                     }
                     Err(_) => {
@@ -314,12 +312,6 @@ impl<T: FieldElement> FixedLookup<T> {
                 }
             }
         }
-        result.combine(EvalValue::complete(
-            direct_vars
-                .into_iter()
-                .map(|(var, r)| (var, Constraint::Assignment(r)))
-                .collect(),
-        ));
         record_end_identity(IDENTITY_SNIPPET_ID);
 
         Ok(result)
