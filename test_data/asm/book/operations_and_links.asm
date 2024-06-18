@@ -30,7 +30,7 @@ machine Add4 with
 
     operation add4<0> x, y, z, w -> r;
 
-    // - on every row (the boolean flag is `1`)
+    // Links without a flag are active on every row.
     // - constrain the values of `x`, `y`, and `n` so that `n = adder.add(x, y)`
     link => n = adder.add(x, y);
     // - constrain the values of `z`, `w`, and `m` so that `m = adder.add(z, w)`
