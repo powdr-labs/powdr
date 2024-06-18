@@ -108,7 +108,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         let prover_query_witnesses = fixed_data
             .witness_cols
             .iter()
-            .filter(|(poly_id, col)| witness_cols.contains(&poly_id) && col.query.is_some())
+            .filter(|(poly_id, col)| witness_cols.contains(poly_id) && col.query.is_some())
             .map(|(poly_id, _)| poly_id)
             .collect();
 
@@ -192,7 +192,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         );
         let mut updates = EvalValue::complete(vec![]);
         for poly_id in &self.prover_query_witnesses {
-            if let Some(r) = query_processor.process_query(&row_pair, &poly_id) {
+            if let Some(r) = query_processor.process_query(&row_pair, poly_id) {
                 updates.combine(r?);
             }
         }
