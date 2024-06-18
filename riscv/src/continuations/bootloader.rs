@@ -54,11 +54,11 @@ pub fn bootloader_preamble() -> String {
     // Write-once memory
     std::machines::write_once_memory::WriteOnceMemory bootloader_inputs;
 
-    instr load_bootloader_input X -> Y = bootloader_inputs.access X, Y ->;
-    instr assert_bootloader_input X, Y -> = bootloader_inputs.access X, Y ->;
+    instr load_bootloader_input X -> Y link => bootloader_inputs.access(X, Y);
+    instr assert_bootloader_input X, Y -> link => bootloader_inputs.access(X, Y);
 
     // Sets the PC to the bootloader input at the provided index
-    instr jump_to_bootloader_input X = bootloader_inputs.access X, pc' ->;
+    instr jump_to_bootloader_input X link => bootloader_inputs.access(X, pc');
 
     // ============== Shutdown routine constraints =======================
     // Insert a `jump_to_shutdown_routine` witness column, which will let the prover indicate that

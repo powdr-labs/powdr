@@ -6,9 +6,9 @@ machine Main with degree: 16 {
     reg Y[<=];
     reg A;
 
-    instr identity X -> Y = sub.identity;
-    instr one -> Y = sub.one;
-    instr nothing = sub.nothing;
+    instr identity X -> Y link => Y = sub.identity(X);
+    instr one -> Y link => Y = sub.one();
+    instr nothing link => sub.nothing();
 
     function main {
         start:

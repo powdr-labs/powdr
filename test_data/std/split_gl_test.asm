@@ -11,7 +11,7 @@ machine Main with degree: 65536 {
 
     SplitGL split_machine;
 
-    instr split X0 -> X1, X2 ~ split_machine.split;
+    instr split X0 -> X1, X2 link ~> (X1, X2) = split_machine.split(X0);
 
     instr assert_eq X0, X1 {
         X0 = X1
