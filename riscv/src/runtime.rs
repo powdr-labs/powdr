@@ -70,7 +70,7 @@ impl SubMachine {
 struct SyscallImpl(Vec<FunctionStatement>);
 
 /// RISCV powdr assembly runtime.
-/// Determines submachines, instructions and syscalls avaiable to the main machine.
+/// Determines submachines, instructions and syscalls available to the main machine.
 pub struct Runtime {
     submachines: BTreeMap<String, SubMachine>,
     syscalls: BTreeMap<Syscall, SyscallImpl>,
