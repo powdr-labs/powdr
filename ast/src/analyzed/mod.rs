@@ -425,7 +425,7 @@ pub fn type_from_definition(
                 Some(variant.constructor_type(enum_decl))
             }
             FunctionValueDefinition::TraitDeclaration(_) => {
-                panic!("Requested type of trait declaration.") // TODO GZ
+                panic!("Requested type of trait declaration.")
             }
             FunctionValueDefinition::TraitFunction(trait_decl, trait_func) => {
                 let vars = trait_decl.type_vars.clone();
@@ -435,7 +435,7 @@ pub fn type_from_definition(
                 })
             }
             FunctionValueDefinition::TraitImplementation(_trait_impl) => {
-                panic!("Requested type of trait declaration.") // TODO GZ
+                panic!("Requested type of trait implementation.")
             }
         }
     } else {

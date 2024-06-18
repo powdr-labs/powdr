@@ -436,7 +436,6 @@ fn check_path_internal<'a>(
                     | SymbolValueRef::Expression(_)
                     | SymbolValueRef::TypeConstructor(_)
                     | SymbolValueRef::TraitDeclaration(_) => {
-                        // TODO GZ
                         Err(format!("symbol not found in `{location}`: `{member}`"))
                     }
                     // modules expose symbols

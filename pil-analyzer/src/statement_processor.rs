@@ -193,7 +193,7 @@ where
             ),
             PilStatement::TraitImplementation(source, trait_impl) => {
                 self.handle_trait_implementation(source, trait_impl)
-            } // TODO GZ
+            }
             _ => self.handle_identity_statement(statement),
         }
     }

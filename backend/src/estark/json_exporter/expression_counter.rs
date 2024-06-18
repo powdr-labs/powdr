@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use powdr_ast::{
     analyzed::{
         Analyzed, Identity, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol,
-        SymbolKind,
+        SymbolKind, TraitImplementation,
     },
     parsed::SelectedExpressions,
 };
@@ -32,6 +32,9 @@ pub fn compute_intermediate_expression_ids<T>(analyzed: &Analyzed<T>) -> HashMap
                 analyzed.public_declarations[name].expression_count()
             }
             StatementIdentifier::Identity(id) => analyzed.identities[*id].expression_count(),
+            StatementIdentifier::TraitImplementation(name) => {
+                analyzed.implementations[name].expression_count()
+            }
         }
     }
     ids
@@ -67,5 +70,11 @@ impl ExpressionCounter for PublicDeclaration {
 impl<Expr> ExpressionCounter for SelectedExpressions<Expr> {
     fn expression_count(&self) -> usize {
         self.selector.is_some() as usize + self.expressions.len()
+    }
+}
+
+impl<Expr> ExpressionCounter for TraitImplementation<Expr> {
+    fn expression_count(&self) -> usize {
+        self.functions.len()
     }
 }
