@@ -20,8 +20,8 @@ It is called local because its behavior is defined by a set of constraints over 
 
 # Instructions with links
 
-Instructions may also delegate all or part of its implementation to functions/operations in submachines.
-Each `link` in a instruction defines the inputs and outputs of a call to a specific function/operation in a submachine.
+Instructions may also delegate all or part of their implementation to functions/operations in submachines.
+Each `link` in an instruction defines the inputs and outputs of a call to a specific function/operation in a submachine.
 
 Assume we have a submachine with a single operation `add`:
 ```
