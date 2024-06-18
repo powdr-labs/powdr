@@ -240,7 +240,6 @@ impl Display for FunctionValueDefinition {
             | FunctionValueDefinition::TraitDeclaration(_)
             | FunctionValueDefinition::TraitFunction(_, _)
             | FunctionValueDefinition::TraitImplementation(_) => {
-                //TODO GZ check this
                 panic!("Should not use this formatting function.")
             }
         }

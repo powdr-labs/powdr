@@ -740,17 +740,17 @@ fn trait_def() {
 
 #[test]
 fn trait_impl() {
-    let input = "trait Add<T: Add, Q> {
-        add: T, T -> Q,
+    let input = "trait Add<T: Add> {
+        add: T, T -> T,
     }
-    impl Add<int, int> {
+    impl Add<int> {
         add: |a, b| a + b,
     }";
 
-    let expected = "    trait Add <T: Add, Q> {
-        add: T, T -> Q,
+    let expected = "    trait Add <T: Add> {
+        add: T, T -> T,
     }
-    impl Add<int, int> {
+    impl Add<int> {
         add: (|a, b| a + b),
     }
 
