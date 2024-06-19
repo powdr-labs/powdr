@@ -18,7 +18,7 @@ use crate::parsed::types::{ArrayType, Type, TypeScheme};
 use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
-use crate::parsed::{self, EnumDeclaration, EnumVariant};
+use crate::parsed::{self, ArrayLiteral, EnumDeclaration, EnumVariant};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub enum StatementIdentifier {
@@ -666,9 +666,13 @@ pub struct Identity<SelectedExpressions> {
     pub right: SelectedExpressions,
 }
 
-impl<Expr> Identity<SelectedExpressions<Expr>> {
+impl<T> Identity<SelectedExpressions<AlgebraicExpression<T>>> {
     /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
-    pub fn from_polynomial_identity(id: u64, source: SourceRef, identity: Expr) -> Self {
+    pub fn from_polynomial_identity(
+        id: u64,
+        source: SourceRef,
+        identity: AlgebraicExpression<T>,
+    ) -> Self {
         Identity {
             id,
             kind: IdentityKind::Polynomial,
@@ -684,33 +688,17 @@ impl<Expr> Identity<SelectedExpressions<Expr>> {
         }
     }
     /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id(&self) -> &Expr {
+    pub fn expression_for_poly_id(&self) -> &AlgebraicExpression<T> {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         self.left.selector.as_ref().unwrap()
     }
 
     /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id_mut(&mut self) -> &mut Expr {
+    pub fn expression_for_poly_id_mut(&mut self) -> &mut AlgebraicExpression<T> {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         self.left.selector.as_mut().unwrap()
     }
-}
 
-impl<Expr> Identity<parsed::SelectedExpressions<Expr>> {
-    /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id(&self) -> &Expr {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
-        self.left.selector.as_ref().unwrap()
-    }
-
-    /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id_mut(&mut self) -> &mut Expr {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
-        self.left.selector.as_mut().unwrap()
-    }
-}
-
-impl<T> Identity<SelectedExpressions<AlgebraicExpression<T>>> {
     pub fn contains_next_ref(&self) -> bool {
         self.left.contains_next_ref() || self.right.contains_next_ref()
     }
@@ -734,6 +722,34 @@ impl<T> Identity<SelectedExpressions<AlgebraicExpression<T>>> {
 }
 
 impl<R> Identity<parsed::SelectedExpressions<parsed::Expression<R>>> {
+    /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
+    pub fn from_polynomial_identity(
+        id: u64,
+        source: SourceRef,
+        identity: parsed::Expression<R>,
+    ) -> Self {
+        Identity {
+            id,
+            kind: IdentityKind::Polynomial,
+            source,
+            left: parsed::SelectedExpressions {
+                selector: Some(identity),
+                expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
+            },
+            right: Default::default(),
+        }
+    }
+    /// Returns the expression in case this is a polynomial identity.
+    pub fn expression_for_poly_id(&self) -> &parsed::Expression<R> {
+        assert_eq!(self.kind, IdentityKind::Polynomial);
+        self.left.selector.as_ref().unwrap()
+    }
+
+    /// Returns the expression in case this is a polynomial identity.
+    pub fn expression_for_poly_id_mut(&mut self) -> &mut parsed::Expression<R> {
+        assert_eq!(self.kind, IdentityKind::Polynomial);
+        self.left.selector.as_mut().unwrap()
+    }
     /// Either returns (a, Some(b)) if this is a - b or (a, None)
     /// if it is a polynomial identity of a different structure.
     /// Panics if it is a different kind of constraint.
@@ -750,7 +766,7 @@ impl<R> Identity<parsed::SelectedExpressions<parsed::Expression<R>>> {
                     right,
                 },
             ) => (left.as_ref(), Some(right.as_ref())),
-            a => (&a, None),
+            a => (a, None),
         }
     }
 }
