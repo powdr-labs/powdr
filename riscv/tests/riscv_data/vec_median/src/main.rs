@@ -12,6 +12,7 @@
 //! cargo run -r --bin powdr -- pil tmp/vec_median.asm -o tmp -i 5,11,15,75,6,5,1,4,7,3,2,9,2
 //! ```
 
+#![no_main]
 #![no_std]
 
 extern crate alloc;

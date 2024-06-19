@@ -271,12 +271,12 @@ mod test {
     // helper function to clear SourceRef's inside the AST so we can compare for equality
     fn asm_clear_source_refs(ast: &mut ASMProgram) {
         use powdr_ast::parsed::asm::{
-            ASMModule, FunctionStatement, Instruction, InstructionBody, Machine, MachineStatement,
-            Module, ModuleStatement, SymbolDefinition, SymbolValue,
+            ASMModule, FunctionStatement, Instruction, Machine, MachineStatement, Module,
+            ModuleStatement, SymbolDefinition, SymbolValue,
         };
 
         fn clear_machine_stmt(stmt: &mut MachineStatement) {
-            use test_utils::pil_statement_clear_source_ref;
+            use test_utils::{pil_expression_clear_source_ref, pil_statement_clear_source_ref};
             match stmt {
                 MachineStatement::Submachine(s, _, _)
                 | MachineStatement::RegisterDeclaration(s, _, _)
@@ -288,13 +288,16 @@ mod test {
                     *s = SourceRef::unknown();
                     pil_statement_clear_source_ref(stmt)
                 }
-                MachineStatement::InstructionDeclaration(s, _, Instruction { body, .. }) => {
+                MachineStatement::InstructionDeclaration(s, _, Instruction { body, links, .. }) => {
                     *s = SourceRef::unknown();
-                    if let InstructionBody::Local(statements) = body {
-                        statements
-                            .iter_mut()
-                            .for_each(pil_statement_clear_source_ref)
-                    }
+                    body.0.iter_mut().for_each(pil_statement_clear_source_ref);
+                    links.iter_mut().for_each(|l| {
+                        pil_expression_clear_source_ref(&mut l.flag);
+                        l.link
+                            .params
+                            .inputs_and_outputs_mut()
+                            .for_each(pil_expression_clear_source_ref);
+                    });
                 }
                 MachineStatement::FunctionDeclaration(s, _, _, statements) => {
                     *s = SourceRef::unknown();

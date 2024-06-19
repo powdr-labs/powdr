@@ -54,7 +54,7 @@ machine Main with degree: 8 {
 
     instr assert_zero X { XIsZero = 1 }
 
-    instr sqrt X -> Y = sqrt.sqrt;
+    instr sqrt X -> Y link => Y = sqrt.sqrt(X);
 
 
     function main {

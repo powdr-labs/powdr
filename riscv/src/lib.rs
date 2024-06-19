@@ -180,7 +180,10 @@ pub fn compile_rust_crate_to_riscv_asm(
 
 fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: bool) -> Command {
     let mut cmd = Command::new("cargo");
-    cmd.env("RUSTFLAGS", "--emit=asm -g");
+    cmd.env(
+        "RUSTFLAGS",
+        "--emit=asm -g -C link-args=-Tpowdr.x -C link-args=--emit-relocs",
+    );
 
     let args = as_ref![
         OsStr;
@@ -191,7 +194,6 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
         "build-std=core,alloc",
         "--target",
         "riscv32imac-unknown-none-elf",
-        "--lib",
         "--target-dir",
         target_dir,
         "--manifest-path",
@@ -225,6 +227,8 @@ fn output_files_from_cargo_build_plan(
         panic!("no invocations in cargo build plan");
     };
 
+    let mut executable_found = false;
+
     log::debug!("RISC-V assembly files of this build:");
     for i in invocations {
         let JsonValue::Array(outputs) = &i["outputs"] else {
@@ -234,17 +238,24 @@ fn output_files_from_cargo_build_plan(
             let output = Path::new(output.as_str().unwrap());
             // Strip the target_dir, so that the path becomes relative.
             let parent = output.parent().unwrap().strip_prefix(target_dir).unwrap();
-            if Some(OsStr::new("rmeta")) == output.extension()
-                && parent.ends_with("riscv32imac-unknown-none-elf/release/deps")
-            {
-                // Have to convert to string to remove the "lib" prefix:
-                let name_stem = output
-                    .file_stem()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .strip_prefix("lib")
-                    .unwrap();
+            if parent.ends_with("riscv32imac-unknown-none-elf/release/deps") {
+                let extension = output.extension();
+                let name_stem = if Some(OsStr::new("rmeta")) == extension {
+                    // Have to convert to string to remove the "lib" prefix:
+                    output
+                        .file_stem()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .strip_prefix("lib")
+                        .unwrap()
+                } else if extension.is_none() {
+                    assert!(!executable_found, "Multiple executables found");
+                    executable_found = true;
+                    output.file_stem().unwrap().to_str().unwrap()
+                } else {
+                    continue;
+                };
 
                 let mut asm_name = parent.join(name_stem);
                 asm_name.set_extension("s");

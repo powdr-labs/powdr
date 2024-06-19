@@ -1,3 +1,4 @@
+#![no_main]
 #![no_std]
 
 use powdr_riscv_runtime::hash::{poseidon_gl, poseidon_gl_unsafe};

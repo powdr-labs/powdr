@@ -43,7 +43,7 @@ machine Main with degree: 65536 {
     Binary bin;
 
     // permutation to machine bin
-    instr or X, Y -> Z ~ bin.or;
+    instr or X, Y -> Z link ~> Z = bin.or(X, Y);
 
     instr assert_eq X, Y { X = Y }
 

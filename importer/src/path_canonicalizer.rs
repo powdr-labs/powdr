@@ -7,9 +7,9 @@ use std::{
 
 use powdr_ast::parsed::{
     asm::{
-        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Instruction,
-        InstructionBody, LinkDeclaration, Machine, MachineStatement, Module, ModuleRef,
-        ModuleStatement, SymbolDefinition, SymbolPath, SymbolValue, SymbolValueRef,
+        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, Import, LinkDeclaration,
+        Machine, MachineStatement, Module, ModuleRef, ModuleStatement, SymbolDefinition,
+        SymbolPath, SymbolValue, SymbolValueRef,
     },
     folder::Folder,
     types::{Type, TypeScheme},
@@ -612,32 +612,23 @@ fn check_machine(
                     check_expression(&module_location, e, state, &local_variables)
                 })?
             }
-            // check rhs input expressions for `instr` and `link` declarations
-            MachineStatement::LinkDeclaration(
-                _,
-                LinkDeclaration {
-                    to: callable_ref, ..
-                },
-            )
-            | MachineStatement::InstructionDeclaration(
-                _,
-                _,
-                Instruction {
-                    body: InstructionBody::CallablePlookup(callable_ref),
-                    ..
-                },
-            )
-            | MachineStatement::InstructionDeclaration(
-                _,
-                _,
-                Instruction {
-                    body: InstructionBody::CallablePermutation(callable_ref),
-                    ..
-                },
-            ) => {
-                callable_ref.params.inputs.iter().try_for_each(|e| {
+            MachineStatement::LinkDeclaration(_, LinkDeclaration { flag, link, .. }) => {
+                check_expression(&module_location, flag, state, &local_variables)?;
+                link.params.inputs_and_outputs().try_for_each(|e| {
                     check_expression(&module_location, e, state, &local_variables)
                 })?;
+            }
+            MachineStatement::InstructionDeclaration(_, _, instr) => {
+                for link_decl in &instr.links {
+                    check_expression(&module_location, &link_decl.flag, state, &local_variables)?;
+                    link_decl
+                        .link
+                        .params
+                        .inputs_and_outputs()
+                        .try_for_each(|e| {
+                            check_expression(&module_location, e, state, &local_variables)
+                        })?;
+                }
             }
             _ => {}
         }

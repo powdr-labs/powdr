@@ -81,6 +81,7 @@ Implemented by `int`. Used by `<T: Ord> op: T, T, -> bool` for `op` being one of
 `Eq`:
 Implemented by `int`, `fe`, `expr`. Used by `<T: Eq> op: T, T -> bool` for `op` being one of `==`, `!=`.
 
+
 ## List of Types
 
 ### Bool
@@ -93,7 +94,7 @@ Booleans are the results of comparisons. They allow the following operators:
 - `||`: logical disjunction
 - `!`: logical negation
 
-Short-circuiting is _not_ performed when evaluating boolean operators.
+Short-circuiting is *not* performed when evaluating boolean operators.
 This means that `(1 == 1) || std::check::panic("reason")` will cause a panic abort.
 
 ### Integer
@@ -124,7 +125,6 @@ The exponentiation operator on field elements requires a non-negative integer as
 It has the signature `**: fe, int -> fe`.
 
 In addition, the following comparison operators are allowed, the result is a boolean:
-
 - `<`: less than
 - `<=`: less or equal
 - `==`: equal
@@ -240,7 +240,6 @@ References to columns have type `expr` and `expr` also implements `FromLiteral`,
 which means that literal numbers can be used in contexts where `expr` is expected.
 
 Example:
-
 ```rust
 let x: col;
 let y: col;
@@ -248,7 +247,6 @@ let f: -> expr = || x + y;
 let g = || 7;
 f() = g();
 ```
-
 The first two lines define the witness columns `x` and `y`.
 The next two lines define the utility functions `f` and `g`.
 The function `f` adds the two columns `x` and `y` symbolically - it essentially returns the expression `x + y`.
@@ -259,7 +257,6 @@ Since expressions are built from abstract column references, applying operators
 does not perform any operations but instead constructs an abstract expression structure / syntax tree.
 
 Expressions allow the following operators, which always construct new expressions:
-
 - `+`: additive combination of expressions
 - `-`: subtractive combination of expressions (also unary negation)
 - `*`: multiplicative combination of expressions

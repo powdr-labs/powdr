@@ -629,7 +629,7 @@ machine NegativeForUnsigned {
     }
 
     #[test]
-    fn instr_external_generated_pil() {
+    fn instr_links_generated_pil() {
         let asm = r"
 machine SubVM with latch: latch, operation_id: operation_id {
     operation add5<0> x -> y;
@@ -650,7 +650,7 @@ machine Main {
 
     SubVM vm;
 
-    instr add5_into_A X = vm.add5 X -> A';
+    instr add5_into_A X link => A' = vm.add5(X);
 
     function main {
         add5_into_A 10; // A <== 15

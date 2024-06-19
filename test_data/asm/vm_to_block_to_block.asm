@@ -22,7 +22,7 @@ machine Assert1 with
     operation assert1<0> x ->;
 
     // Increment x by calling into inc machine
-    link 1 => inc.inc x -> y;
+    link => y = inc.inc(x);
 
     col witness operation_id;
     col fixed latch = [1]*;
@@ -39,7 +39,7 @@ machine Main with degree: 8 {
     reg X[<=];
     reg A;
 
-    instr assert1 X -> = assert1.assert1;
+    instr assert1 X -> link => assert1.assert1(X);
 
     instr loop {
         pc' = pc
