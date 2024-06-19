@@ -4,6 +4,7 @@ use std::{
     str::FromStr,
 };
 
+use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
@@ -88,12 +89,17 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         &mut self,
         exprs: Vec<parsed::Expression>,
     ) -> SelectedExpressions<Expression> {
-        let src = combine_source_refs(exprs.iter().map(|e| e.source_reference()));
-        let exprs = Expression::ArrayLiteral(src.clone(), ArrayLiteral { items: exprs });
+        let src = combine_source_refs(exprs.iter().map(|e| e.source_reference()).collect_vec());
+        let exprs = Expression::ArrayLiteral(
+            src.clone(),
+            ArrayLiteral {
+                items: self.process_expressions(exprs),
+            },
+        );
 
         SelectedExpressions {
             selector: None,
-            expressions: Box::new(self.process_expressions(exprs)),
+            expressions: Box::new(exprs),
         }
     }
 
@@ -192,7 +198,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 },
             ),
             PExpression::BlockExpression(src, BlockExpression { statements, expr }) => {
-                self.process_block_expression(statements, *expr, src)
+                self.process_block_expression(statements, expr, src)
             }
             PExpression::FreeInput(_, _) => panic!(),
         }
@@ -305,7 +311,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     fn process_block_expression(
         &mut self,
         statements: Vec<StatementInsideBlock>,
-        expr: Option<::powdr_ast::parsed::Expression>,
+        expr: Option<Box<::powdr_ast::parsed::Expression>>,
         src: SourceRef,
     ) -> Expression {
         let vars = self.save_local_variables();
@@ -330,10 +336,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             })
             .collect::<Vec<_>>();
 
-        let processed_expr = match expr {
-            Some(expr) => Some(Box::new(self.process_expression(expr))),
-            None => None,
-        };
+        let processed_expr = expr.map(|expr| Box::new(self.process_expression(*expr)));
         self.reset_local_variables(vars);
         Expression::BlockExpression(
             src,
@@ -379,25 +382,16 @@ struct LocalVariableState {
     pub local_variable_counter: u64,
 }
 
-fn combine_source_refs<I>(refs: I) -> SourceRef
-where
-    I: Iterator<Item = &SourceRef>,
-{
-    let mut iter = refs.peekable();
+fn combine_source_refs(refs: Vec<&SourceRef>) -> SourceRef {
+    let file_name = refs.iter().map(|r| r.file_name.clone()).next().unwrap();
+    let file_contents = refs.iter().map(|r| r.file_contents.clone()).next().unwrap();
+    let start = refs.iter().map(|r| r.start).min().unwrap();
+    let end = refs.iter().map(|r| r.end).max().unwrap();
 
-    let mut combined_ref = match iter.peek() {
-        Some(first) => **first,
-        None => SourceRef::unknown(),
-    };
-
-    for r in iter {
-        if r.start < combined_ref.start {
-            combined_ref.start = r.start;
-        }
-        if r.end > combined_ref.end {
-            combined_ref.end = r.end;
-        }
+    SourceRef {
+        file_name,
+        file_contents,
+        start,
+        end,
     }
-
-    combined_ref
 }

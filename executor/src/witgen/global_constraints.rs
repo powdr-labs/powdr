@@ -5,7 +5,8 @@ use num_traits::Zero;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, Identity, IdentityKind, PolyID, PolynomialType, SelectedExpressions,
+    AlgebraicReference, Identity as AnalyzedIdentity, IdentityKind, PolyID, PolynomialType,
+    SelectedExpressions,
 };
 
 use powdr_number::FieldElement;
@@ -102,7 +103,7 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConst
     }
 }
 
-type Identity<T> = Identity<SelectedExpressions<Expression<T>>>;
+type Identity<T> = AnalyzedIdentity<SelectedExpressions<Expression<T>>>;
 
 /// Determines global constraints on witness and fixed columns.
 /// Removes identities that only serve to create range constraints from
@@ -111,7 +112,7 @@ type Identity<T> = Identity<SelectedExpressions<Expression<T>>>;
 /// TODO at some point, we should check that they still hold.
 pub fn set_global_constraints<'a, T: FieldElement>(
     fixed_data: FixedData<T>,
-    identities: impl IntoIterator<Item = &'a Identity<SelExpressions<T>>>,
+    identities: impl IntoIterator<Item = &'a Identity<T>>,
 ) -> (FixedData<T>, Vec<&'a Identity<T>>) {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
@@ -210,7 +211,7 @@ fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(RangeConstraint
 /// no further information than the range constraint.
 fn propagate_constraints<T: FieldElement>(
     mut known_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
-    identity: &Identity<SelectedExpressions<Expression<T>>>,
+    identity: &Identity<T>,
     full_span: &BTreeSet<PolyID>,
 ) -> (BTreeMap<PolyID, RangeConstraint<T>>, bool) {
     let mut remove = false;
