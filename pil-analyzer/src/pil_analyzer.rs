@@ -288,16 +288,11 @@ impl PILAnalyzer {
                     if let Some(selector) = &mut part.selector {
                         expressions.push((selector, Type::Expr.into()))
                     }
-                    if let Expression::ArrayLiteral(_, ArrayLiteral { items }) =
-                        part.expressions.as_mut()
-                    {
-                        for e in items.iter_mut() {
-                            expressions.push((e, Type::Expr.into()))
-                        }
+                    if let Expression::ArrayLiteral(_, _) = part.expressions.as_ref() {
+                        expressions.push((part.expressions.as_mut(), Type::Expr.into()))
                     } else {
                         panic!("Selected expressions need to be provided as arrays.\n  Expected [{}].\n  Found: {}",
                         part.expressions, part.expressions)
-                        // TODO: better error handling
                     }
                 }
             }
