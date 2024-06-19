@@ -1,5 +1,5 @@
 use powdr_ast::analyzed::{Analyzed, FunctionValueDefinition, Symbol};
-use powdr_number::{read_polys_file, DegreeType, FieldElement};
+use powdr_number::{read_polys_file, FieldElement};
 use std::{fs::File, io::BufReader, path::Path};
 
 pub trait PolySet {
@@ -33,20 +33,11 @@ impl PolySet for WitnessPolySet {
 
 #[allow(clippy::type_complexity)]
 pub fn try_read_poly_set<P: PolySet, T: FieldElement>(
-    pil: &Analyzed<T>,
+    _pil: &Analyzed<T>,
     dir: &Path,
-) -> Option<(Vec<(String, Vec<T>)>, DegreeType)> {
-    let column_names: Vec<String> = P::get_polys(pil)
-        .iter()
-        .flat_map(|(poly, _)| poly.array_elements())
-        .map(|(name, _id)| name)
-        .collect();
-
-    (!column_names.is_empty()).then(|| {
-        let path = dir.join(P::FILE_NAME);
-        read_polys_file(
-            &mut BufReader::new(File::open(path).unwrap()),
-            &column_names,
-        )
-    })
+) -> Option<Vec<(String, Vec<T>)>> {
+    let path = dir.join(P::FILE_NAME);
+    Some(read_polys_file(&mut BufReader::new(
+        File::open(path).unwrap(),
+    )))
 }

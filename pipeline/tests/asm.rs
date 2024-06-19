@@ -368,16 +368,12 @@ fn read_poly_files() {
         pipeline.compute_proof().unwrap();
 
         // check fixed cols (may have no fixed cols)
-        if let Some((fixed, degree)) = try_read_poly_set::<FixedPolySet, _>(&pil, tmp_dir.as_path())
-        {
-            assert_eq!(pil.degree(), degree);
+        if let Some(fixed) = try_read_poly_set::<FixedPolySet, _>(&pil, tmp_dir.as_path()) {
             assert_eq!(pil.degree(), fixed[0].1.len() as u64);
         }
 
         // check witness cols (examples assumed to have at least one witness col)
-        let (witness, degree) =
-            try_read_poly_set::<WitnessPolySet, _>(&pil, tmp_dir.as_path()).unwrap();
-        assert_eq!(pil.degree(), degree);
+        let witness = try_read_poly_set::<WitnessPolySet, _>(&pil, tmp_dir.as_path()).unwrap();
         assert_eq!(pil.degree(), witness[0].1.len() as u64);
     }
 }

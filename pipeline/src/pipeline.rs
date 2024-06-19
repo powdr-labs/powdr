@@ -385,12 +385,7 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn read_constants(mut self, directory: &Path) -> Self {
         let pil = self.compute_optimized_pil().unwrap();
 
-        let fixed = try_read_poly_set::<FixedPolySet, T>(&pil, directory)
-            .map(|(fixed, degree_fixed)| {
-                assert_eq!(pil.degree.unwrap(), degree_fixed);
-                fixed
-            })
-            .unwrap_or_default();
+        let fixed = try_read_poly_set::<FixedPolySet, T>(&pil, directory).unwrap_or_default();
 
         Pipeline {
             artifact: Artifacts {
@@ -405,12 +400,7 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn read_witness(mut self, directory: &Path) -> Self {
         let pil = self.compute_optimized_pil().unwrap();
 
-        let witness = try_read_poly_set::<WitnessPolySet, T>(&pil, directory)
-            .map(|(witness, degree_witness)| {
-                assert_eq!(pil.degree.unwrap(), degree_witness);
-                witness
-            })
-            .unwrap_or_default();
+        let witness = try_read_poly_set::<WitnessPolySet, T>(&pil, directory).unwrap_or_default();
 
         Pipeline {
             artifact: Artifacts {

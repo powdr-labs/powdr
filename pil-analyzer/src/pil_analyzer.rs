@@ -421,14 +421,7 @@ impl PILAnalyzer {
                     .unwrap(),
             )
             .unwrap();
-            if let Some(degree) = self.polynomial_degree {
-                assert_eq!(
-                    degree, namespace_degree,
-                    "all namespaces must have the same degree"
-                );
-            } else {
-                self.polynomial_degree = Some(namespace_degree);
-            }
+            self.polynomial_degree = Some(namespace_degree);
         }
         self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }

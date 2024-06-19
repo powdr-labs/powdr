@@ -446,6 +446,7 @@ pub struct Symbol {
     pub stage: Option<u32>,
     pub kind: SymbolKind,
     pub length: Option<DegreeType>,
+    pub degree: Option<DegreeType>,
 }
 
 impl Symbol {
