@@ -312,14 +312,14 @@ where
             PilStatement::Expression(source, expression) => (
                 source,
                 IdentityKind::Polynomial,
-                powdr_ast::parsed::SelectedExpressions {
+                parsed::SelectedExpressions {
                     selector: Some(
                         self.expression_processor(&Default::default())
                             .process_expression(expression),
                     ),
                     expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
                 },
-                powdr_ast::parsed::SelectedExpressions::default(),
+                parsed::SelectedExpressions::default(),
             ),
             PilStatement::PlookupIdentity(source, key, haystack) => (
                 source,
@@ -340,14 +340,14 @@ where
             PilStatement::ConnectIdentity(source, left, right) => (
                 source,
                 IdentityKind::Connect,
-                powdr_ast::parsed::SelectedExpressions {
+                parsed::SelectedExpressions {
                     selector: None,
                     expressions: Box::new(
                         self.expression_processor(&Default::default())
                             .process_vec_into_array_literal(left),
                     ),
                 },
-                powdr_ast::parsed::SelectedExpressions {
+                parsed::SelectedExpressions {
                     selector: None,
                     expressions: Box::new(
                         self.expression_processor(&Default::default())

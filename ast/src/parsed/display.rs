@@ -590,7 +590,7 @@ impl<E: Display> EnumDeclaration<E> {
     }
 }
 
-impl Display for SelectedExpressions<Expression> {
+impl<Expr: Display> Display for SelectedExpressions<Expr> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -829,7 +829,7 @@ impl<E: Display> Display for BlockExpression<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.statements.is_empty() {
             if let Some(expr) = &self.expr {
-                write!(f, "{{ {} }}", expr)
+                write!(f, "{{ {expr} }}")
             } else {
                 write!(f, "{{ }}")
             }
