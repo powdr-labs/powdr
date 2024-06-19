@@ -565,7 +565,7 @@ impl<E> Children<E> for MatchExpression<E> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BlockExpression<E> {
     pub statements: Vec<StatementInsideBlock<E>>,
-    pub expr: Box<E>,
+    pub expr: Option<Box<E>>,
 }
 
 impl<Ref> From<BlockExpression<Expression<Ref>>> for Expression<Ref> {
@@ -580,7 +580,7 @@ impl<E> Children<E> for BlockExpression<E> {
             self.statements
                 .iter()
                 .flat_map(|s| s.children())
-                .chain(once(self.expr.as_ref())),
+                .chain(self.expr.iter().map(|boxed| &**boxed)),
         )
     }
 
@@ -589,7 +589,7 @@ impl<E> Children<E> for BlockExpression<E> {
             self.statements
                 .iter_mut()
                 .flat_map(|s| s.children_mut())
-                .chain(once(self.expr.as_mut())),
+                .chain(self.expr.iter_mut().map(|boxed| &mut **boxed)),
         )
     }
 }

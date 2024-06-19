@@ -828,11 +828,17 @@ impl Display for UnaryOperator {
 impl<E: Display> Display for BlockExpression<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.statements.is_empty() {
-            write!(f, "{{ {} }}", self.expr)
+            if let Some(expr) = &self.expr {
+                write!(f, "{{ {} }}", expr)
+            } else {
+                write!(f, "{{ }}")
+            }
         } else {
             writeln!(f, "{{")?;
             write_items_indented(f, &self.statements)?;
-            write_indented_by(f, &self.expr, 1)?;
+            if let Some(expr) = &self.expr {
+                write_indented_by(f, expr, 1)?;
+            }
             write!(f, "\n}}")
         }
     }

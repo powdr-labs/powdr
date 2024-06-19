@@ -628,8 +628,8 @@ IfExpression: Box<Expression> = {
 
 
 BlockExpression: Box<Expression> = {
-    <start:@L> "{" <statements:StatementInsideBlock*> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr: Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![]))}, start, end),
-    <start:@L> "{" <statements:StatementInsideBlock*> <expr:BoxedExpression> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
+    //<start:@L> "{" <statements:StatementInsideBlock*> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
+    <start:@L> "{" <statements:StatementInsideBlock*> <expr:BoxedExpression?> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
 }
 
 StatementInsideBlock: StatementInsideBlock = {

@@ -283,9 +283,9 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 
     fn condense_selected_expressions(
         &mut self,
-        sel_expr: &'a powdr_ast::parsed::SelectedExpressions<Expression>,
-    ) -> powdr_ast::analyzed::SelectedExpressions<AlgebraicExpression<T>> {
-        powdr_ast::analyzed::SelectedExpressions {
+        sel_expr: &'a parsed::SelectedExpressions<Expression>,
+    ) -> analyzed::SelectedExpressions<AlgebraicExpression<T>> {
+        analyzed::SelectedExpressions {
             selector: sel_expr
                 .selector
                 .as_ref()
