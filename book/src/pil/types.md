@@ -208,6 +208,7 @@ Arrays allow the following operators:
 - `+`: array concatenation
 - `_[]`: array index access, the index needs to be a non-negative integer that is less than the length of the array, otherwise a runtime error is triggered
 
+
 ### Function
 
 Type name: `T1, T2, ..., Tn -> T0`
