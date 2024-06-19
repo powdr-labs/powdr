@@ -610,4 +610,31 @@ mod test {
             ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
         );
     }
+
+    #[test]
+    fn generic_cache_with_traits() {
+        let src = r#"
+            namespace std::convert(4);
+                let fe = || fe();
+            namespace F(4);
+
+                trait getN<T: FromLiteral> {
+                    get: T -> T,
+                }
+
+                impl getN<int> {
+                    get: |x| x,
+                }
+
+                let<T: FromLiteral> seven: T = getN::get(7);
+                let a: col = |i| std::convert::fe(i + seven) + seven;
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants[0],
+            ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
+        );
+    }
 }

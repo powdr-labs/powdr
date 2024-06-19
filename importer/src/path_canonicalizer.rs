@@ -890,35 +890,6 @@ fn check_type(
     })
 }
 
-// fn check_trait_implementation(
-//     location: &AbsoluteSymbolPath,
-//     trait_impl: &TraitImplementation<Expression>,
-//     state: &mut State<'_>,
-// ) -> Result<(), String> {
-//     trait_impl.functions.iter().try_fold(
-//         BTreeSet::default(),
-//         |mut acc, NamedExpression { name, .. }| {
-//             acc.insert(name.clone()).then_some(acc).ok_or(format!(
-//                 "Duplicate implementation for method `{name}` in impl `{location}`"
-//             ))
-//         },
-//     )?;
-
-//     trait_impl
-//         .functions
-//         .iter()
-//         .try_for_each(|NamedExpression { name, body }| {
-//             check_expression(location, body, state, &HashSet::default()).map_err(|err| {
-//                 format!(
-//                     "Error checking method '{name}' in {location}: {}",
-//                     err.message()
-//                 )
-//             })
-//         })?;
-
-//     Ok(())
-// }
-
 fn check_trait_declaration(
     location: &AbsoluteSymbolPath,
     trait_decl: &TraitDeclaration<Expression>,

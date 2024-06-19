@@ -150,7 +150,7 @@ impl<T: Display> Display for Analyzed<T> {
                 }
                 StatementIdentifier::TraitImplementation(trait_impl) => {
                     let trait_impl = &self.implementations[trait_impl];
-                    let (_, is_local) = update_namespace(&trait_impl.name, f)?; // TODO GZ check this
+                    let (_, is_local) = update_namespace(&trait_impl.name, f)?;
                     writeln_indented_by(f, format!("{trait_impl}",), is_local.into())?;
                 }
             }

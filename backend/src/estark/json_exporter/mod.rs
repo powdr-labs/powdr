@@ -144,9 +144,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     }
                 }
             }
-            StatementIdentifier::TraitImplementation(_) => {
-                todo!("TODO GZ: Implement trait implementation export.")
-            }
+            StatementIdentifier::TraitImplementation(_name) => {} //TODO GZ
         }
     }
     PIL {

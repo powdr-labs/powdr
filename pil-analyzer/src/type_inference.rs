@@ -168,8 +168,7 @@ impl<'a> TypeChecker<'a> {
 
         self.check_expressions(expressions)?;
 
-        let infered = self.check_implementations(implementations)?;
-        inferred_types.extend(infered);
+        self.check_implementations(implementations)?;
 
         // From this point on, the substitutions are fixed.
 
@@ -452,40 +451,57 @@ impl<'a> TypeChecker<'a> {
     fn check_implementations(
         &mut self,
         implementations: &HashMap<String, TraitImplementation<Expression>>,
-    ) -> Result<HashMap<String, Type>, Error> {
-        let mut inferred_types: HashMap<String, Type> = Default::default();
-
+    ) -> Result<(), Error> {
         for (trait_name, impls) in implementations {
             let TraitImplementation {
-                name, functions, ..
+                type_scheme,
+                functions,
+                ..
             } = impls;
 
             for f in functions.clone().iter_mut() {
-                let f_name = format!("{trait_name}.{fname}", fname = f.name);
+                let impl_types = type_scheme
+                    .as_ref()
+                    .map_or_else(|| vec![], |s| s.types.clone());
+                let trait_name = trait_name.replace(".", "::");
+                let f_name = format!("{trait_name}::{fname}", fname = f.name);
                 // TODO GZ: This is a temporal hack, we should not clone the whole declared_types
                 let declared_types = self.declared_types.clone();
-                let trait_decl = declared_types.get(&f_name);
-                if trait_decl.is_none() {
-                    panic!("Trait function {f_name} not defined in {name}.");
+                let trait_func = declared_types.get(&f_name);
+                if trait_func.is_none() {
+                    panic!("Trait {trait_name} is not defined.");
                 }
 
-                let (source_ref, type_scheme) = trait_decl.unwrap();
-                let (declared_type, _) = self.instantiate_scheme(type_scheme.clone());
+                let (source_ref, type_scheme) = trait_func.unwrap();
+                let decl_types = type_scheme
+                    .vars
+                    .vars()
+                    .map(|v| v.clone())
+                    .collect::<Vec<_>>();
+
+                let substitutions = decl_types
+                    .iter()
+                    .zip(impl_types.iter())
+                    .map(|(decl, impl_)| (decl.clone(), impl_.clone()))
+                    .collect::<HashMap<_, _>>();
+
+                let declared_type = type_scheme
+                    .ty
+                    .clone()
+                    .substitute_type_vars_to(&substitutions);
 
                 let expr_type = self.infer_type_of_expression(&mut f.body)?;
 
                 self.unifier
-                    .unify_types(expr_type.clone(), declared_type.clone())
+                    .unify_types(declared_type.clone(), expr_type.clone())
                     .map_err(|err| {
                         source_ref.with_error(format!(
                             "Expected type {expr_type} for trait function {f_name}, but got {declared_type}.\n{err}",
                         ))
                     })?;
-
-                inferred_types.insert(f_name, expr_type);
             }
         }
-        Ok(inferred_types)
+        Ok(())
     }
 
     /// Process an expression, inferring its type and expecting either a certain type or potentially an array of that type.

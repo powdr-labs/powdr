@@ -136,6 +136,7 @@ pub enum Value<'a, T> {
     Closure(Closure<'a, T>),
     TypeConstructor(&'a str),
     Enum(&'a str, Option<Vec<Arc<Self>>>),
+    TraitFunction(&'a str),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
 }
@@ -214,6 +215,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::TypeConstructor(name) => format!("{name}_constructor"),
             Value::Enum(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
+            Value::TraitFunction(name) => format!("trait_function_{name}"),
             Value::Expression(_) => "expr".to_string(),
         }
     }
@@ -367,6 +369,9 @@ impl<'a, T: Display> Display for Value<'a, T> {
             }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
+            Value::TraitFunction(name) => {
+                write!(f, "{name}") // TODO GZ
+            }
         }
     }
 }
@@ -451,6 +456,14 @@ impl<'a> Definitions<'a> {
                     } else {
                         Value::TypeConstructor(&variant.name).into()
                     }
+                }
+                Some(FunctionValueDefinition::TraitFunction(trait_decl, function)) => {
+                    let formatted_string = Box::leak(Box::new(format!(
+                        "{}::{}",
+                        trait_decl.name.clone(),
+                        function.name.clone()
+                    )));
+                    Value::TraitFunction(formatted_string).into()
                 }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
@@ -956,6 +969,16 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.local_vars = local_vars;
                 self.type_args = type_args.clone();
                 self.expand(&lambda.body)?;
+            }
+            Value::TraitFunction(name) => {
+                let f_name = name.replace(".", "::");
+                let f_name: &'a str = Box::leak(f_name.into_boxed_str()); //TODO GZ
+                let f = self.symbols.lookup(f_name, None)?;
+                println!(
+                    "Trait function: {f_name} -> {f}. Arguments: {:?}",
+                    arguments.iter().map(|a| a.type_formatted()).format(", ")
+                );
+                self.value_stack.push(f);
             }
             e => panic!("Expected function but got {e}"),
         };
