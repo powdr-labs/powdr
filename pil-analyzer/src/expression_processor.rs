@@ -85,11 +85,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     }
 
     pub fn process_vec_into_array_literal(&mut self, exprs: Vec<parsed::Expression>) -> Expression {
-        let unknown = SourceRef::unknown();
-        let src = exprs
-            .first()
-            .map(|e| e.source_reference())
-            .unwrap_or(&unknown);
+        let src = combine_source_refs(exprs.iter().map(|e| e.source_reference()));
         Expression::ArrayLiteral(
             src.clone(),
             ArrayLiteral {
@@ -99,6 +95,29 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     .collect(),
             },
         )
+    }
+
+    fn combine_source_refs<'a, I>(refs: I) -> SourceRef
+    where
+        I: Iterator<Item = &'a SourceRef>,
+    {
+        let mut iter = refs.peekable();
+
+        let mut combined_ref = match iter.peek() {
+            Some(first) => **first,
+            None => SourceRef::unknown(),
+        };
+
+        for r in iter {
+            if r.start < combined_ref.start {
+                combined_ref.start = r.start;
+            }
+            if r.end > combined_ref.end {
+                combined_ref.end = r.end;
+            }
+        }
+
+        combined_ref
     }
 
     pub fn process_expression(&mut self, expr: parsed::Expression) -> Expression {
@@ -340,7 +359,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             src,
             BlockExpression {
                 statements: processed_statements,
-                expr: Box::new(processed_expr),
+                expr: Some(Box::new(processed_expr)),
             },
         )
     }
