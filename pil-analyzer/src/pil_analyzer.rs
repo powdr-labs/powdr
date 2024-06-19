@@ -9,7 +9,7 @@ use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
@@ -289,7 +289,14 @@ impl PILAnalyzer {
                         expressions.push((selector, Type::Expr.into()))
                     }
                     if let Expression::ArrayLiteral(_, _) = part.expressions.as_ref() {
-                        expressions.push((part.expressions.as_mut(), Type::Expr.into()))
+                        expressions.push((
+                            part.expressions.as_mut(),
+                            Type::Array(ArrayType {
+                                base: Box::new(Type::Expr),
+                                length: None,
+                            })
+                            .into(),
+                        ))
                     } else {
                         panic!("Selected expressions need to be provided as arrays.\n  Expected [{}].\n  Found: {}",
                         part.expressions, part.expressions)
