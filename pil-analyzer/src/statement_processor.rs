@@ -312,14 +312,14 @@ where
             PilStatement::Expression(source, expression) => (
                 source,
                 IdentityKind::Polynomial,
-                parsed::SelectedExpressions {
+                SelectedExpressions {
                     selector: Some(
                         self.expression_processor(&Default::default())
                             .process_expression(expression),
                     ),
                     expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
                 },
-                parsed::SelectedExpressions::default(),
+                SelectedExpressions::default(),
             ),
             PilStatement::PlookupIdentity(source, key, haystack) => (
                 source,
@@ -340,20 +340,10 @@ where
             PilStatement::ConnectIdentity(source, left, right) => (
                 source,
                 IdentityKind::Connect,
-                parsed::SelectedExpressions {
-                    selector: None,
-                    expressions: Box::new(
-                        self.expression_processor(&Default::default())
-                            .process_vec_into_array_literal(left),
-                    ),
-                },
-                parsed::SelectedExpressions {
-                    selector: None,
-                    expressions: Box::new(
-                        self.expression_processor(&Default::default())
-                            .process_vec_into_array_literal(right),
-                    ),
-                },
+                self.expression_processor(&Default::default())
+                    .process_vec_into_selected_expression(left),
+                self.expression_processor(&Default::default())
+                    .process_vec_into_selected_expression(right),
             ),
             // TODO at some point, these should all be caught by the type checker.
             _ => {

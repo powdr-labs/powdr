@@ -84,9 +84,12 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             .collect()
     }
 
-    pub fn process_vec_into_array_literal(&mut self, exprs: Vec<parsed::Expression>) -> Expression {
+    pub fn process_vec_into_selected_expression(
+        &mut self,
+        exprs: Vec<parsed::Expression>,
+    ) -> SelectedExpressions {
         let src = combine_source_refs(exprs.iter().map(|e| e.source_reference()));
-        Expression::ArrayLiteral(
+        let exprs = Expression::ArrayLiteral(
             src.clone(),
             ArrayLiteral {
                 items: exprs
@@ -94,7 +97,12 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     .map(|e| self.process_expression(e))
                     .collect(),
             },
-        )
+        );
+
+        SelectedExpressions {
+            selector: None,
+            expressions: Box::new(exprs),
+        }
     }
 
     fn combine_source_refs<'a, I>(refs: I) -> SourceRef
