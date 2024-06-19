@@ -188,7 +188,7 @@ impl<Expr> IdentityWithoutID<Expr> {
         Self {
             kind: IdentityKind::Polynomial,
             source,
-            left: powdr_ast::analyzed::SelectedExpressions {
+            left: SelectedExpressions {
                 selector: Some(identity),
                 expressions: vec![],
             },
@@ -284,8 +284,8 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     fn condense_selected_expressions(
         &mut self,
         sel_expr: &'a parsed::SelectedExpressions<Expression>,
-    ) -> analyzed::SelectedExpressions<AlgebraicExpression<T>> {
-        analyzed::SelectedExpressions {
+    ) -> SelectedExpressions<AlgebraicExpression<T>> {
+        SelectedExpressions {
             selector: sel_expr
                 .selector
                 .as_ref()

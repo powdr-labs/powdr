@@ -749,7 +749,12 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
                 self.op_stack
                     .push(Operation::TruncateLocals(self.local_vars.len()));
-                self.op_stack.push(Operation::Expand(expr));
+                match expr {
+                    Some(expr) => {
+                        self.op_stack.push(Operation::Expand(expr));
+                    }
+                    None => {}
+                }
                 for s in statements.iter().rev() {
                     match s {
                         StatementInsideBlock::LetStatement(s) => {

@@ -12,7 +12,7 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
-    self, ArrayLiteral, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
     SymbolCategory,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
