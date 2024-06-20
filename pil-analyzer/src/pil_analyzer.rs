@@ -432,10 +432,14 @@ impl PILAnalyzer {
             // TODO we should maybe implement a separate evaluator that is able to run before type checking
             // and is field-independent (only uses integers)?
             let namespace_degree: u64 = u64::try_from(
-                evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
-                    .unwrap()
-                    .try_to_integer()
-                    .unwrap(),
+                evaluator::evaluate_expression::<GoldilocksField>(
+                    &degree,
+                    &self.definitions,
+                    &self.implementations,
+                )
+                .unwrap()
+                .try_to_integer()
+                .unwrap(),
             )
             .unwrap();
             if let Some(degree) = self.polynomial_degree {
