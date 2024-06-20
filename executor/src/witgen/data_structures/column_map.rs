@@ -82,7 +82,6 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
     }
 
     pub fn keys(&self) -> impl Iterator<Item = PolyID> {
-
         let degree = self.degree;
 
         (0..self.values.len()).map(move |i| PolyID {

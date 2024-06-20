@@ -22,21 +22,22 @@ use super::*;
 impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let mut current_namespace = AbsoluteSymbolPath::default();
-        let mut update_namespace = |name: &str, degree: Option<DegreeType>, f: &mut Formatter<'_>| {
-            let mut namespace =
-                AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
-            let name = namespace.pop().unwrap();
-            if namespace != current_namespace {
-                current_namespace = namespace;
-                writeln!(
-                    f,
-                    "namespace {}({});",
-                    current_namespace.relative_to(&Default::default()),
-                    degree.map(|d| d.to_string()).unwrap_or_default()
-                )?;
+        let mut update_namespace =
+            |name: &str, degree: Option<DegreeType>, f: &mut Formatter<'_>| {
+                let mut namespace =
+                    AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
+                let name = namespace.pop().unwrap();
+                if namespace != current_namespace {
+                    current_namespace = namespace;
+                    writeln!(
+                        f,
+                        "namespace {}({});",
+                        current_namespace.relative_to(&Default::default()),
+                        degree.map(|d| d.to_string()).unwrap_or_default()
+                    )?;
+                };
+                Ok((name, !current_namespace.is_empty()))
             };
-            Ok((name, !current_namespace.is_empty()))
-        };
 
         for statement in &self.source_order {
             match statement {

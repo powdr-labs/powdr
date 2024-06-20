@@ -329,13 +329,23 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             );
         }
 
-        let fixed_cols =
-            FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)), Some(analyzed.max_degree()));
+        let fixed_cols = FixedColumnMap::from(
+            fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)),
+            Some(analyzed.max_degree()),
+        );
 
         // The global range constraints are not set yet.
         let global_range_constraints = GlobalConstraints {
-            witness_constraints: WitnessColumnMap::new(None, witness_cols.len(), Some(analyzed.max_degree())),
-            fixed_constraints: FixedColumnMap::new(None, fixed_cols.len(), Some(analyzed.max_degree())),
+            witness_constraints: WitnessColumnMap::new(
+                None,
+                witness_cols.len(),
+                Some(analyzed.max_degree()),
+            ),
+            fixed_constraints: FixedColumnMap::new(
+                None,
+                fixed_cols.len(),
+                Some(analyzed.max_degree()),
+            ),
         };
 
         FixedData {

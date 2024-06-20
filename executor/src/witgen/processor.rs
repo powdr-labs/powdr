@@ -97,7 +97,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
-
         // get the degree of all witnesses, which must match
         let degree = witness_cols
             .iter()
@@ -113,7 +112,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
                 .witness_cols
                 .keys()
                 .map(|poly_id| witness_cols.contains(&poly_id)),
-                Some(degree),
+            Some(degree),
         );
         Self {
             row_offset,

@@ -122,7 +122,7 @@ impl<T: FieldElement> IndexedColumns<T> {
             })
             .unwrap();
 
-        let index: BTreeMap<Vec<T>, IndexValue> = (0..degree as usize)
+        let index: BTreeMap<Vec<T>, IndexValue> = (0..degree)
             .fold(
                 (
                     BTreeMap::<Vec<T>, IndexValue>::default(),

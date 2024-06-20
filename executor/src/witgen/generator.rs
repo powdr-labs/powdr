@@ -257,15 +257,19 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         assert_eq!(self.data.len() as DegreeType, self.degree() + 1);
 
         let last_row = self.data.pop().unwrap();
-        self.data[0] = WitnessColumnMap::from(self.data[0].values().zip(last_row.values()).map(
-            |(cell1, cell2)| match (&cell1.value, &cell2.value) {
-                (CellValue::Known(v1), CellValue::Known(v2)) => {
-                    assert_eq!(v1, v2);
-                    cell1.clone()
-                }
-                (CellValue::Known(_), _) => cell1.clone(),
-                _ => cell2.clone(),
-            },
-        ), Some(self.degree()));
+        self.data[0] = WitnessColumnMap::from(
+            self.data[0]
+                .values()
+                .zip(last_row.values())
+                .map(|(cell1, cell2)| match (&cell1.value, &cell2.value) {
+                    (CellValue::Known(v1), CellValue::Known(v2)) => {
+                        assert_eq!(v1, v2);
+                        cell1.clone()
+                    }
+                    (CellValue::Known(_), _) => cell1.clone(),
+                    _ => cell2.clone(),
+                }),
+            Some(self.degree()),
+        );
     }
 }
