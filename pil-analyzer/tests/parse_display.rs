@@ -695,7 +695,7 @@ fn namespace_no_degree() {
 namespace T(8);
     let k = X::y;
 ";
-    let expected = "namespace X(8);
+    let expected = "namespace X();
     let y: int = 7;
 namespace T(8);
     let k: int = X.y;
