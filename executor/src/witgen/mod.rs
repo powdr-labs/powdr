@@ -271,7 +271,6 @@ pub fn extract_publics<T: FieldElement>(
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
-    degree: DegreeType,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
     column_by_name: HashMap<String, PolyID>,
@@ -299,24 +298,24 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                         .map(|(name, poly_id)| {
                             let external_values = external_witness_values.remove(name.as_str());
                             if let Some(external_values) = &external_values {
-                                if external_values.len() != analyzed.degree() as usize {
+                                if external_values.len() != poly.degree.unwrap() as usize {
                                     log::debug!(
                                         "External witness values for column {} were only partially provided \
                                         (length is {} but the degree is {})",
                                         name,
                                         external_values.len(),
-                                        analyzed.degree()
+                                        poly.degree.unwrap()
                                     );
                                 }
                             }
                             // Remove any hint for witness columns of a later stage
                             // (because it might reference a challenge that is not available yet)
                             let value = if poly.stage.unwrap_or_default() <= stage.into() { value.as_ref() } else { None };
-                            WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
+                            WitnessColumn::new(poly_id, &name, value, external_values)
                         })
                         .collect::<Vec<_>>()
                 },
-        ));
+        ), Some(analyzed.max_degree()));
 
         if !external_witness_values.is_empty() {
             let available_columns = witness_cols
@@ -331,17 +330,16 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         }
 
         let fixed_cols =
-            FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)));
+            FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)), Some(analyzed.max_degree()));
 
         // The global range constraints are not set yet.
         let global_range_constraints = GlobalConstraints {
-            witness_constraints: WitnessColumnMap::new(None, witness_cols.len()),
-            fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
+            witness_constraints: WitnessColumnMap::new(None, witness_cols.len(), Some(analyzed.max_degree())),
+            fixed_constraints: FixedColumnMap::new(None, fixed_cols.len(), Some(analyzed.max_degree())),
         };
 
         FixedData {
             analyzed,
-            degree: analyzed.degree(),
             fixed_cols,
             witness_cols,
             column_by_name: analyzed
@@ -379,7 +377,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn witness_map_with<V: Clone>(&self, initial_value: V) -> WitnessColumnMap<V> {
-        WitnessColumnMap::new(initial_value, self.witness_cols.len())
+        WitnessColumnMap::new(initial_value, self.witness_cols.len(), None)
     }
 
     fn column_name(&self, poly_id: &PolyID) -> &str {
@@ -395,11 +393,13 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {
-        let row = row % self.degree;
         self.witness_cols[column]
             .external_values
             .as_ref()
-            .and_then(|v| v.get(row as usize).cloned())
+            .and_then(|v| {
+                let row = row % v.len() as u64;
+                v.get(row as usize).cloned()
+            })
     }
 }
 
@@ -433,11 +433,13 @@ pub struct WitnessColumn<'a, T> {
 
 impl<'a, T> WitnessColumn<'a, T> {
     pub fn new(
-        id: usize,
+        poly_id: PolyID,
         name: &str,
         value: Option<&'a FunctionValueDefinition>,
         external_values: Option<&'a Vec<T>>,
     ) -> WitnessColumn<'a, T> {
+        assert_eq!(poly_id.ptype, PolynomialType::Committed);
+
         let query = if let Some(FunctionValueDefinition::Expression(TypedExpression {
             e:
                 query @ Expression::LambdaExpression(
@@ -455,10 +457,7 @@ impl<'a, T> WitnessColumn<'a, T> {
             None
         };
         let poly = AlgebraicReference {
-            poly_id: PolyID {
-                id: id as u64,
-                ptype: PolynomialType::Committed,
-            },
+            poly_id,
             name: name.to_string(),
             next: false,
         };

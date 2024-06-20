@@ -360,7 +360,7 @@ mod test {
     use std::collections::BTreeMap;
 
     use powdr_ast::analyzed::{PolyID, PolynomialType};
-    use powdr_number::GoldilocksField;
+    use powdr_number::{DegreeType, GoldilocksField};
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -402,17 +402,19 @@ mod test {
         );
     }
 
-    fn constant_poly_id(i: u64) -> PolyID {
+    fn constant_poly_id(i: u64, degree: DegreeType) -> PolyID {
         PolyID {
             ptype: PolynomialType::Constant,
             id: i,
+            degree: Some(degree),
         }
     }
 
-    fn witness_poly_id(i: u64) -> PolyID {
+    fn witness_poly_id(i: u64, degree: DegreeType) -> PolyID {
         PolyID {
             ptype: PolynomialType::Committed,
             id: i,
+            degree: Some(degree),
         }
     }
 
@@ -435,9 +437,10 @@ namespace Global(2**20);
     { D } in { SHIFTED };
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
+        let degree = analyzed.max_degree();
         let constants = crate::constant_evaluator::generate(&analyzed);
         let fixed_polys = (0..constants.len())
-            .map(|i| constant_poly_id(i as u64))
+            .map(|i| constant_poly_id(i as u64, degree))
             .collect::<Vec<_>>();
         let mut known_constraints = fixed_polys
             .iter()
@@ -450,11 +453,20 @@ namespace Global(2**20);
             known_constraints,
             vec![
                 // Global.BYTE
-                (constant_poly_id(0), RangeConstraint::from_max_bit(7)),
+                (
+                    constant_poly_id(0, degree),
+                    RangeConstraint::from_max_bit(7)
+                ),
                 // Global.BYTE2
-                (constant_poly_id(1), RangeConstraint::from_max_bit(15)),
+                (
+                    constant_poly_id(1, degree),
+                    RangeConstraint::from_max_bit(15)
+                ),
                 // Global.SHIFTED
-                (constant_poly_id(2), RangeConstraint::from_mask(0xff0_u32)),
+                (
+                    constant_poly_id(2, degree),
+                    RangeConstraint::from_mask(0xff0_u32)
+                ),
             ]
             .into_iter()
             .collect()
@@ -467,19 +479,34 @@ namespace Global(2**20);
             known_constraints,
             vec![
                 // Global.A
-                (witness_poly_id(0), RangeConstraint::from_max_bit(0)),
+                (witness_poly_id(0, degree), RangeConstraint::from_max_bit(0)),
                 // Global.B
-                (witness_poly_id(1), RangeConstraint::from_max_bit(7)),
+                (witness_poly_id(1, degree), RangeConstraint::from_max_bit(7)),
                 // Global.C
-                (witness_poly_id(2), RangeConstraint::from_mask(0x2ff_u32)),
+                (
+                    witness_poly_id(2, degree),
+                    RangeConstraint::from_mask(0x2ff_u32)
+                ),
                 // Global.D
-                (witness_poly_id(3), RangeConstraint::from_mask(0xf0_u32)),
+                (
+                    witness_poly_id(3, degree),
+                    RangeConstraint::from_mask(0xf0_u32)
+                ),
                 // Global.BYTE
-                (constant_poly_id(0), RangeConstraint::from_max_bit(7)),
+                (
+                    constant_poly_id(0, degree),
+                    RangeConstraint::from_max_bit(7)
+                ),
                 // Global.BYTE2
-                (constant_poly_id(1), RangeConstraint::from_max_bit(15)),
+                (
+                    constant_poly_id(1, degree),
+                    RangeConstraint::from_max_bit(15)
+                ),
                 // Global.SHIFTED
-                (constant_poly_id(2), RangeConstraint::from_mask(0xff0_u32)),
+                (
+                    constant_poly_id(2, degree),
+                    RangeConstraint::from_mask(0xff0_u32)
+                ),
             ]
             .into_iter()
             .collect::<BTreeMap<_, _>>()
@@ -498,9 +525,12 @@ namespace Global(1024);
     { X * 4 } in { bytes };
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
-        let known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]
-            .into_iter()
-            .collect();
+        let known_constraints = vec![(
+            constant_poly_id(0, analyzed.max_degree()),
+            RangeConstraint::from_max_bit(7),
+        )]
+        .into_iter()
+        .collect();
         assert_eq!(analyzed.identities.len(), 1);
         let (_, removed) = propagate_constraints(
             known_constraints,

@@ -232,7 +232,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     polType: None,
                     type_: symbol_kind_to_json_string(symbol.kind).to_string(),
                     id: id as usize,
-                    polDeg: self.analyzed.degree() as usize,
+                    polDeg: self.analyzed.max_degree() as usize,
                     isArray: symbol.is_array(),
                     elementType: None,
                     len: symbol.length.map(|l| l as usize),
@@ -251,7 +251,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                             polType: None,
                             type_: symbol_kind_to_json_string(symbol.kind).to_string(),
                             id: id as usize,
-                            polDeg: self.analyzed.degree() as usize,
+                            polDeg: self.analyzed.max_degree() as usize,
                             isArray: symbol.is_array(),
                             elementType: None,
                             len: symbol.length.map(|l| l as usize),
@@ -369,7 +369,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
 
     fn polynomial_reference_to_json(
         &self,
-        PolyID { id, ptype }: PolyID,
+        PolyID { id, ptype, .. }: PolyID,
         next: bool,
     ) -> (u32, StarkyExpr) {
         let id = if ptype == PolynomialType::Intermediate {

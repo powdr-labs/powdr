@@ -40,17 +40,19 @@ pub fn write_polys_csv_file<T: FieldElement>(
     }));
     writer.write_record(&headers).unwrap();
 
-    let len = polys[0].1.len();
-    for row_index in 0..len {
+    let max_len = polys.iter().map(|p| p.1.len()).max().unwrap();
+    for row_index in 0..max_len {
         let mut row = Vec::new();
         row.push(format!("{row_index}"));
         for (_, values) in polys {
-            assert!(values.len() == len);
-            let value = match render_mode {
-                CsvRenderMode::SignedBase10 => format!("{}", values[row_index]),
-                CsvRenderMode::UnsignedBase10 => format!("{}", values[row_index].to_integer()),
-                CsvRenderMode::Hex => format!("0x{:x}", values[row_index].to_integer()),
-            };
+            let value = values
+                .get(row_index)
+                .map(|v| match render_mode {
+                    CsvRenderMode::SignedBase10 => format!("{v}"),
+                    CsvRenderMode::UnsignedBase10 => format!("{}", v.to_integer()),
+                    CsvRenderMode::Hex => format!("0x{:x}", v.to_integer()),
+                })
+                .unwrap_or_default();
             row.push(value);
         }
         writer.write_record(&row).unwrap();

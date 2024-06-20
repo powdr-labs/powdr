@@ -701,7 +701,6 @@ namespace T(8);
     let k: int = X.y;
 ";
     let analyzed = analyze_string::<GoldilocksField>(input);
-    assert_eq!(analyzed.degree, Some(8));
     assert_eq!(expected, analyzed.to_string());
 }
 
@@ -718,6 +717,5 @@ namespace T(8);
     let k: int = std::prelude::y;
 ";
     let analyzed = analyze_string::<GoldilocksField>(input);
-    assert_eq!(analyzed.degree, Some(8));
     assert_eq!(expected, analyzed.to_string());
 }

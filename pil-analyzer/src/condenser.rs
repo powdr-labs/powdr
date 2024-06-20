@@ -144,7 +144,6 @@ pub fn condense<T: FieldElement>(
         reference.poly_id = Some(symbol.into());
     }
     Analyzed {
-        degree,
         definitions,
         public_declarations,
         intermediate_columns,

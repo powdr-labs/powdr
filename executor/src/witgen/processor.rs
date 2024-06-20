@@ -97,11 +97,23 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
+
+        // get the degree of all witnesses, which must match
+        let degree = witness_cols
+            .iter()
+            .map(|p| p.degree.unwrap())
+            .reduce(|acc, degree| {
+                assert_eq!(acc, degree);
+                acc
+            })
+            .unwrap();
+
         let is_relevant_witness = WitnessColumnMap::from(
             fixed_data
                 .witness_cols
                 .keys()
                 .map(|poly_id| witness_cols.contains(&poly_id)),
+                Some(degree),
         );
         Self {
             row_offset,

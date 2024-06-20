@@ -186,7 +186,7 @@ mod test {
             col fixed LAST(i) { if i == N - 1 { 1 } else { 0 } };
             "#;
         let analyzed = analyze_string(src);
-        assert_eq!(analyzed.degree(), 8);
+        assert_eq!(analyzed.max_degree(), 8);
         let constants = generate(&analyzed);
         assert_eq!(
             constants,
@@ -202,7 +202,7 @@ mod test {
             pol constant EVEN(i) { 2 * (i - 1) + 4 };
         "#;
         let analyzed = analyze_string(src);
-        assert_eq!(analyzed.degree(), 8);
+        assert_eq!(analyzed.max_degree(), 8);
         let constants = generate(&analyzed);
         assert_eq!(
             constants,
@@ -221,7 +221,7 @@ mod test {
             pol constant X(i) { i ^ (i + 17) | 3 };
         "#;
         let analyzed = analyze_string(src);
-        assert_eq!(analyzed.degree(), 8);
+        assert_eq!(analyzed.max_degree(), 8);
         let constants = generate(&analyzed);
         assert_eq!(
             constants,
@@ -245,7 +245,7 @@ mod test {
             } + 1 };
         "#;
         let analyzed = analyze_string(src);
-        assert_eq!(analyzed.degree(), 8);
+        assert_eq!(analyzed.max_degree(), 8);
         let constants = generate(&analyzed);
         assert_eq!(
             constants,
@@ -261,7 +261,7 @@ mod test {
             let X: col = |i| if i < 3 { 7 } else { 9 };
         "#;
         let analyzed = analyze_string(src);
-        assert_eq!(analyzed.degree(), 8);
+        assert_eq!(analyzed.max_degree(), 8);
         let constants = generate(&analyzed);
         assert_eq!(
             constants,
@@ -278,7 +278,7 @@ mod test {
             pol constant EVEN(i) { 2 * minus_one(i) + 2 };
         "#;
         let analyzed = analyze_string(src);
-        assert_eq!(analyzed.degree(), 8);
+        assert_eq!(analyzed.max_degree(), 8);
         let constants = generate(&analyzed);
         assert_eq!(
             constants,
@@ -304,7 +304,7 @@ mod test {
             col fixed doubled_half_nibble(i) { half_nibble_f(i / 2) };
         "#;
         let analyzed = analyze_string(src);
-        assert_eq!(analyzed.degree(), 10);
+        assert_eq!(analyzed.max_degree(), 10);
         let constants = generate(&analyzed);
         assert_eq!(constants.len(), 4);
         assert_eq!(
@@ -346,7 +346,7 @@ mod test {
             col fixed ref_other = [n-1, f(1), 8] + [0]*;
         "#;
         let analyzed = analyze_string(src);
-        assert_eq!(analyzed.degree(), 10);
+        assert_eq!(analyzed.max_degree(), 10);
         let constants = generate(&analyzed);
         assert_eq!(constants.len(), 3);
         assert_eq!(
@@ -377,7 +377,7 @@ mod test {
             col fixed arr = [0, 1, 2]* + [7];
         "#;
         let analyzed = analyze_string(src);
-        assert_eq!(analyzed.degree(), 10);
+        assert_eq!(analyzed.max_degree(), 10);
         let constants = generate(&analyzed);
         assert_eq!(constants.len(), 1);
         assert_eq!(
@@ -412,7 +412,7 @@ mod test {
             col fixed greater_eq(i) { if id(i) >= inv(i) { 1 } else { 0 } };
         "#;
         let analyzed = analyze_string(src);
-        assert_eq!(analyzed.degree(), 6);
+        assert_eq!(analyzed.max_degree(), 6);
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
@@ -471,7 +471,7 @@ mod test {
             let x: col = |i| w(i) + 1;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
-        assert_eq!(analyzed.degree(), 10);
+        assert_eq!(analyzed.max_degree(), 10);
         generate(&analyzed);
     }
 
@@ -484,7 +484,7 @@ mod test {
             let x = |i| w(i) + 1;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
-        assert_eq!(analyzed.degree(), 10);
+        assert_eq!(analyzed.max_degree(), 10);
         generate(&analyzed);
     }
 
@@ -498,7 +498,7 @@ mod test {
             col fixed y = [1, 2, 3]*;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
-        assert_eq!(analyzed.degree(), 10);
+        assert_eq!(analyzed.max_degree(), 10);
         generate(&analyzed);
     }
 
@@ -513,7 +513,7 @@ mod test {
             let Y: col = y;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
-        assert_eq!(analyzed.degree(), 4);
+        assert_eq!(analyzed.max_degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
@@ -536,7 +536,7 @@ mod test {
             let x: col = |i| (1 << (2000 + i)) >> 2000;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
-        assert_eq!(analyzed.degree(), 4);
+        assert_eq!(analyzed.max_degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
@@ -556,7 +556,7 @@ mod test {
             let x: col = |i| 100 + x_arr[i];
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
-        assert_eq!(analyzed.degree(), 4);
+        assert_eq!(analyzed.max_degree(), 4);
         let constants = generate(&analyzed);
         // Semantics of p % q involving negative numbers:
         // sgn(p) * |p| % |q|
@@ -576,7 +576,7 @@ mod test {
                 let fe = || fe();
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
-        assert_eq!(analyzed.degree(), 4);
+        assert_eq!(analyzed.max_degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
@@ -600,7 +600,7 @@ mod test {
                 let a: col = |i| std::convert::fe(i + seven) + seven;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
-        assert_eq!(analyzed.degree(), 4);
+        assert_eq!(analyzed.max_degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],

@@ -300,6 +300,12 @@ fn naive_byte_decomposition_gl() {
 }
 
 #[test]
+fn different_degrees() {
+    let f = "pil/two_proofs.pil";
+    verify_pil(f, Default::default());
+}
+
+#[test]
 fn serialize_deserialize_optimized_pil() {
     let f = "pil/fibonacci.pil";
     let path = powdr_pipeline::test_util::resolve_test_file(f);

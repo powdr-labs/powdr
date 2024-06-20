@@ -154,16 +154,20 @@ mod tests {
         let mut fixed_lookup = FixedLookup::new(fixed_data.global_range_constraints().clone());
         let mut machines = [];
 
+        // The degree is the max degree as we have a single machine
+        let degree = fixed_data.analyzed.max_degree();
+
         let columns = (0..fixed_data.witness_cols.len())
             .map(move |i| PolyID {
                 id: i as u64,
                 ptype: PolynomialType::Committed,
+                // we only have one machine, so its degree is also the max
+                degree: Some(degree),
             })
             .collect();
         let data = FinalizableData::with_initial_rows_in_progress(
             &columns,
-            (0..fixed_data.degree)
-                .map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, fixed_data.degree))),
+            (0..degree).map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, degree))),
         );
 
         let mut mutable_state = MutableState {
@@ -171,7 +175,7 @@ mod tests {
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
-        let row_offset = RowIndex::from_degree(0, fixed_data.degree);
+        let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let witness_cols = fixed_data.witness_cols.keys().collect();
 
@@ -187,7 +191,7 @@ mod tests {
         f(
             processor,
             name_to_poly_id(&fixed_data),
-            analyzed.degree(),
+            degree,
             identities.len(),
         )
     }

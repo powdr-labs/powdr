@@ -143,7 +143,7 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     buffered_write_file(&setup_file_path, |writer| {
         powdr_backend::BackendType::Halo2
             .factory::<Bn254Field>()
-            .generate_setup(pil.degree(), writer)
+            .generate_setup(pil.max_degree(), writer)
             .unwrap()
     })
     .unwrap();

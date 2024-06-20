@@ -226,6 +226,7 @@ impl<'a, T: FieldElement> Row<'a, T> {
                     };
                     Cell { name, value }
                 }),
+                Some(row.num_rows)
         )
     }
 
@@ -269,9 +270,13 @@ impl<'a, T: FieldElement> Row<'a, T> {
 impl<T: FieldElement> From<Row<'_, T>> for WitnessColumnMap<T> {
     /// Builds a map from polynomial ID to value. Unknown values are set to zero.
     fn from(val: Row<T>) -> Self {
+
+        let degree = val.degree;
+
         WitnessColumnMap::from(
             val.into_iter()
                 .map(|(_, cell)| cell.value.unwrap_or_default()),
+                degree
         )
     }
 }

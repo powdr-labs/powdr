@@ -47,7 +47,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
 
         let proof_type: ProofType = ProofType::from(options);
 
-        let params = create_stark_struct(pil.degree(), proof_type.hash_type());
+        let params = create_stark_struct(pil.max_degree(), proof_type.hash_type());
 
         let (pil_json, patched_fixed) = first_step_fixup(pil, fixed);
 

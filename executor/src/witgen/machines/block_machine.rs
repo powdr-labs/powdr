@@ -98,6 +98,8 @@ impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
 /// TODO we do not actually "detect" the machine yet, we just check if
 /// the lookup has a binary selector that is 1 every k rows for some k
 pub struct BlockMachine<'a, T: FieldElement> {
+    /// The unique degree of all columns in this machine
+    degree: DegreeType,
     /// Block size, the period of the selector.
     block_size: usize,
     /// The row index (within the block) of the latch row
@@ -127,8 +129,18 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identities: &[&'a Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
+        // get the degree of all witnesses, which must match
+        let degree = witness_cols
+            .iter()
+            .map(|p| p.degree.unwrap())
+            .reduce(|acc, degree| {
+                assert_eq!(acc, degree);
+                acc
+            })
+            .unwrap();
+
         let (is_permutation, block_size, latch_row) =
-            detect_connection_type_and_block_size(fixed_data, connecting_identities)?;
+            detect_connection_type_and_block_size(fixed_data, connecting_identities, degree)?;
 
         for id in connecting_identities.values() {
             for r in id.right.expressions.iter() {
@@ -143,19 +155,20 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             }
         }
 
-        assert!(block_size <= fixed_data.degree as usize);
+        assert!(block_size <= degree as usize);
         // Because block shapes are not always rectangular, we add the last block to the data at the
         // beginning. It starts out with unknown values. Should the first block decide to write to
         // rows < 0, they will be written to this block.
         // In `take_witness_col_values()`, this block will be removed and its values will be used to
         // construct the "default" block used to fill up unused rows.
-        let start_index = RowIndex::from_i64(-(block_size as i64), fixed_data.degree);
+        let start_index = RowIndex::from_i64(-(block_size as i64), degree);
         let data = FinalizableData::with_initial_rows_in_progress(
             witness_cols,
             (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
         );
         Some(BlockMachine {
             name,
+            degree,
             block_size,
             latch_row,
             connecting_identities: connecting_identities.clone(),
@@ -176,6 +189,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
     connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
+    degree: DegreeType,
 ) -> Option<(ConnectionType, usize, usize)> {
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
@@ -194,7 +208,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
             // We'd expect all RHS selectors to be fixed columns of the same period.
             connecting_identities
                 .values()
-                .map(|id| try_to_period(&id.right.selector, fixed_data))
+                .map(|id| try_to_period(&id.right.selector, fixed_data, degree))
                 .unique()
                 .exactly_one()
                 .ok()??
@@ -205,7 +219,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
             let find_max_period = |latch_candidates: BTreeSet<Option<Expression<T>>>| {
                 latch_candidates
                     .iter()
-                    .filter_map(|e| try_to_period(e, fixed_data))
+                    .filter_map(|e| try_to_period(e, fixed_data, degree))
                     // If there is more than one period, the block size is the maximum period.
                     .max_by_key(|&(_, period)| period)
             };
@@ -232,6 +246,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
 fn try_to_period<T: FieldElement>(
     expr: &Option<Expression<T>>,
     fixed_data: &FixedData<T>,
+    degree: DegreeType,
 ) -> Option<(usize, usize)> {
     match expr {
         Some(expr) => {
@@ -250,7 +265,7 @@ fn try_to_period<T: FieldElement>(
 
             let offset = values.iter().position(|v| v.is_one())?;
             let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;
-            if period > fixed_data.degree as usize / 2 {
+            if period > degree as usize / 2 {
                 // This filters out columns like [0]* + [1], which might appear in a block machine
                 // but shouldn't be detected as the latch.
                 return None;
@@ -275,6 +290,10 @@ fn try_to_period<T: FieldElement>(
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.connecting_identities.keys().copied().collect()
+    }
+
+    fn degree(&self) -> DegreeType {
+        self.degree
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -324,7 +343,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
 
             // Instantiate a processor
-            let row_offset = RowIndex::from_i64(-1, self.fixed_data.degree);
+            let row_offset = RowIndex::from_i64(-1, self.degree);
             let mut mutable_state = MutableState {
                 fixed_lookup,
                 machines: vec![].into_iter().into(),
@@ -382,7 +401,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
                 // For all constraints to be satisfied, unused cells have to be filled with valid values.
                 // We do this, we construct a default block, by repeating the first input to the block machine.
-                values.resize(self.fixed_data.degree as usize, None);
+                values.resize(self.degree as usize, None);
 
                 // Use the block as the default block. However, it needs to be merged with the dummy block,
                 // to handle blocks of non-rectangular shape.
@@ -445,7 +464,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 .ends_with("_operation_id_no_change")
             {
                 log::trace!("Setting _operation_id_no_change to 0.");
-                col[self.fixed_data.degree as usize - 1] = T::zero();
+                col[self.degree as usize - 1] = T::zero();
             }
         }
     }
@@ -457,7 +476,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     }
 
     fn last_row_index(&self) -> RowIndex {
-        RowIndex::from_i64(self.rows() as i64 - 1, self.fixed_data.degree)
+        RowIndex::from_i64(self.rows() as i64 - 1, self.degree)
     }
 
     fn get_row(&self, row: RowIndex) -> &Row<'a, T> {
@@ -528,7 +547,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             ));
         }
 
-        if self.rows() + self.block_size as DegreeType >= self.fixed_data.degree {
+        if self.rows() + self.block_size as DegreeType >= self.degree {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
@@ -614,7 +633,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// unused cells in the previous block.
     fn append_block(&mut self, mut new_block: FinalizableData<'a, T>) -> Result<(), EvalError<T>> {
         assert!(
-            (self.rows() + self.block_size as DegreeType) < self.fixed_data.degree,
+            (self.rows() + self.block_size as DegreeType) < self.degree,
             "Block machine is full (this should have been checked before)"
         );
 

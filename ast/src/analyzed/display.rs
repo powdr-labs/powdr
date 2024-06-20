@@ -21,9 +21,8 @@ use super::*;
 
 impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let degree = self.degree.unwrap_or_default();
         let mut current_namespace = AbsoluteSymbolPath::default();
-        let mut update_namespace = |name: &str, f: &mut Formatter<'_>| {
+        let mut update_namespace = |name: &str, degree: Option<DegreeType>, f: &mut Formatter<'_>| {
             let mut namespace =
                 AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
             let name = namespace.pop().unwrap();
@@ -31,8 +30,9 @@ impl<T: Display> Display for Analyzed<T> {
                 current_namespace = namespace;
                 writeln!(
                     f,
-                    "namespace {}({degree});",
-                    current_namespace.relative_to(&Default::default())
+                    "namespace {}({});",
+                    current_namespace.relative_to(&Default::default()),
+                    degree.map(|d| d.to_string()).unwrap_or_default()
                 )?;
             };
             Ok((name, !current_namespace.is_empty()))
@@ -53,7 +53,7 @@ impl<T: Display> Display for Analyzed<T> {
                             // These are printed as part of the enum.
                             continue;
                         }
-                        let (name, is_local) = update_namespace(name, f)?;
+                        let (name, is_local) = update_namespace(name, symbol.degree, f)?;
                         match symbol.kind {
                             SymbolKind::Poly(_) => {
                                 writeln_indented(f, format_poly(&name, symbol, definition))?;
@@ -110,7 +110,7 @@ impl<T: Display> Display for Analyzed<T> {
                         }
                     } else if let Some((symbol, definition)) = self.intermediate_columns.get(name) {
                         assert!(symbol.stage.is_none());
-                        let (name, _) = update_namespace(name, f)?;
+                        let (name, _) = update_namespace(name, symbol.degree, f)?;
                         assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate));
                         if let Some(length) = symbol.length {
                             writeln_indented(
@@ -130,7 +130,7 @@ impl<T: Display> Display for Analyzed<T> {
                 }
                 StatementIdentifier::PublicDeclaration(name) => {
                     let decl = &self.public_declarations[name];
-                    let (name, is_local) = update_namespace(&decl.name, f)?;
+                    let (name, is_local) = update_namespace(&decl.name, None, f)?;
                     writeln_indented_by(
                         f,
                         format_public_declaration(&name, decl),
@@ -485,6 +485,7 @@ mod test {
             poly_id: super::PolyID {
                 id: 0,
                 ptype: super::PolynomialType::Committed,
+                degree: None,
             },
             next: false,
         });
@@ -493,6 +494,7 @@ mod test {
             poly_id: super::PolyID {
                 id: 1,
                 ptype: super::PolynomialType::Committed,
+                degree: None,
             },
             next: false,
         });
@@ -501,6 +503,7 @@ mod test {
             poly_id: super::PolyID {
                 id: 2,
                 ptype: super::PolynomialType::Committed,
+                degree: None,
             },
             next: false,
         });
