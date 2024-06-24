@@ -636,8 +636,7 @@ mod test {
                     get: |x| x,
                 }
 
-                let<T: FromLiteral> seven: T = getN::get(7);
-                let a: col = |i| std::convert::fe(i + seven) + seven;
+                let a: col = |i| std::convert::fe(i + getN::get(7)) + getN::get(7);
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);
