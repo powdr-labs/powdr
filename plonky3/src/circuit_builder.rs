@@ -1,14 +1,14 @@
 //! A plonky3 adapter for powdr
+//! The encoded plonky3 columns are chosen to be the powdr witness columns followed by the powdr fixed columns
 
 use std::any::TypeId;
 
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::AbstractField;
-use p3_goldilocks::Goldilocks;
 use p3_matrix::{dense::RowMajorMatrix, MatrixRowSlices};
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolynomialType,
+    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperator, Analyzed, IdentityKind,
+    PolynomialType,
 };
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
@@ -18,6 +18,8 @@ pub type Val = p3_goldilocks::Goldilocks;
 pub(crate) struct PowdrCircuit<'a, T> {
     /// The analyzed PIL
     analyzed: &'a Analyzed<T>,
+    /// The value of the fixed columns
+    fixed: &'a [(String, Vec<T>)],
     /// The value of the witness columns, if set
     witness: Option<&'a [(String, Vec<T>)]>,
     /// Callback to augment the witness in the later stages
@@ -49,17 +51,14 @@ pub fn cast_to_goldilocks<T: FieldElement>(v: T) -> Val {
 }
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
-    pub(crate) fn new(analyzed: &'a Analyzed<T>) -> Self {
-        if analyzed.constant_count() > 0 {
-            unimplemented!("Fixed columns are not supported in Plonky3");
-        }
-
+    pub(crate) fn new(analyzed: &'a Analyzed<T>, fixed: &'a [(String, Vec<T>)]) -> Self {
         if !analyzed.public_declarations.is_empty() {
             unimplemented!("Public declarations are not supported in Plonky3");
         }
 
         Self {
             analyzed,
+            fixed,
             witness: None,
             _witgen_callback: None,
         }
@@ -108,9 +107,11 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                         r.poly_id.id as usize
                     }
                     PolynomialType::Constant => {
-                        unreachable!(
-                            "fixed columns are not supported, should have been checked earlier"
-                        )
+                        assert!(
+                            r.poly_id.id < self.analyzed.constant_count() as u64,
+                            "Plonky3 expects `poly_id` to be contiguous"
+                        );
+                        self.analyzed.commitment_count() + r.poly_id.id as usize
                     }
                     PolynomialType::Intermediate => {
                         unreachable!("intermediate polynomials should have been inlined")
@@ -153,8 +154,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
-        assert_eq!(self.analyzed.constant_count(), 0);
-        self.analyzed.commitment_count()
+        self.analyzed.commitment_count() + self.analyzed.constant_count()
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
