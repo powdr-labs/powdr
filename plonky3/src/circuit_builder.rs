@@ -4,6 +4,7 @@ use std::any::TypeId;
 
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::AbstractField;
+use p3_goldilocks::Goldilocks;
 use p3_matrix::{dense::RowMajorMatrix, MatrixRowSlices};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperator, Analyzed, IdentityKind,
@@ -21,6 +22,25 @@ pub(crate) struct PowdrCircuit<'a, T> {
     witness: Option<&'a [(String, Vec<T>)]>,
     /// Callback to augment the witness in the later stages
     _witgen_callback: Option<WitgenCallback<T>>,
+}
+
+impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
+    pub fn generate_trace_rows(&self) -> RowMajorMatrix<Goldilocks> {
+        // an iterator over all columns, committed then fixed
+        let witness = self.witness().iter();
+        let len = self.analyzed.degree.unwrap();
+
+        // for each row, get the value of each column
+        let values = (0..len)
+            .flat_map(move |i| {
+                witness
+                    .clone()
+                    .map(move |(_, v)| cast_to_goldilocks(v[i as usize]))
+            })
+            .collect();
+
+        RowMajorMatrix::new(values, self.width())
+    }
 }
 
 pub fn cast_to_goldilocks<T: FieldElement>(v: T) -> Val {
@@ -138,20 +158,7 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
-        // an iterator over all columns, committed then fixed
-        let witness = self.witness().iter();
-        let len = self.analyzed.degree.unwrap();
-
-        // for each row, get the value of each column
-        let values = (0..len)
-            .flat_map(move |i| {
-                witness
-                    .clone()
-                    .map(move |(_, v)| cast_to_goldilocks(v[i as usize]))
-            })
-            .collect();
-
-        Some(RowMajorMatrix::new(values, self.width()))
+        panic!()
     }
 }
 

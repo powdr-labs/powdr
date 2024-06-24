@@ -6,7 +6,6 @@ use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use p3_air::BaseAir;
 use p3_uni_stark::{prove, verify, Proof};
 use powdr_number::{FieldElement, KnownField};
 
@@ -40,7 +39,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
         let publics = vec![];
 
-        let trace = circuit.preprocessed_trace().unwrap();
+        let trace = circuit.generate_trace_rows();
 
         let config = get_config(self.analyzed.degree());
 
