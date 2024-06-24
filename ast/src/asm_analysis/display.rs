@@ -18,9 +18,9 @@ use crate::{
 use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
     DebugDirective, FunctionBody, FunctionStatement, FunctionStatements, Incompatible,
-    IncompatibleSet, Instruction, InstructionDefinitionStatement, InstructionStatement, Item,
-    LabelStatement, LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy,
-    Return, Rom, SubmachineDeclaration,
+    IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, Item, LabelStatement,
+    LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Return, Rom,
+    SubmachineDeclaration,
 };
 
 impl Display for AnalysisASMFile {
@@ -115,8 +115,12 @@ impl Display for LinkDefinitionStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "link {} {} {};",
-            self.flag,
+            "link {}{} {};",
+            if self.flag == 1.into() {
+                "".to_string()
+            } else {
+                format!("if {} ", self.flag)
+            },
             if self.is_permutation { "~>" } else { "=>" },
             self.to
         )
@@ -222,17 +226,6 @@ impl Display for RegisterTy {
 impl Display for InstructionDefinitionStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "instr {}{}", self.name, self.instruction)
-    }
-}
-
-impl Display for Instruction {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}{}",
-            self.params.prepend_space_if_non_empty(),
-            self.body
-        )
     }
 }
 

@@ -32,6 +32,6 @@ pub fn pil_statement_clear_source_ref(stmt: &mut PilStatement) {
     }
 }
 
-fn pil_expression_clear_source_ref(expr: &mut powdr_ast::parsed::Expression) {
+pub fn pil_expression_clear_source_ref(expr: &mut powdr_ast::parsed::Expression) {
     *expr.source_reference_mut() = SourceRef::unknown();
 }

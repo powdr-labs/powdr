@@ -133,18 +133,11 @@ impl Display for MachineProperties {
 
 impl Display for InstructionBody {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            InstructionBody::Local(elements) => write!(
-                f,
-                "{{ {} }}",
-                elements
-                    .iter()
-                    .map(format_instruction_statement)
-                    .format(", ")
-            ),
-            InstructionBody::CallablePlookup(r) => write!(f, " = {r};"),
-            InstructionBody::CallablePermutation(r) => write!(f, " ~ {r};"),
-        }
+        write!(
+            f,
+            "{{ {} }}",
+            self.0.iter().map(format_instruction_statement).format(", ")
+        )
     }
 }
 
@@ -167,8 +160,13 @@ impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{}",
+            "{}{}{}",
             self.params.prepend_space_if_non_empty(),
+            if self.links.is_empty() {
+                "".to_string()
+            } else {
+                " ".to_string() + &self.links.iter().join(" ")
+            },
             self.body
         )
     }
@@ -178,17 +176,32 @@ impl Display for LinkDeclaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "link {} {} {};",
-            self.flag,
+            "link {}{} {}",
+            if self.flag == 1.into() {
+                "".to_string()
+            } else {
+                format!("if {} ", self.flag)
+            },
             if self.is_permutation { "~>" } else { "=>" },
-            self.to,
+            self.link,
         )
     }
 }
 
 impl Display for CallableRef {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}.{} {}", self.instance, self.callable, self.params)
+        write!(
+            f,
+            "{}{}.{}({})",
+            match &self.params.outputs[..] {
+                [] => "".to_string(),
+                [output] => format!("{output} = "),
+                outputs => format!("({}) = ", outputs.iter().join(", ")),
+            },
+            self.instance,
+            self.callable,
+            self.params.inputs.iter().join(", ")
+        )
     }
 }
 
@@ -209,7 +222,7 @@ impl Display for MachineStatement {
                 write!(f, "instr {name}{instruction}")
             }
             MachineStatement::LinkDeclaration(_, link) => {
-                write!(f, "{link}")
+                write!(f, "{link};")
             }
             MachineStatement::FunctionDeclaration(_, name, params, statements) => {
                 write!(
@@ -1093,5 +1106,142 @@ mod tests {
 
         assert_eq!(p.clone().join(s.clone()).to_string(), "::abc::y");
         assert_eq!(SymbolPath::from(p.join(s)).to_string(), "::abc::y");
+    }
+
+    #[cfg(test)]
+    mod parentheses {
+        use powdr_parser::{parse, test_utils::pil_clear_source_refs};
+        use powdr_parser_util::UnwrapErrToStderr;
+        use pretty_assertions::assert_eq;
+        use test_log::test;
+
+        type TestCase = (&'static str, &'static str);
+
+        fn test_paren(test_case: &TestCase) {
+            let (input, expected) = test_case;
+            let mut parsed = parse(None, input).unwrap_err_to_stderr();
+            let printed = parsed.to_string();
+            assert_eq!(expected.trim(), printed.trim());
+            let mut re_parsed = parse(None, printed.as_str()).unwrap_err_to_stderr();
+
+            pil_clear_source_refs(&mut parsed);
+            pil_clear_source_refs(&mut re_parsed);
+            assert_eq!(parsed, re_parsed);
+        }
+
+        #[test]
+        fn binary_op() {
+            let test_cases: Vec<TestCase> = vec![
+                // Complete line
+                ("let t = ((x + y) * z);", "let t = (x + y) * z;"),
+                // Don't add extra
+                ("-x + y * !z;", "-x + y * !z;"),
+                ("x = (y <= z);", "x = (y <= z);"),
+                ("(x = y) <= z;", "(x = y) <= z;"),
+                ("x + y + z;", "x + y + z;"),
+                ("x * y * z;", "x * y * z;"),
+                ("x / y / z;", "x / y / z;"),
+                // Remove unneeded
+                ("(-x) + y * (!z);", "-x + y * !z;"),
+                ("(x * y) * z;", "x * y * z;"),
+                ("(x / y) / z;", "x / y / z;"),
+                ("(x ** (y ** z));", "x ** (y ** z);"),
+                ("(x - (y + z));", "x - (y + z);"),
+                // Observe associativity
+                ("x * (y * z);", "x * (y * z);"),
+                ("x / (y / z);", "x / (y / z);"),
+                ("x ** (y ** z);", "x ** (y ** z);"),
+                ("(x ** y) ** z;", "(x ** y) ** z;"),
+                // Don't remove needed
+                ("(x + y) * z;", "(x + y) * z;"),
+                ("((x + y) * z);", "(x + y) * z;"),
+                ("-(x + y);", "-(x + y);"),
+                // function call
+                ("(a + b)(2);", "(a + b)(2);"),
+                // Index access
+                ("(a + b)[2];", "(a + b)[2];"),
+                ("(i < 7) && (6 >= -i);", "i < 7 && 6 >= -i;"),
+                // Power test
+                ("(-x) ** (-y);", "(-x) ** (-y);"),
+                ("2 ** x';", "2 ** (x');"),
+                ("(2 ** x)';", "(2 ** x)';"),
+            ];
+
+            for test_case in test_cases {
+                test_paren(&test_case);
+            }
+        }
+
+        #[test]
+        fn lambda_ex() {
+            let test_cases: Vec<TestCase> = vec![
+                ("let x = 1 + (|i| i + 2);", "let x = 1 + (|i| i + 2);"),
+                ("let x = 1 + (|i| i) + 2;", "let x = 1 + (|i| i) + 2;"),
+                ("let x = 1 + (|i| (i + 2));", "let x = 1 + (|i| i + 2);"),
+                ("let x = (1 + (|i| i)) + 2;", "let x = 1 + (|i| i) + 2;"),
+                ("let x = (1 + (|i| (i + 2)));", "let x = 1 + (|i| i + 2);"),
+                ("let x = (1 + (|i| i + 2));", "let x = 1 + (|i| i + 2);"),
+                // Index access
+                ("(|i| i)[j];", "(|i| i)[j];"),
+            ];
+
+            for test_case in test_cases {
+                test_paren(&test_case);
+            }
+        }
+
+        #[test]
+        fn complex() {
+            let test_cases: Vec<TestCase> = vec![
+            // Don't change concise expression
+            (
+                "a | b * (c << d + e) & (f ^ g) = h * (i + g);",
+                "a | b * (c << d + e) & (f ^ g) = h * (i + g);",
+            ),
+            // Remove extra parentheses
+            (
+                "(a | ((b * (c << (d + e))) & (f ^ g))) = (h * ((i + g)));",
+                "a | b * (c << d + e) & (f ^ g) = h * (i + g);",
+            ),
+            (
+                "instr_or { 0, X, Y, Z } is (main_bin.latch * main_bin.sel[0]) { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
+                "instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
+            ),
+            (
+                "instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
+                "instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
+            ),
+            (
+                "pc' = (1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));",
+                "pc' = (1 - first_step') * (instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1));",
+            ),
+            (
+                "let root_of_unity_for_log_degree: int -> fe = |n| root_of_unity ** (2**(32 - n));",
+                "let root_of_unity_for_log_degree: int -> fe = (|n| root_of_unity ** (2 ** (32 - n)));",
+            ),
+        ];
+
+            for test_case in test_cases {
+                test_paren(&test_case);
+            }
+        }
+
+        #[test]
+        fn index_access_parentheses() {
+            let test_cases: Vec<TestCase> = vec![
+                ("(x')(2);", "(x')(2);"),
+                ("x[2](2);", "x[2](2);"),
+                ("(x')[2];", "(x')[2];"),
+                ("-x[2];", "-x[2];"),
+                ("(-x)[2];", "(-x)[2];"),
+                ("-(x[2]);", "-x[2];"),
+                ("1 + x[2];", "1 + x[2];"),
+                ("1 + x(2);", "1 + x(2);"),
+            ];
+
+            for test_case in test_cases {
+                test_paren(&test_case);
+            }
+        }
     }
 }

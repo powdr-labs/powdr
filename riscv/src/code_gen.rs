@@ -490,7 +490,7 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
     // halves of the result.
     // X is the lower half (least significant bits)
     // Y is the higher half (most significant bits)
-    instr mul Z, W -> X, Y ~ split_gl.split Z * W -> X, Y;
+    instr mul Z, W -> X, Y link ~> (X, Y) = split_gl.split(Z * W);
 "#
         }
     }

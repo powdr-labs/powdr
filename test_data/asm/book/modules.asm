@@ -35,10 +35,10 @@ machine Main {
 
     reg pc[@pc];
 
-    instr nothing = a.nothing;
-    instr also_nothing = b.nothing;
-    instr still_nothing = c.nothing;
-    instr nothing_again = d.nothing;
+    instr nothing link => a.nothing();
+    instr also_nothing link => b.nothing();
+    instr still_nothing link => c.nothing();
+    instr nothing_again link => d.nothing();
 
     function main {
         nothing;

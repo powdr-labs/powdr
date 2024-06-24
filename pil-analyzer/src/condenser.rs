@@ -99,8 +99,8 @@ pub fn condense<T: FieldElement>(
                 }
                 s => Some(s),
             };
-            // Extract and prepend the new witness columns, then identites
-            // and finally the original statment (if it exists).
+            // Extract and prepend the new witness columns, then identities
+            // and finally the original statement (if it exists).
             let new_wits = condenser
                 .extract_new_witness_columns()
                 .into_iter()
