@@ -7,8 +7,8 @@ use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use p3_matrix::{dense::RowMajorMatrix, MatrixRowSlices};
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperator, Analyzed, IdentityKind,
-    PolynomialType,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolynomialType,
 };
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
@@ -123,7 +123,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 "public references are not supported inside algebraic expressions in plonky3"
             ),
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
-            AlgebraicExpression::BinaryOperation(left, op, right) => {
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let left = self.to_plonky3_expr::<AB>(left, matrix);
                 let right = self.to_plonky3_expr::<AB>(right, matrix);
 
@@ -136,11 +136,11 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     }
                 }
             }
-            AlgebraicExpression::UnaryOperation(op, e) => {
-                let e: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(e, matrix);
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(expr, matrix);
 
                 match op {
-                    AlgebraicUnaryOperator::Minus => -e,
+                    AlgebraicUnaryOperator::Minus => -expr,
                 }
             }
             AlgebraicExpression::Challenge(challenge) => {
