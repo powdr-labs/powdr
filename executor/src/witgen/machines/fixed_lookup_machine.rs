@@ -15,7 +15,7 @@ use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
 use crate::witgen::machines::profiling::{record_end_identity, record_start_identity};
 use crate::witgen::machines::record_start;
 use crate::witgen::range_constraints::RangeConstraint;
-use crate::witgen::rows::RowPair;
+use crate::witgen::rows::{RowAccess, RowPair, RowPairAccess};
 use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::{
     Constraint, EvalError, EvalValue, IncompleteCause, IDENTITY_LOOKUP_CACHE, IDENTITY_SNIPPET_ID,
@@ -185,10 +185,11 @@ impl<T: FieldElement> FixedLookup<T> {
         }
     }
 
+    // TODO replace `rows` by RowAccess.
     pub fn process_plookup_timed<'b>(
         &mut self,
         fixed_data: &FixedData<T>,
-        rows: &RowPair<'_, '_, T>,
+        rows: &mut impl RowAccess<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'b AlgebraicReference, T>],
         right: &'b SelectedExpressions<Expression<T>>,
@@ -199,10 +200,11 @@ impl<T: FieldElement> FixedLookup<T> {
         result
     }
 
+    // TODO replace `rows` by RowAccess.
     pub fn process_plookup<'b>(
         &mut self,
         fixed_data: &FixedData<T>,
-        rows: &RowPair<'_, '_, T>,
+        rows: &mut impl RowAccess<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'b AlgebraicReference, T>],
         right: &'b SelectedExpressions<Expression<T>>,
@@ -230,7 +232,7 @@ impl<T: FieldElement> FixedLookup<T> {
     fn process_plookup_internal<'b>(
         &mut self,
         fixed_data: &FixedData<T>,
-        rows: &RowPair<'_, '_, T>,
+        rows: &mut impl RowAccess<T>,
         left: &[AffineExpression<&'b AlgebraicReference, T>],
         mut right: Peekable<impl Iterator<Item = &'b AlgebraicReference>>,
     ) -> EvalResult<'b, T> {
@@ -320,7 +322,7 @@ impl<T: FieldElement> FixedLookup<T> {
 
     fn process_range_check<'b>(
         &self,
-        rows: &RowPair<'_, '_, T>,
+        rows: &mut impl RowAccess<T>,
         lhs: &AffineExpression<&'b AlgebraicReference, T>,
         rhs: &'b AlgebraicReference,
     ) -> EvalResult<'b, T> {
@@ -349,13 +351,13 @@ impl<T: FieldElement> FixedLookup<T> {
 /// (used for fixed columns).
 /// This is useful in order to transfer range constraints from fixed columns to
 /// witness columns (see [FixedLookup::process_range_check]).
-pub struct UnifiedRangeConstraints<'a, T: FieldElement> {
-    witness_constraints: &'a RowPair<'a, 'a, T>,
+pub struct UnifiedRangeConstraints<'a, T: FieldElement, RA: RowAccess<T>> {
+    witness_constraints: &'a RA,
     global_constraints: &'a GlobalConstraints<T>,
 }
 
-impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
-    for UnifiedRangeConstraints<'_, T>
+impl<T: FieldElement, RA: RowAccess<T>> RangeConstraintSet<&AlgebraicReference, T>
+    for UnifiedRangeConstraints<'_, T, RA>
 {
     fn range_constraint(&self, poly: &AlgebraicReference) -> Option<RangeConstraint<T>> {
         match poly.poly_id.ptype {

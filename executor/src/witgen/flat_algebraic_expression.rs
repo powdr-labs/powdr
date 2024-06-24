@@ -12,7 +12,7 @@ use powdr_number::{DegreeType, FieldElement};
 
 use super::{
     affine_expression::{AffineExpression, AffineResult},
-    rows::RowPair,
+    rows::{RowAccess, RowPair},
     FixedData, IncompleteCause,
 };
 
@@ -46,7 +46,7 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
     pub fn evaluate<'b>(
         &'b self,
         fixed_data: &FixedData<T>,
-        rows: &RowPair<T>,
+        rows: &mut impl RowAccess<T>,
     ) -> AffineResult<&'b AlgebraicReference, T> {
         let mut constant: T = T::zero();
         let mut linear = vec![];
@@ -168,13 +168,13 @@ impl<T: FieldElement> FlatAlgebraicExpression<T> {
 fn lookup<'b, T: FieldElement>(
     reference: &'b AlgebraicReference,
     fixed_data: &FixedData<T>,
-    rows: &RowPair<T>,
+    rows: &mut impl RowAccess<T>,
 ) -> Option<T> {
     if reference.is_witness() {
         rows.get_value(reference)
     } else {
         let values = fixed_data.fixed_cols[&reference.poly_id].values;
-        let row = rows.current_row_index + if reference.next { 1 } else { 0 };
+        let row = rows.current_row_index() + if reference.next { 1 } else { 0 };
         Some(values[usize::from(row)])
     }
 }
@@ -183,7 +183,7 @@ impl<T: FieldElement> FlatAffine<T> {
     fn evaluate<'b>(
         &'b self,
         fixed_data: &FixedData<T>,
-        rows: &RowPair<T>,
+        rows: &mut impl RowAccess<T>,
         linear: &mut Vec<(&'b AlgebraicReference, T)>,
     ) -> Result<T, IncompleteCause<&'b AlgebraicReference>> {
         let mut constant = self.constant;

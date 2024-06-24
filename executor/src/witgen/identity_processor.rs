@@ -16,7 +16,7 @@ use super::{
     flat_algebraic_expression::FlatAlgebraicExpression,
     machines::{FixedLookup, KnownMachine},
     processor::OuterQuery,
-    rows::RowPair,
+    rows::{RowAccess, RowPair, RowPairAccess},
     EvalResult, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
@@ -128,7 +128,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     pub fn process_identity(
         &mut self,
         identity: &'a Identity<Expression<T>>,
-        rows: &RowPair<'_, 'a, T>,
+        rows: RowPairAccess<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         let result = match identity.kind {
             IdentityKind::Polynomial => self.process_polynomial_identity(identity, rows),
@@ -150,26 +150,27 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     fn process_polynomial_identity(
         &self,
         identity: &'a Identity<Expression<T>>,
-        rows: &RowPair<T>,
+        mut rows: RowPairAccess<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         let result = if let Some(flat_id) = self.fixed_data.flat_identities.get(&identity.id) {
-            flat_id.evaluate(&self.fixed_data, rows)
+            flat_id.evaluate(&self.fixed_data, &mut rows)
         } else {
             rows.evaluate(identity.expression_for_poly_id())
         };
         match result {
             Err(incomplete_cause) => Ok(EvalValue::incomplete(incomplete_cause)),
-            Ok(evaluated) => evaluated.solve_with_range_constraints(rows),
+            // TODO solve_with_range_constraint should apply solution directly to the rows.
+            Ok(evaluated) => evaluated.solve_with_range_constraints(rows.as_range_constraint_set()),
         }
     }
 
     fn process_plookup(
         &mut self,
         identity: &'a Identity<Expression<T>>,
-        rows: &RowPair<'_, 'a, T>,
+        mut rows: RowPairAccess<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         if let Some(left_selector) = &identity.left.selector {
-            if let Some(status) = self.handle_left_selector(left_selector, rows) {
+            if let Some(status) = self.handle_left_selector(left_selector, &rows) {
                 return Ok(status);
             }
         }
@@ -195,7 +196,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         // query the fixed lookup "machine"
         if let Some(result) = self.mutable_state.fixed_lookup.process_plookup_timed(
             self.fixed_data,
-            rows,
+            &mut rows,
             identity.kind,
             &left,
             &identity.right,
@@ -205,7 +206,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
         self.mutable_state.machines.call(
             identity.id,
-            rows,
+            &rows.to_row_pair(),
             self.mutable_state.fixed_lookup,
             self.mutable_state.query_callback,
         )
@@ -262,7 +263,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     fn handle_left_selector(
         &self,
         left_selector: &'a Expression<T>,
-        rows: &RowPair<T>,
+        rows: &impl RowAccess<T>,
     ) -> Option<EvalValue<&'a AlgebraicReference, T>> {
         let value = match rows.evaluate(left_selector) {
             Err(incomplete_cause) => return Some(EvalValue::incomplete(incomplete_cause)),

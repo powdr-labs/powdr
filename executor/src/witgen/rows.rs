@@ -441,3 +441,121 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for RowPair<'_,
         }
     }
 }
+
+pub trait RowAccess<T: FieldElement> {
+    fn apply_update(&mut self, poly: &AlgebraicReference, c: &Constraint<T>);
+    fn get_cell(&self, poly: &AlgebraicReference) -> &Cell<T>;
+
+    fn get_value(&self, poly: &AlgebraicReference) -> Option<T>;
+    fn range_constraint(&self, poly: &AlgebraicReference) -> Option<RangeConstraint<T>>;
+
+    fn current_row_index(&self) -> RowIndex;
+
+    // TODO this should be implementable from the other functions.
+    fn evaluate<'b>(&self, expr: &'b Expression<T>) -> AffineResult<&'b AlgebraicReference, T>;
+
+    fn as_range_constraint_set<'b>(&self) -> &impl RangeConstraintSet<&'b AlgebraicReference, T>;
+}
+
+pub struct RowPairAccess<'row, 'a, T: FieldElement> {
+    pub current: &'row mut Row<'a, T>,
+    pub next: Option<&'row mut Row<'a, T>>,
+    pub current_row_index: RowIndex,
+    fixed_data: &'a FixedData<'a, T>,
+    unknown_strategy: UnknownStrategy,
+}
+
+impl<'row, 'a, T: FieldElement> RowPairAccess<'row, 'a, T> {
+    pub fn new(
+        current: &'row mut Row<'a, T>,
+        next: &'row mut Row<'a, T>,
+        current_row_index: RowIndex,
+        fixed_data: &'a FixedData<'a, T>,
+        unknown_strategy: UnknownStrategy,
+    ) -> Self {
+        Self {
+            current,
+            next: Some(next),
+            current_row_index,
+            fixed_data,
+            unknown_strategy,
+        }
+    }
+
+    pub fn to_row_pair(self) -> RowPair<'row, 'a, T> {
+        RowPair::new(
+            self.current,
+            self.next.unwrap(),
+            self.current_row_index,
+            self.fixed_data,
+            self.unknown_strategy,
+        )
+    }
+}
+
+impl<'row, 'a, T: FieldElement> RowAccess<T> for RowPairAccess<'row, 'a, T> {
+    fn apply_update(&mut self, poly: &AlgebraicReference, c: &Constraint<T>) {
+        todo!()
+    }
+
+    fn get_cell(&self, poly: &AlgebraicReference) -> &Cell<T> {
+        match (poly.next, self.next.as_ref()) {
+            (false, _) => &self.current[&poly.poly_id],
+            (true, Some(next)) => &next[&poly.poly_id],
+            (true, None) => panic!("Tried to access next row, but it is not available."),
+        }
+    }
+
+    fn get_value(&self, poly: &AlgebraicReference) -> Option<T> {
+        match self.get_cell(poly).value {
+            CellValue::Known(value) => Some(value),
+            _ => match self.unknown_strategy {
+                UnknownStrategy::Zero => Some(T::zero()),
+                UnknownStrategy::Unknown => None,
+            },
+        }
+    }
+
+    fn range_constraint(&self, poly: &AlgebraicReference) -> Option<RangeConstraint<T>> {
+        match self.get_cell(poly).value {
+            CellValue::RangeConstraint(ref c) => Some(c.clone()),
+            _ => None,
+        }
+    }
+
+    fn current_row_index(&self) -> RowIndex {
+        self.current_row_index
+    }
+
+    fn evaluate<'b>(&self, expr: &'b Expression<T>) -> AffineResult<&'b AlgebraicReference, T> {
+        ExpressionEvaluator::new(SymbolicWitnessEvaluator::new(
+            self.fixed_data,
+            self.current_row_index.into(),
+            self,
+        ))
+        .evaluate(expr)
+    }
+
+    fn as_range_constraint_set<'b>(&self) -> &impl RangeConstraintSet<&'b AlgebraicReference, T> {
+        self
+    }
+}
+
+// TODO this should be automatic
+impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPairAccess<'_, '_, T> {
+    fn value<'b>(&self, poly: &'b AlgebraicReference) -> AffineResult<&'b AlgebraicReference, T> {
+        Ok(match self.get_value(poly) {
+            Some(v) => v.into(),
+            None => AffineExpression::from_variable_id(poly),
+        })
+    }
+}
+
+impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for RowPairAccess<'_, '_, T> {
+    fn range_constraint(&self, poly: &AlgebraicReference) -> Option<RangeConstraint<T>> {
+        match self.get_cell(poly).value {
+            CellValue::RangeConstraint(ref c) => Some(c.clone()),
+            _ => None,
+        }
+    }
+}
