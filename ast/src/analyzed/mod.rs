@@ -1232,7 +1232,7 @@ pub struct TraitImplementation<Expr, E = u64> {
 
 impl<Expr> TraitImplementation<Expr> {
     pub fn function_by_name(&self, name: &str) -> Option<&NamedExpression<Expr>> {
-        self.functions.iter().find(|f| f.name == name).map(|f| f)
+        self.functions.iter().find(|f| f.name == name)
     }
 }
 

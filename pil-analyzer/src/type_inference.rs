@@ -462,8 +462,8 @@ impl<'a> TypeChecker<'a> {
             for f in functions.clone().iter_mut() {
                 let impl_types = type_scheme
                     .as_ref()
-                    .map_or_else(|| vec![], |s| s.types.clone());
-                let trait_name = trait_name.replace(".", "::");
+                    .map_or_else(Vec::new, |s| s.types.clone());
+                let trait_name = trait_name.replace('.', "::");
                 let f_name = format!("{trait_name}::{fname}", fname = f.name);
                 // TODO GZ: This is a temporal hack, we should not clone the whole declared_types
                 let declared_types = self.declared_types.clone();
@@ -473,14 +473,9 @@ impl<'a> TypeChecker<'a> {
                 }
 
                 let (source_ref, type_scheme) = trait_func.unwrap();
-                let decl_types = type_scheme
-                    .vars
-                    .vars()
-                    .map(|v| v.clone())
-                    .collect::<Vec<_>>();
+                let decl_types = type_scheme.vars.vars().cloned();
 
                 let substitutions = decl_types
-                    .iter()
                     .zip(impl_types.iter())
                     .map(|(decl, impl_)| (decl.clone(), impl_.clone()))
                     .collect::<HashMap<_, _>>();
