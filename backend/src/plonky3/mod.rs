@@ -13,7 +13,7 @@ impl<T: FieldElement> BackendFactory<T> for Plonky3ProverFactory {
     fn create<'a>(
         &self,
         pil: &'a Analyzed<T>,
-        fixed: &'a [(String, Vec<T>)],
+        _fixed: &'a [(String, Vec<T>)],
         _output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
