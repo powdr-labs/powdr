@@ -266,7 +266,21 @@ fn propagate_constraints<T: FieldElement>(
     (known_constraints, remove)
 }
 
-pub fn get_roots<T: FieldElement>(
+/// Get simple expression roots for a given expression.
+///
+/// This function recursively evaluates an algebraic expression and attempts
+/// to extract roots from it. The roots are returned as a vector of evaluation
+/// values containing references to algebraic expressions and field elements.
+///
+/// # Parameters
+///
+/// - `expr`: A reference to an `Expression` of type `T`.
+///
+/// # Returns
+///
+/// An `Option` containing a vector of `EvalValue<&AlgebraicReference, T>`
+/// if the roots can be successfully extracted, otherwise `None`.
+pub fn find_algebraic_roots<T: FieldElement>(
     expr: &Expression<T>,
 ) -> Option<Vec<crate::witgen::EvalValue<&AlgebraicReference, T>>> {
     match expr {
@@ -275,8 +289,8 @@ pub fn get_roots<T: FieldElement>(
             op: AlgebraicBinaryOperator::Mul,
             right,
         }) => {
-            let right_root = get_roots(right)?;
-            let mut left_roots = get_roots(left)?;
+            let right_root = find_algebraic_roots(right)?;
+            let mut left_roots = find_algebraic_roots(left)?;
 
             if !left_roots.is_empty() && !right_root.is_empty() {
                 if let ([(id1, Constraint::Assignment(_))], [(id2, Constraint::Assignment(_))]) = (
@@ -295,19 +309,20 @@ pub fn get_roots<T: FieldElement>(
         Expression::Number(_) => Some(vec![]),
         _ => {
             let symbolic_ev = SymbolicEvaluator;
-            let _root = ExpressionEvaluator::new(symbolic_ev)
+            let root = ExpressionEvaluator::new(symbolic_ev)
                 .evaluate(expr)
                 .ok()
                 .and_then(|l| l.solve().ok())?;
 
-            match _root.constraints[..] {
+            match root.constraints[..] {
                 [] => Some(vec![]),
-                [(id, Constraint::Assignment(_))] if id.is_witness() => Some(vec![_root]),
+                [(id, Constraint::Assignment(_))] if id.is_witness() => Some(vec![root]),
                 _ => None,
             }
         }
     }
 }
+
 /// Tries to find "X * (1 - X) = 0"
 fn is_binary_constraint<T: FieldElement>(
     expr: &Expression<T>,
@@ -330,7 +345,7 @@ fn is_binary_constraint<T: FieldElement>(
         right: _,
     }) = expr
     {
-        if let Some(roots) = get_roots(expr) {
+        if let Some(roots) = find_algebraic_roots(expr) {
             // For setting mask range constaints at least two roots is needed.
             if roots.len() > 1 {
                 let poly_id = roots[0].constraints[0].0.poly_id;
