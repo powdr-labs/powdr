@@ -507,12 +507,12 @@ impl<'row, 'a, 'c, T: FieldElement> RowPairAccess<'row, 'a, 'c, T> {
 impl<'row, 'a, 'c, T: FieldElement> RowAccess<T> for RowPairAccess<'row, 'a, 'c, T> {
     fn apply_update(&mut self, poly: &AlgebraicReference, c: &Constraint<T>) -> bool {
         // TODO logging
-        if self.witness_cols.contains(&poly.poly_id) {
-            self.get_cell_mut(poly).apply_update(c);
-            true
-        } else {
-            false
-        }
+        //if self.witness_cols.contains(&poly.poly_id) {
+        self.get_cell_mut(poly).apply_update(c);
+        true
+        // } else {
+        //     false
+        // }
     }
 
     fn get_cell(&self, poly: &AlgebraicReference) -> &Cell<T> {
