@@ -223,6 +223,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             global_row_index,
             self.fixed_data,
             unknown_strategy,
+            self.witness_cols,
         );
 
         // TODO Some of the assignments from the identity processing

@@ -128,7 +128,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     pub fn process_identity(
         &mut self,
         identity: &'a Identity<Expression<T>>,
-        rows: RowPairAccess<'_, 'a, T>,
+        rows: RowPairAccess<'_, 'a, '_, T>,
     ) -> EvalResult<'a, T> {
         let result = match identity.kind {
             IdentityKind::Polynomial => self.process_polynomial_identity(identity, rows),
@@ -150,7 +150,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     fn process_polynomial_identity(
         &self,
         identity: &'a Identity<Expression<T>>,
-        mut rows: RowPairAccess<'_, 'a, T>,
+        mut rows: RowPairAccess<'_, 'a, '_, T>,
     ) -> EvalResult<'a, T> {
         let result = if let Some(flat_id) = self.fixed_data.flat_identities.get(&identity.id) {
             flat_id.evaluate(&self.fixed_data, &mut rows)
@@ -167,7 +167,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     fn process_plookup(
         &mut self,
         identity: &'a Identity<Expression<T>>,
-        mut rows: RowPairAccess<'_, 'a, T>,
+        mut rows: RowPairAccess<'_, 'a, '_, T>,
     ) -> EvalResult<'a, T> {
         if let Some(left_selector) = &identity.left.selector {
             if let Some(status) = self.handle_left_selector(left_selector, &rows) {

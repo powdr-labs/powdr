@@ -443,7 +443,7 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for RowPair<'_,
 }
 
 pub trait RowAccess<T: FieldElement> {
-    fn apply_update(&mut self, poly: &AlgebraicReference, c: &Constraint<T>);
+    fn apply_update(&mut self, poly: &AlgebraicReference, c: &Constraint<T>) -> bool;
     fn get_cell(&self, poly: &AlgebraicReference) -> &Cell<T>;
 
     fn get_value(&self, poly: &AlgebraicReference) -> Option<T>;
@@ -457,21 +457,24 @@ pub trait RowAccess<T: FieldElement> {
     fn as_range_constraint_set<'b>(&self) -> &impl RangeConstraintSet<&'b AlgebraicReference, T>;
 }
 
-pub struct RowPairAccess<'row, 'a, T: FieldElement> {
+pub struct RowPairAccess<'row, 'a, 'c, T: FieldElement> {
     pub current: &'row mut Row<'a, T>,
     pub next: Option<&'row mut Row<'a, T>>,
     pub current_row_index: RowIndex,
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
+    /// The columns we can directly update
+    witness_cols: &'c HashSet<PolyID>,
 }
 
-impl<'row, 'a, T: FieldElement> RowPairAccess<'row, 'a, T> {
+impl<'row, 'a, 'c, T: FieldElement> RowPairAccess<'row, 'a, 'c, T> {
     pub fn new(
         current: &'row mut Row<'a, T>,
         next: &'row mut Row<'a, T>,
         current_row_index: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
+        witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
         Self {
             current,
@@ -479,6 +482,14 @@ impl<'row, 'a, T: FieldElement> RowPairAccess<'row, 'a, T> {
             current_row_index,
             fixed_data,
             unknown_strategy,
+            witness_cols,
+        }
+    }
+
+    fn get_cell_mut<'b>(&'b mut self, poly: &AlgebraicReference) -> &'b mut Cell<'a, T> {
+        match poly.next {
+            false => &mut self.current[&poly.poly_id],
+            true => &mut self.next.as_mut().unwrap()[&poly.poly_id],
         }
     }
 
@@ -493,9 +504,15 @@ impl<'row, 'a, T: FieldElement> RowPairAccess<'row, 'a, T> {
     }
 }
 
-impl<'row, 'a, T: FieldElement> RowAccess<T> for RowPairAccess<'row, 'a, T> {
-    fn apply_update(&mut self, poly: &AlgebraicReference, c: &Constraint<T>) {
-        todo!()
+impl<'row, 'a, 'c, T: FieldElement> RowAccess<T> for RowPairAccess<'row, 'a, 'c, T> {
+    fn apply_update(&mut self, poly: &AlgebraicReference, c: &Constraint<T>) -> bool {
+        // TODO logging
+        if self.witness_cols.contains(&poly.poly_id) {
+            self.get_cell_mut(poly).apply_update(c);
+            true
+        } else {
+            false
+        }
     }
 
     fn get_cell(&self, poly: &AlgebraicReference) -> &Cell<T> {
@@ -542,7 +559,7 @@ impl<'row, 'a, T: FieldElement> RowAccess<T> for RowPairAccess<'row, 'a, T> {
 }
 
 // TODO this should be automatic
-impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPairAccess<'_, '_, T> {
+impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPairAccess<'_, '_, '_, T> {
     fn value<'b>(&self, poly: &'b AlgebraicReference) -> AffineResult<&'b AlgebraicReference, T> {
         Ok(match self.get_value(poly) {
             Some(v) => v.into(),
@@ -551,7 +568,7 @@ impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPairAccess<'_, '_, T> {
     }
 }
 
-impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for RowPairAccess<'_, '_, T> {
+impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for RowPairAccess<'_, '_, '_, T> {
     fn range_constraint(&self, poly: &AlgebraicReference) -> Option<RangeConstraint<T>> {
         match self.get_cell(poly).value {
             CellValue::RangeConstraint(ref c) => Some(c.clone()),

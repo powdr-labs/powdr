@@ -299,7 +299,9 @@ impl<T: FieldElement> FixedLookup<T> {
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {
             if let Some(v) = l.try_to_var() {
-                result.combine_assignment(v, r);
+                if output_columns.len() < 10 || !rows.apply_update(v, &Constraint::Assignment(r)) {
+                    result.combine_assignment(v, r);
+                }
             } else {
                 let evaluated = l.clone() - r.into();
                 // TODO we could use bit constraints here
