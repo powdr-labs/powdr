@@ -18,6 +18,7 @@ powdr-ast.workspace = true
 powdr-number.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-executor.workspace = true
+powdr-parser-util.workspace = true
 
 powdr-plonky3 = { path = "../plonky3", optional = true }
 

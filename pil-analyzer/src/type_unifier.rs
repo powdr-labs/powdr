@@ -116,7 +116,6 @@ impl Unifier {
                     .zip(args2)
                     .try_for_each(|(a1, a2)| self.unify_types(a1, a2))
             }
-
             (ty1, ty2) => Err(format!("Cannot unify types {ty1} and {ty2}")),
         }
     }

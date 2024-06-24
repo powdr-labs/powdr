@@ -13,18 +13,12 @@ use powdr_number::FieldElement;
 use serde_json::Value as JsonValue;
 use std::fs;
 
-use crate::compiler::{FunctionKind, Register};
 pub use crate::runtime::Runtime;
 
-pub mod compiler;
+pub mod asm;
+mod code_gen;
 pub mod continuations;
-mod disambiguator;
-pub mod parser;
 pub mod runtime;
-
-type Statement = powdr_asm_utils::ast::Statement<Register, FunctionKind>;
-type Argument = powdr_asm_utils::ast::Argument<Register, FunctionKind>;
-type Expression = powdr_asm_utils::ast::Expression<FunctionKind>;
 
 /// Compiles a rust file all the way down to PIL and generates
 /// fixed and witness columns.
@@ -105,7 +99,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
         return None;
     }
 
-    let powdr_asm = compiler::compile::<T>(riscv_asm_files, runtime, with_bootloader);
+    let powdr_asm = asm::compile::<T>(riscv_asm_files, runtime, with_bootloader);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -186,7 +180,10 @@ pub fn compile_rust_crate_to_riscv_asm(
 
 fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: bool) -> Command {
     let mut cmd = Command::new("cargo");
-    cmd.env("RUSTFLAGS", "--emit=asm -g");
+    cmd.env(
+        "RUSTFLAGS",
+        "--emit=asm -g -C link-args=-Tpowdr.x -C link-args=--emit-relocs",
+    );
 
     let args = as_ref![
         OsStr;
@@ -197,7 +194,6 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
         "build-std=core,alloc",
         "--target",
         "riscv32imac-unknown-none-elf",
-        "--lib",
         "--target-dir",
         target_dir,
         "--manifest-path",
@@ -231,6 +227,8 @@ fn output_files_from_cargo_build_plan(
         panic!("no invocations in cargo build plan");
     };
 
+    let mut executable_found = false;
+
     log::debug!("RISC-V assembly files of this build:");
     for i in invocations {
         let JsonValue::Array(outputs) = &i["outputs"] else {
@@ -240,17 +238,24 @@ fn output_files_from_cargo_build_plan(
             let output = Path::new(output.as_str().unwrap());
             // Strip the target_dir, so that the path becomes relative.
             let parent = output.parent().unwrap().strip_prefix(target_dir).unwrap();
-            if Some(OsStr::new("rmeta")) == output.extension()
-                && parent.ends_with("riscv32imac-unknown-none-elf/release/deps")
-            {
-                // Have to convert to string to remove the "lib" prefix:
-                let name_stem = output
-                    .file_stem()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .strip_prefix("lib")
-                    .unwrap();
+            if parent.ends_with("riscv32imac-unknown-none-elf/release/deps") {
+                let extension = output.extension();
+                let name_stem = if Some(OsStr::new("rmeta")) == extension {
+                    // Have to convert to string to remove the "lib" prefix:
+                    output
+                        .file_stem()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .strip_prefix("lib")
+                        .unwrap()
+                } else if extension.is_none() {
+                    assert!(!executable_found, "Multiple executables found");
+                    executable_found = true;
+                    output.file_stem().unwrap().to_str().unwrap()
+                } else {
+                    continue;
+                };
 
                 let mut asm_name = parent.join(name_stem);
                 asm_name.set_extension("s");
@@ -262,75 +267,4 @@ fn output_files_from_cargo_build_plan(
     }
 
     assemblies
-}
-
-/// Maps an instruction in .insn syntax to Statement::Instruction() in the expected format.
-///
-/// See https://www.rowleydownload.co.uk/arm/documentation/gnu/as/RISC_002dV_002dFormats.html
-pub fn map_insn_i(
-    opcode6: Expression,
-    func3: Expression,
-    rd: Register,
-    rs1: Register,
-    simm12: Expression,
-) -> Statement {
-    let (Expression::Number(opcode6), Expression::Number(func3)) = (opcode6, func3) else {
-        panic!("Only literal opcode and function are supported in .insn syntax");
-    };
-
-    // These are almost all instructions in RISC-V Instruction Set Manual that
-    // we are supposed to implement and roughly fits the pattern of the I-type
-    // instruction. Only "csr*i" instructions are missing.
-
-    // First we try to match the instructions that uses the I-type encoding
-    // ordinarily, i.e. where all fields are what they are supposed to be:
-    let name = match (opcode6, func3) {
-        (0b1100111, 0b000) => "jalr",
-        (0b0000011, 0b000) => "lb",
-        (0b0000011, 0b001) => "lh",
-        (0b0000011, 0b010) => "lw",
-        (0b0000011, 0b100) => "lbu",
-        (0b0000011, 0b101) => "lhu",
-        (0b0010011, 0b000) => "addi",
-        (0b0010011, 0b010) => "slti",
-        (0b0010011, 0b011) => "sltiu",
-        (0b0010011, 0b100) => "xori",
-        (0b0010011, 0b110) => "ori",
-        (0b0010011, 0b111) => "andi",
-        (0b1110011, 0b001) => "csrrw",
-        (0b1110011, 0b010) => "csrrs",
-        (0b1110011, 0b011) => "csrrc",
-        // won't interpret "csr*i" instructions because it is too weird to
-        // encode an immediate as a register
-        opfunc => {
-            // We now try the instructions that take certain liberties with the
-            // I-type encoding, and don't use the standard arguments for it.
-            let name = match opfunc {
-                (0b0001111, 0b000) => "fence",
-                (0b0001111, 0b001) => "fence.i",
-                (0b1110011, 0b000) => {
-                    let Expression::Number(simm12) = simm12 else {
-                        panic!(
-                            "Only literal simm12 is supported for ecall and ebreak instructions"
-                        );
-                    };
-                    match simm12 {
-                        0 => "ecall",
-                        1 => "ebreak",
-                        _ => panic!("unknown instruction"),
-                    }
-                }
-                _ => panic!("unsupported .insn instruction"),
-            };
-            return Statement::Instruction(name.to_string(), Vec::new());
-        }
-    };
-
-    let args = vec![
-        Argument::Register(rd),
-        Argument::Register(rs1),
-        Argument::Expression(simm12),
-    ];
-
-    Statement::Instruction(name.to_string(), args)
 }

@@ -8,13 +8,15 @@ use itertools::Itertools;
 use powdr_number::BigUint;
 
 use derive_more::From;
+use powdr_parser_util::{Error, SourceRef};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::SourceRef;
+use crate::parsed::{BinaryOperation, BinaryOperator};
 
 use super::{
-    visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, TypedExpression,
+    visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, SourceReference,
+    TypedExpression,
 };
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -179,6 +181,10 @@ impl SymbolPath {
 
     pub fn parts(&self) -> impl DoubleEndedIterator + ExactSizeIterator<Item = &Part> {
         self.parts.iter()
+    }
+
+    pub fn into_parts(self) -> impl DoubleEndedIterator + ExactSizeIterator<Item = Part> {
+        self.parts.into_iter()
     }
 }
 
@@ -420,15 +426,11 @@ impl MachineArguments {
     pub fn defined_names(&self) -> impl Iterator<Item = &String> {
         self.0.iter().map(|p| &p.name)
     }
-}
 
-impl TryFrom<Vec<Param>> for MachineArguments {
-    type Error = String;
-
-    fn try_from(params: Vec<Param>) -> Result<Self, Self::Error> {
+    pub fn try_from_params(source_ref: SourceRef, params: Vec<Param>) -> Result<Self, Error> {
         for p in &params {
             if p.index.is_some() || p.ty.is_none() || p.name.is_empty() {
-                return Err(format!("invalid machine argument: `{p}`"));
+                return Err(source_ref.with_error(format!("invalid machine argument: `{p}`")));
             }
         }
         Ok(MachineArguments(params))
@@ -447,47 +449,56 @@ impl MachineProperties {
     pub fn defined_names(&self) -> impl Iterator<Item = &String> {
         self.call_selectors.iter()
     }
-}
 
-impl TryFrom<Vec<(String, Expression)>> for MachineProperties {
-    type Error = String;
-
-    fn try_from(prop_list: Vec<(String, Expression)>) -> Result<Self, Self::Error> {
+    pub fn try_from_prop_list(
+        source_ref: SourceRef,
+        prop_list: Vec<(String, Expression)>,
+    ) -> Result<Self, Error> {
         let mut props: Self = Default::default();
         for (name, value) in prop_list {
+            let mut already_defined = false;
             match name.as_str() {
                 "degree" => {
                     if props.degree.replace(value).is_some() {
-                        return Err(format!("`{name}` already defined"));
+                        already_defined = true;
                     }
                 }
                 "latch" => {
                     let id = value.try_to_identifier().ok_or_else(|| {
-                        format!("`{name}` machine property expects a local column name")
+                        source_ref.with_error(format!(
+                            "`{name}` machine property expects a local column name"
+                        ))
                     })?;
                     if props.latch.replace(id.clone()).is_some() {
-                        return Err(format!("`{name}` already defined"));
+                        already_defined = true;
                     }
                 }
                 "operation_id" => {
                     let id = value.try_to_identifier().ok_or_else(|| {
-                        format!("`{name}` machine property expects a local column name")
+                        source_ref.with_error(format!(
+                            "`{name}` machine property expects a local column name"
+                        ))
                     })?;
                     if props.operation_id.replace(id.clone()).is_some() {
-                        return Err(format!("`{name}` already defined"));
+                        already_defined = true;
                     }
                 }
                 "call_selectors" => {
                     let id = value.try_to_identifier().ok_or_else(|| {
-                        format!("`{name}` machine property expects a new column name")
+                        source_ref.with_error(format!(
+                            "`{name}` machine property expects a new column name"
+                        ))
                     })?;
                     if props.call_selectors.replace(id.clone()).is_some() {
-                        return Err(format!("`{name}` already defined"));
+                        already_defined = true;
                     }
                 }
                 _ => {
-                    return Err(format!("unknown machine property `{name}`"));
+                    return Err(source_ref.with_error(format!("unknown machine property `{name}`")));
                 }
+            }
+            if already_defined {
+                return Err(source_ref.with_error(format!("`{name}` already defined")));
             }
         }
         Ok(props)
@@ -545,7 +556,8 @@ pub struct OperationId {
 
 #[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct Instruction {
-    pub params: Params<Param>,
+    pub params: InstructionParams,
+    pub links: Vec<LinkDeclaration>,
     pub body: InstructionBody,
 }
 
@@ -563,7 +575,7 @@ pub enum MachineStatement {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct LinkDeclaration {
     pub flag: Expression,
-    pub to: CallableRef,
+    pub link: CallableRef,
     pub is_permutation: bool,
 }
 
@@ -574,12 +586,66 @@ pub struct CallableRef {
     pub params: CallableParams,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum InstructionBody {
-    Local(Vec<PilStatement>),
-    CallablePlookup(CallableRef),
-    CallablePermutation(CallableRef),
+/// RHS of instruction link definitions are parsed as `Expression`s which should conform to:
+/// `OUT = submachine.operation(IN1, IN2, ..., INn)`
+/// or
+/// `(OUT1, OUT2, ..., OUTn) = submachine.operation(IN1, IN2, ..., INn)`
+impl TryFrom<Expression> for CallableRef {
+    type Error = Error;
+
+    fn try_from(value: Expression) -> Result<Self, Self::Error> {
+        let mut outputs = vec![];
+        let rhs = match value {
+            Expression::BinaryOperation(
+                _,
+                BinaryOperation {
+                    left,
+                    op: BinaryOperator::Identity,
+                    right,
+                },
+            ) => {
+                outputs = if let Expression::Tuple(_, elements) = *left {
+                    elements
+                } else {
+                    vec![*left]
+                };
+                *right
+            }
+            expr => expr,
+        };
+
+        let source_ref = match rhs {
+            Expression::FunctionCall(_, call) => {
+                let inputs = call.arguments;
+                match *call.function {
+                    Expression::Reference(source_ref, reference)
+                        if reference.path.parts().len() == 2 =>
+                    {
+                        if reference.type_args.is_some() {
+                            return Err(source_ref
+                                .with_error("types not expected in link definition".to_string()));
+                        }
+                        let (l, r) = reference.path.into_parts().next_tuple().unwrap();
+                        let instance = l.try_into().unwrap();
+                        let callable = r.try_into().unwrap();
+                        return Ok(CallableRef {
+                            instance,
+                            callable,
+                            params: CallableParams { inputs, outputs },
+                        });
+                    }
+                    expr => expr.source_reference().clone(),
+                }
+            }
+            expr => expr.source_reference().clone(),
+        };
+        Err(source_ref
+            .with_error("link definition RHS must be a call to `submachine.operation`".to_string()))
+    }
 }
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct InstructionBody(pub Vec<PilStatement>);
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AssignmentRegister {

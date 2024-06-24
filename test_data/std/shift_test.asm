@@ -10,8 +10,8 @@ machine Main with degree: 65536 {
 
     Shift shift;
 
-    instr shl X0, X1 -> X2 ~ shift.shl;
-    instr shr X0, X1 -> X2 ~ shift.shr;
+    instr shl X0, X1 -> X2 link ~> X2 = shift.shl(X0, X1);
+    instr shr X0, X1 -> X2 link ~> X2 = shift.shr(X0, X1);
 
     instr assert_eq X0, X1 {
         X0 = X1

@@ -41,7 +41,7 @@ machine Main with
 
     operation main<0>;
 
-    link latch ~> mul.mul x -> res;
+    link if latch ~> res = mul.mul(x);
 
     col fixed operation_id = [0]*;
     col fixed latch = [1, 0]*;

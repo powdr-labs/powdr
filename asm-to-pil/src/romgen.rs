@@ -12,8 +12,8 @@ use powdr_ast::parsed::{
     asm::{OperationId, Param, Params},
     Expression,
 };
-use powdr_ast::SourceRef;
 use powdr_number::{BigUint, FieldElement};
+use powdr_parser_util::SourceRef;
 
 use crate::common::{instruction_flag, RETURN_NAME};
 use crate::{

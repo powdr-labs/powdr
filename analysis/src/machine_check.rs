@@ -5,16 +5,15 @@ use std::collections::BTreeMap;
 use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
-        FunctionBody, FunctionStatements, FunctionSymbol, Instruction,
-        InstructionDefinitionStatement, InstructionStatement, Item, LabelStatement,
-        LinkDefinitionStatement, Machine, OperationSymbol, RegisterDeclarationStatement,
-        RegisterTy, Return, SubmachineDeclaration,
+        FunctionBody, FunctionStatements, FunctionSymbol, InstructionDefinitionStatement,
+        InstructionStatement, Item, LabelStatement, LinkDefinitionStatement, Machine,
+        OperationSymbol, RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
     },
     parsed::{
         self,
         asm::{
             self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
-            InstructionBody, LinkDeclaration, MachineProperties, MachineStatement, ModuleStatement,
+            Instruction, LinkDeclaration, MachineProperties, MachineStatement, ModuleStatement,
             RegisterFlag, SymbolDefinition,
         },
     },
@@ -73,17 +72,15 @@ impl TypeChecker {
                     source,
                     LinkDeclaration {
                         flag,
-                        to,
+                        link,
                         is_permutation,
                     },
-                ) => {
-                    links.push(LinkDefinitionStatement {
-                        source,
-                        flag,
-                        to,
-                        is_permutation,
-                    });
-                }
+                ) => links.push(LinkDefinitionStatement {
+                    source,
+                    flag,
+                    to: link,
+                    is_permutation,
+                }),
                 MachineStatement::Pil(_source, statement) => {
                     pil.push(statement);
                 }
@@ -184,8 +181,8 @@ impl TypeChecker {
                 for o in callable.operation_definitions() {
                     if o.operation.id.id.is_none() {
                         errors.push(format!(
-                            "Operation `{}` in machine {} needs an operation id because the machine has an operation id column",
-                            o.name, ctx
+                            "Operation `{}` in machine {ctx} needs an operation id because the machine has an operation id column",
+                            o.name
                         ))
                     }
                 }
@@ -199,8 +196,8 @@ impl TypeChecker {
                 if let Some(o) = callable.operation_definitions().next() {
                     if o.operation.id.id.is_some() {
                         errors.push(format!(
-                            "Operation `{}` in machine {} can't have an operation id because the machine does not have an operation id column",
-                            o.name, ctx
+                            "Operation `{}` in machine {ctx} can't have an operation id because the machine does not have an operation id column",
+                            o.name
                         ))
                     }
                 }
@@ -208,22 +205,22 @@ impl TypeChecker {
 
             for r in &registers {
                 errors.push(format!(
-                    "Machine {} should not have registers as it does not have a pc, found `{}`",
-                    ctx, r.name
+                    "Machine {ctx} should not have registers as it does not have a pc, found `{}`",
+                    r.name
                 ));
             }
 
             for f in callable.function_definitions() {
                 errors.push(format!(
-                    "Machine {} should not have functions as it does not have a pc, found `{}`",
-                    ctx, f.name
+                    "Machine {ctx} should not have functions as it does not have a pc, found `{}`",
+                    f.name
                 ))
             }
 
             for i in &instructions {
                 errors.push(format!(
-                    "Machine {} should not have instructions as it does not have a pc, found `{}`",
-                    ctx, i.name
+                    "Machine {ctx} should not have instructions as it does not have a pc, found `{}`",
+                    i.name
                 ))
             }
         } else {
@@ -242,16 +239,15 @@ impl TypeChecker {
                     "Machine {ctx} should not have call_selectors as it has a pc"
                 ));
             }
-            for l in &links {
+            for _ in &links {
                 errors.push(format!(
-                    "Machine {} should not have links as it has a pc, found `{}`. Use an external instruction instead",
-                    ctx, l.flag
+                    "Machine {ctx} has a pc, links cannot be used outside of instructions."
                 ));
             }
             for o in callable.operation_definitions() {
                 errors.push(format!(
-                    "Machine {} should not have operations as it has a pc, found `{}`",
-                    ctx, o.name
+                    "Machine {ctx} should not have operations as it has a pc, found `{}`",
+                    o.name
                 ))
             }
         }
@@ -358,27 +354,28 @@ impl TypeChecker {
             return Err(vec!["Instruction cannot use reserved name `return`".into()]);
         }
 
-        if let InstructionBody::Local(statements) = &instruction.body {
-            let errors: Vec<_> = statements
-                .iter()
-                .filter_map(|s| match s {
-                    // TODO this could be a function call that returns an identity including a selector in the future.
-                    powdr_ast::parsed::PilStatement::Expression(_, _) => None,
-                    powdr_ast::parsed::PilStatement::PermutationIdentity(_, l, _)
-                    | powdr_ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
-                        .selector
-                        .is_some()
-                        .then_some(format!("LHS selector not yet supported in {s}.")),
-                    _ => Some(format!("Statement not allowed in instruction body: {s}")),
-                })
-                .collect();
-            if !errors.is_empty() {
-                return Err(errors);
-            }
+        let errors: Vec<_> = instruction
+            .body
+            .0
+            .iter()
+            .filter_map(|s| match s {
+                // TODO this could be a function call that returns an identity including a selector in the future.
+                powdr_ast::parsed::PilStatement::Expression(_, _) => None,
+                powdr_ast::parsed::PilStatement::PermutationIdentity(_, l, _)
+                | powdr_ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
+                    .selector
+                    .is_some()
+                    .then_some(format!("LHS selector not yet supported in {s}.")),
+                _ => Some(format!("Statement not allowed in instruction body: {s}")),
+            })
+            .collect();
+        if !errors.is_empty() {
+            return Err(errors);
         }
         Ok(Instruction {
             params: instruction.params,
             body: instruction.body,
+            links: instruction.links,
         })
     }
 }
@@ -441,13 +438,13 @@ machine Main {
    reg A;
    reg B;
 
-   link foo => submachine.foo A -> B;
+   link => B = submachine.foo(A);
 }
 "#;
         expect_check_str(
             src,
             Err(vec![
-                "Machine ::Main should not have links as it has a pc, found `foo`. Use an external instruction instead",
+                "Machine ::Main has a pc, links cannot be used outside of instructions.",
             ]),
         );
     }
