@@ -229,6 +229,15 @@ fn vm_to_vm_to_vm() {
 }
 
 #[test]
+fn vm_to_block_multiple_links() {
+    let f = "asm/permutations/vm_to_block_multiple_links.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
+    test_halo2(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn mem_read_write() {
     let f = "asm/mem_read_write.asm";
     verify_asm(f, Default::default());

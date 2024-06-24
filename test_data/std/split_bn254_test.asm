@@ -23,7 +23,7 @@ machine Main with degree: 65536 {
 
     SplitBN254 split_machine;
 
-    instr split X0 -> X1, X2, X3, X4, X5, X6, X7, X8 ~ split_machine.split;
+    instr split X0 -> X1, X2, X3, X4, X5, X6, X7, X8 link ~> (X1, X2, X3, X4, X5, X6, X7, X8) = split_machine.split(X0);
 
     instr assert_eq X0, X1 {
         X0 = X1

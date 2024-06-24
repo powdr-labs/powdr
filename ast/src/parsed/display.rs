@@ -131,18 +131,11 @@ impl Display for MachineProperties {
 
 impl Display for InstructionBody {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            InstructionBody::Local(elements) => write!(
-                f,
-                "{{ {} }}",
-                elements
-                    .iter()
-                    .map(format_instruction_statement)
-                    .format(", ")
-            ),
-            InstructionBody::CallablePlookup(r) => write!(f, " = {r};"),
-            InstructionBody::CallablePermutation(r) => write!(f, " ~ {r};"),
-        }
+        write!(
+            f,
+            "{{ {} }}",
+            self.0.iter().map(format_instruction_statement).format(", ")
+        )
     }
 }
 
@@ -165,8 +158,13 @@ impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{}",
+            "{}{}{}",
             self.params.prepend_space_if_non_empty(),
+            if self.links.is_empty() {
+                "".to_string()
+            } else {
+                " ".to_string() + &self.links.iter().join(" ")
+            },
             self.body
         )
     }
@@ -176,17 +174,32 @@ impl Display for LinkDeclaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "link {} {} {};",
-            self.flag,
+            "link {}{} {}",
+            if self.flag == 1.into() {
+                "".to_string()
+            } else {
+                format!("if {} ", self.flag)
+            },
             if self.is_permutation { "~>" } else { "=>" },
-            self.to,
+            self.link,
         )
     }
 }
 
 impl Display for CallableRef {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}.{} {}", self.instance, self.callable, self.params)
+        write!(
+            f,
+            "{}{}.{}({})",
+            match &self.params.outputs[..] {
+                [] => "".to_string(),
+                [output] => format!("{output} = "),
+                outputs => format!("({}) = ", outputs.iter().join(", ")),
+            },
+            self.instance,
+            self.callable,
+            self.params.inputs.iter().join(", ")
+        )
     }
 }
 
@@ -207,7 +220,7 @@ impl Display for MachineStatement {
                 write!(f, "instr {name}{instruction}")
             }
             MachineStatement::LinkDeclaration(_, link) => {
-                write!(f, "{link}")
+                write!(f, "{link};")
             }
             MachineStatement::FunctionDeclaration(_, name, params, statements) => {
                 write!(
