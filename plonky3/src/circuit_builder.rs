@@ -1,6 +1,4 @@
 //! A plonky3 adapter for powdr
-//! Since plonky3 does not have fixed columns, we encode them as witness columns.
-//! The encoded plonky3 columns are chosen to be the powdr witness columns followed by the powdr fixed columns
 
 use std::any::TypeId;
 
@@ -19,8 +17,6 @@ pub type Val = p3_goldilocks::Goldilocks;
 pub(crate) struct PowdrCircuit<'a, T> {
     /// The analyzed PIL
     analyzed: &'a Analyzed<T>,
-    /// The value of the fixed columns
-    fixed: &'a [(String, Vec<T>)],
     /// The value of the witness columns, if set
     witness: Option<&'a [(String, Vec<T>)]>,
     /// Callback to augment the witness in the later stages
@@ -33,14 +29,17 @@ pub fn cast_to_goldilocks<T: FieldElement>(v: T) -> Val {
 }
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
-    pub(crate) fn new(analyzed: &'a Analyzed<T>, fixed: &'a [(String, Vec<T>)]) -> Self {
+    pub(crate) fn new(analyzed: &'a Analyzed<T>) -> Self {
+        if analyzed.constant_count() > 0 {
+            unimplemented!("Fixed columns are not supported in Plonky3");
+        }
+
         if !analyzed.public_declarations.is_empty() {
             unimplemented!("Public declarations are not supported in Plonky3");
         }
 
         Self {
             analyzed,
-            fixed,
             witness: None,
             _witgen_callback: None,
         }
@@ -89,11 +88,9 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                         r.poly_id.id as usize
                     }
                     PolynomialType::Constant => {
-                        assert!(
-                            r.poly_id.id < self.analyzed.constant_count() as u64,
-                            "Plonky3 expects `poly_id` to be contiguous"
-                        );
-                        self.analyzed.commitment_count() + r.poly_id.id as usize
+                        unreachable!(
+                            "fixed columns are not supported, should have been checked earlier"
+                        )
                     }
                     PolynomialType::Intermediate => {
                         unreachable!("intermediate polynomials should have been inlined")
@@ -136,18 +133,19 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
-        self.analyzed.commitment_count() + self.analyzed.constant_count()
+        assert_eq!(self.analyzed.constant_count(), 0);
+        self.analyzed.commitment_count()
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
         // an iterator over all columns, committed then fixed
-        let joined_iter = self.witness().iter().chain(self.fixed);
+        let witness = self.witness().iter();
         let len = self.analyzed.degree.unwrap();
 
         // for each row, get the value of each column
         let values = (0..len)
             .flat_map(move |i| {
-                joined_iter
+                witness
                     .clone()
                     .map(move |(_, v)| cast_to_goldilocks(v[i as usize]))
             })

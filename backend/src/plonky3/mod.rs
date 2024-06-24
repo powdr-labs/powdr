@@ -29,7 +29,7 @@ impl<T: FieldElement> BackendFactory<T> for Plonky3ProverFactory {
         if verification_app_key.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        Ok(Box::new(Plonky3Prover::new(pil, fixed)))
+        Ok(Box::new(Plonky3Prover::new(pil)))
     }
 }
 

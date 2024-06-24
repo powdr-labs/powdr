@@ -18,13 +18,11 @@ use self::params::{get_challenger, get_config};
 pub struct Plonky3Prover<'a, T> {
     /// The analyzed PIL
     analyzed: &'a Analyzed<T>,
-    /// The value of the fixed columns
-    fixed: &'a [(String, Vec<T>)],
 }
 
 impl<'a, T> Plonky3Prover<'a, T> {
-    pub fn new(analyzed: &'a Analyzed<T>, fixed: &'a [(String, Vec<T>)]) -> Self {
-        Self { analyzed, fixed }
+    pub fn new(analyzed: &'a Analyzed<T>) -> Self {
+        Self { analyzed }
     }
 }
 
@@ -36,7 +34,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
     ) -> Result<Vec<u8>, String> {
         assert_eq!(T::known_field(), Some(KnownField::GoldilocksField));
 
-        let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
+        let circuit = PowdrCircuit::new(self.analyzed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
@@ -71,7 +69,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
         verify(
             &config,
-            &PowdrCircuit::new(self.analyzed, self.fixed),
+            &PowdrCircuit::new(self.analyzed),
             &mut challenger,
             &proof,
             &publics,
@@ -92,11 +90,10 @@ mod tests {
         let mut pipeline = Pipeline::<GoldilocksField>::default().from_pil_string(pil.to_string());
 
         let pil = pipeline.compute_optimized_pil().unwrap();
-        let fixed_cols = pipeline.compute_fixed_cols().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
 
-        let proof = Plonky3Prover::new(&pil, &fixed_cols).prove(&witness, witness_callback);
+        let proof = Plonky3Prover::new(&pil).prove(&witness, witness_callback);
 
         assert!(proof.is_ok());
     }
@@ -112,6 +109,18 @@ mod tests {
     #[should_panic = "assertion failed: width >= 1"]
     fn empty() {
         let content = "namespace Global(8);";
+        run_test_goldilocks(content);
+    }
+
+    #[test]
+    fn add() {
+        let content = r#"
+        namespace Add(8);
+            col witness x;
+            col witness y;
+            col witness z;
+            x + y = z;
+        "#;
         run_test_goldilocks(content);
     }
 
@@ -136,6 +145,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic = "not implemented"]
     fn polynomial_identity() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
         run_test_goldilocks(content);
