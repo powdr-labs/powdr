@@ -219,7 +219,7 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for P
 
         // constraining Pi * (Ci - pub[i]) = 0
         let mut pub_idx = 0;
-        for witness_col_idx in self.publics_idxs() {
+        for (pub_idx, witness_col_idx) in self.publics_idxs().iter().enumerate() {
             builder.assert_zero(local[self.analyzed.commitment_count() + pub_idx] * (pi_moved[pub_idx].into() - local[witness_col_idx]));
             pub_idx +=1
         }
