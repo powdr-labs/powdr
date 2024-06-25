@@ -3,7 +3,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::{PolynomialType, RawPolyID as PolyID};
 use powdr_number::DegreeType;
 
 // Marker types for each PolynomialType
@@ -30,19 +30,17 @@ pub type FixedColumnMap<V> = ColumnMap<V, Fixed>;
 
 /// A Map indexed by polynomial ID, for a specific polynomial type (e.g. fixed or witness).
 /// For performance reasons, it uses a Vec<V> internally and assumes that the polynomial IDs
-/// are contiguous. It also assumes that all polynomials have the same degree.
+/// are contiguous.
 #[derive(Clone)]
 pub struct ColumnMap<V, T: PolynomialTypeTrait> {
-    pub degree: Option<DegreeType>,
     values: Vec<V>,
     _ptype: PhantomData<T>,
 }
 
 impl<V: Clone, T: PolynomialTypeTrait> ColumnMap<V, T> {
     /// Create a new ColumnMap with the given initial value and size.
-    pub fn new(initial_value: V, size: usize, degree: Option<DegreeType>) -> Self {
+    pub fn new(initial_value: V, size: usize, _degree: Option<DegreeType>) -> Self {
         ColumnMap {
-            degree,
             values: vec![initial_value; size],
             _ptype: PhantomData,
         }
@@ -50,9 +48,8 @@ impl<V: Clone, T: PolynomialTypeTrait> ColumnMap<V, T> {
 }
 
 impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
-    pub fn from(values: impl Iterator<Item = V>, degree: Option<DegreeType>) -> Self {
+    pub fn from(values: impl Iterator<Item = V>) -> Self {
         ColumnMap {
-            degree,
             values: values.collect(),
             _ptype: PhantomData,
         }
@@ -64,30 +61,21 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
         V: Default,
     {
         let mut values: Vec<V> = (0..len).map(|_| V::default()).collect();
-        let mut degree: Option<u64> = None;
         for (poly, value) in items {
-            values[poly.id as usize] = value;
-            assert_eq!(poly.ptype, T::P_TYPE);
-            if degree.is_none() {
-                degree = Some(poly.degree.unwrap());
-            }
-            assert_eq!(poly.degree, degree);
+            values[poly.id() as usize] = value;
+            assert_eq!(poly.ptype(), T::P_TYPE);
         }
 
         ColumnMap {
-            degree,
             values,
             _ptype: PhantomData,
         }
     }
 
     pub fn keys(&self) -> impl Iterator<Item = PolyID> {
-        let degree = self.degree;
-
         (0..self.values.len()).map(move |i| PolyID {
             id: i as u64,
             ptype: T::P_TYPE,
-            degree,
         })
     }
 
@@ -113,7 +101,7 @@ impl<V, T: PolynomialTypeTrait> Index<&PolyID> for ColumnMap<V, T> {
 
     #[inline]
     fn index(&self, poly_id: &PolyID) -> &Self::Output {
-        assert!(poly_id.ptype == T::P_TYPE);
+        assert!(poly_id.ptype() == T::P_TYPE);
         &self.values[poly_id.id as usize]
     }
 }
@@ -121,7 +109,7 @@ impl<V, T: PolynomialTypeTrait> Index<&PolyID> for ColumnMap<V, T> {
 impl<V, T: PolynomialTypeTrait> IndexMut<&PolyID> for ColumnMap<V, T> {
     #[inline]
     fn index_mut(&mut self, poly_id: &PolyID) -> &mut Self::Output {
-        assert!(poly_id.ptype == T::P_TYPE);
+        assert!(poly_id.ptype() == T::P_TYPE);
         &mut self.values[poly_id.id as usize]
     }
 }

@@ -5,7 +5,7 @@ use num_traits::Zero;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, Identity, IdentityKind, PolyID, PolynomialType,
+    AlgebraicReference, Identity, IdentityKind, PolynomialType, RawPolyID as PolyID,
 };
 
 use powdr_number::FieldElement;
@@ -32,7 +32,7 @@ impl<'a, T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
 {
     fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
         assert!(!id.next);
-        self.range_constraints.get(&id.poly_id).cloned()
+        self.range_constraints.get(&id.poly_id.raw).cloned()
     }
 }
 
@@ -93,8 +93,8 @@ pub struct GlobalConstraints<T: FieldElement> {
 impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConstraints<T> {
     fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
         assert!(!id.next);
-        let poly_id = id.poly_id;
-        match poly_id.ptype {
+        let poly_id = id.poly_id.raw;
+        match poly_id.ptype() {
             PolynomialType::Constant => self.fixed_constraints[&poly_id].clone(),
             PolynomialType::Committed => self.witness_constraints[&poly_id].clone(),
             PolynomialType::Intermediate => None,
@@ -145,7 +145,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
 
     log::debug!("Determined the following global range constraints:");
     for (poly_id, con) in &known_constraints {
-        if poly_id.ptype == PolynomialType::Committed {
+        if poly_id.ptype() == PolynomialType::Committed {
             log::debug!("  {}: {con}", fixed_data.column_name(poly_id));
         }
     }
@@ -158,7 +158,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
     let mut witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>> =
         fixed_data.witness_map_with(None);
     for (poly_id, con) in known_constraints {
-        if poly_id.ptype == PolynomialType::Committed {
+        if poly_id.ptype() == PolynomialType::Committed {
             // It's theoretically possible to have a constraint for both X and X'.
             // In that case, we take the conjunction.
             let con = witness_constraints[&poly_id]
@@ -245,7 +245,7 @@ fn propagate_constraints<T: FieldElement>(
                 {
                     if let Some(constraint) = known_constraints.get(&right.poly_id).cloned() {
                         known_constraints
-                            .entry(left.poly_id)
+                            .entry(left.poly_id.raw)
                             .and_modify(|existing| *existing = existing.conjunction(&constraint))
                             .or_insert(constraint);
                     }
@@ -304,7 +304,7 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID>
                 return None;
             }
             if (value1.is_zero() && value2.is_one()) || (value1.is_one() && value2.is_zero()) {
-                return Some(id1.poly_id);
+                return Some(id1.poly_id.raw);
             }
         }
     }
@@ -340,7 +340,7 @@ fn try_transfer_constraints<T: FieldElement>(
         .flat_map(|(poly, cons)| {
             if let Constraint::RangeConstraint(cons) = cons {
                 assert!(!poly.next);
-                Some((poly.poly_id, cons))
+                Some((poly.poly_id.raw, cons))
             } else {
                 None
             }
@@ -359,8 +359,8 @@ fn smallest_period_candidate<T: FieldElement>(fixed: &[T]) -> Option<u64> {
 mod test {
     use std::collections::BTreeMap;
 
-    use powdr_ast::analyzed::{PolyID, PolynomialType};
-    use powdr_number::{DegreeType, GoldilocksField};
+    use powdr_ast::analyzed::PolynomialType;
+    use powdr_number::{GoldilocksField};
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -402,19 +402,17 @@ mod test {
         );
     }
 
-    fn constant_poly_id(i: u64, degree: DegreeType) -> PolyID {
+    fn constant_poly_id(i: u64) -> PolyID {
         PolyID {
             ptype: PolynomialType::Constant,
             id: i,
-            degree: Some(degree),
         }
     }
 
-    fn witness_poly_id(i: u64, degree: DegreeType) -> PolyID {
+    fn witness_poly_id(i: u64) -> PolyID {
         PolyID {
             ptype: PolynomialType::Committed,
             id: i,
-            degree: Some(degree),
         }
     }
 
@@ -437,10 +435,9 @@ namespace Global(2**20);
     { D } in { SHIFTED };
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
-        let degree = analyzed.max_degree();
         let constants = crate::constant_evaluator::generate(&analyzed);
         let fixed_polys = (0..constants.len())
-            .map(|i| constant_poly_id(i as u64, degree))
+            .map(|i| constant_poly_id(i as u64))
             .collect::<Vec<_>>();
         let mut known_constraints = fixed_polys
             .iter()
@@ -453,20 +450,11 @@ namespace Global(2**20);
             known_constraints,
             vec![
                 // Global.BYTE
-                (
-                    constant_poly_id(0, degree),
-                    RangeConstraint::from_max_bit(7)
-                ),
+                (constant_poly_id(0), RangeConstraint::from_max_bit(7)),
                 // Global.BYTE2
-                (
-                    constant_poly_id(1, degree),
-                    RangeConstraint::from_max_bit(15)
-                ),
+                (constant_poly_id(1), RangeConstraint::from_max_bit(15)),
                 // Global.SHIFTED
-                (
-                    constant_poly_id(2, degree),
-                    RangeConstraint::from_mask(0xff0_u32)
-                ),
+                (constant_poly_id(2), RangeConstraint::from_mask(0xff0_u32)),
             ]
             .into_iter()
             .collect()
@@ -479,34 +467,19 @@ namespace Global(2**20);
             known_constraints,
             vec![
                 // Global.A
-                (witness_poly_id(0, degree), RangeConstraint::from_max_bit(0)),
+                (witness_poly_id(0), RangeConstraint::from_max_bit(0)),
                 // Global.B
-                (witness_poly_id(1, degree), RangeConstraint::from_max_bit(7)),
+                (witness_poly_id(1), RangeConstraint::from_max_bit(7)),
                 // Global.C
-                (
-                    witness_poly_id(2, degree),
-                    RangeConstraint::from_mask(0x2ff_u32)
-                ),
+                (witness_poly_id(2), RangeConstraint::from_mask(0x2ff_u32)),
                 // Global.D
-                (
-                    witness_poly_id(3, degree),
-                    RangeConstraint::from_mask(0xf0_u32)
-                ),
+                (witness_poly_id(3), RangeConstraint::from_mask(0xf0_u32)),
                 // Global.BYTE
-                (
-                    constant_poly_id(0, degree),
-                    RangeConstraint::from_max_bit(7)
-                ),
+                (constant_poly_id(0), RangeConstraint::from_max_bit(7)),
                 // Global.BYTE2
-                (
-                    constant_poly_id(1, degree),
-                    RangeConstraint::from_max_bit(15)
-                ),
+                (constant_poly_id(1), RangeConstraint::from_max_bit(15)),
                 // Global.SHIFTED
-                (
-                    constant_poly_id(2, degree),
-                    RangeConstraint::from_mask(0xff0_u32)
-                ),
+                (constant_poly_id(2), RangeConstraint::from_mask(0xff0_u32)),
             ]
             .into_iter()
             .collect::<BTreeMap<_, _>>()
@@ -525,12 +498,9 @@ namespace Global(1024);
     { X * 4 } in { bytes };
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
-        let known_constraints = vec![(
-            constant_poly_id(0, analyzed.max_degree()),
-            RangeConstraint::from_max_bit(7),
-        )]
-        .into_iter()
-        .collect();
+        let known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]
+            .into_iter()
+            .collect();
         assert_eq!(analyzed.identities.len(), 1);
         let (_, removed) = propagate_constraints(
             known_constraints,

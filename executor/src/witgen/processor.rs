@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, RawPolyID as PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -99,22 +99,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
-        // get the degree of all witnesses, which must match
-        let degree = witness_cols
-            .iter()
-            .map(|p| p.degree.unwrap())
-            .reduce(|acc, degree| {
-                assert_eq!(acc, degree);
-                acc
-            })
-            .unwrap();
-
         let is_relevant_witness = WitnessColumnMap::from(
             fixed_data
                 .witness_cols
                 .keys()
                 .map(|poly_id| witness_cols.contains(&poly_id)),
-            Some(degree),
         );
         let prover_query_witnesses = fixed_data
             .witness_cols
@@ -153,7 +142,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id) {
                 if let Some(l) = l.constant_value() {
                     log::trace!("    {} = {}", r, l);
-                    inputs.push((right_poly, l));
+                    inputs.push((right_poly.raw, l));
                 }
             }
         }
@@ -356,7 +345,8 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             }
         }
         for (poly, _) in &input_updates.constraints {
-            self.previously_set_inputs.insert(poly.poly_id, row_index);
+            self.previously_set_inputs
+                .insert(poly.poly_id.raw, row_index);
         }
         self.apply_updates(row_index, &input_updates, || "inputs".to_string())
     }
@@ -437,11 +427,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             // Have to materialize the other cells to please the borrow checker...
             let others = self
                 .copy_constraints
-                .iter_equivalence_class((poly.poly_id, row))
+                .iter_equivalence_class((poly.poly_id.raw, row))
                 .skip(1)
                 .collect::<Vec<_>>();
             for (other_poly, other_row) in others {
-                if other_poly.ptype != PolynomialType::Committed {
+                if other_poly.ptype() != PolynomialType::Committed {
                     unimplemented!(
                         "Copy constraints to fixed columns are not yet supported (#1335)!"
                     );

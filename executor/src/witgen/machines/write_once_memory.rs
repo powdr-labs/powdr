@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use itertools::{Either, Itertools};
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, Identity, IdentityKind, PolyID, PolynomialType,
+    AlgebraicExpression as Expression, Identity, IdentityKind, PolynomialType, RawPolyID as PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -47,6 +47,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         identities: &[&Identity<Expression<T>>],
+        degree: u64,
     ) -> Option<Self> {
         if !identities.is_empty() {
             return None;
@@ -92,22 +93,12 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         // Build a Vec<PolyID> for the key and value polynomials
         let (key_polys, value_polys): (Vec<_>, Vec<_>) = rhs_polys.into_iter().partition_map(|p| {
             assert!(!p.next);
-            if p.poly_id.ptype == PolynomialType::Constant {
-                Either::Left(p.poly_id)
+            if p.poly_id.ptype() == PolynomialType::Constant {
+                Either::Left(p.poly_id.raw)
             } else {
-                Either::Right(p.poly_id)
+                Either::Right(p.poly_id.raw)
             }
         });
-
-        // get the degree of all witnesses, which must match
-        let degree = value_polys
-            .iter()
-            .map(|p| p.degree.unwrap())
-            .reduce(|acc, degree| {
-                assert_eq!(acc, degree);
-                acc
-            })
-            .unwrap();
 
         let mut key_to_index = BTreeMap::new();
         for row in 0..degree {
@@ -148,7 +139,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             .iter()
             .zip(identity.right.expressions.iter())
             .partition(|(_, r)| {
-                try_to_simple_poly(r).unwrap().poly_id.ptype == PolynomialType::Constant
+                try_to_simple_poly(r).unwrap().poly_id.ptype() == PolynomialType::Constant
             });
         let key = key_expressions
             .into_iter()

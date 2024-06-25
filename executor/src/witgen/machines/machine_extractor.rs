@@ -10,7 +10,9 @@ use super::KnownMachine;
 use crate::witgen::generator::Generator;
 use crate::witgen::machines::write_once_memory::WriteOnceMemory;
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolyID};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, Identity, IdentityKind, RawPolyID as PolyID,
+};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::FieldElement;
@@ -20,6 +22,25 @@ pub struct ExtractionOutput<'a, T: FieldElement> {
     pub machines: Vec<KnownMachine<'a, T>>,
     pub base_identities: Vec<&'a Identity<Expression<T>>>,
     pub base_witnesses: HashSet<PolyID>,
+}
+
+fn to_raw_and_degree(
+    machine_witnesses: HashSet<powdr_ast::analyzed::PolyID>,
+) -> (HashSet<PolyID>, u64) {
+    let mut res = HashSet::default();
+    let mut degree = None;
+    for id in machine_witnesses {
+        res.insert(id.raw);
+        match degree {
+            None => {
+                degree = id.degree;
+            }
+            degree => {
+                assert_eq!(id.degree, degree);
+            }
+        }
+    }
+    (res, degree.unwrap())
 }
 
 /// Finds machines in the witness columns and identities
@@ -33,7 +54,14 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
     let mut machines: Vec<KnownMachine<T>> = vec![];
 
-    let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
+    // we use `PolyID` because we need to extract the degree of each machine
+    let all_witnesses: HashSet<powdr_ast::analyzed::PolyID> = fixed
+        .analyzed
+        .committed_polys_in_source_order()
+        .iter()
+        .flat_map(|(symbol, _)| symbol.array_elements().map(|(_, id)| id))
+        .collect();
+
     let mut remaining_witnesses = all_witnesses.clone();
     let mut base_identities = identities.clone();
     let mut id_counter = 0;
@@ -112,12 +140,16 @@ pub fn split_out_machines<'a, T: FieldElement>(
         id_counter += 1;
         let name_with_type = |t: &str| format!("Secondary machine {id}: {name} ({t})");
 
+        // Internal processing happens over `RawPolyID`
+        let (machine_witnesses, degree) = to_raw_and_degree(machine_witnesses);
+
         if let Some(machine) = SortedWitnesses::try_new(
             name_with_type("SortedWitness"),
             fixed,
             &connecting_identities,
             &machine_identities,
             &machine_witnesses,
+            degree,
         ) {
             log::debug!("Detected machine: sorted witnesses / write-once memory");
             machines.push(KnownMachine::SortedWitnesses(machine));
@@ -126,6 +158,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             fixed,
             &connecting_identities,
             &machine_witnesses,
+            degree,
         ) {
             log::debug!("Detected machine: memory");
             machines.push(KnownMachine::DoubleSortedWitnesses(machine));
@@ -134,6 +167,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             fixed,
             &connecting_identities,
             &machine_identities,
+            degree,
         ) {
             log::debug!("Detected machine: write-once memory");
             machines.push(KnownMachine::WriteOnceMemory(machine));
@@ -143,6 +177,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             &connecting_identities,
             &machine_identities,
             &machine_witnesses,
+            degree,
         ) {
             log::debug!("Detected machine: {machine}");
             machines.push(KnownMachine::BlockMachine(machine));
@@ -177,6 +212,9 @@ pub fn split_out_machines<'a, T: FieldElement>(
             )));
         }
     }
+
+    let (remaining_witnesses, _) = to_raw_and_degree(remaining_witnesses);
+
     ExtractionOutput {
         fixed_lookup,
         machines,
@@ -189,10 +227,10 @@ pub fn split_out_machines<'a, T: FieldElement>(
 /// Two witnesses are row-connected if they are part of a polynomial identity
 /// or part of the same side of a lookup.
 fn all_row_connected_witnesses<T>(
-    mut witnesses: HashSet<PolyID>,
-    all_witnesses: &HashSet<PolyID>,
+    mut witnesses: HashSet<powdr_ast::analyzed::PolyID>,
+    all_witnesses: &HashSet<powdr_ast::analyzed::PolyID>,
     identities: &[&Identity<Expression<T>>],
-) -> HashSet<PolyID> {
+) -> HashSet<powdr_ast::analyzed::PolyID> {
     loop {
         let count = witnesses.len();
         for i in identities {
@@ -224,8 +262,10 @@ fn all_row_connected_witnesses<T>(
 }
 
 /// Extracts all references to names from an identity.
-pub fn refs_in_identity<T>(identity: &Identity<Expression<T>>) -> HashSet<PolyID> {
-    let mut refs: HashSet<PolyID> = Default::default();
+pub fn refs_in_identity<T>(
+    identity: &Identity<Expression<T>>,
+) -> HashSet<powdr_ast::analyzed::PolyID> {
+    let mut refs: HashSet<_> = Default::default();
     identity.pre_visit_expressions(&mut |expr| {
         ref_of_expression(expr).map(|id| refs.insert(id));
     });
@@ -235,8 +275,8 @@ pub fn refs_in_identity<T>(identity: &Identity<Expression<T>>) -> HashSet<PolyID
 /// Extracts all references to names from selected expressions.
 pub fn refs_in_selected_expressions<T>(
     sel_expr: &SelectedExpressions<Expression<T>>,
-) -> HashSet<PolyID> {
-    let mut refs: HashSet<PolyID> = Default::default();
+) -> HashSet<powdr_ast::analyzed::PolyID> {
+    let mut refs: HashSet<_> = Default::default();
     sel_expr.pre_visit_expressions(&mut |expr| {
         ref_of_expression(expr).map(|id| refs.insert(id));
     });
@@ -245,7 +285,7 @@ pub fn refs_in_selected_expressions<T>(
 
 /// Extracts all references to names from an expression,
 /// NON-recursively.
-pub fn ref_of_expression<T>(expr: &Expression<T>) -> Option<PolyID> {
+pub fn ref_of_expression<T>(expr: &Expression<T>) -> Option<powdr_ast::analyzed::PolyID> {
     match expr {
         Expression::Reference(p) => Some(p.poly_id),
         _ => None,

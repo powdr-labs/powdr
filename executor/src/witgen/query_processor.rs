@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use powdr_ast::analyzed::Challenge;
-use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
+use powdr_ast::analyzed::{AlgebraicReference, Expression, PolynomialType, RawPolyID as PolyID};
 use powdr_ast::parsed::types::Type;
 use powdr_number::{BigInt, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
@@ -138,7 +138,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         &self,
         poly_ref: &AlgebraicReference,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
+        Ok(Value::FieldElement(match poly_ref.poly_id.ptype() {
             PolynomialType::Committed | PolynomialType::Intermediate => self
                 .rows
                 .get_value(poly_ref)

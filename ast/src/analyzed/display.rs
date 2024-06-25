@@ -483,29 +483,17 @@ mod test {
 
         let x = AlgebraicExpression::Reference(super::AlgebraicReference {
             name: "x".into(),
-            poly_id: super::PolyID {
-                id: 0,
-                ptype: super::PolynomialType::Committed,
-                degree: None,
-            },
+            poly_id: super::PolyID::new(0, super::PolynomialType::Committed),
             next: false,
         });
         let y = AlgebraicExpression::Reference(super::AlgebraicReference {
             name: "y".into(),
-            poly_id: super::PolyID {
-                id: 1,
-                ptype: super::PolynomialType::Committed,
-                degree: None,
-            },
+            poly_id: super::PolyID::new(1, super::PolynomialType::Committed),
             next: false,
         });
         let z = AlgebraicExpression::Reference(super::AlgebraicReference {
             name: "z".into(),
-            poly_id: super::PolyID {
-                id: 2,
-                ptype: super::PolynomialType::Committed,
-                degree: None,
-            },
+            poly_id: super::PolyID::new(2, super::PolynomialType::Committed),
             next: false,
         });
 

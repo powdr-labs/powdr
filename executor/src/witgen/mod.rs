@@ -3,8 +3,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
-    PolynomialType, SymbolKind, TypedExpression,
+    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
+    PolynomialType, RawPolyID as PolyID, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
@@ -315,7 +315,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                         })
                         .collect::<Vec<_>>()
                 },
-        ), Some(analyzed.max_degree()));
+        ));
 
         if !external_witness_values.is_empty() {
             let available_columns = witness_cols
@@ -329,10 +329,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             );
         }
 
-        let fixed_cols = FixedColumnMap::from(
-            fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)),
-            Some(analyzed.max_degree()),
-        );
+        let fixed_cols =
+            FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)));
 
         // The global range constraints are not set yet.
         let global_range_constraints = GlobalConstraints {
@@ -391,7 +389,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn column_name(&self, poly_id: &PolyID) -> &str {
-        match poly_id.ptype {
+        match poly_id.ptype() {
             PolynomialType::Committed => &self.witness_cols[poly_id].poly.name,
             PolynomialType::Constant => &self.fixed_cols[poly_id].name,
             PolynomialType::Intermediate => unimplemented!(),
@@ -443,12 +441,12 @@ pub struct WitnessColumn<'a, T> {
 
 impl<'a, T> WitnessColumn<'a, T> {
     pub fn new(
-        poly_id: PolyID,
+        poly_id: powdr_ast::analyzed::PolyID,
         name: &str,
         value: Option<&'a FunctionValueDefinition>,
         external_values: Option<&'a Vec<T>>,
     ) -> WitnessColumn<'a, T> {
-        assert_eq!(poly_id.ptype, PolynomialType::Committed);
+        assert_eq!(poly_id.ptype(), PolynomialType::Committed);
 
         let query = if let Some(FunctionValueDefinition::Expression(TypedExpression {
             e:

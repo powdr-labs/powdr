@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, RawPolyID as PolyID,
 };
 use powdr_number::FieldElement;
 
@@ -108,7 +108,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 mod tests {
     use std::collections::BTreeMap;
 
-    use powdr_ast::analyzed::{PolyID, PolynomialType};
+    use powdr_ast::analyzed::{PolynomialType, RawPolyID as PolyID};
     use powdr_number::{FieldElement, GoldilocksField};
     use powdr_pil_analyzer::analyze_string;
 
@@ -161,8 +161,6 @@ mod tests {
             .map(move |i| PolyID {
                 id: i as u64,
                 ptype: PolynomialType::Committed,
-                // we only have one machine, so its degree is also the max
-                degree: Some(degree),
             })
             .collect();
         let data = FinalizableData::with_initial_rows_in_progress(

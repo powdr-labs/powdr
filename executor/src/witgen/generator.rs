@@ -1,5 +1,5 @@
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, RawPolyID as PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -24,7 +24,6 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
-    degree: DegreeType,
     connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<Expression<T>>>,
@@ -40,7 +39,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     }
 
     fn degree(&self) -> DegreeType {
-        self.degree
+        self.fixed_data.analyzed.max_degree()
     }
 
     fn name(&self) -> &str {
@@ -119,20 +118,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         witnesses: HashSet<PolyID>,
         latch: Option<Expression<T>>,
     ) -> Self {
+        let witnesses = witnesses.into_iter().map(Into::into).collect();
+
         let data = FinalizableData::new(&witnesses);
 
-        // get the degree of all witnesses, which must match
-        let degree = witnesses
-            .iter()
-            .map(|p| p.degree.unwrap())
-            .reduce(|acc, degree| {
-                assert_eq!(acc, degree);
-                acc
-            })
-            .unwrap();
-
         Self {
-            degree,
             connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
@@ -235,6 +225,9 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             &self.witnesses,
             [first_row].into_iter(),
         );
+
+        let degree = self.degree();
+
         let mut processor = VmProcessor::new(
             RowIndex::from_degree(row_offset, self.degree()),
             self.fixed_data,
@@ -242,6 +235,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             &self.witnesses,
             data,
             mutable_state,
+            degree,
         );
         if let Some(outer_query) = outer_query {
             processor = processor.with_outer_query(outer_query);
@@ -257,19 +251,15 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         assert_eq!(self.data.len() as DegreeType, self.degree() + 1);
 
         let last_row = self.data.pop().unwrap();
-        self.data[0] = WitnessColumnMap::from(
-            self.data[0]
-                .values()
-                .zip(last_row.values())
-                .map(|(cell1, cell2)| match (&cell1.value, &cell2.value) {
-                    (CellValue::Known(v1), CellValue::Known(v2)) => {
-                        assert_eq!(v1, v2);
-                        cell1.clone()
-                    }
-                    (CellValue::Known(_), _) => cell1.clone(),
-                    _ => cell2.clone(),
-                }),
-            Some(self.degree()),
-        );
+        self.data[0] = WitnessColumnMap::from(self.data[0].values().zip(last_row.values()).map(
+            |(cell1, cell2)| match (&cell1.value, &cell2.value) {
+                (CellValue::Known(v1), CellValue::Known(v2)) => {
+                    assert_eq!(v1, v2);
+                    cell1.clone()
+                }
+                (CellValue::Known(_), _) => cell1.clone(),
+                _ => cell2.clone(),
+            },
+        ));
     }
 }

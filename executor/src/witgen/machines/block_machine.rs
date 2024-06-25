@@ -17,8 +17,8 @@ use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-    PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolynomialType,
+    RawPolyID as PolyID,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
@@ -128,24 +128,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         identities: &[&'a Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
+        degree: u64,
     ) -> Option<Self> {
-        // get the degree of all witnesses, which must match
-        let degree = witness_cols
-            .iter()
-            .map(|p| p.degree.unwrap())
-            .reduce(|acc, degree| {
-                assert_eq!(acc, degree);
-                acc
-            })
-            .unwrap();
-
         let (is_permutation, block_size, latch_row) =
             detect_connection_type_and_block_size(fixed_data, connecting_identities, degree)?;
 
         for id in connecting_identities.values() {
             for r in id.right.expressions.iter() {
                 if let Some(poly) = try_to_simple_poly(r) {
-                    if poly.poly_id.ptype == PolynomialType::Constant {
+                    if poly.poly_id.ptype() == PolynomialType::Constant {
                         // It does not really make sense to have constant polynomials on the RHS
                         // of a block machine lookup, as all constant polynomials are periodic, so
                         // it would always return the same value.

@@ -241,7 +241,7 @@ impl<T: FieldElement> FixedLookup<T> {
     ) -> EvalResult<'b, T> {
         if left.len() == 1
             && !left.first().unwrap().is_constant()
-            && right.peek().unwrap().poly_id.ptype == PolynomialType::Constant
+            && right.peek().unwrap().poly_id.ptype() == PolynomialType::Constant
         {
             // Lookup of the form "c { X } in { B }". Might be a conditional range check.
             return self.process_range_check(rows, left.first().unwrap(), right.peek().unwrap());
@@ -337,7 +337,7 @@ impl<T: FieldElement> FixedLookup<T> {
             updates
                 .constraints
                 .into_iter()
-                .filter(|(poly, _)| poly.poly_id.ptype == PolynomialType::Committed)
+                .filter(|(poly, _)| poly.poly_id.ptype() == PolynomialType::Committed)
                 .collect(),
             IncompleteCause::NotConcrete,
         ))
@@ -357,7 +357,7 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
     for UnifiedRangeConstraints<'_, T>
 {
     fn range_constraint(&self, poly: &AlgebraicReference) -> Option<RangeConstraint<T>> {
-        match poly.poly_id.ptype {
+        match poly.poly_id.ptype() {
             PolynomialType::Committed => self.witness_constraints.range_constraint(poly),
             PolynomialType::Constant => self.global_constraints.range_constraint(poly),
             PolynomialType::Intermediate => unimplemented!(),

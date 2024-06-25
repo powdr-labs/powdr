@@ -12,7 +12,8 @@ use crate::witgen::{
 };
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind,
+    RawPolyID as PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -42,20 +43,11 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         identities: &[&Identity<Expression<T>>],
         witnesses: &HashSet<PolyID>,
+        degree: u64,
     ) -> Option<Self> {
         if identities.len() != 1 {
             return None;
         }
-
-        // get the degree of all witnesses, which must match
-        let degree = witnesses
-            .iter()
-            .map(|p| p.degree.unwrap())
-            .reduce(|acc, degree| {
-                assert_eq!(acc, degree);
-                acc
-            })
-            .unwrap();
 
         check_identity(fixed_data, identities.first().unwrap(), degree).and_then(|key_col| {
             let witness_positions = witnesses
@@ -170,7 +162,7 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
         return None;
     }
 
-    Some(key_column_id.poly_id)
+    Some(key_column_id.poly_id.raw)
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
@@ -238,7 +230,10 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
             .map(|e| caller_rows.evaluate(e).unwrap())
             .collect::<Vec<_>>();
         let rhs = self.rhs_references.get(&identity_id).unwrap();
-        let key_index = rhs.iter().position(|&x| x.poly_id == self.key_col).unwrap();
+        let key_index = rhs
+            .iter()
+            .position(|&x| x.poly_id.raw == self.key_col)
+            .unwrap();
 
         let key_value = left[key_index].constant_value().ok_or_else(|| {
             format!(

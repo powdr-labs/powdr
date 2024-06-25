@@ -5,7 +5,7 @@ use std::{cmp, path::PathBuf};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolyID,
-    PolynomialType, StatementIdentifier, SymbolKind,
+    PolynomialType, RawPolyID, StatementIdentifier, SymbolKind,
 };
 use powdr_parser_util::SourceRef;
 use starky::types::{
@@ -68,10 +68,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                 let pub_ref = &pub_def.polynomial;
                 let poly_id = pub_ref.poly_id.unwrap();
                 let (_, expr) = exporter.polynomial_reference_to_json(
-                    PolyID {
-                        id: poly_id.id + pub_def.array_index.unwrap_or_default() as u64,
-                        ..poly_id
-                    },
+                    poly_id.with_id(poly_id.id() + pub_def.array_index.unwrap_or_default() as u64),
                     false,
                 );
                 let id = publics.len();
@@ -369,7 +366,10 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
 
     fn polynomial_reference_to_json(
         &self,
-        PolyID { id, ptype, .. }: PolyID,
+        PolyID {
+            raw: RawPolyID { id, ptype },
+            ..
+        }: PolyID,
         next: bool,
     ) -> (u32, StarkyExpr) {
         let id = if ptype == PolynomialType::Intermediate {
