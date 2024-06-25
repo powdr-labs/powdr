@@ -4,6 +4,8 @@ mod estark;
 #[cfg(feature = "halo2")]
 mod halo2;
 
+mod vadcop_wrapper;
+
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
@@ -18,6 +20,9 @@ pub enum BackendType {
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2-mock")]
     Halo2Mock,
+    #[cfg(feature = "halo2")]
+    #[strum(serialize = "halo2-mock-vadcop")]
+    Halo2MockVadCop,
     #[cfg(feature = "estark-polygon")]
     #[strum(serialize = "estark-polygon")]
     EStarkPolygon,
@@ -33,27 +38,20 @@ pub const DEFAULT_HALO2_MOCK_OPTIONS: &str = "";
 pub const DEFAULT_ESTARK_OPTIONS: &str = "stark_gl";
 
 impl BackendType {
-    pub fn factory<T: FieldElement>(&self) -> &'static dyn BackendFactory<T> {
-        #[cfg(feature = "halo2")]
-        const HALO2_FACTORY: halo2::Halo2ProverFactory = halo2::Halo2ProverFactory;
-        #[cfg(feature = "halo2")]
-        const HALO2_MOCK_FACTORY: halo2::Halo2MockFactory = halo2::Halo2MockFactory;
-        #[cfg(feature = "estark-polygon")]
-        const ESTARK_POLYGON_FACTORY: estark::polygon_wrapper::Factory =
-            estark::polygon_wrapper::Factory;
-        const ESTARK_STARKY_FACTORY: estark::starky_wrapper::Factory =
-            estark::starky_wrapper::Factory;
-        const ESTARK_DUMP_FACTORY: estark::DumpFactory = estark::DumpFactory;
-
+    pub fn factory<T: FieldElement>(&self) -> Box<dyn BackendFactory<T>> {
         match self {
             #[cfg(feature = "halo2")]
-            BackendType::Halo2 => &HALO2_FACTORY,
+            BackendType::Halo2 => Box::new(halo2::Halo2ProverFactory),
             #[cfg(feature = "halo2")]
-            BackendType::Halo2Mock => &HALO2_MOCK_FACTORY,
+            BackendType::Halo2Mock => Box::new(halo2::Halo2MockFactory),
+            #[cfg(feature = "halo2")]
+            BackendType::Halo2MockVadCop => Box::new(vadcop_wrapper::VadCopWrapperFactory::new(
+                halo2::Halo2MockFactory,
+            )),
             #[cfg(feature = "estark-polygon")]
-            BackendType::EStarkPolygon => &ESTARK_POLYGON_FACTORY,
-            BackendType::EStarkStarky => &ESTARK_STARKY_FACTORY,
-            BackendType::EStarkDump => &ESTARK_DUMP_FACTORY,
+            BackendType::EStarkPolygon => Box::new(estark::polygon_wrapper::Factory),
+            BackendType::EStarkStarky => Box::new(estark::starky_wrapper::Factory),
+            BackendType::EStarkDump => Box::new(estark::DumpFactory),
         }
     }
 }
