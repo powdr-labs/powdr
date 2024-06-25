@@ -622,7 +622,7 @@ mod test {
     }
 
     #[test]
-    fn generic_cache_with_traits() {
+    fn simple_trait() {
         let src = r#"
             namespace std::convert(4);
                 let fe = || fe();
@@ -636,7 +636,7 @@ mod test {
                     get: |x| x,
                 }
 
-                let a: col = |i| std::convert::fe(i + getN::get(7)) + getN::get(7);
+                let a: col = |i| std::convert::fe(i + getN::get(7) + getN::get(7));
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);

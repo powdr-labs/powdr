@@ -979,21 +979,17 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.expand(&lambda.body)?;
             }
             Value::TraitFunction(f) => {
-                //println!("Trait function: {f}, arguments: {:?}", arguments);
-                self.op_stack.push(Operation::SetEnvironment(
-                    std::mem::take(&mut self.local_vars),
-                    std::mem::take(&mut self.type_args),
-                ));
-                self.local_vars = vec![Value::Integer(42.into()).into()];
-                self.type_args = HashMap::from([("x".to_string(), Type::Int)]);
-
-                self.expand(f)?;
-
-                //self.op_stack.push(Operation::Expand(f));
-
-                //self.value_stack.push(arguments[0].clone());
-                //self.value_stack.push(Value::Integer(45.into()).into());
-                //self.op_stack.push(Operation::Expand(f));
+                if let Expression::LambdaExpression(_, LambdaExpression { body, .. }) = f {
+                    // TODO GZ: Params to local vars
+                    self.op_stack.push(Operation::SetEnvironment(
+                        std::mem::take(&mut self.local_vars),
+                        std::mem::take(&mut self.type_args),
+                    ));
+                    self.local_vars = arguments;
+                    self.expand(body)?;
+                } else {
+                    self.expand(f)?;
+                }
             }
             e => panic!("Expected function but got {e}"),
         };
