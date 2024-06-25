@@ -410,7 +410,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
 
         let mut progress = false;
         for (poly, c) in &updates.constraints {
-            if self.witness_cols.contains(&poly.poly_id) {
+            if self.is_relevant_witness[&poly.poly_id] {
                 // Build RowUpdater
                 // (a bit complicated, because we need two mutable
                 // references to elements of the same vector)
