@@ -31,9 +31,9 @@ impl<T: Display> Display for Analyzed<T> {
                     current_namespace = namespace;
                     writeln!(
                         f,
-                        "namespace {}({});",
+                        "namespace {}{};",
                         current_namespace.relative_to(&Default::default()),
-                        degree.map(|d| d.to_string()).unwrap_or_default()
+                        degree.map(|d| format!("({d})")).unwrap_or_default()
                     )?;
                 };
                 Ok((name, !current_namespace.is_empty()))

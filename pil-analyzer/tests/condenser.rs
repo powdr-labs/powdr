@@ -122,9 +122,9 @@ pub fn degree() {
             w = std::convert::expr(d);
     "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
-    let expected = r#"namespace std::convert();
+    let expected = r#"namespace std::convert;
     let expr = [];
-namespace std::prover();
+namespace std::prover;
     let degree = [];
 namespace Main(8);
     let d: int = std::prover::degree();
