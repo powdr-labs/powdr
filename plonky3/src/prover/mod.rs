@@ -2,6 +2,8 @@
 
 mod params;
 
+use p3_field::Field;
+use p3_goldilocks::Goldilocks;
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
@@ -30,6 +32,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
         &self,
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
+        publics: Option<Vec<Goldilocks>>,
     ) -> Result<Vec<u8>, String> {
         assert_eq!(T::known_field(), Some(KnownField::GoldilocksField));
 
@@ -37,7 +40,9 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
-        let publics = vec![];
+        let publics = publics.unwrwap_or(
+            publics_from_witness(self.analyzed, witness)
+        );
 
         let trace = circuit.generate_trace_rows();
 
@@ -77,12 +82,28 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
     }
 }
 
+fn publics_from_witness<T: FieldElement>(analyzed: &Analyzed<T>, witness: &[(String, Vec<T>)]) -> Vec<Goldilocks> {
+    let publics = analyzed
+        .public_declarations
+        .values()
+        .map(|public_declaration| {
+            // index into correct witness value, extract public_declaration.index
+            let pub_idx = witness.iter().position(|name| name.0 == 
+                public_declaration.referenced_poly_name()).unwrap();
+            let pub_val = witness[pub_idx].1[public_declaration.index as usize];
+            cast_to_goldilocks(pub_val)
+        }).collect::<Vec<Goldilocks>>();
+    // order of publics should be deterministic
+    publics
+    }
+
 #[cfg(test)]
 mod tests {
+    use p3_goldilocks::Goldilocks;
     use powdr_number::GoldilocksField;
     use powdr_pipeline::Pipeline;
 
-    use crate::Plonky3Prover;
+    use crate::{circuit_builder::cast_to_goldilocks, Plonky3Prover};
 
     /// Prove and verify execution
     fn run_test_goldilocks(pil: &str) {
@@ -92,13 +113,25 @@ mod tests {
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
 
-        let proof = Plonky3Prover::new(&pil).prove(&witness, witness_callback);
+        let proof = Plonky3Prover::new(&pil).prove(&witness, witness_callback, None);
+
+        assert!(proof.is_ok());
+    }
+
+    fn run_test_goldilocks_publics(pil:& str,  publics: Vec<Goldilocks>) {
+        let mut pipeline = Pipeline::<GoldilocksField>::default().from_pil_string(pil.to_string());
+
+        let pil = pipeline.compute_optimized_pil().unwrap();
+        let witness_callback = pipeline.witgen_callback().unwrap();
+        let witness = pipeline.compute_witness().unwrap();
+
+        let proof = Plonky3Prover::new(&pil).prove(&witness, witness_callback, Some(publics));
 
         assert!(proof.is_ok());
     }
 
     #[test]
-    #[should_panic = "not implemented"]
+    // #[should_panic = "not implemented"]
     fn publics() {
         let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
         run_test_goldilocks(content);

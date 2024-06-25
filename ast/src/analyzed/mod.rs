@@ -64,6 +64,12 @@ impl<T> Analyzed<T> {
     pub fn constant_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Constant)
     }
+    /// @returns the number of public inputs
+    pub fn publics_count(&self) -> usize {
+        self.public_declarations
+            .iter()
+            .map(move |(_, _)| 1).sum() //maybe we can just call .len() here?
+    }
 
     pub fn constant_polys_in_source_order(
         &self,
