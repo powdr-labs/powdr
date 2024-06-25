@@ -50,9 +50,6 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
         let mut challenger = get_challenger();
 
-        println!("publics {:?}", publics);
-        println!("pub_inputs {:?}", self.analyzed.public_declarations);
-
         let proof = prove(&config, &circuit, &mut challenger, trace, &publics);
 
         let mut challenger = get_challenger();
@@ -141,15 +138,22 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn public_inputs() {
         let content = r#"
         namespace Add(8);
-            pol witness x;
-            x * (x-1) = 0;
+            col witness x;
+            col witness y;
+            col witness z;
+            x + y = z;
 
-            public out = x(7);
+            public x_in = x(0);
+            public y_in = y(0);
+            public out = z(7);
         "#;
         let publics = vec![
+            cast_to_goldilocks(GoldilocksField::from(0)),
+            cast_to_goldilocks(GoldilocksField::from(1)),
             cast_to_goldilocks(GoldilocksField::from(1)),
             ];
         run_test_goldilocks_publics(content, publics)
