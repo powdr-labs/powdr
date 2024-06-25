@@ -464,7 +464,7 @@ pub struct RowPairAccess<'row, 'a, 'c, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
     /// The columns we can directly update
-    witness_cols: &'c HashSet<PolyID>,
+    witness_cols: &'c WitnessColumnMap<bool>,
 }
 
 impl<'row, 'a, 'c, T: FieldElement> RowPairAccess<'row, 'a, 'c, T> {
@@ -474,7 +474,7 @@ impl<'row, 'a, 'c, T: FieldElement> RowPairAccess<'row, 'a, 'c, T> {
         current_row_index: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
-        witness_cols: &'c HashSet<PolyID>,
+        witness_cols: &'c WitnessColumnMap<bool>,
     ) -> Self {
         Self {
             current,
@@ -507,12 +507,12 @@ impl<'row, 'a, 'c, T: FieldElement> RowPairAccess<'row, 'a, 'c, T> {
 impl<'row, 'a, 'c, T: FieldElement> RowAccess<T> for RowPairAccess<'row, 'a, 'c, T> {
     fn apply_update(&mut self, poly: &AlgebraicReference, c: &Constraint<T>) -> bool {
         // TODO logging
-        //if self.witness_cols.contains(&poly.poly_id) {
-        self.get_cell_mut(poly).apply_update(c);
-        true
-        // } else {
-        //     false
-        // }
+        if self.witness_cols[&poly.poly_id] {
+            self.get_cell_mut(poly).apply_update(c);
+            true
+        } else {
+            false
+        }
     }
 
     fn get_cell(&self, poly: &AlgebraicReference) -> &Cell<T> {
