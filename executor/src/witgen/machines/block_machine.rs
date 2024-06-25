@@ -476,8 +476,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
-        for l in &outer_query.left {
-            log::trace!("  {}", l);
+        if log::log_enabled!(log::Level::Trace) {
+            for l in &outer_query.left {
+                log::trace!("  {}", l);
+            }
         }
 
         // First check if we already store the value.

@@ -299,6 +299,7 @@ impl<T: FieldElement> FixedLookup<T> {
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {
             if let Some(v) = l.try_to_var() {
+                // TODO somehow this does not work for sub-machines.
                 if output_columns.len() < 10 || !rows.apply_update(v, &Constraint::Assignment(r)) {
                     result.combine_assignment(v, r);
                 }
