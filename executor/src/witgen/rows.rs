@@ -465,6 +465,7 @@ pub struct RowPairAccess<'row, 'a, 'c, T: FieldElement> {
     unknown_strategy: UnknownStrategy,
     /// The columns we can directly update
     witness_cols: &'c WitnessColumnMap<bool>,
+    updates_happened: bool,
 }
 
 impl<'row, 'a, 'c, T: FieldElement> RowPairAccess<'row, 'a, 'c, T> {
@@ -483,7 +484,12 @@ impl<'row, 'a, 'c, T: FieldElement> RowPairAccess<'row, 'a, 'c, T> {
             fixed_data,
             unknown_strategy,
             witness_cols,
+            updates_happened: false,
         }
+    }
+
+    pub fn updates_happened(&self) -> bool {
+        self.updates_happened
     }
 
     fn get_cell_mut<'b>(&'b mut self, poly: &AlgebraicReference) -> &'b mut Cell<'a, T> {
@@ -502,6 +508,18 @@ impl<'row, 'a, 'c, T: FieldElement> RowPairAccess<'row, 'a, 'c, T> {
             self.unknown_strategy,
         )
     }
+
+    /// Tries to evaluate the expression to an expression affine in the witness polynomials,
+    /// taking current values of polynomials into account.
+    /// @returns an expression affine in the witness polynomials
+    pub fn evaluate<'b>(&self, expr: &'b Expression<T>) -> AffineResult<&'b AlgebraicReference, T> {
+        ExpressionEvaluator::new(SymbolicWitnessEvaluator::new(
+            self.fixed_data,
+            self.current_row_index.into(),
+            self,
+        ))
+        .evaluate(expr)
+    }
 }
 
 impl<'row, 'a, 'c, T: FieldElement> RowAccess<T> for RowPairAccess<'row, 'a, 'c, T> {
@@ -509,6 +527,7 @@ impl<'row, 'a, 'c, T: FieldElement> RowAccess<T> for RowPairAccess<'row, 'a, 'c,
         // TODO logging
         if self.witness_cols[&poly.poly_id] {
             self.get_cell_mut(poly).apply_update(c);
+            self.updates_happened = true;
             true
         } else {
             false

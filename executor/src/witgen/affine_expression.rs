@@ -7,13 +7,15 @@ use powdr_number::{FieldElement, LargeInt};
 
 use super::global_constraints::RangeConstraintSet;
 use super::range_constraints::RangeConstraint;
-use super::Constraint;
+use super::rows::{RowAccess, RowPairAccess};
+use super::{Constraint, EvalError};
 use super::{EvalError::*, EvalResult, EvalValue, IncompleteCause};
 
 /// An expression affine in the committed polynomials (or symbolic variables in general).
 #[derive(Debug, Clone)]
 pub enum AffineExpression<K, T> {
     Constant(T),
+    // TODO should have a version without factor as well.
     OneVar((K, T), T),
     /// Many contains 1 or more variables, in variable order, without duplicates or zero coefficients
     ManyVars(Vec<(K, T)>, T),
@@ -177,6 +179,46 @@ where
                 -*offset / *c
             }),
         )]))
+    }
+
+    pub fn solve_and_apply(
+        &self,
+        mut updater: impl FnMut(K, T) -> bool,
+    ) -> Result<(bool, EvalValue<K, T>), EvalError<T>> {
+        let ((v, c), offset) = match self {
+            AffineExpression::Constant(c) if c.is_zero() => {
+                return Ok((false, EvalValue::complete(vec![])));
+            }
+            AffineExpression::Constant(_) => {
+                return Err(ConstraintUnsatisfiable(self.to_string()));
+            }
+            AffineExpression::OneVar((v, c), offset) => ((v, c), offset),
+            AffineExpression::ManyVars(coefficients, offset) if coefficients.len() == 1 => (
+                coefficients.iter().map(|(v, c)| (v, c)).next().unwrap(),
+                offset,
+            ),
+            _ => {
+                return Ok((
+                    false,
+                    EvalValue::incomplete(IncompleteCause::MultipleLinearSolutions),
+                ));
+            }
+        };
+        let value = if c.is_one() {
+            -*offset
+        } else if *c == -T::one() {
+            *offset
+        } else {
+            -*offset / *c
+        };
+        if !updater(*v, value) {
+            Ok((
+                true,
+                EvalValue::complete(vec![(*v, Constraint::Assignment(value))]),
+            ))
+        } else {
+            Ok((true, EvalValue::complete(vec![])))
+        }
     }
 
     /// Tries to solve "self = 0", or at least propagate a bit / range constraint:

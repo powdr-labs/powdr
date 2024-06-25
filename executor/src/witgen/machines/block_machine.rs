@@ -8,7 +8,7 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::{OuterQuery, Processor};
-use crate::witgen::rows::{CellValue, Row, RowIndex, RowPair, UnknownStrategy};
+use crate::witgen::rows::{CellValue, Row, RowIndex, RowPair, RowPairAccess, UnknownStrategy};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
 };
@@ -470,7 +470,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         &mut self,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        caller_rows: &'b RowPair<'b, 'a, T>,
+        caller_rows: &'b RowPairAccess<'b, 'a, '_, T>,
     ) -> EvalResult<'a, T> {
         let outer_query = OuterQuery::new(caller_rows, self.connecting_identities[&identity_id]);
 

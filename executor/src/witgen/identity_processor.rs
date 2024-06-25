@@ -17,7 +17,7 @@ use super::{
     machines::{FixedLookup, KnownMachine},
     processor::OuterQuery,
     rows::{RowAccess, RowPair, RowPairAccess},
-    EvalResult, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
+    Constraint, EvalResult, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A list of mutable references to machines.
@@ -128,7 +128,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     pub fn process_identity(
         &mut self,
         identity: &'a Identity<Expression<T>>,
-        rows: RowPairAccess<'_, 'a, '_, T>,
+        rows: &mut RowPairAccess<'_, 'a, '_, T>,
     ) -> EvalResult<'a, T> {
         let result = match identity.kind {
             IdentityKind::Polynomial => self.process_polynomial_identity(identity, rows),
@@ -150,27 +150,34 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     fn process_polynomial_identity(
         &self,
         identity: &'a Identity<Expression<T>>,
-        mut rows: RowPairAccess<'_, 'a, '_, T>,
+        rows: &mut RowPairAccess<'_, 'a, '_, T>,
     ) -> EvalResult<'a, T> {
         let result = if let Some(flat_id) = self.fixed_data.flat_identities.get(&identity.id) {
-            flat_id.evaluate(&self.fixed_data, &mut rows)
+            flat_id.evaluate(&self.fixed_data, rows)
         } else {
             rows.evaluate(identity.expression_for_poly_id())
         };
         match result {
             Err(incomplete_cause) => Ok(EvalValue::incomplete(incomplete_cause)),
             // TODO solve_with_range_constraint should apply solution directly to the rows.
-            Ok(evaluated) => evaluated.solve_with_range_constraints(rows.as_range_constraint_set()),
+            Ok(evaluated) => {
+                let (progress, r) = evaluated
+                    .solve_and_apply(|p, v| rows.apply_update(p, &Constraint::Assignment(v)))?;
+                if r.is_complete() {
+                    return Ok(r);
+                }
+                evaluated.solve_with_range_constraints(rows)
+            }
         }
     }
 
     fn process_plookup(
         &mut self,
         identity: &'a Identity<Expression<T>>,
-        mut rows: RowPairAccess<'_, 'a, '_, T>,
+        rows: &mut RowPairAccess<'_, 'a, '_, T>,
     ) -> EvalResult<'a, T> {
         if let Some(left_selector) = &identity.left.selector {
-            if let Some(status) = self.handle_left_selector(left_selector, &rows) {
+            if let Some(status) = self.handle_left_selector(left_selector, rows) {
                 return Ok(status);
             }
         }
@@ -196,7 +203,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         // query the fixed lookup "machine"
         if let Some(result) = self.mutable_state.fixed_lookup.process_plookup_timed(
             self.fixed_data,
-            &mut rows,
+            rows,
             identity.kind,
             &left,
             &identity.right,
@@ -206,7 +213,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
         self.mutable_state.machines.call(
             identity.id,
-            &rows.to_row_pair(),
+            rows,
             self.mutable_state.fixed_lookup,
             self.mutable_state.query_callback,
         )

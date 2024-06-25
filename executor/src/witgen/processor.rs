@@ -217,7 +217,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
 
         let global_row_index = self.row_offset + row_index as u64;
         let (current_row, next_row) = self.data.mutable_row_pair(row_index);
-        let row_pair = RowPairAccess::new(
+        let mut row_pair = RowPairAccess::new(
             current_row,
             next_row,
             global_row_index,
@@ -233,14 +233,15 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
 
         // Compute updates
         let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
-        let updates = identity_processor
-            .process_identity(identity, row_pair)
-            .map_err(|e| -> EvalError<T> {
+        let updates = match identity_processor.process_identity(identity, &mut row_pair) {
+            Ok(u) => u,
+            Err(e) => {
+                record_end_identity(identity.id);
                 let mut error = format!(
                     r"Error in identity: {identity}
-            Known values in current row (local: {row_index}, global {global_row_index}):
-            {}
-            ",
+                Known values in current row (local: {row_index}, global {global_row_index}):
+                {}
+                ",
                     self.data[row_index].render_values(false, Some(self.witness_cols))
                 );
                 if identity.contains_next_ref() {
@@ -252,13 +253,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
                     );
                 }
                 error += &format!("   => Error: {e}");
-                error.into()
-            });
-        let updates = match updates {
-            Ok(updates) => updates,
-            Err(e) => {
-                record_end_identity(identity.id);
-                return Err(e);
+                return Err(error.into());
             }
         };
 
@@ -272,8 +267,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             });
         }
 
+        let progress = row_pair.updates_happened();
+
         let res = Ok(IdentityResult {
-            progress: self.apply_updates(row_index, &updates, || identity.to_string())
+            progress: progress
+                || self.apply_updates(row_index, &updates, || identity.to_string())
                 || updates.side_effect,
             is_complete: updates.is_complete(),
         });
