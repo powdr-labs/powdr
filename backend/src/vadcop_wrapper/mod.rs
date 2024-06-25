@@ -48,6 +48,11 @@ pub(crate) struct VadCopWrapper<'a, F: FieldElement> {
     backend: Box<dyn Backend<'a, F> + 'a>,
 }
 
+// TODO: This just forwards to the backend for now. In the future this should:
+// - Compute a verification key for each machine separately
+// - Compute a proof for each machine separately
+// - Verify all the machine proofs
+// - Run additional checks on public values of the machine proofs
 impl<'a, F: FieldElement> Backend<'a, F> for VadCopWrapper<'a, F> {
     fn prove(
         &self,
@@ -58,24 +63,18 @@ impl<'a, F: FieldElement> Backend<'a, F> for VadCopWrapper<'a, F> {
         self.backend.prove(witness, prev_proof, witgen_callback)
     }
 
-    /// Verifies a proof.
     fn verify(&self, _proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
         self.backend.verify(_proof, instances)
     }
 
-    /// Exports the setup in a backend specific format. Can be used to create a
-    /// new backend object of the same kind.
     fn export_setup(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         self.backend.export_setup(output)
     }
 
-    /// Exports the verification key in a backend specific format. Can be used
-    /// to create a new backend object of the same kind.
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         self.backend.export_verification_key(output)
     }
 
-    /// Exports an Ethereum verifier.
     fn export_ethereum_verifier(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         self.backend.export_ethereum_verifier(output)
     }
