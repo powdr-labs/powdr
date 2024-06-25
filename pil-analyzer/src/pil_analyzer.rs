@@ -346,7 +346,6 @@ impl PILAnalyzer {
             }
             PilStatement::Include(_, _) => unreachable!(),
             PilStatement::TraitDeclaration(_, _) => {
-                //vec![(trait_decl.name.clone(), SymbolCategory::TraitDeclaration)]
                 vec![]
             }
             _ => {

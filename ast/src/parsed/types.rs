@@ -351,12 +351,6 @@ pub struct TypeScheme<E = u64> {
     pub ty: Type<E>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TraitScheme<E = u64> {
-    pub vars: TypeBounds,
-    pub types: Vec<Type<E>>,
-}
-
 impl<E: Clone> TypeScheme<E> {
     /// Returns a new type scheme with type variables renamed to `T1`, `T2`, ...
     /// (or just `T` if it is a single type variable).
@@ -409,6 +403,12 @@ impl From<Type> for TypeScheme {
             ty: value,
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TraitScheme<E = u64> {
+    pub vars: TypeBounds,
+    pub types: Vec<Type<E>>,
 }
 
 #[derive(

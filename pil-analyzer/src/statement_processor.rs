@@ -699,7 +699,7 @@ where
 
         analyzed::TraitImplementation {
             name: self.driver.resolve_decl(&trait_impl.name),
-            type_scheme: type_scheme.clone(),
+            type_scheme,
             functions,
         }
     }
