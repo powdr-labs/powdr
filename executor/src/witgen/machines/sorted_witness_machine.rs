@@ -248,7 +248,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
             .entry(key_value)
             .or_insert_with(|| vec![None; self.witness_positions.len()]);
         for (l, &r) in left.iter().zip(rhs.iter()).skip(1) {
-            let stored_value = &mut stored_values[self.witness_positions[&r.poly_id]];
+            let stored_value = &mut stored_values[self.witness_positions[&r.poly_id.raw]];
             match stored_value {
                 // There is a stored value
                 Some(v) => {

@@ -322,8 +322,8 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
 
     fn get_cell_mut<'b>(&'b mut self, poly: &AlgebraicReference) -> &'b mut Cell<'a, T> {
         match poly.next {
-            false => &mut self.current[&poly.poly_id],
-            true => &mut self.next[&poly.poly_id],
+            false => &mut self.current[&poly.poly_id.raw],
+            true => &mut self.next[&poly.poly_id.raw],
         }
     }
 
@@ -393,8 +393,8 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// [RowPair::from_single_row].
     fn get_cell(&self, poly: &AlgebraicReference) -> &Cell<T> {
         match (poly.next, self.next.as_ref()) {
-            (false, _) => &self.current[&poly.poly_id],
-            (true, Some(next)) => &next[&poly.poly_id],
+            (false, _) => &self.current[&poly.poly_id.raw],
+            (true, Some(next)) => &next[&poly.poly_id.raw],
             (true, None) => panic!("Tried to access next row, but it is not available."),
         }
     }

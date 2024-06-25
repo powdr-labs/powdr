@@ -334,16 +334,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
         // The global range constraints are not set yet.
         let global_range_constraints = GlobalConstraints {
-            witness_constraints: WitnessColumnMap::new(
-                None,
-                witness_cols.len(),
-                Some(analyzed.max_degree()),
-            ),
-            fixed_constraints: FixedColumnMap::new(
-                None,
-                fixed_cols.len(),
-                Some(analyzed.max_degree()),
-            ),
+            witness_constraints: WitnessColumnMap::new(None, witness_cols.len()),
+            fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
         };
 
         FixedData {
@@ -385,7 +377,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn witness_map_with<V: Clone>(&self, initial_value: V) -> WitnessColumnMap<V> {
-        WitnessColumnMap::new(initial_value, self.witness_cols.len(), None)
+        WitnessColumnMap::new(initial_value, self.witness_cols.len())
     }
 
     fn column_name(&self, poly_id: &PolyID) -> &str {

@@ -90,23 +90,23 @@ impl<T: FieldElement> IndexedColumns<T> {
             "Generating index for lookup in columns (in: {}, out: {})",
             sorted_input_fixed_columns
                 .iter()
-                .map(|c| fixed_data.column_name(c).to_string())
+                .map(|c| fixed_data.column_name(&c.raw).to_string())
                 .join(", "),
             sorted_output_fixed_columns
                 .iter()
-                .map(|c| fixed_data.column_name(c).to_string())
+                .map(|c| fixed_data.column_name(&c.raw).to_string())
                 .join(", ")
         );
 
         // get all values for the columns to be indexed
         let input_column_values = sorted_input_fixed_columns
             .iter()
-            .map(|id| fixed_data.fixed_cols[id].values)
+            .map(|id| fixed_data.fixed_cols[&id.raw].values)
             .collect::<Vec<_>>();
 
         let output_column_values = sorted_output_fixed_columns
             .iter()
-            .map(|id| fixed_data.fixed_cols[id].values)
+            .map(|id| fixed_data.fixed_cols[&id.raw].values)
             .collect::<Vec<_>>();
 
         let degree = input_column_values
@@ -295,7 +295,7 @@ impl<T: FieldElement> FixedLookup<T> {
 
         let output = output_columns
             .iter()
-            .map(|column| fixed_data.fixed_cols[column].values[row]);
+            .map(|column| fixed_data.fixed_cols[&column.raw].values[row]);
 
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {

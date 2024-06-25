@@ -304,7 +304,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .constraints
             .into_iter()
             .filter(|(poly, update)| match update {
-                Constraint::Assignment(_) => !self.is_relevant_witness[&poly.poly_id],
+                Constraint::Assignment(_) => !self.is_relevant_witness[&poly.poly_id.raw],
                 // Range constraints are currently not communicated between callee and caller.
                 Constraint::RangeConstraint(_) => false,
             })
@@ -334,13 +334,13 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         for (poly, _) in &input_updates.constraints {
             let poly_id = poly.poly_id;
-            if let Some(start_row) = self.previously_set_inputs.remove(&poly_id) {
+            if let Some(start_row) = self.previously_set_inputs.remove(&poly_id.raw) {
                 log::trace!(
                     "    Resetting previously set inputs for column: {}",
-                    self.fixed_data.column_name(&poly_id)
+                    self.fixed_data.column_name(&poly_id.raw)
                 );
                 for row_index in start_row..row_index {
-                    self.data[row_index][&poly_id].value = CellValue::Unknown;
+                    self.data[row_index][&poly_id.raw].value = CellValue::Unknown;
                 }
             }
         }
@@ -387,7 +387,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         let mut progress = false;
         for (poly, c) in &updates.constraints {
-            if self.witness_cols.contains(&poly.poly_id) {
+            if self.witness_cols.contains(&poly.poly_id.raw) {
                 // Build RowUpdater
                 // (a bit complicated, because we need two mutable
                 // references to elements of the same vector)
@@ -441,7 +441,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 self.set_value(local_index, expression, *v, || {
                     format!(
                         "Copy constraint: {} (Row {}) -> {} (Row {})",
-                        self.fixed_data.column_name(&poly.poly_id),
+                        self.fixed_data.column_name(&poly.poly_id.raw),
                         row,
                         self.fixed_data.column_name(&other_poly),
                         other_row

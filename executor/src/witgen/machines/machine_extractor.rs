@@ -111,7 +111,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             "\nExtracted a machine with the following witnesses:\n{} \n and identities:\n{} \n and connecting identities:\n{}",
             machine_witnesses
                 .iter()
-                .map(|s| fixed.column_name(s))
+                .map(|s| fixed.column_name(&s.raw))
                 .sorted()
                 .collect::<Vec<_>>()
                 .join(", "),
@@ -128,7 +128,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         );
 
         let first_witness = machine_witnesses.iter().next().unwrap();
-        let first_witness_name = fixed.column_name(first_witness);
+        let first_witness_name = fixed.column_name(&first_witness.raw);
         let namespace = first_witness_name
             .rfind('.')
             .map(|idx| &first_witness_name[..idx]);

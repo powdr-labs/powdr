@@ -1156,14 +1156,6 @@ pub struct PolyID {
     pub degree: Option<DegreeType>,
 }
 
-impl std::ops::Deref for PolyID {
-    type Target = RawPolyID;
-
-    fn deref(&self) -> &Self::Target {
-        &self.raw
-    }
-}
-
 impl PolyID {
     pub fn with_id(mut self, id: u64) -> Self {
         self.raw = self.raw.with_id(id);

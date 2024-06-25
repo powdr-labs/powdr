@@ -4,7 +4,6 @@ use std::{
 };
 
 use powdr_ast::analyzed::{PolynomialType, RawPolyID as PolyID};
-use powdr_number::DegreeType;
 
 // Marker types for each PolynomialType
 #[derive(Clone, Copy)]
@@ -39,7 +38,7 @@ pub struct ColumnMap<V, T: PolynomialTypeTrait> {
 
 impl<V: Clone, T: PolynomialTypeTrait> ColumnMap<V, T> {
     /// Create a new ColumnMap with the given initial value and size.
-    pub fn new(initial_value: V, size: usize, _degree: Option<DegreeType>) -> Self {
+    pub fn new(initial_value: V, size: usize) -> Self {
         ColumnMap {
             values: vec![initial_value; size],
             _ptype: PhantomData,

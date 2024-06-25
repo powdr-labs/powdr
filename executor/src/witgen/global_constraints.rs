@@ -93,10 +93,10 @@ pub struct GlobalConstraints<T: FieldElement> {
 impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConstraints<T> {
     fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
         assert!(!id.next);
-        let poly_id = id.poly_id.raw;
+        let poly_id = id.poly_id;
         match poly_id.ptype() {
-            PolynomialType::Constant => self.fixed_constraints[&poly_id].clone(),
-            PolynomialType::Committed => self.witness_constraints[&poly_id].clone(),
+            PolynomialType::Constant => self.fixed_constraints[&poly_id.raw].clone(),
+            PolynomialType::Committed => self.witness_constraints[&poly_id.raw].clone(),
             PolynomialType::Intermediate => None,
         }
     }
@@ -243,7 +243,7 @@ fn propagate_constraints<T: FieldElement>(
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
                 {
-                    if let Some(constraint) = known_constraints.get(&right.poly_id).cloned() {
+                    if let Some(constraint) = known_constraints.get(&right.poly_id.raw).cloned() {
                         known_constraints
                             .entry(left.poly_id.raw)
                             .and_modify(|existing| *existing = existing.conjunction(&constraint))
@@ -256,7 +256,7 @@ fn propagate_constraints<T: FieldElement>(
                 // provides all values in the span.
                 if let Some(name) = try_to_simple_poly(&identity.right.expressions[0]) {
                     if try_to_simple_poly(&identity.left.expressions[0]).is_some()
-                        && full_span.contains(&name.poly_id)
+                        && full_span.contains(&name.poly_id.raw)
                     {
                         remove = true;
                     }
@@ -360,7 +360,7 @@ mod test {
     use std::collections::BTreeMap;
 
     use powdr_ast::analyzed::PolynomialType;
-    use powdr_number::{GoldilocksField};
+    use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
