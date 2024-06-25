@@ -40,7 +40,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
-        let publics = publics.unwrwap_or(
+        let publics = publics.unwrap_or(
             publics_from_witness(self.analyzed, witness)
         );
 
@@ -49,6 +49,9 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
         let config = get_config(self.analyzed.degree());
 
         let mut challenger = get_challenger();
+
+        println!("publics {:?}", publics);
+        println!("pub_inputs {:?}", self.analyzed.public_declarations);
 
         let proof = prove(&config, &circuit, &mut challenger, trace, &publics);
 
@@ -135,6 +138,21 @@ mod tests {
     fn publics() {
         let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
         run_test_goldilocks(content);
+    }
+
+    #[test]
+    fn public_inputs() {
+        let content = r#"
+        namespace Add(8);
+            pol witness x;
+            x * (x-1) = 0;
+
+            public out = x(7);
+        "#;
+        let publics = vec![
+            cast_to_goldilocks(GoldilocksField::from(1)),
+            ];
+        run_test_goldilocks_publics(content, publics)
     }
 
     #[test]
