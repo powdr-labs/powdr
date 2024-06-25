@@ -20,8 +20,6 @@ pub(crate) struct PowdrCircuit<'a, T> {
     analyzed: &'a Analyzed<T>,
     /// The value of the witness columns, if set
     witness: Option<&'a [(String, Vec<T>)]>,
-    /// Column name and index of public cells
-    publics: Vec<(String, usize)>,
     /// Callback to augment the witness in the later stages
     _witgen_callback: Option<WitgenCallback<T>>,
 }
@@ -30,7 +28,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub fn generate_trace_rows(&self) -> RowMajorMatrix<Goldilocks> {
         // an iterator over all columns, committed then fixed
         let witness = self.witness().iter();
-        let publics = self.publics.iter();
+        let publics = self.get_publics().into_iter();
         let len = self.analyzed.degree.unwrap();
 
         // for each row, get the value of each column
@@ -43,11 +41,9 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 .chain(
                     publics
                     .clone()
-                    .map(move |(_, idx)| match i as usize == *idx {
-                        true => cast_to_goldilocks(T::one()),
-                        false => cast_to_goldilocks(T::zero()),
-                    })
-                )}).collect();
+                    .map(move |(_, idx)| T::from(i as usize == idx))
+                    .map(cast_to_goldilocks)
+            )}).collect();
         RowMajorMatrix::new(values, self.width())
     }
 }
@@ -57,21 +53,7 @@ pub fn cast_to_goldilocks<T: FieldElement>(v: T) -> Val {
     Val::from_canonical_u64(v.to_integer().try_into_u64().unwrap())
 }
 
-fn get_publics<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, usize)> {
-    let mut publics = analyzed
-        .public_declarations
-        .values()
-        .map(|public_declaration| {
-            let witness_name = public_declaration.referenced_poly_name();
-            let witness_offset = public_declaration.index as usize;
-            (witness_name, witness_offset)
-        })
-        .collect::<Vec<_>>();
 
-    // Sort, so that the order is deterministic
-    publics.sort();
-    publics
-}
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub(crate) fn new(analyzed: &'a Analyzed<T>) -> Self {
@@ -86,13 +68,28 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         Self {
             analyzed,
             witness: None,
-            publics: get_publics(analyzed),
             _witgen_callback: None,
         }
     }
 
     fn witness(&self) -> &'a [(String, Vec<T>)] {
         self.witness.as_ref().unwrap()
+    }
+
+    pub(crate) fn get_publics(&self) -> Vec<(String, usize)> {
+        let mut publics = self.analyzed
+            .public_declarations
+            .values()
+            .map(|public_declaration| {
+                let witness_name = public_declaration.referenced_poly_name();
+                let witness_offset = public_declaration.index as usize;
+                (witness_name, witness_offset)
+            })
+            .collect::<Vec<_>>();
+    
+        // Sort, so that the order is deterministic
+        publics.sort();
+        publics
     }
 
     pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
@@ -110,8 +107,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 
     pub(crate) fn publics_idxs(&self) -> Vec<usize> {
-        // self.publics -> idx of the witness col
-        // TODO: return actual pubval from this
+        // TODO: return actual pubval from this?
         let witness = self
             .witness
             .as_ref()
@@ -121,7 +117,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             .map(|(idx, (name, _))| (name, idx))
             .collect::<BTreeMap<_, _>>();
 
-        self.publics
+        self.get_publics()
             .iter()
             .map(|(col_name, _)| *witness.get(col_name).unwrap())
             .collect()
@@ -212,16 +208,13 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for P
         let pi = builder.public_values();
 
         // public constraints
-        let pi_moved = pi.into_iter()
-            .map(|itm| *itm)
-            .collect::<Vec<<AB as AirBuilderWithPublicValues>::PublicVar>>();
+        let pi_moved = pi.to_vec();
         let local = matrix.row_slice(0);
 
         // constraining Pi * (Ci - pub[i]) = 0
-        let mut pub_idx = 0;
-        for witness_col_idx in self.publics_idxs() {
-            builder.assert_zero(local[self.analyzed.commitment_count() + pub_idx] * (pi_moved[pub_idx].into() - local[witness_col_idx]));
-            pub_idx +=1
+        for (pub_idx, witness_col_idx) in self.publics_idxs().into_iter().enumerate() {
+            let selector = local[self.analyzed.commitment_count() + pub_idx];
+            builder.assert_zero(selector * (pi_moved[pub_idx].into() - local[witness_col_idx]));
         }
 
         // circuit constraints
