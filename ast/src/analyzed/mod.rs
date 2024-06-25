@@ -66,9 +66,7 @@ impl<T> Analyzed<T> {
     }
     /// @returns the number of public inputs
     pub fn publics_count(&self) -> usize {
-        self.public_declarations
-            .iter()
-            .map(move |(_, _)| 1).sum() //maybe we can just call .len() here?
+        self.public_declarations.len()
     }
 
     pub fn constant_polys_in_source_order(
