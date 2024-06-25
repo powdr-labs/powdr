@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    // #[should_panic = "assertion `left == right` failed: constraints had nonzero value on row 0\n  left: 1\n right: 0"]
+    #[should_panic = "called `Result::unwrap()` on an `Err` value: OodEvaluationMismatch"]
     fn public_inputs() {
         let content = r#"
         namespace Add(8);
@@ -148,10 +148,14 @@ mod tests {
             col witness z;
             x + y = z;
 
-            public out = z(7);
+            public outx = x(7);
+            public outy = y(7);
+            public outz = z(7);
         "#;
         let publics = vec![
             cast_to_goldilocks(GoldilocksField::from(0)),
+            cast_to_goldilocks(GoldilocksField::from(1)),
+            cast_to_goldilocks(GoldilocksField::from(1)),
             ];
         run_test_goldilocks_publics(content, publics)
     }
