@@ -2,7 +2,6 @@
 
 mod params;
 
-use p3_field::Field;
 use p3_goldilocks::Goldilocks;
 use powdr_ast::analyzed::Analyzed;
 
@@ -32,7 +31,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
         &self,
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
-        publics: Option<Vec<Goldilocks>>,
+        malicious_publics: Option<Vec<Goldilocks>>,
     ) -> Result<Vec<u8>, String> {
         assert_eq!(T::known_field(), Some(KnownField::GoldilocksField));
 
@@ -40,7 +39,9 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
-        let publics = publics.unwrap_or(
+        let prover_publics = publics_from_witness(self.analyzed, witness);
+
+        let verifier_publics = malicious_publics.unwrap_or(
             publics_from_witness(self.analyzed, witness)
         );
 
@@ -50,11 +51,11 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
         let mut challenger = get_challenger();
 
-        let proof = prove(&config, &circuit, &mut challenger, trace, &publics);
+        let proof = prove(&config, &circuit, &mut challenger, trace, &prover_publics);
 
         let mut challenger = get_challenger();
 
-        verify(&config, &circuit, &mut challenger, &proof, &publics).unwrap();
+        verify(&config, &circuit, &mut challenger, &proof, &verifier_publics).unwrap();
         Ok(serde_json::to_vec(&proof).unwrap())
     }
 
@@ -138,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    // #[should_panic = "assertion `left == right` failed: constraints had nonzero value on row 0\n  left: 1\n right: 0"]
     fn public_inputs() {
         let content = r#"
         namespace Add(8);
@@ -147,14 +148,10 @@ mod tests {
             col witness z;
             x + y = z;
 
-            public x_in = x(0);
-            public y_in = y(0);
             public out = z(7);
         "#;
         let publics = vec![
             cast_to_goldilocks(GoldilocksField::from(0)),
-            cast_to_goldilocks(GoldilocksField::from(1)),
-            cast_to_goldilocks(GoldilocksField::from(1)),
             ];
         run_test_goldilocks_publics(content, publics)
     }
