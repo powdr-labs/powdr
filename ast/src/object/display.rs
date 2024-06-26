@@ -64,7 +64,14 @@ impl Display for Link {
 
 impl Display for LinkFrom {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{} {}", self.flag, self.params)
+        // combine instr_flag and link_flag
+        let flag = if let Some(f) = self.instr_flag.as_ref() {
+            f.clone() * self.link_flag.clone()
+        } else {
+            self.link_flag.clone()
+        };
+
+        write!(f, "{flag} {}", self.params)
     }
 }
 

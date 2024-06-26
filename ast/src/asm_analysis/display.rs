@@ -19,7 +19,7 @@ use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
     DebugDirective, FunctionBody, FunctionStatement, FunctionStatements, Incompatible,
     IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, Item, LabelStatement,
-    LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Return, Rom,
+    LinkDefinition, Machine, RegisterDeclarationStatement, RegisterTy, Return, Rom,
     SubmachineDeclaration,
 };
 
@@ -105,15 +105,22 @@ impl Display for Machine {
     }
 }
 
-impl Display for LinkDefinitionStatement {
+impl Display for LinkDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        // combine instr_flag and link_flag
+        let flag = if let Some(f) = self.instr_flag.as_ref() {
+            f.clone() * self.link_flag.clone()
+        } else {
+            self.link_flag.clone()
+        };
+
         write!(
             f,
             "link {}{} {};",
-            if self.flag == 1.into() {
+            if flag == 1.into() {
                 "".to_string()
             } else {
-                format!("if {} ", self.flag)
+                format!("if {flag} ")
             },
             if self.is_permutation { "~>" } else { "=>" },
             self.to

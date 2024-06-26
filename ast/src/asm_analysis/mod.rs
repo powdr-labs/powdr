@@ -64,10 +64,12 @@ pub struct InstructionDefinitionStatement {
 }
 
 #[derive(Clone, Debug)]
-pub struct LinkDefinitionStatement {
+pub struct LinkDefinition {
     pub source: SourceRef,
-    /// the flag which activates this link. Should be boolean.
-    pub flag: Expression,
+    /// the instruction flag, if this is an instruction link. Should be boolean.
+    pub instr_flag: Option<Expression>,
+    /// the link flag. Should be boolean.
+    pub link_flag: Expression,
     /// the callable to invoke when the flag is on. TODO: check this during type checking
     pub to: CallableRef,
     /// true if this is a permutation link
@@ -692,7 +694,7 @@ pub struct Machine {
     /// The set of instructions which can be invoked in functions
     pub instructions: Vec<InstructionDefinitionStatement>,
     /// The set of low level links to other machines
-    pub links: Vec<LinkDefinitionStatement>,
+    pub links: Vec<LinkDefinition>,
     /// The set of functions and operations in the same namespace
     pub callable: CallableSymbolDefinitions,
     /// The set of submachines
