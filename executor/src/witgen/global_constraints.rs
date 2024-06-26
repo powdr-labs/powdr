@@ -280,7 +280,7 @@ fn propagate_constraints<T: FieldElement>(
 ///
 /// An `Option` containing a vector of `EvalValue<&AlgebraicReference, T>`
 /// if the roots can be successfully extracted, otherwise `None`.
-pub fn find_algebraic_roots<T: FieldElement>(
+pub fn find_roots<T: FieldElement>(
     expr: &Expression<T>,
 ) -> Option<Vec<crate::witgen::EvalValue<&AlgebraicReference, T>>> {
     match expr {
@@ -289,8 +289,8 @@ pub fn find_algebraic_roots<T: FieldElement>(
             op: AlgebraicBinaryOperator::Mul,
             right,
         }) => {
-            let right_root = find_algebraic_roots(right)?;
-            let mut left_roots = find_algebraic_roots(left)?;
+            let right_root = find_roots(right)?;
+            let mut left_roots = find_roots(left)?;
 
             if !left_roots.is_empty() && !right_root.is_empty() {
                 if let ([(id1, Constraint::Assignment(_))], [(id2, Constraint::Assignment(_))]) = (
@@ -345,7 +345,7 @@ fn is_binary_constraint<T: FieldElement>(
         right: _,
     }) = expr
     {
-        if let Some(roots) = find_algebraic_roots(expr) {
+        if let Some(roots) = find_roots(expr) {
             // For setting mask range constaints at least two roots is needed.
             if roots.len() > 1 {
                 let poly_id = roots[0].constraints[0].0.poly_id;
