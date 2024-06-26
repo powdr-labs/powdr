@@ -30,7 +30,7 @@ use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
     handle_simple_queries_callback, inputs_to_query_callback, serde_data_to_query_callback,
-    util::{try_read_poly_set, FixedPolySet, WitnessPolySet},
+    util::{read_poly_set, FixedPolySet, WitnessPolySet},
 };
 
 type Columns<T> = Vec<(String, Vec<T>)>;
@@ -382,10 +382,8 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     /// Reads previously generated fixed columns from the provided directory.
-    pub fn read_constants(mut self, directory: &Path) -> Self {
-        let pil = self.compute_optimized_pil().unwrap();
-
-        let fixed = try_read_poly_set::<FixedPolySet, T>(&pil, directory).unwrap_or_default();
+    pub fn read_constants(self, directory: &Path) -> Self {
+        let fixed = read_poly_set::<FixedPolySet, T>(directory);
 
         Pipeline {
             artifact: Artifacts {
@@ -397,10 +395,8 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     /// Reads a previously generated witness from the provided directory.
-    pub fn read_witness(mut self, directory: &Path) -> Self {
-        let pil = self.compute_optimized_pil().unwrap();
-
-        let witness = try_read_poly_set::<WitnessPolySet, T>(&pil, directory).unwrap_or_default();
+    pub fn read_witness(self, directory: &Path) -> Self {
+        let witness = read_poly_set::<WitnessPolySet, T>(directory);
 
         Pipeline {
             artifact: Artifacts {
