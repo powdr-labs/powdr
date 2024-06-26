@@ -18,6 +18,9 @@ pub enum BackendType {
     #[strum(serialize = "halo2")]
     Halo2,
     #[cfg(feature = "halo2")]
+    #[strum(serialize = "halo2-composite")]
+    Halo2Composite,
+    #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2-mock")]
     Halo2Mock,
     #[cfg(feature = "halo2")]
@@ -26,12 +29,17 @@ pub enum BackendType {
     #[cfg(feature = "estark-polygon")]
     #[strum(serialize = "estark-polygon")]
     EStarkPolygon,
+    #[cfg(feature = "estark-polygon")]
+    #[strum(serialize = "estark-polygon-composite")]
+    EStarkPolygonComposite,
     #[strum(serialize = "estark-starky")]
     EStarkStarky,
     #[strum(serialize = "estark-composite")]
-    EStarkComposite,
+    EStarkStarkyComposite,
     #[strum(serialize = "estark-dump")]
     EStarkDump,
+    #[strum(serialize = "estark-dump-composite")]
+    EStarkDumpComposite,
 }
 
 pub type BackendOptions = String;
@@ -45,6 +53,10 @@ impl BackendType {
             #[cfg(feature = "halo2")]
             BackendType::Halo2 => Box::new(halo2::Halo2ProverFactory),
             #[cfg(feature = "halo2")]
+            BackendType::Halo2Composite => Box::new(composite::CompositeBackendFactory::new(
+                halo2::Halo2ProverFactory,
+            )),
+            #[cfg(feature = "halo2")]
             BackendType::Halo2Mock => Box::new(halo2::Halo2MockFactory),
             #[cfg(feature = "halo2")]
             BackendType::Halo2MockComposite => Box::new(composite::CompositeBackendFactory::new(
@@ -52,11 +64,18 @@ impl BackendType {
             )),
             #[cfg(feature = "estark-polygon")]
             BackendType::EStarkPolygon => Box::new(estark::polygon_wrapper::Factory),
+            #[cfg(feature = "estark-polygon")]
+            BackendType::EStarkPolygonComposite => Box::new(
+                composite::CompositeBackendFactory::new(estark::polygon_wrapper::Factory),
+            ),
             BackendType::EStarkStarky => Box::new(estark::starky_wrapper::Factory),
-            BackendType::EStarkComposite => Box::new(composite::CompositeBackendFactory::new(
-                estark::starky_wrapper::Factory,
-            )),
+            BackendType::EStarkStarkyComposite => Box::new(
+                composite::CompositeBackendFactory::new(estark::starky_wrapper::Factory),
+            ),
             BackendType::EStarkDump => Box::new(estark::DumpFactory),
+            BackendType::EStarkDumpComposite => {
+                Box::new(composite::CompositeBackendFactory::new(estark::DumpFactory))
+            }
         }
     }
 }

@@ -41,7 +41,9 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                 let output_dir = output_dir
                     .clone()
                     .map(|output_dir| output_dir.join(machine_name));
-                println!("Output dir: {:?}", output_dir);
+                if let Some(ref output_dir) = output_dir {
+                    std::fs::create_dir_all(output_dir)?;
+                }
                 let backend = self.factory.create(
                     pil,
                     fixed,
