@@ -70,6 +70,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 
     pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
+        assert_eq!(witness.len(), self.analyzed.commitment_count());
         Self {
             witness: Some(witness),
             ..self
@@ -158,7 +159,7 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
-        panic!()
+        unimplemented!()
     }
 }
 
