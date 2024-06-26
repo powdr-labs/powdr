@@ -501,6 +501,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         // This could be computed from the identity, but should be pre-computed for performance reasons.
         has_next_reference: bool,
     ) -> bool {
+        record_start_identity(identity.id);
         let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
         let row_pair = match has_next_reference {
             // Check whether identities with a reference to the next row are satisfied
@@ -526,16 +527,15 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             ),
         };
 
-        if identity_processor
+        let is_err = identity_processor
             .process_identity(identity, &row_pair)
-            .is_err()
-        {
+            .is_err();
+        if is_err {
             log::debug!("Previous {:?}", &self.data[row_index - 1]);
             log::debug!("Proposed {:?}", proposed_row);
             log::debug!("Failed on identity: {}", identity);
-
-            return false;
         }
-        true
+        record_end_identity(identity.id);
+        !is_err
     }
 }
