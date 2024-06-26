@@ -28,6 +28,8 @@ pub enum BackendType {
     EStarkPolygon,
     #[strum(serialize = "estark-starky")]
     EStarkStarky,
+    #[strum(serialize = "estark-composite")]
+    EStarkComposite,
     #[strum(serialize = "estark-dump")]
     EStarkDump,
 }
@@ -51,6 +53,9 @@ impl BackendType {
             #[cfg(feature = "estark-polygon")]
             BackendType::EStarkPolygon => Box::new(estark::polygon_wrapper::Factory),
             BackendType::EStarkStarky => Box::new(estark::starky_wrapper::Factory),
+            BackendType::EStarkComposite => Box::new(composite::CompositeBackendFactory::new(
+                estark::starky_wrapper::Factory,
+            )),
             BackendType::EStarkDump => Box::new(estark::DumpFactory),
         }
     }
