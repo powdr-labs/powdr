@@ -8,7 +8,7 @@ namespace Add(%N);
     A + B = C;
 
 // a machine which calls `Add` every other row on made up inputs
-namespace Main(2 * %N);
+namespace Main(%N);
     col fixed a(i) { (i + 13) & 0xffffffff };
     col fixed b(i) { ((i + 19) * 17) & 0xffffffff };
     col witness c;
