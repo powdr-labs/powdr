@@ -111,7 +111,6 @@ mod tests {
         let prover = Plonky3Prover::new(&pil);
         let proof = prover.prove(&witness, witness_callback).unwrap();
 
-
         prover.verify(&proof, &[malicious_publics])
     }
 
@@ -135,9 +134,7 @@ mod tests {
 
             public outz = z(7);
         "#;
-        let publics = vec![
-            GoldilocksField::from(1),
-        ];
+        let publics = vec![GoldilocksField::from(1)];
 
         assert!(run_test_goldilocks_publics(content, publics).is_ok())
     }
@@ -155,9 +152,7 @@ mod tests {
 
             public outz = z(7);
         "#;
-        let publics = vec![
-            GoldilocksField::from(0),
-        ];
+        let publics = vec![GoldilocksField::from(0)];
 
         assert_eq!(
             run_test_goldilocks_publics(content, publics).unwrap_err(),
