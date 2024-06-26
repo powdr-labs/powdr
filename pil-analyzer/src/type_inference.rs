@@ -30,7 +30,7 @@ use crate::{
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
-    implementations: &HashMap<String, TraitImplementation<Expression>>,
+    implementations: &HashMap<String, Vec<TraitImplementation<Expression>>>,
     statement_type: &ExpectedType,
 ) -> Result<Vec<(String, Type)>, Vec<Error>> {
     TypeChecker::new(statement_type).infer_types(definitions, expressions, implementations)
@@ -93,7 +93,7 @@ impl<'a> TypeChecker<'a> {
         mut self,
         mut definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
         expressions: &mut [(&mut Expression, ExpectedType)],
-        implementations: &HashMap<String, TraitImplementation<Expression>>,
+        implementations: &HashMap<String, Vec<TraitImplementation<Expression>>>,
     ) -> Result<Vec<(String, Type)>, Vec<Error>> {
         let type_var_mapping = self
             .infer_types_inner(&mut definitions, expressions, implementations)
@@ -118,7 +118,7 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
         expressions: &mut [(&mut Expression, ExpectedType)],
-        implementations: &HashMap<String, TraitImplementation<Expression>>,
+        implementations: &HashMap<String, Vec<TraitImplementation<Expression>>>,
     ) -> Result<HashMap<String, HashMap<String, Type>>, Error> {
         // TODO in order to fix type inference on recursive functions, we need to:
         // - collect all groups of functions that call each other recursively
@@ -450,50 +450,52 @@ impl<'a> TypeChecker<'a> {
     /// Type-checks the trait implementations.
     fn check_implementations(
         &mut self,
-        implementations: &HashMap<String, TraitImplementation<Expression>>,
+        implementations: &HashMap<String, Vec<TraitImplementation<Expression>>>,
     ) -> Result<(), Error> {
-        for (trait_name, impls) in implementations {
-            let TraitImplementation {
-                type_scheme,
-                functions,
-                ..
-            } = impls;
+        for (trait_name, impliss) in implementations {
+            for impls in impliss {
+                let TraitImplementation {
+                    type_scheme,
+                    functions,
+                    ..
+                } = impls;
 
-            for f in functions.clone().iter_mut() {
-                let impl_types = type_scheme
-                    .as_ref()
-                    .map_or_else(Vec::new, |s| s.types.clone());
-                let trait_name = trait_name.replace('.', "::");
-                let f_name = format!("{trait_name}::{fname}", fname = f.name);
-                // TODO GZ: This is a temporal hack, we should not clone the whole declared_types
-                let declared_types = self.declared_types.clone();
-                let trait_func = declared_types.get(&f_name);
-                if trait_func.is_none() {
-                    panic!("Trait {trait_name} is not defined.");
-                }
+                for f in functions.clone().iter_mut() {
+                    let impl_types = type_scheme
+                        .as_ref()
+                        .map_or_else(Vec::new, |s| s.types.clone());
+                    let trait_name = trait_name.replace('.', "::");
+                    let f_name = format!("{trait_name}::{fname}", fname = f.name);
+                    // TODO GZ: This is a temporal hack, we should not clone the whole declared_types
+                    let declared_types = self.declared_types.clone();
+                    let trait_func = declared_types.get(&f_name);
+                    if trait_func.is_none() {
+                        panic!("Trait {trait_name} is not defined.");
+                    }
 
-                let (source_ref, type_scheme) = trait_func.unwrap();
-                let decl_types = type_scheme.vars.vars().cloned();
+                    let (source_ref, type_scheme) = trait_func.unwrap();
+                    let decl_types = type_scheme.vars.vars().cloned();
 
-                let substitutions = decl_types
-                    .zip(impl_types.iter())
-                    .map(|(decl, impl_)| (decl.clone(), impl_.clone()))
-                    .collect::<HashMap<_, _>>();
+                    let substitutions = decl_types
+                        .zip(impl_types.iter())
+                        .map(|(decl, impl_)| (decl.clone(), impl_.clone()))
+                        .collect::<HashMap<_, _>>();
 
-                let declared_type = type_scheme
-                    .ty
-                    .clone()
-                    .substitute_type_vars_to(&substitutions);
+                    let declared_type = type_scheme
+                        .ty
+                        .clone()
+                        .substitute_type_vars_to(&substitutions);
 
-                let expr_type = self.infer_type_of_expression(&mut f.body)?;
+                    let expr_type = self.infer_type_of_expression(&mut f.body)?;
 
-                self.unifier
+                    self.unifier
                     .unify_types(declared_type.clone(), expr_type.clone())
                     .map_err(|err| {
                         source_ref.with_error(format!(
                             "Expected type {expr_type} for trait function {f_name}, but got {declared_type}.\n{err}",
                         ))
                     })?;
+                }
             }
         }
         Ok(())

@@ -47,7 +47,7 @@ pub struct Analyzed<T> {
     /// Symbols from the core that were added automatically but will not be printed.
     pub auto_added_symbols: HashSet<String>,
     /// Traits implemented by this program.
-    pub implementations: HashMap<String, TraitImplementation<Expression>>,
+    pub implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 impl<T> Analyzed<T> {
@@ -771,7 +771,7 @@ impl<T> SelectedExpressions<AlgebraicExpression<T>> {
 pub type Expression = parsed::Expression<Reference>;
 pub type TypedExpression = crate::parsed::TypedExpression<Reference, u64>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub enum Reference {
     LocalVar(u64, String),
     Poly(PolynomialReference),
@@ -1159,7 +1159,7 @@ impl<T> From<T> for AlgebraicExpression<T> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct PolynomialReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on polynomial ID.

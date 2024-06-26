@@ -36,7 +36,7 @@ pub fn condense<T: FieldElement>(
     identities: &[Identity<Expression>],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
-    implementations: HashMap<String, TraitImplementation<Expression>>,
+    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 ) -> Analyzed<T> {
     let mut condenser = Condenser::new(&definitions, &implementations, degree);
 
@@ -172,7 +172,7 @@ pub struct Condenser<'a, T> {
     /// The names of all new witness columns ever generated, to avoid duplicates.
     all_new_witness_names: HashSet<String>,
     new_constraints: Vec<IdentityWithoutID<AlgebraicExpression<T>>>,
-    implementations: &'a HashMap<String, TraitImplementation<Expression>>,
+    implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -213,7 +213,7 @@ impl<Expr> IdentityWithoutID<Expr> {
 impl<'a, T: FieldElement> Condenser<'a, T> {
     pub fn new(
         symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        implementations: &'a HashMap<String, TraitImplementation<Expression>>,
+        implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
         degree: Option<DegreeType>,
     ) -> Self {
         let next_witness_id = symbols

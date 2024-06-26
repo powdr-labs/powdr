@@ -72,7 +72,7 @@ struct PILAnalyzer {
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
     /// Trait implementations.
-    implementations: HashMap<String, TraitImplementation<Expression>>,
+    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -348,6 +348,31 @@ impl PILAnalyzer {
             PilStatement::TraitDeclaration(_, _) => {
                 vec![]
             }
+            PilStatement::TraitImplementation(_, _) => {
+                // This can probably be done directly with the trait implementation.
+                let names = statement
+                    .symbol_definition_names_and_contained()
+                    .map(|(name, sub_name, symbol_category)| {
+                        (
+                            match sub_name {
+                                None => self.driver().resolve_decl(name),
+                                Some(sub_name) => self
+                                    .driver()
+                                    .resolve_namespaced_decl(&[name, sub_name])
+                                    .to_dotted_string(),
+                            },
+                            symbol_category,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+
+                for (name, symbol_kind) in &names {
+                    // We don't need to check for duplicates here.
+                    self.known_symbols.insert(name.clone(), *symbol_kind);
+                }
+
+                names
+            }
             _ => {
                 let names = statement
                     .symbol_definition_names_and_contained()
@@ -403,7 +428,17 @@ impl PILAnalyzer {
                         }
                         PILItem::TraitImplementation(symbol, trait_impl) => {
                             let name = symbol.absolute_name.clone();
-                            self.implementations.insert(name.clone(), trait_impl);
+                            match self.implementations.entry(name.clone()) {
+                                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                                    let implementations = entry.get_mut();
+                                    if !implementations.contains(&trait_impl) {
+                                        implementations.push(trait_impl);
+                                    }
+                                }
+                                std::collections::hash_map::Entry::Vacant(entry) => {
+                                    entry.insert(vec![trait_impl]);
+                                }
+                            }
                             self.source_order
                                 .push(StatementIdentifier::TraitImplementation(name));
                         }

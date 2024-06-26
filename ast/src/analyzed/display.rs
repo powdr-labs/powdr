@@ -149,9 +149,12 @@ impl<T: Display> Display for Analyzed<T> {
                     writeln_indented(f, &self.identities[*i])?;
                 }
                 StatementIdentifier::TraitImplementation(trait_impl) => {
-                    let trait_impl = &self.implementations[trait_impl];
-                    let (_, is_local) = update_namespace(&trait_impl.name, f)?;
-                    writeln_indented_by(f, format!("{trait_impl}",), is_local.into())?;
+                    let impls = &self.implementations[trait_impl];
+                    for trait_impl in impls {
+                        //TODO GZ
+                        let (_, is_local) = update_namespace(&trait_impl.name, f)?;
+                        writeln_indented_by(f, format!("{trait_impl}",), is_local.into())?;
+                    }
                 }
             }
         }
