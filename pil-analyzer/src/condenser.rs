@@ -322,7 +322,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
                 })
                 .collect(),
             Value::Expression(expr) => vec![expr.clone()],
-            _ => panic!("Expected array of algebraic expressions, but got {result}"),
+            _ => panic!("Expected array/tuple of algebraic expressions or an algebraic expression, but got {result}"),
         }
     }
 }
