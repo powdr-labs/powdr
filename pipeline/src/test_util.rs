@@ -177,14 +177,6 @@ pub fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 #[cfg(feature = "plonky3")]
 pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
-    gen_plonky3_proof(file_name, inputs)
-}
-
-#[cfg(not(feature = "plonky3"))]
-pub fn test_plonky3(_: &str, _: Vec<GoldilocksField>) {}
-
-#[cfg(feature = "plonky3")]
-pub fn gen_plonky3_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
     let mut pipeline = Pipeline::default()
         .with_tmp_output(&tmp_dir)
@@ -205,6 +197,9 @@ pub fn gen_plonky3_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
 
     pipeline.verify(&proof, &[publics]).unwrap();
 }
+
+#[cfg(not(feature = "plonky3"))]
+pub fn test_plonky3(_: &str, _: Vec<GoldilocksField>) {}
 
 #[cfg(not(feature = "plonky3"))]
 pub fn gen_plonky3_proof(_: &str, _: Vec<GoldilocksField>) {}

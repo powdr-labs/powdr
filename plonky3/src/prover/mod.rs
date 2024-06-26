@@ -200,7 +200,7 @@ mod tests {
             let beta: expr = std::prover::challenge(0, 42); 
             col witness stage(0) x;
             col witness stage(1) y;
-            x + beta = y + beta;
+            x = y + beta;
         "#;
         run_test_goldilocks(content);
     }

@@ -61,6 +61,16 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         if analyzed.constant_count() > 0 {
             unimplemented!("Fixed columns are not supported in Plonky3");
         }
+        if !analyzed.public_declarations.is_empty() {
+            unimplemented!("Public declarations are not supported in Plonky3");
+        }
+        if analyzed
+            .definitions
+            .iter()
+            .any(|(_, (s, _))| matches!(s.stage, Some(stage) if stage > 0))
+        {
+            unimplemented!("Multi-stage proving is not supported in Plonky3")
+        }
 
         Self {
             analyzed,
@@ -73,55 +83,13 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         self.witness.as_ref().unwrap()
     }
 
-    pub(crate) fn get_publics(&self) -> Vec<(String, usize, usize)> {
-        let mut publics = self
-            .analyzed
-            .public_declarations
-            .values()
-            .map(|public_declaration| {
-                let witness_name = public_declaration.referenced_poly_name();
-                let witness_column = {
-                    let base = public_declaration.polynomial.poly_id.unwrap().id as usize;
-                    match public_declaration.array_index {
-                        Some(array_idx) => base + array_idx,
-                        None => base,
-                    }
-                };
-                let witness_offset = public_declaration.index as usize;
-                (witness_name, witness_column, witness_offset)
-            })
-            .collect::<Vec<_>>();
-
-        // Sort, so that the order is deterministic
-        publics.sort();
-        publics
+    pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
+        assert_eq!(witness.len(), self.analyzed.commitment_count());
+        Self {
+            witness: Some(witness),
+            ..self
+        }
     }
-
-    pub(crate) fn calculate_publics_from_witness(&self) -> Vec<Goldilocks> {
-        let publics = self.get_publics();
-
-        let witness = self
-            .witness
-            .as_ref()
-            .expect("Witness needs to be set")
-            .iter()
-            .map(|(name, values)| (name, values))
-            .collect::<BTreeMap<_, _>>();
-
-        publics
-            .into_iter()
-            .map(|(col_name, _, idx)| {
-                let vals = *witness.get(&col_name).unwrap();
-                cast_to_goldilocks(vals[idx])})
-            .collect::<Vec<Goldilocks>>()
-    }
-
-pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
-    Self {
-        witness: Some(witness),
-        ..self
-    }
-}
 
 pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
     Self {
@@ -203,7 +171,7 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
-        panic!()
+        unimplemented!()
     }
 }
 
