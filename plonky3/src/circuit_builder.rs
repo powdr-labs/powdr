@@ -8,7 +8,7 @@ use p3_goldilocks::Goldilocks;
 use p3_matrix::{dense::RowMajorMatrix, MatrixRowSlices};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolynomialReference,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind,
     PolynomialType,
 };
 use powdr_executor::witgen::WitgenCallback;
