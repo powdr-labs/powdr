@@ -665,7 +665,7 @@ mod test {
                 impl getN<fe> {
                     get: |x| x,
                 }
-
+                
 
                 let seven: int = 7;
                 let a: col = |i| getN::get(std::convert::fe(i)) + getN::get(seven) + getN::get(seven);

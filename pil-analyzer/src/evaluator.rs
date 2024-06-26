@@ -16,10 +16,10 @@ use powdr_ast::{
     },
     parsed::{
         display::quote,
-        types::{Type, TypeScheme},
+        types::{FunctionType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
+        Pattern, StatementInsideBlock, TraitDeclaration, UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -138,7 +138,11 @@ pub enum Value<'a, T> {
     Closure(Closure<'a, T>),
     TypeConstructor(&'a str),
     Enum(&'a str, Option<Vec<Arc<Self>>>),
-    TraitFunction(&'a str, &'a str),
+    TraitFunction(
+        Arc<TraitDeclaration>,
+        &'a str,
+        &'a Vec<TraitImplementation<Expression>>,
+    ),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
 }
@@ -217,7 +221,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::TypeConstructor(name) => format!("{name}_constructor"),
             Value::Enum(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
-            Value::TraitFunction(_, name) => format!("trait_function_{name}"),
+            Value::TraitFunction(_, name, _) => format!("trait_function_{name}"),
             Value::Expression(_) => "expr".to_string(),
         }
     }
@@ -371,7 +375,7 @@ impl<'a, T: Display> Display for Value<'a, T> {
             }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
-            Value::TraitFunction(_, name) => {
+            Value::TraitFunction(_, name, _) => {
                 write!(f, "{name}") // TODO GZ
             }
         }
@@ -464,21 +468,13 @@ impl<'a> Definitions<'a> {
                     }
                 }
                 Some(FunctionValueDefinition::TraitFunction(trait_decl, function)) => {
-                    // let trait_impl = implementations.get(&trait_decl.name).ok_or_else(|| {
-                    //     EvalError::SymbolNotFound(format!(
-                    //         "Impl for trait `{}` not found.",
-                    //         trait_decl.name
-                    //     ))
-                    // })?;
-                    // let trait_func =
-                    //     trait_impl.function_by_name(&function.name).ok_or_else(|| {
-                    //         EvalError::SymbolNotFound(format!(
-                    //             "Function `{}` not found in trait `{}`.",
-                    //             function.name, trait_decl.name
-                    //         ))
-                    //     })?;
-                    // Value::TraitFunction(trait_func.body.as_ref()).into()
-                    Value::TraitFunction(&trait_decl.name, &function.name).into()
+                    let trait_impl = implementations.get(&trait_decl.name).ok_or_else(|| {
+                        EvalError::SymbolNotFound(format!(
+                            "Impl for trait `{}` not found.",
+                            trait_decl.name
+                        ))
+                    })?;
+                    Value::TraitFunction(trait_decl.clone(), &function.name, trait_impl).into()
                 }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
@@ -979,34 +975,83 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.type_args = type_args.clone();
                 self.expand(&lambda.body)?;
             }
-            Value::TraitFunction(trait_name, func_name) => {
-                let trait_impl = self.symbols.1.get(&trait_name).ok_or_else(|| {
-                    EvalError::SymbolNotFound(format!("Impl for trait `{}` not found.", trait_name))
-                })?;
-                let trait_func = trait_impl.function_by_name(&func_name).ok_or_else(|| {
-                    EvalError::SymbolNotFound(format!(
-                        "Function `{}` not found in trait `{}`.",
-                        func_name, trait_name
-                    ))
-                })?;
+            Value::TraitFunction(trait_decl, func_name, impls) => {
+                for trait_impl in impls.iter() {
+                    let func_impl = trait_impl.function_by_name(&func_name).unwrap();
+                    let func_decl = trait_decl.function_by_name(&func_name).unwrap();
 
-                // println!("Trait function: {f}, args: {:?}", arguments);
-                // if let Expression::LambdaExpression(_, LambdaExpression { body, .. }) = f {
-                //     // TODO GZ: Params to local vars
-                //     self.op_stack.push(Operation::SetEnvironment(
-                //         std::mem::take(&mut self.local_vars),
-                //         std::mem::take(&mut self.type_args),
-                //     ));
-                //     self.local_vars = arguments;
-                //     self.expand(body)?;
-                // } else {
-                //     self.expand(f)?;
-                // }
+                    let type_args = trait_type_args(trait_decl, trait_impl);
+
+                    if match_trait_function(
+                        func_decl._type.clone(),
+                        type_args.clone(),
+                        arguments.clone(),
+                    ) {
+                        if let Expression::LambdaExpression(_, LambdaExpression { body, .. }) =
+                            func_impl.body.as_ref()
+                        {
+                            self.op_stack.push(Operation::SetEnvironment(
+                                std::mem::take(&mut self.local_vars),
+                                std::mem::take(&mut self.type_args),
+                            ));
+                            self.local_vars = arguments.clone();
+                            self.expand(body)?;
+                        } else {
+                            panic!("Expected lambda expression")
+                        }
+                    } else {
+                        println!("Did not match trait function");
+                    }
+                }
             }
             e => panic!("Expected function but got {e}"),
         };
         Ok(())
     }
+}
+
+fn trait_type_args(
+    trait_decl: &Arc<TraitDeclaration>,
+    trait_impl: &TraitImplementation<Expression>,
+) -> HashMap<String, Type> {
+    let mut type_args = HashMap::new();
+    for (name, ty) in trait_decl
+        .type_vars
+        .vars()
+        .zip(trait_impl.type_scheme.as_ref().unwrap().types.iter())
+    {
+        type_args.insert(name.clone(), ty.clone());
+    }
+    type_args
+}
+
+fn match_trait_function<T: FieldElement>(
+    func_type: Type,
+    type_args: HashMap<String, Type>,
+    arguments: Vec<Arc<Value<T>>>,
+) -> bool {
+    if let Type::Function(FunctionType { params, value: _ }) = func_type {
+        for (p, a) in params.iter().zip(arguments.iter()) {
+            match p {
+                Type::TypeVar(name) => {
+                    let type_var = type_args.get(name).unwrap();
+                    println!("Named type: {name}, arg: {a}");
+                    match (type_var, a.as_ref()) {
+                        (Type::Fe, Value::FieldElement(_)) => continue,
+                        (Type::Int, Value::Integer(_)) => continue,
+                        (Type::Expr, Value::Expression(_)) => continue,
+                        (Type::Array(_), Value::Array(_)) => continue,
+                        _ => return false,
+                    }
+                }
+                _ => continue,
+            }
+        }
+    } else {
+        panic!("Expected function type but got {func_type}");
+    }
+
+    true
 }
 
 fn evaluate_literal<'a, T: FieldElement>(

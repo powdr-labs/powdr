@@ -339,6 +339,12 @@ pub struct TraitDeclaration<E = u64> {
     pub functions: Vec<TraitFunction<E>>,
 }
 
+impl TraitDeclaration<u64> {
+    pub fn function_by_name(&self, name: &str) -> Option<&TraitFunction> {
+        self.functions.iter().find(|f| f.name == name)
+    }
+}
+
 impl<R> Children<Expression<R>> for TraitDeclaration<u64> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(empty())

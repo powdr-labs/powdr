@@ -32,9 +32,7 @@ pub fn compute_intermediate_expression_ids<T>(analyzed: &Analyzed<T>) -> HashMap
                 analyzed.public_declarations[name].expression_count()
             }
             StatementIdentifier::Identity(id) => analyzed.identities[*id].expression_count(),
-            StatementIdentifier::TraitImplementation(name) => {
-                analyzed.implementations[name].expression_count()
-            }
+            StatementIdentifier::TraitImplementation(_) => continue,
         }
     }
     ids
