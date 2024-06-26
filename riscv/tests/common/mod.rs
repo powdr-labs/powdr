@@ -1,4 +1,3 @@
-use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{test_util::verify_pipeline, Pipeline};
 use std::path::PathBuf;
@@ -9,7 +8,6 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     contents: &str,
     inputs: Vec<GoldilocksField>,
     data: Option<Vec<(u32, S)>>,
-    backend: BackendType,
 ) {
     let temp_dir = mktemp::Temp::new_dir().unwrap().release();
 
@@ -33,5 +31,5 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
         powdr_riscv_executor::ExecMode::Fast,
         Default::default(),
     );
-    verify_pipeline(pipeline, backend).unwrap();
+    verify_pipeline(pipeline).unwrap();
 }

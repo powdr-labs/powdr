@@ -25,7 +25,7 @@ pub fn verify_test_file(
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
         .add_external_witness_values(external_witness_values);
-    verify_pipeline(pipeline, BackendType::EStarkDump)
+    verify_pipeline(pipeline)
 }
 
 pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
@@ -44,14 +44,12 @@ pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
         pipeline = pipeline.add_data_vec(&data);
     }
 
-    verify_pipeline(pipeline, BackendType::EStarkDump).unwrap();
+    verify_pipeline(pipeline).unwrap();
 }
 
-pub fn verify_pipeline(
-    pipeline: Pipeline<GoldilocksField>,
-    backend: BackendType,
-) -> Result<(), String> {
-    let mut pipeline = pipeline.with_backend(backend, None);
+pub fn verify_pipeline(pipeline: Pipeline<GoldilocksField>) -> Result<(), String> {
+    // TODO: Also test EStarkDumpComposite
+    let mut pipeline = pipeline.with_backend(BackendType::EStarkDump, None);
 
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
     if pipeline.output_dir().is_none() {
@@ -72,6 +70,13 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         .with_backend(powdr_backend::BackendType::EStarkStarky, None);
 
     pipeline.clone().compute_proof().unwrap();
+
+    // Also test composite backend:
+    pipeline
+        .clone()
+        .with_backend(powdr_backend::BackendType::EStarkStarkyComposite, None)
+        .compute_proof()
+        .unwrap();
 
     // Repeat the proof generation, but with an externally generated verification key
 
@@ -110,13 +115,22 @@ pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
         .compute_proof()
         .unwrap();
 
+    // Also generate a proof with the composite backend
+    Pipeline::default()
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs.clone())
+        .with_backend(powdr_backend::BackendType::Halo2MockComposite, None)
+        .compute_proof()
+        .unwrap();
+
     // `gen_halo2_proof` is rather slow, because it computes two Halo2 proofs.
     // Therefore, we only run it in the nightly tests.
     let is_nightly_test = env::var("IS_NIGHTLY_TEST")
         .map(|v| v == "true")
         .unwrap_or(false);
     if is_nightly_test {
-        gen_halo2_proof(file_name, inputs)
+        gen_halo2_proof(file_name, inputs.clone(), false);
+        gen_halo2_proof(file_name, inputs, true);
     }
 }
 
@@ -124,16 +138,26 @@ pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
 pub fn test_halo2(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 #[cfg(feature = "halo2")]
-pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
+pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>, composite: bool) {
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
+    let backend = if composite {
+        powdr_backend::BackendType::Halo2Composite
+    } else {
+        powdr_backend::BackendType::Halo2
+    };
     let mut pipeline = Pipeline::default()
         .with_tmp_output(&tmp_dir)
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(powdr_backend::BackendType::Halo2, None);
+        .with_backend(backend, None);
 
     // Generate a proof with the setup and verification key generated on the fly
     pipeline.clone().compute_proof().unwrap();
+
+    if composite {
+        // Providing a previously computed setup file is not supported yet
+        return;
+    }
 
     // Repeat the proof generation, but with an externally generated setup and verification key
     let pil = pipeline.compute_optimized_pil().unwrap();
@@ -229,7 +253,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
         .from_file(resolve_test_file(file_name))
         .set_witness(convert_witness(witness));
 
-    assert!(verify_pipeline(pipeline.clone(), BackendType::EStarkDump).is_err());
+    assert!(verify_pipeline(pipeline.clone()).is_err());
 }
 
 pub fn assert_proofs_fail_for_invalid_witnesses_estark(

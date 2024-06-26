@@ -20,7 +20,9 @@ fn poseidon_bn254_test() {
     // `test_halo2` only does a mock proof in the PR tests.
     // This makes sure we test the whole proof generation for one example
     // file even in the PR tests.
-    gen_halo2_proof(f, Default::default());
+    gen_halo2_proof(f, Default::default(), false);
+    // Also test the composite backend
+    gen_halo2_proof(f, Default::default(), true);
 }
 
 #[test]
