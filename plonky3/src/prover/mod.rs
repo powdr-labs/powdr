@@ -2,7 +2,6 @@
 
 mod params;
 
-use p3_goldilocks::Goldilocks;
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
