@@ -61,6 +61,14 @@ fn memory_test() {
 }
 
 #[test]
+fn memory_with_bootloader_write_test() {
+    let f = "std/memory_with_bootloader_write_test.asm";
+    verify_test_file(f, Default::default(), vec![]).unwrap();
+    gen_estark_proof(f, Default::default());
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn memory_test_parallel_accesses() {
     let f = "std/memory_test_parallel_accesses.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();

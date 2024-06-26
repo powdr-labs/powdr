@@ -7,13 +7,13 @@ use powdr_plonky3::Plonky3Prover;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
-pub(crate) struct Plonky3ProverFactory;
+pub(crate) struct Factory;
 
-impl<T: FieldElement> BackendFactory<T> for Plonky3ProverFactory {
+impl<T: FieldElement> BackendFactory<T> for Factory {
     fn create<'a>(
         &self,
         pil: &'a Analyzed<T>,
-        fixed: &'a [(String, Vec<T>)],
+        _fixed: &'a [(String, Vec<T>)],
         _output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
