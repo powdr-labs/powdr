@@ -132,8 +132,8 @@ pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
         .map(|v| v == "true")
         .unwrap_or(false);
     if is_nightly_test {
-        gen_halo2_proof(file_name, inputs.clone(), false);
-        gen_halo2_proof(file_name, inputs, true);
+        gen_halo2_proof(file_name, inputs.clone());
+        gen_halo2_composite_proof(file_name, inputs);
     }
 }
 
@@ -141,26 +141,16 @@ pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
 pub fn test_halo2(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 #[cfg(feature = "halo2")]
-pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>, composite: bool) {
+pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
-    let backend = if composite {
-        powdr_backend::BackendType::Halo2Composite
-    } else {
-        powdr_backend::BackendType::Halo2
-    };
     let mut pipeline = Pipeline::default()
         .with_tmp_output(&tmp_dir)
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(backend, None);
+        .with_backend(powdr_backend::BackendType::Halo2, None);
 
     // Generate a proof with the setup and verification key generated on the fly
     pipeline.clone().compute_proof().unwrap();
-
-    if composite {
-        // Providing a previously computed setup file is not supported yet
-        return;
-    }
 
     // Repeat the proof generation, but with an externally generated setup and verification key
     let pil = pipeline.compute_optimized_pil().unwrap();
@@ -201,6 +191,21 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>, composite: bool
 
 #[cfg(not(feature = "halo2"))]
 pub fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
+
+#[cfg(feature = "halo2")]
+pub fn gen_halo2_composite_proof(file_name: &str, inputs: Vec<Bn254Field>) {
+    let tmp_dir = mktemp::Temp::new_dir().unwrap();
+    Pipeline::default()
+        .with_tmp_output(&tmp_dir)
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs)
+        .with_backend(powdr_backend::BackendType::Halo2Composite, None)
+        .compute_proof()
+        .unwrap();
+}
+
+#[cfg(not(feature = "halo2"))]
+pub fn gen_halo2_composite_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 /// Returns the analyzed PIL containing only the std library.
 pub fn std_analyzed<T: FieldElement>() -> Analyzed<T> {
