@@ -6,12 +6,12 @@ use powdr_number::FieldElement;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
-pub(crate) struct VadCopWrapperFactory<F: FieldElement, B: BackendFactory<F>> {
+pub(crate) struct CompositeBackendFactory<F: FieldElement, B: BackendFactory<F>> {
     factory: B,
     _marker: PhantomData<F>,
 }
 
-impl<F: FieldElement, B: BackendFactory<F>> VadCopWrapperFactory<F, B> {
+impl<F: FieldElement, B: BackendFactory<F>> CompositeBackendFactory<F, B> {
     pub(crate) const fn new(factory: B) -> Self {
         Self {
             factory,
@@ -20,7 +20,7 @@ impl<F: FieldElement, B: BackendFactory<F>> VadCopWrapperFactory<F, B> {
     }
 }
 
-impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for VadCopWrapperFactory<F, B> {
+impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBackendFactory<F, B> {
     fn create<'a>(
         &self,
         pil: &'a Analyzed<F>,
@@ -40,11 +40,11 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for VadCopWrapperF
             verification_app_key,
             backend_options,
         )?;
-        Ok(Box::new(VadCopWrapper { backend }))
+        Ok(Box::new(CompositeBackend { backend }))
     }
 }
 
-pub(crate) struct VadCopWrapper<'a, F: FieldElement> {
+pub(crate) struct CompositeBackend<'a, F: FieldElement> {
     backend: Box<dyn Backend<'a, F> + 'a>,
 }
 
@@ -53,7 +53,7 @@ pub(crate) struct VadCopWrapper<'a, F: FieldElement> {
 // - Compute a proof for each machine separately
 // - Verify all the machine proofs
 // - Run additional checks on public values of the machine proofs
-impl<'a, F: FieldElement> Backend<'a, F> for VadCopWrapper<'a, F> {
+impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],

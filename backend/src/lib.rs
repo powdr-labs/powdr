@@ -4,7 +4,7 @@ mod estark;
 #[cfg(feature = "halo2")]
 mod halo2;
 
-mod vadcop_wrapper;
+mod composite;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -21,8 +21,8 @@ pub enum BackendType {
     #[strum(serialize = "halo2-mock")]
     Halo2Mock,
     #[cfg(feature = "halo2")]
-    #[strum(serialize = "halo2-mock-vadcop")]
-    Halo2MockVadCop,
+    #[strum(serialize = "halo2-mock-composite")]
+    Halo2MockComposite,
     #[cfg(feature = "estark-polygon")]
     #[strum(serialize = "estark-polygon")]
     EStarkPolygon,
@@ -45,7 +45,7 @@ impl BackendType {
             #[cfg(feature = "halo2")]
             BackendType::Halo2Mock => Box::new(halo2::Halo2MockFactory),
             #[cfg(feature = "halo2")]
-            BackendType::Halo2MockVadCop => Box::new(vadcop_wrapper::VadCopWrapperFactory::new(
+            BackendType::Halo2MockComposite => Box::new(composite::CompositeBackendFactory::new(
                 halo2::Halo2MockFactory,
             )),
             #[cfg(feature = "estark-polygon")]
