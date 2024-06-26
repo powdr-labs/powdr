@@ -2,30 +2,84 @@
 
 mod params;
 
+use p3_matrix::dense::RowMajorMatrix;
+
+use params::{Challenger, StarkProvingKey, StarkVerifyingKey};
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use p3_uni_stark::{prove, verify, Proof};
+use p3_air::BaseAir;
+
+use p3_uni_stark::{prove, verify, Proof, StarkGenericConfig};
 use powdr_number::{FieldElement, KnownField};
 
 use crate::circuit_builder::{cast_to_goldilocks, PowdrCircuit};
 
 use self::params::{get_challenger, get_config};
 
-#[derive(Clone)]
 pub struct Plonky3Prover<'a, T> {
     /// The analyzed PIL
     analyzed: &'a Analyzed<T>,
+    /// The value of the fixed columns
+    fixed: &'a [(String, Vec<T>)],
+    /// Proving key
+    proving_key: Option<StarkProvingKey>,
+    /// Verifying key
+    verifying_key: Option<StarkVerifyingKey>,
 }
 
 impl<'a, T> Plonky3Prover<'a, T> {
-    pub fn new(analyzed: &'a Analyzed<T>) -> Self {
-        Self { analyzed }
+    pub fn new(analyzed: &'a Analyzed<T>, fixed: &'a [(String, Vec<T>)]) -> Self {
+        Self {
+            analyzed,
+            fixed,
+            proving_key: None,
+            verifying_key: None,
+        }
     }
 }
 
 impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
+    pub fn setup(&mut self) {
+        // get fixed columns
+        let fixed = self.fixed;
+
+        // get the config
+        let config = get_config(self.analyzed.degree());
+
+        // commit to the fixed columns
+        let pcs = config.pcs();
+        let domain = <_ as p3_commit::Pcs<_, Challenger>>::natural_domain_for_degree(
+            pcs,
+            self.analyzed.degree() as usize,
+        );
+        // write fixed into matrix row by row. I'm not sure ordering them like this makes a difference
+        let matrix = RowMajorMatrix::new(
+            (0..self.analyzed.degree())
+                .flat_map(|i| {
+                    fixed
+                        .iter()
+                        .map(move |(_, values)| cast_to_goldilocks(values[i as usize]))
+                })
+                .collect(),
+            self.fixed.len(),
+        );
+        let evaluations = vec![(domain, matrix)];
+
+        // commit to the evaluations
+        let (commit, data) = <_ as p3_commit::Pcs<_, Challenger>>::commit(pcs, evaluations);
+
+        let proving_key = StarkProvingKey {
+            // commit,
+            data,
+        };
+        let verifying_key = StarkVerifyingKey { commit };
+
+        self.proving_key = Some(proving_key);
+        self.verifying_key = Some(verifying_key);
+    }
+
     pub fn prove(
         &self,
         witness: &[(String, Vec<T>)],
@@ -33,13 +87,13 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
     ) -> Result<Vec<u8>, String> {
         assert_eq!(T::known_field(), Some(KnownField::GoldilocksField));
 
-        let circuit = PowdrCircuit::new(self.analyzed)
+        let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
         let publics = vec![];
 
-        let trace = circuit.generate_trace_rows();
+        let trace = circuit.preprocessed_trace().unwrap();
 
         let config = get_config(self.analyzed.degree());
 
@@ -68,7 +122,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
         verify(
             &config,
-            &PowdrCircuit::new(self.analyzed),
+            &PowdrCircuit::new(self.analyzed, self.fixed),
             &mut challenger,
             &proof,
             &publics,
@@ -89,10 +143,11 @@ mod tests {
         let mut pipeline = Pipeline::<GoldilocksField>::default().from_pil_string(pil.to_string());
 
         let pil = pipeline.compute_optimized_pil().unwrap();
+        let fixed_cols = pipeline.compute_fixed_cols().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
 
-        let proof = Plonky3Prover::new(&pil).prove(&witness, witness_callback);
+        let proof = Plonky3Prover::new(&pil, &fixed_cols).prove(&witness, witness_callback);
 
         assert!(proof.is_ok());
     }
@@ -144,7 +199,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "not implemented"]
     fn polynomial_identity() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
         run_test_goldilocks(content);

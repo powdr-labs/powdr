@@ -13,7 +13,7 @@ impl<T: FieldElement> BackendFactory<T> for Plonky3ProverFactory {
     fn create<'a>(
         &self,
         pil: &'a Analyzed<T>,
-        _fixed: &'a [(String, Vec<T>)],
+        fixed: &'a [(String, Vec<T>)],
         _output_dir: Option<&'a Path>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
@@ -29,7 +29,7 @@ impl<T: FieldElement> BackendFactory<T> for Plonky3ProverFactory {
         if verification_app_key.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        Ok(Box::new(Plonky3Prover::new(pil)))
+        Ok(Box::new(Plonky3Prover::new(pil, fixed)))
     }
 }
 
