@@ -298,8 +298,7 @@ impl PILAnalyzer {
                             .into(),
                         ))
                     } else {
-                        panic!("Selected expressions need to be provided as arrays.\n  Expected [{}].\n  Found: {}",
-                        part.expressions, part.expressions)
+                        expressions.push((part.expressions.as_mut(), Type::Expr.into()))
                     }
                 }
             }

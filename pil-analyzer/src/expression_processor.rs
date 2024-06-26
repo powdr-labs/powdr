@@ -1,21 +1,19 @@
 use core::panic;
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-};
-
-use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BinaryOperation, BlockExpression,
         IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
-        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, SourceReference,
-        StatementInsideBlock, SymbolCategory, UnaryOperation,
+        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
+        SymbolCategory, UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 use crate::{type_processor::TypeProcessor, AnalysisDriver};
 
@@ -89,9 +87,8 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         &mut self,
         exprs: Vec<parsed::Expression>,
     ) -> SelectedExpressions<Expression> {
-        let src = combine_source_refs(exprs.iter().map(|e| e.source_reference()).collect_vec());
         let exprs = Expression::ArrayLiteral(
-            src.clone(),
+            SourceRef::unknown(),
             ArrayLiteral {
                 items: self.process_expressions(exprs),
             },
@@ -380,18 +377,4 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 struct LocalVariableState {
     pub local_variables: HashMap<String, u64>,
     pub local_variable_counter: u64,
-}
-
-fn combine_source_refs(refs: Vec<&SourceRef>) -> SourceRef {
-    let file_name = refs.iter().map(|r| r.file_name.clone()).next().unwrap();
-    let file_contents = refs.iter().map(|r| r.file_contents.clone()).next().unwrap();
-    let start = refs.iter().map(|r| r.start).min().unwrap();
-    let end = refs.iter().map(|r| r.end).max().unwrap();
-
-    SourceRef {
-        file_name,
-        file_contents,
-        start,
-        end,
-    }
 }
