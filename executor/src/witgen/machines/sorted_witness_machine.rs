@@ -11,9 +11,9 @@ use crate::witgen::{
     symbolic_evaluator::SymbolicEvaluator,
 };
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
+use crate::Identity;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-    SelectedExpressions,
+    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID,
 };
 use powdr_number::FieldElement;
 
@@ -26,7 +26,7 @@ use powdr_number::FieldElement;
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses<'a, T: FieldElement> {
     rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
-    connecting_identities: BTreeMap<u64, &'a Identity<SelectedExpressions<Expression<T>>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -39,8 +39,8 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<SelectedExpressions<Expression<T>>>>,
-        identities: &[&Identity<SelectedExpressions<Expression<T>>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+        identities: &[&Identity<T>],
         witnesses: &HashSet<PolyID>,
     ) -> Option<Self> {
         if identities.len() != 1 {
@@ -91,10 +91,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     }
 }
 
-fn check_identity<T: FieldElement>(
-    fixed_data: &FixedData<T>,
-    id: &Identity<SelectedExpressions<Expression<T>>>,
-) -> Option<PolyID> {
+fn check_identity<T: FieldElement>(fixed_data: &FixedData<T>, id: &Identity<T>) -> Option<PolyID> {
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
     if id.kind != IdentityKind::Plookup
         || id.right.selector.is_some()

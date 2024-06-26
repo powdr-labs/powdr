@@ -2,15 +2,15 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::{Either, Itertools};
 
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, Identity, IdentityKind, PolyID, PolynomialType,
-    SelectedExpressions,
-};
+use powdr_ast::analyzed::{IdentityKind, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::witgen::{
-    rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
-    IncompleteCause, MutableState, QueryCallback,
+use crate::{
+    witgen::{
+        rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
+        IncompleteCause, MutableState, QueryCallback,
+    },
+    Identity,
 };
 
 use super::{FixedLookup, Machine};
@@ -29,7 +29,7 @@ use super::{FixedLookup, Machine};
 /// instr mload X -> Y { [X, Y] in [ADDR, v] }
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
-    connecting_identities: BTreeMap<u64, &'a Identity<SelectedExpressions<Expression<T>>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
     /// The polynomials that are used as values (witness polynomials on the RHS)
@@ -45,8 +45,8 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<SelectedExpressions<Expression<T>>>>,
-        identities: &[&Identity<SelectedExpressions<Expression<T>>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+        identities: &[&Identity<T>],
     ) -> Option<Self> {
         if !identities.is_empty() {
             return None;
