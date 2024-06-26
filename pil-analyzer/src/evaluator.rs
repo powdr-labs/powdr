@@ -977,16 +977,12 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             }
             Value::TraitFunction(trait_decl, func_name, impls) => {
                 for trait_impl in impls.iter() {
-                    let func_impl = trait_impl.function_by_name(&func_name).unwrap();
-                    let func_decl = trait_decl.function_by_name(&func_name).unwrap();
+                    let func_impl = trait_impl.function_by_name(func_name).unwrap();
+                    let func_decl = trait_decl.function_by_name(func_name).unwrap();
 
                     let type_args = trait_type_args(trait_decl, trait_impl);
 
-                    if match_trait_function(
-                        func_decl._type.clone(),
-                        type_args.clone(),
-                        arguments.clone(),
-                    ) {
+                    if match_trait_function(&func_decl._type, &type_args, &arguments) {
                         if let Expression::LambdaExpression(_, LambdaExpression { body, .. }) =
                             func_impl.body.as_ref()
                         {
@@ -999,8 +995,6 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                         } else {
                             panic!("Expected lambda expression")
                         }
-                    } else {
-                        println!("Did not match trait function");
                     }
                 }
             }
@@ -1026,16 +1020,15 @@ fn trait_type_args(
 }
 
 fn match_trait_function<T: FieldElement>(
-    func_type: Type,
-    type_args: HashMap<String, Type>,
-    arguments: Vec<Arc<Value<T>>>,
+    func_type: &Type,
+    type_args: &HashMap<String, Type>,
+    arguments: &Vec<Arc<Value<T>>>,
 ) -> bool {
     if let Type::Function(FunctionType { params, value: _ }) = func_type {
         for (p, a) in params.iter().zip(arguments.iter()) {
             match p {
                 Type::TypeVar(name) => {
                     let type_var = type_args.get(name).unwrap();
-                    println!("Named type: {name}, arg: {a}");
                     match (type_var, a.as_ref()) {
                         (Type::Fe, Value::FieldElement(_)) => continue,
                         (Type::Int, Value::Integer(_)) => continue,
