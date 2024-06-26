@@ -79,11 +79,11 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
 #[cfg(test)]
 mod tests {
-    use p3_goldilocks::Goldilocks;
-    use powdr_number::{FieldElement, GoldilocksField};
+    // use p3_goldilocks::Goldilocks;
+    use powdr_number::GoldilocksField;
     use powdr_pipeline::Pipeline;
 
-    use crate::{circuit_builder::cast_to_goldilocks, Plonky3Prover};
+    use crate::Plonky3Prover;
 
     /// Prove and verify execution
     fn run_test_goldilocks(pil: &str) {
