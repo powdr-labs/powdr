@@ -368,8 +368,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             stage: None,
             kind: SymbolKind::Poly(PolynomialType::Committed),
             length: None,
-            // TODO: what is the actual degree?
-            degree: None,
+            degree: Some(self.degree.unwrap()),
         };
         self.next_witness_id += 1;
         self.all_new_witness_names.insert(name.clone());

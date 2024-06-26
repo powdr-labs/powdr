@@ -302,7 +302,7 @@ fn naive_byte_decomposition_gl() {
 #[test]
 #[should_panic = "NoVariableDegreeAvailable"]
 fn different_degrees() {
-    let f = "pil/two_proofs.pil";
+    let f = "pil/different_degrees.pil";
     verify_pil(f, Default::default());
 }
 
