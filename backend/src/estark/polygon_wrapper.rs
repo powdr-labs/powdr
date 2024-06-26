@@ -15,7 +15,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         &self,
         analyzed: &'a Analyzed<F>,
         fixed: &'a [(String, Vec<F>)],
-        output_dir: Option<&'a Path>,
+        output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
@@ -33,11 +33,11 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     }
 }
 
-struct PolygonBackend<'a, F: FieldElement>(EStarkFilesCommon<'a, F>);
+struct PolygonBackend<F: FieldElement>(EStarkFilesCommon<F>);
 
 // TODO: make both eStark backends interchangeable, from user perspective.
 // TODO: implement the other Backend trait methods.
-impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<'a, F> {
+impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<F> {
     fn prove(
         &self,
         // Witness is taken from file written by the pipeline.
