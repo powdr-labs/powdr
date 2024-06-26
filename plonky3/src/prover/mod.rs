@@ -40,6 +40,8 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
         let publics = circuit.calculate_publics_from_witness();
 
+        println!("publics: {:?}", publics);
+
         let trace = circuit.generate_trace_rows();
 
         let config = get_config(self.analyzed.degree());
@@ -112,6 +114,7 @@ mod tests {
         let prover = Plonky3Prover::new(&pil);
         let proof = prover.prove(&witness, witness_callback).unwrap();
 
+
         prover.verify(&proof, &[malicious_publics])
     }
 
@@ -123,13 +126,14 @@ mod tests {
     }
 
     #[test]
-
     fn public_inputs() {
         let content = r#"
         namespace Add(8);
             col witness x;
             col witness y;
             col witness z;
+            y - 1 = 0;
+            x = 0;
             x + y = z;
 
             public outx = x(7);
@@ -138,13 +142,37 @@ mod tests {
         "#;
         let publics = vec![
             GoldilocksField::from(0),
+            GoldilocksField::from(0),
             GoldilocksField::from(1),
-            GoldilocksField::from(1),
+        ];
+
+        assert!(run_test_goldilocks_publics(content, publics).is_ok())
+    }
+
+    #[test]
+    fn public_inputs_malicious() {
+        let content = r#"
+        namespace Add(8);
+            col witness x;
+            col witness y;
+            col witness z;
+            y - 1 = 0;
+            x = 0;
+            x + y = z;
+
+            public outx = x(7);
+            public outy = y(7);
+            public outz = z(7);
+        "#;
+        let publics = vec![
+            GoldilocksField::from(0),
+            GoldilocksField::from(0),
+            GoldilocksField::from(0),
         ];
 
         assert_eq!(
             run_test_goldilocks_publics(content, publics).unwrap_err(),
-            "verification failed"
+            "Failed to verify proof: OodEvaluationMismatch"
         )
     }
 
