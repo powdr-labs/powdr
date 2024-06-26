@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{fs, path::PathBuf};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -55,7 +55,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<F> {
             output_dir
         } else {
             tmp_dir = mktemp::Temp::new_dir()?;
-            tmp_dir.as_path()
+            tmp_dir.to_path_buf()
         };
 
         let input_paths = self.0.write_files(output_dir)?;
