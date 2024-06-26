@@ -14,7 +14,6 @@ use super::{
     affine_expression::{AffineExpression, AffineResult},
     data_structures::column_map::WitnessColumnMap,
     expression_evaluator::ExpressionEvaluator,
-    flat_algebraic_expression::FlatAlgebraicExpression,
     global_constraints::RangeConstraintSet,
     range_constraints::RangeConstraint,
     symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},

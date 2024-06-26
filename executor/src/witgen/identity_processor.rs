@@ -13,7 +13,6 @@ use powdr_number::FieldElement;
 use crate::witgen::{global_constraints::CombinedRangeConstraintSet, machines::Machine, EvalError};
 
 use super::{
-    flat_algebraic_expression::FlatAlgebraicExpression,
     machines::{FixedLookup, KnownMachine},
     processor::OuterQuery,
     rows::RowPair,
@@ -153,7 +152,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
         let result = if let Some(flat_id) = self.fixed_data.flat_identities.get(&identity.id) {
-            flat_id.evaluate(&self.fixed_data, rows)
+            flat_id.evaluate(self.fixed_data, rows)
         } else {
             rows.evaluate(identity.expression_for_poly_id())
         };
