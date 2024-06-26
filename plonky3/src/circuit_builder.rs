@@ -8,7 +8,8 @@ use p3_goldilocks::Goldilocks;
 use p3_matrix::{dense::RowMajorMatrix, MatrixRowSlices};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolynomialType,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolynomialReference,
+    PolynomialType,
 };
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
@@ -36,14 +37,16 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             .flat_map(move |i| {
                 // witness values
                 witness
-                .clone()
-                .map(move |(_, v)| cast_to_goldilocks(v[i as usize]))
-                .chain(
-                    publics
                     .clone()
-                    .map(move |(_, idx)| T::from(i as usize == idx))
-                    .map(cast_to_goldilocks)
-            )}).collect();
+                    .map(move |(_, v)| cast_to_goldilocks(v[i as usize]))
+                    .chain(
+                        publics
+                            .clone()
+                            .map(move |(_, _, idx)| T::from(i as usize == idx))
+                            .map(cast_to_goldilocks),
+                    )
+            })
+            .collect();
         RowMajorMatrix::new(values, self.width())
     }
 }
@@ -53,17 +56,11 @@ pub fn cast_to_goldilocks<T: FieldElement>(v: T) -> Val {
     Val::from_canonical_u64(v.to_integer().try_into_u64().unwrap())
 }
 
-
-
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub(crate) fn new(analyzed: &'a Analyzed<T>) -> Self {
         if analyzed.constant_count() > 0 {
             unimplemented!("Fixed columns are not supported in Plonky3");
         }
-
-        // if !analyzed.public_declarations.is_empty() {
-        //     unimplemented!("Public declarations are not supported in Plonky3");
-        // }
 
         Self {
             analyzed,
@@ -76,120 +73,128 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         self.witness.as_ref().unwrap()
     }
 
-    pub(crate) fn get_publics(&self) -> Vec<(String, usize)> {
-        let mut publics = self.analyzed
+    pub(crate) fn get_publics(&self) -> Vec<(String, usize, usize)> {
+        let mut publics = self
+            .analyzed
             .public_declarations
             .values()
             .map(|public_declaration| {
                 let witness_name = public_declaration.referenced_poly_name();
+                let witness_column = {
+                    let base = public_declaration.polynomial.poly_id.unwrap().id as usize;
+                    match public_declaration.array_index {
+                        Some(array_idx) => base + array_idx,
+                        None => base,
+                    }
+                };
                 let witness_offset = public_declaration.index as usize;
-                (witness_name, witness_offset)
+                (witness_name, witness_column, witness_offset)
             })
             .collect::<Vec<_>>();
-    
+
         // Sort, so that the order is deterministic
         publics.sort();
         publics
     }
 
-    pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
-        Self {
-            witness: Some(witness),
-            ..self
-        }
-    }
+    pub(crate) fn calculate_publics_from_witness(&self) -> Vec<Goldilocks> {
+        let publics = self.get_publics();
 
-    pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
-        Self {
-            _witgen_callback: Some(witgen_callback),
-            ..self
-        }
-    }
-
-    pub(crate) fn publics_idxs(&self) -> Vec<usize> {
-        // TODO: return actual pubval from this?
         let witness = self
             .witness
             .as_ref()
             .expect("Witness needs to be set")
             .iter()
-            .enumerate()
-            .map(|(idx, (name, _))| (name, idx))
+            .map(|(name, values)| (name, values))
             .collect::<BTreeMap<_, _>>();
 
-        self.get_publics()
-            .iter()
-            .map(|(col_name, _)| *witness.get(col_name).unwrap())
-            .collect()
+        publics
+            .into_iter()
+            .map(|(col_name, _, idx)| {
+                let vals = *witness.get(&col_name).unwrap();
+                cast_to_goldilocks(vals[idx])})
+            .collect::<Vec<Goldilocks>>()
     }
 
-    /// Conversion to plonky3 expression
-    fn to_plonky3_expr<AB: AirBuilder<F = Val>>(
-        &self,
-        e: &AlgebraicExpression<T>,
-        matrix: &AB::M,
-    ) -> AB::Expr {
-        let res = match e {
-            AlgebraicExpression::Reference(r) => {
-                let poly_id = r.poly_id;
-
-                let row = match r.next {
-                    true => matrix.row_slice(1),
-                    false => matrix.row_slice(0),
-                };
-
-                // witness columns indexes are unchanged, fixed ones are offset by `commitment_count`
-                let index = match poly_id.ptype {
-                    PolynomialType::Committed => {
-                        assert!(
-                            r.poly_id.id < self.analyzed.commitment_count() as u64,
-                            "Plonky3 expects `poly_id` to be contiguous"
-                        );
-                        r.poly_id.id as usize
-                    }
-                    PolynomialType::Constant => {
-                        unreachable!(
-                            "fixed columns are not supported, should have been checked earlier"
-                        )
-                    }
-                    PolynomialType::Intermediate => {
-                        unreachable!("intermediate polynomials should have been inlined")
-                    }
-                };
-
-                row[index].into()
-            }
-            AlgebraicExpression::PublicReference(_) => unimplemented!(
-                "public references are not supported inside algebraic expressions in plonky3"
-            ),
-            AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let left = self.to_plonky3_expr::<AB>(left, matrix);
-                let right = self.to_plonky3_expr::<AB>(right, matrix);
-
-                match op {
-                    AlgebraicBinaryOperator::Add => left + right,
-                    AlgebraicBinaryOperator::Sub => left - right,
-                    AlgebraicBinaryOperator::Mul => left * right,
-                    AlgebraicBinaryOperator::Pow => {
-                        unreachable!("exponentiations should have been evaluated")
-                    }
-                }
-            }
-            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(expr, matrix);
-
-                match op {
-                    AlgebraicUnaryOperator::Minus => -expr,
-                }
-            }
-            AlgebraicExpression::Challenge(challenge) => {
-                unimplemented!("Challenge API for {challenge:?} not accessible in plonky3")
-            }
-        };
-        res
+pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
+    Self {
+        witness: Some(witness),
+        ..self
     }
 }
+
+pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
+    Self {
+        _witgen_callback: Some(witgen_callback),
+        ..self
+    }
+}
+/// Conversion to plonky3 expression
+fn to_plonky3_expr<AB: AirBuilder<F = Val>>(
+    &self,
+    e: &AlgebraicExpression<T>,
+    matrix: &AB::M,
+) -> AB::Expr {
+    let res = match e {
+        AlgebraicExpression::Reference(r) => {
+            let poly_id = r.poly_id;
+
+            let row = match r.next {
+                true => matrix.row_slice(1),
+                false => matrix.row_slice(0),
+            };
+
+            // witness columns indexes are unchanged, fixed ones are offset by `commitment_count`
+            let index = match poly_id.ptype {
+                PolynomialType::Committed => {
+                    assert!(
+                        r.poly_id.id < self.analyzed.commitment_count() as u64,
+                        "Plonky3 expects `poly_id` to be contiguous"
+                    );
+                    r.poly_id.id as usize
+                }
+                PolynomialType::Constant => {
+                    unreachable!(
+                        "fixed columns are not supported, should have been checked earlier"
+                    )
+                }
+                PolynomialType::Intermediate => {
+                    unreachable!("intermediate polynomials should have been inlined")
+                }
+            };
+
+            row[index].into()
+        }
+        AlgebraicExpression::PublicReference(_) => unimplemented!(
+            "public references are not supported inside algebraic expressions in plonky3"
+        ),
+        AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            let left = self.to_plonky3_expr::<AB>(left, matrix);
+            let right = self.to_plonky3_expr::<AB>(right, matrix);
+
+            match op {
+                AlgebraicBinaryOperator::Add => left + right,
+                AlgebraicBinaryOperator::Sub => left - right,
+                AlgebraicBinaryOperator::Mul => left * right,
+                AlgebraicBinaryOperator::Pow => {
+                    unreachable!("exponentiations should have been evaluated")
+                }
+            }
+        }
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(expr, matrix);
+
+            match op {
+                AlgebraicUnaryOperator::Minus => -expr,
+            }
+        }
+        AlgebraicExpression::Challenge(challenge) => {
+            unimplemented!("Challenge API for {challenge:?} not accessible in plonky3")
+        }
+    };
+    res
+}}
 
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
@@ -206,16 +211,22 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for P
     fn eval(&self, builder: &mut AB) {
         let matrix = builder.main();
         let pi = builder.public_values();
+        let publics = self.get_publics();
+        assert_eq!(publics.len(), pi.len());
 
         // public constraints
         let pi_moved = pi.to_vec();
         let local = matrix.row_slice(0);
 
         // constraining Pi * (Ci - pub[i]) = 0
-        for (pub_idx, witness_col_idx) in self.publics_idxs().into_iter().enumerate() {
-            let selector = local[self.analyzed.commitment_count() + pub_idx];
-            builder.assert_zero(selector * (pi_moved[pub_idx].into() - local[witness_col_idx]));
-        }
+        publics
+            .iter()
+            .zip(pi_moved)
+            .enumerate()
+            .for_each(|(index, ((_, col_id, _), public_value))| {
+                let selector = local[self.analyzed.commitment_count() + index];
+                builder.assert_zero(selector * (public_value.into() - local[*col_id]));
+            });
 
         // circuit constraints
         for identity in &self
