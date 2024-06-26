@@ -10,9 +10,9 @@ use std::{
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-        Identity, IdentityKind, PolynomialType, PublicDeclaration, SelectedExpressions,
-        StatementIdentifier, Symbol, SymbolKind,
+        self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
+        FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
+        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -314,13 +314,14 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
         match result.as_ref() {
-            Value::Array(items) => items
+            Value::Array(items) | Value::Tuple(items) => items
                 .iter()
                 .map(|item| match item.as_ref() {
                     Value::Expression(expr) => expr.clone(),
                     _ => panic!("Expected expression but got {item}"),
                 })
                 .collect(),
+            Value::Expression(expr) => vec![expr.clone()],
             _ => panic!("Expected array of algebraic expressions, but got {result}"),
         }
     }
@@ -485,11 +486,11 @@ fn to_constraint<T: FieldElement>(
             IdentityWithoutID {
                 kind: IdentityKind::Connect,
                 source,
-                left: powdr_ast::analyzed::SelectedExpressions {
+                left: analyzed::SelectedExpressions {
                     selector: None,
                     expressions: from.into_iter().map(to_expr).collect(),
                 },
-                right: powdr_ast::analyzed::SelectedExpressions {
+                right: analyzed::SelectedExpressions {
                     selector: None,
                     expressions: to.into_iter().map(to_expr).collect(),
                 },
