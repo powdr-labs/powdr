@@ -51,7 +51,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<F> {
         }
 
         let tmp_dir;
-        let output_dir = if let Some(output_dir) = self.0.output_dir {
+        let output_dir = if let Some(output_dir) = self.0.output_dir.clone() {
             output_dir
         } else {
             tmp_dir = mktemp::Temp::new_dir()?;
