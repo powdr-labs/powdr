@@ -1,6 +1,4 @@
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID, SelectedExpressions,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -9,6 +7,7 @@ use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::rows::CellValue;
 use crate::witgen::EvalValue;
+use crate::Identity;
 
 use super::block_processor::BlockProcessor;
 use super::data_structures::column_map::WitnessColumnMap;
@@ -24,9 +23,9 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
-    connecting_identities: BTreeMap<u64, &'a Identity<SelectedExpressions<Expression<T>>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     fixed_data: &'a FixedData<'a, T>,
-    identities: Vec<&'a Identity<SelectedExpressions<Expression<T>>>>,
+    identities: Vec<&'a Identity<T>>,
     witnesses: HashSet<PolyID>,
     data: FinalizableData<'a, T>,
     latch: Option<Expression<T>>,
@@ -109,8 +108,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<SelectedExpressions<Expression<T>>>>,
-        identities: Vec<&'a Identity<SelectedExpressions<Expression<T>>>>,
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+        identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
         latch: Option<Expression<T>>,
     ) -> Self {

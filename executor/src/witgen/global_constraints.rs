@@ -5,13 +5,13 @@ use num_traits::Zero;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, Identity as AnalyzedIdentity, IdentityKind, PolyID, PolynomialType,
-    SelectedExpressions,
+    AlgebraicReference, IdentityKind, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
 
 use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
+use crate::Identity;
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::range_constraints::RangeConstraint;
@@ -102,8 +102,6 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConst
         }
     }
 }
-
-type Identity<T> = AnalyzedIdentity<SelectedExpressions<Expression<T>>>;
 
 /// Determines global constraints on witness and fixed columns.
 /// Removes identities that only serve to create range constraints from
