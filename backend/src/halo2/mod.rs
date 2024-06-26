@@ -81,6 +81,9 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
         verification_app_key: Option<&mut dyn io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+        if pil.degrees().len() > 1 {
+            return Err(Error::NoVariableDegreeAvailable);
+        }
         let proof_type = ProofType::from(options);
         let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup, proof_type)?);
         if let Some(vk) = verification_key {

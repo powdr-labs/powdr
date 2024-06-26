@@ -43,12 +43,25 @@ pub struct Analyzed<T> {
 }
 
 impl<T> Analyzed<T> {
+    /// Returns the max of all degrees in this [`Analyzed<T>`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are no symbols
     pub fn max_degree(&self) -> DegreeType {
         self.definitions
             .values()
             .filter_map(|(symbol, _)| symbol.degree)
             .max()
             .unwrap()
+    }
+
+    /// Returns the set of all degrees in this [`Analyzed<T>`].
+    pub fn degrees(&self) -> HashSet<u64> {
+        self.definitions
+            .values()
+            .filter_map(|(symbol, _)| symbol.degree)
+            .collect::<HashSet<_>>()
     }
 
     /// @returns the number of committed polynomials (with multiplicities for arrays)

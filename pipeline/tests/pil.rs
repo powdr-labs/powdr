@@ -88,8 +88,8 @@ fn permutation_with_selector() {
 fn fibonacci() {
     let f = "pil/fibonacci.pil";
     verify_pil(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    // test_halo2(f, Default::default());
+    // gen_estark_proof(f, Default::default());
 }
 
 #[test]

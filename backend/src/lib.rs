@@ -72,6 +72,8 @@ pub enum Error {
     NoEthereumVerifierAvailable,
     #[error("the backend does not support proof aggregation")]
     NoAggregationAvailable,
+    #[error("the backend does not support variable degrees")]
+    NoVariableDegreeAvailable,
     #[error("internal backend error")]
     BackendError(String),
 }

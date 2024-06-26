@@ -21,6 +21,9 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+        if analyzed.degrees().len() > 1 {
+            return Err(Error::NoVariableDegreeAvailable);
+        }
         Ok(Box::new(PolygonBackend(EStarkFilesCommon::create(
             analyzed,
             fixed,
@@ -60,7 +63,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<'a, F> {
 
         let input_paths = self.0.write_files(output_dir)?;
 
-        let commits_path = output_dir.join("commits.bin");
+        let commits_path = output_dir.join("commits_estark.bin");
 
         // Generate the proof.
         let proof_paths = pil_stark_prover::generate_proof(
