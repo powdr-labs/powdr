@@ -31,7 +31,6 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
         &self,
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
-        malicious_publics: Option<Vec<Goldilocks>>,
     ) -> Result<Vec<u8>, String> {
         assert_eq!(T::known_field(), Some(KnownField::GoldilocksField));
 
@@ -39,11 +38,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
-        let prover_publics = publics_from_witness(self.analyzed, witness);
-
-        let verifier_publics = malicious_publics.unwrap_or(
-            publics_from_witness(self.analyzed, witness)
-        );
+        let publics = publics_from_witness(self.analyzed, witness);
 
         let trace = circuit.generate_trace_rows();
 
@@ -51,11 +46,11 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
         let mut challenger = get_challenger();
 
-        let proof = prove(&config, &circuit, &mut challenger, trace, &prover_publics);
+        let proof = prove(&config, &circuit, &mut challenger, trace, &publics);
 
         let mut challenger = get_challenger();
 
-        verify(&config, &circuit, &mut challenger, &proof, &verifier_publics).unwrap();
+        verify(&config, &circuit, &mut challenger, &proof, &publics).unwrap();
         Ok(serde_json::to_vec(&proof).unwrap())
     }
 
@@ -101,7 +96,7 @@ fn publics_from_witness<T: FieldElement>(analyzed: &Analyzed<T>, witness: &[(Str
 #[cfg(test)]
 mod tests {
     use p3_goldilocks::Goldilocks;
-    use powdr_number::GoldilocksField;
+    use powdr_number::{FieldElement, GoldilocksField};
     use powdr_pipeline::Pipeline;
 
     use crate::{circuit_builder::cast_to_goldilocks, Plonky3Prover};
@@ -114,21 +109,22 @@ mod tests {
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
 
-        let proof = Plonky3Prover::new(&pil).prove(&witness, witness_callback, None);
+        let proof = Plonky3Prover::new(&pil).prove(&witness, witness_callback);
 
         assert!(proof.is_ok());
     }
 
-    fn run_test_goldilocks_publics(pil:& str,  publics: Vec<Goldilocks>) {
+    fn run_test_goldilocks_publics(pil: &str,  malicious_publics: Vec<GoldilocksField>) -> Result<(), String> {
         let mut pipeline = Pipeline::<GoldilocksField>::default().from_pil_string(pil.to_string());
 
         let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
 
-        let proof = Plonky3Prover::new(&pil).prove(&witness, witness_callback, Some(publics));
+        let prover = Plonky3Prover::new(&pil);
+        let proof = prover.prove(&witness, witness_callback).unwrap();
 
-        assert!(proof.is_ok());
+        prover.verify(&proof, &[malicious_publics])
     }
 
     #[test]
@@ -139,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "called `Result::unwrap()` on an `Err` value: OodEvaluationMismatch"]
+
     fn public_inputs() {
         let content = r#"
         namespace Add(8);
@@ -153,11 +149,12 @@ mod tests {
             public outz = z(7);
         "#;
         let publics = vec![
-            cast_to_goldilocks(GoldilocksField::from(0)),
-            cast_to_goldilocks(GoldilocksField::from(1)),
-            cast_to_goldilocks(GoldilocksField::from(1)),
-            ];
-        run_test_goldilocks_publics(content, publics)
+            GoldilocksField::from(0),
+            GoldilocksField::from(1),
+            GoldilocksField::from(1),
+        ];
+
+        assert_eq!(run_test_goldilocks_publics(content, publics).unwrap_err(), "verification failed")
     }
 
     #[test]
