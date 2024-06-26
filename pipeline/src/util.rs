@@ -32,11 +32,7 @@ impl PolySet for WitnessPolySet {
 }
 
 #[allow(clippy::type_complexity)]
-pub fn read_poly_set<P: PolySet, T: FieldElement>(
-    dir: &Path,
-) -> Vec<(String, Vec<T>)> {
+pub fn read_poly_set<P: PolySet, T: FieldElement>(dir: &Path) -> Vec<(String, Vec<T>)> {
     let path = dir.join(P::FILE_NAME);
-    read_polys_file(&mut BufReader::new(
-        File::open(path).unwrap(),
-    ))
+    read_polys_file(&mut BufReader::new(File::open(path).unwrap()))
 }
