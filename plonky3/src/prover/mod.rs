@@ -2,8 +2,6 @@
 
 mod params;
 
-use std::sync::Arc;
-
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
