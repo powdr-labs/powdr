@@ -21,9 +21,6 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
-        if analyzed.degrees().len() > 1 {
-            return Err(Error::NoVariableDegreeAvailable);
-        }
         Ok(Box::new(PolygonBackend(EStarkFilesCommon::create(
             analyzed,
             fixed,

@@ -31,6 +31,7 @@ pub struct Generator<'a, T: FieldElement> {
     data: FinalizableData<'a, T>,
     latch: Option<Expression<T>>,
     name: String,
+    degree: DegreeType,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
@@ -39,7 +40,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     }
 
     fn degree(&self) -> DegreeType {
-        self.fixed_data.analyzed.max_degree()
+        self.degree
     }
 
     fn name(&self) -> &str {
@@ -123,6 +124,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let data = FinalizableData::new(&witnesses);
 
         Self {
+            degree: fixed_data.analyzed.max_degree(),
             connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
