@@ -58,7 +58,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<F> {
             tmp_dir.to_path_buf()
         };
 
-        let input_paths = self.0.write_files(output_dir)?;
+        let input_paths = self.0.write_files(&output_dir)?;
 
         let commits_path = output_dir.join("commits.bin");
 
@@ -68,7 +68,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<F> {
             &input_paths.stark_struct,
             &input_paths.constants,
             &commits_path,
-            output_dir,
+            &output_dir,
         )
         .map_err(|e| Error::BackendError(e.to_string()))?;
 
