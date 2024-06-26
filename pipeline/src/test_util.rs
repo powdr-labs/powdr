@@ -60,7 +60,7 @@ pub fn verify_pipeline(
 
     pipeline.compute_proof().unwrap();
 
-    verify(pipeline.output_dir().unwrap())
+    verify(pipeline.output_dir().as_ref().unwrap())
 }
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {

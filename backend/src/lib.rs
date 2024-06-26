@@ -9,7 +9,7 @@ mod composite;
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
-use std::{io, path::Path};
+use std::{io, path::PathBuf};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
@@ -100,7 +100,7 @@ pub trait BackendFactory<F: FieldElement> {
         &self,
         pil: &'a Analyzed<F>,
         fixed: &'a [(String, Vec<F>)],
-        output_dir: Option<&'a Path>,
+        output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,

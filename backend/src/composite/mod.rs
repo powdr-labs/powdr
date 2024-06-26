@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, io, marker::PhantomData};
+use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -25,7 +25,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         &self,
         pil: &'a Analyzed<F>,
         fixed: &'a [(String, Vec<F>)],
-        output_dir: Option<&'a std::path::Path>,
+        output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
@@ -38,6 +38,10 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         let backend_by_machine = ["main"]
             .iter()
             .map(|machine_name| {
+                let output_dir = output_dir
+                    .clone()
+                    .map(|output_dir| output_dir.join(machine_name));
+                println!("Output dir: {:?}", output_dir);
                 let backend = self.factory.create(
                     pil,
                     fixed,
