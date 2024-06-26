@@ -118,9 +118,7 @@ fn write_polys_stream<T: FieldElement>(
     serde_cbor::to_writer(file, &polys)
 }
 
-pub fn read_polys_file<T: FieldElement>(
-    file: &mut impl Read,
-) -> Vec<(String, Vec<T>)> {
+pub fn read_polys_file<T: FieldElement>(file: &mut impl Read) -> Vec<(String, Vec<T>)> {
     serde_cbor::from_reader(file).unwrap()
 }
 
