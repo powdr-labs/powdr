@@ -115,7 +115,7 @@ fn write_polys_stream<T: FieldElement>(
     file: &mut impl Write,
     polys: &[(String, Vec<T>)],
 ) -> Result<(), serde_cbor::Error> {
-    Ok(serde_cbor::to_writer(file, &polys)?)
+    serde_cbor::to_writer(file, &polys)
 }
 
 pub fn read_polys_file<T: FieldElement>(
