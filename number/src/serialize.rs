@@ -105,7 +105,7 @@ pub fn buffered_write_file<R>(
 pub fn write_polys_file<F: FieldElement>(
     path: &Path,
     polys: &[(String, Vec<F>)],
-) -> Result<(), io::Error> {
+) -> Result<(), serde_cbor::Error> {
     buffered_write_file(path, |writer| write_polys_stream(writer, polys))??;
 
     Ok(())
@@ -114,15 +114,14 @@ pub fn write_polys_file<F: FieldElement>(
 fn write_polys_stream<T: FieldElement>(
     file: &mut impl Write,
     polys: &[(String, Vec<T>)],
-) -> Result<(), io::Error> {
-    Ok(serde_json::to_writer(file, polys)?)
+) -> Result<(), serde_cbor::Error> {
+    Ok(serde_cbor::to_writer(file, &polys)?)
 }
 
 pub fn read_polys_file<T: FieldElement>(
     file: &mut impl Read,
-    // columns: &[String],
 ) -> Vec<(String, Vec<T>)> {
-    serde_json::from_reader(file).unwrap()
+    serde_cbor::from_reader(file).unwrap()
 }
 
 // Serde wrappers for serialize/deserialize
