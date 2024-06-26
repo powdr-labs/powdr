@@ -123,7 +123,7 @@ impl GoldilocksField {
     }
 
     #[inline]
-    fn to_canonical_u64(&self) -> u64 {
+    fn to_canonical_u64(self) -> u64 {
         self.0
     }
 }
@@ -157,21 +157,8 @@ impl Add for GoldilocksField {
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn add(self, rhs: Self) -> Self {
         let (sum, over) = self.0.overflowing_add(rhs.0);
-        let (mut sum, over) = sum.overflowing_add((over as u64) * EPSILON);
-        if over {
-            // TODO check if this is reachabel if we ensure that self.0 < Self::ORDER and rhs.0 < Self::ORDER
-
-            // NB: self.0 > Self::ORDER && rhs.0 > Self::ORDER is necessary but not sufficient for
-            // double-overflow.
-            // This assume does two things:
-            //  1. If compiler knows that either self.0 or rhs.0 <= ORDER, then it can skip this
-            //     check.
-            //  2. Hints to the compiler how rare this double-overflow is (thus handled better with
-            //     a branch).
-            assume(self.0 > Self::ORDER && rhs.0 > Self::ORDER);
-            branch_hint();
-            sum += EPSILON; // Cannot overflow.
-        }
+        let (sum, over) = sum.overflowing_add((over as u64) * EPSILON);
+        debug_assert!(!over);
         Self(wrap(sum))
     }
 }
@@ -190,22 +177,9 @@ impl Sub for GoldilocksField {
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn sub(self, rhs: Self) -> Self {
         let (diff, under) = self.0.overflowing_sub(rhs.0);
-        let (mut diff, under) = diff.overflowing_sub((under as u64) * EPSILON);
-        if under {
-            // NB: self.0 < EPSILON - 1 && rhs.0 > Self::ORDER is necessary but not sufficient for
-            // double-underflow.
-            // This assume does two things:
-            //  1. If compiler knows that either self.0 >= EPSILON - 1 or rhs.0 <= ORDER, then it
-            //     can skip this check.
-            //  2. Hints to the compiler how rare this double-underflow is (thus handled better
-            //     with a branch).
-            assume(self.0 < EPSILON - 1 && rhs.0 > Self::ORDER);
-            branch_hint();
-            diff -= EPSILON; // Cannot underflow.
-        }
-        // TODO We probably don't need this in both cases.
-        let diff = wrap(diff);
-        Self(diff)
+        let (diff, under) = diff.overflowing_sub((under as u64) * EPSILON);
+        debug_assert!(!under);
+        Self(wrap(diff))
     }
 }
 
@@ -279,9 +253,7 @@ const unsafe fn add_no_canonicalize_trashing_input(x: u64, y: u64) -> u64 {
     res_wrapped + EPSILON * (carry as u64)
 }
 
-/// Reduces to a 64-bit value. The result might not be in canonical form; it could be in between the
-/// field order and `2^64`.
-/// CHANGED: the result is in canonical form.
+/// Reduces to a 64-bit value. The result is in canonical form.
 #[inline]
 fn reduce128(x: u128) -> GoldilocksField {
     let (x_lo, x_hi) = split(x); // This is a no-op
@@ -296,7 +268,6 @@ fn reduce128(x: u128) -> GoldilocksField {
     let t1 = x_hi_lo * EPSILON;
     let t2 = unsafe { add_no_canonicalize_trashing_input(t0, t1) };
 
-    // TODO added this.
     GoldilocksField(wrap(t2))
 }
 
@@ -366,8 +337,6 @@ impl FieldElement for GoldilocksField {
     }
 
     fn pow(self, exp: Self::Integer) -> Self {
-        // TODO where is this used? It this fine to have?
-
         let mut exp = exp.0;
         if exp == 0 {
             return 1.into();
@@ -380,8 +349,7 @@ impl FieldElement for GoldilocksField {
             if exp & 1 != 0 {
                 r *= x;
             }
-            // TODO squaring could be optimized.
-            x = x * x;
+            x = x.square();
             exp >>= 1;
         }
         r * x
@@ -392,13 +360,10 @@ impl FieldElement for GoldilocksField {
     }
 
     fn from_bytes_le(bytes: &[u8]) -> Self {
-        // TODO wrap?
-
         wrap(u64::try_from(BigUint::from_le_bytes(bytes)).unwrap()).into()
     }
 
     fn from_str_radix(s: &str, radix: u32) -> Result<Self, String> {
-        // TODO wrap?
         u64::from_str_radix(s, radix)
             .map(Self)
             .map_err(|e| e.to_string())
@@ -421,7 +386,15 @@ impl FieldElement for GoldilocksField {
     }
 
     fn try_into_i32(&self) -> Option<i32> {
-        todo!()
+        // Shifts range [-2**31, 2**31) into [0, 2**32).
+        const SHIFT: u64 = (-(i32::MIN as i64)) as u64;
+        let shifted = (*self + SHIFT.into()).to_integer();
+
+        // If valid shifted will be in u32 range, and this will succeed:
+        let v = shifted.try_into_u32()?;
+
+        // Undo the shift
+        Some(v.wrapping_sub(SHIFT as u32) as i32)
     }
 }
 
@@ -439,7 +412,6 @@ impl From<bool> for GoldilocksField {
 
 impl From<i64> for GoldilocksField {
     fn from(n: i64) -> Self {
-        // TODO right?
         Self::from_noncanonical_i64(n)
     }
 }
@@ -465,8 +437,7 @@ impl From<u64> for GoldilocksField {
 
 impl From<crate::BigUint> for GoldilocksField {
     fn from(n: crate::BigUint) -> Self {
-        // TODO is this the right one?
-        Self(wrap(u64::try_from(n).unwrap()))
+        u64::try_from(n).unwrap().into()
     }
 }
 
