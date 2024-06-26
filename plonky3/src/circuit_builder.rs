@@ -60,9 +60,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         if analyzed.constant_count() > 0 {
             unimplemented!("Fixed columns are not supported in Plonky3");
         }
-        if !analyzed.public_declarations.is_empty() {
-            unimplemented!("Public declarations are not supported in Plonky3");
-        }
         if analyzed
             .definitions
             .iter()
