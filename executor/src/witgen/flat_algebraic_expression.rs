@@ -8,7 +8,7 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
-use powdr_number::{FieldElement};
+use powdr_number::FieldElement;
 
 use super::{
     affine_expression::{AffineExpression, AffineResult},
@@ -16,26 +16,31 @@ use super::{
     FixedData, IncompleteCause,
 };
 
-/// A "flat" version of AlgebraicExpression that is optimized for sums of quadratic terms.
+/// A "flat" version of AlgebraicExpression that is optimized for evaluating.
 #[derive(Default)]
 pub struct FlatAlgebraicExpression<T> {
     base: FlatAffine<T>,
-    /// The quadratic terms.
+    /// The quadratic terms with coefficient 1.
     positive_quadratic: Vec<(AlgebraicReference, AlgebraicReference)>,
+    /// The quadratic terms with coefficient -1.
     negative_quadratic: Vec<(AlgebraicReference, AlgebraicReference)>,
-    /// The quadratic terms with coefficients.
+    /// The quadratic terms with varying coefficients.
     quadratic_linear: Vec<((AlgebraicReference, AlgebraicReference), T)>,
     /// Quadratic terms with each side being an affine expression.
     complex: Vec<(FlatAffine<T>, FlatAffine<T>)>,
-    /// If all AlgebraicReferences in this expression are unique.
+    /// Whether all AlgebraicReferences in this expression are unique.
     unique_references: bool,
 }
 
 #[derive(Default, Clone)]
 struct FlatAffine<T> {
+    /// The constant term
     constant: T,
+    /// The linear terms with coefficient 1.
     positive: Vec<AlgebraicReference>,
+    /// The linear terms with coefficient -1.
     negative: Vec<AlgebraicReference>,
+    /// The linear terms with varying coefficients.
     linear: Vec<(AlgebraicReference, T)>,
 }
 
@@ -216,10 +221,7 @@ impl<T: FieldElement> FlatAffine<T> {
                 std::mem::take(&mut self.negative)
                     .into_iter()
                     .map(|r| (r, (-1).into()))
-                    .chain(
-                        std::mem::take(&mut self.linear)
-                            .into_iter(),
-                    ),
+                    .chain(std::mem::take(&mut self.linear)),
             )
             .collect::<Vec<_>>();
         self.positive.clear();
@@ -410,12 +412,10 @@ fn try_from_product<T: FieldElement>(
                 });
             }
         }
-        _ => {
-            Ok(FlatAlgebraicExpression {
-                complex: vec![(left.base, right.base)],
-                ..Default::default()
-            })
-        }
+        _ => Ok(FlatAlgebraicExpression {
+            complex: vec![(left.base, right.base)],
+            ..Default::default()
+        }),
     }
 }
 
