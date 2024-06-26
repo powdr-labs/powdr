@@ -175,6 +175,35 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 #[cfg(not(feature = "halo2"))]
 pub fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
+#[cfg(feature = "plonky3")]
+pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
+    let tmp_dir = mktemp::Temp::new_dir().unwrap();
+    let mut pipeline = Pipeline::default()
+        .with_tmp_output(&tmp_dir)
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs)
+        .with_backend(powdr_backend::BackendType::Plonky3, None);
+
+    // Generate a proof
+    let proof = pipeline.compute_proof().cloned().unwrap();
+
+    let publics: Vec<GoldilocksField> = pipeline
+        .publics()
+        .clone()
+        .unwrap()
+        .iter()
+        .map(|(_name, v)| *v)
+        .collect();
+
+    pipeline.verify(&proof, &[publics]).unwrap();
+}
+
+#[cfg(not(feature = "plonky3"))]
+pub fn test_plonky3(_: &str, _: Vec<GoldilocksField>) {}
+
+#[cfg(not(feature = "plonky3"))]
+pub fn gen_plonky3_proof(_: &str, _: Vec<GoldilocksField>) {}
+
 /// Returns the analyzed PIL containing only the std library.
 pub fn std_analyzed<T: FieldElement>() -> Analyzed<T> {
     let mut pipeline = Pipeline::default().from_asm_string(String::new(), None);

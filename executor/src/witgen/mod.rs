@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap};
-use std::rc::Rc;
 use std::sync::Arc;
 
 use powdr_ast::analyzed::{
@@ -49,15 +48,15 @@ impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String>
 
 #[derive(Clone)]
 pub struct WitgenCallback<T> {
-    analyzed: Rc<Analyzed<T>>,
-    fixed_col_values: Rc<Vec<(String, Vec<T>)>>,
+    analyzed: Arc<Analyzed<T>>,
+    fixed_col_values: Arc<Vec<(String, Vec<T>)>>,
     query_callback: Arc<dyn QueryCallback<T>>,
 }
 
 impl<T: FieldElement> WitgenCallback<T> {
     pub fn new(
-        analyzed: Rc<Analyzed<T>>,
-        fixed_col_values: Rc<Vec<(String, Vec<T>)>>,
+        analyzed: Arc<Analyzed<T>>,
+        fixed_col_values: Arc<Vec<(String, Vec<T>)>>,
         query_callback: Option<Arc<dyn QueryCallback<T>>>,
     ) -> Self {
         let query_callback = query_callback.unwrap_or_else(|| Arc::new(unused_query_callback()));
