@@ -14,7 +14,9 @@ use core::hint::unreachable_unchecked;
 
 use crate::{BigUint, FieldElement, KnownField, LargeInt};
 
-// Implementation adapted from plonky2
+// This implementation is adapted from plonky2. The main change is that we ensure that the stored
+// value is always less than the field modulus, since we do conversions from and to canonical
+// integers all the time.
 
 const EPSILON: u64 = (1 << 32) - 1;
 
@@ -105,7 +107,7 @@ impl GoldilocksField {
     #[inline(always)]
     fn from_canonical_u64(n: u64) -> Self {
         debug_assert!(n < Self::ORDER);
-        Self(n.into())
+        Self(n)
     }
 
     #[inline]
@@ -123,12 +125,6 @@ impl GoldilocksField {
     #[inline]
     fn to_canonical_u64(&self) -> u64 {
         self.0
-    }
-
-    #[inline]
-    fn multiply_accumulate(&self, x: Self, y: Self) -> Self {
-        // u64 + u64 * u64 cannot overflow.
-        reduce128((self.0 as u128) + (x.0 as u128) * (y.0 as u128))
     }
 }
 
@@ -163,6 +159,8 @@ impl Add for GoldilocksField {
         let (sum, over) = self.0.overflowing_add(rhs.0);
         let (mut sum, over) = sum.overflowing_add((over as u64) * EPSILON);
         if over {
+            // TODO check if this is reachabel if we ensure that self.0 < Self::ORDER and rhs.0 < Self::ORDER
+
             // NB: self.0 > Self::ORDER && rhs.0 > Self::ORDER is necessary but not sufficient for
             // double-overflow.
             // This assume does two things:
@@ -174,9 +172,7 @@ impl Add for GoldilocksField {
             branch_hint();
             sum += EPSILON; // Cannot overflow.
         }
-        // TODO We probably don't need this in both cases.
-        let sum = wrap(sum);
-        Self(sum)
+        Self(wrap(sum))
     }
 }
 
@@ -378,14 +374,14 @@ impl FieldElement for GoldilocksField {
         } else if exp == 1 {
             return self;
         }
-        let mut x = self.clone();
+        let mut x = self;
         let mut r: Self = 1.into();
         while exp >= 2 {
             if exp & 1 != 0 {
-                r = r * x;
+                r *= x;
             }
             // TODO squaring could be optimized.
-            x = x.clone() * x.clone();
+            x = x * x;
             exp >>= 1;
         }
         r * x
