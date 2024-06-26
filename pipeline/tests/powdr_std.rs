@@ -50,7 +50,16 @@ fn split_gl_test() {
 fn arith_test() {
     let f = "std/arith_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();
-    gen_estark_proof(f, Default::default());
+
+    // Running gen_estark_proof(f, Default::default())
+    // is too slow for the PR tests. This will only create a single
+    // eStark proof instead of 3.
+    Pipeline::<GoldilocksField>::default()
+        .from_file(resolve_test_file(f))
+        .with_backend(powdr_backend::BackendType::EStarkStarky, None)
+        .compute_proof()
+        .unwrap();
+
     test_halo2(f, Default::default());
 }
 
