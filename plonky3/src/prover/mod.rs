@@ -40,8 +40,6 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
         let publics = circuit.calculate_publics_from_witness();
 
-        println!("publics: {:?}", publics);
-
         let trace = circuit.generate_trace_rows();
 
         let config = get_config(self.analyzed.degree());
@@ -136,13 +134,9 @@ mod tests {
             x = 0;
             x + y = z;
 
-            public outx = x(7);
-            public outy = y(7);
             public outz = z(7);
         "#;
         let publics = vec![
-            GoldilocksField::from(0),
-            GoldilocksField::from(0),
             GoldilocksField::from(1),
         ];
 
@@ -160,13 +154,9 @@ mod tests {
             x = 0;
             x + y = z;
 
-            public outx = x(7);
-            public outy = y(7);
             public outz = z(7);
         "#;
         let publics = vec![
-            GoldilocksField::from(0),
-            GoldilocksField::from(0),
             GoldilocksField::from(0),
         ];
 
