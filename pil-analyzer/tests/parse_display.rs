@@ -761,7 +761,7 @@ fn trait_impl() {
 }
 
 #[test]
-#[should_panic = "Add::add already defined."]
+#[should_panic = "Add.add already defined."]
 fn duplicate_funtion_trait() {
     let input = "
     trait Add<T: Add> {
