@@ -37,7 +37,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
-        let publics = vec![];
+        let publics = circuit.get_public_values();
 
         let trace = circuit.generate_trace_rows();
 
@@ -86,22 +86,48 @@ mod tests {
 
     /// Prove and verify execution
     fn run_test_goldilocks(pil: &str) {
+        run_test_goldilocks_publics(pil, None)
+    }
+
+    fn run_test_goldilocks_publics(pil: &str, malicious_publics: Option<Vec<GoldilocksField>>) {
         let mut pipeline = Pipeline::<GoldilocksField>::default().from_pil_string(pil.to_string());
 
         let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
 
-        let proof = Plonky3Prover::new(&pil).prove(&witness, witness_callback);
+        let prover = Plonky3Prover::new(&pil);
+        let proof = prover.prove(&witness, witness_callback);
 
         assert!(proof.is_ok());
+
+        if let Some(publics) = malicious_publics {
+            prover.verify(&proof.unwrap(), &[publics]).unwrap()
+        }
     }
 
     #[test]
-    #[should_panic = "not implemented"]
     fn publics() {
         let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
         run_test_goldilocks(content);
+    }
+
+    #[test]
+    #[should_panic = r#"called `Result::unwrap()` on an `Err` value: "Failed to verify proof: OodEvaluationMismatch""#]
+    fn public_inputs_malicious() {
+        let content = r#"
+        namespace Add(8);
+            col witness x;
+            col witness y;
+            col witness z;
+            y - 1 = 0;
+            x = 0;
+            x + y = z;
+
+            public outz = z(7);
+        "#;
+        let malicious_publics = Some(vec![GoldilocksField::from(0)]);
+        run_test_goldilocks_publics(content, malicious_publics);
     }
 
     #[test]
