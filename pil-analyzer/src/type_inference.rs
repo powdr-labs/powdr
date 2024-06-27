@@ -468,7 +468,7 @@ impl<'a> TypeChecker<'a> {
                         .map_or_else(Vec::new, |s| s.types.clone());
 
                     let f_name = if trait_name.contains('.') {
-                        let trait_name = trait_name.replace(".", "::");
+                        let trait_name = trait_name.replace('.', "::");
                         format!("{trait_name}::{fname}", fname = f.name)
                     } else {
                         format!("{trait_name}.{fname}", fname = f.name)
