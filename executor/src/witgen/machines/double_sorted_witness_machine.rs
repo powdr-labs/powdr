@@ -10,9 +10,7 @@ use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 use powdr_number::{DegreeType, FieldElement};
 
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, Identity, IdentityKind, RawPolyID as PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolyID};
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.
@@ -83,8 +81,9 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         fixed_data: &'a FixedData<T>,
         connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         witness_cols: &HashSet<PolyID>,
-        degree: u64,
     ) -> Option<Self> {
+        let degree = fixed_data.common_degree(witness_cols.iter().cloned());
+
         // get the namespaces and column names
         let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = witness_cols
             .iter()
@@ -110,7 +109,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                     .selector
                     .as_ref()
                     .and_then(|r| try_to_simple_poly(r))
-                    .map(|p| (i.id, p.poly_id.raw))
+                    .map(|p| (i.id, p.poly_id))
             })
             .collect::<Option<BTreeMap<_, _>>>()?;
 

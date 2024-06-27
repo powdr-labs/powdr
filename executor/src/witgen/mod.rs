@@ -1,9 +1,9 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-    PolynomialType, RawPolyID as PolyID, SymbolKind, TypedExpression,
+    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
+    PolynomialType, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
@@ -187,9 +187,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let ExtractionOutput {
             mut fixed_lookup,
             mut machines,
-            base,
+            base_identities,
+            base_witnesses,
         } = machines::machine_extractor::split_out_machines(&fixed, retained_identities);
-
         let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
             fixed_lookup: &mut fixed_lookup,
@@ -197,24 +197,27 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             query_callback: &mut query_callback,
         };
 
-        let main_columns = base.map(|base| {
-            let mut generator = Generator::new(
-                "Main Machine".to_string(),
-                &fixed,
-                &BTreeMap::new(), // No connecting identities
-                base.identities,
-                base.witnesses,
-                // We could set the latch of the main VM here, but then we would have to detect it.
-                // Instead, the main VM will be computed in one block, directly continuing into the
-                // infinite loop after the first return.
-                None,
-                base.degree,
-            );
-    
-            generator.run(&mut mutable_state);
-            generator
-            .take_witness_col_values(mutable_state.fixed_lookup, mutable_state.query_callback)
-        }).unwrap_or_default();
+        let main_columns = (!base_witnesses.is_empty())
+            .then(|| {
+                let mut generator = Generator::new(
+                    "Main Machine".to_string(),
+                    &fixed,
+                    &BTreeMap::new(), // No connecting identities
+                    base_identities,
+                    base_witnesses,
+                    // We could set the latch of the main VM here, but then we would have to detect it.
+                    // Instead, the main VM will be computed in one block, directly continuing into the
+                    // infinite loop after the first return.
+                    None,
+                );
+
+                generator.run(&mut mutable_state);
+                generator.take_witness_col_values(
+                    mutable_state.fixed_lookup,
+                    mutable_state.query_callback,
+                )
+            })
+            .unwrap_or_default();
 
         // Get columns from machines
         let mut columns = mutable_state
@@ -282,6 +285,33 @@ pub struct FixedData<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
+    pub fn common_degree(&self, ids: impl IntoIterator<Item = PolyID>) -> DegreeType {
+        let ids: HashSet<_> = ids.into_iter().collect();
+
+        self.analyzed
+            .definitions
+            .iter()
+            .flat_map(|(_, (symbol, _))| {
+                // get all polynomials and their degrees
+                symbol.array_elements().map(|(_, id)| {
+                    (
+                        id,
+                        symbol.degree.expect("all polynomials should have a degree"),
+                    )
+                })
+            })
+            .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
+            .reduce(|acc, degree| {
+                assert_eq!(acc, degree);
+                acc
+            })
+            .unwrap()
+    }
+
+    pub fn degree(&self, id: PolyID) -> DegreeType {
+        self.common_degree(std::iter::once(id))
+    }
+
     pub fn new(
         analyzed: &'a Analyzed<T>,
         fixed_col_values: &'a [(String, Vec<T>)],
@@ -314,7 +344,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                             // Remove any hint for witness columns of a later stage
                             // (because it might reference a challenge that is not available yet)
                             let value = if poly.stage.unwrap_or_default() <= stage.into() { value.as_ref() } else { None };
-                            WitnessColumn::new(poly_id, &name, value, external_values)
+                            WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
                         })
                         .collect::<Vec<_>>()
                 },
@@ -384,7 +414,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn column_name(&self, poly_id: &PolyID) -> &str {
-        match poly_id.ptype() {
+        match poly_id.ptype {
             PolynomialType::Committed => &self.witness_cols[poly_id].poly.name,
             PolynomialType::Constant => &self.fixed_cols[poly_id].name,
             PolynomialType::Intermediate => unimplemented!(),
@@ -396,6 +426,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {
+        let row = row % self.degree(*column);
         self.witness_cols[column]
             .external_values
             .as_ref()
@@ -436,13 +467,11 @@ pub struct WitnessColumn<'a, T> {
 
 impl<'a, T> WitnessColumn<'a, T> {
     pub fn new(
-        poly_id: powdr_ast::analyzed::PolyID,
+        id: usize,
         name: &str,
         value: Option<&'a FunctionValueDefinition>,
         external_values: Option<&'a Vec<T>>,
     ) -> WitnessColumn<'a, T> {
-        assert_eq!(poly_id.ptype(), PolynomialType::Committed);
-
         let query = if let Some(FunctionValueDefinition::Expression(TypedExpression {
             e:
                 query @ Expression::LambdaExpression(
@@ -460,7 +489,10 @@ impl<'a, T> WitnessColumn<'a, T> {
             None
         };
         let poly = AlgebraicReference {
-            poly_id,
+            poly_id: PolyID {
+                id: id as u64,
+                ptype: PolynomialType::Committed,
+            },
             name: name.to_string(),
             next: false,
         };

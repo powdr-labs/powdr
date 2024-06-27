@@ -20,7 +20,7 @@ pub fn mock_prove<T: FieldElement>(
     // double the row count in order to make space for the cells introduced by the backend
     // TODO: use a precise count of the extra rows needed to avoid using so many rows
 
-    let circuit_row_count_log = usize::BITS - pil.max_degree().leading_zeros();
+    let circuit_row_count_log = usize::BITS - pil.degree().leading_zeros();
     let expanded_row_count_log = circuit_row_count_log + 1;
 
     let circuit = PowdrCircuit::new(pil, constants)

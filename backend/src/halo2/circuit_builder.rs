@@ -272,7 +272,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                     let first_row = meta.query_advice(config.advice[name], Rotation::cur());
                     let last_row = meta.query_advice(
                         config.advice[name],
-                        Rotation(analyzed.max_degree().try_into().unwrap()),
+                        Rotation(analyzed.degree().try_into().unwrap()),
                     );
                     let expr = first_step.clone() * (first_row - last_row);
                     (format!("enforce wrapping ({name})"), expr)
@@ -411,7 +411,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                         )?;
                     }
                 }
-                let degree = self.analyzed.max_degree() as usize;
+                let degree = self.analyzed.degree() as usize;
                 for i in 0..(2 * degree) {
                     let value = F::from((i < degree) as u64);
                     region.assign_fixed(

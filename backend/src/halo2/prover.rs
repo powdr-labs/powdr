@@ -94,10 +94,10 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         let mut params = setup
             .map(|mut setup| ParamsKZG::<Bn256>::read(&mut setup))
             .transpose()?
-            .unwrap_or_else(|| generate_setup(analyzed.max_degree()));
+            .unwrap_or_else(|| generate_setup(analyzed.degree()));
 
         if matches!(proof_type, ProofType::Poseidon | ProofType::SnarkSingle) {
-            params.downsize(degree_bits(analyzed.max_degree()));
+            params.downsize(degree_bits(analyzed.degree()));
         }
 
         Ok(Self {
@@ -250,7 +250,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         log::info!("Generating VK for app snark...");
 
         let mut params_app = self.params.clone();
-        params_app.downsize(degree_bits(self.analyzed.max_degree()));
+        params_app.downsize(degree_bits(self.analyzed.degree()));
 
         log::info!("Generating circuit for compression snark...");
         let protocol_app = compile(
@@ -375,7 +375,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         };
 
         let mut params_app = self.params.clone();
-        params_app.downsize(degree_bits(self.analyzed.max_degree()));
+        params_app.downsize(degree_bits(self.analyzed.degree()));
 
         let protocol_app = compile(
             &params_app,

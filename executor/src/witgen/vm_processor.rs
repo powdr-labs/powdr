@@ -1,8 +1,7 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind,
-    RawPolyID as PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
@@ -72,8 +71,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         witnesses: &'c HashSet<PolyID>,
         data: FinalizableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
-        degree: u64,
     ) -> Self {
+        let degree = fixed_data.common_degree(witnesses.iter().cloned());
+
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
             .partition(|identity| identity.contains_next_ref());

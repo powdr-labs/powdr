@@ -43,16 +43,19 @@ pub struct Analyzed<T> {
 }
 
 impl<T> Analyzed<T> {
-    /// Returns the max of all degrees in this [`Analyzed<T>`].
+    /// Returns the common degree in this [`Analyzed<T>`].
     ///
     /// # Panics
     ///
-    /// Panics if there are no symbols
-    pub fn max_degree(&self) -> DegreeType {
+    /// Panics if there is no common degree or if there are no symbols
+    pub fn degree(&self) -> DegreeType {
         self.definitions
             .values()
             .filter_map(|(symbol, _)| symbol.degree)
-            .max()
+            .reduce(|acc, degree| {
+                assert_eq!(acc, degree);
+                acc
+            })
             .unwrap()
     }
 
@@ -229,8 +232,14 @@ impl<T> Analyzed<T> {
             let length = symbol.length.unwrap_or(1);
             // Empty arrays still need ID replacement
             for i in 0..max(length, 1) {
-                let old_poly_id = PolyID::from(symbol).with_id(symbol.id + i);
-                let new_poly_id = PolyID::from(symbol).with_id(new_id + i);
+                let old_poly_id = PolyID {
+                    id: symbol.id + i,
+                    ..PolyID::from(symbol)
+                };
+                let new_poly_id = PolyID {
+                    id: new_id + i,
+                    ..PolyID::from(symbol)
+                };
                 replacements.insert(old_poly_id, new_poly_id);
             }
             new_id + length
@@ -250,14 +259,14 @@ impl<T> Analyzed<T> {
         self.definitions.values_mut().for_each(|(poly, _def)| {
             if matches!(poly.kind, SymbolKind::Poly(_)) {
                 let poly_id = PolyID::from(poly as &Symbol);
-                poly.id = replacements[&poly_id].id();
+                poly.id = replacements[&poly_id].id;
             }
         });
         self.intermediate_columns
             .values_mut()
             .for_each(|(poly, _def)| {
                 let poly_id = PolyID::from(poly as &Symbol);
-                poly.id = replacements[&poly_id].id();
+                poly.id = replacements[&poly_id].id;
             });
         let visitor = &mut |expr: &mut Expression| {
             if let Expression::Reference(_, Reference::Poly(poly)) = expr {
@@ -350,7 +359,7 @@ fn substitute_intermediate<T: Copy + Display>(
         .scan(HashMap::default(), |cache, mut identity| {
             identity.post_visit_expressions_mut(&mut |e| {
                 if let AlgebraicExpression::Reference(poly) = e {
-                    match poly.poly_id.ptype() {
+                    match poly.poly_id.ptype {
                         PolynomialType::Committed => {}
                         PolynomialType::Constant => {}
                         PolynomialType::Intermediate => {
@@ -378,10 +387,7 @@ fn inlined_expression_from_intermediate_poly_id<T: Copy + Display>(
     intermediate_polynomials: &HashMap<PolyID, &AlgebraicExpression<T>>,
     cache: &mut HashMap<AlgebraicReference, AlgebraicExpression<T>>,
 ) -> AlgebraicExpression<T> {
-    assert_eq!(
-        poly_to_replace.poly_id.ptype(),
-        PolynomialType::Intermediate
-    );
+    assert_eq!(poly_to_replace.poly_id.ptype, PolynomialType::Intermediate);
     if let Some(e) = cache.get(&poly_to_replace) {
         return e.clone();
     }
@@ -398,7 +404,7 @@ fn inlined_expression_from_intermediate_poly_id<T: Copy + Display>(
             );
         }
         r.next = r.next || poly_to_replace.next;
-        match r.poly_id.ptype() {
+        match r.poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Constant => {}
             PolynomialType::Intermediate => {
                 *e = inlined_expression_from_intermediate_poly_id(
@@ -476,11 +482,8 @@ impl Symbol {
             (
                 self.array_element_name(i),
                 PolyID {
-                    raw: RawPolyID {
-                        id: self.id + i,
-                        ptype,
-                    },
-                    degree: self.degree,
+                    id: self.id + i,
+                    ptype,
                 },
             )
         })
@@ -780,11 +783,11 @@ pub struct AlgebraicReference {
 impl AlgebraicReference {
     #[inline]
     pub fn is_witness(&self) -> bool {
-        self.poly_id.ptype() == PolynomialType::Committed
+        self.poly_id.ptype == PolynomialType::Committed
     }
     #[inline]
     pub fn is_fixed(&self) -> bool {
-        self.poly_id.ptype() == PolynomialType::Constant
+        self.poly_id.ptype == PolynomialType::Constant
     }
 }
 
@@ -1162,89 +1165,29 @@ pub struct PolynomialReference {
 }
 
 #[derive(
-    Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Hash,
-)]
-pub struct PolyID {
-    pub raw: RawPolyID,
-    pub degree: Option<DegreeType>,
-}
-
-impl PolyID {
-    pub fn with_id(mut self, id: u64) -> Self {
-        self.raw = self.raw.with_id(id);
-        self
-    }
-
-    pub fn id(&self) -> u64 {
-        self.raw.id()
-    }
-
-    pub fn ptype(&self) -> PolynomialType {
-        self.raw.ptype()
-    }
-
-    pub fn new(id: u64, ptype: PolynomialType) -> Self {
-        Self {
-            raw: RawPolyID { id, ptype },
-            degree: None,
-        }
-    }
-}
-
-#[derive(
     Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize, JsonSchema,
 )]
-pub struct RawPolyID {
+pub struct PolyID {
     pub id: u64,
     pub ptype: PolynomialType,
 }
 
-impl From<&Symbol> for RawPolyID {
+impl From<&Symbol> for PolyID {
     fn from(symbol: &Symbol) -> Self {
         let SymbolKind::Poly(ptype) = symbol.kind else {
             panic!()
         };
-        RawPolyID {
+        PolyID {
             id: symbol.id,
             ptype,
         }
     }
 }
 
-impl Hash for RawPolyID {
+impl Hash for PolyID {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // single call to hash is faster
-        ((self.id() << 2) + self.ptype() as u64).hash(state);
-    }
-}
-
-impl From<PolyID> for RawPolyID {
-    fn from(value: PolyID) -> Self {
-        value.raw
-    }
-}
-
-impl RawPolyID {
-    fn with_id(mut self, id: u64) -> Self {
-        self.id = id;
-        self
-    }
-
-    pub fn id(&self) -> u64 {
-        self.id
-    }
-
-    pub fn ptype(&self) -> PolynomialType {
-        self.ptype
-    }
-}
-
-impl From<&Symbol> for PolyID {
-    fn from(symbol: &Symbol) -> Self {
-        PolyID {
-            raw: symbol.into(),
-            degree: symbol.degree,
-        }
+        ((self.id << 2) + self.ptype as u64).hash(state);
     }
 }
 

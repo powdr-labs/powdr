@@ -41,7 +41,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
         let trace = circuit.generate_trace_rows();
 
-        let config = get_config(self.analyzed.max_degree());
+        let config = get_config(self.analyzed.degree());
 
         let mut challenger = get_challenger();
 
@@ -62,7 +62,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
             .map(|v| cast_to_goldilocks(*v))
             .collect();
 
-        let config = get_config(self.analyzed.max_degree());
+        let config = get_config(self.analyzed.degree());
 
         let mut challenger = get_challenger();
 

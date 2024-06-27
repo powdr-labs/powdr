@@ -28,7 +28,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub fn generate_trace_rows(&self) -> RowMajorMatrix<Goldilocks> {
         // an iterator over all columns, committed then fixed
         let witness = self.witness().iter();
-        let len = self.analyzed.max_degree();
+        let len = self.analyzed.degree();
 
         // for each row, get the value of each column
         let values = (0..len)
@@ -106,13 +106,13 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 };
 
                 // witness columns indexes are unchanged, fixed ones are offset by `commitment_count`
-                let index = match poly_id.ptype() {
+                let index = match poly_id.ptype {
                     PolynomialType::Committed => {
                         assert!(
-                            r.poly_id.id() < self.analyzed.commitment_count() as u64,
+                            r.poly_id.id < self.analyzed.commitment_count() as u64,
                             "Plonky3 expects `poly_id` to be contiguous"
                         );
-                        r.poly_id.id() as usize
+                        r.poly_id.id as usize
                     }
                     PolynomialType::Constant => {
                         unreachable!(

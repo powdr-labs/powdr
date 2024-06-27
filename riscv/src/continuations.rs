@@ -71,7 +71,7 @@ where
     pipeline.compute_fixed_cols().unwrap();
 
     // we can assume optimized_pil has been computed
-    let length = pipeline.compute_optimized_pil().unwrap().max_degree();
+    let length = pipeline.compute_optimized_pil().unwrap().degree();
 
     bootloader_inputs
         .into_iter()

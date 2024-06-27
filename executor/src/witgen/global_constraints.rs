@@ -5,7 +5,7 @@ use num_traits::Zero;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, Identity, IdentityKind, PolynomialType, RawPolyID as PolyID,
+    AlgebraicReference, Identity, IdentityKind, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -32,7 +32,7 @@ impl<'a, T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
 {
     fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
         assert!(!id.next);
-        self.range_constraints.get(&id.poly_id.raw).cloned()
+        self.range_constraints.get(&id.poly_id).cloned()
     }
 }
 
@@ -94,9 +94,9 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConst
     fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
         assert!(!id.next);
         let poly_id = id.poly_id;
-        match poly_id.ptype() {
-            PolynomialType::Constant => self.fixed_constraints[&poly_id.raw].clone(),
-            PolynomialType::Committed => self.witness_constraints[&poly_id.raw].clone(),
+        match poly_id.ptype {
+            PolynomialType::Constant => self.fixed_constraints[&poly_id].clone(),
+            PolynomialType::Committed => self.witness_constraints[&poly_id].clone(),
             PolynomialType::Intermediate => None,
         }
     }
@@ -145,7 +145,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
 
     log::debug!("Determined the following global range constraints:");
     for (poly_id, con) in &known_constraints {
-        if poly_id.ptype() == PolynomialType::Committed {
+        if poly_id.ptype == PolynomialType::Committed {
             log::debug!("  {}: {con}", fixed_data.column_name(poly_id));
         }
     }
@@ -158,7 +158,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
     let mut witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>> =
         fixed_data.witness_map_with(None);
     for (poly_id, con) in known_constraints {
-        if poly_id.ptype() == PolynomialType::Committed {
+        if poly_id.ptype == PolynomialType::Committed {
             // It's theoretically possible to have a constraint for both X and X'.
             // In that case, we take the conjunction.
             let con = witness_constraints[&poly_id]
@@ -243,9 +243,9 @@ fn propagate_constraints<T: FieldElement>(
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
                 {
-                    if let Some(constraint) = known_constraints.get(&right.poly_id.raw).cloned() {
+                    if let Some(constraint) = known_constraints.get(&right.poly_id).cloned() {
                         known_constraints
-                            .entry(left.poly_id.raw)
+                            .entry(left.poly_id)
                             .and_modify(|existing| *existing = existing.conjunction(&constraint))
                             .or_insert(constraint);
                     }
@@ -256,7 +256,7 @@ fn propagate_constraints<T: FieldElement>(
                 // provides all values in the span.
                 if let Some(name) = try_to_simple_poly(&identity.right.expressions[0]) {
                     if try_to_simple_poly(&identity.left.expressions[0]).is_some()
-                        && full_span.contains(&name.poly_id.raw)
+                        && full_span.contains(&name.poly_id)
                     {
                         remove = true;
                     }
@@ -304,7 +304,7 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID>
                 return None;
             }
             if (value1.is_zero() && value2.is_one()) || (value1.is_one() && value2.is_zero()) {
-                return Some(id1.poly_id.raw);
+                return Some(id1.poly_id);
             }
         }
     }
@@ -340,7 +340,7 @@ fn try_transfer_constraints<T: FieldElement>(
         .flat_map(|(poly, cons)| {
             if let Constraint::RangeConstraint(cons) = cons {
                 assert!(!poly.next);
-                Some((poly.poly_id.raw, cons))
+                Some((poly.poly_id, cons))
             } else {
                 None
             }
@@ -359,7 +359,7 @@ fn smallest_period_candidate<T: FieldElement>(fixed: &[T]) -> Option<u64> {
 mod test {
     use std::collections::BTreeMap;
 
-    use powdr_ast::analyzed::PolynomialType;
+    use powdr_ast::analyzed::{PolyID, PolynomialType};
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;

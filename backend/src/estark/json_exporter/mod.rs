@@ -5,7 +5,7 @@ use std::{cmp, path::PathBuf};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolyID,
-    PolynomialType, RawPolyID, StatementIdentifier, SymbolKind,
+    PolynomialType, StatementIdentifier, SymbolKind,
 };
 use powdr_parser_util::SourceRef;
 use starky::types::{
@@ -54,11 +54,11 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
             StatementIdentifier::Definition(name) => {
                 if let Some((poly, value)) = analyzed.intermediate_columns.get(name) {
                     assert_eq!(poly.kind, SymbolKind::Poly(PolynomialType::Intermediate));
-                    for ((_, poly_id), value) in poly.array_elements().zip(value) {
+                    for ((_, id), value) in poly.array_elements().zip(value) {
                         let expression_id = exporter.extract_expression(value, 1);
                         assert_eq!(
                             expression_id,
-                            exporter.intermediate_poly_expression_ids[&poly_id.id()] as usize
+                            exporter.intermediate_poly_expression_ids[&id.id] as usize
                         );
                     }
                 }
@@ -68,7 +68,10 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                 let pub_ref = &pub_def.polynomial;
                 let poly_id = pub_ref.poly_id.unwrap();
                 let (_, expr) = exporter.polynomial_reference_to_json(
-                    poly_id.with_id(poly_id.id() + pub_def.array_index.unwrap_or_default() as u64),
+                    PolyID {
+                        id: poly_id.id + pub_def.array_index.unwrap_or_default() as u64,
+                        ..poly_id
+                    },
                     false,
                 );
                 let id = publics.len();
@@ -229,7 +232,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     polType: None,
                     type_: symbol_kind_to_json_string(symbol.kind).to_string(),
                     id: id as usize,
-                    polDeg: self.analyzed.max_degree() as usize,
+                    polDeg: self.analyzed.degree() as usize,
                     isArray: symbol.is_array(),
                     elementType: None,
                     len: symbol.length.map(|l| l as usize),
@@ -248,7 +251,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                             polType: None,
                             type_: symbol_kind_to_json_string(symbol.kind).to_string(),
                             id: id as usize,
-                            polDeg: self.analyzed.max_degree() as usize,
+                            polDeg: self.analyzed.degree() as usize,
                             isArray: symbol.is_array(),
                             elementType: None,
                             len: symbol.length.map(|l| l as usize),
@@ -366,10 +369,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
 
     fn polynomial_reference_to_json(
         &self,
-        PolyID {
-            raw: RawPolyID { id, ptype },
-            ..
-        }: PolyID,
+        PolyID { id, ptype }: PolyID,
         next: bool,
     ) -> (u32, StarkyExpr) {
         let id = if ptype == PolynomialType::Intermediate {

@@ -4,7 +4,7 @@ use std::{
 };
 
 use bit_vec::BitVec;
-use powdr_ast::analyzed::RawPolyID as PolyID;
+use powdr_ast::analyzed::PolyID;
 use powdr_number::FieldElement;
 
 use crate::witgen::rows::Row;

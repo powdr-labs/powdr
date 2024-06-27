@@ -20,8 +20,8 @@ pub fn compute_intermediate_expression_ids<T>(analyzed: &Analyzed<T>) -> HashMap
                     poly.expression_count()
                 } else if let Some((poly, _)) = analyzed.intermediate_columns.get(name) {
                     assert!(poly.kind == SymbolKind::Poly(PolynomialType::Intermediate));
-                    for (index, (_, poly_id)) in poly.array_elements().enumerate() {
-                        ids.insert(poly_id.id(), (expression_counter + index) as u64);
+                    for (index, (_, id)) in poly.array_elements().enumerate() {
+                        ids.insert(id.id, (expression_counter + index) as u64);
                     }
                     poly.expression_count()
                 } else {

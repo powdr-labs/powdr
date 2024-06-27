@@ -12,8 +12,7 @@ use crate::witgen::{
 };
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind,
-    RawPolyID as PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -43,8 +42,9 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         identities: &[&Identity<Expression<T>>],
         witnesses: &HashSet<PolyID>,
-        degree: u64,
     ) -> Option<Self> {
+        let degree = fixed_data.common_degree(witnesses.iter().cloned());
+
         if identities.len() != 1 {
             return None;
         }
@@ -162,7 +162,7 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
         return None;
     }
 
-    Some(key_column_id.poly_id.raw)
+    Some(key_column_id.poly_id)
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
@@ -230,10 +230,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
             .map(|e| caller_rows.evaluate(e).unwrap())
             .collect::<Vec<_>>();
         let rhs = self.rhs_references.get(&identity_id).unwrap();
-        let key_index = rhs
-            .iter()
-            .position(|&x| x.poly_id.raw == self.key_col)
-            .unwrap();
+        let key_index = rhs.iter().position(|&x| x.poly_id == self.key_col).unwrap();
 
         let key_value = left[key_index].constant_value().ok_or_else(|| {
             format!(
@@ -248,7 +245,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
             .entry(key_value)
             .or_insert_with(|| vec![None; self.witness_positions.len()]);
         for (l, &r) in left.iter().zip(rhs.iter()).skip(1) {
-            let stored_value = &mut stored_values[self.witness_positions[&r.poly_id.raw]];
+            let stored_value = &mut stored_values[self.witness_positions[&r.poly_id]];
             match stored_value {
                 // There is a stored value
                 Some(v) => {

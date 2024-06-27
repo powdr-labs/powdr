@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, RawPolyID as PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -142,7 +142,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id) {
                 if let Some(l) = l.constant_value() {
                     log::trace!("    {} = {}", r, l);
-                    inputs.push((right_poly.raw, l));
+                    inputs.push((right_poly, l));
                 }
             }
         }
@@ -304,7 +304,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .constraints
             .into_iter()
             .filter(|(poly, update)| match update {
-                Constraint::Assignment(_) => !self.is_relevant_witness[&poly.poly_id.raw],
+                Constraint::Assignment(_) => !self.is_relevant_witness[&poly.poly_id],
                 // Range constraints are currently not communicated between callee and caller.
                 Constraint::RangeConstraint(_) => false,
             })
@@ -334,19 +334,18 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         for (poly, _) in &input_updates.constraints {
             let poly_id = poly.poly_id;
-            if let Some(start_row) = self.previously_set_inputs.remove(&poly_id.raw) {
+            if let Some(start_row) = self.previously_set_inputs.remove(&poly_id) {
                 log::trace!(
                     "    Resetting previously set inputs for column: {}",
-                    self.fixed_data.column_name(&poly_id.raw)
+                    self.fixed_data.column_name(&poly_id)
                 );
                 for row_index in start_row..row_index {
-                    self.data[row_index][&poly_id.raw].value = CellValue::Unknown;
+                    self.data[row_index][&poly_id].value = CellValue::Unknown;
                 }
             }
         }
         for (poly, _) in &input_updates.constraints {
-            self.previously_set_inputs
-                .insert(poly.poly_id.raw, row_index);
+            self.previously_set_inputs.insert(poly.poly_id, row_index);
         }
         self.apply_updates(row_index, &input_updates, || "inputs".to_string())
     }
@@ -387,7 +386,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         let mut progress = false;
         for (poly, c) in &updates.constraints {
-            if self.witness_cols.contains(&poly.poly_id.raw) {
+            if self.witness_cols.contains(&poly.poly_id) {
                 // Build RowUpdater
                 // (a bit complicated, because we need two mutable
                 // references to elements of the same vector)
@@ -427,11 +426,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             // Have to materialize the other cells to please the borrow checker...
             let others = self
                 .copy_constraints
-                .iter_equivalence_class((poly.poly_id.raw, row))
+                .iter_equivalence_class((poly.poly_id, row))
                 .skip(1)
                 .collect::<Vec<_>>();
             for (other_poly, other_row) in others {
-                if other_poly.ptype() != PolynomialType::Committed {
+                if other_poly.ptype != PolynomialType::Committed {
                     unimplemented!(
                         "Copy constraints to fixed columns are not yet supported (#1335)!"
                     );
@@ -441,7 +440,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 self.set_value(local_index, expression, *v, || {
                     format!(
                         "Copy constraint: {} (Row {}) -> {} (Row {})",
-                        self.fixed_data.column_name(&poly.poly_id.raw),
+                        self.fixed_data.column_name(&poly.poly_id),
                         row,
                         self.fixed_data.column_name(&other_poly),
                         other_row

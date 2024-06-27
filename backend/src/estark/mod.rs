@@ -79,7 +79,7 @@ fn first_step_fixup<'a, F: FieldElement>(
     pil: &'a Analyzed<F>,
     fixed: &'a [(String, Vec<F>)],
 ) -> (PIL, Constants<'a, F>) {
-    let degree = pil.max_degree();
+    let degree = pil.degree();
 
     let mut pil: PIL = json_exporter::export(pil);
 
@@ -165,7 +165,7 @@ impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
         let proof_type: ProofType = ProofType::from(options);
 
         Ok(EStarkFilesCommon {
-            degree: analyzed.max_degree(),
+            degree: analyzed.degree(),
             pil,
             constants,
             output_dir,

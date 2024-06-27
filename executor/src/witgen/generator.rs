@@ -1,5 +1,5 @@
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, RawPolyID as PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -118,14 +118,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         identities: Vec<&'a Identity<Expression<T>>>,
         witnesses: HashSet<PolyID>,
         latch: Option<Expression<T>>,
-        degree: DegreeType,
     ) -> Self {
-        let witnesses = witnesses.into_iter().map(Into::into).collect();
-
         let data = FinalizableData::new(&witnesses);
 
         Self {
-            degree,
+            degree: fixed_data.common_degree(witnesses.iter().cloned()),
             connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
@@ -232,13 +229,12 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let degree = self.degree();
 
         let mut processor = VmProcessor::new(
-            RowIndex::from_degree(row_offset, self.degree()),
+            RowIndex::from_degree(row_offset, degree),
             self.fixed_data,
             &self.identities,
             &self.witnesses,
             data,
             mutable_state,
-            degree,
         );
         if let Some(outer_query) = outer_query {
             processor = processor.with_outer_query(outer_query);

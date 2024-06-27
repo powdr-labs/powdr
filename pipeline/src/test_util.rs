@@ -20,12 +20,12 @@ pub fn execute_test_file(
     file_name: &str,
     inputs: Vec<GoldilocksField>,
     external_witness_values: Vec<(String, Vec<GoldilocksField>)>,
-) -> Result<Arc<Vec<(String, Vec<GoldilocksField>)>>, Vec<String>> {
+) -> Result<(), Vec<String>> {
     Pipeline::default()
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
         .add_external_witness_values(external_witness_values)
-        .compute_witness()
+        .compute_witness().map(|_| ())
 }
 
 pub fn verify_test_file(
@@ -155,7 +155,7 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     buffered_write_file(&setup_file_path, |writer| {
         powdr_backend::BackendType::Halo2
             .factory::<Bn254Field>()
-            .generate_setup(pil.max_degree(), writer)
+            .generate_setup(pil.degree(), writer)
             .unwrap()
     })
     .unwrap();
