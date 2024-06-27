@@ -118,6 +118,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             .as_ref()
             .expect("Witness needs to be set")
             .iter()
+            .map(|(name, values)| (name, values))
             .collect::<BTreeMap<_, _>>();
 
         publics
