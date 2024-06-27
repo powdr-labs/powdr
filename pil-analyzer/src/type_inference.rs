@@ -466,7 +466,8 @@ impl<'a> TypeChecker<'a> {
                     let impl_types = type_scheme
                         .as_ref()
                         .map_or_else(Vec::new, |s| s.types.clone());
-                    let trait_name = trait_name.replace('.', "::");
+                    //println!("name: {trait_name}::{f.name}")
+                    //let trait_name = trait_name.replace('.', "::");
                     let f_name = format!("{trait_name}::{fname}", fname = f.name);
                     let trait_func = self.declared_types.get(&f_name);
                     if trait_func.is_none() {
