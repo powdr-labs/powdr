@@ -33,11 +33,11 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     }
 }
 
-struct PolygonBackend<F: FieldElement>(EStarkFilesCommon<F>);
+struct PolygonBackend<'b, F: FieldElement>(EStarkFilesCommon<'b, F>);
 
 // TODO: make both eStark backends interchangeable, from user perspective.
 // TODO: implement the other Backend trait methods.
-impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<F> {
+impl<'a: 'b, 'b, F: FieldElement> Backend<'a, F> for PolygonBackend<'b, F> {
     fn prove(
         &self,
         // Witness is taken from file written by the pipeline.
