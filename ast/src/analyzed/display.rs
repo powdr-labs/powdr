@@ -336,7 +336,7 @@ impl<T: Display> Display for AlgebraicExpression<T> {
             AlgebraicExpression::Challenge(challenge) => {
                 write!(
                     f,
-                    "std::prover::challenge({}, {})",
+                    "std::prelude::challenge({}, {})",
                     challenge.stage, challenge.id,
                 )
             }

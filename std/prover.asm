@@ -20,7 +20,7 @@ enum Query {
 
 /// Constructs a challenge object.
 /// The arguments are the proof stage and the id of the challenge, in this order.
-let challenge: int, int -> expr = [];
+let challenge: int, int -> expr = |stage, id| std::prelude::challenge(stage, id);
 
 /// Returns the current number of rows, sometimes known as the "degree".
 let degree: -> int = [];
