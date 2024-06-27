@@ -101,9 +101,8 @@ mod tests {
 
         assert!(proof.is_ok());
 
-        match malicious_publics {
-            Some(publics) => prover.verify(&proof.unwrap(), &[publics]).expect(""),
-            None => (),
+        if let Some(publics) = malicious_publics {
+            prover.verify(&proof.unwrap(), &[publics]).expect("")
         }
     }
 
