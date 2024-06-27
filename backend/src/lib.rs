@@ -3,6 +3,8 @@
 mod estark;
 #[cfg(feature = "halo2")]
 mod halo2;
+#[cfg(feature = "plonky3")]
+mod plonky3;
 
 mod composite;
 
@@ -34,12 +36,18 @@ pub enum BackendType {
     EStarkPolygonComposite,
     #[strum(serialize = "estark-starky")]
     EStarkStarky,
-    #[strum(serialize = "estark-composite")]
+    #[strum(serialize = "estark-starky-composite")]
     EStarkStarkyComposite,
     #[strum(serialize = "estark-dump")]
     EStarkDump,
     #[strum(serialize = "estark-dump-composite")]
     EStarkDumpComposite,
+    #[cfg(feature = "plonky3")]
+    #[strum(serialize = "plonky3")]
+    Plonky3,
+    #[cfg(feature = "plonky3")]
+    #[strum(serialize = "plonky3-composite")]
+    Plonky3Composite,
 }
 
 pub type BackendOptions = String;
@@ -75,6 +83,12 @@ impl BackendType {
             BackendType::EStarkDump => Box::new(estark::DumpFactory),
             BackendType::EStarkDumpComposite => {
                 Box::new(composite::CompositeBackendFactory::new(estark::DumpFactory))
+            }
+            #[cfg(feature = "plonky3")]
+            BackendType::Plonky3 => Box::new(plonky3::Factory),
+            #[cfg(feature = "plonky3")]
+            BackendType::Plonky3Composite => {
+                Box::new(composite::CompositeBackendFactory::new(plonky3::Factory))
             }
         }
     }
