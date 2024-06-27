@@ -187,32 +187,36 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let ExtractionOutput {
             mut fixed_lookup,
             mut machines,
-            base_identities,
-            base_witnesses,
+            base,
         } = machines::machine_extractor::split_out_machines(&fixed, retained_identities);
+
         let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
             fixed_lookup: &mut fixed_lookup,
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
-        let mut generator = Generator::new(
-            "Main Machine".to_string(),
-            &fixed,
-            &BTreeMap::new(), // No connecting identities
-            base_identities,
-            base_witnesses,
-            // We could set the latch of the main VM here, but then we would have to detect it.
-            // Instead, the main VM will be computed in one block, directly continuing into the
-            // infinite loop after the first return.
-            None,
-        );
 
-        generator.run(&mut mutable_state);
+        let main_columns = base.map(|base| {
+            let mut generator = Generator::new(
+                "Main Machine".to_string(),
+                &fixed,
+                &BTreeMap::new(), // No connecting identities
+                base.identities,
+                base.witnesses,
+                // We could set the latch of the main VM here, but then we would have to detect it.
+                // Instead, the main VM will be computed in one block, directly continuing into the
+                // infinite loop after the first return.
+                None,
+                base.degree,
+            );
+    
+            generator.run(&mut mutable_state);
+            generator
+            .take_witness_col_values(mutable_state.fixed_lookup, mutable_state.query_callback)
+        }).unwrap_or_default();
 
         // Get columns from machines
-        let main_columns = generator
-            .take_witness_col_values(mutable_state.fixed_lookup, mutable_state.query_callback);
         let mut columns = mutable_state
             .machines
             .iter_mut()

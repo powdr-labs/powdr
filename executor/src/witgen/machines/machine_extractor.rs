@@ -15,18 +15,25 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::SelectedExpressions;
+use powdr_number::DegreeType;
 use powdr_number::FieldElement;
 
 pub struct ExtractionOutput<'a, T: FieldElement> {
     pub fixed_lookup: FixedLookup<T>,
     pub machines: Vec<KnownMachine<'a, T>>,
-    pub base_identities: Vec<&'a Identity<Expression<T>>>,
-    pub base_witnesses: HashSet<PolyID>,
+    /// The leftover witnesses and identities, checked to having the same degree
+    pub base: Option<Base<'a, T>>
+}
+
+pub struct Base<'a, T> {
+    pub identities: Vec<&'a Identity<Expression<T>>>,
+    pub witnesses: HashSet<PolyID>,
+    pub degree: DegreeType,
 }
 
 fn to_raw_and_degree(
     machine_witnesses: HashSet<powdr_ast::analyzed::PolyID>,
-) -> (HashSet<PolyID>, u64) {
+) -> (HashSet<PolyID>, Option<u64>) {
     let mut res = HashSet::default();
     let mut degree = None;
     for id in machine_witnesses {
@@ -40,7 +47,7 @@ fn to_raw_and_degree(
             }
         }
     }
-    (res, degree.unwrap())
+    (res, degree)
 }
 
 /// Finds machines in the witness columns and identities
@@ -143,6 +150,9 @@ pub fn split_out_machines<'a, T: FieldElement>(
         // Internal processing happens over `RawPolyID`
         let (machine_witnesses, degree) = to_raw_and_degree(machine_witnesses);
 
+        // We must have found a degree
+        let degree = degree.unwrap();
+
         if let Some(machine) = SortedWitnesses::try_new(
             name_with_type("SortedWitness"),
             fixed,
@@ -209,17 +219,23 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 machine_identities,
                 machine_witnesses,
                 Some(latch),
+                degree,
             )));
         }
     }
 
-    let (remaining_witnesses, _) = to_raw_and_degree(remaining_witnesses);
+    let (remaining_witnesses, base_degree) = to_raw_and_degree(remaining_witnesses);
+
+    let base = base_degree.map(|degree| Base {
+        identities: base_identities,
+        witnesses: remaining_witnesses,
+        degree
+    });
 
     ExtractionOutput {
         fixed_lookup,
         machines,
-        base_identities,
-        base_witnesses: remaining_witnesses,
+        base,
     }
 }
 

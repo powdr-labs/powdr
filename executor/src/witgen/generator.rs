@@ -118,13 +118,14 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         identities: Vec<&'a Identity<Expression<T>>>,
         witnesses: HashSet<PolyID>,
         latch: Option<Expression<T>>,
+        degree: DegreeType,
     ) -> Self {
         let witnesses = witnesses.into_iter().map(Into::into).collect();
 
         let data = FinalizableData::new(&witnesses);
 
         Self {
-            degree: fixed_data.analyzed.max_degree(),
+            degree,
             connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
