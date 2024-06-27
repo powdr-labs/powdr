@@ -102,7 +102,7 @@ mod tests {
         assert!(proof.is_ok());
 
         if let Some(publics) = malicious_publics {
-            prover.verify(&proof.unwrap(), &[publics]).expect("")
+            prover.verify(&proof.unwrap(), &[publics]).unwrap()
         }
     }
 
@@ -113,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "Failed to verify proof: OodEvaluationMismatch"]
+    #[should_panic = r#"called `Result::unwrap()` on an `Err` value: "Failed to verify proof: OodEvaluationMismatch""#]
     fn public_inputs_malicious() {
         let content = r#"
         namespace Add(8);
