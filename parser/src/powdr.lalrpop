@@ -787,7 +787,6 @@ SpecialIdentifier: &'input str = {
     "fe",
     "expr",
     "bool",
-    "stage",
 }
 
 ConstantIdentifier: String = {

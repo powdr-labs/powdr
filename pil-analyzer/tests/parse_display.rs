@@ -447,26 +447,21 @@ namespace Main(8);
 #[test]
 fn challenges() {
     let input = "
-    namespace std::prover(8);
-        let challenge = [];
-
     namespace Main(8);
         col fixed first = [1] + [0]*;
         col witness x;
         col witness stage(2) y;
-        let a: expr = std::prover::challenge(2, 1);
+        let a: expr = challenge(2, 1);
 
         x' = (x + 1) * (1 - first);
         y' = (x + a) * (1 - first);
     ";
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
-    let expected = r#"namespace std::prover(8);
-    let challenge = [];
-namespace Main(8);
+    let expected = r#"namespace Main(8);
     col fixed first = [1] + [0]*;
     col witness x;
     col witness stage(2) y;
-    col a = std::prover::challenge(2, 1);
+    col a = std::prelude::challenge(2, 1);
     Main.x' = (Main.x + 1) * (1 - Main.first);
     Main.y' = (Main.x + Main.a) * (1 - Main.first);
 "#;

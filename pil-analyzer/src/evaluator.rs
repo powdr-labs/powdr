@@ -316,7 +316,7 @@ const BUILTINS: [(&str, BuiltinFunction); 10] = [
     ("std::convert::int", BuiltinFunction::ToInt),
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
-    ("std::prover::challenge", BuiltinFunction::Challenge),
+    ("std::prelude::challenge", BuiltinFunction::Challenge),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
