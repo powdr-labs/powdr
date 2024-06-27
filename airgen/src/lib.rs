@@ -359,13 +359,12 @@ impl<'a> ASMPILConverter<'a> {
 
                 // TODO: temporary solution to a witgen limitation: avoid merging links that use next references.
                 // Remove this when witgen supports it (and update related tests).
-                use powdr_ast::parsed::{
-                    visitor::ExpressionVisitable, UnaryOperation, UnaryOperator::Next,
-                };
-                use Expression::UnaryOperation as EUnaryOperation;
-                if link.from.params.inputs_and_outputs().any(|p| {
-                    p.expr_any(|e| matches!(e, EUnaryOperation(_, UnaryOperation { op: Next, .. })))
-                }) {
+                if link
+                    .from
+                    .params
+                    .inputs_and_outputs()
+                    .any(|p| p.contains_next_ref())
+                {
                     links.push(link);
                     continue;
                 }

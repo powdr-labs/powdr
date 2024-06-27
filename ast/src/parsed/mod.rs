@@ -23,7 +23,7 @@ use powdr_parser_util::SourceRef;
 use self::{
     asm::{Part, SymbolPath},
     types::{FunctionType, Type, TypeBounds, TypeScheme},
-    visitor::Children,
+    visitor::{Children, ExpressionVisitable},
 };
 
 #[derive(Display, Clone, Copy, PartialEq, Eq)]
@@ -684,6 +684,22 @@ impl<R> Expression<R> {
             Expression::IfExpression(_, if_expr) => if_expr.children_mut(),
             Expression::BlockExpression(_, block_expr) => block_expr.children_mut(),
         }
+    }
+
+    /// Returns true if the expression contains a reference to a next value
+    pub fn contains_next_ref(&self) -> bool {
+        self.expr_any(|e| {
+            matches!(
+                e,
+                Expression::UnaryOperation(
+                    _,
+                    UnaryOperation {
+                        op: UnaryOperator::Next,
+                        ..
+                    }
+                )
+            )
+        })
     }
 }
 
