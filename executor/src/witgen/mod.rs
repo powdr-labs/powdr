@@ -1,11 +1,13 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+
 use std::sync::Arc;
 
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
     PolynomialType, SymbolKind, TypedExpression,
 };
-use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -158,6 +160,21 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             self.challenges,
             self.stage,
         );
+        // TODO connect that with the impl in FixedData where it checks if the data is only partially provided.
+        let fully_known_witness_columns = self
+            .external_witness_values
+            .iter()
+            .filter_map(|(name, _)| {
+                self.analyzed
+                    .committed_polys_in_source_order()
+                    .iter()
+                    .find_map(|(p, _)| {
+                        p.array_elements()
+                            .find(|(n, _)| n == name)
+                            .map(|(_, id)| id)
+                    })
+            })
+            .collect::<BTreeSet<PolyID>>();
         let identities = self
             .analyzed
             .identities_with_inlined_intermediate_polynomials()
@@ -177,6 +194,17 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                     );
                 }
                 !discard
+            })
+            // Filter out identities that only reference fully known witness columns
+            .filter(|identity| {
+                let r = identity.all_children().any(|e| match e {
+                    AlgebraicExpression::Reference(ref r) => {
+                        r.poly_id.ptype == PolynomialType::Committed
+                            && !fully_known_witness_columns.contains(&r.poly_id)
+                    }
+                    _ => false,
+                });
+                r
             })
             .collect::<Vec<_>>();
 
