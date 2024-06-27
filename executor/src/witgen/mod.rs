@@ -285,7 +285,7 @@ pub struct FixedData<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
-    pub fn common_degree(&self, ids: impl IntoIterator<Item = PolyID>) -> DegreeType {
+    pub fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
         let ids: HashSet<_> = ids.into_iter().collect();
 
         self.analyzed
@@ -308,7 +308,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .unwrap()
     }
 
-    pub fn degree(&self, id: PolyID) -> DegreeType {
+    pub fn degree(&self, id: &PolyID) -> DegreeType {
         self.common_degree(std::iter::once(id))
     }
 
@@ -426,7 +426,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {
-        let row = row % self.degree(*column);
+        let row = row % self.degree(column);
         self.witness_cols[column]
             .external_values
             .as_ref()

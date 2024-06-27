@@ -154,7 +154,6 @@ mod tests {
         let mut fixed_lookup = FixedLookup::new(fixed_data.global_range_constraints().clone());
         let mut machines = [];
 
-        // The degree is the max degree as we have a single machine
         let degree = fixed_data.analyzed.degree();
 
         let columns = (0..fixed_data.witness_cols.len())

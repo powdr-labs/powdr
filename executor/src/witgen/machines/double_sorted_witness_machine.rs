@@ -82,7 +82,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
-        let degree = fixed_data.common_degree(witness_cols.iter().cloned());
+        let degree = fixed_data.common_degree(witness_cols);
 
         // get the namespaces and column names
         let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = witness_cols

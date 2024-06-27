@@ -129,7 +129,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identities: &[&'a Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
-        let degree = fixed_data.common_degree(witness_cols.iter().cloned());
+        let degree = fixed_data.common_degree(witness_cols);
 
         let (is_permutation, block_size, latch_row) =
             detect_connection_type_and_block_size(fixed_data, connecting_identities, degree)?;

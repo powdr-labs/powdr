@@ -72,7 +72,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         data: FinalizableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
-        let degree = fixed_data.common_degree(witnesses.iter().cloned());
+        let degree = fixed_data.common_degree(witnesses);
 
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
