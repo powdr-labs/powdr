@@ -30,7 +30,7 @@ pub enum StatementIdentifier {
     /// Index into the vector of identities.
     Identity(usize),
     /// Trait implementation
-    TraitImplementation(String),
+    TraitImplementation(String, usize),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]

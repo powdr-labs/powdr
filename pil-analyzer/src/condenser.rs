@@ -152,7 +152,7 @@ pub fn condense<T: FieldElement>(
         identities: condensed_identities,
         source_order,
         auto_added_symbols,
-        implementations: implementations.clone(), //TODO GZ
+        implementations,
     }
 }
 

@@ -376,7 +376,7 @@ impl<'a, T: Display> Display for Value<'a, T> {
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
             Value::TraitFunction(_, name, _) => {
-                write!(f, "{name}") // TODO GZ
+                write!(f, "{name}")
             }
         }
     }

@@ -428,19 +428,21 @@ impl PILAnalyzer {
                         }
                         PILItem::TraitImplementation(symbol, trait_impl) => {
                             let name = symbol.absolute_name.clone();
-                            match self.implementations.entry(name.clone()) {
+                            let pos = match self.implementations.entry(name.clone()) {
                                 std::collections::hash_map::Entry::Occupied(mut entry) => {
                                     let implementations = entry.get_mut();
                                     if !implementations.contains(&trait_impl) {
                                         implementations.push(trait_impl);
                                     }
+                                    implementations.len() - 1
                                 }
                                 std::collections::hash_map::Entry::Vacant(entry) => {
                                     entry.insert(vec![trait_impl]);
+                                    0
                                 }
-                            }
+                            };
                             self.source_order
-                                .push(StatementIdentifier::TraitImplementation(name));
+                                .push(StatementIdentifier::TraitImplementation(name, pos));
                         }
                         PILItem::PublicDeclaration(decl) => {
                             let name = decl.name.clone();
