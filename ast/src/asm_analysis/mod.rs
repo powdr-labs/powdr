@@ -10,6 +10,7 @@ use std::{
 };
 
 use itertools::Either;
+use num_traits::One;
 use powdr_parser_util::SourceRef;
 
 use crate::parsed::{
@@ -74,6 +75,17 @@ pub struct LinkDefinition {
     pub to: CallableRef,
     /// true if this is a permutation link
     pub is_permutation: bool,
+}
+
+/// Helper function to multiply optional instruction flag with link flag
+pub fn combine_flags(instr_flag: Option<Expression>, link_flag: Expression) -> Expression {
+    match instr_flag {
+        Some(f) => match link_flag {
+            Expression::Number(_, n) if n.value.is_one() => f,
+            _ => f * link_flag,
+        },
+        None => link_flag,
+    }
 }
 
 #[derive(Clone, Debug, Default)]

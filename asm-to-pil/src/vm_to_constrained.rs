@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use powdr_ast::{
     asm_analysis::{
-        AssignmentStatement, Batch, DebugDirective, FunctionStatement,
+        combine_flags, AssignmentStatement, Batch, DebugDirective, FunctionStatement,
         InstructionDefinitionStatement, InstructionStatement, LabelStatement, LinkDefinition,
         Machine, RegisterDeclarationStatement, RegisterTy, Rom,
     },
@@ -525,7 +525,7 @@ impl<T: FieldElement> VMConverter<T> {
         // if a write register next reference (R') is used in the instruction link,
         // we must induce a tautology in the update clause (R' = R') when the
         // link is active, to allow the operation plookup to match.
-        let flag = instr_flag.clone() * link_decl.flag.clone();
+        let flag = combine_flags(Some(instr_flag.clone()), link_decl.flag.clone());
         for name in rhs_next_write_registers {
             let reg = self.registers.get_mut(&name).unwrap();
             let value = next_reference(name);

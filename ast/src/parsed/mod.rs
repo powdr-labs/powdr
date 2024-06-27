@@ -519,7 +519,6 @@ impl<Ref> Expression<Ref> {
     /// if `f` returns true on any of them.
     pub fn any(&self, mut f: impl FnMut(&Self) -> bool) -> bool {
         use std::ops::ControlFlow;
-        use visitor::ExpressionVisitable;
         self.pre_visit_expressions_return(&mut |e| {
             if f(e) {
                 ControlFlow::Break(())

@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
+    asm_analysis::combine_flags,
     object::{Link, Location, PILGraph, TypeOrExpression},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
@@ -145,9 +146,7 @@ fn process_link(link: Link) -> PilStatement {
     if link.is_permutation {
         // permutation lhs is `flag { operation_id, inputs, outputs }`
         let lhs = SelectedExpressions {
-            selector: from
-                .instr_flag
-                .map_or(Some(from.link_flag.clone()), |f| Some(f * from.link_flag)),
+            selector: Some(combine_flags(from.instr_flag, from.link_flag)),
             expressions: op_id
                 .chain(from.params.inputs)
                 .chain(from.params.outputs)
@@ -187,9 +186,7 @@ fn process_link(link: Link) -> PilStatement {
     } else {
         // plookup lhs is `flag { operation_id, inputs, outputs }`
         let lhs = SelectedExpressions {
-            selector: from
-                .instr_flag
-                .map_or(Some(from.link_flag.clone()), |f| Some(f * from.link_flag)),
+            selector: Some(combine_flags(from.instr_flag, from.link_flag)),
             expressions: op_id
                 .chain(from.params.inputs)
                 .chain(from.params.outputs)
@@ -411,9 +408,9 @@ mod test {
     pol constant p_reg_write_X_A = [0]*;
     pol constant p_reg_write_Y_A = [0, 0, 1, 0, 0] + [0]*;
     { pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc };
-    instr_identity * 1 { 2, X, Y } in main_sub.instr_return { main_sub._operation_id, main_sub._input_0, main_sub._output_0 };
-    instr_nothing * 1 { 3 } in main_sub.instr_return { main_sub._operation_id };
-    instr_one * 1 { 4, Y } in main_sub.instr_return { main_sub._operation_id, main_sub._output_0 };
+    instr_identity { 2, X, Y } in main_sub.instr_return { main_sub._operation_id, main_sub._input_0, main_sub._output_0 };
+    instr_nothing { 3 } in main_sub.instr_return { main_sub._operation_id };
+    instr_one { 4, Y } in main_sub.instr_return { main_sub._operation_id, main_sub._output_0 };
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
 namespace main_sub(16);
@@ -663,7 +660,7 @@ machine Main {
     pol commit read_X_pc;
     X = read_X_A * A + read_X_pc * pc + X_const + X_read_free * X_free_value;
     pol constant first_step = [1] + [0]*;
-    A' = reg_write_X_A * X + instr_add5_into_A * 1 * A' + instr__reset * 0 + (1 - (reg_write_X_A + instr_add5_into_A * 1 + instr__reset)) * A;
+    A' = reg_write_X_A * X + instr_add5_into_A * A' + instr__reset * 0 + (1 - (reg_write_X_A + instr_add5_into_A + instr__reset)) * A;
     pol pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     pol constant p_line = [0, 1, 2, 3] + [3]*;
@@ -679,7 +676,7 @@ machine Main {
     pol constant p_read_X_pc = [0]*;
     pol constant p_reg_write_X_A = [0]*;
     { pc, reg_write_X_A, instr_add5_into_A, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc } in { p_line, p_reg_write_X_A, p_instr_add5_into_A, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc };
-    instr_add5_into_A * 1 { 0, X, A' } in main_vm.latch { main_vm.operation_id, main_vm.x, main_vm.y };
+    instr_add5_into_A { 0, X, A' } in main_vm.latch { main_vm.operation_id, main_vm.x, main_vm.y };
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
 namespace main_vm(1024);
@@ -741,7 +738,7 @@ namespace main_vm(1024);
     Z = read_Z_A * A + read_Z_B * B + read_Z_pc * pc + Z_const + Z_read_free * Z_free_value;
     pol constant first_step = [1] + [0]*;
     A' = reg_write_X_A * X + reg_write_Y_A * Y + reg_write_Z_A * Z + instr__reset * 0 + (1 - (reg_write_X_A + reg_write_Y_A + reg_write_Z_A + instr__reset)) * A;
-    B' = reg_write_X_B * X + reg_write_Y_B * Y + reg_write_Z_B * Z + instr_or_into_B * 1 * B' + instr__reset * 0 + (1 - (reg_write_X_B + reg_write_Y_B + reg_write_Z_B + instr_or_into_B * 1 + instr__reset)) * B;
+    B' = reg_write_X_B * X + reg_write_Y_B * Y + reg_write_Z_B * Z + instr_or_into_B * B' + instr__reset * 0 + (1 - (reg_write_X_B + reg_write_Y_B + reg_write_Z_B + instr_or_into_B + instr__reset)) * B;
     pol pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] + [13]*;
@@ -777,8 +774,8 @@ namespace main_vm(1024);
     pol constant p_reg_write_Z_A = [0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     pol constant p_reg_write_Z_B = [0]*;
     { pc, reg_write_X_A, reg_write_Y_A, reg_write_Z_A, reg_write_X_B, reg_write_Y_B, reg_write_Z_B, instr_or, instr_or_into_B, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_B, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_B, read_Y_pc, Z_const, Z_read_free, read_Z_A, read_Z_B, read_Z_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_reg_write_Z_A, p_reg_write_X_B, p_reg_write_Y_B, p_reg_write_Z_B, p_instr_or, p_instr_or_into_B, p_instr_assert_eq, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_B, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_B, p_read_Y_pc, p_Z_const, p_Z_read_free, p_read_Z_A, p_read_Z_B, p_read_Z_pc };
-    instr_or_into_B * 1 { 0, X, Y, B' } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };
-    instr_or * 1 { 0, X, Y, Z } is main_bin.latch * main_bin.sel[1] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };
+    instr_or_into_B { 0, X, Y, B' } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };
+    instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[1] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
 namespace main_bin(65536);
@@ -884,7 +881,7 @@ namespace main_bin(65536);
     pol commit read_W_pc;
     W = read_W_A * A + read_W_B * B + read_W_C * C + read_W_pc * pc + W_const + W_read_free * W_free_value;
     pol constant first_step = [1] + [0]*;
-    A' = reg_write_X_A * X + reg_write_Y_A * Y + reg_write_Z_A * Z + reg_write_W_A * W + instr_add_to_A * 1 * A' + instr_add_BC_to_A * 1 * A' + instr__reset * 0 + (1 - (reg_write_X_A + reg_write_Y_A + reg_write_Z_A + reg_write_W_A + instr_add_to_A * 1 + instr_add_BC_to_A * 1 + instr__reset)) * A;
+    A' = reg_write_X_A * X + reg_write_Y_A * Y + reg_write_Z_A * Z + reg_write_W_A * W + instr_add_to_A * A' + instr_add_BC_to_A * A' + instr__reset * 0 + (1 - (reg_write_X_A + reg_write_Y_A + reg_write_Z_A + reg_write_W_A + instr_add_to_A + instr_add_BC_to_A + instr__reset)) * A;
     B' = reg_write_X_B * X + reg_write_Y_B * Y + reg_write_Z_B * Z + reg_write_W_B * W + instr__reset * 0 + (1 - (reg_write_X_B + reg_write_Y_B + reg_write_Z_B + reg_write_W_B + instr__reset)) * B;
     C' = reg_write_X_C * X + reg_write_Y_C * Y + reg_write_Z_C * Z + reg_write_W_C * W + instr__reset * 0 + (1 - (reg_write_X_C + reg_write_Y_C + reg_write_Z_C + reg_write_W_C + instr__reset)) * C;
     pol pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
@@ -944,11 +941,11 @@ namespace main_bin(65536);
     pol constant p_reg_write_Z_B = [0]*;
     pol constant p_reg_write_Z_C = [0]*;
     { pc, reg_write_X_A, reg_write_Y_A, reg_write_Z_A, reg_write_W_A, reg_write_X_B, reg_write_Y_B, reg_write_Z_B, reg_write_W_B, reg_write_X_C, reg_write_Y_C, reg_write_Z_C, reg_write_W_C, instr_add, instr_sub_with_add, instr_addAB, instr_add3, instr_add_to_A, instr_add_BC_to_A, instr_sub, instr_add_with_sub, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_B, read_X_C, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_B, read_Y_C, read_Y_pc, Z_const, Z_read_free, read_Z_A, read_Z_B, read_Z_C, read_Z_pc, W_const, W_read_free, read_W_A, read_W_B, read_W_C, read_W_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_reg_write_Z_A, p_reg_write_W_A, p_reg_write_X_B, p_reg_write_Y_B, p_reg_write_Z_B, p_reg_write_W_B, p_reg_write_X_C, p_reg_write_Y_C, p_reg_write_Z_C, p_reg_write_W_C, p_instr_add, p_instr_sub_with_add, p_instr_addAB, p_instr_add3, p_instr_add_to_A, p_instr_add_BC_to_A, p_instr_sub, p_instr_add_with_sub, p_instr_assert_eq, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_B, p_read_X_C, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_B, p_read_Y_C, p_read_Y_pc, p_Z_const, p_Z_read_free, p_read_Z_A, p_read_Z_B, p_read_Z_C, p_read_Z_pc, p_W_const, p_W_read_free, p_read_W_A, p_read_W_B, p_read_W_C, p_read_W_pc };
-    instr_add_to_A * 1 { 0, X, Y, A' } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z };
-    instr_add_BC_to_A * 1 { 0, B, C, A' } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z };
-    instr_add * 1 + instr_add3 * 1 + instr_addAB * 1 + instr_sub_with_add * 1 { 0, X * (instr_add * 1) + X * (instr_add3 * 1) + A * (instr_addAB * 1) + X * (instr_sub_with_add * 1), Y * (instr_add * 1) + Y * (instr_add3 * 1) + B * (instr_addAB * 1) + Z * (instr_sub_with_add * 1), Z * (instr_add * 1) + tmp * (instr_add3 * 1) + X * (instr_addAB * 1) + Y * (instr_sub_with_add * 1) } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z };
-    instr_add3 * 1 { 0, tmp, Z, W } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z };
-    instr_add_with_sub * 1 + instr_sub * 1 { 1, X * (instr_add_with_sub * 1) + X * (instr_sub * 1), Y * (instr_add_with_sub * 1) + Y * (instr_sub * 1), Z * (instr_add_with_sub * 1) + Z * (instr_sub * 1) } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.z, main_submachine.y };
+    instr_add_to_A { 0, X, Y, A' } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z };
+    instr_add_BC_to_A { 0, B, C, A' } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z };
+    instr_add + instr_add3 + instr_addAB + instr_sub_with_add { 0, X * instr_add + X * instr_add3 + A * instr_addAB + X * instr_sub_with_add, Y * instr_add + Y * instr_add3 + B * instr_addAB + Z * instr_sub_with_add, Z * instr_add + tmp * instr_add3 + X * instr_addAB + Y * instr_sub_with_add } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z };
+    instr_add3 { 0, tmp, Z, W } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z };
+    instr_add_with_sub + instr_sub { 1, X * instr_add_with_sub + X * instr_sub, Y * instr_add_with_sub + Y * instr_sub, Z * instr_add_with_sub + Z * instr_sub } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.z, main_submachine.y };
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
 namespace main_submachine(1024);

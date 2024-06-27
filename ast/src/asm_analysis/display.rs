@@ -6,6 +6,7 @@ use std::{
 use itertools::Itertools;
 
 use crate::{
+    asm_analysis::combine_flags,
     indent,
     parsed::{
         asm::{AbsoluteSymbolPath, Part},
@@ -107,13 +108,7 @@ impl Display for Machine {
 
 impl Display for LinkDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        // combine instr_flag and link_flag
-        let flag = if let Some(f) = self.instr_flag.as_ref() {
-            f.clone() * self.link_flag.clone()
-        } else {
-            self.link_flag.clone()
-        };
-
+        let flag = combine_flags(self.instr_flag.clone(), self.link_flag.clone());
         write!(
             f,
             "link {}{} {};",

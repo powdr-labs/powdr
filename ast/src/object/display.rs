@@ -1,6 +1,9 @@
 use std::fmt::{Display, Formatter, Result};
 
-use crate::parsed::{display::format_type_scheme_around_name, TypedExpression};
+use crate::{
+    asm_analysis::combine_flags,
+    parsed::{display::format_type_scheme_around_name, TypedExpression},
+};
 
 use super::{
     Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph, TypeOrExpression,
@@ -64,13 +67,7 @@ impl Display for Link {
 
 impl Display for LinkFrom {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        // combine instr_flag and link_flag
-        let flag = if let Some(f) = self.instr_flag.as_ref() {
-            f.clone() * self.link_flag.clone()
-        } else {
-            self.link_flag.clone()
-        };
-
+        let flag = combine_flags(self.instr_flag.clone(), self.link_flag.clone());
         write!(f, "{flag} {}", self.params)
     }
 }

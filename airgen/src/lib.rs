@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use powdr_ast::{
-    asm_analysis::{AnalysisASMFile, Item, LinkDefinition, SubmachineDeclaration},
+    asm_analysis::{combine_flags, AnalysisASMFile, Item, LinkDefinition, SubmachineDeclaration},
     object::{
         Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph, TypeOrExpression,
     },
@@ -14,6 +14,9 @@ use powdr_ast::{
         Expression, PilStatement,
     },
 };
+
+use itertools::Either;
+use itertools::Itertools;
 
 use powdr_analysis::utils::parse_pil_statement;
 
@@ -337,54 +340,52 @@ impl<'a> ASMPILConverter<'a> {
             is_permutation: bool,
         }
 
-        // resulting links
-        let mut links = vec![];
+        // process links, partitioning them into (mergeable, non-mergeable)
+        let (mergeable_links, mut links): (Vec<_>, Vec<_>) = defs.iter().partition_map(|l| {
+            let link = self.handle_link_def(l.clone());
+            let info = LinkInfo {
+                from: self.location.clone(),
+                to: link.to.machine.location.clone(),
+                operation: link.to.operation.clone(),
+                is_permutation: link.is_permutation,
+            };
 
-        // idea here is:
+            if link.from.instr_flag.is_none() {
+                // only merge links that from instructions
+                Either::Right(link)
+            } else if link
+                .from
+                .params
+                .inputs_and_outputs()
+                .any(|p| p.contains_next_ref())
+            {
+                // TODO: links with next references can't be merged due to a witgen limitation.
+                // This can be removed when witgen supports it.
+                Either::Right(link)
+            } else {
+                // mergeable
+                Either::Left((info, link))
+            }
+        });
+
+        // group links into compatible sets, the idea here is:
         // - group by LinkInfo
-        // - inside each group, separate links into sets of with mutually exclusive flags (that is, from different instructions)
+        // - inside each group, separate links into sets of mutually exclusive flags (that is, from different instructions)
         let mut grouped_links: BTreeMap<LinkInfo, Vec<BTreeMap<Expression, Link>>> =
             Default::default();
-        for link_def in defs.iter() {
-            let link = self.handle_link_def(link_def.clone());
-
-            // group compatible links
-            if link.from.instr_flag.is_some() {
-                let info = LinkInfo {
-                    from: self.location.clone(),
-                    to: link.to.machine.location.clone(),
-                    operation: link.to.operation.clone(),
-                    is_permutation: link.is_permutation,
-                };
-
-                // TODO: temporary solution to a witgen limitation: avoid merging links that use next references.
-                // Remove this when witgen supports it (and update related tests).
-                if link
-                    .from
-                    .params
-                    .inputs_and_outputs()
-                    .any(|p| p.contains_next_ref())
-                {
-                    links.push(link);
-                    continue;
-                }
-
-                // add to an existing compatible set where the instr flag is not yet present
-                let e = grouped_links.entry(info).or_default();
-                if let Some(link_set) = e
-                    .iter_mut()
-                    .find(|link_set| !link_set.contains_key(link.from.instr_flag.as_ref().unwrap()))
-                {
-                    link_set.insert(link.from.instr_flag.clone().unwrap(), link);
-                } else {
-                    // otherwise, create a new set
-                    let mut new_set = BTreeMap::new();
-                    new_set.insert(link.from.instr_flag.clone().unwrap(), link);
-                    e.push(new_set);
-                }
+        for (info, link) in mergeable_links {
+            // add to an existing compatible set where the instr flag is not yet present
+            let e = grouped_links.entry(info).or_default();
+            if let Some(link_set) = e
+                .iter_mut()
+                .find(|link_set| !link_set.contains_key(link.from.instr_flag.as_ref().unwrap()))
+            {
+                link_set.insert(link.from.instr_flag.clone().unwrap(), link);
             } else {
-                // no instr flag, we can't merge these
-                links.push(link);
+                // otherwise, create a new set
+                let mut new_set = BTreeMap::new();
+                new_set.insert(link.from.instr_flag.clone().unwrap(), link);
+                e.push(new_set);
             }
         }
 
@@ -402,20 +403,16 @@ impl<'a> ASMPILConverter<'a> {
                 link_set
                     .into_values()
                     .map(|mut link| {
-                        // combine flag and then add it to inputs/outputs
-                        link.from.link_flag = link
-                            .from
-                            .instr_flag
-                            .map(|f| f * link.from.link_flag.clone())
-                            .unwrap_or_else(|| link.from.link_flag.clone());
+                        // clear instruction flag by combining into the link flag, then combine it with inputs/outputs
+                        link.from.link_flag =
+                            combine_flags(link.from.instr_flag.take(), link.from.link_flag.clone());
                         link.from.params.inputs_and_outputs_mut().for_each(|p| {
                             *p = p.clone() * link.from.link_flag.clone();
                         });
-                        link.from.instr_flag = None; // instr flag now part of link flag
                         link
                     })
                     .reduce(|mut a, b| {
-                        // merge flag and inputs/outputs of two links
+                        // add flags and inputs/outputs of the two links
                         assert_eq!(a.from.params.inputs.len(), b.from.params.inputs.len());
                         assert_eq!(a.from.params.outputs.len(), b.from.params.outputs.len());
                         a.from.link_flag = a.from.link_flag + b.from.link_flag;
