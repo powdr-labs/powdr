@@ -60,8 +60,6 @@ impl<'a: 'b, 'b, F: FieldElement> Backend<'a, F> for PolygonBackend<'b, F> {
 
         let input_paths = self.0.write_files(witness, &output_dir)?;
 
-        let commits_path = output_dir.join("commits.bin");
-
         // Generate the proof.
         let proof_paths = pil_stark_prover::generate_proof(
             &input_paths.contraints,
