@@ -518,7 +518,7 @@ fn enum_too_many_fields() {
 }
 
 #[test]
-#[should_panic = "Trait Add is not defined."]
+#[should_panic = "Trait function Add.add is not defined."]
 fn undefined_trait() {
     let input = "
     impl Add<int, int> {
