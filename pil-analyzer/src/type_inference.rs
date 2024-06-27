@@ -482,7 +482,8 @@ impl<'a> TypeChecker<'a> {
 
                     assert!(
                         type_scheme.vars.vars().collect::<Vec<_>>().len() == impl_types.len(),
-                        "Mismatched number of type arguments for trait function {f_name}."
+                        "Mismatched number of type arguments for trait function {}.",
+                        f_name.replace('.', "::")
                     );
 
                     let substitutions = type_scheme
