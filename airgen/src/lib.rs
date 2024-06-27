@@ -328,7 +328,7 @@ impl<'a> ASMPILConverter<'a> {
     /// - they are of the same kind (permutation/lookup)
     /// - their flags are mutually exclusive
     /// Right now we only consider links from different instructions,
-    /// as a single instruction can be active at a time
+    /// as a single instruction can be active at a time.
     fn process_and_merge_links(&self, defs: &[LinkDefinition]) -> Vec<Link> {
         /// Helper struct to group links that can potentially be merged.
         /// Besides these being equal, the links must be mutually exclusive (e.g., come from different instructions)
@@ -360,7 +360,7 @@ impl<'a> ASMPILConverter<'a> {
                 .any(|p| p.contains_next_ref())
             {
                 // TODO: links with next references can't be merged due to a witgen limitation.
-                // This can be removed when witgen supports it.
+                // This else if can be removed when witgen supports it.
                 Either::Right(link)
             } else {
                 // mergeable
@@ -399,7 +399,16 @@ impl<'a> ASMPILConverter<'a> {
                     return link_set.into_values().next();
                 }
 
-                // merge links in set
+                // Merge links in set. Merging two links consists of adding their respective flags and inputs/outputs.
+                // For example (asm and respective pil):
+                //    instr foo X, Y -> Z link => Z = m.add(X, Y);
+                //    instr_foo { 0, X, Y, Z } in m.latch { m.op_id, m.x, m.y, m.z };
+                // and:
+                //    instr bar X, Z -> Y link => Y = m.add(X, Z);
+                //    instr_bar { 0, X, Z, Y } in m.latch { m.op_id, m.x, m.y, m.z };
+                // would be combined into the following link:
+                //    instr_foo + instr_bar { 0, X * instr_foo + X * instr_bar, Y * instr_foo + Z * instr_bar, Z * instr_bar + Y * instr_foo }
+                //          in m.latch { m.op_id, m.x, m.y, m.z };
                 link_set
                     .into_values()
                     .map(|mut link| {
