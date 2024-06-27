@@ -5,7 +5,8 @@ use powdr_number::{BigInt, Bn254Field, GoldilocksField};
 use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
-        evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_composite_proof, gen_halo2_proof, resolve_test_file, std_analyzed, test_halo2, verify_test_file
+        evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_composite_proof,
+        gen_halo2_proof, resolve_test_file, std_analyzed, test_halo2, verify_test_file,
     },
     Pipeline,
 };
