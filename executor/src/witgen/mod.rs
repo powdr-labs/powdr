@@ -2,6 +2,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use std::sync::Arc;
 
+use machines::profiling::{
+    self, record_end_identity, record_start_identity, reset_and_print_profile_summary_identity,
+};
+
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
@@ -153,6 +157,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     /// @returns the values (in source order) and the degree of the polynomials.
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
         record_start(OUTER_CODE_NAME);
+        record_start_identity(profiling::UNUSED_IDENTITY_ID);
         let fixed = FixedData::new(
             self.analyzed,
             self.fixed_col_values,
@@ -252,7 +257,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .collect::<BTreeMap<_, _>>();
 
         record_end(OUTER_CODE_NAME);
+        record_end_identity(profiling::UNUSED_IDENTITY_ID);
         reset_and_print_profile_summary();
+        reset_and_print_profile_summary_identity(&fixed);
 
         // Order columns according to the order of declaration.
         let witness_cols = self

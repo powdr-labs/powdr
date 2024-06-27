@@ -8,6 +8,7 @@ use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 
+use super::machines::profiling::{record_end_identity, record_start_identity};
 use super::{
     affine_expression::AffineExpression,
     data_structures::{
@@ -207,6 +208,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         identity: &'a Identity<Expression<T>>,
         unknown_strategy: UnknownStrategy,
     ) -> Result<IdentityResult, EvalError<T>> {
+        record_start_identity(identity.id);
         // Create row pair
         let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(
@@ -239,7 +241,14 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 }
                 error += &format!("   => Error: {e}");
                 error.into()
-            })?;
+            });
+        let updates = match updates {
+            Ok(updates) => updates,
+            Err(e) => {
+                record_end_identity(identity.id);
+                return Err(e);
+            }
+        };
 
         if unknown_strategy == UnknownStrategy::Zero {
             assert!(updates.constraints.is_empty());
@@ -250,11 +259,13 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             });
         }
 
-        Ok(IdentityResult {
+        let res = Ok(IdentityResult {
             progress: self.apply_updates(row_index, &updates, || identity.to_string())
                 || updates.side_effect,
             is_complete: updates.is_complete(),
-        })
+        });
+        record_end_identity(identity.id);
+        res
     }
 
     pub fn process_outer_query(
@@ -490,6 +501,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         // This could be computed from the identity, but should be pre-computed for performance reasons.
         has_next_reference: bool,
     ) -> bool {
+        record_start_identity(identity.id);
         let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
         let row_pair = match has_next_reference {
             // Check whether identities with a reference to the next row are satisfied
@@ -515,16 +527,15 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             ),
         };
 
-        if identity_processor
+        let is_err = identity_processor
             .process_identity(identity, &row_pair)
-            .is_err()
-        {
+            .is_err();
+        if is_err {
             log::debug!("Previous {:?}", &self.data[row_index - 1]);
             log::debug!("Proposed {:?}", proposed_row);
             log::debug!("Failed on identity: {}", identity);
-
-            return false;
         }
-        true
+        record_end_identity(identity.id);
+        !is_err
     }
 }
