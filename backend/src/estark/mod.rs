@@ -116,13 +116,13 @@ fn first_step_fixup<'a, F: FieldElement>(
     (pil, patched_constants)
 }
 
-struct EStarkFilesCommon<'a, F: FieldElement> {
+struct EStarkFilesCommon<F: FieldElement> {
     degree: DegreeType,
     pil: PIL,
     /// If this field is present, it means the constants were patched with
     /// "main.first_step" column and must be written again to a file.
     patched_constants: Option<Vec<(String, Vec<F>)>>,
-    output_dir: Option<&'a Path>,
+    output_dir: Option<PathBuf>,
     proof_type: ProofType,
 }
 
@@ -135,11 +135,11 @@ fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), E
     Ok(())
 }
 
-impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
+impl<F: FieldElement> EStarkFilesCommon<F> {
     fn create(
-        analyzed: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
-        output_dir: Option<&'a Path>,
+        analyzed: &Analyzed<F>,
+        fixed: &[(String, Vec<F>)],
+        output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
@@ -176,7 +176,7 @@ struct ProverInputFilePaths {
     contraints: PathBuf,
 }
 
-impl<'a, F: FieldElement> EStarkFilesCommon<'a, F> {
+impl<F: FieldElement> EStarkFilesCommon<F> {
     /// Write the files in the EStark Polygon format.
     fn write_files(&self, output_dir: &Path) -> Result<ProverInputFilePaths, Error> {
         let paths = ProverInputFilePaths {
@@ -216,7 +216,7 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
         &self,
         analyzed: &'a Analyzed<F>,
         fixed: &'a [(String, Vec<F>)],
-        output_dir: Option<&'a Path>,
+        output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
@@ -235,9 +235,9 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
 }
 
 /// A backend that just dumps the files to the output directory.
-struct DumpBackend<'a, F: FieldElement>(EStarkFilesCommon<'a, F>);
+struct DumpBackend<F: FieldElement>(EStarkFilesCommon<F>);
 
-impl<'a, F: FieldElement> Backend<'a, F> for DumpBackend<'a, F> {
+impl<'a, F: FieldElement> Backend<'a, F> for DumpBackend<F> {
     fn prove(
         &self,
         _witness: &[(String, Vec<F>)],
@@ -252,6 +252,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for DumpBackend<'a, F> {
         let output_dir = self
             .0
             .output_dir
+            .as_ref()
             .ok_or(Error::BackendError("output_dir is None".to_owned()))?;
 
         self.0.write_files(output_dir)?;

@@ -10,11 +10,11 @@ machine Main with degree: 1024 {
     Memory memory;
     WithArg sub(memory);
 
-    instr mload X -> Y ~ memory.mload X, STEP -> Y;
-    instr mstore X, Y -> ~ memory.mstore X, STEP, Y ->;
+    instr mload X -> Y link ~> Y = memory.mload(X, STEP);
+    instr mstore X, Y -> link ~> memory.mstore(X, STEP, Y);
 
-    instr get X -> Y = sub.get X, STEP -> Y;
-    instr put X, Y -> = sub.put X, STEP, Y ->;
+    instr get X -> Y link => Y = sub.get(X, STEP);
+    instr put X, Y -> link => sub.put(X, STEP, Y);
 
     instr assert_eq X, Y { X = Y }
 
@@ -61,8 +61,8 @@ machine WithArg(mem: Memory) {
 
     col fixed STEP(i) { i };
 
-    instr mload X, Y -> Z ~ mem.mload X, Y -> Z;
-    instr mstore X, Y, Z -> ~ mem.mstore X, Y, Z ->;
+    instr mload X, Y -> Z link ~> Z = mem.mload(X, Y);
+    instr mstore X, Y, Z -> link ~> mem.mstore(X, Y, Z);
 
     function get a, step -> b {
         // Read value from memory

@@ -8,8 +8,8 @@ machine Main with degree: 1024 {
     b::Arith arith;
     a::WithArg subm(arith);
 
-    instr add X, Y -> Z = subm.add;
-    instr sub X, Y -> Z = subm.sub;
+    instr add X, Y -> Z link => Z = subm.add(X, Y);
+    instr sub X, Y -> Z link => Z = subm.sub(X, Y);
 
     instr assert_eq X, Y { X = Y }
 
@@ -37,8 +37,8 @@ mod a {
         reg Z[<=];
         reg A;
 
-        instr add X, Y -> Z = arith.add;
-        instr sub X, Y -> Z = arith.sub;
+        instr add X, Y -> Z link => Z = arith.add(X, Y);
+        instr sub X, Y -> Z link => Z = arith.sub(X, Y);
 
         function add a, b -> c {
             A <== add(a,b);

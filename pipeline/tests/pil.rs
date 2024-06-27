@@ -4,9 +4,10 @@ use powdr_number::GoldilocksField;
 use powdr_pipeline::test_util::{
     assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
     assert_proofs_fail_for_invalid_witnesses_halo2,
-    assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, test_halo2,
+    assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, test_halo2, test_plonky3,
     verify_test_file,
 };
+
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
@@ -236,6 +237,12 @@ fn halo_without_lookup() {
     verify_pil(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn add() {
+    let f = "pil/add.pil";
+    test_plonky3(f, Default::default());
 }
 
 #[test]
