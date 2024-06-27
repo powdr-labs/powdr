@@ -74,7 +74,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
                 // resolve each given machine arg to a proper instance location
                 def.args
                     .iter()
-                    .map(|a| submachine_arg_to_location(&location, machine, &args, a))
+                    .map(|a| resolve_submachine_arg(&location, machine, &args, a))
                     .collect(),
             )
         }));
@@ -151,7 +151,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
 }
 
 // resolve argument in a submachine declaration to a machine instance location
-fn submachine_arg_to_location(
+fn resolve_submachine_arg(
     location: &Location,
     machine: &asm_analysis::Machine,
     args: &[Location],
