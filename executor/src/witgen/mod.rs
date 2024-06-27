@@ -289,10 +289,15 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         let ids: HashSet<_> = ids.into_iter().collect();
 
         self.analyzed
+            // get all definitions
             .definitions
             .iter()
-            .flat_map(|(_, (symbol, _))| {
-                // get all polynomials and their degrees
+            // only keep polynomials
+            .filter_map(|(_, (symbol, _))| {
+                matches!(symbol.kind, SymbolKind::Poly(_)).then_some(symbol)
+            })
+            // get all array elements and their degrees
+            .flat_map(|symbol| {
                 symbol.array_elements().map(|(_, id)| {
                     (
                         id,
@@ -300,7 +305,9 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                     )
                 })
             })
+            // only keep the ones matching our set
             .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
+            // get the common degree
             .reduce(|acc, degree| {
                 assert_eq!(acc, degree);
                 acc
