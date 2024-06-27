@@ -25,7 +25,7 @@ use crate::continuations::bootloader::{
 
 use crate::code_gen::Register;
 
-fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<String, Vec<Elem<F>>> {
+pub fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<String, Vec<Elem<F>>> {
     let mut reg_values: HashMap<&str, Vec<Elem<F>>> = HashMap::with_capacity(trace.reg_map.len());
 
     let mut rows = trace.replay();
@@ -236,6 +236,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let (full_trace, memory_accesses) = {
         let trace = powdr_riscv_executor::execute_ast::<F>(
             &program,
+            None,
             initial_memory,
             pipeline.data_callback().unwrap(),
             // Run full trace without any accessed pages. This would actually violate the
@@ -342,6 +343,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             let (trace, memory_snapshot_update, register_memory_snapshot) =
                 powdr_riscv_executor::execute_ast::<F>(
                     &program,
+                    None,
                     MemoryState::new(),
                     pipeline.data_callback().unwrap(),
                     &bootloader_inputs,

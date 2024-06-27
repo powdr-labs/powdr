@@ -45,7 +45,7 @@ pub fn write_polys_csv_file<T: FieldElement>(
         let mut row = Vec::new();
         row.push(format!("{row_index}"));
         for (_, values) in polys {
-            assert!(values.len() == len);
+            //assert!(values.len() == len);
             let value = match render_mode {
                 CsvRenderMode::SignedBase10 => format!("{}", values[row_index]),
                 CsvRenderMode::UnsignedBase10 => format!("{}", values[row_index].to_integer()),

@@ -9,11 +9,14 @@ use log::LevelFilter;
 
 use powdr_number::{BigUint, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::Pipeline;
+use powdr_riscv::continuations;
 use powdr_riscv_executor::ProfilerOptions;
 
 use std::ffi::OsStr;
 use std::io;
 use std::{borrow::Cow, io::Write, path::Path};
+use std::time::Instant;
+use std::collections::{HashMap, HashSet};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
@@ -125,6 +128,11 @@ enum Commands {
         #[arg(default_value_t = false)]
         witness: bool,
 
+        /// Use the executor to pre-fill witness values.
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        executor: bool,
+
         /// Generate a flamegraph plot of the execution ("[file].svg")
         #[arg(long)]
         #[arg(default_value_t = false)]
@@ -232,6 +240,7 @@ fn run_command(command: Commands) {
             output_directory,
             continuations,
             witness,
+            executor,
             generate_flamegraph,
             generate_callgrind,
         } => {
@@ -254,6 +263,7 @@ fn run_command(command: Commands) {
                 Path::new(&output_directory),
                 continuations,
                 witness,
+                executor,
                 profiling
             ))
         }
@@ -325,6 +335,7 @@ fn execute<F: FieldElement>(
     output_dir: &Path,
     continuations: bool,
     witness: bool,
+    executor: bool,
     profiling: Option<ProfilerOptions>,
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default()
@@ -343,32 +354,130 @@ fn execute<F: FieldElement>(
         Ok(())
     };
 
-    match (witness, continuations) {
-        (false, true) => {
+    match (witness, continuations, executor) {
+        (false, true, _) => {
             // Already ran when computing bootloader inputs, nothing else to do.
         }
-        (false, false) => {
+        (false, false, _) => {
             let mut pipeline = pipeline.with_prover_inputs(inputs);
             let program = pipeline.compute_asm_string().unwrap().clone();
+
+            log::info!("Running executor before witgen...");
+            let start = Instant::now();
+
             let (trace, _mem, _reg_mem) = powdr_riscv_executor::execute::<F>(
                 &program.1,
+                None,
                 powdr_riscv_executor::MemoryState::new(),
                 pipeline.data_callback().unwrap(),
                 &[],
                 powdr_riscv_executor::ExecMode::Fast,
                 profiling,
             );
+
+            let duration = start.elapsed();
+            log::info!("Executor done in: {:?}", duration);
+
             log::info!("Execution trace length: {}", trace.len);
         }
-        (true, true) => {
-            powdr_riscv::continuations::rust_continuations(
+        (true, true, _) => {
+            continuations::rust_continuations(
                 pipeline,
                 generate_witness,
                 bootloader_inputs,
             )?;
         }
-        (true, false) => {
+        (true, false, false) => {
+            log::info!("Running witgen...");
+            let start = Instant::now();
+
             generate_witness(pipeline)?;
+
+            let duration = start.elapsed();
+            log::info!("Witgen done in: {:?}", duration);
+        }
+        (true, false, true) => {
+            let mut pipeline = pipeline.with_prover_inputs(inputs);
+            let program = pipeline.compute_asm_string().unwrap().clone();
+
+            let fixed = pipeline.compute_fixed_cols().unwrap();
+            let fixed: HashMap<_, _> = (*fixed).clone().into_iter().collect();
+
+            log::info!("Running executor before witgen...");
+            let start = Instant::now();
+            let (reg_trace, cols, _memory_snapshot_update, _register_memory_snapshot) = {
+                let (trace, memory_snapshot_update, register_memory_snapshot) =
+                    powdr_riscv_executor::execute::<F>(
+                        &program.1,
+                        Some(fixed),
+                        powdr_riscv_executor::MemoryState::new(),
+                        pipeline.data_callback().unwrap(),
+                        &[],
+                        powdr_riscv_executor::ExecMode::Trace,
+                        profiling,
+                    );
+                (
+                    continuations::transposed_trace(&trace),
+                    trace.cols,
+                    memory_snapshot_update,
+                    register_memory_snapshot,
+                )
+            };
+            let duration = start.elapsed();
+            log::info!("Executor done in: {:?}", duration);
+
+            let reg_trace: Vec<_> = reg_trace
+                .into_iter()
+                .chain(cols.into_iter())
+                // Uncomment the code below to test a specific column (for debugging).
+                /*
+                .filter_map(|(a, b)| if ["main.X", "main.X_read_free", "main.X_free_value"].iter().any(|x| *x == a) {
+                        Some((a, b.into_iter().map(|e| e.into_fe()).collect::<Vec<_>>()))
+                    } else {
+                        None
+                    }
+                )
+                */
+                .map(|(a, b)| (a, b.into_iter().map(|e| e.into_fe()).collect::<Vec<_>>()))
+                .collect();
+
+            let pil = pipeline.compute_optimized_pil().unwrap();
+            let witness_cols: HashSet<_> = pil
+                .committed_polys_in_source_order()
+                .iter()
+                .map(|c| c.0.absolute_name.clone())
+                .collect();
+
+            let reg_trace: Vec<_> = reg_trace.into_iter().filter(|(a, _)| witness_cols.contains(a)).collect();
+            let keys: Vec<_> = reg_trace.iter().map(|(a, _)| a.clone()).collect();
+
+            let missing_cols = witness_cols
+                .iter()
+                .filter(|x| x.starts_with("main.") && !keys.contains(x))
+                .collect::<Vec<_>>();
+
+            let len = reg_trace[0].1.len();
+            reg_trace
+                .iter()
+                //.for_each(|(n, v)| assert_eq!(v.len(), len, "Column {n} has different lengths"));
+                .for_each(|(n, v)| if v.len() != len {
+                    println!("Column {n} has different lengths (expected: {len}, got: {})", v.len());
+                    //panic!();
+                });
+
+            // TODO pad all columns to degree
+            log::info!("Using these columns from the executor: {:?}\n", keys);
+            log::info!("Missing these columns: {:?}", missing_cols);
+            //println!("Columns from the executor: {:?}", reg_trace);
+            pipeline = pipeline.add_external_witness_values(reg_trace);
+
+            log::info!("Running witgen...");
+            let start = Instant::now();
+
+            generate_witness(pipeline)?;
+
+            let duration = start.elapsed();
+            log::info!("Witgen done in: {:?}", duration);
         }
     }
 

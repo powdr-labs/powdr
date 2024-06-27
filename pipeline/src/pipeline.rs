@@ -431,7 +431,8 @@ impl<T: FieldElement> Pipeline<T> {
         if self.output_dir.is_some() {
             // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
             let fixed_cols = self.compute_fixed_cols().unwrap();
-            self.maybe_write_witness(&fixed_cols, &witness).unwrap();
+            // TODO uncomment this to test the executor in isolation
+            //self.maybe_write_witness(&fixed_cols, &witness).unwrap();
         }
         Pipeline {
             artifact: Artifacts {
@@ -516,9 +517,11 @@ impl<T: FieldElement> Pipeline<T> {
         fixed: &[(String, Vec<T>)],
         witness: &[(String, Vec<T>)],
     ) -> Result<(), Vec<String>> {
+        /*
         if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
             write_polys_file(&path, witness).map_err(|e| vec![format!("{}", e)])?;
         }
+        */
 
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
@@ -852,6 +855,7 @@ impl<T: FieldElement> Pipeline<T> {
 
         self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
+        // TODO uncomment this to test the executor in isolation
         self.maybe_write_witness(&fixed_cols, &witness)?;
 
         self.artifact.witness = Some(Arc::new(witness));
