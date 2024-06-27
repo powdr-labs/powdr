@@ -626,3 +626,20 @@ fn trait_invalid_type() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+#[should_panic = "Trait function ToTuple.get2 is not defined."]
+fn trait_invalid_function() {
+    let input = "
+
+    trait ToTuple<S, I> {
+        get: S -> (S, I),
+    }
+
+    impl ToTuple<int, (int, int)> {
+        get2: |n| (n, (1, n+1)),
+    }
+
+    ";
+    type_check(input, &[]);
+}

@@ -475,7 +475,7 @@ impl<'a> TypeChecker<'a> {
                     };
                     let trait_func = self.declared_types.get(&f_name);
                     if trait_func.is_none() {
-                        panic!("Trait {f_name} is not defined.");
+                        panic!("Trait function {f_name} is not defined.");
                     }
 
                     let (source_ref, type_scheme) = trait_func.unwrap();
