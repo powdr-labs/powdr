@@ -412,11 +412,7 @@ where
         trait_impl: TraitImplementation<parsed::Expression>,
     ) -> Vec<PILItem> {
         let id = self.counters.dispense_symbol_id(SymbolKind::Other(), None);
-        // Replacing dot with double colon to match the way we resolve the whole name.
-        let absolute_name = self
-            .driver
-            .resolve_decl(&trait_impl.name)
-            .replace('.', "::");
+        let absolute_name = self.driver.resolve_decl(&trait_impl.name);
         let symbol = Symbol {
             id,
             source: source.clone(),
@@ -500,17 +496,17 @@ where
             let trait_decl = self.process_trait_declaration(trait_decl);
             let shared_trait_decl = Arc::new(trait_decl.clone());
             let trait_functions = trait_decl.functions.iter().map(|function| {
-                // Replacing dot with double colon to match the way we resolve the whole name.
-                let name = name.replace('.', "::");
-                let absolute_name = self
-                    .driver
-                    .resolve_namespaced_decl(&[&name, &function.name])
-                    .to_dotted_string()
-                    .replace('.', "::");
+                // let absolute_name = self
+                //     .driver
+                //     .resolve_namespaced_decl(&[&name, &function.name])
+                //     .to_dotted_string();
                 let f_symbol = Symbol {
                     id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
                     source: source.clone(),
-                    absolute_name,
+                    absolute_name: self
+                        .driver
+                        .resolve_namespaced_decl(&[&name, &function.name])
+                        .to_dotted_string(),
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,

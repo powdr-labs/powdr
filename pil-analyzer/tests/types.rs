@@ -549,7 +549,7 @@ fn defined_trait() {
     }
 
     impl Add<int> {
-        add: (|a, b| a + b),
+        add: |a, b| a + b,
     }
 
     let r: int = Add::add(3, 4);

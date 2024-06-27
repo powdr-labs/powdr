@@ -467,10 +467,15 @@ impl<'a> TypeChecker<'a> {
                         .as_ref()
                         .map_or_else(Vec::new, |s| s.types.clone());
 
-                    let f_name = format!("{trait_name}::{fname}", fname = f.name);
+                    let f_name = if trait_name.contains('.') {
+                        let trait_name = trait_name.replace(".", "::");
+                        format!("{trait_name}::{fname}", fname = f.name)
+                    } else {
+                        format!("{trait_name}.{fname}", fname = f.name)
+                    };
                     let trait_func = self.declared_types.get(&f_name);
                     if trait_func.is_none() {
-                        panic!("Trait {trait_name} is not defined.");
+                        panic!("Trait {f_name} is not defined.");
                     }
 
                     let (source_ref, type_scheme) = trait_func.unwrap();

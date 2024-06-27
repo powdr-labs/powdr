@@ -349,7 +349,6 @@ impl PILAnalyzer {
                 vec![]
             }
             PilStatement::TraitImplementation(_, _) => {
-                // This can probably be done directly with the trait implementation.
                 let names = statement
                     .symbol_definition_names_and_contained()
                     .map(|(name, sub_name, symbol_category)| {

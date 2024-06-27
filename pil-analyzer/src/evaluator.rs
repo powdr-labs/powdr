@@ -468,8 +468,7 @@ impl<'a> Definitions<'a> {
                     }
                 }
                 Some(FunctionValueDefinition::TraitFunction(trait_decl, function)) => {
-                    let decl_name = trait_decl.name.replace('.', "::");
-                    let trait_impl = implementations.get(&decl_name).ok_or_else(|| {
+                    let trait_impl = implementations.get(&trait_decl.name).ok_or_else(|| {
                         EvalError::SymbolNotFound(format!(
                             "Impl for trait `{}` not found.",
                             trait_decl.name
