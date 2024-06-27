@@ -105,13 +105,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "assertion failed: width >= 1"]
-    fn empty() {
-        let content = "namespace Global(8);";
-        run_test_goldilocks(content);
-    }
-
-    #[test]
     fn add() {
         let content = r#"
         namespace Add(8);

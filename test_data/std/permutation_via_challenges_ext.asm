@@ -23,7 +23,8 @@ machine Main with degree: 8 {
     // so we have to manually create it here and pass it to permutation(). 
     col witness stage(1) z1;
     col witness stage(1) z2;
-    permutation([z1, z2], permutation_constraint);
+    let is_first: col = |i| if i == 0 { 1 } else { 0 };
+    permutation(is_first, [z1, z2], permutation_constraint);
 
     // TODO: Helper columns, because we can't access the previous row in hints
     let hint = query |i| Query::Hint(compute_next_z(Fp2::Fp2(z1, z2), permutation_constraint)[i]); 

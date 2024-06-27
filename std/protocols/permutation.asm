@@ -18,8 +18,6 @@ use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
 use std::math::fp2::constrain_eq_ext;
 
-let is_first: col = |i| if i == 0 { 1 } else { 0 };
-
 /// Get two phase-2 challenges to use in all permutation arguments.
 /// Note that this assumes that globally no other challenge of these IDs is used,
 /// and that challenges for multiple permutation arguments are re-used.
@@ -117,7 +115,7 @@ let compute_next_z: Fp2<expr>, Constr -> fe[] = query |acc, permutation_constrai
 /// the wrapping behavior: The first accumulator is constrained to be 1, and the last
 /// accumulator is the same as the first one, because of wrapping.
 /// For small fields, this computation should happen in the extension field.
-let permutation: expr[], Constr -> Constr[] = |acc, permutation_constraint| {
+let permutation: expr, expr[], Constr -> Constr[] = |is_first, acc, permutation_constraint| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
