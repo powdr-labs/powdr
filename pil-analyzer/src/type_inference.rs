@@ -466,8 +466,7 @@ impl<'a> TypeChecker<'a> {
                     let impl_types = type_scheme
                         .as_ref()
                         .map_or_else(Vec::new, |s| s.types.clone());
-                    //println!("name: {trait_name}::{f.name}")
-                    //let trait_name = trait_name.replace('.', "::");
+
                     let f_name = format!("{trait_name}::{fname}", fname = f.name);
                     let trait_func = self.declared_types.get(&f_name);
                     if trait_func.is_none() {
@@ -475,9 +474,15 @@ impl<'a> TypeChecker<'a> {
                     }
 
                     let (source_ref, type_scheme) = trait_func.unwrap();
-                    let decl_types = type_scheme.vars.vars().cloned();
 
-                    let substitutions = decl_types
+                    assert!(
+                        type_scheme.vars.vars().collect::<Vec<_>>().len() == impl_types.len(),
+                        "Mismatched number of type arguments for trait function {f_name}."
+                    );
+
+                    let substitutions = type_scheme
+                        .vars
+                        .vars()
                         .zip(impl_types.iter())
                         .map(|(decl, impl_)| (decl.clone(), impl_.clone()))
                         .collect::<HashMap<_, _>>();

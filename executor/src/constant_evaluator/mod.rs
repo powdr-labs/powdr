@@ -665,10 +665,56 @@ mod test {
                 impl getN<fe> {
                     get: |x| x,
                 }
-                
+
 
                 let seven: int = 7;
                 let a: col = |i| getN::get(std::convert::fe(i)) + getN::get(seven) + getN::get(seven);
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants[0],
+            ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
+        );
+    }
+
+    #[test]
+    #[should_panic = "Mismatched number of type arguments for trait function getN::get"]
+    fn invalid_impl() {
+        let src = r#"
+
+            trait getN<T: FromLiteral> {
+                get: T -> T,
+            }
+
+            impl getN<int, fe> {
+                get: |x| x,
+            }
+
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants[0],
+            ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
+        );
+    }
+
+    #[test]
+    #[should_panic = "Mismatched number of type arguments for trait function getN::get"]
+    fn invalid_impl2() {
+        let src = r#"
+
+            trait getN<T: FromLiteral, Q> {
+                get: T -> Q,
+            }
+
+            impl getN<int> {
+                get: |x| x,
+            }
+
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);
