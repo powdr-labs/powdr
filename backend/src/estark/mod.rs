@@ -1,5 +1,4 @@
 mod json_exporter;
-#[cfg(feature = "estark-polygon")]
 pub mod polygon_wrapper;
 pub mod starky_wrapper;
 

@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -33,6 +33,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     }
 }
 
+#[allow(dead_code)]
 struct PolygonBackend<F: FieldElement>(EStarkFilesCommon<F>);
 
 // TODO: make both eStark backends interchangeable, from user perspective.
@@ -50,41 +51,47 @@ impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<F> {
             return Err(Error::NoAggregationAvailable);
         }
 
-        let tmp_dir;
-        let output_dir = if let Some(output_dir) = self.0.output_dir.clone() {
-            output_dir
-        } else {
-            tmp_dir = mktemp::Temp::new_dir()?;
-            tmp_dir.to_path_buf()
-        };
+        #[cfg(feature = "estark-polygon")]
+        {
+            let tmp_dir;
+            let output_dir = if let Some(output_dir) = self.0.output_dir.clone() {
+                output_dir
+            } else {
+                tmp_dir = mktemp::Temp::new_dir()?;
+                tmp_dir.to_path_buf()
+            };
 
-        let input_paths = self.0.write_files(&output_dir)?;
+            let input_paths = self.0.write_files(&output_dir)?;
 
-        let commits_path = output_dir.join("commits.bin");
+            let commits_path = output_dir.join("commits.bin");
 
-        // Generate the proof.
-        let proof_paths = pil_stark_prover::generate_proof(
-            &input_paths.contraints,
-            &input_paths.stark_struct,
-            &input_paths.constants,
-            &commits_path,
-            &output_dir,
-        )
-        .map_err(|e| Error::BackendError(e.to_string()))?;
+            // Generate the proof.
+            let proof_paths = pil_stark_prover::generate_proof(
+                &input_paths.contraints,
+                &input_paths.stark_struct,
+                &input_paths.constants,
+                &commits_path,
+                &output_dir,
+            )
+            .map_err(|e| Error::BackendError(e.to_string()))?;
 
-        // Sanity check: verify the proof.
-        let publics_path = output_dir.join("publics.json");
-        // TODO: properly handle publics
-        fs::write(&publics_path, "[]")?;
-        pil_stark_prover::verify_proof(
-            &proof_paths.verification_key_json,
-            &proof_paths.starkinfo_json,
-            &proof_paths.proof_json,
-            &publics_path,
-        )
-        .map_err(|e| Error::BackendError(e.to_string()))?;
+            // Sanity check: verify the proof.
+            let publics_path = output_dir.join("publics.json");
+            // TODO: properly handle publics
+            fs::write(&publics_path, "[]")?;
+            pil_stark_prover::verify_proof(
+                &proof_paths.verification_key_json,
+                &proof_paths.starkinfo_json,
+                &proof_paths.proof_json,
+                &publics_path,
+            )
+            .map_err(|e| Error::BackendError(e.to_string()))?;
 
-        // Read the proof.
-        Ok(fs::read(&proof_paths.proof_json)?)
+            // Read the proof.
+            Ok(std::fs::read(&proof_paths.proof_json)?)
+        }
+
+        #[cfg(not(feature = "estark-polygon"))]
+        panic!("estark-polygon feature is off")
     }
 }
