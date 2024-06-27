@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use powdr_ast::{
-    asm_analysis::{AnalysisASMFile, Item, LinkDefinitionStatement},
+    asm_analysis::{self, AnalysisASMFile, Item, LinkDefinitionStatement},
     object::{
         Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph, TypeOrExpression,
     },
@@ -71,8 +71,11 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
                 location.clone().join(def.name.clone()),
                 // submachine type
                 def.ty.clone(),
-                // given arguments
-                def.args.clone(),
+                // resolve each given machine arg to a proper instance location
+                def.args
+                    .iter()
+                    .map(|a| submachine_arg_to_location(&location, machine, &args, a))
+                    .collect(),
             )
         }));
 
@@ -147,6 +150,30 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     }
 }
 
+// resolve argument in a submachine declaration to a machine instance location
+fn submachine_arg_to_location(
+    location: &Location,
+    machine: &asm_analysis::Machine,
+    args: &[Location],
+    submachine_arg: &Expression,
+) -> Location {
+    // We only support machine instances as arguments. This has already been checked before
+    let id = submachine_arg.try_to_identifier().unwrap().clone();
+    if let Some((_, arg)) = machine
+        .params
+        .0
+        .iter()
+        .zip(args.iter())
+        .find(|(param, _)| param.name == id)
+    {
+        // argument is the name of a parameter, pass it forward
+        arg.clone()
+    } else {
+        // argument is the name of another submachine, join with current location
+        location.clone().join(id)
+    }
+}
+
 fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, TypeOrExpression> {
     asm_file
         .items
@@ -170,7 +197,7 @@ struct SubmachineRef {
 
 struct ASMPILConverter<'a> {
     /// Map of all machine instances to their type and passed arguments
-    instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, Vec<Expression>)>,
+    instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, Vec<Location>)>,
     /// Current machine instance
     location: &'a Location,
     /// Input definitions and machines.
@@ -185,7 +212,7 @@ struct ASMPILConverter<'a> {
 
 impl<'a> ASMPILConverter<'a> {
     fn new(
-        instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, Vec<Expression>)>,
+        instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, Vec<Location>)>,
         location: &'a Location,
         input: &'a AnalysisASMFile,
         incoming_permutations: &'a mut BTreeMap<Location, u64>,
@@ -205,7 +232,7 @@ impl<'a> ASMPILConverter<'a> {
     }
 
     fn convert_machine(
-        instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, Vec<Expression>)>,
+        instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, Vec<Location>)>,
         location: &'a Location,
         input: &'a AnalysisASMFile,
         incoming_permutations: &'a mut BTreeMap<Location, u64>,
@@ -332,14 +359,8 @@ impl<'a> ASMPILConverter<'a> {
         }
     }
 
-    // Process machine parameters.
-    // Finds the actual instances of machines passed as argument and makes them referenceable.
-    // TODO: support some elementary pil types as a machine parameter?
-    fn handle_parameters(
-        &mut self,
-        MachineParams(params): MachineParams,
-        values: &Vec<Expression>,
-    ) {
+    // Process machine parameters (already resolved to machine instance locations)
+    fn handle_parameters(&mut self, MachineParams(params): MachineParams, values: &Vec<Location>) {
         if params.len() != values.len() {
             panic!(
                 "wrong number of arguments for machine `{}`: got {} expected {}",
@@ -348,66 +369,17 @@ impl<'a> ASMPILConverter<'a> {
                 params.len()
             );
         }
+
         for (param, value) in params.iter().zip(values) {
             let ty = AbsoluteSymbolPath::default().join(param.ty.clone().unwrap());
-            if let Some(Item::Machine(_)) = self.items.get(&ty) {
-                // param is a machine, we need to find the actual instance
-                // location by going up the machine declaration hierarchy, then
-                // make it referenceable as a submachine
-
-                // current location
-                let mut loc = self.location.clone();
-                // local name of the machine we're trying to find
-                let mut loc_submachine =
-                    value.try_to_identifier().expect("invalid machine argument");
-                let mut found = false;
-                while let Some(parent) = loc.parent() {
-                    loc = parent;
-                    let (loc_ty, loc_args) = self.instances.get(&loc).as_ref().unwrap();
-                    let Item::Machine(loc_ty) = self.items.get(loc_ty).unwrap() else {
-                        unreachable!()
-                    };
-                    // is the name declared as an actual submachine?
-                    if loc_ty
-                        .submachines
-                        .iter()
-                        .any(|sm| &sm.name == loc_submachine)
-                    {
-                        // found the submachine
-                        let name = param.name.clone();
-                        self.submachines.push(SubmachineRef {
-                            location: loc.join(loc_submachine),
-                            name,
-                            ty,
-                        });
-                        found = true;
-                        break;
-                    } else {
-                        // submachine is a machine parameter, go up the machine tree
-                        let (param, value) = loc_ty
-                            .params
-                            .0
-                            .iter()
-                            .zip(loc_args)
-                            .find(|(p, _)| &p.name == loc_submachine)
-                            .unwrap();
-                        assert_eq!(
-                            ty,
-                            AbsoluteSymbolPath::default().join(param.ty.clone().unwrap()),
-                            "machine passed as parameter has the wrong type"
-                        );
-                        loc_submachine =
-                            value.try_to_identifier().expect("invalid submachine name");
-                    }
-                }
-                if !found {
-                    panic!("could not find submachine");
-                }
-            } else {
-                // maybe we could handle "non-machine" parameters by generating
-                // a let statement `let {param.name}: {param.ty} = value`?
-                unimplemented!("asm machines do not support non-machine parameters");
-            };
+            match self.items.get(&ty) {
+                Some(Item::Machine(_)) => self.submachines.push(SubmachineRef {
+                    location: value.clone(),
+                    name: param.name.clone(),
+                    ty,
+                }),
+                _ => unimplemented!("asm machines do not support non-machine parameters"),
+            }
         }
     }
 }
