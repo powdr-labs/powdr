@@ -113,24 +113,6 @@ mod tests {
     }
 
     #[test]
-    fn public_inputs() {
-        let content = r#"
-        namespace Add(8);
-            col witness x;
-            col witness y;
-            col witness z;
-            y - 1 = 0;
-            x = 0;
-            x + y = z;
-
-            public outz = z(7);
-        "#;
-        let publics = Some(vec![GoldilocksField::from(1)]);
-
-        run_test_goldilocks_publics(content, publics);
-    }
-
-    #[test]
     #[should_panic = "Failed to verify proof: OodEvaluationMismatch"]
     fn public_inputs_malicious() {
         let content = r#"

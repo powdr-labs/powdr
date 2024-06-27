@@ -127,7 +127,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 let vals = *witness.get(&col_name).unwrap();
                 cast_to_goldilocks(vals[idx])
             })
-            .collect::<Vec<Goldilocks>>()
+            .collect()
     }
 
     pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
