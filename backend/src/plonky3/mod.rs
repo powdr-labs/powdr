@@ -1,4 +1,4 @@
-use std::{io, path::Path};
+use std::{io, path::PathBuf};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -14,7 +14,7 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
         &self,
         pil: &'a Analyzed<T>,
         _fixed: &'a [(String, Vec<T>)],
-        _output_dir: Option<&'a Path>,
+        _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,

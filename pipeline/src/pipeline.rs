@@ -899,7 +899,7 @@ impl<T: FieldElement> Pipeline<T> {
             .create(
                 pil.borrow(),
                 &fixed_cols[..],
-                self.output_dir(),
+                self.output_dir.clone(),
                 setup.as_io_read(),
                 vkey.as_io_read(),
                 vkey_app.as_io_read(),
@@ -935,8 +935,8 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.proof.as_ref().unwrap())
     }
 
-    pub fn output_dir(&self) -> Option<&Path> {
-        self.output_dir.as_ref().map(|p| p.as_ref())
+    pub fn output_dir(&self) -> &Option<PathBuf> {
+        &self.output_dir
     }
 
     pub fn is_force_overwrite(&self) -> bool {
@@ -981,7 +981,7 @@ impl<T: FieldElement> Pipeline<T> {
             .create(
                 pil.borrow(),
                 &fixed_cols[..],
-                self.output_dir(),
+                self.output_dir.clone(),
                 setup_file
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),
@@ -1035,7 +1035,7 @@ impl<T: FieldElement> Pipeline<T> {
             .create(
                 pil.borrow(),
                 &fixed_cols[..],
-                self.output_dir(),
+                self.output_dir.clone(),
                 setup_file
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),
@@ -1083,7 +1083,7 @@ impl<T: FieldElement> Pipeline<T> {
             .create(
                 pil.borrow(),
                 &fixed_cols[..],
-                self.output_dir(),
+                self.output_dir.clone(),
                 setup_file
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),

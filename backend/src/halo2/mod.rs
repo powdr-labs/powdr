@@ -1,6 +1,7 @@
 #![deny(clippy::print_stdout)]
 
-use std::{io, path::Path};
+use std::io;
+use std::path::PathBuf;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
@@ -75,7 +76,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
         &self,
         pil: &'a Analyzed<F>,
         fixed: &'a [(String, Vec<F>)],
-        _output_dir: Option<&'a Path>,
+        _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
@@ -184,7 +185,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
         &self,
         pil: &'a Analyzed<F>,
         fixed: &'a [(String, Vec<F>)],
-        _output_dir: Option<&'a Path>,
+        _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,

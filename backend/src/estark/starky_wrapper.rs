@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::Instant;
 use std::{borrow::Cow, io};
 
@@ -26,7 +27,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         &self,
         pil: &'a Analyzed<F>,
         fixed: &'a [(String, Vec<F>)],
-        _output_dir: Option<&std::path::Path>,
+        _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
