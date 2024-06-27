@@ -461,14 +461,14 @@ impl<'a> TypeChecker<'a> {
                 } = impls;
 
                 for f in functions.clone().iter_mut() {
+                    let expr_type = self.infer_type_of_expression(&mut f.body)?;
+
                     let impl_types = type_scheme
                         .as_ref()
                         .map_or_else(Vec::new, |s| s.types.clone());
                     let trait_name = trait_name.replace('.', "::");
                     let f_name = format!("{trait_name}::{fname}", fname = f.name);
-                    // TODO GZ: This is a temporal hack, we should not clone the whole declared_types
-                    let declared_types = self.declared_types.clone();
-                    let trait_func = declared_types.get(&f_name);
+                    let trait_func = self.declared_types.get(&f_name);
                     if trait_func.is_none() {
                         panic!("Trait {trait_name} is not defined.");
                     }
@@ -485,8 +485,6 @@ impl<'a> TypeChecker<'a> {
                         .ty
                         .clone()
                         .substitute_type_vars_to(&substitutions);
-
-                    let expr_type = self.infer_type_of_expression(&mut f.body)?;
 
                     self.unifier
                     .unify_types(declared_type.clone(), expr_type.clone())
