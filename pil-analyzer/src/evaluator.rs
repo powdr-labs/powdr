@@ -1022,7 +1022,7 @@ fn trait_type_args(
 fn match_trait_function<T: FieldElement>(
     func_type: &Type,
     type_args: &HashMap<String, Type>,
-    arguments: &Vec<Arc<Value<T>>>,
+    arguments: &[Arc<Value<T>>],
 ) -> bool {
     if let Type::Function(FunctionType { params, value: _ }) = func_type {
         for (p, a) in params.iter().zip(arguments.iter()) {
