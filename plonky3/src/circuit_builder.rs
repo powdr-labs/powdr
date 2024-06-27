@@ -1,4 +1,12 @@
 //! A plonky3 adapter for powdr
+//!
+//! Support for public values invokes fixed selector columns, currently
+//! implemented as extra witness columns in the execution trace.
+//!
+//! Namely, given ith public value pub[i] corresponding to a witness value in
+//! row j of column Ci, a corresponding selector column Pi is constructed to
+//! constrain Pi * (pub[i] - Ci) on every row. Pi is precomputed in the trace
+//! to be 0 everywhere and 1 in row j.
 
 use std::{any::TypeId, collections::BTreeMap};
 
@@ -35,16 +43,13 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         let values = (0..len)
             .flat_map(move |i| {
                 // witness values
-                witness
-                    .clone()
-                    .map(move |(_, v)| cast_to_goldilocks(v[i as usize]))
-                    .chain(
-                        publics
-                            .clone()
-                            .map(move |(_, _, idx)| T::from(i as usize == idx))
-                            .map(cast_to_goldilocks),
-                    )
+                witness.clone().map(move |(_, v)| v[i as usize]).chain(
+                    publics
+                        .clone()
+                        .map(move |(_, _, idx)| T::from(i as usize == idx)),
+                )
             })
+            .map(cast_to_goldilocks)
             .collect();
         RowMajorMatrix::new(values, self.width())
     }
@@ -79,6 +84,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         self.witness.as_ref().unwrap()
     }
 
+    /// Retrieves (col_name, col_idx, offset) of each public witness in the trace.
     pub(crate) fn get_publics(&self) -> Vec<(String, usize, usize)> {
         let mut publics = self
             .analyzed
@@ -103,7 +109,8 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         publics
     }
 
-    pub(crate) fn calculate_publics_from_witness(&self) -> Vec<Goldilocks> {
+    /// Calculates public values from generated witness values.
+    pub(crate) fn get_public_values(&self) -> Vec<Goldilocks> {
         let publics = self.get_publics();
 
         let witness = self
@@ -124,6 +131,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 
     pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
+        assert_eq!(witness.len(), self.analyzed.commitment_count());
         Self {
             witness: Some(witness),
             ..self
@@ -230,7 +238,8 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for P
         publics.iter().zip(pi_moved).enumerate().for_each(
             |(index, ((_, col_id, _), public_value))| {
                 let selector = local[self.analyzed.commitment_count() + index];
-                builder.assert_zero(selector * (public_value.into() - local[*col_id]));
+                let witness_col = local[*col_id];
+                builder.assert_zero(selector * (public_value.into() - witness_col));
             },
         );
 
