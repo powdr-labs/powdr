@@ -14,7 +14,8 @@ use powdr_parser_util::SourceRef;
 
 use crate::parsed::{
     asm::{
-        AbsoluteSymbolPath, AssignmentRegister, CallableRef, FunctionParams, Instruction, MachineParams, OperationId, OperationParams
+        AbsoluteSymbolPath, AssignmentRegister, CallableRef, FunctionParams, Instruction,
+        MachineParams, OperationId, OperationParams,
     },
     visitor::{ExpressionVisitable, VisitOrder},
     EnumDeclaration, NamespacedPolynomialReference, PilStatement, TypedExpression,
