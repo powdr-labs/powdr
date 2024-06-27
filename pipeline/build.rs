@@ -12,12 +12,10 @@ fn main() {
     build_reparse_test("pil");
 }
 
-#[allow(clippy::print_stdout)]
 fn build_book_tests(kind: &str) {
     build_tests(kind, "book", "book")
 }
 
-#[allow(clippy::print_stdout)]
 fn build_reparse_test(kind: &str) {
     build_tests(kind, "", "reparse")
 }
@@ -27,7 +25,7 @@ fn build_tests(kind: &str, sub_dir: &str, name: &str) {
     let sub_dir = if sub_dir.is_empty() {
         "".to_string()
     } else {
-        format!("{}/", sub_dir)
+        format!("{sub_dir}/")
     };
     let out_dir = env::var("OUT_DIR").unwrap();
     let destination = Path::new(&out_dir).join(format!("{kind}_{name}_tests.rs"));
