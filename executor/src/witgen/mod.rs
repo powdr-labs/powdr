@@ -433,7 +433,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {
-        let row = row % self.degree(column);
         self.witness_cols[column]
             .external_values
             .as_ref()
