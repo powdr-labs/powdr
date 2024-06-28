@@ -6,7 +6,6 @@ use machines::profiling::{
     self, record_end_identity, record_start_identity, reset_and_print_profile_summary_identity,
 };
 
-use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
     PolynomialType, SymbolKind, TypedExpression,

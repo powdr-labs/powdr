@@ -13,6 +13,8 @@ use crate::witgen::FixedData;
 pub static UNUSED_IDENTITY_ID: u64 = u64::MAX;
 pub static IDENTITY_LOOKUP_CACHE: u64 = UNUSED_IDENTITY_ID - 1;
 pub static PROCESS_PROVER_QUERIES_ID: u64 = UNUSED_IDENTITY_ID - 2;
+pub static SNIPPET1: u64 = UNUSED_IDENTITY_ID - 3;
+pub static SNIPPET2: u64 = UNUSED_IDENTITY_ID - 4;
 
 #[derive(Debug)]
 struct Event {
@@ -113,6 +115,8 @@ pub fn reset_and_print_profile_summary_identity<T: FieldElement>(fixed_data: &Fi
             PROCESS_PROVER_QUERIES_ID,
             "process prover queries".to_string(),
         )])
+        .chain([(SNIPPET1, "snippet 1".to_string())])
+        .chain([(SNIPPET2, "snippet 2".to_string())])
         .collect();
 
     reset_and_print_profile_summary_impl(
