@@ -516,3 +516,130 @@ fn enum_too_many_fields() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+#[should_panic = "Trait function Add.add is not defined for Add."]
+fn undefined_trait() {
+    let input = "
+    impl Add<int, int> {
+        add: (|a, b| a + b),
+    }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Value symbol not found: Add::add"]
+fn only_trait() {
+    let input = "
+    trait Add<T: Add> {
+        add: T, T -> T,
+    }
+
+    let r: int = Add::add(3, 4);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn defined_trait() {
+    let input = "
+    trait Add<T: Add> {
+        add: T, T -> T,
+    }
+
+    impl Add<int> {
+        add: |a, b| a + b,
+    }
+
+    let r: int = Add::add(3, 4);
+    ";
+    type_check(input, &[("r", "", "int")]);
+}
+
+#[test]
+#[should_panic = "Type bool does not satisfy trait"]
+fn invalid_type_trait() {
+    let input = "
+    trait Add<T: Add> {
+        add: T, T -> T,
+    }
+
+    impl Add<int> {
+        add: (|a, b| a + b),
+    }
+
+    let r: bool = Add::add(3, 4);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn trait_with_generic() {
+    let input = "
+    trait Add<T: Add + FromLiteral> {
+        add: T, T -> T,
+    }
+
+    impl Add<int> {
+        add: (|a, b| a + b),
+    }
+
+    let<T: Add + FromLiteral> r: T = Add::add(3, 4);
+    ";
+    type_check(input, &[("r", "T: Add + FromLiteral", "T")]);
+}
+
+#[test]
+fn trait_multi_generics() {
+    let input = "
+
+    trait ToTuple<S, I> {
+        get: S -> (S, I),
+    }
+
+    impl ToTuple<int, (int, int)> {
+        get: |n| (n, (1, n+2)),
+    }
+
+    let r: (int, (int, int)) = ToTuple::get(3);
+
+    ";
+    type_check(input, &[("r", "", "(int, (int, int))")]);
+}
+
+#[test]
+#[should_panic = "Cannot unify types (T3, T2) and int"]
+fn trait_invalid_type() {
+    let input = "
+
+    trait ToTuple<S, I> {
+        get: S -> (S, I),
+    }
+
+    impl ToTuple<int, (int, int)> {
+        get: |n| (n, (1, n+1)),
+    }
+
+    let r: int = ToTuple::get(3);
+
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Trait function ToTuple.get2 is not defined for ToTuple."]
+fn trait_invalid_function() {
+    let input = "
+
+    trait ToTuple<S, I> {
+        get: S -> (S, I),
+    }
+
+    impl ToTuple<int, (int, int)> {
+        get2: |n| (n, (1, n+1)),
+    }
+
+    ";
+    type_check(input, &[]);
+}

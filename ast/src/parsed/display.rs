@@ -34,6 +34,7 @@ impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(symbol_def) => write!(f, "{symbol_def}"),
+            ModuleStatement::TraitImplementation(trait_impl) => write!(f, "{trait_impl}"),
         }
     }
 }
@@ -62,6 +63,7 @@ impl Display for SymbolDefinition {
                 )
             }
             SymbolValue::TypeDeclaration(ty) => write!(f, "{ty}"),
+            SymbolValue::TraitDeclaration(trait_decl) => write!(f, "{trait_decl}"),
         }
     }
 }
@@ -520,6 +522,8 @@ impl Display for PilStatement {
             }
             PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
+            PilStatement::TraitDeclaration(_, trait_decl) => write_indented_by(f, trait_decl, 1),
+            PilStatement::TraitImplementation(_, trait_impl) => write_indented_by(f, trait_impl, 1),
         }
     }
 }
@@ -559,10 +563,103 @@ impl Display for FunctionDefinition {
                 )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
-            FunctionDefinition::TypeDeclaration(_) => {
+            FunctionDefinition::TypeDeclaration(_) | FunctionDefinition::TraitDeclaration(_) => {
                 panic!("Should not use this formatting function.")
             }
         }
+    }
+}
+
+impl Display for TraitDeclaration<Expression> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = if self.type_vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_vars)
+        };
+        write!(
+            f,
+            "trait {name} {type_vars} {{\n{functions}}}",
+            name = self.name,
+            functions = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        )
+    }
+}
+
+impl Display for TraitDeclaration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = if self.type_vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_vars)
+        };
+        write!(
+            f,
+            "trait {name} {type_vars} {{\n{functions}}}",
+            name = self.name,
+            functions = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        )
+    }
+}
+
+impl Display for TraitFunction<Expression> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self._type)
+    }
+}
+
+impl Display for TraitFunction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self._type)
+    }
+}
+
+impl<E: Display> Display for TraitImplementation<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = self
+            .type_scheme
+            .as_ref()
+            .map_or_else(Default::default, |scheme| {
+                if scheme.vars.is_empty() {
+                    Default::default()
+                } else {
+                    format!("<{}>", scheme.vars)
+                }
+            });
+        let trait_vars = self
+            .type_scheme
+            .as_ref()
+            .map_or_else(Default::default, |scheme| {
+                if scheme.types.is_empty() {
+                    Default::default()
+                } else {
+                    let formatted_elements: Vec<String> =
+                        scheme.types.iter().map(|t| format!("{t}")).collect();
+                    format!("<{}>", formatted_elements.join(", "))
+                }
+            });
+
+        write!(
+            f,
+            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+            trait_name = self.name,
+            methods = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        )
+    }
+}
+
+impl<E: Display> Display for NamedExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self.body)
     }
 }
 

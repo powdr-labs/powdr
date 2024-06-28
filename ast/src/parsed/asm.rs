@@ -16,7 +16,7 @@ use crate::parsed::{BinaryOperation, BinaryOperator};
 
 use super::{
     visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, SourceReference,
-    TypedExpression,
+    TraitDeclaration, TraitImplementation, TypedExpression,
 };
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -31,8 +31,9 @@ pub struct ASMModule {
 
 impl ASMModule {
     pub fn symbol_definitions(&self) -> impl Iterator<Item = &SymbolDefinition> {
-        self.statements.iter().map(|s| match s {
-            ModuleStatement::SymbolDefinition(d) => d,
+        self.statements.iter().filter_map(|s| match s {
+            ModuleStatement::SymbolDefinition(d) => Some(d),
+            ModuleStatement::TraitImplementation(_) => None,
         })
     }
 }
@@ -40,6 +41,8 @@ impl ASMModule {
 #[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum ModuleStatement {
     SymbolDefinition(SymbolDefinition),
+    /// A trait implementation
+    TraitImplementation(TraitImplementation<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +63,8 @@ pub enum SymbolValue {
     Expression(TypedExpression),
     /// A type declaration (currently only enums)
     TypeDeclaration(EnumDeclaration<Expression>),
+    /// A trait declaration
+    TraitDeclaration(TraitDeclaration<Expression>),
 }
 
 impl SymbolValue {
@@ -70,6 +75,7 @@ impl SymbolValue {
             SymbolValue::Module(m) => SymbolValueRef::Module(m.as_ref()),
             SymbolValue::Expression(e) => SymbolValueRef::Expression(e),
             SymbolValue::TypeDeclaration(t) => SymbolValueRef::TypeDeclaration(t),
+            SymbolValue::TraitDeclaration(t) => SymbolValueRef::TraitDeclaration(t),
         }
     }
 }
@@ -88,6 +94,8 @@ pub enum SymbolValueRef<'a> {
     TypeDeclaration(&'a EnumDeclaration<Expression>),
     /// A type constructor of an enum.
     TypeConstructor(&'a EnumVariant<Expression>),
+    /// A trait declaration
+    TraitDeclaration(&'a TraitDeclaration<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]

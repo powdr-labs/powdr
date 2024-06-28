@@ -5,7 +5,9 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
+    analyzed::{
+        Analyzed, Expression, FunctionValueDefinition, Symbol, TraitImplementation, TypedExpression,
+    },
     parsed::{
         types::{ArrayType, Type},
         IndexAccess,
@@ -50,6 +52,7 @@ fn generate_values<T: FieldElement>(
 ) -> Vec<T> {
     let symbols = CachedSymbols {
         symbols: &analyzed.definitions,
+        implementations: &analyzed.implementations,
         cache: Arc::new(RwLock::new(Default::default())),
         degree,
     };
@@ -121,7 +124,10 @@ fn generate_values<T: FieldElement>(
                 })
         }
         FunctionValueDefinition::TypeDeclaration(_)
-        | FunctionValueDefinition::TypeConstructor(_, _) => panic!(),
+        | FunctionValueDefinition::TypeConstructor(_, _)
+        | FunctionValueDefinition::TraitDeclaration(_)
+        | FunctionValueDefinition::TraitFunction(_, _)
+        | FunctionValueDefinition::TraitImplementation(_) => panic!(),
     };
     match result {
         Err(err) => {
@@ -137,6 +143,7 @@ type SymbolCache<'a, T> = BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     cache: Arc<RwLock<SymbolCache<'a, T>>>,
     degree: DegreeType,
 }
@@ -151,7 +158,13 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         if let Some(v) = self.cache.read().unwrap().get(&cache_key) {
             return Ok(v.clone());
         }
-        let result = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
+        let result = Definitions::lookup_with_symbols(
+            self.symbols,
+            self.implementations,
+            name,
+            type_args,
+            self,
+        )?;
         self.cache
             .write()
             .unwrap()
@@ -598,6 +611,110 @@ mod test {
             namespace F(4);
                 let<T: FromLiteral> seven: T = 7;
                 let a: col = |i| std::convert::fe(i + seven) + seven;
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants[0],
+            ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
+        );
+    }
+
+    #[test]
+    fn simple_trait() {
+        let src = r#"
+            namespace std::convert(4);
+                let fe = || fe();
+            namespace F(4);
+
+                trait getN<T: FromLiteral> {
+                    get: T -> T,
+                }
+
+                impl getN<int> {
+                    get: |x| x,
+                }
+
+                let a: col = |i| std::convert::fe(i + getN::get(7) + getN::get(7));
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants[0],
+            ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
+        );
+    }
+
+    #[test]
+    fn double_impl() {
+        let src = r#"
+            namespace std::convert(4);
+                let fe = || fe();
+            namespace F(4);
+
+                trait getN<T: FromLiteral> {
+                    get: T -> fe,
+                }
+
+                impl getN<int> {
+                    get: |x| std::convert::fe(x),
+                }
+
+                impl getN<fe> {
+                    get: |x| x,
+                }
+
+
+                let seven: int = 7;
+                let a: col = |i| getN::get(std::convert::fe(i)) + getN::get(seven) + getN::get(seven);
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants[0],
+            ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
+        );
+    }
+
+    #[test]
+    #[should_panic = "Mismatched number of type arguments for trait function getN::get"]
+    fn invalid_impl() {
+        let src = r#"
+
+            trait getN<T: FromLiteral> {
+                get: T -> T,
+            }
+
+            impl getN<int, fe> {
+                get: |x| x,
+            }
+
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants[0],
+            ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
+        );
+    }
+
+    #[test]
+    #[should_panic = "Mismatched number of type arguments for trait function getN::get"]
+    fn invalid_impl2() {
+        let src = r#"
+
+            trait getN<T: FromLiteral, Q> {
+                get: T -> Q,
+            }
+
+            impl getN<int> {
+                get: |x| x,
+            }
+
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);

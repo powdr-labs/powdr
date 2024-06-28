@@ -333,7 +333,16 @@ impl TypeChecker {
                                 Item::TypeDeclaration(enum_decl),
                             );
                         }
+                        asm::SymbolValue::TraitDeclaration(trait_decl) => {
+                            res.insert(
+                                ctx.clone().with_part(&name),
+                                Item::TraitDeclaration(trait_decl),
+                            );
+                        }
                     }
+                }
+                ModuleStatement::TraitImplementation(trait_impl) => {
+                    res.insert(ctx.clone(), Item::TraitImplementation(trait_impl));
                 }
             }
         }

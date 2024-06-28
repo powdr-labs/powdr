@@ -1,7 +1,5 @@
 //! Parser for powdr assembly and PIL
 
-#![deny(clippy::print_stdout)]
-
 use lalrpop_util::*;
 use powdr_ast::parsed::{
     asm::ASMProgram,
@@ -303,19 +301,31 @@ mod test {
         }
 
         fn clear_module_stmt(stmt: &mut ModuleStatement) {
-            let ModuleStatement::SymbolDefinition(SymbolDefinition { value, .. }) = stmt;
-            match value {
-                SymbolValue::Machine(Machine { statements, .. }) => {
-                    statements.iter_mut().for_each(clear_machine_stmt)
+            match stmt {
+                ModuleStatement::SymbolDefinition(SymbolDefinition { value, .. }) => match value {
+                    SymbolValue::Machine(Machine { statements, .. }) => {
+                        statements.iter_mut().for_each(clear_machine_stmt)
+                    }
+                    SymbolValue::Module(Module::Local(ASMModule { statements })) => {
+                        statements.iter_mut().for_each(clear_module_stmt);
+                    }
+                    SymbolValue::Module(Module::External(_))
+                    | SymbolValue::Import(_)
+                    | SymbolValue::Expression(_)
+                    | SymbolValue::TypeDeclaration(_)
+                    | SymbolValue::TraitDeclaration(_) => (),
+                },
+                ModuleStatement::TraitImplementation(trait_impl) => {
+                    trait_impl
+                        .functions
+                        .iter_mut()
+                        .for_each(|f| clear_module_expr(f.body.as_mut()));
                 }
-                SymbolValue::Module(Module::Local(ASMModule { statements })) => {
-                    statements.iter_mut().for_each(clear_module_stmt);
-                }
-                SymbolValue::Module(Module::External(_))
-                | SymbolValue::Import(_)
-                | SymbolValue::Expression(_)
-                | SymbolValue::TypeDeclaration(_) => (),
             }
+        }
+
+        fn clear_module_expr(expr: &mut powdr_ast::parsed::Expression) {
+            *expr.source_reference_mut() = SourceRef::unknown();
         }
 
         ast.main.statements.iter_mut().for_each(clear_module_stmt);
@@ -529,6 +539,70 @@ namespace N(2);
     let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
     let seven = max::<int>(3, 7);
 "#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trait() {
+        let input = r#"
+    trait Add<T> {
+        add: T, T -> T,
+    }"#;
+
+        let expected = r#"
+    trait Add <T> {
+        add: T, T -> T,
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trait_multi_params() {
+        let input = r#"
+    trait Add<T: Add, Q> {
+        add: T, T -> Q,
+    }"#;
+
+        let expected = r#"
+    trait Add <T: Add, Q> {
+        add: T, T -> Q,
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trait_multi_params2() {
+        let input = r#"
+    trait Iterator<S, I> {
+        next: S -> (S, Option<I>),
+    }"#;
+
+        let expected = r#"
+    trait Iterator <S, I> {
+        next: S -> (S, Option<I>),
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_impl() {
+        let input = r#"
+    impl<T> Iterator<ArrayIterator<T>, T> {
+        next: |it| if it.pos >= 7 { (it, none) } else { some((increment(it), it.arr[it.pos])) },
+    }"#;
+
+        let expected = r#"
+    impl<T> Iterator<ArrayIterator<T>, T> {
+        next: (|it| if it.pos >= 7 { (it, none) } else { some((increment(it), it.arr[it.pos])) }),
+    }"#;
+
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(expected.trim(), printed.trim());
     }

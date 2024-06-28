@@ -11,14 +11,15 @@ use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
         AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, Expression,
-        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
+        FunctionValueDefinition, Reference, Symbol, SymbolKind, TraitImplementation,
+        TypedExpression,
     },
     parsed::{
         display::quote,
-        types::{Type, TypeScheme},
+        types::{FunctionType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
+        Pattern, StatementInsideBlock, TraitDeclaration, UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -28,8 +29,9 @@ use powdr_parser_util::SourceRef;
 pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    evaluate(expr, &mut Definitions(definitions))
+    evaluate(expr, &mut Definitions(definitions, implementations))
 }
 
 /// Evaluates an expression given a symbol lookup implementation
@@ -136,6 +138,11 @@ pub enum Value<'a, T> {
     Closure(Closure<'a, T>),
     TypeConstructor(&'a str),
     Enum(&'a str, Option<Vec<Arc<Self>>>),
+    TraitFunction(
+        Arc<TraitDeclaration>,
+        &'a str,
+        &'a Vec<TraitImplementation<Expression>>,
+    ),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
 }
@@ -214,6 +221,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::TypeConstructor(name) => format!("{name}_constructor"),
             Value::Enum(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
+            Value::TraitFunction(_, name, _) => format!("trait_function_{name}"),
             Value::Expression(_) => "expr".to_string(),
         }
     }
@@ -367,6 +375,9 @@ impl<'a, T: Display> Display for Value<'a, T> {
             }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
+            Value::TraitFunction(_, name, _) => {
+                write!(f, "{name}")
+            }
         }
     }
 }
@@ -397,13 +408,17 @@ impl<'a, T> Closure<'a, T> {
     }
 }
 
-pub struct Definitions<'a>(pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>);
+pub struct Definitions<'a>(
+    pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    pub &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+);
 
 impl<'a> Definitions<'a> {
     /// Implementation of `lookup` that allows to provide a different implementation
     /// of SymbolLookup for the recursive call.
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+        implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
         name: &str,
         type_args: Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
@@ -452,6 +467,15 @@ impl<'a> Definitions<'a> {
                         Value::TypeConstructor(&variant.name).into()
                     }
                 }
+                Some(FunctionValueDefinition::TraitFunction(trait_decl, function)) => {
+                    let trait_impl = implementations.get(&trait_decl.name).ok_or_else(|| {
+                        EvalError::SymbolNotFound(format!(
+                            "Impl for trait `{}` not found.",
+                            trait_decl.name
+                        ))
+                    })?;
+                    Value::TraitFunction(trait_decl.clone(), &function.name, trait_impl).into()
+                }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
                 ))?,
@@ -466,17 +490,11 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
         name: &str,
         type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Self::lookup_with_symbols(self.0, name, type_args, self)
+        Self::lookup_with_symbols(self.0, self.1, name, type_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(Value::from(AlgebraicExpression::PublicReference(name.to_string())).into())
-    }
-}
-
-impl<'a> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>> for Definitions<'a> {
-    fn from(value: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
-        Definitions(value)
     }
 }
 
@@ -957,10 +975,77 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.type_args = type_args.clone();
                 self.expand(&lambda.body)?;
             }
+            Value::TraitFunction(trait_decl, func_name, impls) => {
+                for trait_impl in impls.iter() {
+                    // We already check that the function exists in the trait/impl in the type checker.
+                    let func_impl = trait_impl.function_by_name(func_name).unwrap();
+                    let func_decl = trait_decl.function_by_name(func_name).unwrap();
+
+                    let type_args = trait_type_args(trait_decl, trait_impl);
+
+                    if match_trait_function(&func_decl._type, &type_args, &arguments) {
+                        if let Expression::LambdaExpression(_, LambdaExpression { body, .. }) =
+                            func_impl.body.as_ref()
+                        {
+                            self.op_stack.push(Operation::SetEnvironment(
+                                std::mem::take(&mut self.local_vars),
+                                std::mem::take(&mut self.type_args),
+                            ));
+                            self.local_vars = arguments.clone();
+                            self.expand(body)?;
+                        } else {
+                            panic!("Expected lambda expression")
+                        }
+                    }
+                }
+            }
             e => panic!("Expected function but got {e}"),
         };
         Ok(())
     }
+}
+
+fn trait_type_args(
+    trait_decl: &Arc<TraitDeclaration>,
+    trait_impl: &TraitImplementation<Expression>,
+) -> HashMap<String, Type> {
+    let mut type_args = HashMap::new();
+    for (name, ty) in trait_decl
+        .type_vars
+        .vars()
+        .zip(trait_impl.type_scheme.as_ref().unwrap().types.iter())
+    {
+        type_args.insert(name.clone(), ty.clone());
+    }
+    type_args
+}
+
+fn match_trait_function<T: FieldElement>(
+    func_type: &Type,
+    type_args: &HashMap<String, Type>,
+    arguments: &[Arc<Value<T>>],
+) -> bool {
+    if let Type::Function(FunctionType { params, value: _ }) = func_type {
+        for (p, a) in params.iter().zip(arguments.iter()) {
+            match p {
+                Type::TypeVar(name) => {
+                    let type_var = type_args.get(name).unwrap();
+                    match (type_var, a.as_ref()) {
+                        (Type::Fe, Value::FieldElement(_)) => continue,
+                        (Type::Int, Value::Integer(_)) => continue,
+                        (Type::Expr, Value::Expression(_)) => continue,
+                        (Type::Array(_), Value::Array(_)) => continue,
+                        _ => return false,
+                    }
+                }
+                _ => continue,
+            }
+        }
+    } else {
+        panic!("Expected function type but got {func_type}");
+    }
+
+    true
 }
 
 fn evaluate_literal<'a, T: FieldElement>(
@@ -1242,14 +1327,17 @@ mod test {
         else {
             panic!()
         };
-        evaluate::<GoldilocksField>(symbol, &mut Definitions(&analyzed.definitions))
-            .unwrap()
-            .to_string()
+        evaluate::<GoldilocksField>(
+            symbol,
+            &mut Definitions(&analyzed.definitions, &analyzed.implementations),
+        )
+        .unwrap()
+        .to_string()
     }
 
     pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
         let analyzed = analyze_string::<GoldilocksField>(input);
-        let mut symbols = evaluator::Definitions(&analyzed.definitions);
+        let mut symbols = evaluator::Definitions(&analyzed.definitions, &analyzed.implementations);
         let function = symbols.lookup(function, None).unwrap();
         let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
             .unwrap()

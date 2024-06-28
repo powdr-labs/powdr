@@ -14,11 +14,13 @@ use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::parsed::types::{ArrayType, Type, TypeScheme};
+use crate::parsed::types::{ArrayType, TraitScheme, Type, TypeScheme};
 use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
-use crate::parsed::{self, EnumDeclaration, EnumVariant, SelectedExpressions};
+use crate::parsed::{
+    self, EnumDeclaration, EnumVariant, SelectedExpressions, TraitDeclaration, TraitFunction,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub enum StatementIdentifier {
@@ -27,6 +29,8 @@ pub enum StatementIdentifier {
     PublicDeclaration(String),
     /// Index into the vector of identities.
     Identity(usize),
+    /// Trait implementation
+    TraitImplementation(String, usize),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
@@ -42,6 +46,8 @@ pub struct Analyzed<T> {
     pub source_order: Vec<StatementIdentifier>,
     /// Symbols from the core that were added automatically but will not be printed.
     pub auto_added_symbols: HashSet<String>,
+    /// Traits implemented by this program.
+    pub implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 impl<T> Analyzed<T> {
@@ -422,6 +428,19 @@ pub fn type_from_definition(
             FunctionValueDefinition::TypeConstructor(enum_decl, variant) => {
                 Some(variant.constructor_type(enum_decl))
             }
+            FunctionValueDefinition::TraitDeclaration(_) => {
+                panic!("Requested type of trait declaration.")
+            }
+            FunctionValueDefinition::TraitFunction(trait_decl, trait_func) => {
+                let vars = trait_decl.type_vars.clone();
+                Some(TypeScheme {
+                    vars,
+                    ty: trait_func._type.clone(),
+                })
+            }
+            FunctionValueDefinition::TraitImplementation(_trait_impl) => {
+                panic!("Requested type of trait implementation.")
+            }
         }
     } else {
         assert!(
@@ -519,6 +538,9 @@ pub enum FunctionValueDefinition {
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
+    TraitDeclaration(TraitDeclaration),
+    TraitFunction(Arc<TraitDeclaration>, TraitFunction),
+    TraitImplementation(TraitImplementation<Expression>),
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -534,6 +556,9 @@ impl Children<Expression> for FunctionValueDefinition {
                 enum_declaration.children()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
+            FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
+            FunctionValueDefinition::TraitImplementation(trait_impl) => trait_impl.children(),
         }
     }
 
@@ -549,6 +574,9 @@ impl Children<Expression> for FunctionValueDefinition {
                 enum_declaration.children_mut()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
+            FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
+            FunctionValueDefinition::TraitImplementation(trait_impl) => trait_impl.children_mut(),
         }
     }
 }
@@ -747,7 +775,7 @@ impl<T> SelectedExpressions<AlgebraicExpression<T>> {
 pub type Expression = parsed::Expression<Reference>;
 pub type TypedExpression = crate::parsed::TypedExpression<Reference, u64>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub enum Reference {
     LocalVar(u64, String),
     Poly(PolynomialReference),
@@ -1135,7 +1163,7 @@ impl<T> From<T> for AlgebraicExpression<T> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct PolynomialReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on polynomial ID.
@@ -1197,6 +1225,38 @@ impl Display for PolynomialType {
             }
         )
     }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TraitImplementation<Expr, E = u64> {
+    pub name: String,
+    pub type_scheme: Option<TraitScheme<E>>,
+    pub functions: Vec<NamedExpression<Expr>>,
+}
+
+impl<Expr> TraitImplementation<Expr> {
+    pub fn function_by_name(&self, name: &str) -> Option<&NamedExpression<Expr>> {
+        self.functions.iter().find(|f| f.name == name)
+    }
+}
+
+impl Children<Expression> for TraitImplementation<Expression> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(self.functions.iter().flat_map(|m| m.body.children()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(
+            self.functions
+                .iter_mut()
+                .flat_map(|m| m.body.children_mut()),
+        )
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct NamedExpression<Expr> {
+    pub name: String,
+    pub body: Box<Expr>,
 }
 
 #[cfg(test)]

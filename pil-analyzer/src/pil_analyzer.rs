@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::{fs, vec};
 
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
@@ -18,7 +18,8 @@ use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
+    PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind,
+    TraitImplementation, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
@@ -70,6 +71,8 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
+    /// Trait implementations.
+    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -171,6 +174,7 @@ impl PILAnalyzer {
                     ModuleStatement::SymbolDefinition(s) => missing_symbols
                         .contains(&s.name.as_str())
                         .then_some(format!("{s}")),
+                    ModuleStatement::TraitImplementation(_) => None,
                 })
                 .join("\n");
             parse(None, &format!("namespace std::prelude;\n{missing_symbols}")).unwrap()
@@ -228,6 +232,7 @@ impl PILAnalyzer {
             .iter_mut()
             .filter(|(_name, (_symbol, value))| {
                 !matches!(value, Some(FunctionValueDefinition::TypeDeclaration(_)))
+                    && !matches!(value, Some(FunctionValueDefinition::TraitDeclaration(_)))
             })
             .flat_map(|(name, (symbol, value))| {
                 let (type_scheme, expr) = match (symbol.kind, value) {
@@ -296,6 +301,7 @@ impl PILAnalyzer {
         let inferred_types = infer_types(
             definitions,
             &mut expressions,
+            &self.implementations,
             &constr_function_statement_type,
         )
         .map_err(|mut errors| {
@@ -327,6 +333,7 @@ impl PILAnalyzer {
             &self.identities,
             self.source_order,
             self.auto_added_symbols,
+            self.implementations,
         )
     }
 
@@ -338,6 +345,33 @@ impl PILAnalyzer {
                 vec![]
             }
             PilStatement::Include(_, _) => unreachable!(),
+            PilStatement::TraitDeclaration(_, _) => {
+                vec![]
+            }
+            PilStatement::TraitImplementation(_, _) => {
+                let names = statement
+                    .symbol_definition_names_and_contained()
+                    .map(|(name, sub_name, symbol_category)| {
+                        (
+                            match sub_name {
+                                None => self.driver().resolve_decl(name),
+                                Some(sub_name) => self
+                                    .driver()
+                                    .resolve_namespaced_decl(&[name, sub_name])
+                                    .to_dotted_string(),
+                            },
+                            symbol_category,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+
+                for (name, symbol_kind) in &names {
+                    // We don't need to check for duplicates here.
+                    self.known_symbols.insert(name.clone(), *symbol_kind);
+                }
+
+                names
+            }
             _ => {
                 let names = statement
                     .symbol_definition_names_and_contained()
@@ -391,6 +425,24 @@ impl PILAnalyzer {
                             self.source_order
                                 .push(StatementIdentifier::Definition(name));
                         }
+                        PILItem::TraitImplementation(symbol, trait_impl) => {
+                            let name = symbol.absolute_name.clone();
+                            let pos = match self.implementations.entry(name.clone()) {
+                                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                                    let implementations = entry.get_mut();
+                                    if !implementations.contains(&trait_impl) {
+                                        implementations.push(trait_impl);
+                                    }
+                                    implementations.len() - 1
+                                }
+                                std::collections::hash_map::Entry::Vacant(entry) => {
+                                    entry.insert(vec![trait_impl]);
+                                    0
+                                }
+                            };
+                            self.source_order
+                                .push(StatementIdentifier::TraitImplementation(name, pos));
+                        }
                         PILItem::PublicDeclaration(decl) => {
                             let name = decl.name.clone();
                             self.public_declarations.insert(name.clone(), decl);
@@ -415,10 +467,14 @@ impl PILAnalyzer {
             // TODO we should maybe implement a separate evaluator that is able to run before type checking
             // and is field-independent (only uses integers)?
             let namespace_degree: u64 = u64::try_from(
-                evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
-                    .unwrap()
-                    .try_to_integer()
-                    .unwrap(),
+                evaluator::evaluate_expression::<GoldilocksField>(
+                    &degree,
+                    &self.definitions,
+                    &self.implementations,
+                )
+                .unwrap()
+                .try_to_integer()
+                .unwrap(),
             )
             .unwrap();
             if let Some(degree) = self.polynomial_degree {

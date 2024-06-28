@@ -10,7 +10,7 @@ use std::{
 
 use itertools::Itertools;
 
-use crate::{parsed::FunctionKind, writeln_indented, writeln_indented_by};
+use crate::{indent, parsed::FunctionKind, writeln_indented, writeln_indented_by};
 
 use self::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
@@ -49,8 +49,11 @@ impl<T: Display> Display for Analyzed<T> {
                         if matches!(
                             definition,
                             Some(FunctionValueDefinition::TypeConstructor(_, _))
+                        ) || matches!(
+                            definition,
+                            Some(FunctionValueDefinition::TraitFunction(_, _))
                         ) {
-                            // These are printed as part of the enum.
+                            // These are printed as part of the enum/trait.
                             continue;
                         }
                         let (name, is_local) = update_namespace(name, f)?;
@@ -102,6 +105,11 @@ impl<T: Display> Display for Analyzed<T> {
                                             enum_declaration.to_string_with_name(&name),
                                         )?;
                                     }
+                                    Some(FunctionValueDefinition::TraitDeclaration(
+                                        trait_declaration,
+                                    )) => {
+                                        writeln_indented(f, trait_declaration)?;
+                                    }
                                     _ => {
                                         unreachable!("Invalid definition for symbol: {}", name)
                                     }
@@ -139,6 +147,12 @@ impl<T: Display> Display for Analyzed<T> {
                 }
                 StatementIdentifier::Identity(i) => {
                     writeln_indented(f, &self.identities[*i])?;
+                }
+                StatementIdentifier::TraitImplementation(trait_impl, pos) => {
+                    let impls = &self.implementations[trait_impl];
+                    let trait_impl = impls.get(*pos).unwrap();
+                    let (_, is_local) = update_namespace(&trait_impl.name, f)?;
+                    writeln_indented_by(f, format!("{trait_impl}",), is_local.into())?;
                 }
             }
         }
@@ -223,7 +237,10 @@ impl Display for FunctionValueDefinition {
                 write!(f, ": {} = {e}", ts.ty)
             }
             FunctionValueDefinition::TypeDeclaration(_)
-            | FunctionValueDefinition::TypeConstructor(_, _) => {
+            | FunctionValueDefinition::TypeConstructor(_, _)
+            | FunctionValueDefinition::TraitDeclaration(_)
+            | FunctionValueDefinition::TraitFunction(_, _)
+            | FunctionValueDefinition::TraitImplementation(_) => {
                 panic!("Should not use this formatting function.")
             }
         }
@@ -435,6 +452,50 @@ impl Display for PolynomialReference {
             }
         }
         Ok(())
+    }
+}
+
+impl<E: Display> Display for TraitImplementation<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = self
+            .type_scheme
+            .as_ref()
+            .map_or_else(Default::default, |scheme| {
+                if scheme.vars.is_empty() {
+                    Default::default()
+                } else {
+                    format!("<{}>", scheme.vars)
+                }
+            });
+        let trait_vars = self
+            .type_scheme
+            .as_ref()
+            .map_or_else(Default::default, |scheme| {
+                if scheme.types.is_empty() {
+                    Default::default()
+                } else {
+                    let formatted_elements: Vec<String> =
+                        scheme.types.iter().map(|t| format!("{t}")).collect();
+                    format!("<{}>", formatted_elements.join(", "))
+                }
+            });
+
+        let s = format!(
+            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+            trait_name = self.name,
+            methods = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        );
+
+        writeln_indented(f, s)
+    }
+}
+
+impl<E: Display> Display for NamedExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self.body)
     }
 }
 
