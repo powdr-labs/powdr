@@ -17,12 +17,46 @@ use powdr_number::FieldElement;
 
 use super::merged_machines::MergedMachines;
 
-pub(crate) fn get_namespace(name: &str) -> String {
+/// Splits a PIL into multiple PILs, one for each "machine".
+/// The rough algorithm is as follows:
+/// 1. The PIL is split into namespaces
+/// 2. Any lookups or permutations that reference multiple namespaces are removed.
+/// 3. Any other constraints that reference multiple namespaces lead to the two namespaces being merged.
+pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
+    let (statements_by_namespace, merged_machines) = split_by_namespace(&pil);
+    let statements_by_machine = merge_namespaces(statements_by_namespace, merged_machines);
+
+    statements_by_machine
+        .into_iter()
+        .filter_map(|(machine_name, statements)| {
+            build_machine_pil(pil.clone(), statements).map(|pil| (machine_name, pil))
+        })
+        .collect()
+}
+
+/// Given a set of columns and a set of symbols, returns the columns that correspond to the symbols.
+pub(crate) fn select_machine_columns<'a, F: FieldElement>(
+    columns: &[(String, Vec<F>)],
+    symbols: impl Iterator<Item = &'a Symbol>,
+) -> Vec<(String, Vec<F>)> {
+    let names = symbols
+        .flat_map(|symbol| symbol.array_elements().map(|(name, _)| name))
+        .collect::<BTreeSet<_>>();
+    columns
+        .iter()
+        .filter(|(name, _)| names.contains(name))
+        .cloned()
+        .collect::<Vec<_>>()
+}
+
+/// From a symbol name, get the namespace of the symbol.
+fn get_namespace(name: &str) -> String {
     let mut namespace = AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
     namespace.pop().unwrap();
     namespace.relative_to(&Default::default()).to_string()
 }
 
+/// From an identity, get the namespaces of the symbols it references.
 fn referenced_namespaces<F: FieldElement>(
     identity: &Identity<AlgebraicExpression<F>>,
 ) -> BTreeSet<String> {
@@ -47,7 +81,17 @@ fn referenced_namespaces<F: FieldElement>(
     namespaces
 }
 
-pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
+/// Organizes the PIL statements by namespace:
+/// - Any definition or public declaration belongs to the namespace of the symbol.
+/// - Lookups and permutations that reference multiple namespaces removed.
+/// - Other constraints that reference multiple namespaces lead to the two namespaces being merged.
+///
+/// Returns:
+/// - statements_by_namespace: A map from namespace to the statements in that namespace.
+/// - merged_machines: A MergeMachines object that contains the namespaces that need to be merged.
+fn split_by_namespace<F: FieldElement>(
+    pil: &Analyzed<F>,
+) -> (BTreeMap<String, Vec<StatementIdentifier>>, MergedMachines) {
     let mut current_namespace = String::new();
 
     let mut statements_by_namespace: BTreeMap<String, Vec<StatementIdentifier>> = BTreeMap::new();
@@ -97,12 +141,20 @@ pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, A
                 .push(statement);
         }
     }
+    (statements_by_namespace, merged_machines)
+}
 
-    let merged_machines = merged_machines.merged_machines();
+/// Combines the statements in `statements_by_namespace` according to the
+/// equivalence classes in `merged_machines`.
+fn merge_namespaces(
+    statements_by_namespace: BTreeMap<String, Vec<StatementIdentifier>>,
+    merged_machines: MergedMachines,
+) -> BTreeMap<String, Vec<StatementIdentifier>> {
     let namespace_to_machine_name = merged_machines
+        .merged_machines()
         .into_iter()
         .flat_map(|machines| {
-            let machine_name = machines.clone().into_iter().collect::<Vec<_>>().join("_");
+            let machine_name = machines.clone().into_iter().collect::<Vec<_>>().join(" + ");
             machines
                 .into_iter()
                 .map(move |machine| (machine, machine_name.clone()))
@@ -119,65 +171,57 @@ pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, A
             .or_default()
             .extend(statements);
     }
-
     statements_by_machine
-        .into_iter()
-        .filter_map(|(machine_name, statements)| {
-            // HACK: Replace unreferenced identities with 0 = 0
-            let referenced_identities = statements
-                .iter()
-                .filter_map(|statement| match statement {
-                    StatementIdentifier::Identity(i) => Some(*i as u64),
-                    _ => None,
-                })
-                .collect::<BTreeSet<_>>();
-            if referenced_identities.is_empty() {
-                // This can happen if a hint references some std module,
-                // but the module is empty.
-                return None;
-            }
-            let identities = pil
-                .identities
-                .iter()
-                .enumerate()
-                .map(|(identity_index, identity)| {
-                    if referenced_identities.contains(&(identity_index as u64)) {
-                        identity.clone()
-                    } else {
-                        Identity::from_polynomial_identity(
-                            identity.id,
-                            identity.source.clone(),
-                            AlgebraicExpression::Number(F::zero()),
-                        )
-                    }
-                })
-                .collect();
-
-            let pil = Analyzed {
-                source_order: statements,
-                identities,
-                ..pil.clone()
-            };
-
-            // TODO: Reference issue
-            // let parsed_string = powdr_parser::parse(None, &pil.to_string()).unwrap();
-            // let pil = powdr_pil_analyzer::analyze_ast(parsed_string);
-
-            Some((machine_name.to_string(), pil))
-        })
-        .collect()
 }
 
-pub(crate) fn select_machine_columns<'a, F: FieldElement>(
-    witness: &[(String, Vec<F>)],
-    symbols: impl Iterator<Item = &'a Symbol>,
-) -> Vec<(String, Vec<F>)> {
-    let names = symbols
-        .flat_map(|symbol| symbol.array_elements().map(|(name, _)| name))
-        .collect::<BTreeSet<_>>();
-    witness
+/// Given a PIL and a list of statements, returns a new PIL that only contains the
+/// given subset of statements.
+/// Returns None if there are no identities in the subset of statements.
+fn build_machine_pil<F: FieldElement>(
+    pil: Analyzed<F>,
+    statements: Vec<StatementIdentifier>,
+) -> Option<Analyzed<F>> {
+    // TODO: After #1488 is fixed, we can implement this like so:
+    // let pil = Analyzed {
+    //     source_order: statements,
+    //     ..pil.clone()
+    // };
+    // let parsed_string = powdr_parser::parse(None, &pil.to_string()).unwrap();
+    // let pil = powdr_pil_analyzer::analyze_ast(parsed_string);
+
+    // HACK: Replace unreferenced identities with 0 = 0, to avoid having to re-assign IDs.
+    let identities = statements
         .iter()
-        .filter(|(name, _)| names.contains(name))
-        .cloned()
-        .collect::<Vec<_>>()
+        .filter_map(|statement| match statement {
+            StatementIdentifier::Identity(i) => Some(*i as u64),
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
+    if identities.is_empty() {
+        // This can happen if a hint references some std module,
+        // but the module is empty.
+        return None;
+    }
+    let identities = pil
+        .identities
+        .iter()
+        .enumerate()
+        .map(|(identity_index, identity)| {
+            if identities.contains(&(identity_index as u64)) {
+                identity.clone()
+            } else {
+                Identity::from_polynomial_identity(
+                    identity.id,
+                    identity.source.clone(),
+                    AlgebraicExpression::Number(F::zero()),
+                )
+            }
+        })
+        .collect();
+
+    Some(Analyzed {
+        source_order: statements,
+        identities,
+        ..pil
+    })
 }
