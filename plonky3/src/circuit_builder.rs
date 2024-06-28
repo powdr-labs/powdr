@@ -215,7 +215,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
         assert_eq!(self.analyzed.constant_count(), 0);
-        self.analyzed.commitment_count() + self.analyzed.publics_count()
+        self.analyzed.commitment_count() + 3 * self.analyzed.publics_count()
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
@@ -232,12 +232,34 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for P
 
         // public constraints
         let pi_moved = pi.to_vec();
-        let local = matrix.row_slice(0);
+        let (local, next) = (matrix.row_slice(0), matrix.row_slice(1));
 
-        // constraining Pi * (Ci - pub[i]) = 0
         publics.iter().zip(pi_moved).enumerate().for_each(
-            |(index, ((_, col_id, _), public_value))| {
-                let selector = local[self.analyzed.commitment_count() + index];
+            |(index, ((_, col_id, row_id), public_value))| {
+                let (incrementor, inverse, selector) = (
+                    local[self.analyzed.commitment_count() + 3 * index],
+                    local[self.analyzed.commitment_count() + 3 * index + 1],
+                    local[self.analyzed.commitment_count() + 3 * index + 2],
+                );
+
+                //set incrementors for each column to be row_id and decrement each row
+                let incrementor_next = next[self.analyzed.commitment_count() + 3 * index];
+
+                let mut when_first_row = builder.when_first_row();
+                when_first_row.assert_eq(
+                    incrementor,
+                    AB::Expr::from(cast_to_goldilocks(GoldilocksField::from(*row_id as u32))),
+                );
+
+                let mut when_transition = builder.when_transition();
+                when_transition.assert_eq(incrementor, incrementor_next + AB::Expr::one());
+
+                // is_zero logic-- new column where value is 1 iff corresponding row in incrementor_col is 0
+                builder.assert_bool(selector);
+                builder.assert_eq(selector, AB::Expr::one() - inverse * incrementor); //constraining selector to 1 or 0
+                builder.assert_zero(selector * incrementor); //constraining is_zero
+
+                // constraining Pi * (Ci - pub[i]) = 0
                 let witness_col = local[*col_id];
                 builder.assert_zero(selector * (public_value.into() - witness_col));
             },
