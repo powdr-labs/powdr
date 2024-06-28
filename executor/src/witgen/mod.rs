@@ -315,10 +315,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .unwrap()
     }
 
-    pub fn degree(&self, id: &PolyID) -> DegreeType {
-        self.common_degree(std::iter::once(id))
-    }
-
     pub fn new(
         analyzed: &'a Analyzed<T>,
         fixed_col_values: &'a [(String, Vec<T>)],
