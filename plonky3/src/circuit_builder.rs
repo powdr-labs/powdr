@@ -1,7 +1,6 @@
 //! A plonky3 adapter for powdr
 //!
-//! Support for public values invokes fixed selector columns, currently
-//! implemented as extra witness columns in the execution trace.
+//! Support for public values without the use of fixed columns.
 //!
 //! Namely, given ith public value pub[i] corresponding to a witness value in
 //! row j of column Ci, a corresponding selector column Pi is constructed to
@@ -47,7 +46,11 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     // publics rows: incrementor | inverse | selector
                     publics.clone().flat_map(move |(_, _, row_id)| {
                         let incrementor = T::from(row_id as u64) - T::from(i);
-                        let inverse = T::one() / incrementor;
+                        let inverse = match i {
+                            row_id => T::zero(),
+                            _ => T::one() / incrementor,
+                        };
+
                         let selector = T::from(i as usize == row_id);
                         [incrementor, inverse, selector]
                     }),
