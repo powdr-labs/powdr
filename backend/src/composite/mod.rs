@@ -57,7 +57,12 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                 if let Some(ref output_dir) = output_dir {
                     std::fs::create_dir_all(output_dir)?;
                 }
-                let fixed = Arc::new(select_machine_columns(&fixed, &machine_name));
+                let fixed = Arc::new(select_machine_columns(
+                    &fixed,
+                    pil.constant_polys_in_source_order()
+                        .into_iter()
+                        .map(|(symbol, _)| symbol),
+                ));
                 let backend = self.factory.create(
                     pil.clone(),
                     fixed,
@@ -114,7 +119,12 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                     log::info!("== Proving machine: {}", machine);
                     log::debug!("PIL:\n{}", pil);
 
-                    let witness = select_machine_columns(witness, machine);
+                    let witness = select_machine_columns(
+                        witness,
+                        pil.committed_polys_in_source_order()
+                            .into_iter()
+                            .map(|(symbol, _)| symbol),
+                    );
 
                     backend
                         .prove(&witness, None, witgen_callback)

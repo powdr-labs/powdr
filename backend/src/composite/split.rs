@@ -5,7 +5,9 @@ use std::{
 };
 
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, Analyzed, Identity, IdentityKind, StatementIdentifier},
+    analyzed::{
+        AlgebraicExpression, Analyzed, Identity, IdentityKind, StatementIdentifier, Symbol,
+    },
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         visitor::{ExpressionVisitable, VisitOrder},
@@ -166,13 +168,16 @@ pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, A
         .collect()
 }
 
-pub(crate) fn select_machine_columns<F: FieldElement>(
+pub(crate) fn select_machine_columns<'a, F: FieldElement>(
     witness: &[(String, Vec<F>)],
-    machine: &str,
+    symbols: impl Iterator<Item = &'a Symbol>,
 ) -> Vec<(String, Vec<F>)> {
+    let names = symbols
+        .flat_map(|symbol| symbol.array_elements().map(|(name, _)| name))
+        .collect::<BTreeSet<_>>();
     witness
         .iter()
-        .filter(|(name, _)| get_namespace(name) == machine)
+        .filter(|(name, _)| names.contains(name))
         .cloned()
         .collect::<Vec<_>>()
 }
