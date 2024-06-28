@@ -4,8 +4,9 @@
 //!
 //! Namely, given ith public value pub[i] corresponding to a witness value in
 //! row j of column Ci, a corresponding selector column Pi is constructed to
-//! constrain Pi * (pub[i] - Ci) on every row. Pi is precomputed in the trace
-//! to be 0 everywhere and 1 in row j.
+//! constrain Pi * (pub[i] - Ci) on every row. Pi is constrained to be 1 at the
+//! evaluation index and 0 everywhere else by two additional columns acting as a
+//! decrementor from the evaluation index, and the inverse of the decrementor row.
 
 use std::{any::TypeId, collections::BTreeMap};
 
