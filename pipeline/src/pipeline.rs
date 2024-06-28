@@ -24,7 +24,9 @@ use powdr_executor::{
         WitnessGenerator,
     },
 };
-use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
+use powdr_number::{
+    read_polys_file, write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement,
+};
 use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
@@ -834,7 +836,15 @@ impl<T: FieldElement> Pipeline<T> {
         assert_eq!(pil.constant_count(), fixed_cols.len());
 
         let start = Instant::now();
-        let external_witness_values = std::mem::take(&mut self.arguments.external_witness_values);
+        //        let external_witness_values = std::mem::take(&mut self.arguments.external_witness_values);
+        let external_witness_values = read_witness_hack(
+            "commits.bin",
+            pil.committed_polys_in_source_order()
+                .into_iter()
+                .flat_map(|(p, _)| p.array_elements())
+                .map(|(name, _)| name)
+                .collect::<Vec<_>>(),
+        );
         let query_callback = self
             .arguments
             .query_callback
@@ -1120,4 +1130,9 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn host_context(&self) -> &HostContext {
         &self.host_context
     }
+}
+
+fn read_witness_hack<T: FieldElement>(path: &str, names: Vec<String>) -> Vec<(String, Vec<T>)> {
+    let mut f = fs::File::open(path).unwrap();
+    read_polys_file(&mut f, &names).0
 }

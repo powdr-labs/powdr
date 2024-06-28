@@ -10,9 +10,11 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
+use crate::witgen::machines::profiling;
 use crate::witgen::IncompleteCause;
 
 use super::data_structures::finalizable_data::FinalizableData;
+use super::machines::profiling::{record_end_identity, record_start_identity};
 use super::processor::{OuterQuery, Processor};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
@@ -25,6 +27,7 @@ const REPORT_FREQUENCY: u64 = 1_000;
 
 /// A list of identities with a flag whether it is complete.
 struct CompletableIdentities<'a, T: FieldElement> {
+    // TODO This could be a vector of bool and a ref to the vector of identities.
     identities_with_complete: Vec<(&'a Identity<Expression<T>>, bool)>,
 }
 
@@ -120,7 +123,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         let mut outer_assignments = vec![];
 
         // Are we in an infinite loop and can just re-use the old values?
-        let mut looping_period = None;
+        let mut looping_period: Option<usize> = None;
         let mut loop_detection_log_level = if is_main_run {
             log::Level::Info
         } else {
@@ -136,9 +139,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             if (row_index + 1) % 10000 == 0 {
                 // Periodically make sure most rows are finalized.
                 // Row 0 and the last MAX_PERIOD rows might be needed later, so they are not finalized.
+                record_start_identity(profiling::SNIPPET1);
                 let finalize_end = row_index as usize - MAX_PERIOD;
                 self.processor.finalize_range(finalize_start..finalize_end);
                 finalize_start = finalize_end;
+                record_end_identity(profiling::SNIPPET1);
             }
 
             if row_index >= rows_left - 2 {
@@ -149,12 +154,15 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
 
             // Check if we are in a loop.
             if looping_period.is_none() && row_index % 100 == 0 && row_index > 0 {
-                looping_period = self.rows_are_repeating(row_index);
+                looping_period = None; //self.rows_are_repeating(row_index);
                 if let Some(p) = looping_period {
                     log::log!(
                         loop_detection_log_level,
                         "Found loop with period {p} starting at row {row_index}"
                     );
+                    // record_end_identity(profiling::UNUSED_IDENTITY_ID);
+                    // profiling::reset_and_print_profile_summary_identity(self.fixed_data);
+                    // record_start_identity(profiling::UNUSED_IDENTITY_ID);
                 }
             }
             if let Some(period) = looping_period {
@@ -170,11 +178,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                     loop_detection_log_level = log::Level::Debug;
                 }
             }
+
             // Note that we exit one iteration early in the non-loop case,
             // because ensure_has_next_row() + compute_row() will already
             // add and compute some values for the next row as well.
             if looping_period.is_none() && row_index != rows_left - 1 {
+                record_start_identity(profiling::SNIPPET2);
                 self.ensure_has_next_row(row_index);
+                record_end_identity(profiling::SNIPPET2);
                 outer_assignments.extend(self.compute_row(row_index).into_iter());
 
                 // Evaluate latch expression and return if it evaluates to 1.
@@ -348,10 +359,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             }
 
             progress |= self.processor.set_inputs_if_unset(row_index);
-            progress |= self
-                .processor
-                .process_queries(row_index)
-                .map_err(|e| vec![e])?;
+
+            record_start_identity(profiling::PROCESS_PROVER_QUERIES_ID);
+            progress |= self.processor.process_queries(row_index).map_err(|e| {
+                record_end_identity(profiling::PROCESS_PROVER_QUERIES_ID);
+                vec![e]
+            })?;
+            record_end_identity(profiling::PROCESS_PROVER_QUERIES_ID);
 
             if !progress {
                 break;

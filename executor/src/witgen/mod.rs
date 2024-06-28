@@ -1,11 +1,16 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+
 use std::sync::Arc;
+
+use machines::profiling::{
+    self, record_end_identity, record_start_identity, reset_and_print_profile_summary_identity,
+};
 
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
     PolynomialType, SymbolKind, TypedExpression,
 };
-use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -151,6 +156,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     /// @returns the values (in source order) and the degree of the polynomials.
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
         record_start(OUTER_CODE_NAME);
+        record_start_identity(profiling::UNUSED_IDENTITY_ID);
         let fixed = FixedData::new(
             self.analyzed,
             self.fixed_col_values,
@@ -158,6 +164,21 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             self.challenges,
             self.stage,
         );
+        // TODO connect that with the impl in FixedData where it checks if the data is only partially provided.
+        let fully_known_witness_columns = self
+            .external_witness_values
+            .iter()
+            .filter_map(|(name, _)| {
+                self.analyzed
+                    .committed_polys_in_source_order()
+                    .iter()
+                    .find_map(|(p, _)| {
+                        p.array_elements()
+                            .find(|(n, _)| n == name)
+                            .map(|(_, id)| id)
+                    })
+            })
+            .collect::<BTreeSet<PolyID>>();
         let identities = self
             .analyzed
             .identities_with_inlined_intermediate_polynomials()
@@ -177,6 +198,17 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                     );
                 }
                 !discard
+            })
+            // Filter out identities that only reference fully known witness columns
+            .filter(|identity| {
+                let r = identity.all_children().any(|e| match e {
+                    AlgebraicExpression::Reference(ref r) => {
+                        r.poly_id.ptype == PolynomialType::Committed
+                            && !fully_known_witness_columns.contains(&r.poly_id)
+                    }
+                    _ => false,
+                });
+                r
             })
             .collect::<Vec<_>>();
 
@@ -224,7 +256,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .collect::<BTreeMap<_, _>>();
 
         record_end(OUTER_CODE_NAME);
+        record_end_identity(profiling::UNUSED_IDENTITY_ID);
         reset_and_print_profile_summary();
+        reset_and_print_profile_summary_identity(&fixed);
 
         // Order columns according to the order of declaration.
         let witness_cols = self
