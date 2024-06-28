@@ -467,6 +467,9 @@ impl<'a> TypeChecker<'a> {
                         .as_ref()
                         .map_or_else(Vec::new, |s| s.types.clone());
 
+                    // This is needed to match the trait function name with the declared type.
+                    // Since paths resolve to a single dot when they are not namespaced,
+                    // we need to replace it with a double colon.
                     let f_name = if trait_name.contains('.') {
                         let trait_name = trait_name.replace('.', "::");
                         format!("{trait_name}::{fname}", fname = f.name)
@@ -475,7 +478,9 @@ impl<'a> TypeChecker<'a> {
                     };
                     let trait_func = self.declared_types.get(&f_name);
                     if trait_func.is_none() {
-                        panic!("Trait function {f_name} is not defined.");
+                        return Err(f.body.source_reference().with_error(format!(
+                            "Trait function {f_name} is not defined for {trait_name}.",
+                        )));
                     }
 
                     let (source_ref, type_scheme) = trait_func.unwrap();
