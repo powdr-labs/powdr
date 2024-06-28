@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, ops::ControlFlow, str::FromStr};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ops::ControlFlow,
+    str::FromStr,
+};
 
 use powdr_ast::{
     analyzed::{AlgebraicExpression, Analyzed, Identity, IdentityKind, StatementIdentifier},
@@ -102,13 +106,40 @@ pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, A
     statements_by_namespace
         .into_iter()
         .map(|(machine_name, statements)| {
+            // HACK: Replace unreferenced identities with 0 = 0
+            let referenced_identities = statements
+                .iter()
+                .filter_map(|statement| match statement {
+                    StatementIdentifier::Identity(i) => Some(*i as u64),
+                    _ => None,
+                })
+                .collect::<BTreeSet<_>>();
+            let identities = pil
+                .identities
+                .iter()
+                .map(|identity| {
+                    if referenced_identities.contains(&identity.id) {
+                        identity.clone()
+                    } else {
+                        Identity::from_polynomial_identity(
+                            identity.id,
+                            identity.source.clone(),
+                            AlgebraicExpression::Number(F::zero()),
+                        )
+                    }
+                })
+                .collect();
+
             let pil = Analyzed {
                 source_order: statements,
+                identities,
                 ..pil.clone()
             };
 
-            let parsed_string = powdr_parser::parse(None, &pil.to_string()).unwrap();
-            let pil = powdr_pil_analyzer::analyze_ast(parsed_string);
+            // TODO: Reference issue
+            // let parsed_string = powdr_parser::parse(None, &pil.to_string()).unwrap();
+            // let pil = powdr_pil_analyzer::analyze_ast(parsed_string);
+
             (machine_name.to_string(), pil)
         })
         .collect()

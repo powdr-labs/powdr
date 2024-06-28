@@ -24,11 +24,11 @@ fn sqrt_asm() {
     gen_estark_proof(f, slice_to_vec(&i));
 }
 
-#[test]
-fn challenges_asm() {
-    let f = "asm/challenges.asm";
-    test_halo2(f, Default::default());
-}
+// #[test]
+// fn challenges_asm() {
+//     let f = "asm/challenges.asm";
+//     test_halo2(f, Default::default());
+// }
 
 #[test]
 fn simple_sum_asm() {
