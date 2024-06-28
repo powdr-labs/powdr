@@ -354,6 +354,15 @@ pub struct TraitFunction<E = u64> {
     pub _type: Type<E>,
 }
 
+impl<R> Children<Expression<R>> for TraitFunction<u64> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(empty())
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SelectedExpressions<Expr> {
     pub selector: Option<Expr>,
@@ -1094,8 +1103,8 @@ pub enum FunctionDefinition {
     Expression(Expression),
     /// A type declaration.
     TypeDeclaration(EnumDeclaration<Expression>),
-    // A trait declaration.
-    // TraitDeclaration(TraitDeclaration<Expression>),
+    /// A trait declaration.
+    TraitDeclaration(TraitDeclaration<Expression>),
 }
 
 impl Children<Expression> for FunctionDefinition {
@@ -1104,7 +1113,7 @@ impl Children<Expression> for FunctionDefinition {
             FunctionDefinition::Array(ae) => ae.children(),
             FunctionDefinition::Expression(e) => Box::new(once(e)),
             FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
-            //FunctionDefinition::TraitDeclaration(trait_declaration) => trait_declaration.children(),
+            FunctionDefinition::TraitDeclaration(trait_declaration) => trait_declaration.children(),
         }
     }
 
@@ -1113,9 +1122,9 @@ impl Children<Expression> for FunctionDefinition {
             FunctionDefinition::Array(ae) => ae.children_mut(),
             FunctionDefinition::Expression(e) => Box::new(once(e)),
             FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
-            // FunctionDefinition::TraitDeclaration(trait_declaration) => {
-            //     trait_declaration.children_mut()
-            // }
+            FunctionDefinition::TraitDeclaration(trait_declaration) => {
+                trait_declaration.children_mut()
+            }
         }
     }
 }

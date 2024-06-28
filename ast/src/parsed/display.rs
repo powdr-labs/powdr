@@ -561,7 +561,7 @@ impl Display for FunctionDefinition {
                 )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
-            FunctionDefinition::TypeDeclaration(_) => {
+            FunctionDefinition::TypeDeclaration(_) | FunctionDefinition::TraitDeclaration(_) => {
                 panic!("Should not use this formatting function.")
             }
         }
