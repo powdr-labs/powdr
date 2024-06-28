@@ -53,7 +53,7 @@ let<T: Add + Mul + FromLiteral> compress_expression_array: T[], Fp2<T> -> Fp2<T>
 );
 
 
-// Compute z' = z + 1/(beta-ai) * lhs_selector - mi/(beta-bi) * rhs_selector, using extension field arithmetic
+// Compute z' = z + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector, using extension field arithmetic
     let compute_next_z: Fp2<expr>, Constr, expr -> fe[] = query |acc, lookup_constraint, multiplicities| {
 
         let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
