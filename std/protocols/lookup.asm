@@ -16,6 +16,7 @@ use std::math::fp2::next_ext;
 use std::math::fp2::inv_ext;
 use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
+use std::math::fp2::constrain_eq_ext;
 
 
 let is_first: col = |i| if i == 0 { 1 } else { 0 };
@@ -52,49 +53,45 @@ let<T: Add + Mul + FromLiteral> compress_expression_array: T[], Fp2<T> -> Fp2<T>
     |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), from_base(el))
 );
 
-
 // Compute z' = z + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector, using extension field arithmetic
-    let compute_next_z: Fp2<expr>, Constr, expr -> fe[] = query |acc, lookup_constraint, multiplicities| {
-
-        let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
-
-        let alpha = if len(lhs) > 1 {
-            Fp2::Fp2(alpha1, alpha2)
-        } else {
-            // The optimizer will have removed alpha, but the compression function
-            // still accesses it (to multiply by 0 in this case)
-            from_base(0)
-        };
-
-        let beta = Fp2::Fp2(beta1, beta2);
-        
-        let lhs_folded = sub_ext(beta, compress_expression_array(lhs, alpha));
-        let rhs_folded = sub_ext(beta, compress_expression_array(rhs, alpha));
-        let m_ext = from_base(multiplicities);
-        
-        // acc' = acc + 1/(beta-ai) * lhs_selector - mi/(beta-bi) * rhs_selector
-        let res = add_ext(
-            eval_ext(acc),
-            sub_ext(
-                mul_ext(
-                    inv_ext(eval_ext(lhs_folded)), 
-                    eval_ext(from_base(lhs_selector))),
-                mul_ext(
-                    mul_ext(eval_ext(m_ext), inv_ext(eval_ext(rhs_folded))),
-                    eval_ext(from_base(rhs_selector))
-            )
-        ));
-
-        match res {
-            Fp2::Fp2(a0_fe, a1_fe) => [a0_fe, a1_fe]
-        }
+let compute_next_z: Fp2<expr>, Constr, expr -> fe[] = query |acc, lookup_constraint, multiplicities| {
+    let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
+    let alpha = if len(lhs) > 1 {
+        Fp2::Fp2(alpha1, alpha2)
+    } else {
+        // The optimizer will have removed alpha, but the compression function
+        // still accesses it (to multiply by 0 in this case)
+        from_base(0)
     };
+    let beta = Fp2::Fp2(beta1, beta2);
+    
+    let lhs_denom = sub_ext(beta, compress_expression_array(lhs, alpha));
+    let rhs_denom = sub_ext(beta, compress_expression_array(rhs, alpha));
+    let m_ext = from_base(multiplicities);
+    
+    // acc' = acc + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector
+    let res = add_ext(
+        eval_ext(acc),
+        sub_ext(
+            mul_ext(
+                inv_ext(eval_ext(lhs_denom)), 
+                eval_ext(from_base(lhs_selector))),
+            mul_ext(
+                mul_ext(eval_ext(m_ext), inv_ext(eval_ext(rhs_denom))),
+                eval_ext(from_base(rhs_selector))
+        )
+    ));
+    match res {
+        Fp2::Fp2(a0_fe, a1_fe) => [a0_fe, a1_fe]
+    }
+};
     
 // Adds constraints that enforce that rhs is the lookup for lhs
 // Arguments:
 // - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
 //        are done on the F_{p^2} extension field.
 // - lookup_constraint: The lookup constraint
+// - multiplicities: The multiplicities which shows how much time looked-up values (LHS) exists in the lookup table (RHS)                        
 let lookup: expr[], Constr, expr -> Constr[] = |acc, lookup_constraint, multiplicities| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
@@ -119,11 +116,8 @@ let lookup: expr[], Constr, expr -> Constr[] = |acc, lookup_constraint, multipli
     let alpha = fp2_from_array([alpha1, alpha2]);
     let beta = fp2_from_array([beta1, beta2]);
 
-    // If the selector is 1, contribute a sum of with the value to accumulator.
-    // If the selector is 0, contribute a sum of 0 to the accumulator.
-    // Implemented as: folded = sub_ext(beta, compress_expression_array(value, alpha))
-    let lhs_folded = sub_ext(beta, compress_expression_array(lhs, alpha));
-    let rhs_folded = sub_ext(beta, compress_expression_array(rhs, alpha));
+    let lhs_denom = sub_ext(beta, compress_expression_array(lhs, alpha));
+    let rhs_denom = sub_ext(beta, compress_expression_array(rhs, alpha));
     let m_ext = from_base(multiplicities);
 
     let next_acc = if with_extension {
@@ -133,26 +127,26 @@ let lookup: expr[], Constr, expr -> Constr[] = |acc, lookup_constraint, multipli
         from_base(acc[0]')
     };
 
-    // Update rule new:
-    // h' * (alpha - A) * (alpha - B)  + m * rhs_selector * (alpha - A) = h * (alpha - A) * (alpha - B) + lhs_selector * (alpha - B)
-    // => (lhs_folded) * (rhs_folded) * (acc' - acc) + (m_folded) * rhs_selector * (lhs_folded) - lhs_selector * rhs_folded
+    // Update rule:
+    // acc' * (beta - A) * (beta - B)  + m * rhs_selector * (beta - A) = acc * (beta - A) * (beta - B) + lhs_selector * (beta - B)
+    // => (acc' - acc) * lhs_denom * rhs_denom
+    //    + m * rhs_selector * lhs_denom
+    //    - lhs_selector * rhs_denom = 0
 
-    let (update_expr_1, update_expr_2) = unpack_ext(
-        sub_ext(
-            add_ext(
-                mul_ext(
-                    mul_ext(lhs_folded, rhs_folded),
-                    sub_ext(next_acc, acc_ext)
-                ),
-                mul_ext(
-                    mul_ext(m_ext, from_base(rhs_selector)),
-                    lhs_folded
-                )
+    let update_expr = sub_ext(
+        add_ext(
+            mul_ext(
+                mul_ext(lhs_denom, rhs_denom),
+                sub_ext(next_acc, acc_ext)
             ),
             mul_ext(
-                from_base(lhs_selector),
-                rhs_folded
+                mul_ext(m_ext, from_base(rhs_selector)),
+                lhs_denom
             )
+        ),
+        mul_ext(
+            from_base(lhs_selector),
+            rhs_denom
         )
     );
 
@@ -160,12 +154,7 @@ let lookup: expr[], Constr, expr -> Constr[] = |acc, lookup_constraint, multipli
 
     [
         is_first * acc_1 = 0,
-        is_first * acc_2 = 0,
 
-        // Assert that the update rule has been obeyed
-        update_expr_1 = 0,
-
-        // Again, update_expr_2 will be equal to 0 in the non-extension case.
-        update_expr_2 = 0
-    ]
+        is_first * acc_2 = 0
+    ] + constrain_eq_ext(update_expr, from_base(0))
 };
