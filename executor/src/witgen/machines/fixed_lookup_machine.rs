@@ -12,11 +12,12 @@ use powdr_number::FieldElement;
 
 use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
+use crate::witgen::machines::profiling::{record_end_identity, record_start_identity};
 use crate::witgen::machines::record_start;
 use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly_ref;
-use crate::witgen::{EvalError, EvalValue, IncompleteCause};
+use crate::witgen::{profiling::IDENTITY_LOOKUP_CACHE, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{EvalResult, FixedData};
 
 use super::record_end;
@@ -82,6 +83,8 @@ impl<T: FieldElement> IndexedColumns<T> {
         if self.indices.get(sorted_fixed_columns).is_some() {
             return;
         }
+
+        record_start_identity(IDENTITY_LOOKUP_CACHE);
 
         let (sorted_input_fixed_columns, sorted_output_fixed_columns) = &sorted_fixed_columns;
 
@@ -160,6 +163,7 @@ impl<T: FieldElement> IndexedColumns<T> {
             ),
             index,
         );
+        record_end_identity(IDENTITY_LOOKUP_CACHE)
     }
 }
 

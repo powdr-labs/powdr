@@ -1,9 +1,13 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+use flat_algebraic_expression::FlatAlgebraicExpression;
+use machines::profiling::{
+    self, record_end_identity, record_start_identity, reset_and_print_profile_summary_identity,
+};
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
-    PolynomialType, SymbolKind, TypedExpression,
+    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
+    IdentityKind, PolyID, PolynomialType, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
@@ -27,6 +31,7 @@ mod data_structures;
 mod eval_result;
 mod expression_evaluator;
 pub mod fixed_evaluator;
+mod flat_algebraic_expression;
 mod generator;
 mod global_constraints;
 mod identity_processor;
@@ -151,6 +156,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     /// @returns the values (in source order) and the degree of the polynomials.
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
         record_start(OUTER_CODE_NAME);
+        record_start_identity(profiling::UNUSED_IDENTITY_ID);
         let fixed = FixedData::new(
             self.analyzed,
             self.fixed_col_values,
@@ -224,7 +230,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .collect::<BTreeMap<_, _>>();
 
         record_end(OUTER_CODE_NAME);
+        record_end_identity(profiling::UNUSED_IDENTITY_ID);
         reset_and_print_profile_summary();
+        reset_and_print_profile_summary_identity(&fixed);
 
         // Order columns according to the order of declaration.
         let witness_cols = self
@@ -276,6 +284,8 @@ pub struct FixedData<'a, T: FieldElement> {
     column_by_name: HashMap<String, PolyID>,
     challenges: BTreeMap<u64, T>,
     global_range_constraints: GlobalConstraints<T>,
+    // TODO we need a better place for these caches.
+    flat_identities: HashMap<u64, FlatAlgebraicExpression<T>>,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -338,6 +348,35 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
         };
 
+        // TODO what about the range-constraint-only identities?
+        // TODO is this the right location for this code?
+        let flat_identities: HashMap<_, _> = analyzed
+            // TODO we are doing this twice now, also in the generator
+            .identities_with_inlined_intermediate_polynomials()
+            .iter()
+            .flat_map(|identity| {
+                if identity.kind == IdentityKind::Polynomial {
+                    let e = identity.expression_for_poly_id();
+                    match FlatAlgebraicExpression::try_from(e) {
+                        Ok(flat) => {
+                            println!("Complex: {e}");
+                            println!("Flat: {flat}");
+                            Some((identity.id, flat))
+                        }
+                        Err(_) => {
+                            println!("Nope: {e}");
+                            None
+                        }
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for id in flat_identities.values() {
+            format!("Flat: {id}");
+        }
+
         FixedData {
             analyzed,
             degree: analyzed.degree(),
@@ -351,6 +390,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 .collect(),
             challenges,
             global_range_constraints,
+            flat_identities,
         }
     }
 

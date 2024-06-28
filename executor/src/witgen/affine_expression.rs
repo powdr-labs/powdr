@@ -37,6 +37,15 @@ where
         Self::OneVar((var_id, T::ONE), T::ZERO)
     }
 
+    pub fn from_sorted_coefficients(coefficients: Vec<(K, T)>, offset: T) -> Self {
+        debug_assert!(Self::is_proper_coefficients(&coefficients));
+        match coefficients.len() {
+            0 => Self::Constant(offset),
+            1 => Self::OneVar(coefficients.into_iter().next().unwrap(), offset),
+            _ => Self::ManyVars(coefficients, offset),
+        }
+    }
+
     pub fn is_constant(&self) -> bool {
         matches!(self, Self::Constant(_))
     }
