@@ -750,11 +750,11 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.op_stack
                     .push(Operation::TruncateLocals(self.local_vars.len()));
                 match expr {
-                    Some(expr) => {
-                        self.op_stack.push(Operation::Expand(expr));
-                    }
-                    None => {}
-                }
+                    Some(expr) => self.op_stack.push(Operation::Expand(expr)),
+                    None => unreachable!(
+                        "None expr should be replaced by the empty tuple during statement processing."
+                    ),
+                };
                 for s in statements.iter().rev() {
                     match s {
                         StatementInsideBlock::LetStatement(s) => {
@@ -1651,5 +1651,29 @@ mod test {
             evaluate_function::<GoldilocksField>(src, "main.test"),
             7u64.into()
         );
+    }
+
+    #[test]
+    fn no_stmts_in_block() {
+        let input = "
+    let f: int -> () = |i| ();
+    let g: int -> () = |i| {
+        f(1)
+    };
+    
+    let h: () = g(1);
+    ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "h"), "()".to_string());
+    }
+
+    #[test]
+    fn called_with_empty_block() {
+        let input = "
+    let<T1, T2: FromLiteral> f: T1 -> T2 = |_| 7;
+    let g: int = f({ });
+    ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "g"), "7".to_string());
     }
 }

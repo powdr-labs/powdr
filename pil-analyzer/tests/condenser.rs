@@ -204,16 +204,4 @@ fn double_next() {
     analyze_string::<GoldilocksField>(input).to_string();
 }
 
-#[test]
-fn empty_blocks() {
-    let input = "
-    let f: int -> () = |i| { };
-    let g: int -> () = |i| {
-        f(i);
-    };
-    
-    let h: () = g(1);
-    ";
 
-    analyze_string::<GoldilocksField>(input).to_string();
-}

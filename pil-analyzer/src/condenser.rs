@@ -314,14 +314,13 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
         match result.as_ref() {
-            Value::Array(items) | Value::Tuple(items) => items
+            Value::Array(items) => items
                 .iter()
                 .map(|item| match item.as_ref() {
                     Value::Expression(expr) => expr.clone(),
                     _ => panic!("Expected expression but got {item}"),
                 })
                 .collect(),
-            Value::Expression(expr) => vec![expr.clone()],
             _ => panic!("Expected array/tuple of algebraic expressions or an algebraic expression, but got {result}"),
         }
     }

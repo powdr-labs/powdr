@@ -288,18 +288,15 @@ impl PILAnalyzer {
                     if let Some(selector) = &mut part.selector {
                         expressions.push((selector, Type::Expr.into()))
                     }
-                    if let Expression::ArrayLiteral(_, _) = part.expressions.as_ref() {
-                        expressions.push((
-                            part.expressions.as_mut(),
-                            Type::Array(ArrayType {
-                                base: Box::new(Type::Expr),
-                                length: None,
-                            })
-                            .into(),
-                        ))
-                    } else {
-                        expressions.push((part.expressions.as_mut(), Type::Expr.into()))
-                    }
+
+                    expressions.push((
+                        part.expressions.as_mut(),
+                        Type::Array(ArrayType {
+                            base: Box::new(Type::Expr),
+                            length: None,
+                        })
+                        .into(),
+                    ))
                 }
             }
         }
