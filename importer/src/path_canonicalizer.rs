@@ -103,15 +103,27 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 }
                                 Some(Ok(SymbolValue::TypeDeclaration(enum_decl)))
                             }
-                            SymbolValue::TraitDeclaration(_) => {
-                                todo!(
-                                    "trait declarations are not yet supported in fold_module_value"
-                                )
+                            SymbolValue::TraitDeclaration(mut trait_decl) => {
+                                let type_vars = trait_decl.type_vars.vars().collect();
+                                for f in &mut trait_decl.functions {
+                                    canonicalize_inside_type(
+                                        &mut f._type,
+                                        &type_vars,
+                                        &self.path,
+                                        self.paths,
+                                    );
+                                }
+                                Some(Ok(SymbolValue::TraitDeclaration(trait_decl)))
                             }
                         }
                         .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
                     }
-                    ModuleStatement::TraitImplementation(_) => None,
+                    ModuleStatement::TraitImplementation(mut trait_impl) => {
+                        for f in &mut trait_impl.functions {
+                            canonicalize_inside_expression(&mut f.body, &self.path, self.paths)
+                        }
+                        Some(Ok(ModuleStatement::TraitImplementation(trait_impl)))
+                    }
                 })
                 .collect::<Result<_, _>>()?,
         })
