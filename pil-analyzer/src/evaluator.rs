@@ -977,6 +977,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             }
             Value::TraitFunction(trait_decl, func_name, impls) => {
                 for trait_impl in impls.iter() {
+                    // We already check that the function exists in the trait/impl in the type checker.
                     let func_impl = trait_impl.function_by_name(func_name).unwrap();
                     let func_decl = trait_decl.function_by_name(func_name).unwrap();
 
