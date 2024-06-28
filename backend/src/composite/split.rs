@@ -117,8 +117,9 @@ pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, A
             let identities = pil
                 .identities
                 .iter()
-                .map(|identity| {
-                    if referenced_identities.contains(&identity.id) {
+                .enumerate()
+                .map(|(identity_index, identity)| {
+                    if referenced_identities.contains(&(identity_index as u64)) {
                         identity.clone()
                     } else {
                         Identity::from_polynomial_identity(

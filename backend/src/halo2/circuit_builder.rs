@@ -303,7 +303,12 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
             expr.expressions
                 .iter()
                 .map(|expr| {
-                    let expr = to_halo2_expression(expr, &config, meta).unwrap();
+                    let expr = to_halo2_expression(expr, &config, meta)
+                        .map_err(|e| {
+                            eprintln!("Error in lookup expression: {expr}");
+                            e
+                        })
+                        .unwrap();
                     // Turns a selected lookup / permutation argument into an unselected lookup / permutation argument,
                     // see Section 3.3, equation (24) of: https://eprint.iacr.org/2023/474.pdf
                     // Note that they use a different transformation for lookups, because this transformation would fail
