@@ -448,8 +448,6 @@ impl Display for PolynomialReference {
     }
 }
 
-
-
 #[cfg(test)]
 mod test {
     use std::iter::once;
