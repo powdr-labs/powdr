@@ -14,12 +14,10 @@ estark-polygon = ["dep:pil-stark-prover"]
 plonky3 = ["dep:powdr-plonky3"]
 
 [dependencies]
-powdr-analysis.workspace = true
 powdr-ast.workspace = true
 powdr-number.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-executor.workspace = true
-powdr-parser.workspace = true
 powdr-parser-util.workspace = true
 
 powdr-plonky3 = { path = "../plonky3", optional = true }
