@@ -44,9 +44,13 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             .flat_map(move |i| {
                 // witness values
                 witness.clone().map(move |(_, v)| v[i as usize]).chain(
-                    publics
-                        .clone()
-                        .map(move |(_, _, idx)| T::from(i as usize == idx)),
+                    // publics rows: incrementor | inverse | selector
+                    publics.clone().flat_map(move |(_, _, row_id)| {
+                        let incrementor = T::from(row_id as u64) - T::from(i);
+                        let inverse = T::one() / incrementor;
+                        let selector = T::from(i as usize == row_id);
+                        [incrementor, inverse, selector]
+                    }),
                 )
             })
             .map(cast_to_goldilocks)
