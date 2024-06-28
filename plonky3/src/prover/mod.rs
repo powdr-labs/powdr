@@ -181,7 +181,7 @@ mod tests {
     #[test]
     #[should_panic = "not implemented"]
     fn lookup() {
-        let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; a in z;";
+        let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; [a] in [z];";
         run_test_goldilocks(content);
     }
 }
