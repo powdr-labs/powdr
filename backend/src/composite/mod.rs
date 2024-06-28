@@ -3,8 +3,19 @@ use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::A
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
+use serde::{Deserialize, Serialize};
+use split::select_machine_columns;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
+
+mod split;
+
+/// A composite proof that contains a proof for each machine separately.
+#[derive(Serialize, Deserialize)]
+struct CompositeProof {
+    /// Map from machine name to proof
+    proofs: BTreeMap<String, Vec<u8>>,
+}
 
 pub(crate) struct CompositeBackendFactory<F: FieldElement, B: BackendFactory<F>> {
     factory: B,
@@ -35,18 +46,20 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             unimplemented!();
         }
 
-        let backend_by_machine = ["main"]
-            .iter()
-            .map(|machine_name| {
+        let per_machine_data = split::split_pil((*pil).clone())
+            .into_iter()
+            .map(|(machine_name, pil)| {
+                let pil = Arc::new(pil);
                 let output_dir = output_dir
                     .clone()
-                    .map(|output_dir| output_dir.join(machine_name));
+                    .map(|output_dir| output_dir.join(&machine_name));
                 if let Some(ref output_dir) = output_dir {
                     std::fs::create_dir_all(output_dir)?;
                 }
+                let fixed = Arc::new(select_machine_columns(&fixed, &machine_name));
                 let backend = self.factory.create(
                     pil.clone(),
-                    fixed.clone(),
+                    fixed,
                     output_dir,
                     // TODO: Handle setup, verification_key, verification_app_key
                     None,
@@ -54,10 +67,10 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                     None,
                     backend_options.clone(),
                 );
-                backend.map(|backend| (machine_name.to_string(), backend))
+                backend.map(|backend| (machine_name.to_string(), PerMachineData { pil, backend }))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
-        Ok(Box::new(CompositeBackend { backend_by_machine }))
+        Ok(Box::new(CompositeBackend { per_machine_data }))
     }
 
     fn generate_setup(&self, _size: DegreeType, _output: &mut dyn io::Write) -> Result<(), Error> {
@@ -65,8 +78,13 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
     }
 }
 
+struct PerMachineData<'a, F: FieldElement> {
+    pil: Arc<Analyzed<F>>,
+    backend: Box<dyn Backend<'a, F> + 'a>,
+}
+
 pub(crate) struct CompositeBackend<'a, F: FieldElement> {
-    backend_by_machine: BTreeMap<String, Box<dyn Backend<'a, F> + 'a>>,
+    per_machine_data: BTreeMap<String, PerMachineData<'a, F>>,
 }
 
 // TODO: This just forwards to the backend for now. In the future this should:
@@ -81,17 +99,41 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {
-        self.backend_by_machine
-            .get("main")
-            .unwrap()
-            .prove(witness, prev_proof, witgen_callback)
+        if prev_proof.is_some() {
+            unimplemented!();
+        }
+
+        let proof = CompositeProof {
+            proofs: self
+                .per_machine_data
+                .iter()
+                .map(|(machine, PerMachineData { pil, backend })| {
+                    let witgen_callback = witgen_callback.clone().with_pil(pil.clone());
+
+                    log::info!("== Proving machine: {}", machine);
+                    log::debug!("PIL:\n{}", pil);
+
+                    let witness = select_machine_columns(witness, machine);
+
+                    backend
+                        .prove(&witness, None, witgen_callback)
+                        .map(|proof| (machine.clone(), proof))
+                })
+                .collect::<Result<_, _>>()?,
+        };
+        Ok(serde_json::to_vec(&proof).unwrap())
     }
 
-    fn verify(&self, _proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
-        self.backend_by_machine
-            .get("main")
-            .unwrap()
-            .verify(_proof, instances)
+    fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
+        let proof: CompositeProof = serde_json::from_slice(proof).unwrap();
+        for (machine, machine_proof) in proof.proofs {
+            let machine_data = self
+                .per_machine_data
+                .get(&machine)
+                .ok_or_else(|| Error::BackendError(format!("Unknown machine: {machine}")))?;
+            machine_data.backend.verify(&machine_proof, instances)?;
+        }
+        Ok(())
     }
 
     fn export_setup(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
