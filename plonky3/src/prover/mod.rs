@@ -2,6 +2,8 @@
 
 mod params;
 
+use std::sync::Arc;
+
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
@@ -14,18 +16,18 @@ use crate::circuit_builder::{cast_to_goldilocks, PowdrCircuit};
 use self::params::{get_challenger, get_config};
 
 #[derive(Clone)]
-pub struct Plonky3Prover<'a, T> {
+pub struct Plonky3Prover<T> {
     /// The analyzed PIL
-    analyzed: &'a Analyzed<T>,
+    analyzed: Arc<Analyzed<T>>,
 }
 
-impl<'a, T> Plonky3Prover<'a, T> {
-    pub fn new(analyzed: &'a Analyzed<T>) -> Self {
+impl<T> Plonky3Prover<T> {
+    pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
         Self { analyzed }
     }
 }
 
-impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
+impl<T: FieldElement> Plonky3Prover<T> {
     pub fn prove(
         &self,
         witness: &[(String, Vec<T>)],
@@ -33,11 +35,11 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
     ) -> Result<Vec<u8>, String> {
         assert_eq!(T::known_field(), Some(KnownField::GoldilocksField));
 
-        let circuit = PowdrCircuit::new(self.analyzed)
+        let circuit = PowdrCircuit::new(&self.analyzed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
-        let publics = circuit.calculate_publics_from_witness();
+        let publics = circuit.get_public_values();
 
         let trace = circuit.generate_trace_rows();
 
@@ -68,7 +70,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
         verify(
             &config,
-            &PowdrCircuit::new(self.analyzed),
+            &PowdrCircuit::new(&self.analyzed),
             &mut challenger,
             &proof,
             &publics,
@@ -79,70 +81,41 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
 #[cfg(test)]
 mod tests {
-    use p3_goldilocks::Goldilocks;
-    use powdr_number::{FieldElement, GoldilocksField};
+    use powdr_number::GoldilocksField;
     use powdr_pipeline::Pipeline;
 
-    use crate::{circuit_builder::cast_to_goldilocks, Plonky3Prover};
+    use crate::Plonky3Prover;
 
     /// Prove and verify execution
     fn run_test_goldilocks(pil: &str) {
-        let mut pipeline = Pipeline::<GoldilocksField>::default().from_pil_string(pil.to_string());
-
-        let pil = pipeline.compute_optimized_pil().unwrap();
-        let witness_callback = pipeline.witgen_callback().unwrap();
-        let witness = pipeline.compute_witness().unwrap();
-
-        let proof = Plonky3Prover::new(&pil).prove(&witness, witness_callback);
-
-        assert!(proof.is_ok());
+        run_test_goldilocks_publics(pil, None)
     }
 
-    fn run_test_goldilocks_publics(
-        pil: &str,
-        malicious_publics: Vec<GoldilocksField>,
-    ) -> Result<(), String> {
+    fn run_test_goldilocks_publics(pil: &str, malicious_publics: Option<Vec<GoldilocksField>>) {
         let mut pipeline = Pipeline::<GoldilocksField>::default().from_pil_string(pil.to_string());
 
         let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
 
-        let prover = Plonky3Prover::new(&pil);
-        let proof = prover.prove(&witness, witness_callback).unwrap();
+        let prover = Plonky3Prover::new(pil);
+        let proof = prover.prove(&witness, witness_callback);
 
+        assert!(proof.is_ok());
 
-        prover.verify(&proof, &[malicious_publics])
+        if let Some(publics) = malicious_publics {
+            prover.verify(&proof.unwrap(), &[publics]).unwrap()
+        }
     }
 
     #[test]
-    // #[should_panic = "not implemented"]
     fn publics() {
         let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
         run_test_goldilocks(content);
     }
 
     #[test]
-    fn public_inputs() {
-        let content = r#"
-        namespace Add(8);
-            col witness x;
-            col witness y;
-            col witness z;
-            y - 1 = 0;
-            x = 0;
-            x + y = z;
-
-            public outz = z(7);
-        "#;
-        let publics = vec![
-            GoldilocksField::from(1),
-        ];
-
-        assert!(run_test_goldilocks_publics(content, publics).is_ok())
-    }
-
-    #[test]
+    #[should_panic = r#"called `Result::unwrap()` on an `Err` value: "Failed to verify proof: OodEvaluationMismatch""#]
     fn public_inputs_malicious() {
         let content = r#"
         namespace Add(8);
@@ -155,14 +128,8 @@ mod tests {
 
             public outz = z(7);
         "#;
-        let publics = vec![
-            GoldilocksField::from(0),
-        ];
-
-        assert_eq!(
-            run_test_goldilocks_publics(content, publics).unwrap_err(),
-            "Failed to verify proof: OodEvaluationMismatch"
-        )
+        let malicious_publics = Some(vec![GoldilocksField::from(0)]);
+        run_test_goldilocks_publics(content, malicious_publics);
     }
 
     #[test]
@@ -199,7 +166,7 @@ mod tests {
             let beta: expr = std::prover::challenge(0, 42); 
             col witness stage(0) x;
             col witness stage(1) y;
-            x + beta = y + beta;
+            x = y + beta;
         "#;
         run_test_goldilocks(content);
     }

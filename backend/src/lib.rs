@@ -6,10 +6,12 @@ mod halo2;
 #[cfg(feature = "plonky3")]
 mod plonky3;
 
+mod composite;
+
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
-use std::{io, path::Path};
+use std::{io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
@@ -18,18 +20,34 @@ pub enum BackendType {
     #[strum(serialize = "halo2")]
     Halo2,
     #[cfg(feature = "halo2")]
+    #[strum(serialize = "halo2-composite")]
+    Halo2Composite,
+    #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2-mock")]
     Halo2Mock,
+    #[cfg(feature = "halo2")]
+    #[strum(serialize = "halo2-mock-composite")]
+    Halo2MockComposite,
     #[cfg(feature = "estark-polygon")]
     #[strum(serialize = "estark-polygon")]
     EStarkPolygon,
+    #[cfg(feature = "estark-polygon")]
+    #[strum(serialize = "estark-polygon-composite")]
+    EStarkPolygonComposite,
     #[strum(serialize = "estark-starky")]
     EStarkStarky,
+    #[strum(serialize = "estark-starky-composite")]
+    EStarkStarkyComposite,
     #[strum(serialize = "estark-dump")]
     EStarkDump,
+    #[strum(serialize = "estark-dump-composite")]
+    EStarkDumpComposite,
     #[cfg(feature = "plonky3")]
     #[strum(serialize = "plonky3")]
     Plonky3,
+    #[cfg(feature = "plonky3")]
+    #[strum(serialize = "plonky3-composite")]
+    Plonky3Composite,
 }
 
 pub type BackendOptions = String;
@@ -38,31 +56,40 @@ pub const DEFAULT_HALO2_MOCK_OPTIONS: &str = "";
 pub const DEFAULT_ESTARK_OPTIONS: &str = "stark_gl";
 
 impl BackendType {
-    pub fn factory<T: FieldElement>(&self) -> &'static dyn BackendFactory<T> {
-        #[cfg(feature = "halo2")]
-        const HALO2_FACTORY: halo2::Halo2ProverFactory = halo2::Halo2ProverFactory;
-        #[cfg(feature = "halo2")]
-        const HALO2_MOCK_FACTORY: halo2::Halo2MockFactory = halo2::Halo2MockFactory;
-        #[cfg(feature = "estark-polygon")]
-        const ESTARK_POLYGON_FACTORY: estark::polygon_wrapper::Factory =
-            estark::polygon_wrapper::Factory;
-        const ESTARK_STARKY_FACTORY: estark::starky_wrapper::Factory =
-            estark::starky_wrapper::Factory;
-        const ESTARK_DUMP_FACTORY: estark::DumpFactory = estark::DumpFactory;
-        #[cfg(feature = "plonky3")]
-        const PLONKY3_FACTORY: plonky3::Plonky3ProverFactory = plonky3::Plonky3ProverFactory;
-
+    pub fn factory<T: FieldElement>(&self) -> Box<dyn BackendFactory<T>> {
         match self {
             #[cfg(feature = "halo2")]
-            BackendType::Halo2 => &HALO2_FACTORY,
+            BackendType::Halo2 => Box::new(halo2::Halo2ProverFactory),
             #[cfg(feature = "halo2")]
-            BackendType::Halo2Mock => &HALO2_MOCK_FACTORY,
+            BackendType::Halo2Composite => Box::new(composite::CompositeBackendFactory::new(
+                halo2::Halo2ProverFactory,
+            )),
+            #[cfg(feature = "halo2")]
+            BackendType::Halo2Mock => Box::new(halo2::Halo2MockFactory),
+            #[cfg(feature = "halo2")]
+            BackendType::Halo2MockComposite => Box::new(composite::CompositeBackendFactory::new(
+                halo2::Halo2MockFactory,
+            )),
             #[cfg(feature = "estark-polygon")]
-            BackendType::EStarkPolygon => &ESTARK_POLYGON_FACTORY,
-            BackendType::EStarkStarky => &ESTARK_STARKY_FACTORY,
-            BackendType::EStarkDump => &ESTARK_DUMP_FACTORY,
+            BackendType::EStarkPolygon => Box::new(estark::polygon_wrapper::Factory),
+            #[cfg(feature = "estark-polygon")]
+            BackendType::EStarkPolygonComposite => Box::new(
+                composite::CompositeBackendFactory::new(estark::polygon_wrapper::Factory),
+            ),
+            BackendType::EStarkStarky => Box::new(estark::starky_wrapper::Factory),
+            BackendType::EStarkStarkyComposite => Box::new(
+                composite::CompositeBackendFactory::new(estark::starky_wrapper::Factory),
+            ),
+            BackendType::EStarkDump => Box::new(estark::DumpFactory),
+            BackendType::EStarkDumpComposite => {
+                Box::new(composite::CompositeBackendFactory::new(estark::DumpFactory))
+            }
             #[cfg(feature = "plonky3")]
-            BackendType::Plonky3 => &PLONKY3_FACTORY,
+            BackendType::Plonky3 => Box::new(plonky3::Factory),
+            #[cfg(feature = "plonky3")]
+            BackendType::Plonky3Composite => {
+                Box::new(composite::CompositeBackendFactory::new(plonky3::Factory))
+            }
         }
     }
 }
@@ -104,9 +131,9 @@ pub trait BackendFactory<F: FieldElement> {
     #[allow(clippy::too_many_arguments)]
     fn create<'a>(
         &self,
-        pil: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
-        output_dir: Option<&'a Path>,
+        pil: Arc<Analyzed<F>>,
+        fixed: Arc<Vec<(String, Vec<F>)>>,
+        output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,

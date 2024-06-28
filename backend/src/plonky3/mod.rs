@@ -1,4 +1,4 @@
-use std::{io, path::Path};
+use std::{io, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -7,14 +7,14 @@ use powdr_plonky3::Plonky3Prover;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
-pub(crate) struct Plonky3ProverFactory;
+pub(crate) struct Factory;
 
-impl<T: FieldElement> BackendFactory<T> for Plonky3ProverFactory {
+impl<T: FieldElement> BackendFactory<T> for Factory {
     fn create<'a>(
         &self,
-        pil: &'a Analyzed<T>,
-        fixed: &'a [(String, Vec<T>)],
-        _output_dir: Option<&'a Path>,
+        pil: Arc<Analyzed<T>>,
+        _fixed: Arc<Vec<(String, Vec<T>)>>,
+        _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
@@ -33,7 +33,7 @@ impl<T: FieldElement> BackendFactory<T> for Plonky3ProverFactory {
     }
 }
 
-impl<'a, T: FieldElement> Backend<'a, T> for Plonky3Prover<'a, T> {
+impl<'a, T: FieldElement> Backend<'a, T> for Plonky3Prover<T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         Ok(self.verify(proof, instances)?)
     }

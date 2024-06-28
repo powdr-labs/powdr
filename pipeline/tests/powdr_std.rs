@@ -5,8 +5,8 @@ use powdr_number::{BigInt, Bn254Field, GoldilocksField};
 use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
-        evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof,
-        resolve_test_file, std_analyzed, test_halo2, verify_test_file,
+        evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_composite_proof,
+        gen_halo2_proof, resolve_test_file, std_analyzed, test_halo2, verify_test_file,
     },
     Pipeline,
 };
@@ -21,6 +21,7 @@ fn poseidon_bn254_test() {
     // This makes sure we test the whole proof generation for one example
     // file even in the PR tests.
     gen_halo2_proof(f, Default::default());
+    gen_halo2_composite_proof(f, Default::default());
 }
 
 #[test]
@@ -48,13 +49,30 @@ fn split_gl_test() {
 fn arith_test() {
     let f = "std/arith_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();
-    gen_estark_proof(f, Default::default());
+
+    // Running gen_estark_proof(f, Default::default())
+    // is too slow for the PR tests. This will only create a single
+    // eStark proof instead of 3.
+    Pipeline::<GoldilocksField>::default()
+        .from_file(resolve_test_file(f))
+        .with_backend(powdr_backend::BackendType::EStarkStarky, None)
+        .compute_proof()
+        .unwrap();
+
     test_halo2(f, Default::default());
 }
 
 #[test]
 fn memory_test() {
     let f = "std/memory_test.asm";
+    verify_test_file(f, Default::default(), vec![]).unwrap();
+    gen_estark_proof(f, Default::default());
+    test_halo2(f, Default::default());
+}
+
+#[test]
+fn memory_with_bootloader_write_test() {
+    let f = "std/memory_with_bootloader_write_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
     test_halo2(f, Default::default());

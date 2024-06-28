@@ -1,4 +1,4 @@
-use std::{cmp::max, collections::BTreeMap, iter};
+use std::{cmp::max, collections::BTreeMap, iter, sync::Arc};
 
 use halo2_curves::ff::PrimeField;
 use halo2_proofs::{
@@ -52,7 +52,7 @@ impl PowdrCircuitConfig {
 #[derive(Clone)]
 /// Wraps an Analyzed<T>. This is used as the PowdrCircuit::Params type, which required
 /// a type that implements Default.
-pub(crate) struct AnalyzedWrapper<T: FieldElement>(Analyzed<T>);
+pub(crate) struct AnalyzedWrapper<T: FieldElement>(Arc<Analyzed<T>>);
 
 impl<T> Default for AnalyzedWrapper<T>
 where
@@ -65,8 +65,8 @@ where
     }
 }
 
-impl<T: FieldElement> From<Analyzed<T>> for AnalyzedWrapper<T> {
-    fn from(analyzed: Analyzed<T>) -> Self {
+impl<T: FieldElement> From<Arc<Analyzed<T>>> for AnalyzedWrapper<T> {
+    fn from(analyzed: Arc<Analyzed<T>>) -> Self {
         Self(analyzed)
     }
 }
@@ -74,7 +74,7 @@ impl<T: FieldElement> From<Analyzed<T>> for AnalyzedWrapper<T> {
 #[derive(Clone)]
 pub(crate) struct PowdrCircuit<'a, T> {
     /// The analyzed PIL
-    analyzed: &'a Analyzed<T>,
+    analyzed: Arc<Analyzed<T>>,
     /// The value of the fixed columns
     fixed: &'a [(String, Vec<T>)],
     /// The value of the witness columns, if set
@@ -102,17 +102,19 @@ fn get_publics<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, usize)> 
 }
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
-    pub(crate) fn new(analyzed: &'a Analyzed<T>, fixed: &'a [(String, Vec<T>)]) -> Self {
+    pub(crate) fn new(analyzed: Arc<Analyzed<T>>, fixed: &'a [(String, Vec<T>)]) -> Self {
         for (fixed_name, _) in fixed {
             assert!(fixed_name != FIRST_STEP_NAME);
             assert!(fixed_name != ENABLE_NAME);
         }
 
+        let publics = get_publics(&analyzed);
+
         Self {
             analyzed,
             fixed,
             witness: None,
-            publics: get_publics(analyzed),
+            publics,
             witgen_callback: None,
         }
     }
