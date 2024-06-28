@@ -47,11 +47,11 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     // publics rows: incrementor | inverse | selector
                     publics.clone().flat_map(move |(_, _, row_id)| {
                         let incrementor = T::from(row_id as u64) - T::from(i);
-                        let inverse = match i {
-                            row_id => T::zero(),
-                            _ => T::one() / incrementor,
+                        let inverse = if i as usize == row_id {
+                            T::zero()
+                        } else {
+                            T::one() / incrementor
                         };
-
                         let selector = T::from(i as usize == row_id);
                         [incrementor, inverse, selector]
                     }),
