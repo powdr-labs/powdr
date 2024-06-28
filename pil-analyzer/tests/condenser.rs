@@ -203,5 +203,3 @@ fn double_next() {
     "#;
     analyze_string::<GoldilocksField>(input).to_string();
 }
-
-
