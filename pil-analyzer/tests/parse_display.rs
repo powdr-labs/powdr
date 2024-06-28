@@ -721,3 +721,31 @@ namespace T(8);
     assert_eq!(analyzed.degree, Some(8));
     assert_eq!(expected, analyzed.to_string());
 }
+
+#[test]
+fn trait_def() {
+    let input = "trait Add<T: Add, Q> {
+        add: T, T -> Q,
+    }
+";
+
+    let expected = "    trait Add <T: Add, Q> {
+        add: T, T -> Q,
+    }
+";
+
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(expected, analyzed.to_string())
+}
+
+#[test]
+#[should_panic = "Add.add already defined."]
+fn duplicate_funtion_trait() {
+    let input = "
+    trait Add<T: Add> {
+        add: T, T -> T,
+        add: T, T -> T,
+    }
+    ";
+    let _ = analyze_string::<GoldilocksField>(input);
+}

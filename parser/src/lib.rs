@@ -314,7 +314,8 @@ mod test {
                 SymbolValue::Module(Module::External(_))
                 | SymbolValue::Import(_)
                 | SymbolValue::Expression(_)
-                | SymbolValue::TypeDeclaration(_) => (),
+                | SymbolValue::TypeDeclaration(_)
+                | SymbolValue::TraitDeclaration(_) => (),
             }
         }
 
@@ -529,6 +530,54 @@ namespace N(2);
     let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
     let seven = max::<int>(3, 7);
 "#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trait() {
+        let input = r#"
+    trait Add<T> {
+        add: T, T -> T,
+    }"#;
+
+        let expected = r#"
+    trait Add <T> {
+        add: T, T -> T,
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trait_multi_params() {
+        let input = r#"
+    trait Add<T: Add, Q> {
+        add: T, T -> Q,
+    }"#;
+
+        let expected = r#"
+    trait Add <T: Add, Q> {
+        add: T, T -> Q,
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trait_multi_params2() {
+        let input = r#"
+    trait Iterator<S, I> {
+        next: S -> (S, Option<I>),
+    }"#;
+
+        let expected = r#"
+    trait Iterator <S, I> {
+        next: S -> (S, Option<I>),
+    }"#;
+
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(expected.trim(), printed.trim());
     }

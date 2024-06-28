@@ -33,6 +33,10 @@ ModuleStatement: ModuleStatement = {
             name: <>.name.clone(),
             value: SymbolValue::TypeDeclaration(<>),
         }),
+    <TraitDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
+            name: <>.name.clone(),
+            value: SymbolValue::TraitDeclaration(<>),
+        }),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
@@ -115,6 +119,7 @@ pub PilStatement = {
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
     PlookupIdentityStatement,
     PermutationIdentityStatement,
     ConnectIdentityStatement,
@@ -682,6 +687,22 @@ PatternList: Vec<Pattern> = {
     <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
     => vec![]
 }
+
+// ---------------------------- Trait/Impl Declaration -----------------------------
+
+TraitDeclaration: TraitDeclaration<Expression> = {
+    "trait" <name:Identifier> <type_vars:("<" <TypeVarBounds> ">")?> "{" <functions:TraitFunctions> "}" => TraitDeclaration { name, type_vars: type_vars.unwrap_or_default(), functions }
+}
+
+TraitFunctions: Vec<TraitFunction<Expression>> = {
+    => vec![],
+    <mut list:( <TraitFunction> "," )*> <end:TraitFunction> ","  => { list.push(end); list }
+}
+
+TraitFunction: TraitFunction<Expression> = {
+    <name:Identifier> ":" <params:TypeTermList> "->" <value:TypeTermBox> => TraitFunction { name, _type: Type::Function(FunctionType{params, value}) }
+}
+
 
 // ---------------------------- Type Declarations -----------------------------
 

@@ -496,7 +496,9 @@ where
                 assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
                 FunctionValueDefinition::Array(expression)
             }
-            FunctionDefinition::TypeDeclaration(_enum_declaration) => unreachable!(),
+            FunctionDefinition::TypeDeclaration(_enum_declaration) => {
+                unreachable!()
+            }
         });
         vec![PILItem::Definition(symbol, value)]
     }
