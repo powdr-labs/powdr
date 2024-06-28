@@ -255,12 +255,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                     .map(|id| {
                         let expr = id.expression_for_poly_id();
                         let name = id.to_string();
-                        let expr = to_halo2_expression(expr, &config, meta)
-                            .map_err(|e| {
-                                eprintln!("Error in identity: {name}: {e}");
-                                e
-                            })
-                            .unwrap();
+                        let expr = to_halo2_expression(expr, &config, meta);
                         let expr = expr * meta.query_fixed(config.enable, Rotation::cur());
                         (name, expr)
                     })
@@ -296,19 +291,14 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                 .selector
                 .as_ref()
                 .map_or(Expression::Constant(F::from(1)), |selector| {
-                    to_halo2_expression(selector, &config, meta).unwrap()
+                    to_halo2_expression(selector, &config, meta)
                 });
             let selector = selector * meta.query_fixed(config.enable, Rotation::cur());
 
             expr.expressions
                 .iter()
                 .map(|expr| {
-                    let expr = to_halo2_expression(expr, &config, meta)
-                        .map_err(|e| {
-                            eprintln!("Error in lookup expression: {expr}");
-                            e
-                        })
-                        .unwrap();
+                    let expr = to_halo2_expression(expr, &config, meta);
                     // Turns a selected lookup / permutation argument into an unselected lookup / permutation argument,
                     // see Section 3.3, equation (24) of: https://eprint.iacr.org/2023/474.pdf
                     // Note that they use a different transformation for lookups, because this transformation would fail
@@ -515,8 +505,8 @@ fn to_halo2_expression<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(
     expr: &AlgebraicExpression<T>,
     config: &PowdrCircuitConfig,
     meta: &mut VirtualCells<'_, F>,
-) -> Result<Expression<F>, String> {
-    Ok(match expr {
+) -> Expression<F> {
+    match expr {
         AlgebraicExpression::Number(n) => Expression::Constant(convert_field(*n)),
         AlgebraicExpression::Reference(polyref) => {
             let rotation = match polyref.next {
@@ -528,7 +518,7 @@ fn to_halo2_expression<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(
             } else if let Some(column) = config.fixed.get(&polyref.name) {
                 meta.query_fixed(*column, rotation)
             } else {
-                return Err(format!("Unknown reference: {}", polyref.name));
+                panic!("Unknown reference: {}", polyref.name)
             }
         }
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
@@ -536,8 +526,8 @@ fn to_halo2_expression<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(
             op,
             right: powdr_rhe,
         }) => {
-            let lhe = to_halo2_expression(lhe, config, meta)?;
-            let rhe = to_halo2_expression(powdr_rhe, config, meta)?;
+            let lhe = to_halo2_expression(lhe, config, meta);
+            let rhe = to_halo2_expression(powdr_rhe, config, meta);
             match op {
                 AlgebraicBinaryOperator::Add => lhe + rhe,
                 AlgebraicBinaryOperator::Sub => lhe - rhe,
@@ -562,5 +552,5 @@ fn to_halo2_expression<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(
             config.challenges.get(&challenge.id).unwrap().expr()
         }
         _ => unimplemented!("{:?}", expr),
-    })
+    }
 }

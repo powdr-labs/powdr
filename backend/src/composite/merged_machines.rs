@@ -65,7 +65,6 @@ mod tests {
 
         let merged_machines = merged_machines.merged_machines();
         assert_eq!(merged_machines.len(), 2);
-        println!("{:?}", merged_machines);
         assert!(merged_machines.contains(&[1, 2, 3, 4].iter().cloned().collect()));
         assert!(merged_machines.contains(&[5, 6].iter().cloned().collect()));
     }
