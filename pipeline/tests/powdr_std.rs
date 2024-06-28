@@ -116,6 +116,38 @@ fn permutation_via_challenges_ext() {
 }
 
 #[test]
+fn lookup_via_challenges_bn() {
+    let f = "std/lookup_via_challenges.asm";
+    test_halo2(f, Default::default());
+}
+
+#[test]
+fn lookup_via_challenges_ext() {
+    let f = "std/lookup_via_challenges_ext.asm";
+    test_halo2(f, Default::default());
+    // Note that this does not actually run the second-phase witness generation, because no
+    // Goldilocks backend support challenges yet. But at least it tests that the panic from
+    // the previous test is not happening.
+    Pipeline::<GoldilocksField>::default()
+        .from_file(resolve_test_file(f))
+        .compute_witness()
+        .unwrap();
+}
+
+#[test]
+fn lookup_via_challenges_ext_simple() {
+    let f = "std/lookup_via_challenges_ext_simple.asm";
+    test_halo2(f, Default::default());
+    // Note that this does not actually run the second-phase witness generation, because no
+    // Goldilocks backend support challenges yet. But at least it tests that the panic from
+    // the previous test is not happening.
+    Pipeline::<GoldilocksField>::default()
+        .from_file(resolve_test_file(f))
+        .compute_witness()
+        .unwrap();
+}
+
+#[test]
 fn write_once_memory_test() {
     let f = "std/write_once_memory_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();

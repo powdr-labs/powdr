@@ -5,20 +5,19 @@ use std::protocols::lookup::compute_next_z;
 use std::math::fp2::Fp2;
 
 machine Main with degree: 8 {
+    col fixed a_sel = [0, 1, 1, 1, 0, 1, 0, 0];
+    col fixed b_sel = [1, 1, 0, 1, 1, 1, 1, 0];
 
-    col fixed random_six = [1, 1, 1, 0, 1, 1, 1, 0];
-    col fixed first_seven = [1, 1, 1, 1, 1, 1, 1, 0];
-
-    col fixed a1 = [1, 2, 4, 3, 1, 1, 4, 1];
-    col fixed a2 = [1, 2, 4, 1, 1, 1, 4, 1];
-    col fixed a3 = [1, 2, 4, 1, 1, 1, 4, 3];
-    col witness b1(i) query Query::Hint(fe(i+1));
+    col fixed a1 = [16, 20, 22, 17, 16, 20, 4, 1];
+    col fixed a2 = [12, 5, 7, 2, 5, 5, 4, 1];
+    col fixed a3 = [20, 36, 38, 33, 36, 36, 4, 3];
+    col witness b1(i) query Query::Hint(fe(i+16));
     col witness b2(i) query Query::Hint(fe(i+1));
-    col witness b3(i) query Query::Hint(fe(i+1));
-    col fixed m = [3, 1, 0, 2, 0, 0, 0, 0];
+    col witness b3(i) query Query::Hint(fe(i+32));
+    col fixed m = [0, 1, 0, 0, 2, 0, 1, 0];
 
     let lookup_constraint = Constr::Lookup(
-        (Option::Some(random_six), Option::Some(first_seven)),
+        (Option::Some(a_sel), Option::Some(b_sel)),
         [(a1, b1), (a2, b2), (a3, b3)]
     );
 
