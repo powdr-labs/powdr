@@ -911,8 +911,8 @@ impl<T: FieldElement> Pipeline<T> {
         /* Create the backend */
         let backend = factory
             .create(
-                pil.borrow(),
-                &fixed_cols[..],
+                pil.clone(),
+                fixed_cols.clone(),
                 self.output_dir.clone(),
                 setup.as_io_read(),
                 vkey.as_io_read(),
@@ -993,8 +993,8 @@ impl<T: FieldElement> Pipeline<T> {
 
         let backend = factory
             .create(
-                pil.borrow(),
-                &fixed_cols[..],
+                pil.clone(),
+                fixed_cols.clone(),
                 self.output_dir.clone(),
                 setup_file
                     .as_mut()
@@ -1047,8 +1047,8 @@ impl<T: FieldElement> Pipeline<T> {
 
         let backend = factory
             .create(
-                pil.borrow(),
-                &fixed_cols[..],
+                pil.clone(),
+                fixed_cols.clone(),
                 self.output_dir.clone(),
                 setup_file
                     .as_mut()
@@ -1095,8 +1095,8 @@ impl<T: FieldElement> Pipeline<T> {
 
         let backend = factory
             .create(
-                pil.borrow(),
-                &fixed_cols[..],
+                pil.clone(),
+                fixed_cols.clone(),
                 self.output_dir.clone(),
                 setup_file
                     .as_mut()

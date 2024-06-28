@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf};
+use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -23,8 +23,8 @@ impl<F: FieldElement, B: BackendFactory<F>> CompositeBackendFactory<F, B> {
 impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBackendFactory<F, B> {
     fn create<'a>(
         &self,
-        pil: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
+        pil: Arc<Analyzed<F>>,
+        fixed: Arc<Vec<(String, Vec<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -45,8 +45,8 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                     std::fs::create_dir_all(output_dir)?;
                 }
                 let backend = self.factory.create(
-                    pil,
-                    fixed,
+                    pil.clone(),
+                    fixed.clone(),
                     output_dir,
                     // TODO: Handle setup, verification_key, verification_app_key
                     None,
