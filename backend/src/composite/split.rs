@@ -16,7 +16,13 @@ use powdr_number::FieldElement;
 pub(crate) fn get_namespace(name: &str) -> String {
     let mut namespace = AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
     namespace.pop().unwrap();
-    namespace.relative_to(&Default::default()).to_string()
+    let namespace = namespace.relative_to(&Default::default()).to_string();
+    if namespace.is_empty() {
+        // HACK
+        "std".to_string()
+    } else {
+        namespace
+    }
 }
 
 fn references_other_namespace<F: FieldElement>(
@@ -89,7 +95,7 @@ pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, A
     let (std_namespaces, normal_namespaces): (BTreeMap<_, _>, BTreeMap<_, _>) =
         statements_by_namespace
             .into_iter()
-            .partition(|(k, _)| k.starts_with("std::"));
+            .partition(|(k, _)| k.starts_with("std"));
     let statements_by_namespace = normal_namespaces
         .into_iter()
         .map(|(namespace, mut statements)| {
