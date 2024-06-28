@@ -5,7 +5,6 @@ use std::convert::int;
 // Shift for single bytes using an exhaustive table
 // TODO this way, we cannot prove anything that shifts by more than 31 bits.
 machine ByteShift with
-    degree: 65536,
     latch: latch,
     operation_id: operation_id,
 {
