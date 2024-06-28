@@ -23,6 +23,9 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
                         }
                         Item::Expression(e) => Item::Expression(e),
                         Item::TypeDeclaration(enum_decl) => Item::TypeDeclaration(enum_decl),
+                        Item::TraitImplementation(trait_impl) => {
+                            Item::TraitImplementation(trait_impl)
+                        }
                     },
                 )
             })

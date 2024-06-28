@@ -34,6 +34,7 @@ impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(symbol_def) => write!(f, "{symbol_def}"),
+            ModuleStatement::TraitImplementation(trait_impl) => write!(f, "{trait_impl}"),
         }
     }
 }
@@ -520,6 +521,7 @@ impl Display for PilStatement {
             }
             PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
+            PilStatement::TraitImplementation(_, trait_impl) => write_indented_by(f, trait_impl, 1),
         }
     }
 }
@@ -587,6 +589,49 @@ impl<E: Display> EnumDeclaration<E> {
                 1
             )
         )
+    }
+}
+
+impl<E: Display> Display for TraitImplementation<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = self
+            .type_scheme
+            .as_ref()
+            .map_or_else(Default::default, |scheme| {
+                if scheme.vars.is_empty() {
+                    Default::default()
+                } else {
+                    format!("<{}>", scheme.vars)
+                }
+            });
+        let trait_vars = self
+            .type_scheme
+            .as_ref()
+            .map_or_else(Default::default, |scheme| {
+                if scheme.types.is_empty() {
+                    Default::default()
+                } else {
+                    let formatted_elements: Vec<String> =
+                        scheme.types.iter().map(|t| format!("{t}")).collect();
+                    format!("<{}>", formatted_elements.join(", "))
+                }
+            });
+
+        write!(
+            f,
+            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+            trait_name = self.name,
+            methods = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        )
+    }
+}
+
+impl<E: Display> Display for NamedExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self.body)
     }
 }
 

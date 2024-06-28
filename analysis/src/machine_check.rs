@@ -335,6 +335,9 @@ impl TypeChecker {
                         }
                     }
                 }
+                ModuleStatement::TraitImplementation(trait_impl) => {
+                    res.insert(ctx.clone(), Item::TraitImplementation(trait_impl));
+                }
             }
         }
 
