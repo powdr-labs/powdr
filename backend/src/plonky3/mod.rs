@@ -1,4 +1,4 @@
-use std::{io, path::PathBuf};
+use std::{io, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -12,8 +12,8 @@ pub(crate) struct Factory;
 impl<T: FieldElement> BackendFactory<T> for Factory {
     fn create<'a>(
         &self,
-        pil: &'a Analyzed<T>,
-        _fixed: &'a [(String, Vec<T>)],
+        pil: Arc<Analyzed<T>>,
+        _fixed: Arc<Vec<(String, Vec<T>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
@@ -33,7 +33,7 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
     }
 }
 
-impl<'a, T: FieldElement> Backend<'a, T> for Plonky3Prover<'a, T> {
+impl<'a, T: FieldElement> Backend<'a, T> for Plonky3Prover<T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         Ok(self.verify(proof, instances)?)
     }
