@@ -126,8 +126,7 @@ fn lookup_via_challenges_ext() {
     let f = "std/lookup_via_challenges_ext.asm";
     test_halo2(f, Default::default());
     // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet. But at least it tests that the panic from
-    // the previous test is not happening.
+    // Goldilocks backend support challenges yet.
     Pipeline::<GoldilocksField>::default()
         .from_file(resolve_test_file(f))
         .compute_witness()
@@ -139,8 +138,7 @@ fn lookup_via_challenges_ext_simple() {
     let f = "std/lookup_via_challenges_ext_simple.asm";
     test_halo2(f, Default::default());
     // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet. But at least it tests that the panic from
-    // the previous test is not happening.
+    // Goldilocks backend support challenges yet.
     Pipeline::<GoldilocksField>::default()
         .from_file(resolve_test_file(f))
         .compute_witness()
