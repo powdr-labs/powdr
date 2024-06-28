@@ -13,30 +13,23 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
+use super::merged_machines::MergedMachines;
+
 pub(crate) fn get_namespace(name: &str) -> String {
     let mut namespace = AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
     namespace.pop().unwrap();
-    let namespace = namespace.relative_to(&Default::default()).to_string();
-    if namespace.is_empty() {
-        // HACK
-        "std".to_string()
-    } else {
-        namespace
-    }
+    namespace.relative_to(&Default::default()).to_string()
 }
 
-fn references_other_namespace<F: FieldElement>(
+fn referenced_namespaces<F: FieldElement>(
     identity: &Identity<AlgebraicExpression<F>>,
-    current_namespace: &str,
-) -> bool {
-    let mut references_other_namespace = false;
+) -> BTreeSet<String> {
+    let mut namespaces = BTreeSet::new();
     identity.visit_expressions(
         &mut (|expr| {
             match expr {
                 AlgebraicExpression::Reference(reference) => {
-                    let namespace = get_namespace(&reference.name);
-                    references_other_namespace |=
-                        (namespace != current_namespace) && !namespace.starts_with("std::");
+                    namespaces.insert(get_namespace(&reference.name));
                 }
                 AlgebraicExpression::PublicReference(_) => unimplemented!(),
                 AlgebraicExpression::Challenge(_) => {}
@@ -49,13 +42,14 @@ fn references_other_namespace<F: FieldElement>(
         VisitOrder::Pre,
     );
 
-    references_other_namespace
+    namespaces
 }
 
 pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
     let mut current_namespace = String::new();
 
     let mut statements_by_namespace: BTreeMap<String, Vec<StatementIdentifier>> = BTreeMap::new();
+    let mut merged_machines = MergedMachines::new();
     for statement in pil.source_order.clone() {
         let statement = match &statement {
             StatementIdentifier::Definition(name)
@@ -66,52 +60,67 @@ pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, A
             }
             StatementIdentifier::Identity(i) => {
                 let identity = &pil.identities[*i];
-                let references_other_namespace =
-                    references_other_namespace(identity, &current_namespace);
+                let namespaces = referenced_namespaces(identity);
 
-                if references_other_namespace {
-                    match identity.kind {
-                        IdentityKind::Plookup | IdentityKind::Permutation => {}
-                        _ => panic!("Identity references other namespace: {identity}"),
-                    };
-                    None
-                } else {
-                    Some(statement)
+                match namespaces.len() {
+                    0 => panic!("Identity references no namespace: {identity}"),
+                    1 => {
+                        assert!(namespaces.iter().next().unwrap() == &current_namespace);
+                        Some(statement)
+                    }
+                    _ => match identity.kind {
+                        IdentityKind::Plookup | IdentityKind::Permutation => {
+                            log::debug!("Skipping connecting identity: {identity}");
+                            None
+                        }
+                        _ => {
+                            log::debug!("Identity references multiple namespaces: {identity}");
+                            log::debug!("=> Merging namespaces: {:?}", namespaces);
+                            let mut namespace_iter = namespaces.into_iter();
+                            let first_namespace = namespace_iter.next().unwrap();
+                            for namespace in namespace_iter {
+                                merged_machines.merge(first_namespace.clone(), namespace);
+                            }
+                            Some(statement)
+                        }
+                    },
                 }
             }
         };
 
-        assert!(!current_namespace.is_empty(), "Namespace not set");
-
-        if let Some(statements) = statement {
+        if let Some(statement) = statement {
             statements_by_namespace
                 .entry(current_namespace.clone())
                 .or_default()
-                .push(statements);
+                .push(statement);
         }
     }
 
-    // Remove namespaces starting the `std::` and add them to all other namespaces
-    let (std_namespaces, normal_namespaces): (BTreeMap<_, _>, BTreeMap<_, _>) =
-        statements_by_namespace
-            .into_iter()
-            .partition(|(k, _)| k.starts_with("std"));
-    let statements_by_namespace = normal_namespaces
+    let merged_machines = merged_machines.merged_machines();
+    let namespace_to_machine_name = merged_machines
         .into_iter()
-        .map(|(namespace, mut statements)| {
-            statements.extend(
-                std_namespaces
-                    .clone()
-                    .into_iter()
-                    .flat_map(|(_, statements)| statements),
-            );
-            (namespace, statements)
+        .flat_map(|machines| {
+            let machine_name = machines.clone().into_iter().collect::<Vec<_>>().join("_");
+            machines
+                .into_iter()
+                .map(move |machine| (machine, machine_name.clone()))
         })
         .collect::<BTreeMap<_, _>>();
+    let mut statements_by_machine: BTreeMap<String, Vec<StatementIdentifier>> = BTreeMap::new();
+    for (namespace, statements) in statements_by_namespace {
+        let machine_name = namespace_to_machine_name
+            .get(&namespace)
+            .unwrap_or(&namespace)
+            .clone();
+        statements_by_machine
+            .entry(machine_name)
+            .or_default()
+            .extend(statements);
+    }
 
-    statements_by_namespace
+    statements_by_machine
         .into_iter()
-        .map(|(machine_name, statements)| {
+        .filter_map(|(machine_name, statements)| {
             // HACK: Replace unreferenced identities with 0 = 0
             let referenced_identities = statements
                 .iter()
@@ -120,6 +129,11 @@ pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, A
                     _ => None,
                 })
                 .collect::<BTreeSet<_>>();
+            if referenced_identities.is_empty() {
+                // This can happen if a hint references some std module,
+                // but the module is empty.
+                return None;
+            }
             let identities = pil
                 .identities
                 .iter()
@@ -147,7 +161,7 @@ pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, A
             // let parsed_string = powdr_parser::parse(None, &pil.to_string()).unwrap();
             // let pil = powdr_pil_analyzer::analyze_ast(parsed_string);
 
-            (machine_name.to_string(), pil)
+            Some((machine_name.to_string(), pil))
         })
         .collect()
 }
