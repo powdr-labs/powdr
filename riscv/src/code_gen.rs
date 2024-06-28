@@ -523,9 +523,9 @@ fn memory(with_bootloader: bool) -> String {
     /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
     /// Returns the loaded word and the remainder of the division by 4.
     instr mload Y -> X, Z link ~> X = memory.mload(X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4, STEP) {
-        { Z } in { up_to_three },
+        [ Z ] in [ up_to_three ],
         Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z,
-        { X_b1 } in { six_bits }
+        [ X_b1 ] in [ six_bits ]
     }
 
     /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
