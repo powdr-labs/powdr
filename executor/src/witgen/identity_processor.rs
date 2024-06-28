@@ -169,15 +169,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             }
         }
 
-        let left = identity
-            .left
-            .expressions
-            .iter()
-            .map(|e| rows.evaluate(e))
-            .collect::<Vec<_>>();
+        let left = identity.left.expressions.iter().map(|e| rows.evaluate(e));
 
         // Fail if the LHS has an error.
-        let (left, errors): (Vec<_>, Vec<_>) = left.into_iter().partition_map(|x| match x {
+        let (left, errors): (Vec<_>, Vec<_>) = left.partition_map(|x| match x {
             Ok(x) => Either::Left(x),
             Err(x) => Either::Right(x),
         });
