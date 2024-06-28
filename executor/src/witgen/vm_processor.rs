@@ -15,7 +15,7 @@ use crate::witgen::IncompleteCause;
 use super::data_structures::finalizable_data::FinalizableData;
 use super::processor::{OuterQuery, Processor};
 
-use super::rows::{Row, RowIndex, UnknownStrategy};
+use super::rows::{rows_are_equal, Row, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
 
 /// Maximal period checked during loop detection.
@@ -221,11 +221,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         let row = row_index as usize;
         (1..MAX_PERIOD).find(|&period| {
             (1..=period).all(|i| {
-                self.processor
-                    .row(row - i - period)
-                    .values()
-                    .zip(self.processor.row(row - i).values())
-                    .all(|(a, b)| a.value == b.value)
+                rows_are_equal(
+                    self.processor.row(row - i - period),
+                    self.processor.row(row - i),
+                )
             })
         })
     }

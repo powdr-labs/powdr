@@ -7,11 +7,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
-use crate::witgen::rows::CellValue;
+use crate::witgen::rows::merge_row_with;
 use crate::witgen::EvalValue;
 
 use super::block_processor::BlockProcessor;
-use super::data_structures::column_map::WitnessColumnMap;
 use super::machines::{FixedLookup, Machine};
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
@@ -246,15 +245,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         assert_eq!(self.data.len() as DegreeType, self.fixed_data.degree + 1);
 
         let last_row = self.data.pop().unwrap();
-        self.data[0] = WitnessColumnMap::from(self.data[0].values().zip(last_row.values()).map(
-            |(cell1, cell2)| match (&cell1.value, &cell2.value) {
-                (CellValue::Known(v1), CellValue::Known(v2)) => {
-                    assert_eq!(v1, v2);
-                    cell1.clone()
-                }
-                (CellValue::Known(_), _) => cell1.clone(),
-                _ => cell2.clone(),
-            },
-        ));
+        let success = merge_row_with(&mut self.data[0], &last_row);
+        assert!(success);
     }
 }
