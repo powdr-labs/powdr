@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -13,8 +13,8 @@ pub struct Factory;
 impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
-        analyzed: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
+        analyzed: Arc<Analyzed<F>>,
+        fixed: Arc<Vec<(String, Vec<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -22,8 +22,8 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         Ok(Box::new(PolygonBackend(EStarkFilesCommon::create(
-            analyzed,
-            fixed,
+            &analyzed,
+            &fixed,
             output_dir,
             setup,
             verification_key,

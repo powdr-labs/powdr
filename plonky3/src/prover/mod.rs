@@ -2,6 +2,8 @@
 
 mod params;
 
+use std::sync::Arc;
+
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
@@ -14,18 +16,18 @@ use crate::circuit_builder::{cast_to_goldilocks, PowdrCircuit};
 use self::params::{get_challenger, get_config};
 
 #[derive(Clone)]
-pub struct Plonky3Prover<'a, T> {
+pub struct Plonky3Prover<T> {
     /// The analyzed PIL
-    analyzed: &'a Analyzed<T>,
+    analyzed: Arc<Analyzed<T>>,
 }
 
-impl<'a, T> Plonky3Prover<'a, T> {
-    pub fn new(analyzed: &'a Analyzed<T>) -> Self {
+impl<T> Plonky3Prover<T> {
+    pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
         Self { analyzed }
     }
 }
 
-impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
+impl<T: FieldElement> Plonky3Prover<T> {
     pub fn prove(
         &self,
         witness: &[(String, Vec<T>)],
@@ -33,7 +35,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
     ) -> Result<Vec<u8>, String> {
         assert_eq!(T::known_field(), Some(KnownField::GoldilocksField));
 
-        let circuit = PowdrCircuit::new(self.analyzed)
+        let circuit = PowdrCircuit::new(&self.analyzed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
@@ -68,7 +70,7 @@ impl<'a, T: FieldElement> Plonky3Prover<'a, T> {
 
         verify(
             &config,
-            &PowdrCircuit::new(self.analyzed),
+            &PowdrCircuit::new(&self.analyzed),
             &mut challenger,
             &proof,
             &publics,
@@ -96,7 +98,7 @@ mod tests {
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
 
-        let prover = Plonky3Prover::new(&pil);
+        let prover = Plonky3Prover::new(pil);
         let proof = prover.prove(&witness, witness_callback);
 
         assert!(proof.is_ok());

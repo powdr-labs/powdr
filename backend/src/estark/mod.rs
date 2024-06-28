@@ -7,6 +7,7 @@ use std::{
     fs::{hard_link, remove_file},
     iter::{once, repeat},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
@@ -214,8 +215,8 @@ pub struct DumpFactory;
 impl<F: FieldElement> BackendFactory<F> for DumpFactory {
     fn create<'a>(
         &self,
-        analyzed: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
+        analyzed: Arc<Analyzed<F>>,
+        fixed: Arc<Vec<(String, Vec<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -223,8 +224,8 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         Ok(Box::new(DumpBackend(EStarkFilesCommon::create(
-            analyzed,
-            fixed,
+            &analyzed,
+            &fixed,
             output_dir,
             setup,
             verification_key,
