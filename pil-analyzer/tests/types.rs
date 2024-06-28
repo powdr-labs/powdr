@@ -628,7 +628,7 @@ fn trait_invalid_type() {
 }
 
 #[test]
-#[should_panic = "Trait function ToTuple.get2 is not defined."]
+#[should_panic = "Trait function ToTuple.get2 is not defined for ToTuple."]
 fn trait_invalid_function() {
     let input = "
 
