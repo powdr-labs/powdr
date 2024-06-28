@@ -1,6 +1,7 @@
+use std::io;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
-use std::{borrow::Cow, io};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error};
 use powdr_ast::analyzed::Analyzed;
@@ -25,8 +26,8 @@ pub struct Factory;
 impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
-        pil: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
+        pil: Arc<Analyzed<F>>,
+        fixed: Arc<Vec<(String, Vec<F>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -53,7 +54,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
 
         let params = create_stark_struct(pil.degree(), proof_type.hash_type());
 
-        let (pil_json, fixed) = first_step_fixup(pil, fixed);
+        let (pil_json, fixed) = first_step_fixup(&pil, fixed);
 
         let const_pols = to_starky_pols_array(&fixed, &pil_json, PolKind::Constant);
 
@@ -87,8 +88,8 @@ fn create_stark_setup(
     .unwrap()
 }
 
-pub struct EStark<'a, F: FieldElement> {
-    fixed: Cow<'a, [(String, Vec<F>)]>,
+pub struct EStark<F: FieldElement> {
+    fixed: Arc<Vec<(String, Vec<F>)>>,
     pil_json: PIL,
     params: StarkStruct,
     // eSTARK calls it setup, but it works similarly to a verification key and depends only on the
@@ -97,7 +98,7 @@ pub struct EStark<'a, F: FieldElement> {
     proof_type: ProofType,
 }
 
-impl<'a, F: FieldElement> EStark<'a, F> {
+impl<F: FieldElement> EStark<F> {
     fn verify_stark_gl_with_publics(
         &self,
         proof: &StarkProof<MerkleTreeGL>,
@@ -184,7 +185,7 @@ impl<'a, F: FieldElement> EStark<'a, F> {
     }
 }
 
-impl<'a, F: FieldElement> Backend<'a, F> for EStark<'a, F> {
+impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
         match self.proof_type {
             ProofType::StarkGL => {

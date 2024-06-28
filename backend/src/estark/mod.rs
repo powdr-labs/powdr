@@ -5,11 +5,11 @@ pub mod polygon_wrapper;
 pub mod starky_wrapper;
 
 use std::{
-    borrow::Cow,
     fs::File,
     io::{self, BufWriter, Write},
     iter::{once, repeat},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
@@ -67,7 +67,7 @@ fn create_stark_struct(degree: DegreeType, hash_type: &str) -> StarkStruct {
     }
 }
 
-type Constants<'a, F> = Cow<'a, [(String, Vec<F>)]>;
+type Constants<F> = Vec<(String, Vec<F>)>;
 
 /// eStark provers require a fixed column with the equivalent semantics to
 /// Polygon zkEVM's `L1` column. Powdr generated PIL will always have
@@ -75,10 +75,10 @@ type Constants<'a, F> = Cow<'a, [(String, Vec<F>)]>;
 /// to inject such column if it doesn't exist.
 ///
 /// TODO Improve how this is done.
-fn first_step_fixup<'a, F: FieldElement>(
-    pil: &'a Analyzed<F>,
-    fixed: &'a [(String, Vec<F>)],
-) -> (PIL, Constants<'a, F>) {
+fn first_step_fixup<F: FieldElement>(
+    pil: &Analyzed<F>,
+    fixed: Arc<Constants<F>>,
+) -> (PIL, Arc<Constants<F>>) {
     let degree = pil.degree();
 
     let mut pil: PIL = json_exporter::export(pil);
@@ -109,7 +109,8 @@ fn first_step_fixup<'a, F: FieldElement>(
                     .take(degree as usize)
                     .collect(),
             )))
-            .collect()
+            .collect::<Vec<_>>()
+            .into()
     } else {
         fixed.into()
     };
@@ -117,12 +118,12 @@ fn first_step_fixup<'a, F: FieldElement>(
     (pil, patched_constants)
 }
 
-struct EStarkFilesCommon<'b, F: FieldElement> {
+struct EStarkFilesCommon<F: FieldElement> {
     degree: DegreeType,
     pil: PIL,
     /// If this field is present, it means the constants were patched with
     /// "main.first_step" column and must be written again to a file.
-    constants: Cow<'b, [(String, Vec<F>)]>,
+    constants: Arc<Constants<F>>,
     output_dir: Option<PathBuf>,
     proof_type: ProofType,
 }
@@ -136,10 +137,10 @@ fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), E
     Ok(())
 }
 
-impl<'a: 'b, 'b, F: FieldElement> EStarkFilesCommon<'b, F> {
+impl<'a, F: FieldElement> EStarkFilesCommon<F> {
     fn create(
         analyzed: &'a Analyzed<F>,
-        fixed: &'b [(String, Vec<F>)],
+        fixed: Arc<Constants<F>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -181,7 +182,7 @@ struct ProverInputFilePaths {
     contraints: PathBuf,
 }
 
-impl<'b, F: FieldElement> EStarkFilesCommon<'b, F> {
+impl<F: FieldElement> EStarkFilesCommon<F> {
     /// Write the files in the EStark Polygon format.
     fn write_files(
         &self,
@@ -220,8 +221,8 @@ pub struct DumpFactory;
 impl<F: FieldElement> BackendFactory<F> for DumpFactory {
     fn create<'a>(
         &self,
-        analyzed: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
+        analyzed: Arc<Analyzed<F>>,
+        fixed: Arc<Vec<(String, Vec<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -229,7 +230,7 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         Ok(Box::new(DumpBackend(EStarkFilesCommon::create(
-            analyzed,
+            &analyzed,
             fixed,
             output_dir,
             setup,
@@ -241,9 +242,9 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
 }
 
 /// A backend that just dumps the files to the output directory.
-struct DumpBackend<'b, F: FieldElement>(EStarkFilesCommon<'b, F>);
+struct DumpBackend<F: FieldElement>(EStarkFilesCommon<F>);
 
-impl<'a, 'b, F: FieldElement> Backend<'a, F> for DumpBackend<'b, F> {
+impl<'a, F: FieldElement> Backend<'a, F> for DumpBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
