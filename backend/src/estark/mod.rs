@@ -112,7 +112,7 @@ fn first_step_fixup<F: FieldElement>(
             .collect::<Vec<_>>()
             .into()
     } else {
-        fixed.into()
+        fixed
     };
 
     (pil, patched_constants)
