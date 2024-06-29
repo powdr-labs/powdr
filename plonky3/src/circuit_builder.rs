@@ -3,10 +3,25 @@
 //! Support for public values without the use of fixed columns.
 //!
 //! Namely, given ith public value pub[i] corresponding to a witness value in
-//! row j of column Ci, a corresponding selector column Pi is constructed to
-//! constrain Pi * (pub[i] - Ci) on every row. Pi is constrained to be 1 at the
-//! evaluation index and 0 everywhere else by two additional columns acting as a
-//! decrementor from the evaluation index, and the inverse of the decrementor row.
+//! row j of witness column x, a corresponding selector column s_i is constructed to
+//! constrain s_i * (pub[i] - x) on every row:
+//!
+//! col witness x;
+//! public out_x = col x(j);
+//! col witness s_i;
+//!
+//! Moreover, s_i is constrained to be 1 at evaluation index s_i(j) and 0
+//! everywhere else by applying the `is_zero` transformation to a column 'decr'
+//! decrementing by 1 each row from an initial value set to j in the first row:
+//!
+//! col witness decr;
+//! decr(0) = j;
+//! decr - decr' - 1 = 0;
+//! s_i = is_zero(decr);
+//!
+//! Note that in Plonky3 this transformation requires an additional column
+//! to track the inverse of decr for the `is_zero` operation, requiring
+//! a total of 3 extra witness columss per public value.
 
 use std::{any::TypeId, collections::BTreeMap};
 
@@ -44,16 +59,16 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             .flat_map(move |i| {
                 // witness values
                 witness.clone().map(move |(_, v)| v[i as usize]).chain(
-                    // publics rows: incrementor | inverse | selector
+                    // publics rows: decrementor | inverse | selector
                     publics.clone().flat_map(move |(_, _, row_id)| {
-                        let incrementor = T::from(row_id as u64) - T::from(i);
+                        let decr = T::from(row_id as u64) - T::from(i);
                         let inverse = if i as usize == row_id {
                             T::zero()
                         } else {
-                            T::one() / incrementor
+                            T::one() / decr
                         };
                         let selector = T::from(i as usize == row_id);
-                        [incrementor, inverse, selector]
+                        [decr, inverse, selector]
                     }),
                 )
             })
@@ -244,30 +259,29 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for P
 
         publics.iter().zip(pi_moved).enumerate().for_each(
             |(index, ((_, col_id, row_id), public_value))| {
-                let (incrementor, inverse, selector) = (
+                //set decrementors for each column to be row_id and decrement each row
+                let (decr, inverse, selector, decr_next) = (
                     local[self.analyzed.commitment_count() + 3 * index],
                     local[self.analyzed.commitment_count() + 3 * index + 1],
                     local[self.analyzed.commitment_count() + 3 * index + 2],
+                    next[self.analyzed.commitment_count() + 3 * index],
                 );
-
-                //set incrementors for each column to be row_id and decrement each row
-                let incrementor_next = next[self.analyzed.commitment_count() + 3 * index];
 
                 let mut when_first_row = builder.when_first_row();
                 when_first_row.assert_eq(
-                    incrementor,
-                    AB::Expr::from(cast_to_goldilocks(GoldilocksField::from(*row_id as u32))),
+                    decr,
+                    cast_to_goldilocks(GoldilocksField::from(*row_id as u32)),
                 );
 
                 let mut when_transition = builder.when_transition();
-                when_transition.assert_eq(incrementor, incrementor_next + AB::Expr::one());
+                when_transition.assert_eq(decr, decr_next + AB::Expr::one());
 
-                // is_zero logic-- new column where value is 1 iff corresponding row in incrementor_col is 0
+                // is_zero logic-- selector(row) is 1 iff decr(row) is 0 and 0 otherwise
                 builder.assert_bool(selector);
-                builder.assert_eq(selector, AB::Expr::one() - inverse * incrementor); //constraining selector to 1 or 0
-                builder.assert_zero(selector * incrementor); //constraining is_zero
+                builder.assert_eq(selector, AB::Expr::one() - inverse * decr); //constraining selector to 1 or 0
+                builder.assert_zero(selector * decr); //constraining is_zero
 
-                // constraining Pi * (Ci - pub[i]) = 0
+                // constraining s(i) * (pub[i] - x(i)) = 0
                 let witness_col = local[*col_id];
                 builder.assert_zero(selector * (public_value.into() - witness_col));
             },
