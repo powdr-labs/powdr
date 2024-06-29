@@ -21,7 +21,7 @@
 //!
 //! Note that in Plonky3 this transformation requires an additional column
 //! to track the inverse of decr for the `is_zero` operation, requiring
-//! a total of 3 extra witness columss per public value.
+//! a total of 3 extra witness columns per public value.
 
 use std::{any::TypeId, collections::BTreeMap};
 
