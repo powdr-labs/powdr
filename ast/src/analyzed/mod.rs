@@ -744,6 +744,22 @@ impl<T> SelectedExpressions<AlgebraicExpression<T>> {
     }
 }
 
+impl<T: FieldElement> SelectedExpressions<AlgebraicExpression<T>> {
+    /// Returns true iff the selector is `None` or `Some(1)`
+    pub fn selector_is_one_or_none(&self) -> bool {
+        self.selector
+            .as_ref()
+            .map(|s| {
+                if let AlgebraicExpression::Number(n) = s {
+                    n.is_one()
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(true)
+    }
+}
+
 pub type Expression = parsed::Expression<Reference>;
 pub type TypedExpression = crate::parsed::TypedExpression<Reference, u64>;
 

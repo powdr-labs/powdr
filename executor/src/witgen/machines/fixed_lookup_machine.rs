@@ -201,7 +201,7 @@ impl<T: FieldElement> FixedLookup<T> {
     ) -> Option<EvalResult<'b, T>> {
         // This is a matching machine if it is a plookup and the RHS is fully constant.
         if kind != IdentityKind::Plookup
-            || right.selector.is_some()
+            || !right.selector_is_one_or_none()
             || right.expressions.iter().any(|e| e.contains_witness_ref())
         {
             return None;
