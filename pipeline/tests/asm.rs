@@ -476,6 +476,28 @@ fn call_selectors_with_no_permutation() {
     gen_estark_proof(f, Default::default());
 }
 
+mod reparse {
+
+    use powdr_number::GoldilocksField;
+    use powdr_pipeline::{test_util::resolve_test_file, Pipeline};
+    use test_log::test;
+
+    fn run_reparse_test(file: &str) {
+        // Compute the optimized PIL
+        let optimized_pil = Pipeline::<GoldilocksField>::default()
+            .from_asm_file(resolve_test_file(file))
+            .compute_optimized_pil()
+            .unwrap();
+        // Run the pipeline using the string serialization of the optimized PIL.
+        // This panics if the re-parsing fails.
+        Pipeline::<GoldilocksField>::default()
+            .from_pil_string(optimized_pil.to_string())
+            .compute_optimized_pil()
+            .unwrap();
+    }
+    include!(concat!(env!("OUT_DIR"), "/asm_reparse_tests.rs"));
+}
+
 mod book {
     use super::*;
     use test_log::test;
