@@ -479,7 +479,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         if self.rows() > self.block_size as DegreeType {
             Some(RowIndex::from_degree(
                 self.rows() - self.block_size as DegreeType + self.latch_row as DegreeType,
-                self.fixed_data.degree,
+                self.degree,
             ))
         } else {
             None
