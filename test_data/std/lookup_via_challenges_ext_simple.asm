@@ -9,7 +9,7 @@ machine Main with degree: 8 {
 
     // We don't need an alpha here, because we only "fold" one element.
     // Therefore, the optimizer will remove it, but the hint still accesses it...
-    let alpha =  Fp2::Fp2(0, 0);
+    let alpha = Fp2::Fp2(0, 0);
 
     let beta1: expr = challenge(0, 3);
     let beta2: expr = challenge(0, 4);

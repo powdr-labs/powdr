@@ -11,7 +11,7 @@ machine Main with degree: 8 {
     let alpha2: expr = challenge(0, 2);
     let beta1: expr = challenge(0, 3);
     let beta2: expr = challenge(0, 4);
-    let alpha =  Fp2::Fp2(alpha1, alpha2);
+    let alpha = Fp2::Fp2(alpha1, alpha2);
     let beta = Fp2::Fp2(beta1, beta2);
 
     col fixed a_sel = [0, 1, 1, 1, 0, 1, 0, 0];
