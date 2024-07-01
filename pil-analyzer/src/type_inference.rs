@@ -663,7 +663,11 @@ impl<'a> TypeChecker<'a> {
                         }
                     }
                 }
-                let result = self.infer_type_of_expression(expr);
+                let result = match expr {
+                    Some(expr) => self.infer_type_of_expression(expr),
+                    None => Ok(Type::empty_tuple()),
+                };
+
                 self.local_var_types.truncate(original_var_count);
                 result?
             }
@@ -838,8 +842,8 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             Pattern::Struct(name, data) => {
-                let (ty, _generic_args) =
-                    self.instantiate_scheme(self.declared_types[&name.to_dotted_string()].clone());
+                let (ty, _generic_args) = self
+                    .instantiate_scheme(self.declared_types[&name.to_dotted_string()].1.clone());
                 let ty = type_for_reference(&ty);
 
                 match data {

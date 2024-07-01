@@ -515,7 +515,7 @@ impl Display for PilStatement {
             PilStatement::ConnectIdentity(_, left, right) => write_indented_by(
                 f,
                 format!(
-                    "{{ {} }} connect {{ {} }};",
+                    "[ {} ] connect [ {} ];",
                     format_list(left),
                     format_list(right)
                 ),
@@ -593,6 +593,20 @@ impl<E: Display> EnumDeclaration<E> {
                 self.variants.iter().map(|v| format!("{v},\n")).format(""),
                 1
             )
+        )
+    }
+}
+
+impl<Expr: Display> Display for SelectedExpressions<Expr> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}{}",
+            self.selector
+                .as_ref()
+                .map(|s| format!("{s} $ "))
+                .unwrap_or_default(),
+            self.expressions
         )
     }
 }
@@ -843,11 +857,17 @@ impl Display for UnaryOperator {
 impl<E: Display> Display for BlockExpression<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.statements.is_empty() {
-            write!(f, "{{ {} }}", self.expr)
+            if let Some(expr) = &self.expr {
+                write!(f, "{{ {expr} }}")
+            } else {
+                write!(f, "{{ }}")
+            }
         } else {
             writeln!(f, "{{")?;
             write_items_indented(f, &self.statements)?;
-            write_indented_by(f, &self.expr, 1)?;
+            if let Some(expr) = &self.expr {
+                write_indented_by(f, expr, 1)?;
+            }
             write!(f, "\n}}")
         }
     }
@@ -1136,12 +1156,12 @@ mod tests {
                 "a | b * (c << d + e) & (f ^ g) = h * (i + g);",
             ),
             (
-                "instr_or { 0, X, Y, Z } is (main_bin.latch * main_bin.sel[0]) { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
-                "instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
+                "instr_or $ [0, X, Y, Z] is (main_bin.latch * main_bin.sel[0]) $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
             ),
             (
-                "instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
-                "instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
+                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
             ),
             (
                 "pc' = (1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));",

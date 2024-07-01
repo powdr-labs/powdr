@@ -197,7 +197,7 @@ fn constraints() {
     let input = "
         let a;
         let BYTE: col = |i| std::convert::fe(i & 0xff);
-        { a + 1 } in {BYTE};
+        [ a + 1 ] in [BYTE];
         namespace std::convert(8);
         let fe = 18;
     ";
@@ -536,6 +536,50 @@ fn enum_too_many_fields() {
         X::A(_, _) => 2,
         _ => 3,
     };
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn empty_function() {
+    let input = "
+    let f: int -> () = |i| { };
+    let g: int -> () = |i| {
+        f(i);
+    };
+    
+    let h: () = g(4);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn empty_match() {
+    let input = "
+    let h: int -> int = |i| i;
+    let f: int -> () = |i| match i {
+        5 => { 
+            let _ = h(4);
+        },
+        _ => { }
+    };
+
+    let g: () = f(4);
+    let k: () = f(5);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn empty_conditional() {
+    let input = "
+    let h: int -> int = |i| i;
+    let f: int -> () = |i| if i == 5 {
+        let _ = h(4);
+    } else { };
+
+    let g: () = f(4);
+    let k: () = f(5);
     ";
     type_check(input, &[]);
 }
