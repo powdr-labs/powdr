@@ -21,6 +21,15 @@ impl Location {
         }
     }
 
+    pub fn parent(&self) -> Option<Self> {
+        if self.limbs.is_empty() {
+            return None;
+        }
+        let mut parent = self.clone();
+        parent.limbs.pop();
+        Some(parent)
+    }
+
     pub fn join<S: Into<String>>(mut self, limb: S) -> Self {
         self.limbs.push(limb.into());
         self
