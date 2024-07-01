@@ -1,8 +1,14 @@
 use std::prover::Query;
 use std::convert::fe;
 use std::protocols::permutation::permutation;
+use std::math::fp2::from_base;
+use std::prover::challenge;
 
 machine Main with degree: 8 {
+
+    let alpha = from_base(challenge(0, 1));
+    let beta = from_base(challenge(0, 2));
+
     col fixed first_four = [1, 1, 1, 1, 0, 0, 0, 0];
 
     // Two pairs of witness columns, claimed to be permutations of one another
@@ -21,6 +27,6 @@ machine Main with degree: 8 {
     // so we have to manually create it here and pass it to permutation(). 
     col witness stage(1) z;
     let is_first: col = |i| if i == 0 { 1 } else { 0 };
-    permutation(is_first, [z], permutation_constraint);
+    permutation(is_first, [z], alpha, beta, permutation_constraint);
 
 }
