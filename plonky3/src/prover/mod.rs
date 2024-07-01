@@ -156,14 +156,9 @@ mod tests {
     fn challenge() {
         let content = r#"
         let N: int = 8;
-        namespace std::prover(N);
-            let challenge = [];
-            enum Query {
-                Hint(int)
-            }
         
         namespace Global(N); 
-            let beta: expr = std::prover::challenge(0, 42); 
+            let beta: expr = std::prelude::challenge(0, 42);
             col witness stage(0) x;
             col witness stage(1) y;
             x = y + beta;
