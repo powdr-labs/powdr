@@ -11,9 +11,9 @@ use crate::witgen::rows::Row;
 
 /// A row entry in [FinalizableData].
 #[derive(Clone)]
-enum Entry<'a, T: FieldElement> {
+enum Entry<T: FieldElement> {
     /// The row is still in progress, and range constraints are still available.
-    InProgress(Row<'a, T>),
+    InProgress(Row<T>),
     Finalized(FinalizedRow<T>),
 }
 
@@ -42,21 +42,21 @@ impl<T> FinalizedRow<T> {
 /// Once a row has been finalized, any operation trying to access it again will fail at runtime.
 /// [FinalizableData::take_transposed] can be used to access the final cells.
 #[derive(Clone)]
-pub struct FinalizableData<'a, T: FieldElement> {
+pub struct FinalizableData<T: FieldElement> {
     /// The list of rows (either in progress or finalized)
-    data: Vec<Entry<'a, T>>,
+    data: Vec<Entry<T>>,
     /// The list of column IDs (in sorted order), used to index finalized rows.
     column_ids: Vec<PolyID>,
 }
 
-impl<'a, T: FieldElement> FinalizableData<'a, T> {
+impl<T: FieldElement> FinalizableData<T> {
     pub fn new(column_ids: &HashSet<PolyID>) -> Self {
         Self::with_initial_rows_in_progress(column_ids, [].into_iter())
     }
 
     pub fn with_initial_rows_in_progress(
         column_ids: &HashSet<PolyID>,
-        rows: impl Iterator<Item = Row<'a, T>>,
+        rows: impl Iterator<Item = Row<T>>,
     ) -> Self {
         let mut column_ids = column_ids.iter().cloned().collect::<Vec<_>>();
         column_ids.sort();
@@ -72,11 +72,11 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         self.data.is_empty()
     }
 
-    pub fn push(&mut self, row: Row<'a, T>) {
+    pub fn push(&mut self, row: Row<T>) {
         self.data.push(Entry::InProgress(row));
     }
 
-    pub fn pop(&mut self) -> Option<Row<'a, T>> {
+    pub fn pop(&mut self) -> Option<Row<T>> {
         match self.data.pop() {
             Some(Entry::InProgress(row)) => Some(row),
             Some(Entry::Finalized(_)) => panic!("Row already finalized."),
@@ -88,7 +88,7 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         self.data.extend(other.data);
     }
 
-    pub fn remove(&mut self, i: usize) -> Row<'a, T> {
+    pub fn remove(&mut self, i: usize) -> Row<T> {
         match self.data.remove(i) {
             Entry::InProgress(row) => row,
             Entry::Finalized(_) => panic!("Row {i} already finalized."),
@@ -99,14 +99,14 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         self.data.truncate(len);
     }
 
-    pub fn get_mut(&mut self, i: usize) -> Option<&mut Row<'a, T>> {
+    pub fn get_mut(&mut self, i: usize) -> Option<&mut Row<T>> {
         match &mut self.data[i] {
             Entry::InProgress(row) => Some(row),
             Entry::Finalized(_) => panic!("Row {i} already finalized."),
         }
     }
 
-    pub fn last(&self) -> Option<&Row<'a, T>> {
+    pub fn last(&self) -> Option<&Row<T>> {
         match self.data.last() {
             Some(Entry::InProgress(row)) => Some(row),
             Some(Entry::Finalized(_)) => panic!("Last row already finalized."),
@@ -114,7 +114,7 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         }
     }
 
-    pub fn mutable_row_pair(&mut self, i: usize) -> (&mut Row<'a, T>, &mut Row<'a, T>) {
+    pub fn mutable_row_pair(&mut self, i: usize) -> (&mut Row<T>, &mut Row<T>) {
         let (before, after) = self.data.split_at_mut(i + 1);
         let current = before.last_mut().unwrap();
         let next = after.first_mut().unwrap();
@@ -191,8 +191,8 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> Index<usize> for FinalizableData<'a, T> {
-    type Output = Row<'a, T>;
+impl<T: FieldElement> Index<usize> for FinalizableData<T> {
+    type Output = Row<T>;
 
     fn index(&self, index: usize) -> &Self::Output {
         match &self.data[index] {
@@ -202,7 +202,7 @@ impl<'a, T: FieldElement> Index<usize> for FinalizableData<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> IndexMut<usize> for FinalizableData<'a, T> {
+impl<T: FieldElement> IndexMut<usize> for FinalizableData<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         match &mut self.data[index] {
             Entry::InProgress(row) => row,

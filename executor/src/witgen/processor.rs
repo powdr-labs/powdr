@@ -69,7 +69,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The global index of the first row of [Processor::data].
     row_offset: RowIndex,
     /// The rows that are being processed.
-    data: FinalizableData<'a, T>,
+    data: FinalizableData<T>,
     /// The mutable state
     mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     /// The fixed data (containing information about all columns)
@@ -90,7 +90,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
     pub fn new(
         row_offset: RowIndex,
-        data: FinalizableData<'a, T>,
+        data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
@@ -156,7 +156,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             .unwrap_or(true)
     }
 
-    pub fn finish(self) -> FinalizableData<'a, T> {
+    pub fn finish(self) -> FinalizableData<T> {
         self.data
     }
 
@@ -464,7 +464,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         self.data.finalize_range(range);
     }
 
-    pub fn row(&self, i: usize) -> &Row<'a, T> {
+    pub fn row(&self, i: usize) -> &Row<T> {
         &self.data[i]
     }
 
@@ -473,7 +473,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     }
 
     /// Sets the ith row, extending the data if necessary.
-    pub fn set_row(&mut self, i: usize, row: Row<'a, T>) {
+    pub fn set_row(&mut self, i: usize, row: Row<T>) {
         if i < self.data.len() {
             self.data[i] = row;
         } else {
@@ -486,7 +486,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     pub fn check_row_pair(
         &mut self,
         row_index: usize,
-        proposed_row: &Row<'a, T>,
+        proposed_row: &Row<T>,
         identity: &'a Identity<T>,
         // This could be computed from the identity, but should be pre-computed for performance reasons.
         has_next_reference: bool,
