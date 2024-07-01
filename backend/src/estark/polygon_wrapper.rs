@@ -40,7 +40,6 @@ struct PolygonBackend<F: FieldElement>(EStarkFilesCommon<F>);
 impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<F> {
     fn prove(
         &self,
-        // Witness is taken from file written by the pipeline.
         witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
         // TODO: Implement challenges
