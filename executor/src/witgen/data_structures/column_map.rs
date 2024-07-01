@@ -100,6 +100,10 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
         self.keys().zip(self.values)
     }
 
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (PolyID, &mut V)> {
+        self.keys().zip(self.values.iter_mut())
+    }
+
     /// Returns an iterator over the values, in the order of the keys.
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.values.iter()
