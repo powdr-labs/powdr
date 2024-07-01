@@ -140,7 +140,32 @@ impl<'a> Folder for Canonicalizer<'a> {
                         canonicalize_inside_expression(e, &self.path, self.paths);
                     }
                 }
-                _ => {}
+                MachineStatement::InstructionDeclaration(_, _, i) => {
+                    for e in i.links.iter_mut().flat_map(|d| {
+                        once(&mut d.flag).chain(
+                            d.link
+                                .params
+                                .inputs
+                                .iter_mut()
+                                .chain(d.link.params.outputs.iter_mut()),
+                        )
+                    }) {
+                        canonicalize_inside_expression(e, &self.path, self.paths);
+                    }
+                }
+                MachineStatement::LinkDeclaration(_, d) => {
+                    for e in once(&mut d.flag).chain(
+                        d.link
+                            .params
+                            .inputs
+                            .iter_mut()
+                            .chain(d.link.params.outputs.iter_mut()),
+                    ) {
+                        canonicalize_inside_expression(e, &self.path, self.paths);
+                    }
+                }
+                MachineStatement::RegisterDeclaration(..) => {}
+                MachineStatement::OperationDeclaration(..) => {}
             }
         }
 
