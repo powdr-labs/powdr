@@ -167,14 +167,12 @@ impl<T: FieldElement> CellValue<T> {
 }
 
 #[derive(Clone, Default, PartialEq)]
-pub struct Row<'a, T: FieldElement> {
+pub struct Row<T: FieldElement> {
     /// The values in the row, zero if unknown.
     values: WitnessColumnMap<CellValue<T>>,
-    // TODO remove this.
-    names: Vec<&'a str>,
 }
 
-impl<'a, T: FieldElement> Row<'a, T> {
+impl<T: FieldElement> Row<T> {
     pub fn value_or_zero(&self, poly_id: &PolyID) -> T {
         self.values[poly_id].unwrap_or_zero()
     }
@@ -192,7 +190,7 @@ impl<'a, T: FieldElement> Row<'a, T> {
 
     /// Merges two rows, updating the first.
     /// Range constraints from the second row are ignored.
-    pub fn merge_with(&mut self, other: &Row<'a, T>) -> Result<(), ()> {
+    pub fn merge_with(&mut self, other: &Row<T>) -> Result<(), ()> {
         // First check for conflicts, otherwise we would have to roll back changes.
         if self
             .values
@@ -242,9 +240,9 @@ impl<'a, T: FieldElement> Row<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> Row<'a, T> {
+impl<T: FieldElement> Row<T> {
     /// Creates a "fresh" row, i.e., one that is empty but initialized with the global range constraints.
-    pub fn fresh(fixed_data: &'a FixedData<'a, T>, row: RowIndex) -> Row<'a, T> {
+    pub fn fresh(fixed_data: &FixedData<'_, T>, row: RowIndex) -> Row<T> {
         // TODO this instance could be computed exactly once (per column set) and then cloned.
         // TODO and we could copy in the external witnesses later on
         // TODO we should really only have a subset of the columns.
@@ -265,10 +263,7 @@ impl<'a, T: FieldElement> Row<'a, T> {
                     }
                 }),
         );
-        Self {
-            values,
-            names: vec![],
-        }
+        Self { values }
     }
 
     /// Builds a string representing the current row
@@ -330,7 +325,7 @@ impl<'a, T: FieldElement> Row<'a, T> {
     }
 }
 
-impl<T: FieldElement> From<Row<'_, T>> for WitnessColumnMap<T> {
+impl<T: FieldElement> From<Row<T>> for WitnessColumnMap<T> {
     /// Builds a map from polynomial ID to value. Unknown values are set to zero.
     fn from(row: Row<T>) -> Self {
         WitnessColumnMap::from(row.values.values_into_iter().map(|c| c.unwrap_or_zero()))
@@ -338,16 +333,16 @@ impl<T: FieldElement> From<Row<'_, T>> for WitnessColumnMap<T> {
 }
 
 /// A pair of mutable row references which knows how to apply updates.
-pub struct RowUpdater<'row, 'a, T: FieldElement> {
-    current: &'row mut Row<'a, T>,
-    next: &'row mut Row<'a, T>,
+pub struct RowUpdater<'row, T: FieldElement> {
+    current: &'row mut Row<T>,
+    next: &'row mut Row<T>,
     current_row_index: RowIndex,
 }
 
-impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
+impl<'row, T: FieldElement> RowUpdater<'row, T> {
     pub fn new(
-        current: &'row mut Row<'a, T>,
-        next: &'row mut Row<'a, T>,
+        current: &'row mut Row<T>,
+        next: &'row mut Row<T>,
         current_row_index: RowIndex,
     ) -> Self {
         Self {
@@ -379,7 +374,7 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
         self.get_row_mut(poly.next).apply_update(&poly.poly_id, c);
     }
 
-    fn get_row_mut<'b>(&'b mut self, next: bool) -> &'b mut Row<'a, T> {
+    fn get_row_mut(&mut self, next: bool) -> &mut Row<T> {
         match next {
             false => self.current,
             true => self.next,
@@ -405,8 +400,8 @@ pub enum UnknownStrategy {
 /// A pair of row references which knows which value / range constraint
 /// to return for a given [AlgebraicReference].
 pub struct RowPair<'row, 'a, T: FieldElement> {
-    pub current: &'row Row<'a, T>,
-    pub next: Option<&'row Row<'a, T>>,
+    pub current: &'row Row<T>,
+    pub next: Option<&'row Row<T>>,
     pub current_row_index: RowIndex,
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
@@ -414,8 +409,8 @@ pub struct RowPair<'row, 'a, T: FieldElement> {
 impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// Creates a new row pair.
     pub fn new(
-        current: &'row Row<'a, T>,
-        next: &'row Row<'a, T>,
+        current: &'row Row<T>,
+        next: &'row Row<T>,
         current_row_index: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
@@ -431,7 +426,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
 
     /// Creates a new row pair from a single row, setting the next row to None.
     pub fn from_single_row(
-        current: &'row Row<'a, T>,
+        current: &'row Row<T>,
         current_row_index: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
@@ -449,7 +444,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         self.get_row_mut(poly.next).value_is_known(&poly.poly_id)
     }
 
-    fn get_row_mut(&self, next: bool) -> &Row<'a, T> {
+    fn get_row_mut(&self, next: bool) -> &Row<T> {
         match next {
             false => self.current,
             true => self
@@ -458,7 +453,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         }
     }
 
-    fn get_row(&self, next: bool) -> &Row<'a, T> {
+    fn get_row(&self, next: bool) -> &Row<T> {
         match next {
             false => self.current,
             true => self

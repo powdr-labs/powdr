@@ -17,7 +17,7 @@ use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<&'a AlgebraicReference, T>,
-    block: FinalizableData<'a, T>,
+    block: FinalizableData<T>,
 }
 
 pub struct Generator<'a, T: FieldElement> {
@@ -25,7 +25,7 @@ pub struct Generator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
     witnesses: HashSet<PolyID>,
-    data: FinalizableData<'a, T>,
+    data: FinalizableData<T>,
     latch: Option<Expression<T>>,
     name: String,
 }
@@ -158,7 +158,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     fn compute_partial_first_row<Q: QueryCallback<T>>(
         &self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
-    ) -> Row<'a, T> {
+    ) -> Row<T> {
         // Use `BlockProcessor` + `DefaultSequenceIterator` using a "block size" of 0. Because `BlockProcessor`
         // expects `data` to include the row before and after the block, this means we'll run the
         // solver on exactly one row pair.
@@ -201,14 +201,13 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             DefaultSequenceIterator::new(0, identities_with_next_reference.len(), None),
         );
         processor.solve(&mut sequence_iterator).unwrap();
-        let first_row = processor.finish().remove(1);
 
-        first_row
+        processor.finish().remove(1)
     }
 
     fn process<'b, Q: QueryCallback<T>>(
         &self,
-        first_row: Row<'a, T>,
+        first_row: Row<T>,
         row_offset: DegreeType,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
         outer_query: Option<OuterQuery<'a, 'b, T>>,
