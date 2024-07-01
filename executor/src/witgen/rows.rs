@@ -201,6 +201,10 @@ impl<T: FieldElement> Row<T> {
     /// Merges two rows, updating the first.
     /// Range constraints from the second row are ignored.
     pub fn merge_with(&mut self, other: &Row<T>) -> Result<(), ()> {
+        debug_assert_eq!(
+            self.values.column_id_range(),
+            other.values.column_id_range()
+        );
         // First check for conflicts, otherwise we would have to roll back changes.
         if self
             .values

@@ -116,7 +116,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 mod tests {
     use std::collections::BTreeMap;
 
-    use powdr_ast::analyzed::{PolyID, PolynomialType};
+    use powdr_ast::analyzed::PolyID;
     use powdr_number::{FieldElement, GoldilocksField};
     use powdr_pil_analyzer::analyze_string;
 

@@ -52,6 +52,8 @@ impl<V: Clone, T: PolynomialTypeTrait> ColumnMap<V, T> {
 }
 
 impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
+    /// Creates a new ColumnMap from an iterator over values, corresponding
+    /// to the keys in the given range, in the iteration order.
     pub fn from(column_id_range: Range<usize>, values: impl Iterator<Item = V>) -> Self {
         let values: Vec<_> = values.collect();
         assert_eq!(values.len(), column_id_range.len());
@@ -98,16 +100,17 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
         self.keys().zip(self.values)
     }
 
-    // TODO check if usage assumes keys
+    /// Returns an iterator over the values, in the order of the keys.
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.values.iter()
     }
 
-    // TODO check if usage assumes keys
+    /// Returns an iterator over the values, in the order of the keys.
     pub fn values_into_iter(self) -> impl Iterator<Item = V> {
         self.values.into_iter()
     }
 
+    /// Returns a mutating iterator over the values, in the order of the keys.
     pub fn values_iter_mut(&mut self) -> impl Iterator<Item = &mut V> {
         self.values.iter_mut()
     }
