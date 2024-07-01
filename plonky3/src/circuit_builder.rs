@@ -1,27 +1,28 @@
 //! A plonky3 adapter for powdr
 //!
-//! Support for public values without the use of fixed columns.
+//! Supports public values without the use of fixed columns.
 //!
-//! Namely, given ith public value pub[i] corresponding to a witness value in
-//! row j of witness column x, a corresponding selector column s_i is constructed to
-//! constrain s_i * (pub[i] - x) on every row:
+//! Namely, given public value pub corresponding to a witness value in
+//! row j of witness column x, a corresponding selector column s is constructed
+//! to constrain s * (pub - x) on every row:
 //!
 //! col witness x;
 //! public out_x = col x(j);
-//! col witness s_i;
+//! col witness s;
+//! s * (pub - x) = 0;
 //!
-//! Moreover, s_i is constrained to be 1 at evaluation index s_i(j) and 0
+//! Moreover, s is constrained to be 1 at evaluation index s(j) and 0
 //! everywhere else by applying the `is_zero` transformation to a column 'decr'
 //! decrementing by 1 each row from an initial value set to j in the first row:
 //!
 //! col witness decr;
 //! decr(0) = j;
 //! decr - decr' - 1 = 0;
-//! s_i = is_zero(decr);
+//! s = is_zero(decr);
 //!
 //! Note that in Plonky3 this transformation requires an additional column
-//! to track the inverse of decr for the `is_zero` operation, requiring
-//! a total of 3 extra witness columns per public value.
+//! `inv_decr` to track the inverse of decr for the `is_zero` operation,
+//! therefore requiring a total of 3 extra witness columns per public value.
 
 use std::{any::TypeId, collections::BTreeMap};
 
@@ -62,13 +63,13 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     // publics rows: decrementor | inverse | selector
                     publics.clone().flat_map(move |(_, _, row_id)| {
                         let decr = T::from(row_id as u64) - T::from(i);
-                        let inverse = if i as usize == row_id {
+                        let inv_decr = if i as usize == row_id {
                             T::zero()
                         } else {
                             T::one() / decr
                         };
-                        let selector = T::from(i as usize == row_id);
-                        [decr, inverse, selector]
+                        let s = T::from(i as usize == row_id);
+                        [decr, inv_decr, s]
                     }),
                 )
             })
@@ -259,8 +260,8 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for P
 
         publics.iter().zip(pi_moved).enumerate().for_each(
             |(index, ((_, col_id, row_id), public_value))| {
-                //set decrementors for each column to be row_id and decrement each row
-                let (decr, inverse, selector, decr_next) = (
+                //set decr for each public to be row_id in the first row and decrement by 1 each row
+                let (decr, inv_decr, s, decr_next) = (
                     local[self.analyzed.commitment_count() + 3 * index],
                     local[self.analyzed.commitment_count() + 3 * index + 1],
                     local[self.analyzed.commitment_count() + 3 * index + 2],
@@ -276,14 +277,14 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for P
                 let mut when_transition = builder.when_transition();
                 when_transition.assert_eq(decr, decr_next + AB::Expr::one());
 
-                // is_zero logic-- selector(row) is 1 iff decr(row) is 0 and 0 otherwise
-                builder.assert_bool(selector);
-                builder.assert_eq(selector, AB::Expr::one() - inverse * decr); //constraining selector to 1 or 0
-                builder.assert_zero(selector * decr); //constraining is_zero
+                // is_zero logic-- s(row) is 1 iff decr(row) is 0 and 0 otherwise
+                builder.assert_bool(s);
+                builder.assert_eq(s, AB::Expr::one() - inv_decr * decr); //constraining s to 1 or 0
+                builder.assert_zero(s * decr); //constraining is_zero
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
                 let witness_col = local[*col_id];
-                builder.assert_zero(selector * (public_value.into() - witness_col));
+                builder.assert_zero(s * (public_value.into() - witness_col));
             },
         );
 
