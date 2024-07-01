@@ -623,14 +623,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // 1. Ignore the first row of the next block:
         new_block.pop();
         // 2. Merge the last row of the previous block
-        if !merge_row_with(
+        merge_row_with(
             new_block.get_mut(0).unwrap(),
             self.get_row(self.last_row_index()),
-        ) {
-            return Err(EvalError::Generic(
+        )
+        .map_err(|_| {
+            EvalError::Generic(
                 "Block machine overwrites existing value with different value!".to_string(),
-            ));
-        }
+            )
+        })?;
         // 3. Remove the last row of the previous block from data
         self.data.pop();
 

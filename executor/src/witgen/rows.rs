@@ -204,11 +204,12 @@ impl<T: FieldElement> Debug for Cell<'_, T> {
 pub type Row<'a, T> = WitnessColumnMap<Cell<'a, T>>;
 
 /// Merges two rows, updating the first.
-/// Range constrainst from the second row are ignored.
-/// @returns false if there was a conflict (two different known values)
-#[must_use]
-pub fn merge_row_with<'a, T: FieldElement>(row: &mut Row<'a, T>, other: &Row<'a, T>) -> bool {
-    // First check for conflicts.
+/// Range constraints from the second row are ignored.
+pub fn merge_row_with<'a, T: FieldElement>(
+    row: &mut Row<'a, T>,
+    other: &Row<'a, T>,
+) -> Result<(), ()> {
+    // First check for conflicts, otherwise we would have to roll back changes.
     if row
         .values()
         .zip(other.values())
@@ -217,7 +218,7 @@ pub fn merge_row_with<'a, T: FieldElement>(row: &mut Row<'a, T>, other: &Row<'a,
             _ => false,
         })
     {
-        return false;
+        return Err(());
     };
     *row = WitnessColumnMap::from(row.values().zip(other.values()).map(|(cell1, cell2)| {
         match (&cell1.value, &cell2.value) {
@@ -225,7 +226,7 @@ pub fn merge_row_with<'a, T: FieldElement>(row: &mut Row<'a, T>, other: &Row<'a,
             _ => cell2.clone(),
         }
     }));
-    true
+    Ok(())
 }
 
 // TODO will be impl method of row later.

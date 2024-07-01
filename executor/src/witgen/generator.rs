@@ -245,7 +245,6 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         assert_eq!(self.data.len() as DegreeType, self.fixed_data.degree + 1);
 
         let last_row = self.data.pop().unwrap();
-        let success = merge_row_with(&mut self.data[0], &last_row);
-        assert!(success);
+        merge_row_with(&mut self.data[0], &last_row).unwrap();
     }
 }
