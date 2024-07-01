@@ -126,8 +126,8 @@ pub fn set_global_constraints<'a, T: FieldElement>(
         }
     }
     let fixed_constraints = FixedColumnMap::from_indexed(
+        0..fixed_data.fixed_cols.len(),
         known_constraints.iter().map(|(p, c)| (*p, Some(c.clone()))),
-        fixed_data.fixed_cols.len(),
     );
 
     let mut retained_identities = vec![];
