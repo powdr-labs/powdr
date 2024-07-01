@@ -296,7 +296,9 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .collect::<BTreeMap<_, _>>();
 
         let witness_cols =
-            WitnessColumnMap::from(analyzed.committed_polys_in_source_order().iter().flat_map(
+            WitnessColumnMap::from(
+                0..analyzed.commitment_count(),
+                analyzed.committed_polys_in_source_order().iter().flat_map(
                 |(poly, value)| {
                     poly.array_elements()
                         .map(|(name, poly_id)| {
@@ -333,13 +335,15 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             );
         }
 
-        let fixed_cols =
-            FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)));
+        let fixed_cols = FixedColumnMap::from(
+            0..fixed_col_values.len(),
+            fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)),
+        );
 
         // The global range constraints are not set yet.
         let global_range_constraints = GlobalConstraints {
-            witness_constraints: WitnessColumnMap::new(None, witness_cols.len()),
-            fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
+            witness_constraints: WitnessColumnMap::new(None, 0..witness_cols.len()),
+            fixed_constraints: FixedColumnMap::new(None, 0..fixed_cols.len()),
         };
 
         FixedData {
@@ -382,7 +386,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn witness_map_with<V: Clone>(&self, initial_value: V) -> WitnessColumnMap<V> {
-        WitnessColumnMap::new(initial_value, self.witness_cols.len())
+        WitnessColumnMap::new(initial_value, 0..self.witness_cols.len())
     }
 
     fn column_name(&self, poly_id: &PolyID) -> &str {

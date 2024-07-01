@@ -1,6 +1,6 @@
 use std::{
     marker::PhantomData,
-    ops::{Index, IndexMut},
+    ops::{Index, IndexMut, Range},
 };
 
 use powdr_ast::analyzed::{PolyID, PolynomialType};
@@ -30,26 +30,36 @@ pub type FixedColumnMap<V> = ColumnMap<V, Fixed>;
 /// A Map indexed by polynomial ID, for a specific polynomial type (e.g. fixed or witness).
 /// For performance reasons, it uses a Vec<V> internally and assumes that the polynomial IDs
 /// are contiguous.
+/// If the IDs are not contiguous, accessing the columns between the minimal and maximal column ID
+/// will not lead to an error.
 #[derive(Clone)]
 pub struct ColumnMap<V, T: PolynomialTypeTrait> {
     values: Vec<V>,
+    /// The first column ID in the map.
+    // min_column_id: u64,
+    // /// The number of columns in the map.
+    // column_count: u64,
     _ptype: PhantomData<T>,
 }
 
 impl<V: Clone, T: PolynomialTypeTrait> ColumnMap<V, T> {
     /// Create a new ColumnMap with the given initial value and size.
-    pub fn new(initial_value: V, size: usize) -> Self {
+    pub fn new(initial_value: V, column_range: Range<usize>) -> Self {
+        assert_eq!(column_range.start, 0);
         ColumnMap {
-            values: vec![initial_value; size],
+            values: vec![initial_value; column_range.end - column_range.start],
             _ptype: PhantomData,
         }
     }
 }
 
 impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
-    pub fn from(values: impl Iterator<Item = V>) -> Self {
+    pub fn from(column_id_range: Range<usize>, values: impl Iterator<Item = V>) -> Self {
+        assert_eq!(column_id_range.start, 0);
+        let values: Vec<_> = values.collect();
+        assert_eq!(values.len(), column_id_range.end);
         ColumnMap {
-            values: values.collect(),
+            values,
             _ptype: PhantomData,
         }
     }
@@ -86,10 +96,12 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
         self.keys().zip(self.values)
     }
 
+    // TODO check
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.values.iter()
     }
 
+    // TODO check
     pub fn values_into_iter(self) -> impl Iterator<Item = V> {
         self.values.into_iter()
     }
@@ -98,8 +110,13 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
         self.values.iter_mut()
     }
 
+    // TODO remove in the long term
     pub fn len(&self) -> usize {
         self.values.len()
+    }
+
+    pub fn column_id_range(&self) -> Range<usize> {
+        0..self.values.len()
     }
 }
 

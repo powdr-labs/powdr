@@ -96,6 +96,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
         let is_relevant_witness = WitnessColumnMap::from(
+            fixed_data.witness_cols.column_id_range(),
             fixed_data
                 .witness_cols
                 .keys()
