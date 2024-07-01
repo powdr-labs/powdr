@@ -284,15 +284,6 @@ fn enum_simple() {
 }
 
 #[test]
-fn struct_simple() {
-    let input = "
-    struct X { one: int, two: string[], three: (int -> bool) }
-    let v: X -> int = |x| x.one;
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
 fn enum_constr() {
     let input = "
     enum X { A, B(int), C(string[], int) }
@@ -305,20 +296,6 @@ fn enum_constr() {
 
     ";
     type_check(input, &[]);
-}
-
-#[test]
-fn struct_constr() {
-    let input = "
-    struct X {one: int, two: bool}
-    let v: int -> X = |i| match i {
-        1 => X{one: 1, two: false},
-        2 => X{one: 2, two: true},
-        _ => X{one: 0, two: false}
-    };
-    ";
-
-    type_check(input, &[])
 }
 
 #[test]
@@ -582,4 +559,32 @@ fn empty_conditional() {
     let k: () = f(5);
     ";
     type_check(input, &[]);
+}
+
+#[test]
+fn simple_struct() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let dot = Dot { x: 3, y: 4 };
+    let f: Dot -> int = |x| x.a;
+
+    let x: int = f(dot);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn struct_constr() {
+    let input = "
+    struct X {one: int, two: bool}
+    let v: int -> X = |i| match i {
+        1 => X{one: 1, two: false},
+        2 => X{one: 2, two: true},
+        _ => X{one: 0, two: false}
+    };
+
+    let x = v(1);
+    ";
+
+    type_check(input, &[])
 }

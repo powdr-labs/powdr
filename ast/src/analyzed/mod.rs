@@ -20,7 +20,7 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayLiteral, EnumDeclaration, EnumVariant, StructDeclaration, StructValue,
+    self, ArrayLiteral, EnumDeclaration, EnumVariant, NamedExpression, StructDeclaration,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -562,7 +562,7 @@ impl Children<Expression> for TypeDeclaration {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum TypeConstructor {
     Enum(Arc<EnumDeclaration>, EnumVariant),
-    Struct(Arc<StructDeclaration>, Vec<StructValue<Expression>>),
+    Struct(Arc<StructDeclaration>, Vec<NamedExpression<Expression>>),
 }
 
 impl Children<Expression> for TypeConstructor {

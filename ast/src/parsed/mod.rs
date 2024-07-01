@@ -241,31 +241,31 @@ pub struct StructDeclaration<E = u64> {
     pub fields: BTreeMap<String, Type<E>>,
 }
 
+impl<R> Children<Expression<R>> for StructDeclaration<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(empty())
+    }
+}
+
+impl<R> Children<Expression<R>> for StructDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(empty())
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct StructValue<Expression> {
+pub struct NamedExpression<Expression> {
     pub name: String,
     pub value: Expression,
 }
 
-impl<R> Children<Expression<R>> for StructDeclaration<u64> {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(empty())
-    }
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(empty())
-    }
-}
-
-impl<R> Children<Expression<R>> for StructDeclaration<Expression<R>> {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(self.fields.values().flat_map(|f| f.children()))
-    }
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(self.fields.values_mut().flat_map(|f| f.children_mut()))
-    }
-}
-
-impl<R> Children<Expression<R>> for StructValue<Expression<R>> {
+impl<R> Children<Expression<R>> for NamedExpression<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(once(&self.value))
     }
@@ -405,6 +405,7 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     MatchExpression(SourceRef, MatchExpression<Self>),
     IfExpression(SourceRef, IfExpression<Self>),
     BlockExpression(SourceRef, BlockExpression<Self>),
+    StructExpression(SourceRef, StructExpression<Self>),
 }
 
 /// Comparison function for expressions that ignore source information.
@@ -441,7 +442,8 @@ impl_partial_eq_for_expression!(
     FreeInput,
     MatchExpression,
     IfExpression,
-    BlockExpression
+    BlockExpression,
+    StructExpression
 );
 
 pub trait SourceReference {
@@ -483,7 +485,8 @@ impl_source_reference!(
     FreeInput,
     MatchExpression,
     IfExpression,
-    BlockExpression
+    BlockExpression,
+    StructExpression
 );
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
@@ -712,6 +715,7 @@ impl<R> Expression<R> {
             Expression::MatchExpression(_, match_expr) => match_expr.children(),
             Expression::IfExpression(_, if_expr) => if_expr.children(),
             Expression::BlockExpression(_, block_expr) => block_expr.children(),
+            Expression::StructExpression(_, struct_expr) => struct_expr.children(),
         }
     }
 
@@ -737,6 +741,7 @@ impl<R> Expression<R> {
             Expression::MatchExpression(_, match_expr) => match_expr.children_mut(),
             Expression::IfExpression(_, if_expr) => if_expr.children_mut(),
             Expression::BlockExpression(_, block_expr) => block_expr.children_mut(),
+            Expression::StructExpression(_, struct_expr) => struct_expr.children_mut(),
         }
     }
 }
@@ -1052,6 +1057,23 @@ impl<E> Children<E> for IfExpression<E> {
                 .chain(once(&mut self.else_body))
                 .map(|e| e.as_mut()),
         )
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct StructExpression<E = Expression<NamespacedPolynomialReference>> {
+    pub name: String,
+    pub type_args: Option<Vec<Type<Expression>>>,
+    pub fields: Vec<NamedExpression<E>>,
+}
+
+impl<R> Children<Expression<R>> for StructExpression<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(self.fields.iter().flat_map(|f| f.children()))
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(self.fields.iter_mut().flat_map(|f| f.children_mut()))
     }
 }
 

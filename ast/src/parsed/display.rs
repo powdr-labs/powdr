@@ -647,6 +647,27 @@ impl<E: Display> Display for StructDeclaration<E> {
     }
 }
 
+impl<E: Display> Display for StructExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}{}",
+            self.name,
+            if self.fields.is_empty() {
+                "".to_string()
+            } else {
+                format!(
+                    "{{ {} }}",
+                    self.fields
+                        .iter()
+                        .map(|named_expr| format!("{}: {}", named_expr.name, named_expr.value))
+                        .format(", ")
+                )
+            }
+        )
+    }
+}
+
 fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
     format!("{}", list.into_iter().format(", "))
 }
@@ -677,6 +698,7 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::BlockExpression(_, block_expr) => {
                 write!(f, "{block_expr}")
             }
+            Expression::StructExpression(_, s) => write!(f, "{s}"),
         }
     }
 }
