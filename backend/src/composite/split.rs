@@ -15,16 +15,12 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
-use super::merged_machines::MergedMachines;
-
 /// Splits a PIL into multiple PILs, one for each "machine".
 /// The rough algorithm is as follows:
 /// 1. The PIL is split into namespaces
 /// 2. Any lookups or permutations that reference multiple namespaces are removed.
-/// 3. Any other constraints that reference multiple namespaces lead to the two namespaces being merged.
 pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
-    let (statements_by_namespace, merged_machines) = split_by_namespace(&pil);
-    let statements_by_machine = merge_namespaces(statements_by_namespace, merged_machines);
+    let statements_by_machine = split_by_namespace(&pil);
 
     statements_by_machine
         .into_iter()
@@ -84,18 +80,15 @@ fn referenced_namespaces<F: FieldElement>(
 /// Organizes the PIL statements by namespace:
 /// - Any definition or public declaration belongs to the namespace of the symbol.
 /// - Lookups and permutations that reference multiple namespaces removed.
-/// - Other constraints that reference multiple namespaces lead to the two namespaces being merged.
 ///
 /// Returns:
 /// - statements_by_namespace: A map from namespace to the statements in that namespace.
-/// - merged_machines: A MergeMachines object that contains the namespaces that need to be merged.
 fn split_by_namespace<F: FieldElement>(
     pil: &Analyzed<F>,
-) -> (BTreeMap<String, Vec<StatementIdentifier>>, MergedMachines) {
+) -> BTreeMap<String, Vec<StatementIdentifier>> {
     let mut current_namespace = String::new();
 
     let mut statements_by_namespace: BTreeMap<String, Vec<StatementIdentifier>> = BTreeMap::new();
-    let mut merged_machines = MergedMachines::new();
     for statement in pil.source_order.clone() {
         let statement = match &statement {
             StatementIdentifier::Definition(name)
@@ -120,14 +113,7 @@ fn split_by_namespace<F: FieldElement>(
                             None
                         }
                         _ => {
-                            log::debug!("Identity references multiple namespaces: {identity}");
-                            log::debug!("=> Merging namespaces: {:?}", namespaces);
-                            let mut namespace_iter = namespaces.into_iter();
-                            let first_namespace = namespace_iter.next().unwrap();
-                            for namespace in namespace_iter {
-                                merged_machines.merge(first_namespace.clone(), namespace);
-                            }
-                            Some(statement)
+                            panic!("Identity references multiple namespaces: {identity}");
                         }
                     },
                 }
@@ -141,37 +127,7 @@ fn split_by_namespace<F: FieldElement>(
                 .push(statement);
         }
     }
-    (statements_by_namespace, merged_machines)
-}
-
-/// Combines the statements in `statements_by_namespace` according to the
-/// equivalence classes in `merged_machines`.
-fn merge_namespaces(
-    statements_by_namespace: BTreeMap<String, Vec<StatementIdentifier>>,
-    merged_machines: MergedMachines,
-) -> BTreeMap<String, Vec<StatementIdentifier>> {
-    let namespace_to_machine_name = merged_machines
-        .merged_machines()
-        .into_iter()
-        .flat_map(|machines| {
-            let machine_name = machines.clone().into_iter().collect::<Vec<_>>().join(" + ");
-            machines
-                .into_iter()
-                .map(move |machine| (machine, machine_name.clone()))
-        })
-        .collect::<BTreeMap<_, _>>();
-    let mut statements_by_machine: BTreeMap<String, Vec<StatementIdentifier>> = BTreeMap::new();
-    for (namespace, statements) in statements_by_namespace {
-        let machine_name = namespace_to_machine_name
-            .get(&namespace)
-            .unwrap_or(&namespace)
-            .clone();
-        statements_by_machine
-            .entry(machine_name)
-            .or_default()
-            .extend(statements);
-    }
-    statements_by_machine
+    statements_by_namespace
 }
 
 /// Given a PIL and a list of statements, returns a new PIL that only contains the

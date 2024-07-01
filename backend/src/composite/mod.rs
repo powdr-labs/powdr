@@ -8,7 +8,6 @@ use split::select_machine_columns;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
-mod merged_machines;
 mod split;
 
 /// A composite proof that contains a proof for each machine separately.
