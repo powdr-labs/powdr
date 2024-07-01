@@ -309,12 +309,12 @@ machine Arith with
     *
     *****/
 
-    sum(16, |i| x1[i] * CLK32[i]) + sum(16, |i| y1[i] * CLK32[16 + i]) in BYTE2;
-    sum(16, |i| x2[i] * CLK32[i]) + sum(16, |i| y2[i] * CLK32[16 + i]) in BYTE2;
-    sum(16, |i| x3[i] * CLK32[i]) + sum(16, |i| y3[i] * CLK32[16 + i]) in BYTE2;
+    [sum(16, |i| x1[i] * CLK32[i]) + sum(16, |i| y1[i] * CLK32[16 + i])] in [BYTE2];
+    [sum(16, |i| x2[i] * CLK32[i]) + sum(16, |i| y2[i] * CLK32[16 + i])] in [BYTE2];
+    [sum(16, |i| x3[i] * CLK32[i]) + sum(16, |i| y3[i] * CLK32[16 + i])] in [BYTE2];
     // Note that for q0-q2, we only range-constrain the first 15 limbs here
-    sum(16, |i| s[i] * CLK32[i]) + sum(15, |i| q0[i] * CLK32[16 + i]) in BYTE2;
-    sum(15, |i| q1[i] * CLK32[i]) + sum(15, |i| q2[i] * CLK32[16 + i]) in BYTE2;
+    [sum(16, |i| s[i] * CLK32[i]) + sum(15, |i| q0[i] * CLK32[16 + i])] in [BYTE2];
+    [sum(15, |i| q1[i] * CLK32[i]) + sum(15, |i| q2[i] * CLK32[16 + i])] in [BYTE2];
 
     // The most significant limbs of q0-q2 are constrained to be 32 bits
     // In Polygon's version they are 19 bits, but that requires increasing the minimum degree
@@ -324,7 +324,7 @@ machine Arith with
     // limbs of the prime, so the result is within 48 bits, still far from overflowing the
     // Goldilocks field.
     pol witness q0_15_high, q0_15_low, q1_15_high, q1_15_low, q2_15_high, q2_15_low;
-    q0_15_high * CLK32[0] + q0_15_low * CLK32[1] + q1_15_high * CLK32[2] + q1_15_low * CLK32[3] + q2_15_high * CLK32[4] + q2_15_low * CLK32[5] in BYTE2;
+    [q0_15_high * CLK32[0] + q0_15_low * CLK32[1] + q1_15_high * CLK32[2] + q1_15_low * CLK32[3] + q2_15_high * CLK32[4] + q2_15_low * CLK32[5]] in [BYTE2];
 
     fixed_inside_32_block(q0_15_high);
     fixed_inside_32_block(q0_15_low);
@@ -442,12 +442,12 @@ machine Arith with
     // while still preventing overflows: The 32-bit carry gets added to 32 48-Bit values, which can't overflow
     // the Goldilocks field.
     pol witness carry_low[3], carry_high[3];
-    { carry_low[0] } in { BYTE2 };
-    { carry_low[1] } in { BYTE2 };
-    { carry_low[2] } in { BYTE2 };
-    { carry_high[0] } in { BYTE2 };
-    { carry_high[1] } in { BYTE2 };
-    { carry_high[2] } in { BYTE2 };
+    [ carry_low[0] ] in [ BYTE2 ];
+    [ carry_low[1] ] in [ BYTE2 ];
+    [ carry_low[2] ] in [ BYTE2 ];
+    [ carry_high[0] ] in [ BYTE2 ];
+    [ carry_high[1] ] in [ BYTE2 ];
+    [ carry_high[2] ] in [ BYTE2 ];
 
     // Carries can be any integer in the range [-2**31, 2**31 - 1)
     let carry: expr[3] = array::new(3, |i| carry_high[i] * 2**16 + carry_low[i] - 2 ** 31);

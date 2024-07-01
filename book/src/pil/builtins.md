@@ -142,7 +142,7 @@ machine Sqrt {
 ### Challenges
 
 ```rust
-let std::prover::challenge: int, int -> expr
+let std::prelude::challenge: int, int -> expr
 ```
 
 Constructs a challenge object, essentially asking the verifier for a random number.

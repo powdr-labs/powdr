@@ -87,13 +87,13 @@ impl Display for Import {
 
 impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "{}{} {{", &self.arguments, &self.properties)?;
+        writeln!(f, "{}{} {{", &self.params, &self.properties)?;
         write_items_indented(f, &self.statements)?;
         write!(f, "}}")
     }
 }
 
-impl Display for MachineArguments {
+impl Display for MachineParams {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let args = self.0.iter().join(", ");
         if !args.is_empty() {
@@ -207,7 +207,13 @@ impl Display for MachineStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             MachineStatement::Pil(_, statement) => write!(f, "{statement}"),
-            MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),
+            MachineStatement::Submachine(_, ty, name, args) => {
+                let mut args = args.iter().join(", ");
+                if !args.is_empty() {
+                    args = format!("({args})");
+                }
+                write!(f, "{ty} {name}{args};")
+            }
             MachineStatement::RegisterDeclaration(_, name, flag) => write!(
                 f,
                 "reg {}{};",
@@ -509,7 +515,7 @@ impl Display for PilStatement {
             PilStatement::ConnectIdentity(_, left, right) => write_indented_by(
                 f,
                 format!(
-                    "{{ {} }} connect {{ {} }};",
+                    "[ {} ] connect [ {} ];",
                     format_list(left),
                     format_list(right)
                 ),
@@ -586,6 +592,20 @@ impl<E: Display> EnumDeclaration<E> {
                 self.variants.iter().map(|v| format!("{v},\n")).format(""),
                 1
             )
+        )
+    }
+}
+
+impl<Expr: Display> Display for SelectedExpressions<Expr> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}{}",
+            self.selector
+                .as_ref()
+                .map(|s| format!("{s} $ "))
+                .unwrap_or_default(),
+            self.expressions
         )
     }
 }
@@ -814,11 +834,17 @@ impl Display for UnaryOperator {
 impl<E: Display> Display for BlockExpression<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.statements.is_empty() {
-            write!(f, "{{ {} }}", self.expr)
+            if let Some(expr) = &self.expr {
+                write!(f, "{{ {expr} }}")
+            } else {
+                write!(f, "{{ }}")
+            }
         } else {
             writeln!(f, "{{")?;
             write_items_indented(f, &self.statements)?;
-            write_indented_by(f, &self.expr, 1)?;
+            if let Some(expr) = &self.expr {
+                write_indented_by(f, expr, 1)?;
+            }
             write!(f, "\n}}")
         }
     }
@@ -932,7 +958,7 @@ mod tests {
         let p = Param {
             name: "abc".into(),
             index: None,
-            ty: Some("ty".into()),
+            ty: "ty".parse().ok(),
         };
         assert_eq!(p.to_string(), "abc: ty");
         let empty = Params::<Param>::default();
@@ -943,24 +969,24 @@ mod tests {
                 Param {
                     name: "abc".into(),
                     index: Some(7u32.into()),
-                    ty: Some("ty0".into()),
+                    ty: "ty0".parse().ok(),
                 },
                 Param {
                     name: "def".into(),
                     index: None,
-                    ty: Some("ty1".into()),
+                    ty: "ty1".parse().ok(),
                 },
             ],
             outputs: vec![
                 Param {
                     name: "abc".into(),
                     index: None,
-                    ty: Some("ty0".into()),
+                    ty: "ty0".parse().ok(),
                 },
                 Param {
                     name: "def".into(),
                     index: Some(2u32.into()),
-                    ty: Some("ty1".into()),
+                    ty: "ty1".parse().ok(),
                 },
             ],
         };
@@ -977,7 +1003,7 @@ mod tests {
             outputs: vec![Param {
                 name: "abc".into(),
                 index: None,
-                ty: Some("ty".into()),
+                ty: "ty".parse().ok(),
             }],
         };
         assert_eq!(out.to_string(), "-> abc: ty");
@@ -986,7 +1012,7 @@ mod tests {
             inputs: vec![Param {
                 name: "abc".into(),
                 index: None,
-                ty: Some("ty".into()),
+                ty: "ty".parse().ok(),
             }],
             outputs: vec![],
         };
@@ -1107,12 +1133,12 @@ mod tests {
                 "a | b * (c << d + e) & (f ^ g) = h * (i + g);",
             ),
             (
-                "instr_or { 0, X, Y, Z } is (main_bin.latch * main_bin.sel[0]) { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
-                "instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
+                "instr_or $ [0, X, Y, Z] is (main_bin.latch * main_bin.sel[0]) $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
             ),
             (
-                "instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
-                "instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };",
+                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
             ),
             (
                 "pc' = (1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));",
