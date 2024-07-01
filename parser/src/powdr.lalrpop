@@ -585,7 +585,7 @@ Term: Box<Expression> = {
     MatchExpression,
     IfExpression,
     BlockExpression,
-    StructExpression,
+    //StructExpression,
     <start:@L> "[" <items:ExpressionList> "]" <end:@R> => ctx.to_expr_with_source_ref(ArrayLiteral{items}, start, end),
     <start:@L> "(" <head:Expression> "," <tail:ExpressionList> ")" <end:@R> => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start, end), list)) },
     <start:@L> "(" ")" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
@@ -632,22 +632,22 @@ IfExpression: Box<Expression> = {
         <end:@R> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start, end),
 }
 
-StructExpression: Box<Expression> = {
-    <start:@L> <name:Identifier> "{" <fields:StructExpressionList+> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
-}
+// StructExpression: Box<Expression> = {
+//     <start:@L> <name:Identifier> "{" <fields:StructExpressionList+> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
+// }
 
-StructExpressionList: BTreeMap<String, Box<Expression>> = {
-    => BTreeMap::new(),
-    <map:(<StructExpressionField> ",")*> <end:StructExpressionField> ","? => {
-        let mut hashmap = map.into_iter().collect::<BTreeMap<_, _>>();
-        hashmap.insert(end.0, end.1);
-        hashmap
-    }
-}
+// StructExpressionList: BTreeMap<String, Box<Expression>> = {
+//     => BTreeMap::new(),
+//     <map:(<StructExpressionField> ",")*> <end:StructExpressionField> ","? => {
+//         let mut hashmap = map.into_iter().collect::<BTreeMap<_, _>>();
+//         hashmap.insert(end.0, end.1);
+//         hashmap
+//     }
+// }
 
-StructExpressionField: (String, Box<Expression>) = {
-    <name:Identifier> ":" <value:BoxedExpression> => (name, value)
-}
+// StructExpressionField: (String, Box<Expression>) = {
+//     <name:Identifier> ":" <value:BoxedExpression> => (name, value)
+// }
 
 BlockExpression: Box<Expression> = {
     <start:@L> "{" <statements:StatementInsideBlock*> <expr:BoxedExpression?> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),

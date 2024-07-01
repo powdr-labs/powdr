@@ -671,32 +671,8 @@ impl<'a> TypeChecker<'a> {
                 self.local_var_types.truncate(original_var_count);
                 result?
             }
-            Expression::StructExpression(source_ref, struct_expr) => {
-                let (ty, args) =
-                    self.instantiate_scheme(self.declared_types[&struct_expr.name].1.clone());
-                let ty = type_for_reference(&ty);
-                let Type::Function(FunctionType { params, value }) = ty else {
-                    return Err(source_ref.with_error(format!(
-                        "Expected struct for expression {struct_expr} but got {ty}"
-                    )));
-                };
-                if !matches!(value.as_ref(), Type::NamedType(_, _)) {
-                    return Err(source_ref.with_error(format!(
-                        "Expected struct for expression {struct_expr} but got {value}"
-                    )));
-                }
-                if params.len() != struct_expr.data.len() {
-                    return Err(source_ref.with_error(format!(
-                        "Invalid number of data fields for struct {struct_expr}. Expected {} but got {}.",
-                        params.len(),
-                        struct_expr.data.len()
-                    )));
-                }
-                params
-                    .iter()
-                    .zip(struct_expr.data.iter_mut())
-                    .try_for_each(|(ty, expr)| self.expect_type(ty, expr))?;
-                (*value).clone()
+            Expression::StructExpression(source_ref: _, struct_expr: _) => {
+                panic!("Struct expressions are not yet supported.");
             }
         })
     }
