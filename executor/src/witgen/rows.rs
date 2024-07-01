@@ -203,7 +203,9 @@ impl<T: FieldElement> Row<T> {
         {
             return Err(());
         };
+        let range = self.values.column_id_range();
         self.values = WitnessColumnMap::from(
+            range,
             std::mem::take(&mut self.values)
                 .values_into_iter()
                 .zip(other.values.values())
@@ -247,6 +249,7 @@ impl<T: FieldElement> Row<T> {
         // TODO and we could copy in the external witnesses later on
         // TODO we should really only have a subset of the columns.
         let values = WitnessColumnMap::from(
+            fixed_data.witness_cols.column_id_range(),
             fixed_data
                 .global_range_constraints()
                 .witness_constraints
@@ -328,7 +331,10 @@ impl<T: FieldElement> Row<T> {
 impl<T: FieldElement> From<Row<T>> for WitnessColumnMap<T> {
     /// Builds a map from polynomial ID to value. Unknown values are set to zero.
     fn from(row: Row<T>) -> Self {
-        WitnessColumnMap::from(row.values.values_into_iter().map(|c| c.unwrap_or_zero()))
+        WitnessColumnMap::from(
+            row.values.column_id_range(),
+            row.values.values_into_iter().map(|c| c.unwrap_or_zero()),
+        )
     }
 }
 
