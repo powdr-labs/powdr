@@ -162,12 +162,7 @@ mod tests {
         let mut fixed_lookup = FixedLookup::new(fixed_data.global_range_constraints().clone());
         let mut machines = [];
 
-        let columns = (0..fixed_data.witness_cols.len())
-            .map(move |i| PolyID {
-                id: i as u64,
-                ptype: PolynomialType::Committed,
-            })
-            .collect();
+        let columns = fixed_data.witness_cols.keys().collect();
         let data = FinalizableData::with_initial_rows_in_progress(
             &columns,
             (0..fixed_data.degree)
