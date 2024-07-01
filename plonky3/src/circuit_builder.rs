@@ -277,9 +277,9 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for P
                 let mut when_transition = builder.when_transition();
                 when_transition.assert_eq(decr, decr_next + AB::Expr::one());
 
-                // is_zero logic-- s(row) is 1 iff decr(row) is 0 and 0 otherwise
-                builder.assert_bool(s);
-                builder.assert_eq(s, AB::Expr::one() - inv_decr * decr); //constraining s to 1 or 0
+                // is_zero logic-- s(row) is 1 if decr(row) is 0 and 0 otherwise
+                builder.assert_bool(s); //constraining s to 1 or 0
+                builder.assert_eq(s, AB::Expr::one() - inv_decr * decr);
                 builder.assert_zero(s * decr); //constraining is_zero
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
