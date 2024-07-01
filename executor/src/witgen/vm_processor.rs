@@ -54,6 +54,8 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The subset of identities that does not contain a reference to the next row
     /// (precomputed once for performance reasons)
     identities_without_next_ref: Vec<&'a Identity<T>>,
+    /// A prototypical row that contains global range constraints but otherwise on values.
+    basic_row: Row<T>,
     last_report: DegreeType,
     last_report_time: Instant,
     processor: Processor<'a, 'b, 'c, T, Q>,
@@ -82,12 +84,15 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .unwrap(),
         );
 
+        let basic_row = Row::fresh(fixed_data, witnesses.iter().cloned());
+
         VmProcessor {
             row_offset: row_offset.into(),
             witnesses: witnesses.clone(),
             fixed_data,
             identities_with_next_ref: identities_with_next,
             identities_without_next_ref: identities_without_next,
+            basic_row,
             last_report: 0,
             last_report_time: Instant::now(),
             processor,
@@ -229,7 +234,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         if row_index == self.processor.len() as DegreeType - 1 {
             self.processor.set_row(
                 self.processor.len(),
-                Row::fresh(
+                self.basic_row.clone().with_external_witness_values(
                     self.fixed_data,
                     RowIndex::from_degree(row_index, self.fixed_data.degree) + 1,
                 ),

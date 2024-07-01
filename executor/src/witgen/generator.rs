@@ -111,6 +111,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         witnesses: HashSet<PolyID>,
         latch: Option<Expression<T>>,
     ) -> Self {
+        // TODO restrict columns to those in witnesses
         let data = FinalizableData::new(&witnesses);
         Self {
             connecting_identities: connecting_identities.clone(),
@@ -165,14 +166,15 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         // Note that using `BlockProcessor` instead of `VmProcessor` is more convenient here because
         // it does not assert that the row is "complete" afterwards (i.e., that all identities
         // are satisfied assuming 0 for unknown values).
+        let row = Row::fresh(self.fixed_data, self.witnesses.iter().cloned());
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.witnesses,
             [
-                Row::fresh(
+                row.clone().with_external_witness_values(
                     self.fixed_data,
                     RowIndex::from_i64(-1, self.fixed_data.degree),
                 ),
-                Row::fresh(
+                row.with_external_witness_values(
                     self.fixed_data,
                     RowIndex::from_i64(0, self.fixed_data.degree),
                 ),

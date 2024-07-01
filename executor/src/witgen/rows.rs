@@ -1,11 +1,13 @@
 use std::{
     collections::HashSet,
     fmt::Display,
-    ops::{Add, Sub},
+    ops::{Add, Range, Sub},
 };
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
+};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::Constraint;
@@ -255,22 +257,24 @@ impl<T: FieldElement> Row<T> {
 
 impl<T: FieldElement> Row<T> {
     /// Creates a "fresh" row, i.e., one that is empty but initialized with the global range constraints.
-    pub fn fresh(fixed_data: &FixedData<'_, T>, row: RowIndex) -> Row<T> {
-        // TODO this instance could be computed exactly once (per column set) and then cloned.
-        // TODO and we could copy in the external witnesses later on
-        // TODO we should really only have a subset of the columns.
+    pub fn fresh(fixed_data: &FixedData<'_, T>, columns: impl Iterator<Item = PolyID>) -> Row<T> {
+        let column_id_range = columns
+            .map(|poly_id| poly_id.id as usize)
+            .minmax()
+            .into_option()
+            .map(|(min, max)| min..(max - 1))
+            .unwrap_or_default();
+
         let values = WitnessColumnMap::from(
-            fixed_data.witness_cols.column_id_range(),
+            column_id_range.clone(),
             fixed_data
                 .global_range_constraints()
                 .witness_constraints
                 .iter()
-                .map(|(poly_id, rc)| {
-                    if let Some(external_witness) =
-                        fixed_data.external_witness(row.into(), &poly_id)
-                    {
-                        CellValue::Known(external_witness)
-                    } else if let Some(rc) = rc {
+                // TODO maybe the Range should be over PolyID directly instead of usize?
+                .filter(|(poly_id, _)| column_id_range.contains(&(poly_id.id as usize)))
+                .map(|(_, rc)| {
+                    if let Some(rc) = rc {
                         CellValue::RangeConstraint(rc.clone())
                     } else {
                         CellValue::Unknown
@@ -278,6 +282,22 @@ impl<T: FieldElement> Row<T> {
                 }),
         );
         Self { values }
+    }
+
+    /// Adds the externally-provided witness values for the given row.
+    pub fn with_external_witness_values(
+        mut self,
+        fixed_data: &FixedData<'_, T>,
+        row: RowIndex,
+    ) -> Self {
+        // TODO we should store which witness cols have external data at some point higher up in the call chain
+        let row = DegreeType::from(row);
+        for (poly_id, cell) in self.values.iter_mut() {
+            if let Some(external_witness) = fixed_data.external_witness(row, &poly_id) {
+                *cell = CellValue::Known(external_witness);
+            }
+        }
+        self
     }
 
     /// Builds a string representing the current row

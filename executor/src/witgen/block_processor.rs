@@ -165,8 +165,7 @@ mod tests {
         let columns = fixed_data.witness_cols.keys().collect();
         let data = FinalizableData::with_initial_rows_in_progress(
             &columns,
-            (0..fixed_data.degree)
-                .map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, fixed_data.degree))),
+            (0..fixed_data.degree).map(|i| Row::fresh(&fixed_data, fixed_data.witness_cols.keys())),
         );
 
         let mut mutable_state = MutableState {

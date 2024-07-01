@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::iter;
+use std::ops::Range;
 
 use super::{EvalResult, FixedData, FixedLookup};
 
@@ -107,6 +108,8 @@ pub struct BlockMachine<'a, T: FieldElement> {
     connection_type: ConnectionType,
     /// The internal identities
     identities: Vec<&'a Identity<T>>,
+    /// A prototypical row with global range constraints set, but uninitialized otherwise.
+    basic_row: Row<T>,
     /// The data of the machine.
     data: FinalizableData<T>,
     /// The index of the first row that has not been finalized yet.
@@ -152,9 +155,16 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // In `take_witness_col_values()`, this block will be removed and its values will be used to
         // construct the "default" block used to fill up unused rows.
         let start_index = RowIndex::from_i64(-(block_size as i64), fixed_data.degree);
+        // compute the min and max of the witness col ids
+
+        let basic_row = Row::fresh(fixed_data, witness_cols.iter().cloned());
         let data = FinalizableData::with_initial_rows_in_progress(
             witness_cols,
-            (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
+            (0..block_size).map(|i| {
+                basic_row
+                    .clone()
+                    .with_external_witness_values(fixed_data, start_index + i)
+            }),
         );
         Some(BlockMachine {
             name,
@@ -163,6 +173,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             connecting_identities: connecting_identities.clone(),
             connection_type: is_permutation,
             identities: identities.to_vec(),
+            basic_row,
             data,
             first_in_progress_row: block_size,
             witness_cols: witness_cols.clone(),
@@ -560,7 +571,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // and the first row of the next block.
         let block = FinalizableData::with_initial_rows_in_progress(
             &self.witness_cols,
-            (0..(self.block_size + 2)).map(|i| Row::fresh(self.fixed_data, row_offset + i)),
+            (0..(self.block_size + 2)).map(|i| {
+                self.basic_row
+                    .clone()
+                    .with_external_witness_values(self.fixed_data, row_offset + i)
+            }),
         );
         let mut processor = BlockProcessor::new(
             row_offset,
