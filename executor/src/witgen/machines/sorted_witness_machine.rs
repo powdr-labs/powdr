@@ -11,22 +11,23 @@ use crate::witgen::{
     symbolic_evaluator::SymbolicEvaluator,
 };
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
+use crate::Identity;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 
 /// A machine that can support a lookup in a set of columns that are sorted
 /// by one specific column and values in that column have to be unique.
 /// This means there is a column A and a constraint of the form
-/// NOTLAST { A' - A } in { POSITIVE }
+/// NOTLAST $ [ A' - A ] in [ POSITIVE ]
 /// Where
 ///  - NOTLAST is zero only on the last row
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses<'a, T: FieldElement> {
     degree: DegreeType,
     rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
-    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -39,8 +40,8 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
-        identities: &[&Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+        identities: &[&Identity<T>],
         witnesses: &HashSet<PolyID>,
     ) -> Option<Self> {
         let degree = fixed_data.common_degree(witnesses);
@@ -97,10 +98,10 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
 
 fn check_identity<T: FieldElement>(
     fixed_data: &FixedData<T>,
-    id: &Identity<Expression<T>>,
+    id: &Identity<T>,
     degree: DegreeType,
 ) -> Option<PolyID> {
-    // Looking for NOTLAST { A' - A } in { POSITIVE }
+    // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
     if id.kind != IdentityKind::Plookup
         || id.right.selector.is_some()
         || id.left.expressions.len() != 1

@@ -61,7 +61,7 @@ namespace T(65536);
     col fixed p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0] + [0]*;
     col fixed p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-    { T.pc, T.reg_write_X_A, T.reg_write_X_CNT } in 1 - T.first_step { T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT };
+    [T.pc, T.reg_write_X_A, T.reg_write_X_CNT] in 1 - T.first_step $ [T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT];
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(input, formatted);
@@ -346,11 +346,11 @@ fn expression_but_expected_constraint() {
 }
 
 #[test]
-#[should_panic = "Expected type expr but got type std::prelude::Constr."]
+#[should_panic = "Expected type expr[] but got type std::prelude::Constr[]."]
 fn constraint_but_expected_expression() {
     let input = r#"namespace N(16);
     col witness y;
-    { (N.y - 2) = 0 } in { N.y };
+    [ (N.y - 2) = 0 ] in [ N.y ];
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);
@@ -447,26 +447,21 @@ namespace Main(8);
 #[test]
 fn challenges() {
     let input = "
-    namespace std::prover(8);
-        let challenge = [];
-
     namespace Main(8);
         col fixed first = [1] + [0]*;
         col witness x;
         col witness stage(2) y;
-        let a: expr = std::prover::challenge(2, 1);
+        let a: expr = challenge(2, 1);
 
         x' = (x + 1) * (1 - first);
         y' = (x + a) * (1 - first);
     ";
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
-    let expected = r#"namespace std::prover(8);
-    let challenge = [];
-namespace Main(8);
+    let expected = r#"namespace Main(8);
     col fixed first = [1] + [0]*;
     col witness x;
     col witness stage(2) y;
-    col a = std::prover::challenge(2, 1);
+    col a = std::prelude::challenge(2, 1);
     Main.x' = (Main.x + 1) * (1 - Main.first);
     Main.y' = (Main.x + Main.a) * (1 - Main.first);
 "#;

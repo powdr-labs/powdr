@@ -1,12 +1,28 @@
 //! A plonky3 adapter for powdr
 //!
-//! Support for public values invokes fixed selector columns, currently
-//! implemented as extra witness columns in the execution trace.
+//! Supports public values without the use of fixed columns.
 //!
-//! Namely, given ith public value pub[i] corresponding to a witness value in
-//! row j of column Ci, a corresponding selector column Pi is constructed to
-//! constrain Pi * (pub[i] - Ci) on every row. Pi is precomputed in the trace
-//! to be 0 everywhere and 1 in row j.
+//! Namely, given public value pub corresponding to a witness value in
+//! row j of witness column x, a corresponding selector column s is constructed
+//! to constrain s * (pub - x) on every row:
+//!
+//! col witness x;
+//! public out_x = col x(j);
+//! col witness s;
+//! s * (pub - x) = 0;
+//!
+//! Moreover, s is constrained to be 1 at evaluation index s(j) and 0
+//! everywhere else by applying the `is_zero` transformation to a column 'decr'
+//! decrementing by 1 each row from an initial value set to j in the first row:
+//!
+//! col witness decr;
+//! decr(0) = j;
+//! decr - decr' - 1 = 0;
+//! s = is_zero(decr);
+//!
+//! Note that in Plonky3 this transformation requires an additional column
+//! `inv_decr` to track the inverse of decr for the `is_zero` operation,
+//! therefore requiring a total of 3 extra witness columns per public value.
 
 use std::{any::TypeId, collections::BTreeMap};
 
@@ -45,9 +61,17 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             .flat_map(move |i| {
                 // witness values
                 witness.clone().map(move |(_, v)| v[i as usize]).chain(
-                    publics
-                        .clone()
-                        .map(move |(_, _, idx)| T::from(i as usize == idx)),
+                    // publics rows: decrementor | inverse | selector
+                    publics.clone().flat_map(move |(_, _, row_id)| {
+                        let decr = T::from(row_id as u64) - T::from(i);
+                        let inv_decr = if i as usize == row_id {
+                            T::zero()
+                        } else {
+                            T::one() / decr
+                        };
+                        let s = T::from(i as usize == row_id);
+                        [decr, inv_decr, s]
+                    }),
                 )
             })
             .map(cast_to_goldilocks)
@@ -216,7 +240,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
         assert_eq!(self.analyzed.constant_count(), 0);
-        self.analyzed.commitment_count() + self.analyzed.publics_count()
+        self.analyzed.commitment_count() + 3 * self.analyzed.publics_count()
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
@@ -233,14 +257,35 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for P
 
         // public constraints
         let pi_moved = pi.to_vec();
-        let local = matrix.row_slice(0);
+        let (local, next) = (matrix.row_slice(0), matrix.row_slice(1));
 
-        // constraining Pi * (Ci - pub[i]) = 0
         publics.iter().zip(pi_moved).enumerate().for_each(
-            |(index, ((_, col_id, _), public_value))| {
-                let selector = local[self.analyzed.commitment_count() + index];
+            |(index, ((_, col_id, row_id), public_value))| {
+                //set decr for each public to be row_id in the first row and decrement by 1 each row
+                let (decr, inv_decr, s, decr_next) = (
+                    local[self.analyzed.commitment_count() + 3 * index],
+                    local[self.analyzed.commitment_count() + 3 * index + 1],
+                    local[self.analyzed.commitment_count() + 3 * index + 2],
+                    next[self.analyzed.commitment_count() + 3 * index],
+                );
+
+                let mut when_first_row = builder.when_first_row();
+                when_first_row.assert_eq(
+                    decr,
+                    cast_to_goldilocks(GoldilocksField::from(*row_id as u32)),
+                );
+
+                let mut when_transition = builder.when_transition();
+                when_transition.assert_eq(decr, decr_next + AB::Expr::one());
+
+                // is_zero logic-- s(row) is 1 if decr(row) is 0 and 0 otherwise
+                builder.assert_bool(s); //constraining s to 1 or 0
+                builder.assert_eq(s, AB::Expr::one() - inv_decr * decr);
+                builder.assert_zero(s * decr); //constraining is_zero
+
+                // constraining s(i) * (pub[i] - x(i)) = 0
                 let witness_col = local[*col_id];
-                builder.assert_zero(selector * (public_value.into() - witness_col));
+                builder.assert_zero(s * (public_value.into() - witness_col));
             },
         );
 

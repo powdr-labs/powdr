@@ -8,4 +8,4 @@ namespace main(%N);
     col fixed t = [1, 2, 3, 4]*;
     col fixed s_t = [0, 1]*;
 
-    s_w {w} in s_t {t};
+    s_w $ [w] in s_t $ [t];

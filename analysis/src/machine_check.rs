@@ -84,10 +84,17 @@ impl TypeChecker {
                 MachineStatement::Pil(_source, statement) => {
                     pil.push(statement);
                 }
-                MachineStatement::Submachine(_, ty, name) => {
+                MachineStatement::Submachine(_, ty, name, args) => {
+                    args.iter().for_each(|arg| {
+                        if arg.try_to_identifier().is_none() {
+                            errors
+                                .push(format!("submachine argument not a machine instance: {arg}"))
+                        }
+                    });
                     submachines.push(SubmachineDeclaration {
                         name,
                         ty: AbsoluteSymbolPath::default().join(ty),
+                        args,
                     });
                 }
                 MachineStatement::FunctionDeclaration(source, name, params, statements) => {
@@ -261,6 +268,7 @@ impl TypeChecker {
             latch,
             operation_id,
             call_selectors,
+            params: machine.params,
             pc: registers
                 .iter()
                 .enumerate()

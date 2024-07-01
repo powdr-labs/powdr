@@ -376,10 +376,10 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     col witness X_b2;
     col witness X_b3;
     col witness X_b4;
-    { X_b1 } in { bytes };
-    { X_b2 } in { bytes };
-    { X_b3 } in { bytes };
-    { X_b4 } in { bytes };
+    [ X_b1 ] in [ bytes ];
+    [ X_b2 ] in [ bytes ];
+    [ X_b3 ] in [ bytes ];
+    [ X_b4 ] in [ bytes ];
     col witness wrap_bit;
     wrap_bit * (1 - wrap_bit) = 0;
 
@@ -391,7 +391,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     }
     col fixed seven_bit(i) { i & 0x7f };
     col witness Y_7bit;
-    { Y_7bit } in { seven_bit };
+    [ Y_7bit ] in [ seven_bit ];
 
     // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
     instr sign_extend_16_bits Y -> X {
@@ -422,19 +422,19 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     col witness Y_b6;
     col witness Y_b7;
     col witness Y_b8;
-    { Y_b5 } in { bytes };
-    { Y_b6 } in { bytes };
-    { Y_b7 } in { bytes };
-    { Y_b8 } in { bytes };
+    [ Y_b5 ] in [ bytes ];
+    [ Y_b6 ] in [ bytes ];
+    [ Y_b7 ] in [ bytes ];
+    [ Y_b8 ] in [ bytes ];
 
     col witness REM_b1;
     col witness REM_b2;
     col witness REM_b3;
     col witness REM_b4;
-    { REM_b1 } in { bytes };
-    { REM_b2 } in { bytes };
-    { REM_b3 } in { bytes };
-    { REM_b4 } in { bytes };
+    [ REM_b1 ] in [ bytes ];
+    [ REM_b2 ] in [ bytes ];
+    [ REM_b3 ] in [ bytes ];
+    [ REM_b4 ] in [ bytes ];
 
     // implements Z = Y / X and W = Y % X.
     instr divremu Y, X -> Z, W {
@@ -523,9 +523,9 @@ fn memory(with_bootloader: bool) -> String {
     /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
     /// Returns the loaded word and the remainder of the division by 4.
     instr mload Y -> X, Z link ~> X = memory.mload(X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4, STEP) {
-        { Z } in { up_to_three },
+        [ Z ] in [ up_to_three ],
         Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z,
-        { X_b1 } in { six_bits }
+        [ X_b1 ] in [ six_bits ]
     }
 
     /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.

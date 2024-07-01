@@ -473,6 +473,38 @@ fn call_selectors_with_no_permutation() {
     gen_estark_proof(f, Default::default());
 }
 
+#[test]
+fn vm_args() {
+    let f = "asm/vm_args.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn vm_args_memory() {
+    let f = "asm/vm_args_memory.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn vm_args_relative_path() {
+    let f = "asm/vm_args_relative_path.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn vm_args_two_levels() {
+    let f = "asm/vm_args_two_levels.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
 mod book {
     use super::*;
     use test_log::test;
