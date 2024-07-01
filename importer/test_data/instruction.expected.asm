@@ -1,5 +1,7 @@
-mod tools {
-    let identity: expr -> expr = (|expr| expr);
+mod too {
+    mod ls {
+        let identity: expr -> expr = (|expr| expr);
+    }
 }
 machine Id {
     operation id<0> x, y;
@@ -12,6 +14,6 @@ machine Main {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
-    instr id X -> Y link => X = id.id(tools::identity(X)) link => Y = id.id(tools::identity(Y)){     Y = tools::identity(X) }
-    link => X = id.id(tools::identity(X));
+    instr id X -> Y link => X = id.id(too::ls::identity(X)) link => Y = id.id(too::ls::identity(Y)){     Y = too::ls::identity(X) }
+    link => X = id.id(too::ls::identity(X));
 }
