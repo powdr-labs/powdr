@@ -3,7 +3,7 @@ use super::{
         ASMModule, ASMProgram, Import, Machine, Module, ModuleStatement, SymbolDefinition,
         SymbolValue,
     },
-    EnumDeclaration, Expression,
+    EnumDeclaration, Expression, TraitImplementation,
 };
 
 pub trait Folder {
@@ -30,6 +30,9 @@ pub trait Folder {
                     }
                 }
                 .map(|value| ModuleStatement::SymbolDefinition(SymbolDefinition { value, ..d })),
+                ModuleStatement::TraitImplementation(trait_impl) => {
+                    self.fold_trait_implementation(trait_impl).map(From::from)
+                }
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -56,5 +59,12 @@ pub trait Folder {
         ty: EnumDeclaration<Expression>,
     ) -> Result<EnumDeclaration<Expression>, Self::Error> {
         Ok(ty)
+    }
+
+    fn fold_trait_implementation(
+        &mut self,
+        trait_impl: TraitImplementation<Expression>,
+    ) -> Result<TraitImplementation<Expression>, Self::Error> {
+        Ok(trait_impl)
     }
 }
