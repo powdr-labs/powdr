@@ -4,9 +4,11 @@ use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 
+use crate::witgen::rows::set_cell_unknown;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 use crate::Identity;
 
+use super::rows::value_is_known;
 use super::{
     affine_expression::AffineExpression,
     data_structures::{
@@ -14,7 +16,7 @@ use super::{
         finalizable_data::FinalizableData,
     },
     identity_processor::IdentityProcessor,
-    rows::{CellValue, Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
+    rows::{Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
     Constraints, EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
@@ -317,26 +319,23 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     pub fn set_inputs_if_unset(&mut self, row_index: usize) -> bool {
         let mut input_updates = EvalValue::complete(vec![]);
         for (poly_id, value) in self.inputs.iter() {
-            match &self.data[row_index][poly_id].value {
-                CellValue::Known(_) => {}
-                CellValue::RangeConstraint(_) | CellValue::Unknown => {
-                    input_updates.combine(EvalValue::complete(vec![(
-                        &self.fixed_data.witness_cols[poly_id].poly,
-                        Constraint::Assignment(*value),
-                    )]));
-                }
-            };
+            if !value_is_known(&self.data[row_index], poly_id) {
+                input_updates.combine(EvalValue::complete(vec![(
+                    &self.fixed_data.witness_cols[poly_id].poly,
+                    Constraint::Assignment(*value),
+                )]));
+            }
         }
 
         for (poly, _) in &input_updates.constraints {
-            let poly_id = poly.poly_id;
-            if let Some(start_row) = self.previously_set_inputs.remove(&poly_id) {
+            let poly_id = &poly.poly_id;
+            if let Some(start_row) = self.previously_set_inputs.remove(poly_id) {
                 log::trace!(
                     "    Resetting previously set inputs for column: {}",
-                    self.fixed_data.column_name(&poly_id)
+                    self.fixed_data.column_name(poly_id)
                 );
                 for row_index in start_row..row_index {
-                    self.data[row_index][&poly_id].value = CellValue::Unknown;
+                    set_cell_unknown(&mut self.data[row_index], poly_id);
                 }
             }
         }
