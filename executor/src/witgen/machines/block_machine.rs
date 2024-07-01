@@ -460,6 +460,17 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         RowIndex::from_i64(self.rows() as i64 - 1, self.fixed_data.degree)
     }
 
+    fn last_latch_row_index(&self) -> Option<RowIndex> {
+        if self.rows() > self.block_size as DegreeType {
+            Some(RowIndex::from_degree(
+                self.rows() - self.block_size as DegreeType + self.latch_row as DegreeType,
+                self.fixed_data.degree,
+            ))
+        } else {
+            None
+        }
+    }
+
     fn get_row(&self, row: RowIndex) -> &Row<'a, T> {
         // The first block is a dummy block corresponding to rows (-block_size, 0),
         // so we have to add the block size to the row index.
@@ -483,31 +494,37 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
         // to validate the constraints.
-        if outer_query.left.iter().all(|v| v.is_constant()) && self.rows() > 0 {
+        if outer_query.left.iter().all(|v| v.is_constant()) {
             // All values on the left hand side are known, check if this is a query
             // to the last row.
-            let row_index = self.last_row_index();
+            if let Some(row_index) = self.last_latch_row_index() {
+                let current = &self.get_row(row_index);
+                let fresh_row = Row::fresh(self.fixed_data, row_index + 1);
+                let next = if self.latch_row == self.block_size - 1 {
+                    // We don't have the next row, because it would be the first row of the next block.
+                    // We'll use a fresh row instead.
+                    &fresh_row
+                } else {
+                    self.get_row(row_index + 1)
+                };
 
-            let current = &self.get_row(row_index);
-            // We don't have the next row, because it would be the first row of the next block.
-            // We'll use a fresh row instead.
-            let next = Row::fresh(self.fixed_data, row_index + 1);
-            let row_pair = RowPair::new(
-                current,
-                &next,
-                row_index,
-                self.fixed_data,
-                UnknownStrategy::Unknown,
-            );
+                let row_pair = RowPair::new(
+                    current,
+                    next,
+                    row_index,
+                    self.fixed_data,
+                    UnknownStrategy::Unknown,
+                );
 
-            let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
-            if let Ok(result) = identity_processor.process_link(&outer_query, &row_pair) {
-                if result.is_complete() && result.constraints.is_empty() {
-                    log::trace!(
-                        "End processing block machine '{}' (already solved)",
-                        self.name()
-                    );
-                    return Ok(result);
+                let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
+                if let Ok(result) = identity_processor.process_link(&outer_query, &row_pair) {
+                    if result.is_complete() && result.constraints.is_empty() {
+                        log::trace!(
+                            "End processing block machine '{}' (already solved)",
+                            self.name()
+                        );
+                        return Ok(result);
+                    }
                 }
             }
         }
@@ -640,11 +657,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // 3. Remove the last row of the previous block from data
         self.data.pop();
 
-        // 4. Finalize most of the block (unless it's the dummy block)
-        // The last row might be needed later, so we do not finalize it yet.
-        if self.data.len() > self.block_size {
-            new_block.finalize_range(0..self.block_size);
-        }
+        // 4. Finalize everything so far (except the dummy block)
+        self.data.finalize_range(self.block_size..self.data.len());
 
         // 5. Append the new block (including the merged last row of the previous block)
         self.data.extend(new_block);
