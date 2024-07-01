@@ -108,11 +108,6 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
         self.values.into_iter()
     }
 
-    // TODO remove in the long term
-    pub fn len(&self) -> usize {
-        self.values.len()
-    }
-
     pub fn column_id_range(&self) -> Range<usize> {
         self.column_id_range.clone()
     }

@@ -126,7 +126,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
         }
     }
     let fixed_constraints = FixedColumnMap::from_indexed(
-        0..fixed_data.fixed_cols.len(),
+        fixed_data.fixed_cols.column_id_range(),
         known_constraints.iter().map(|(p, c)| (*p, Some(c.clone()))),
     );
 
