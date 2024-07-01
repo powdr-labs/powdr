@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
-use std::iter;
+use std::iter::{self, once};
 
 use super::{EvalResult, FixedData, FixedLookup};
 
@@ -132,7 +132,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let degree = fixed_data.common_degree(witness_cols);
 
         let (is_permutation, block_size, latch_row) =
-            detect_connection_type_and_block_size(fixed_data, connecting_identities, degree)?;
+            detect_connection_type_and_block_size(fixed_data, connecting_identities)?;
 
         for id in connecting_identities.values() {
             for r in id.right.expressions.iter() {
@@ -181,7 +181,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
     connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
-    degree: DegreeType,
 ) -> Option<(ConnectionType, usize, usize)> {
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
@@ -200,7 +199,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
             // We'd expect all RHS selectors to be fixed columns of the same period.
             connecting_identities
                 .values()
-                .map(|id| try_to_period(&id.right.selector, fixed_data, degree))
+                .map(|id| try_to_period(&id.right.selector, fixed_data))
                 .unique()
                 .exactly_one()
                 .ok()??
@@ -211,7 +210,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
             let find_max_period = |latch_candidates: BTreeSet<Option<Expression<T>>>| {
                 latch_candidates
                     .iter()
-                    .filter_map(|e| try_to_period(e, fixed_data, degree))
+                    .filter_map(|e| try_to_period(e, fixed_data))
                     // If there is more than one period, the block size is the maximum period.
                     .max_by_key(|&(_, period)| period)
             };
@@ -238,7 +237,6 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
 fn try_to_period<T: FieldElement>(
     expr: &Option<Expression<T>>,
     fixed_data: &FixedData<T>,
-    degree: DegreeType,
 ) -> Option<(usize, usize)> {
     match expr {
         Some(expr) => {
@@ -252,6 +250,8 @@ fn try_to_period<T: FieldElement>(
             if !poly.is_fixed() {
                 return None;
             }
+
+            let degree = fixed_data.common_degree(once(&poly.poly_id));
 
             let values = fixed_data.fixed_cols[&poly.poly_id].values;
 
