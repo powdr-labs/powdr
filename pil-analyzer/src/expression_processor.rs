@@ -333,12 +333,8 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             })
             .collect::<Vec<_>>();
 
-        let processed_expr = match expr {
-            Some(expr) => Some(Box::new(self.process_expression(*expr))),
-            None => Some(Box::new(self.process_expression(
-                parsed::Expression::Tuple(SourceRef::unknown(), vec![]),
-            ))),
-        };
+        let processed_expr = expr.map(|expr| Box::new(self.process_expression(*expr)));
+
         self.reset_local_variables(vars);
         Expression::BlockExpression(
             src,

@@ -321,7 +321,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
                     _ => panic!("Expected expression but got {item}"),
                 })
                 .collect(),
-            _ => panic!("Expected array/tuple of algebraic expressions or an algebraic expression, but got {result}"),
+            _ => panic!("Expected array of algebraic expressions but got {result}"),
         }
     }
 }

@@ -751,10 +751,8 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     .push(Operation::TruncateLocals(self.local_vars.len()));
                 match expr {
                     Some(expr) => self.op_stack.push(Operation::Expand(expr)),
-                    None => unreachable!(
-                        "None expr should be replaced by the empty tuple during statement processing."
-                    ),
-                };
+                    None => self.value_stack.push(Value::Tuple(vec![]).into()),
+                }
                 for s in statements.iter().rev() {
                     match s {
                         StatementInsideBlock::LetStatement(s) => {
