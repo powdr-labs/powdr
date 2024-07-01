@@ -9,6 +9,7 @@ use std::iter;
 use std::ops::{self, ControlFlow};
 use std::sync::Arc;
 
+use itertools::Itertools;
 use powdr_number::{DegreeType, FieldElement};
 use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
@@ -52,15 +53,13 @@ impl<T> Analyzed<T> {
         self.definitions
             .values()
             .filter_map(|(symbol, _)| symbol.degree)
-            .reduce(|acc, degree| {
-                assert_eq!(acc, degree);
-                acc
-            })
+            .unique()
+            .exactly_one()
             .unwrap()
     }
 
     /// Returns the set of all degrees in this [`Analyzed<T>`].
-    pub fn degrees(&self) -> HashSet<u64> {
+    pub fn degrees(&self) -> HashSet<DegreeType> {
         self.definitions
             .values()
             .filter_map(|(symbol, _)| symbol.degree)

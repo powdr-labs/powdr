@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
     PolynomialType, SymbolKind, TypedExpression,
@@ -308,11 +309,9 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             // only keep the ones matching our set
             .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
             // get the common degree
-            .reduce(|acc, degree| {
-                assert_eq!(acc, degree);
-                acc
-            })
-            .unwrap()
+            .unique()
+            .exactly_one()
+            .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
     }
 
     pub fn new(

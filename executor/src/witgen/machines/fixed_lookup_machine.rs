@@ -113,14 +113,9 @@ impl<T: FieldElement> IndexedColumns<T> {
             .iter()
             .chain(output_column_values.iter())
             .map(|values| values.len())
-            .reduce(|acc, l| {
-                assert_eq!(
-                    acc, l,
-                    "all columns in a given lookup are expected to have the same degree"
-                );
-                acc
-            })
-            .unwrap();
+            .unique()
+            .exactly_one()
+            .expect("all columns in a given lookup are expected to have the same degree");
 
         let index: BTreeMap<Vec<T>, IndexValue> = (0..degree)
             .fold(
