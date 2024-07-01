@@ -191,6 +191,10 @@ impl<T: FieldElement> Row<T> {
     /// Merges two rows, updating the first.
     /// Range constraints from the second row are ignored.
     pub fn merge_with(&mut self, other: &Row<T>) -> Result<(), ()> {
+        debug_assert_eq!(
+            self.values.column_id_range(),
+            other.values.column_id_range()
+        );
         // First check for conflicts, otherwise we would have to roll back changes.
         if self
             .values
@@ -203,17 +207,13 @@ impl<T: FieldElement> Row<T> {
         {
             return Err(());
         };
-        let range = self.values.column_id_range();
-        self.values = WitnessColumnMap::from(
-            range,
-            std::mem::take(&mut self.values)
-                .values_into_iter()
-                .zip(other.values.values())
-                .map(|(cell1, cell2)| match (&cell1, &cell2) {
-                    (CellValue::Known(_), _) => cell1,
-                    _ => cell2.clone(),
-                }),
-        );
+        self.values
+            .values_iter_mut()
+            .zip(other.values.values())
+            .for_each(|(cell1, cell2)| match (&cell1, &cell2) {
+                (CellValue::Known(_), _) => {}
+                _ => *cell1 = cell2.clone(),
+            });
         Ok(())
     }
 
