@@ -12,8 +12,14 @@ machine Main with degree: 8 {
     col witness b1(i) query Query::Hint(fe(7 - i));
     col witness b2(i) query Query::Hint(fe(7 - i + 42));
 
+    let permutation_constraint = Constr::Permutation(
+        (Option::Some(first_four), Option::Some(1 - first_four)),
+        [(a1, b1), (a2, b2)]
+    );
+
     // TODO: Functions currently cannot add witness columns at later stages,
     // so we have to manually create it here and pass it to permutation(). 
     col witness stage(1) z;
-    permutation(z, first_four, [a1, a2], 1 - first_four, [b1, b2]);
+    permutation([z], permutation_constraint);
+
 }

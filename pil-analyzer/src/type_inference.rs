@@ -7,7 +7,7 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
-        ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, IndexAccess,
+        ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
         LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number, Pattern,
         SourceReference, StatementInsideBlock, UnaryOperation,
     },
@@ -39,7 +39,10 @@ pub fn infer_types(
 #[derive(Clone)]
 pub struct ExpectedType {
     pub ty: Type,
+    /// If true, arrays of `ty` are also allowed.
     pub allow_array: bool,
+    /// If true, the empty tuple is also allowed.
+    pub allow_empty: bool,
 }
 
 impl From<Type> for ExpectedType {
@@ -47,13 +50,14 @@ impl From<Type> for ExpectedType {
         ExpectedType {
             ty,
             allow_array: false,
+            allow_empty: false,
         }
     }
 }
 
 struct TypeChecker<'a> {
-    /// The expected type for expressions at statement level in block expressions.
-    statement_type: &'a ExpectedType,
+    /// The expected type for expressions at statement level in block expressions inside a constr function.
+    constr_function_statement_type: &'a ExpectedType,
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
     /// Declared types for all symbols and their source references.
@@ -65,17 +69,20 @@ struct TypeChecker<'a> {
     unifier: Unifier,
     /// Last used type variable index.
     last_type_var: usize,
+    /// Keeps track of the kind of lambda we are currently type-checking.
+    lambda_kind: FunctionKind,
 }
 
 impl<'a> TypeChecker<'a> {
     pub fn new(statement_type: &'a ExpectedType) -> Self {
         Self {
-            statement_type,
+            constr_function_statement_type: statement_type,
             local_var_types: Default::default(),
             declared_types: Default::default(),
             declared_type_vars: Default::default(),
             unifier: Default::default(),
             last_type_var: Default::default(),
+            lambda_kind: FunctionKind::Constr,
         }
     }
 
@@ -441,31 +448,30 @@ impl<'a> TypeChecker<'a> {
         expected_type: &ExpectedType,
         expr: &mut Expression,
     ) -> Result<(), Error> {
-        if expected_type.allow_array {
-            self.infer_type_of_expression(expr).and_then(|ty| {
-                let ty = self.type_into_substituted(ty);
-                let expected_type = if matches!(ty, Type::Array(_)) {
-                    Type::Array(ArrayType {
-                        base: Box::new(expected_type.ty.clone()),
-                        length: None,
-                    })
-                } else {
-                    expected_type.ty.clone()
-                };
+        update_type_if_literal(expr, &expected_type.ty);
 
-                self.unifier
-                    .unify_types(ty.clone(), expected_type.clone())
-                    .map_err(|err| {
-                        expr.source_reference().with_error(format!(
-                            "Expected type {} but got type {}.\n{err}",
-                            self.format_type_with_bounds(expected_type),
-                            self.format_type_with_bounds(ty)
-                        ))
-                    })
+        let ty = self.infer_type_of_expression(expr)?;
+        let ty = self.type_into_substituted(ty);
+        let expected_type = if expected_type.allow_array && matches!(ty, Type::Array(_)) {
+            Type::Array(ArrayType {
+                base: Box::new(expected_type.ty.clone()),
+                length: None,
             })
+        } else if expected_type.allow_empty && (ty == Type::empty_tuple()) {
+            Type::empty_tuple()
         } else {
-            self.expect_type(&expected_type.ty, expr)
-        }
+            expected_type.ty.clone()
+        };
+
+        self.unifier
+            .unify_types(ty.clone(), expected_type.clone())
+            .map_err(|err| {
+                expr.source_reference().with_error(format!(
+                    "Expected type {} but got type {}.\n{err}",
+                    self.format_type_with_bounds(expected_type),
+                    self.format_type_with_bounds(ty),
+                ))
+            })
     }
 
     /// Process an expression and return the type of the expression.
@@ -532,14 +538,7 @@ impl<'a> TypeChecker<'a> {
                     .map(|item| self.infer_type_of_expression(item))
                     .collect::<Result<_, _>>()?,
             }),
-            Expression::LambdaExpression(
-                source_ref,
-                LambdaExpression {
-                    kind: _,
-                    params,
-                    body,
-                },
-            ) => {
+            Expression::LambdaExpression(source_ref, LambdaExpression { kind, params, body }) => {
                 let old_len = self.local_var_types.len();
                 let result = params
                     .iter()
@@ -548,7 +547,11 @@ impl<'a> TypeChecker<'a> {
                     // TODO we need a better source reference
                     .map_err(|err| source_ref.with_error(err))
                     .and_then(|param_types| {
-                        Ok((param_types, self.infer_type_of_expression(body)?))
+                        let old_lambda_kind = self.lambda_kind;
+                        self.lambda_kind = *kind;
+                        let body_type = self.infer_type_of_expression(body);
+                        self.lambda_kind = old_lambda_kind;
+                        Ok((param_types, body_type?))
                     });
                 self.local_var_types.truncate(old_len);
                 let (param_types, body_type) = result?;
@@ -639,6 +642,7 @@ impl<'a> TypeChecker<'a> {
             }
             Expression::BlockExpression(source_ref, BlockExpression { statements, expr }) => {
                 let original_var_count = self.local_var_types.len();
+
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
@@ -655,7 +659,7 @@ impl<'a> TypeChecker<'a> {
                                 .map_err(|err| source_ref.with_error(err))?;
                         }
                         StatementInsideBlock::Expression(expr) => {
-                            self.expect_type_with_flexibility(self.statement_type, expr)?;
+                            self.expect_type_with_flexibility(&self.statement_type(), expr)?;
                         }
                     }
                 }
@@ -664,6 +668,15 @@ impl<'a> TypeChecker<'a> {
                 result?
             }
         })
+    }
+
+    /// Returns the type expected at statement level, given the current function context.
+    fn statement_type(&self) -> ExpectedType {
+        if self.lambda_kind == FunctionKind::Constr {
+            self.constr_function_statement_type.clone()
+        } else {
+            Type::empty_tuple().into()
+        }
     }
 
     /// Process a function call and return the type of the expression.
@@ -707,24 +720,8 @@ impl<'a> TypeChecker<'a> {
     /// This function should be preferred over `infer_type_of_expression` if an expected type is known
     /// because we can create better error messages.
     fn expect_type(&mut self, expected_type: &Type, expr: &mut Expression) -> Result<(), Error> {
-        // For literals, we try to store the type here already.
-        // This avoids creating tons of type variables for large arrays.
-        if let Expression::Number(
-            _,
-            Number {
-                type_: annotated_type @ None,
-                ..
-            },
-        ) = expr
-        {
-            match expected_type {
-                Type::Int => *annotated_type = Some(Type::Int),
-                Type::Fe => *annotated_type = Some(Type::Fe),
-                Type::Expr => *annotated_type = Some(Type::Expr),
-                Type::TypeVar(tv) => *annotated_type = Some(Type::TypeVar(tv.clone())),
-                _ => {}
-            };
-        }
+        update_type_if_literal(expr, expected_type);
+
         let inferred_type = self.infer_type_of_expression(expr)?;
         self.unifier
             .unify_types(inferred_type.clone(), expected_type.clone())
@@ -993,5 +990,29 @@ impl<'a> TypeChecker<'a> {
 
     pub fn local_var_type(&self, id: u64) -> Type {
         self.local_var_types[id as usize].clone()
+    }
+}
+
+fn update_type_if_literal(
+    expr: &mut powdr_ast::parsed::Expression<Reference>,
+    expected_type: &Type,
+) {
+    // For literals, we try to store the type here already.
+    // This avoids creating tons of type variables for large arrays.
+    if let Expression::Number(
+        _,
+        Number {
+            type_: annotated_type @ None,
+            ..
+        },
+    ) = expr
+    {
+        match expected_type.clone() {
+            Type::Int => *annotated_type = Some(Type::Int),
+            Type::Fe => *annotated_type = Some(Type::Fe),
+            Type::Expr => *annotated_type = Some(Type::Expr),
+            Type::TypeVar(tv) => *annotated_type = Some(Type::TypeVar(tv.clone())),
+            _ => {}
+        };
     }
 }

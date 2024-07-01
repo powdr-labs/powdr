@@ -9,9 +9,9 @@ use num_traits::Signed;
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
-        Challenge, Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind,
-        TypeConstructor, TypedExpression,
+        AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+        AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, Expression,
+        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypeConstructor, TypedExpression,
     },
     parsed::{
         display::quote,
@@ -331,7 +331,7 @@ const BUILTINS: [(&str, BuiltinFunction); 10] = [
     ("std::convert::int", BuiltinFunction::ToInt),
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
-    ("std::prover::challenge", BuiltinFunction::Challenge),
+    ("std::prelude::challenge", BuiltinFunction::Challenge),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
@@ -530,7 +530,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
             AlgebraicExpression::PublicReference(_) => unimplemented!(),
             AlgebraicExpression::Challenge(challenge) => self.eval_challenge(challenge)?,
             AlgebraicExpression::Number(n) => Value::FieldElement(*n).into(),
-            AlgebraicExpression::BinaryOperation(left, op, right) => {
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let left = self.eval_expr(left)?;
                 let right = self.eval_expr(right)?;
                 match (left.as_ref(), right.as_ref()) {
@@ -540,15 +540,17 @@ pub trait SymbolLookup<'a, T: FieldElement> {
                     _ => panic!("Expected field elements"),
                 }
             }
-            AlgebraicExpression::UnaryOperation(op, operand) => match op {
-                AlgebraicUnaryOperator::Minus => {
-                    let operand = self.eval_expr(operand)?;
-                    match operand.as_ref() {
-                        Value::FieldElement(fe) => Value::FieldElement(-*fe).into(),
-                        _ => panic!("Expected field element"),
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr: operand }) => {
+                match op {
+                    AlgebraicUnaryOperator::Minus => {
+                        let operand = self.eval_expr(operand)?;
+                        match operand.as_ref() {
+                            Value::FieldElement(fe) => Value::FieldElement(-*fe).into(),
+                            _ => panic!("Expected field element"),
+                        }
                     }
                 }
-            },
+            }
         })
     }
 
@@ -851,27 +853,20 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     }
                     (UnaryOperator::LogicalNot, Value::Bool(b)) => Value::Bool(!b).into(),
                     (UnaryOperator::Minus, Value::Integer(n)) => Value::Integer(-n).into(),
-                    (UnaryOperator::Next, Value::Expression(e)) => {
-                        let AlgebraicExpression::Reference(reference) = e else {
-                            return Err(EvalError::TypeError(format!(
-                                "Expected column for \"'\" operator, but got: {e}"
-                            )));
-                        };
-
-                        if reference.next {
-                            return Err(EvalError::TypeError(format!(
-                                "Double application of \"'\" on: {reference}"
-                            )));
-                        }
-                        Value::from(AlgebraicExpression::Reference(AlgebraicReference {
-                            next: true,
-                            ..reference.clone()
-                        }))
-                        .into()
-                    }
-                    (op, Value::Expression(e)) => Value::from(AlgebraicExpression::UnaryOperation(
+                    (UnaryOperator::Next, Value::Expression(e)) => e
+                        .clone()
+                        .next()
+                        .map(|next| Value::from(next).into())
+                        // a reference already had its `next` flag on
+                        .map_err(|reference| {
+                            EvalError::TypeError(format!(
+                                "Double application of \"'\" on: {}",
+                                reference.name
+                            ))
+                        })?,
+                    (op, Value::Expression(e)) => Value::from(AlgebraicExpression::new_unary(
                         (*op).try_into().unwrap(),
-                        e.clone().into(),
+                        e.clone(),
                     ))
                     .into(),
                     (_, inner) => Err(EvalError::TypeError(format!(
@@ -1079,10 +1074,10 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
                         BigUint::from(exp) < T::modulus().to_arbitrary_integer(),
                         "Exponent too large: {exp}"
                     );
-                    Value::from(AlgebraicExpression::BinaryOperation(
-                        Box::new(l.clone()),
+                    Value::from(AlgebraicExpression::new_binary(
+                        l.clone(),
                         AlgebraicBinaryOperator::Pow,
-                        Box::new(T::from(exp).into()),
+                        T::from(exp).into(),
                     ))
                     .into()
                 }
@@ -1099,10 +1094,10 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
                 };
                 Value::from(AlgebraicExpression::Number(*result)).into()
             }
-            (l, r) => Value::from(AlgebraicExpression::BinaryOperation(
-                Box::new(l.clone()),
+            (l, r) => Value::from(AlgebraicExpression::new_binary(
+                l.clone(),
                 op.try_into().unwrap(),
-                Box::new(r.clone()),
+                r.clone(),
             ))
             .into(),
         },

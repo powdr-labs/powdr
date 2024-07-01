@@ -6,9 +6,10 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::iter::once;
 
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
-    Analyzed, Expression, FunctionValueDefinition, IdentityKind, PolyID, PolynomialReference,
-    Reference, SymbolKind, TypeConstructor, TypeDeclaration, TypedExpression,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Expression, FunctionValueDefinition,
+    IdentityKind, PolyID, PolynomialReference, Reference, SymbolKind, TypeConstructor,
+    TypeDeclaration, TypedExpression,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
@@ -264,7 +265,7 @@ fn simplify_expression<T: FieldElement>(mut e: AlgebraicExpression<T>) -> Algebr
 }
 
 fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
-    if let AlgebraicExpression::BinaryOperation(left, op, right) = e {
+    if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) = e {
         if let (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) =
             (left.as_ref(), right.as_ref())
         {
@@ -280,7 +281,7 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
             }
         }
     }
-    if let AlgebraicExpression::UnaryOperation(op, inner) = e {
+    if let AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr: inner }) = e {
         if let AlgebraicExpression::Number(inner) = **inner {
             *e = AlgebraicExpression::Number(match op {
                 AlgebraicUnaryOperator::Minus => -inner,
@@ -289,7 +290,11 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
         }
     }
     match e {
-        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Mul, right) => {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Mul,
+            right,
+        }) => {
             if let AlgebraicExpression::Number(n) = left.as_mut() {
                 if *n == 0.into() {
                     *e = AlgebraicExpression::Number(0.into());
@@ -318,7 +323,11 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
                 }
             }
         }
-        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Add, right) => {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Add,
+            right,
+        }) => {
             if let AlgebraicExpression::Number(n) = left.as_mut() {
                 if *n == 0.into() {
                     let mut tmp = AlgebraicExpression::Number(1.into());
@@ -335,7 +344,11 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
                 }
             }
         }
-        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) => {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Sub,
+            right,
+        }) => {
             if let AlgebraicExpression::Number(n) = right.as_mut() {
                 if *n == 0.into() {
                     let mut tmp = AlgebraicExpression::Number(1.into());
@@ -465,7 +478,11 @@ fn constrained_to_constant<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
 ) -> Option<(PolyID, BigUint)> {
     match expr {
-        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) => {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Sub,
+            right,
+        }) => {
             match (left.as_ref(), right.as_ref()) {
                 (AlgebraicExpression::Number(n), AlgebraicExpression::Reference(poly))
                 | (AlgebraicExpression::Reference(poly), AlgebraicExpression::Number(n)) => {
@@ -558,7 +575,7 @@ mod test {
     col witness X;
     col witness Y;
     N.X = N.Y;
-    N.Y = (7 * N.X);
+    N.Y = 7 * N.X;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -586,13 +603,13 @@ mod test {
     col witness Y;
     col witness Z;
     col witness A;
-    (1 - N.A) { N.A } in { N.cnt };
-    { N.Y } in (1 + N.A) { N.cnt };
-    ((1 - N.A) * N.X) = 0;
-    ((1 - N.A) * N.Y) = 1;
-    N.Z = ((1 + N.A) * 2);
-    N.A = (1 + N.A);
-    N.Z = (1 + N.A);
+    1 - N.A { N.A } in { N.cnt };
+    { N.Y } in 1 + N.A { N.cnt };
+    (1 - N.A) * N.X = 0;
+    (1 - N.A) * N.Y = 1;
+    N.Z = (1 + N.A) * 2;
+    N.A = 1 + N.A;
+    N.Z = 1 + N.A;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -657,10 +674,10 @@ namespace N(65536);
         let expectation = r#"namespace N(65536);
     col witness x;
     col fixed cnt(i) { i };
-    (N.x * (N.x - 1)) = 0;
+    N.x * (N.x - 1) = 0;
     { N.x } in { N.cnt };
-    { (N.x + 1) } in { N.cnt };
-    { N.x } in { (N.cnt + 1) };
+    { N.x + 1 } in { N.cnt };
+    { N.x } in { N.cnt + 1 };
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);

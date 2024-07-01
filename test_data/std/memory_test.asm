@@ -9,8 +9,8 @@ machine Main with degree: 65536 {
     col fixed STEP(i) { i };
     Memory memory;
 
-    instr mload X -> Y ~ memory.mload X, STEP -> Y;
-    instr mstore X, Y -> ~ memory.mstore X, STEP, Y ->;
+    instr mload X -> Y link ~> Y = memory.mload(X, STEP);
+    instr mstore X, Y -> link ~> memory.mstore(X, STEP, Y);
 
     instr assert_eq X, Y {
         X = Y

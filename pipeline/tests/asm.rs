@@ -25,6 +25,12 @@ fn sqrt_asm() {
 }
 
 #[test]
+fn challenges_asm() {
+    let f = "asm/challenges.asm";
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
@@ -216,6 +222,15 @@ fn vm_to_block_array() {
 #[test]
 fn vm_to_vm_to_vm() {
     let f = "asm/vm_to_vm_to_vm.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
+    test_halo2(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+fn vm_to_block_multiple_links() {
+    let f = "asm/permutations/vm_to_block_multiple_links.asm";
     let i = [];
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
@@ -456,6 +471,38 @@ fn permutation_incoming_needs_selector() {
 #[test]
 fn call_selectors_with_no_permutation() {
     let f = "asm/permutations/call_selectors_with_no_permutation.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn vm_args() {
+    let f = "asm/vm_args.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn vm_args_memory() {
+    let f = "asm/vm_args_memory.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn vm_args_relative_path() {
+    let f = "asm/vm_args_relative_path.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn vm_args_two_levels() {
+    let f = "asm/vm_args_two_levels.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());

@@ -142,7 +142,7 @@ machine Sqrt {
 ### Challenges
 
 ```rust
-let std::prover::challenge: int, int -> expr
+let std::prelude::challenge: int, int -> expr
 ```
 
 Constructs a challenge object, essentially asking the verifier for a random number.
@@ -179,11 +179,11 @@ enum Constr {
     /// A polynomial identity.
     Identity(expr, expr),
     /// A lookup constraint with selectors.
-    Lookup(Option<expr>, expr[], Option<expr>, expr[]),
+    Lookup((Option<expr>, Option<expr>), (expr, expr)[]),
     /// A permutation constraint with selectors.
-    Permutation(Option<expr>, expr[], Option<expr>, expr[]),
+    Permutation((Option<expr>, Option<expr>), (expr, expr)[]),
     /// A connection constraint (copy constraint).
-    Connection(expr[], expr[])
+    Connection((expr, expr)[])
 }
 ```
 

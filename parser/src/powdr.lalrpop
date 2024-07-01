@@ -3,11 +3,12 @@ use std::collections::{BTreeSet, BTreeMap};
 use powdr_ast::parsed::{*, asm::*, types::*};
 use powdr_number::{BigInt, BigUint};
 use crate::{ParserContext, unescape_string};
+use powdr_parser_util::Error;
 
 grammar(ctx: &ParserContext);
 
 extern {
-    type Error = String;
+    type Error = Error;
 }
 
 match {
@@ -263,13 +264,13 @@ GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
 // ---------------------------- ASM part -----------------------------
 
 MachineDefinition: SymbolDefinition = {
-    "machine" <name:Identifier> <arguments:MachineArguments> <properties:("with" <MachineProperties>)?> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, properties: properties.unwrap_or_default(), statements}.into() },
+    "machine" <name:Identifier> <params:MachineParams> <properties:("with" <MachineProperties>)?> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { params, properties: properties.unwrap_or_default(), statements}.into() },
 }
 
 MachineProperties: MachineProperties = {
-    <mut list:( <MachineProperty> "," )*> <end:MachineProperty> ","? =>? {
-        list.push(end);
-        MachineProperties::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
+    <start:@L> <mut list:( <MachineProperty> "," )*> <last:MachineProperty> ","? <end:@R> =>? {
+        list.push(last);
+        Ok(MachineProperties::try_from_prop_list(ctx.source_ref(start, end), list)?)
     }
 }
 
@@ -277,12 +278,12 @@ MachineProperty: (String, Expression) = {
     <name:Identifier> ":" <value:Expression> => (name, value),
 }
 
-MachineArguments: MachineArguments = {
-    => MachineArguments::default(),
-    "(" ")" => MachineArguments::default(),
-    "(" <mut list:( <Param> "," )*> <end:Param> ","? ")" =>? {
-        list.push(end);
-        MachineArguments::try_from(list).map_err(|error| lalrpop_util::ParseError::User { error })
+MachineParams: MachineParams = {
+    => MachineParams::default(),
+    "(" ")" => MachineParams::default(),
+    <start:@L> "(" <mut list:( <Param> "," )*> <last:Param> ","? ")" <end:@R> =>? {
+        list.push(last);
+        Ok(MachineParams::try_from_params(ctx.source_ref(start, end), list)?)
     }
 }
 
@@ -290,7 +291,7 @@ MachineStatement: MachineStatement = {
     Submachine,
     RegisterDeclaration,
     InstructionDeclaration,
-    LinkDeclaration,
+    LinkDeclarationStatement,
     PilStatementInMachine,
     FunctionDeclaration,
     OperationDeclaration,
@@ -301,7 +302,7 @@ PilStatementInMachine: MachineStatement = {
 }
 
 Submachine: MachineStatement = {
-    <start:@L> <path:SymbolPath> <id:Identifier> <end:@R> ";" => MachineStatement::Submachine(ctx.source_ref(start, end), path, id)
+    <start:@L> <path:SymbolPath> <id:Identifier> <args:("(" <ExpressionList> ")")?> <end:@R> ";" => MachineStatement::Submachine(ctx.source_ref(start, end), path, id, args.unwrap_or_default()),
 }
 
 pub RegisterDeclaration: MachineStatement = {
@@ -321,29 +322,27 @@ pub InstructionDeclaration: MachineStatement = {
 }
 
 pub Instruction: Instruction = {
-    <params:Params> <body:InstructionBody> => Instruction { params, body }
+    <params:Params> <links:(<LinkDeclaration>)*> <body:InstructionBody> => Instruction { params, body, links },
+    <params:Params> <links:(<LinkDeclaration>)+> ";" => Instruction { params, body: InstructionBody(vec![]), links },
 }
 
-pub LinkDeclaration: MachineStatement = {
-    <start:@L> "link" <flag:Expression> "=>" <to:CallableRef> <end:@R> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start, end), LinkDeclaration { flag, to, is_permutation: false, }),
-    <start:@L> "link" <flag:Expression> "~>" <to:CallableRef> <end:@R> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start, end), LinkDeclaration { flag, to, is_permutation: true, }),
+pub LinkDeclarationStatement: MachineStatement = {
+    <start:@L> <link:LinkDeclaration> <end:@R> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start, end), link),
+}
+
+pub LinkDeclaration: LinkDeclaration = {
+    "link" <flag:LinkFlag> "=>" <link:Expression> =>? Ok(LinkDeclaration { flag, link: link.try_into()?, is_permutation: false, }),
+    "link" <flag:LinkFlag> "~>" <link:Expression> =>? Ok(LinkDeclaration { flag, link: link.try_into()?, is_permutation: true, }),
+}
+
+pub LinkFlag: Expression = {
+    "if" <Expression>,
+    => 1.into(),
 }
 
 pub InstructionBody: InstructionBody = {
-    "{}" => InstructionBody::Local(vec![]),
-    "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
-    "=" <f_ref:CallableRef> ";" => InstructionBody::CallablePlookup(f_ref),
-    "~" <f_ref:CallableRef> ";" => InstructionBody::CallablePermutation(f_ref),
-}
-
-pub CallableRef: CallableRef = {
-    <instance:Identifier> "." <callable:Identifier> <params:CallableParams> => CallableRef { instance, callable, params },
-}
-
-CallableParams: CallableParams = {
-    <inputs: ExpressionList> "->" <output: ExpressionList> => CallableParams::new(inputs, output),
-    // we can ommit the arrow if there are no outputs
-    <inputs: ExpressionList> => CallableParams::new(inputs, vec![])
+    "{}" => InstructionBody(vec![]),
+    "{" <InstructionBodyElements> "}" => InstructionBody(<>),
 }
 
 InstructionBodyElements: Vec<PilStatement> = {
@@ -369,7 +368,7 @@ ParamList: Vec<Param> = {
 }
 
 Param: Param = {
-    <name: Identifier> <index:("[" <Number> "]")?> <ty:(":" <Identifier>)?> => Param{<>}
+    <name: Identifier> <index:("[" <Number> "]")?> <ty:(":" <SymbolPath>)?> => Param{<>}
 }
 
 FunctionDeclaration: MachineStatement = {

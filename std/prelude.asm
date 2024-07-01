@@ -18,9 +18,14 @@ enum Constr {
     /// A polynomial identity.
     Identity(expr, expr),
     /// A lookup constraint with selectors.
-    Lookup(Option<expr>, expr[], Option<expr>, expr[]),
+    Lookup((Option<expr>, Option<expr>), (expr, expr)[]),
     /// A permutation constraint with selectors.
-    Permutation(Option<expr>, expr[], Option<expr>, expr[]),
+    Permutation((Option<expr>, Option<expr>), (expr, expr)[]),
     /// A connection constraint (copy constraint).
-    Connection(expr[], expr[])
+    Connection((expr, expr)[])
 }
+
+/// Constructs a challenge object.
+/// The arguments are the proof stage and the id of the challenge, in this order.
+/// This is a built-in function.
+let challenge: int, int -> expr = [];

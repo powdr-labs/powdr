@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicReference,
-    AlgebraicUnaryOperator, Challenge,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
+    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge,
 };
 
 use powdr_number::FieldElement;
@@ -45,10 +45,12 @@ where
         match expr {
             Expression::Reference(poly) => self.variables.value(poly),
             Expression::Number(n) => Ok((*n).into()),
-            Expression::BinaryOperation(left, op, right) => {
+            Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 self.evaluate_binary_operation(left, op, right)
             }
-            Expression::UnaryOperation(op, expr) => self.evaluate_unary_operation(op, expr),
+            Expression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+                self.evaluate_unary_operation(op, expr)
+            }
             Expression::Challenge(challenge) => self.variables.challenge(challenge),
             e => unimplemented!("Unexpected expression: {}", e),
         }

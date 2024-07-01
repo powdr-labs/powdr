@@ -62,22 +62,12 @@ impl<'a> SideEffectChecker<'a> {
             }
             Expression::BlockExpression(_, BlockExpression { statements, .. }) => {
                 for s in statements {
-                    match s {
-                        StatementInsideBlock::LetStatement(s) => {
-                            if s.value.is_none() && self.context != FunctionKind::Constr {
-                                return Err(format!(
-                                    "Tried to create a witness column in a {} context: {s}",
-                                    self.context
-                                ));
-                            }
-                        }
-                        StatementInsideBlock::Expression(expr) => {
-                            if self.context != FunctionKind::Constr {
-                                return Err(format!(
-                                    "Tried to add a constraint in a {} context: {expr}",
-                                    self.context
-                                ));
-                            }
+                    if let StatementInsideBlock::LetStatement(ls) = s {
+                        if ls.value.is_none() && self.context != FunctionKind::Constr {
+                            return Err(format!(
+                                "Tried to create a witness column in a {} context: {ls}",
+                                self.context
+                            ));
                         }
                     }
                 }
@@ -119,7 +109,7 @@ lazy_static! {
         ("std::convert::expr", FunctionKind::Pure),
         ("std::debug::print", FunctionKind::Pure),
         ("std::field::modulus", FunctionKind::Pure),
-        ("std::prover::challenge", FunctionKind::Constr), // strictly, only new_challenge would need "constr"
+        ("std::prelude::challenge", FunctionKind::Constr), // strictly, only new_challenge would need "constr"
         ("std::prover::degree", FunctionKind::Pure),
         ("std::prover::eval", FunctionKind::Query),
     ]

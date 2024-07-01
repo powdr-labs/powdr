@@ -15,6 +15,7 @@ members = [
     "pil-analyzer",
     "pipeline",
     "pilopt",
+    "plonky3",
     "asm-to-pil",
     "backend",
     "ast",
