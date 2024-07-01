@@ -26,7 +26,8 @@ machine Main with degree: 8 {
     col witness stage(1) z1;
     col witness stage(1) z2;
 
-    lookup([z1, z2], lookup_constraint, m);
+    let is_first: col = |i| if i == 0 { 1 } else { 0 };
+    lookup(is_first, [z1, z2], lookup_constraint, m);
 
     // TODO: Helper columns, because we can't access the previous row in hints
     let hint = query |i| Query::Hint(compute_next_z(Fp2::Fp2(z1, z2), lookup_constraint, m)[i]); 

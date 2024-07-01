@@ -18,9 +18,6 @@ use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
 use std::math::fp2::constrain_eq_ext;
 
-
-let is_first: col = |i| if i == 0 { 1 } else { 0 };
-
 // challenges to be used in polynomial evaluation and folding different columns
 let alpha1: expr = challenge(0, 1);
 let alpha2: expr = challenge(0, 2);
@@ -92,7 +89,7 @@ let compute_next_z: Fp2<expr>, Constr, expr -> fe[] = query |acc, lookup_constra
 //        are done on the F_{p^2} extension field.
 // - lookup_constraint: The lookup constraint
 // - multiplicities: The multiplicities which shows how many times each RHS value appears in the LHS                  
-let lookup: expr[], Constr, expr -> Constr[] = |acc, lookup_constraint, multiplicities| {
+let lookup: expr, expr[], Constr, expr -> Constr[] = |is_first, acc, lookup_constraint, multiplicities| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
 
