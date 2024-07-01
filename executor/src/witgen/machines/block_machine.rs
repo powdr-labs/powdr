@@ -110,6 +110,9 @@ pub struct BlockMachine<'a, T: FieldElement> {
     identities: Vec<&'a Identity<Expression<T>>>,
     /// The data of the machine.
     data: FinalizableData<'a, T>,
+    /// The index of the first row that has not been finalized yet.
+    /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
+    first_in_progress_row: usize,
     /// The set of witness columns that are actually part of this machine.
     witness_cols: HashSet<PolyID>,
     /// Cache that states the order in which to evaluate identities
@@ -162,6 +165,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             connection_type: is_permutation,
             identities: identities.to_vec(),
             data,
+            first_in_progress_row: block_size,
             witness_cols: witness_cols.clone(),
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
@@ -658,7 +662,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.pop();
 
         // 4. Finalize everything so far (except the dummy block)
-        self.data.finalize_range(self.block_size..self.data.len());
+        if self.data.len() > self.block_size {
+            self.data
+                .finalize_range(self.first_in_progress_row..self.data.len());
+            self.first_in_progress_row = self.data.len();
+        }
 
         // 5. Append the new block (including the merged last row of the previous block)
         self.data.extend(new_block);
