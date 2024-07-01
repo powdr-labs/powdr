@@ -154,7 +154,7 @@ impl PILAnalyzer {
     fn core_types_if_not_present(&self) -> Option<PILFile> {
         // We are extracting some specific symbols from the prelude file.
         let prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../std/prelude.asm"));
-        let missing_symbols = ["Constr", "Option"]
+        let missing_symbols = ["Constr", "Option", "challenge"]
             .into_iter()
             .filter(|symbol| {
                 !self

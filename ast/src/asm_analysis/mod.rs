@@ -16,7 +16,7 @@ use powdr_parser_util::SourceRef;
 use crate::parsed::{
     asm::{
         AbsoluteSymbolPath, AssignmentRegister, CallableRef, FunctionParams, Instruction,
-        OperationId, OperationParams,
+        MachineParams, OperationId, OperationParams,
     },
     visitor::{ExpressionVisitable, VisitOrder},
     EnumDeclaration, NamespacedPolynomialReference, PilStatement, TypedExpression,
@@ -667,6 +667,8 @@ pub struct SubmachineDeclaration {
     pub name: String,
     /// the type of the submachine
     pub ty: AbsoluteSymbolPath,
+    /// machine arguments
+    pub args: Vec<Expression>,
 }
 
 /// An item that is part of the module tree after all modules,
@@ -697,6 +699,8 @@ pub struct Machine {
     pub operation_id: Option<String>,
     /// call selector array
     pub call_selectors: Option<String>,
+    /// Declared machine parameters
+    pub params: MachineParams,
     /// The set of registers for this machine
     pub registers: Vec<RegisterDeclarationStatement>,
     /// The index of the program counter in the registers, if any

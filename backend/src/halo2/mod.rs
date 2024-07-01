@@ -1,6 +1,8 @@
 #![deny(clippy::print_stdout)]
 
-use std::{io, path::Path};
+use std::io;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
@@ -73,9 +75,9 @@ where
 impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
     fn create<'a>(
         &self,
-        pil: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
-        _output_dir: Option<&'a Path>,
+        pil: Arc<Analyzed<F>>,
+        fixed: Arc<Vec<(String, Vec<F>)>>,
+        _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
@@ -107,7 +109,7 @@ fn fe_slice_to_string<F: FieldElement>(fe: &[F]) -> Vec<String> {
     fe.iter().map(|x| x.to_string()).collect()
 }
 
-impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
+impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         let proof: Halo2Proof = serde_json::from_slice(proof).unwrap();
         // TODO should do a verification refactoring making it a 1d vec
@@ -179,9 +181,9 @@ pub(crate) struct Halo2MockFactory;
 impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
     fn create<'a>(
         &self,
-        pil: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
-        _output_dir: Option<&'a Path>,
+        pil: Arc<Analyzed<F>>,
+        fixed: Arc<Vec<(String, Vec<F>)>>,
+        _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
@@ -201,12 +203,12 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
     }
 }
 
-pub struct Halo2Mock<'a, F: FieldElement> {
-    pil: &'a Analyzed<F>,
-    fixed: &'a [(String, Vec<F>)],
+pub struct Halo2Mock<F: FieldElement> {
+    pil: Arc<Analyzed<F>>,
+    fixed: Arc<Vec<(String, Vec<F>)>>,
 }
 
-impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<'a, T> {
+impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<T> {
     fn prove(
         &self,
         witness: &[(String, Vec<T>)],
@@ -217,7 +219,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<'a, T> {
             return Err(Error::NoAggregationAvailable);
         }
 
-        mock_prover::mock_prove(self.pil, self.fixed, witness, witgen_callback)
+        mock_prover::mock_prove(self.pil.clone(), &self.fixed, witness, witgen_callback)
             .map_err(Error::BackendError)?;
 
         Ok(vec![])
