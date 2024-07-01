@@ -18,7 +18,9 @@ use crate::parsed::types::{ArrayType, Type, TypeScheme};
 use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
-use crate::parsed::{self, EnumDeclaration, EnumVariant, SelectedExpressions};
+use crate::parsed::{
+    self, EnumDeclaration, EnumVariant, SelectedExpressions, TraitDeclaration, TraitFunction,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub enum StatementIdentifier {
@@ -422,6 +424,16 @@ pub fn type_from_definition(
             FunctionValueDefinition::TypeConstructor(enum_decl, variant) => {
                 Some(variant.constructor_type(enum_decl))
             }
+            FunctionValueDefinition::TraitDeclaration(_) => {
+                panic!("Requested type of trait declaration.")
+            }
+            FunctionValueDefinition::TraitFunction(trait_decl, trait_func) => {
+                let vars = trait_decl.type_vars.clone();
+                Some(TypeScheme {
+                    vars,
+                    ty: trait_func._type.clone(),
+                })
+            }
         }
     } else {
         assert!(
@@ -519,6 +531,8 @@ pub enum FunctionValueDefinition {
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
+    TraitDeclaration(TraitDeclaration),
+    TraitFunction(Arc<TraitDeclaration>, TraitFunction),
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -534,6 +548,8 @@ impl Children<Expression> for FunctionValueDefinition {
                 enum_declaration.children()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
+            FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
         }
     }
 
@@ -549,6 +565,8 @@ impl Children<Expression> for FunctionValueDefinition {
                 enum_declaration.children_mut()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
+            FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
         }
     }
 }

@@ -62,6 +62,7 @@ impl Display for SymbolDefinition {
                 )
             }
             SymbolValue::TypeDeclaration(ty) => write!(f, "{ty}"),
+            SymbolValue::TraitDeclaration(trait_decl) => write!(f, "{trait_decl}"),
         }
     }
 }
@@ -526,6 +527,7 @@ impl Display for PilStatement {
             }
             PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
+            PilStatement::TraitDeclaration(_, trait_decl) => write_indented_by(f, trait_decl, 1),
         }
     }
 }
@@ -565,10 +567,60 @@ impl Display for FunctionDefinition {
                 )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
-            FunctionDefinition::TypeDeclaration(_) => {
+            FunctionDefinition::TypeDeclaration(_) | FunctionDefinition::TraitDeclaration(_) => {
                 panic!("Should not use this formatting function.")
             }
         }
+    }
+}
+
+impl Display for TraitDeclaration<Expression> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = if self.type_vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_vars)
+        };
+        write!(
+            f,
+            "trait {name} {type_vars} {{\n{functions}}}",
+            name = self.name,
+            functions = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        )
+    }
+}
+
+impl Display for TraitDeclaration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = if self.type_vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_vars)
+        };
+        write!(
+            f,
+            "trait {name} {type_vars} {{\n{functions}}}",
+            name = self.name,
+            functions = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        )
+    }
+}
+
+impl Display for TraitFunction<Expression> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self._type)
+    }
+}
+
+impl Display for TraitFunction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self._type)
     }
 }
 
