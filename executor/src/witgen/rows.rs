@@ -4,7 +4,6 @@ use std::{
     ops::{Add, Sub},
 };
 
-use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
