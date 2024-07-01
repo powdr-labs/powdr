@@ -636,7 +636,7 @@ StructExpression: Box<Expression> = {
     <start:@L> <name:Identifier> "{" <fields:StructExpressionList+> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
 }
 
-StructExpressionList: BTreeMap<String, Expression> = {
+StructExpressionList: BTreeMap<String, Box<Expression>> = {
     => BTreeMap::new(),
     <map:(<StructExpressionField> ",")*> <end:StructExpressionField> ","? => {
         let mut hashmap = map.into_iter().collect::<BTreeMap<_, _>>();
@@ -645,8 +645,8 @@ StructExpressionList: BTreeMap<String, Expression> = {
     }
 }
 
-StructExpressionField: (String, Expression) = {
-    <name:Identifier> ":" <value:Expression> => (name, value)
+StructExpressionField: (String, Box<Expression>) = {
+    <name:Identifier> ":" <value:BoxedExpression> => (name, value)
 }
 
 BlockExpression: Box<Expression> = {

@@ -804,14 +804,6 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             ))?,
             Expression::StructExpression(_, StructExpression { name, fields }) => {
                 panic!("Structs are not supported yet.");
-                // let mut struct_fields = HashMap::new();
-                // for (field, value) in fields {
-                //     self.op_stack.push(Operation::Combine(expr));
-                //     self.op_stack.push(Operation::Expand(value));
-                //     self.expand(value)?;
-                //     struct_fields.insert(field, self.value_stack.pop().unwrap());
-                // }
-                // self.value_stack.push(Value::Struct(name, struct_fields).into())
             }
         };
         Ok(())
