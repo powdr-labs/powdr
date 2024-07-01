@@ -13,7 +13,7 @@ use crate::witgen::Constraint;
 
 use super::{
     affine_expression::{AffineExpression, AffineResult},
-    data_structures::column_map::WitnessColumnMap,
+    data_structures::{column_map::WitnessColumnMap, finalizable_data::FinalizedRow},
     expression_evaluator::ExpressionEvaluator,
     global_constraints::RangeConstraintSet,
     range_constraints::RangeConstraint,
@@ -252,11 +252,12 @@ pub fn rows_are_equal<T: FieldElement>(row1: &Row<'_, T>, row2: &Row<'_, T>) -> 
 pub fn finalize_row<'a, T: FieldElement>(
     row: &Row<'_, T>,
     column_ids: impl IntoIterator<Item = &'a PolyID>,
-) -> (Vec<T>, BitVec) {
-    column_ids
+) -> FinalizedRow<T> {
+    let (values, know_cells) = column_ids
         .into_iter()
         .map(|c| (row[c].value.unwrap_or_default(), row[c].value.is_known()))
-        .unzip()
+        .unzip();
+    FinalizedRow::new(values, know_cells)
 }
 
 impl<T: FieldElement> Debug for Row<'_, T> {
