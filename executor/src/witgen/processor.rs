@@ -1,14 +1,15 @@
 use std::collections::{BTreeMap, HashSet};
 
 use powdr_ast::analyzed::PolynomialType;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 
+use crate::witgen::rows::set_cell_unknown;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
+use crate::Identity;
 
 use super::machines::profiling::{record_end_identity, record_start_identity};
+use super::rows::value_is_known;
 use super::{
     affine_expression::AffineExpression,
     data_structures::{
@@ -16,7 +17,7 @@ use super::{
         finalizable_data::FinalizableData,
     },
     identity_processor::IdentityProcessor,
-    rows::{CellValue, Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
+    rows::{Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
     Constraints, EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
@@ -28,16 +29,13 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
     /// Rows of the calling machine.
     pub caller_rows: &'b RowPair<'b, 'a, T>,
     /// Connecting identity.
-    pub connecting_identity: &'a Identity<Expression<T>>,
+    pub connecting_identity: &'a Identity<T>,
     /// The left side of the connecting identity, evaluated.
     pub left: Left<'a, T>,
 }
 
 impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
-    pub fn new(
-        caller_rows: &'b RowPair<'b, 'a, T>,
-        connecting_identity: &'a Identity<Expression<T>>,
-    ) -> Self {
+    pub fn new(caller_rows: &'b RowPair<'b, 'a, T>, connecting_identity: &'a Identity<T>) -> Self {
         // Evaluate once, for performance reasons.
         let left = connecting_identity
             .left
@@ -205,7 +203,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     pub fn process_identity(
         &mut self,
         row_index: usize,
-        identity: &'a Identity<Expression<T>>,
+        identity: &'a Identity<T>,
         unknown_strategy: UnknownStrategy,
     ) -> Result<IdentityResult, EvalError<T>> {
         record_start_identity(identity.id);
@@ -332,26 +330,23 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     pub fn set_inputs_if_unset(&mut self, row_index: usize) -> bool {
         let mut input_updates = EvalValue::complete(vec![]);
         for (poly_id, value) in self.inputs.iter() {
-            match &self.data[row_index][poly_id].value {
-                CellValue::Known(_) => {}
-                CellValue::RangeConstraint(_) | CellValue::Unknown => {
-                    input_updates.combine(EvalValue::complete(vec![(
-                        &self.fixed_data.witness_cols[poly_id].poly,
-                        Constraint::Assignment(*value),
-                    )]));
-                }
-            };
+            if !value_is_known(&self.data[row_index], poly_id) {
+                input_updates.combine(EvalValue::complete(vec![(
+                    &self.fixed_data.witness_cols[poly_id].poly,
+                    Constraint::Assignment(*value),
+                )]));
+            }
         }
 
         for (poly, _) in &input_updates.constraints {
-            let poly_id = poly.poly_id;
-            if let Some(start_row) = self.previously_set_inputs.remove(&poly_id) {
+            let poly_id = &poly.poly_id;
+            if let Some(start_row) = self.previously_set_inputs.remove(poly_id) {
                 log::trace!(
                     "    Resetting previously set inputs for column: {}",
-                    self.fixed_data.column_name(&poly_id)
+                    self.fixed_data.column_name(poly_id)
                 );
                 for row_index in start_row..row_index {
-                    self.data[row_index][&poly_id].value = CellValue::Unknown;
+                    set_cell_unknown(&mut self.data[row_index], poly_id);
                 }
             }
         }
@@ -497,7 +492,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         &mut self,
         row_index: usize,
         proposed_row: &Row<'a, T>,
-        identity: &'a Identity<Expression<T>>,
+        identity: &'a Identity<T>,
         // This could be computed from the identity, but should be pre-computed for performance reasons.
         has_next_reference: bool,
     ) -> bool {

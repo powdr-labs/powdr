@@ -16,7 +16,7 @@ namespace Quad(%N);
     col witness wdouble;
     col witness quadruple;
 
-    {input, wdouble} in {id, double};
-    {wdouble, quadruple} in {id, double};
+    [input, wdouble] in [id, double];
+    [wdouble, quadruple] in [id, double];
 
     public out = quadruple(%N-1);

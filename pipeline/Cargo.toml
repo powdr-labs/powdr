@@ -10,6 +10,7 @@ repository = { workspace = true }
 [features]
 default = [] # halo2 is disabled by default
 halo2 = ["powdr-backend/halo2"]
+plonky3 = ["powdr-backend/plonky3"]
 estark-polygon = ["powdr-backend/estark-polygon"]
 
 [dependencies]

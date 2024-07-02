@@ -5,12 +5,13 @@ use std::{
 
 use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, IdentityKind};
 use powdr_number::FieldElement;
 
-use crate::witgen::{global_constraints::CombinedRangeConstraintSet, machines::Machine, EvalError};
+use crate::{
+    witgen::{global_constraints::CombinedRangeConstraintSet, machines::Machine, EvalError},
+    Identity,
+};
 
 use super::{
     machines::{FixedLookup, KnownMachine},
@@ -126,7 +127,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     /// Returns the updates.
     pub fn process_identity(
         &mut self,
-        identity: &'a Identity<Expression<T>>,
+        identity: &'a Identity<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         let result = match identity.kind {
@@ -148,7 +149,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
     fn process_polynomial_identity(
         &self,
-        identity: &'a Identity<Expression<T>>,
+        identity: &'a Identity<T>,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
         match rows.evaluate(identity.expression_for_poly_id()) {
@@ -159,7 +160,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
     fn process_plookup(
         &mut self,
-        identity: &'a Identity<Expression<T>>,
+        identity: &'a Identity<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         if let Some(left_selector) = &identity.left.selector {
@@ -168,15 +169,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             }
         }
 
-        let left = identity
-            .left
-            .expressions
-            .iter()
-            .map(|e| rows.evaluate(e))
-            .collect::<Vec<_>>();
+        let left = identity.left.expressions.iter().map(|e| rows.evaluate(e));
 
         // Fail if the LHS has an error.
-        let (left, errors): (Vec<_>, Vec<_>) = left.into_iter().partition_map(|x| match x {
+        let (left, errors): (Vec<_>, Vec<_>) = left.partition_map(|x| match x {
             Ok(x) => Either::Left(x),
             Err(x) => Either::Right(x),
         });
@@ -289,10 +285,7 @@ lazy_static! {
         Mutex::new(Default::default());
 }
 
-fn report_identity_solving<T: FieldElement, K>(
-    identity: &Identity<Expression<T>>,
-    result: &EvalResult<T, K>,
-) {
+fn report_identity_solving<T: FieldElement, K>(identity: &Identity<T>, result: &EvalResult<T, K>) {
     let success = result.as_ref().map(|r| r.is_complete()).unwrap_or_default() as u64;
     let mut stat = STATISTICS.lock().unwrap();
     stat.entry(identity.id)

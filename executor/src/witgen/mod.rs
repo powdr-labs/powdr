@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap};
-use std::rc::Rc;
 use std::sync::Arc;
 
 use machines::profiling::{
@@ -52,15 +51,15 @@ impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String>
 
 #[derive(Clone)]
 pub struct WitgenCallback<T> {
-    analyzed: Rc<Analyzed<T>>,
-    fixed_col_values: Rc<Vec<(String, Vec<T>)>>,
+    analyzed: Arc<Analyzed<T>>,
+    fixed_col_values: Arc<Vec<(String, Vec<T>)>>,
     query_callback: Arc<dyn QueryCallback<T>>,
 }
 
 impl<T: FieldElement> WitgenCallback<T> {
     pub fn new(
-        analyzed: Rc<Analyzed<T>>,
-        fixed_col_values: Rc<Vec<(String, Vec<T>)>>,
+        analyzed: Arc<Analyzed<T>>,
+        fixed_col_values: Arc<Vec<(String, Vec<T>)>>,
         query_callback: Option<Arc<dyn QueryCallback<T>>>,
     ) -> Self {
         let query_callback = query_callback.unwrap_or_else(|| Arc::new(unused_query_callback()));
@@ -185,7 +184,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             })
             .collect::<Vec<_>>();
 
-        // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
+        // Removes identities like X * (X - 1) = 0 or [ A ] in [ BYTES ]
         // These are already captured in the range constraints.
         let (fixed, retained_identities) =
             global_constraints::set_global_constraints(fixed, &identities);

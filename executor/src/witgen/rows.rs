@@ -12,7 +12,7 @@ use crate::witgen::Constraint;
 
 use super::{
     affine_expression::{AffineExpression, AffineResult},
-    data_structures::column_map::WitnessColumnMap,
+    data_structures::{column_map::WitnessColumnMap, finalizable_data::FinalizedRow},
     expression_evaluator::ExpressionEvaluator,
     global_constraints::RangeConstraintSet,
     range_constraints::RangeConstraint,
@@ -112,7 +112,7 @@ impl std::fmt::Display for RowIndex {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum CellValue<T: FieldElement> {
+enum CellValue<T: FieldElement> {
     Known(T),
     RangeConstraint(RangeConstraint<T>),
     Unknown,
@@ -168,8 +168,8 @@ impl<T: FieldElement> From<CellValue<T>> for Option<T> {
 #[derive(Clone)]
 pub struct Cell<'a, T: FieldElement> {
     /// The column name, for debugging purposes.
-    pub name: &'a str,
-    pub value: CellValue<T>,
+    name: &'a str,
+    value: CellValue<T>,
 }
 
 impl<'a, T: FieldElement> Cell<'a, T> {
@@ -179,6 +179,11 @@ impl<'a, T: FieldElement> Cell<'a, T> {
     /// Panics if the update is not an improvement.
     pub fn apply_update(&mut self, c: &Constraint<T>) {
         self.value = self.value.update_with(c);
+    }
+
+    /// Returns the value if it is known or zero if it is unknown.
+    pub fn value_or_zero(&self) -> T {
+        self.value.unwrap_or_default()
     }
 }
 
@@ -195,8 +200,64 @@ impl<T: FieldElement> Debug for Cell<'_, T> {
     }
 }
 
-/// A row of cells, indexed by polynomial ID.
 pub type Row<'a, T> = WitnessColumnMap<Cell<'a, T>>;
+
+/// Merges two rows, updating the first.
+/// Range constraints from the second row are ignored.
+pub fn merge_row_with<'a, T: FieldElement>(
+    row: &mut Row<'a, T>,
+    other: &Row<'a, T>,
+) -> Result<(), ()> {
+    // First check for conflicts, otherwise we would have to roll back changes.
+    if row
+        .values()
+        .zip(other.values())
+        .any(|(cell1, cell2)| match (&cell1.value, &cell2.value) {
+            (CellValue::Known(v1), CellValue::Known(v2)) => v1 != v2,
+            _ => false,
+        })
+    {
+        return Err(());
+    };
+    *row = WitnessColumnMap::from(row.values().zip(other.values()).map(|(cell1, cell2)| {
+        match (&cell1.value, &cell2.value) {
+            (CellValue::Known(_), _) => cell1.clone(),
+            _ => cell2.clone(),
+        }
+    }));
+    Ok(())
+}
+
+// TODO will be impl method of row later.
+pub fn value_is_known<T: FieldElement>(row: &Row<'_, T>, poly_id: &PolyID) -> bool {
+    row[poly_id].value.is_known()
+}
+
+// TODO will be impl method of row later.
+pub fn set_cell_unknown<T: FieldElement>(row: &mut Row<'_, T>, poly_id: &PolyID) {
+    row[poly_id].value = CellValue::Unknown;
+}
+
+// TODO will be impl method of row later.
+/// Returns true if the values and known constraints are equal for the two rows.
+pub fn rows_are_equal<T: FieldElement>(row1: &Row<'_, T>, row2: &Row<'_, T>) -> bool {
+    row1.values()
+        .zip(row2.values())
+        .all(|(cell1, cell2)| cell1.value == cell2.value)
+}
+
+// TODO will be impl method of row later.
+// TODO we need to get rid of column_ids and ensure that the vector is already in that shape.
+pub fn finalize_row<'a, T: FieldElement>(
+    row: &Row<'_, T>,
+    column_ids: impl IntoIterator<Item = &'a PolyID>,
+) -> FinalizedRow<T> {
+    let (values, know_cells) = column_ids
+        .into_iter()
+        .map(|c| (row[c].value.unwrap_or_default(), row[c].value.is_known()))
+        .unzip();
+    FinalizedRow::new(values, know_cells)
+}
 
 impl<T: FieldElement> Debug for Row<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

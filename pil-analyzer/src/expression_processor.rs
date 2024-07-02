@@ -1,9 +1,4 @@
 use core::panic;
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-};
-
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
@@ -15,6 +10,10 @@ use powdr_ast::{
 };
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 use crate::{type_processor::TypeProcessor, AnalysisDriver};
 
@@ -44,7 +43,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     ) -> SelectedExpressions<Expression> {
         SelectedExpressions {
             selector: expr.selector.map(|e| self.process_expression(e)),
-            expressions: self.process_expressions(expr.expressions),
+            expressions: Box::new(self.process_expression(*expr.expressions)),
         }
     }
 
@@ -82,6 +81,23 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             .into_iter()
             .map(|e| self.process_expression(e))
             .collect()
+    }
+
+    pub fn process_vec_into_selected_expression(
+        &mut self,
+        exprs: Vec<parsed::Expression>,
+    ) -> SelectedExpressions<Expression> {
+        let exprs = Expression::ArrayLiteral(
+            SourceRef::unknown(),
+            ArrayLiteral {
+                items: self.process_expressions(exprs),
+            },
+        );
+
+        SelectedExpressions {
+            selector: None,
+            expressions: Box::new(exprs),
+        }
     }
 
     pub fn process_expression(&mut self, expr: parsed::Expression) -> Expression {
@@ -179,7 +195,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 },
             ),
             PExpression::BlockExpression(src, BlockExpression { statements, expr }) => {
-                self.process_block_expression(statements, *expr, src)
+                self.process_block_expression(statements, expr, src)
             }
             PExpression::FreeInput(_, _) => panic!(),
         }
@@ -292,7 +308,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     fn process_block_expression(
         &mut self,
         statements: Vec<StatementInsideBlock>,
-        expr: ::powdr_ast::parsed::Expression,
+        expr: Option<Box<::powdr_ast::parsed::Expression>>,
         src: SourceRef,
     ) -> Expression {
         let vars = self.save_local_variables();
@@ -317,13 +333,14 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             })
             .collect::<Vec<_>>();
 
-        let processed_expr = self.process_expression(expr);
+        let processed_expr = expr.map(|expr| Box::new(self.process_expression(*expr)));
+
         self.reset_local_variables(vars);
         Expression::BlockExpression(
             src,
             BlockExpression {
                 statements: processed_statements,
-                expr: Box::new(processed_expr),
+                expr: processed_expr,
             },
         )
     }
