@@ -45,19 +45,28 @@ pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) 
     let tmp_dir = Temp::new_dir().unwrap();
     let executable = tmp_dir.join("executable");
 
-    // Assemble the file using clang, because it is the most likely thing to be
-    // already installed that supports RISC-V 32.
-    Command::new("clang")
-        .arg("--target=riscv32-unknown-elf")
-        .arg("-march=rv32imac")
+    // Assemble the file using either clang or gcc. The magic thing is:
+    // clang/llvm does not support 64-bit literals, which the RISC-V testsuite
+    // uses, and gcc/binutils does not support the -pie flag for RISCV32 target,
+    // which one of the tests uses.
+    //
+    // The hacky solution is then to use clang for PIE, and gcc for everything
+    // else.
+    let mut cmd = if use_pie {
+        // Compile with clang for PIE
+        let mut cmd = Command::new("clang");
+        cmd.arg("--target=riscv32-unknown-elf").arg("-Wl,-pie");
+        cmd
+    } else {
+        // Compile with gcc for non-PIE
+        let mut cmd = Command::new("riscv64-unknown-elf-gcc");
+        cmd.arg("-Wl,--emit-relocs");
+        cmd
+    };
+    cmd.arg("-march=rv32imac")
         .arg("-mabi=ilp32")
         .arg("-nostdlib")
         .arg("-static")
-        .arg(if use_pie {
-            "-Wl,-pie"
-        } else {
-            "-Wl,--emit-relocs"
-        })
         .arg("-o")
         .arg(&executable)
         .arg(asm_file)
