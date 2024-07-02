@@ -1,6 +1,6 @@
 #![deny(clippy::print_stdout)]
 
-use powdr_ast::asm_analysis::{AnalysisASMFile, Item};
+use powdr_ast::asm_analysis::{AnalysisASMFile, Item, SubmachineDeclaration};
 use powdr_number::FieldElement;
 use romgen::generate_machine_rom;
 mod common;
@@ -13,18 +13,34 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
         items: file
             .items
             .into_iter()
-            .map(|(name, m)| {
-                (
-                    name,
-                    match m {
-                        Item::Machine(m) => {
-                            let (m, rom) = generate_machine_rom::<T>(m);
-                            Item::Machine(vm_to_constrained::convert_machine::<T>(m, rom))
-                        }
-                        Item::Expression(e) => Item::Expression(e),
-                        Item::TypeDeclaration(enum_decl) => Item::TypeDeclaration(enum_decl),
-                    },
-                )
+            .flat_map(|(name, m)| match m {
+                Item::Machine(m) => {
+                    let (m, rom) = generate_machine_rom::<T>(m);
+                    let (mut m, rom_machine) = vm_to_constrained::convert_machine::<T>(m, rom);
+
+                    let mut rom_ty = name.clone();
+                    let machine_name = rom_ty.pop().unwrap();
+                    rom_ty.push(format!("{machine_name}ROM"));
+
+                    if rom_machine.is_some() {
+                        m.submachines.push(SubmachineDeclaration {
+                            name: "_rom".into(),
+                            ty: rom_ty.clone(),
+                            args: vec![],
+                        });
+                    }
+
+                    std::iter::once((name.clone(), m))
+                        .chain(
+                            rom_machine
+                                .into_iter()
+                                .map(|rom_machine| (rom_ty.clone(), rom_machine)),
+                        )
+                        .map(|(name, machine)| (name, Item::Machine(machine)))
+                        .collect()
+                }
+                Item::Expression(e) => vec![(name, Item::Expression(e))],
+                Item::TypeDeclaration(enum_decl) => vec![(name, Item::TypeDeclaration(enum_decl))],
             })
             .collect(),
     }
