@@ -4,7 +4,10 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 
-use powdr_ast::analyzed::TypedExpression;
+use powdr_ast::analyzed::{
+    Expression, TypeConstructor, TypeDeclaration as TypeDeclarationAnalyzed,
+};
+use powdr_ast::parsed::TypedExpression;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
@@ -12,12 +15,13 @@ use powdr_ast::parsed::{
     SelectedExpressions,
 };
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
+use powdr_ast::parsed::{StructDeclaration, TypeDeclaration as TypeDeclarationParsed};
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
 
 use powdr_ast::analyzed::{
-    Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
-    Symbol, SymbolKind,
+    FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration, Symbol,
+    SymbolKind,
 };
 
 use crate::type_processor::TypeProcessor;
@@ -176,7 +180,18 @@ where
                     None,
                     None,
                     Some(FunctionDefinition::TypeDeclaration(
-                        enum_declaration.clone(),
+                        TypeDeclarationParsed::Enum(enum_declaration.clone()),
+                    )),
+                ),
+            PilStatement::StructDeclaration(source, struct_declaration) => self
+                .handle_symbol_definition(
+                    source,
+                    struct_declaration.name.clone(),
+                    SymbolKind::Other(),
+                    None,
+                    None,
+                    Some(FunctionDefinition::TypeDeclaration(
+                        TypeDeclarationParsed::Struct(struct_declaration.clone()),
                     )),
                 ),
             _ => self.handle_identity_statement(statement),
@@ -417,7 +432,9 @@ where
             length,
         };
 
-        if let Some(FunctionDefinition::TypeDeclaration(enum_decl)) = value {
+        if let Some(FunctionDefinition::TypeDeclaration(TypeDeclarationParsed::Enum(enum_decl))) =
+            value
+        {
             // For enums, we add PILItems both for the enum itself and also for all
             // its type constructors.
             assert_eq!(symbol_kind, SymbolKind::Other());
@@ -435,17 +452,59 @@ where
                     kind: SymbolKind::Other(),
                     length: None,
                 };
-                let value = FunctionValueDefinition::TypeConstructor(
+                let value = FunctionValueDefinition::TypeConstructor(TypeConstructor::Enum(
                     shared_enum_decl.clone(),
                     variant.clone(),
-                );
+                ));
                 PILItem::Definition(var_symbol, Some(value))
             });
             return iter::once(PILItem::Definition(
                 symbol,
-                Some(FunctionValueDefinition::TypeDeclaration(enum_decl.clone())),
+                Some(FunctionValueDefinition::TypeDeclaration(
+                    TypeDeclarationAnalyzed::Enum(enum_decl.clone()),
+                )),
             ))
             .chain(var_items)
+            .collect();
+        }
+
+        if let Some(FunctionDefinition::TypeDeclaration(TypeDeclarationParsed::Struct(
+            struct_decl,
+        ))) = value
+        {
+            assert_eq!(symbol_kind, SymbolKind::Other());
+            let struct_decl = self.process_struct_declaration(struct_decl);
+            //let shared_struct_decl = Arc::new(struct_decl.clone());
+            // TODO Need to handle struct fields as well.
+            /*let field_items = struct_decl.fields.iter().map(|(field_name, _ty)| {
+                let var_symbol = Symbol {
+                    id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
+                    source: source.clone(),
+                    absolute_name: self
+                        .driver
+                        .resolve_namespaced_decl(&[&name, &field_name])
+                        .to_dotted_string(),
+                    stage: None,
+                    kind: SymbolKind::Other(),
+                    length: None,
+                };
+                let value = FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
+                    shared_struct_decl.clone(),
+                    vec![StructValue {
+                        name: field_name.clone(),
+                        value: Expression::String("1".to_string()), // TODO Just for testing purposes
+                    }],
+                ));
+                PILItem::Definition(var_symbol, Some(value))
+            });
+            */
+            return iter::once(PILItem::Definition(
+                symbol,
+                Some(FunctionValueDefinition::TypeDeclaration(
+                    TypeDeclarationAnalyzed::Struct(struct_decl.clone()),
+                )),
+            ))
+            //.chain(field_items)
             .collect();
         }
 
@@ -488,7 +547,7 @@ where
                 assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
                 FunctionValueDefinition::Array(expression)
             }
-            FunctionDefinition::TypeDeclaration(_enum_declaration) => unreachable!(),
+            FunctionDefinition::TypeDeclaration(_type_declaration) => unreachable!(),
         });
         vec![PILItem::Definition(symbol, value)]
     }
@@ -567,5 +626,33 @@ where
                     .collect()
             }),
         }
+    }
+
+    fn process_struct_declaration(
+        &self,
+        struct_decl: StructDeclaration<parsed::Expression>,
+    ) -> StructDeclaration {
+        let type_vars = struct_decl.type_vars.vars().collect();
+        let fields = struct_decl
+            .fields
+            .into_iter()
+            .map(|v| self.process_struct_field(v, &type_vars))
+            .collect();
+        StructDeclaration {
+            name: self.driver.resolve_decl(&struct_decl.name),
+            type_vars: struct_decl.type_vars,
+            fields,
+        }
+    }
+
+    fn process_struct_field(
+        &self,
+        field: (String, Type<parsed::Expression>),
+        type_vars: &HashSet<&String>,
+    ) -> (String, Type) {
+        (
+            field.0.to_string(),
+            self.type_processor(type_vars).process_type(field.1),
+        )
     }
 }

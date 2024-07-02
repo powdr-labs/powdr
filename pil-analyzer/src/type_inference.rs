@@ -671,6 +671,9 @@ impl<'a> TypeChecker<'a> {
                 self.local_var_types.truncate(original_var_count);
                 result?
             }
+            Expression::StructExpression(_source_ref, _struct_expr) => {
+                panic!("Struct expressions are not yet supported.");
+            }
         })
     }
 
@@ -836,6 +839,55 @@ impl<'a> TypeChecker<'a> {
                         } else {
                             return Err(format!(
                                 "Expected enum variant for pattern {pattern} but got {ty}"
+                            ));
+                        }
+                    }
+                }
+            }
+            Pattern::Struct(name, data) => {
+                let (ty, _generic_args) = self
+                    .instantiate_scheme(self.declared_types[&name.to_dotted_string()].1.clone());
+                let ty = type_for_reference(&ty);
+
+                match data {
+                    Some(data) => {
+                        let Type::Function(FunctionType { params, value }) = ty else {
+                            if matches!(ty, Type::NamedType(_, _)) {
+                                return Err(format!("Struct {name} does not have fields, but is used with curly braces in {pattern}."));
+                            } else {
+                                return Err(format!(
+                                    "Expected struct for pattern {pattern} but got {ty}"
+                                ));
+                            }
+                        };
+                        if !matches!(value.as_ref(), Type::NamedType(_, _)) {
+                            return Err(format!(
+                                "Expected struct for pattern {pattern} but got {value}"
+                            ));
+                        }
+                        if params.len() != data.len() {
+                            return Err(format!(
+                                "Invalid number of data fields for struct {name}. Expected {} but got {}.",
+                                params.len(),
+                                data.len()
+                            ));
+                        }
+                        params
+                            .iter()
+                            .zip(data)
+                            .try_for_each(|(ty, pat)| self.expect_type_of_pattern(ty, pat))?;
+                        (*value).clone()
+                    }
+                    None => {
+                        if let Type::NamedType(_, _) = ty {
+                            ty
+                        } else if matches!(ty, Type::Function(_)) {
+                            return Err(format!(
+                                "Expected struct for pattern {pattern} but got {ty} - maybe you forgot the curly braces?"
+                            ));
+                        } else {
+                            return Err(format!(
+                                "Expected struct for pattern {pattern} but got {ty}"
                             ));
                         }
                     }

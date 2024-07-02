@@ -384,7 +384,7 @@ impl Display for Pattern {
             Pattern::Tuple(t) => write!(f, "({})", t.iter().format(", ")),
             Pattern::Array(a) => write!(f, "[{}]", a.iter().format(", ")),
             Pattern::Variable(v) => write!(f, "{v}"),
-            Pattern::Enum(name, fields) => write!(
+            Pattern::Enum(name, fields) | Pattern::Struct(name, fields) => write!(
                 f,
                 "{name}{}",
                 fields
@@ -526,6 +526,7 @@ impl Display for PilStatement {
             }
             PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
+            PilStatement::StructDeclaration(_, struct_decl) => write_indented_by(f, struct_decl, 1),
         }
     }
 }
@@ -624,6 +625,49 @@ impl<E: Display> Display for EnumVariant<E> {
     }
 }
 
+impl<E: Display> Display for StructDeclaration<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let name = self.name.to_string();
+        let type_vars = if self.type_vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_vars)
+        };
+        write!(
+            f,
+            "struct {name}{type_vars} {{\n{}}}",
+            indent(
+                self.fields
+                    .iter()
+                    .map(|v| format!("{}:{},\n", v.0, v.1))
+                    .format(""),
+                1
+            )
+        )
+    }
+}
+
+impl<E: Display> Display for StructExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}{}",
+            self.name,
+            if self.fields.is_empty() {
+                "".to_string()
+            } else {
+                format!(
+                    "{{ {} }}",
+                    self.fields
+                        .iter()
+                        .map(|named_expr| format!("{}: {}", named_expr.0, named_expr.1))
+                        .format(", ")
+                )
+            }
+        )
+    }
+}
+
 fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
     format!("{}", list.into_iter().format(", "))
 }
@@ -654,6 +698,7 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::BlockExpression(_, block_expr) => {
                 write!(f, "{block_expr}")
             }
+            Expression::StructExpression(_, s) => write!(f, "{s}"),
         }
     }
 }
