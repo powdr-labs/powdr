@@ -87,6 +87,12 @@ fn memory_test_parallel_accesses() {
 }
 
 #[test]
+fn permutation_via_challenges_bn() {
+    let f = "std/permutation_via_challenges.asm";
+    test_halo2(f, Default::default());
+}
+
+#[test]
 #[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation(main.is_first, [main.z], main.alpha, main.beta, main.permutation_constraint)\nError: FailedAssertion(\"The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!\""]
 fn permutation_via_challenges_gl() {
     let f = "std/permutation_via_challenges.asm";
