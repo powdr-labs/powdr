@@ -114,7 +114,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, iter::repeat};
 
     use powdr_ast::analyzed::PolyID;
     use powdr_number::{FieldElement, GoldilocksField};
@@ -163,9 +163,10 @@ mod tests {
         let mut machines = [];
 
         let columns = fixed_data.witness_cols.keys().collect();
+        let basic_row = Row::fresh(&fixed_data, fixed_data.witness_cols.keys());
         let data = FinalizableData::with_initial_rows_in_progress(
             &columns,
-            (0..fixed_data.degree).map(|i| Row::fresh(&fixed_data, fixed_data.witness_cols.keys())),
+            repeat(basic_row).take(fixed_data.degree as usize),
         );
 
         let mut mutable_state = MutableState {

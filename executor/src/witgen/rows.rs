@@ -122,12 +122,12 @@ enum CellValue<T: FieldElement> {
 }
 
 impl<T: FieldElement> CellValue<T> {
-    pub fn is_known(&self) -> bool {
+    fn is_known(&self) -> bool {
         matches!(self, CellValue::Known(_))
     }
 
     /// Returns the value if known, otherwise zero.
-    pub fn unwrap_or_zero(&self) -> T {
+    fn unwrap_or_zero(&self) -> T {
         match self {
             CellValue::Known(v) => *v,
             _ => Default::default(),
@@ -135,7 +135,7 @@ impl<T: FieldElement> CellValue<T> {
     }
 
     /// Returns Some(value) if known, otherwise None.
-    pub fn value(&self) -> Option<T> {
+    fn value(&self) -> Option<T> {
         match self {
             CellValue::Known(v) => Some(*v),
             _ => None,
@@ -146,7 +146,7 @@ impl<T: FieldElement> CellValue<T> {
     ///
     /// # Panics
     /// Panics if the update is not an improvement.
-    pub fn apply_update(&mut self, c: &Constraint<T>) {
+    fn apply_update(&mut self, c: &Constraint<T>) {
         match (&self, c) {
             (CellValue::Known(_), _) => {
                 // Note that this is a problem even if the value that was set is the same,
@@ -186,18 +186,19 @@ pub struct Row<T: FieldElement> {
 
 impl<T: FieldElement> Row<T> {
     pub fn value_or_zero(&self, poly_id: &PolyID) -> T {
+        // This should not return zero for columns outside the set of columns, because they might be known.
         self.values[poly_id].unwrap_or_zero()
     }
 
     pub fn value(&self, poly_id: &PolyID) -> Option<T> {
-        self.values[poly_id].value()
+        self.values.get(poly_id).and_then(|v| v.value())
     }
 
     pub fn range_constraint(&self, poly_id: &PolyID) -> Option<RangeConstraint<T>> {
-        match &self.values[poly_id] {
+        self.values.get(poly_id).and_then(|v| match v {
             CellValue::RangeConstraint(c) => Some(c.clone()),
             _ => None,
-        }
+        })
     }
 
     /// Merges two rows, updating the first.
@@ -262,8 +263,9 @@ impl<T: FieldElement> Row<T> {
             .map(|poly_id| poly_id.id as usize)
             .minmax()
             .into_option()
-            .map(|(min, max)| min..(max - 1))
+            .map(|(min, max)| min..(max + 1))
             .unwrap_or_default();
+        println!("Creating row with columns: {:?}", column_id_range);
 
         let values = WitnessColumnMap::from(
             column_id_range.clone(),
@@ -486,6 +488,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn get_value(&self, poly: &AlgebraicReference) -> Option<T> {
         let row = self.get_row(poly.next);
         if self.unknown_strategy == UnknownStrategy::Zero {
+            // TODO this should panic if the column is out of range.
             Some(row.value_or_zero(&poly.poly_id))
         } else {
             row.value(&poly.poly_id)
@@ -507,6 +510,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
 
 impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'_, '_, T> {
     fn value<'b>(&self, poly: &'b AlgebraicReference) -> AffineResult<&'b AlgebraicReference, T> {
+        // TODO this should not panic if the column is out of range.
         Ok(match self.get_value(poly) {
             Some(v) => v.into(),
             None => AffineExpression::from_variable_id(poly),
