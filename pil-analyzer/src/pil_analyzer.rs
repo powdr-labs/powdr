@@ -328,7 +328,6 @@ impl PILAnalyzer {
 
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
         condenser::condense(
-            self.polynomial_degree,
             self.definitions,
             self.public_declarations,
             &self.identities,

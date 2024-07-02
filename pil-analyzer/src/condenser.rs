@@ -30,14 +30,13 @@ use crate::{
 };
 
 pub fn condense<T: FieldElement>(
-    degree: Option<DegreeType>,
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[Identity<parsed::SelectedExpressions<Expression>>],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
-    let mut condenser = Condenser::new(&definitions, degree);
+    let mut condenser = Condenser::new(&definitions);
 
     // Counter needed to re-assign identity IDs.
     let mut counters = Counters::default();
@@ -53,7 +52,7 @@ pub fn condense<T: FieldElement>(
                 let mut namespace =
                     AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
                 namespace.pop();
-                condenser.set_namespace(namespace);
+                condenser.set_namespace_and_degree(namespace, definitions[name].0.degree);
             }
             let statement = match s {
                 StatementIdentifier::Identity(index) => {
@@ -207,10 +206,7 @@ impl<Expr> IdentityWithoutID<Expr> {
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
-    pub fn new(
-        symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        degree: Option<DegreeType>,
-    ) -> Self {
+    pub fn new(symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
         let next_witness_id = symbols
             .values()
             .filter_map(|(sym, _)| match sym.kind {
@@ -222,8 +218,8 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             .max()
             .unwrap_or_default();
         Self {
-            degree,
             symbols,
+            degree: None,
             symbol_values: Default::default(),
             namespace: Default::default(),
             next_witness_id,
@@ -266,8 +262,13 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Sets the current namespace which will be used for newly generated witness columns.
-    pub fn set_namespace(&mut self, namespace: AbsoluteSymbolPath) {
+    pub fn set_namespace_and_degree(
+        &mut self,
+        namespace: AbsoluteSymbolPath,
+        degree: Option<DegreeType>,
+    ) {
         self.namespace = namespace;
+        self.degree = degree;
     }
 
     /// Returns the witness columns generated since the last call to this function.
