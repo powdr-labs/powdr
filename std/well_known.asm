@@ -1,0 +1,1 @@
+let is_first: int -> int = |i| if i == 0 { 1 } else { 0 };
