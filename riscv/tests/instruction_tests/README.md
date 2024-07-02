@@ -13,37 +13,26 @@ Following there is a list of tests from the test suite that we do not support:
 
 ## From the basic instruction set (rv32ui):
 
-- auipc
+- `auipc`: this test is not supported because we don't support any kind of arithmetic over
+`.text` label and addresses, nor the `lla` pseudoinstruction;
 
-This test is not supported because we don't support any kind of arithmetic over
-`.text` label and addresses, nor the `lla` pseudoinstruction.
+- `fence_i`: this test is not supported because our zkVM "text" is static: we don't support
+dynamic binary code or self modifying programs, so we don't support instruction `fence.i`;
 
-- fence_i
+- `jalr`: our support for `jalr` instruction is partial: either offset must be zero,
+or the target register `rs` must be `x0`. This is because we don't support arithmetic
+over text labels, as they are opaque;
 
-This test is not supported because our zkVM "text" is static: we don't support
-dynamic binary code or self modifying programs. Thus, our `fence.i` instruction
-is just a nop.
+- `lui`: instruction `sra` not yet implemented;
 
-- jalr
+- `ma_data`: we don't yet support misaligned data access;
 
-Tries to load the address of a `.text` label, which we don't support.
-
-- lui
-
-Instruction `sra` not yet implemented.
-
-- ma_data
-
-We don't yet support misaligned data access.
-
-- sra
-
-Not yet implemented.
+- `sra`: not yet implemented.
 
 ## From the "M" (multiplication) extension (rv32um):
 
-- div
-- rem
+- `div`
+- `rem`
 
 These instructions are not yet implemented.
 
@@ -63,7 +52,9 @@ implement, following amoadd_w suit.
 
 ## From the "C" (compressed) extension (rv32uc):
 
-- rvc
+- `rvc`
+
+TODO: update this to reflect the ELF translation
 
 This RISC-V "C" extension doesn't make much sense for Powdr, as we execute
 directly the assembly file, not the binary format. All the alignment and precise

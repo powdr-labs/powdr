@@ -179,26 +179,85 @@ macro_rules! as_ref [
 
 pub fn compile_rust_crate_to_riscv(
     input_dir: &str,
-    target_dir: &Path,
-) -> (Option<PathBuf>, Vec<(String, PathBuf)>) {
-    // We call cargo twice, once to get the build plan json, so we know exactly
-    // which object file to use, and once to perform the actual building.
+    output_dir: &Path,
+) -> (Option<PathBuf>, BTreeMap<String, PathBuf>) {
+    let target_dir = output_dir.join(CARGO_TARGET_DIR);
+
+    // We call cargo twice, once to perform the actual building, and once to get
+    // the build plan json, so we know exactly which object files to use.
 
     // Real build run.
-    let build_status = build_cargo_command(input_dir, target_dir, false)
+    let build_status = build_cargo_command(input_dir, &target_dir, false)
         .status()
         .unwrap();
     assert!(build_status.success());
 
     // Build plan run. We must set the target dir to a temporary directory,
     // otherwise cargo will screw up the build done previously.
-    let tmp_dir = Temp::new_dir().unwrap();
-    let output = build_cargo_command(input_dir, &tmp_dir, true)
-        .output()
-        .unwrap();
-    assert!(output.status.success());
+    let (build_plan, plan_dir): (JsonValue, PathBuf) = {
+        let plan_dir = Temp::new_dir().unwrap();
+        let build_plan_run = build_cargo_command(input_dir, &plan_dir, true)
+            .output()
+            .unwrap();
+        assert!(build_plan_run.status.success());
 
-    output_files_from_cargo_build_plan(&output.stdout, &tmp_dir)
+        (
+            serde_json::from_slice(&build_plan_run.stdout).unwrap(),
+            plan_dir.to_path_buf(),
+        )
+    };
+
+    let mut assemblies = BTreeMap::new();
+
+    let JsonValue::Array(invocations) = &build_plan["invocations"] else {
+        panic!("no invocations in cargo build plan");
+    };
+
+    let mut executable = None;
+
+    log::debug!("RISC-V assembly files of this build:");
+    for i in invocations {
+        let JsonValue::Array(outputs) = &i["outputs"] else {
+            panic!("no outputs in cargo build plan");
+        };
+        for output in outputs {
+            let output = Path::new(output.as_str().unwrap());
+            // Replace the plan_dir with the target_dir, because the later is
+            // where the files actually are.
+            let parent = target_dir.join(output.parent().unwrap().strip_prefix(&plan_dir).unwrap());
+            if parent.ends_with("riscv32imac-unknown-none-elf/release/deps") {
+                let extension = output.extension();
+                let name_stem = if Some(OsStr::new("rmeta")) == extension {
+                    // Have to convert to string to remove the "lib" prefix:
+                    output
+                        .file_stem()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .strip_prefix("lib")
+                        .unwrap()
+                } else if extension.is_none() {
+                    assert!(executable.is_none(), "Multiple executables found");
+                    let file_stem = output.file_stem().unwrap();
+                    executable = Some(parent.join(file_stem));
+                    file_stem.to_str().unwrap()
+                } else {
+                    continue;
+                };
+
+                let mut asm_name = parent.join(name_stem);
+                asm_name.set_extension("s");
+
+                log::debug!(" - {}", asm_name.to_string_lossy());
+                assert!(
+                    assemblies.insert(name_stem.to_string(), asm_name).is_none(),
+                    "Duplicate assembly file name: {name_stem}",
+                );
+            }
+        }
+    }
+
+    (executable, assemblies)
 }
 
 const CARGO_TARGET_DIR: &str = "cargo_target";
@@ -207,29 +266,25 @@ pub fn compile_rust_crate_to_riscv_asm(
     input_dir: &str,
     output_dir: &Path,
 ) -> BTreeMap<String, String> {
-    let target_dir = output_dir.join(CARGO_TARGET_DIR);
-    let (_, output_files) = compile_rust_crate_to_riscv(input_dir, &target_dir);
+    let (_, output_files) = compile_rust_crate_to_riscv(input_dir, output_dir);
 
-    // Load all the expected assembly files:
-    let mut assemblies = BTreeMap::new();
-    for (name, filename) in output_files {
-        let filename = target_dir.join(filename);
-        assert!(
-            assemblies
-                .insert(name, fs::read_to_string(&filename).unwrap())
-                .is_none(),
-            "Duplicate assembly file name: {}",
-            filename.to_string_lossy()
-        );
-    }
-    assemblies
+    load_riscv_asm_files(output_files)
+}
+
+pub fn load_riscv_asm_files(asm_files: BTreeMap<String, PathBuf>) -> BTreeMap<String, String> {
+    asm_files
+        .into_iter()
+        .map(|(name, filename)| {
+            let contents = fs::read_to_string(filename).unwrap();
+            (name, contents)
+        })
+        .collect()
 }
 
 pub fn compile_rust_crate_to_riscv_bin(input_dir: &str, output_dir: &Path) -> PathBuf {
-    let target_dir = output_dir.join(CARGO_TARGET_DIR);
-    let (executable, _) = compile_rust_crate_to_riscv(input_dir, &target_dir);
-
-    target_dir.join(executable.unwrap())
+    compile_rust_crate_to_riscv(input_dir, output_dir)
+        .0
+        .unwrap()
 }
 
 fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: bool) -> Command {
@@ -267,59 +322,4 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
     }
 
     cmd
-}
-
-fn output_files_from_cargo_build_plan(
-    build_plan_bytes: &[u8],
-    target_dir: &Path,
-) -> (Option<PathBuf>, Vec<(String, PathBuf)>) {
-    let json: JsonValue = serde_json::from_slice(build_plan_bytes).unwrap();
-
-    let mut assemblies = Vec::new();
-
-    let JsonValue::Array(invocations) = &json["invocations"] else {
-        panic!("no invocations in cargo build plan");
-    };
-
-    let mut executable = None;
-
-    log::debug!("RISC-V assembly files of this build:");
-    for i in invocations {
-        let JsonValue::Array(outputs) = &i["outputs"] else {
-            panic!("no outputs in cargo build plan");
-        };
-        for output in outputs {
-            let output = Path::new(output.as_str().unwrap());
-            // Strip the target_dir, so that the path becomes relative.
-            let parent = output.parent().unwrap().strip_prefix(target_dir).unwrap();
-            if parent.ends_with("riscv32imac-unknown-none-elf/release/deps") {
-                let extension = output.extension();
-                let name_stem = if Some(OsStr::new("rmeta")) == extension {
-                    // Have to convert to string to remove the "lib" prefix:
-                    output
-                        .file_stem()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .strip_prefix("lib")
-                        .unwrap()
-                } else if extension.is_none() {
-                    assert!(executable.is_none(), "Multiple executables found");
-                    let file_stem = output.file_stem().unwrap();
-                    executable = Some(parent.join(file_stem));
-                    file_stem.to_str().unwrap()
-                } else {
-                    continue;
-                };
-
-                let mut asm_name = parent.join(name_stem);
-                asm_name.set_extension("s");
-
-                log::debug!(" - {}", asm_name.to_string_lossy());
-                assemblies.push((name_stem.to_string(), asm_name));
-            }
-        }
-    }
-
-    (executable, assemblies)
 }

@@ -7,19 +7,19 @@ use std::path::PathBuf;
 pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     file_name: &str,
     contents: &str,
-    inputs: Vec<GoldilocksField>,
-    data: Option<Vec<(u32, S)>>,
+    inputs: &[GoldilocksField],
+    data: Option<&[(u32, S)]>,
     backend: BackendType,
 ) {
     let temp_dir = mktemp::Temp::new_dir().unwrap().release();
 
     let mut pipeline = Pipeline::default()
-        .with_prover_inputs(inputs.clone())
+        .with_prover_inputs(inputs.to_vec())
         .with_output(temp_dir.to_path_buf(), false)
         .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)));
 
     if let Some(data) = data {
-        pipeline = pipeline.add_data_vec(&data);
+        pipeline = pipeline.add_data_vec(data);
     }
 
     let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
