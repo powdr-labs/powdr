@@ -10,7 +10,7 @@ use std::convert::expr;
 use std::prover::eval;
 use std::prover::Query;
 
-// A machine to check that a field element represents two bytes. It uses an exhaustive lookup table.
+/// A machine to check that a field element represents two bytes. It uses an exhaustive lookup table.
 machine Byte2 with
     degree: 65536,
     latch: latch,
