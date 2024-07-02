@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    fmt::Display,
     ops::{Add, Sub},
 };
 
@@ -104,7 +105,7 @@ impl Sub<RowIndex> for RowIndex {
     }
 }
 
-impl std::fmt::Display for RowIndex {
+impl Display for RowIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.index)
     }
@@ -162,6 +163,16 @@ impl<T: FieldElement> CellValue<T> {
             (CellValue::Unknown, Constraint::RangeConstraint(c)) => {
                 *self = CellValue::RangeConstraint(c.clone())
             }
+        }
+    }
+}
+
+impl<T: FieldElement> Display for CellValue<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CellValue::Known(v) => write!(f, "{v}"),
+            CellValue::RangeConstraint(rc) => write!(f, "?  (range constraint: {})", rc),
+            CellValue::Unknown => write!(f, "?"),
         }
     }
 }
@@ -293,38 +304,22 @@ impl<'a, T: FieldElement> Row<'a, T> {
         cols: Option<&HashSet<PolyID>>,
         fixed_data: &FixedData<'_, T>,
     ) -> String {
-        let mut cells = self
-            .values
+        self.values
             .iter()
             .filter(|(_, cell)| cell.is_known() || include_unknown)
             .filter(|(col, _)| cols.map(|cols| cols.contains(col)).unwrap_or(true))
-            .collect::<Vec<_>>();
-
-        // Nonzero first, then zero, then unknown
-        cells.sort_by_key(|(i, cell)| {
-            (
-                match cell {
-                    CellValue::Known(v) if v.is_zero() => 1,
-                    CellValue::Known(_) => 0,
-                    _ => 2,
-                },
-                *i,
-            )
-        });
-
-        cells
-            .into_iter()
-            .map(|(poly_id, cell)| {
-                let name = fixed_data.column_name(&poly_id);
-                let value = match cell {
-                    CellValue::Known(v) => format!("{v}"),
-                    CellValue::RangeConstraint(rc) => {
-                        format!("?  (range constraint: {rc})")
-                    }
-                    CellValue::Unknown => "?".to_string(),
-                };
-                format!("    {name} = {value}")
+            // Nonzero first, then zero, then unknown
+            .sorted_by_key(|(i, cell)| {
+                (
+                    match cell {
+                        CellValue::Known(v) if v.is_zero() => 1,
+                        CellValue::Known(_) => 0,
+                        _ => 2,
+                    },
+                    *i,
+                )
             })
+            .map(|(poly_id, cell)| format!("    {} = {cell}", fixed_data.column_name(&poly_id)))
             .join("\n")
     }
 }
