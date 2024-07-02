@@ -14,7 +14,7 @@ use crate::Identity;
 use super::data_structures::finalizable_data::FinalizableData;
 use super::processor::{OuterQuery, Processor};
 
-use super::rows::{rows_are_equal, Row, RowIndex, UnknownStrategy};
+use super::rows::{Row, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
 
 /// Maximal period checked during loop detection.
@@ -219,12 +219,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
 
         let row = row_index as usize;
         (1..MAX_PERIOD).find(|&period| {
-            (1..=period).all(|i| {
-                rows_are_equal(
-                    self.processor.row(row - i - period),
-                    self.processor.row(row - i),
-                )
-            })
+            (1..=period)
+                .all(|i| self.processor.row(row - i - period) == self.processor.row(row - i))
         })
     }
 
@@ -297,7 +293,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                     row_index as DegreeType + self.row_offset
                 ),
                 true,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
 
@@ -442,7 +439,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index).render(
                 &format!("Current row ({row_index})"),
                 false,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!(
@@ -450,7 +448,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index + 1).render(
                 &format!("Next row ({})", row_index + 1),
                 false,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!("Set RUST_LOG=trace to understand why these values were chosen.");
@@ -478,7 +477,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index).render(
                 &format!("Current row ({row_index})"),
                 true,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!(
@@ -486,7 +486,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index + 1).render(
                 &format!("Next row ({})", row_index + 1),
                 true,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!("\nSet RUST_LOG=trace to understand why these values were (not) chosen.");

@@ -62,7 +62,7 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
         let mut values: Vec<V> = (0..len).map(|_| V::default()).collect();
         for (poly, value) in items {
             values[poly.id as usize] = value;
-            assert_eq!(poly.ptype, T::P_TYPE);
+            debug_assert_eq!(poly.ptype, T::P_TYPE);
         }
 
         ColumnMap {
@@ -90,8 +90,31 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
         self.values.iter()
     }
 
+    pub fn values_into_iter(self) -> impl Iterator<Item = V> {
+        self.values.into_iter()
+    }
+
+    pub fn values_iter_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.values.iter_mut()
+    }
+
     pub fn len(&self) -> usize {
         self.values.len()
+    }
+}
+
+impl<V, T: PolynomialTypeTrait> Default for ColumnMap<V, T> {
+    fn default() -> Self {
+        ColumnMap {
+            values: Vec::new(),
+            _ptype: PhantomData,
+        }
+    }
+}
+
+impl<V: PartialEq, T: PolynomialTypeTrait> PartialEq for ColumnMap<V, T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.values == other.values
     }
 }
 
@@ -100,7 +123,7 @@ impl<V, T: PolynomialTypeTrait> Index<&PolyID> for ColumnMap<V, T> {
 
     #[inline]
     fn index(&self, poly_id: &PolyID) -> &Self::Output {
-        assert!(poly_id.ptype == T::P_TYPE);
+        debug_assert!(poly_id.ptype == T::P_TYPE);
         &self.values[poly_id.id as usize]
     }
 }
@@ -108,7 +131,7 @@ impl<V, T: PolynomialTypeTrait> Index<&PolyID> for ColumnMap<V, T> {
 impl<V, T: PolynomialTypeTrait> IndexMut<&PolyID> for ColumnMap<V, T> {
     #[inline]
     fn index_mut(&mut self, poly_id: &PolyID) -> &mut Self::Output {
-        assert!(poly_id.ptype == T::P_TYPE);
+        debug_assert!(poly_id.ptype == T::P_TYPE);
         &mut self.values[poly_id.id as usize]
     }
 }

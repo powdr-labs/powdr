@@ -8,7 +8,7 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::{OuterQuery, Processor};
-use crate::witgen::rows::{merge_row_with, Row, RowIndex, RowPair, UnknownStrategy};
+use crate::witgen::rows::{Row, RowIndex, RowPair, UnknownStrategy};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
 };
@@ -644,15 +644,16 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // 1. Ignore the first row of the next block:
         new_block.pop();
         // 2. Merge the last row of the previous block
-        merge_row_with(
-            new_block.get_mut(0).unwrap(),
-            self.get_row(self.last_row_index()),
-        )
-        .map_err(|_| {
-            EvalError::Generic(
-                "Block machine overwrites existing value with different value!".to_string(),
-            )
-        })?;
+
+        new_block
+            .get_mut(0)
+            .unwrap()
+            .merge_with(self.get_row(self.last_row_index()))
+            .map_err(|_| {
+                EvalError::Generic(
+                    "Block machine overwrites existing value with different value!".to_string(),
+                )
+            })?;
         // 3. Remove the last row of the previous block from data
         self.data.pop();
 

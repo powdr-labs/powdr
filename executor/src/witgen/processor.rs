@@ -4,11 +4,9 @@ use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::witgen::rows::set_cell_unknown;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 use crate::Identity;
 
-use super::rows::value_is_known;
 use super::{
     affine_expression::AffineExpression,
     data_structures::{
@@ -225,14 +223,22 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
 Known values in current row (local: {row_index}, global {global_row_index}):
 {}
 ",
-                    self.data[row_index].render_values(false, Some(self.witness_cols))
+                    self.data[row_index].render_values(
+                        false,
+                        Some(self.witness_cols),
+                        self.fixed_data,
+                    )
                 );
                 if identity.contains_next_ref() {
                     error += &format!(
                         "Known values in next row (local: {}, global {}):\n{}\n",
                         row_index + 1,
                         global_row_index + 1,
-                        self.data[row_index + 1].render_values(false, Some(self.witness_cols))
+                        self.data[row_index + 1].render_values(
+                            false,
+                            Some(self.witness_cols),
+                            self.fixed_data,
+                        )
                     );
                 }
                 error += &format!("   => Error: {e}");
@@ -319,7 +325,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     pub fn set_inputs_if_unset(&mut self, row_index: usize) -> bool {
         let mut input_updates = EvalValue::complete(vec![]);
         for (poly_id, value) in self.inputs.iter() {
-            if !value_is_known(&self.data[row_index], poly_id) {
+            if !self.data[row_index].value_is_known(poly_id) {
                 input_updates.combine(EvalValue::complete(vec![(
                     &self.fixed_data.witness_cols[poly_id].poly,
                     Constraint::Assignment(*value),
@@ -335,7 +341,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                     self.fixed_data.column_name(poly_id)
                 );
                 for row_index in start_row..row_index {
-                    set_cell_unknown(&mut self.data[row_index], poly_id);
+                    self.data[row_index].set_cell_unknown(poly_id);
                 }
             }
         }
@@ -514,8 +520,14 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .process_identity(identity, &row_pair)
             .is_err()
         {
-            log::debug!("Previous {:?}", &self.data[row_index - 1]);
-            log::debug!("Proposed {:?}", proposed_row);
+            log::debug!(
+                "Previous {}",
+                self.data[row_index - 1].render_values(true, None, self.fixed_data)
+            );
+            log::debug!(
+                "Proposed {:?}",
+                proposed_row.render_values(true, None, self.fixed_data)
+            );
             log::debug!("Failed on identity: {}", identity);
 
             return false;

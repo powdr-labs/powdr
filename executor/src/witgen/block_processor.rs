@@ -208,7 +208,7 @@ mod tests {
 
                 for &(i, name, expected) in asserted_values.iter() {
                     let poly_id = poly_ids[name];
-                    let actual: T = data[i][&poly_id].value_or_zero();
+                    let actual: T = data[i].value_or_zero(&poly_id);
                     assert_eq!(actual, T::from(expected));
                 }
             },

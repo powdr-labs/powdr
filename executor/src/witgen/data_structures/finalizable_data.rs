@@ -7,7 +7,7 @@ use bit_vec::BitVec;
 use powdr_ast::analyzed::PolyID;
 use powdr_number::FieldElement;
 
-use crate::witgen::rows::{finalize_row, Row};
+use crate::witgen::rows::Row;
 
 /// A row entry in [FinalizableData].
 #[derive(Clone)]
@@ -125,8 +125,8 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
     }
 
     pub fn finalize(&mut self, i: usize) -> bool {
-        if let Entry::InProgress(row) = &self.data[i] {
-            self.data[i] = Entry::Finalized(finalize_row(row, &self.column_ids));
+        if let Entry::InProgress(row) = &mut self.data[i] {
+            self.data[i] = Entry::Finalized(row.finalize(&self.column_ids));
             true
         } else {
             false
