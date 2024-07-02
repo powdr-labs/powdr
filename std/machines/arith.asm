@@ -23,14 +23,14 @@ machine Arith with
     col witness operation_id;
 
     // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 32-Bit limbs in little-endian order).
-    // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3
+    // More precisely, affine_256(x1, y1, x2) = (x3, y3), where x1 * y1 + x2 = 2**256 * x3 + y3
     // Operation ID is 1 = 0b0001, i.e., we activate equation 0.
-    operation affine_256<1> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7] -> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
+    operation affine_256<1> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
     
-    // mod_256(y2, y3, x1) = x2 computes (2 ** 256 * y2 + y3) % x1, where all inputs / outputs are 256-bit words.
+    // mod_256(x3, y3, x1) = x2 computes (2 ** 256 * x3 + y3) % x1, where all inputs / outputs are 256-bit words.
     // While hint computes the modulus, there's no guarantee from user generated witness input that the remainder is smaller than the modulus.
     // In fact, the remainder can contain any multiples of modulus.
-    operation mod_256<1> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7], x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7] -> x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7];
+    operation mod_256<1> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7], x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7] -> x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7];
 
     // Performs elliptic curve addition of points (x1, y2) and (x2, y2).
     // Operation ID is 10 = 0b1010, i.e., we activate equations 1, 3, and 4.
@@ -134,19 +134,19 @@ machine Arith with
     };
 
     let quotient_hint = query || {
-        let y2 = y2_int();
+        let x3 = x3_int();
         let y3 = y3_int();
         let x1 = x1_int();
-        let dividend = (y2 << 256) + y3;
+        let dividend = (x3 << 256) + y3;
         let quotient = dividend / x1;
         quotient
     };
 
     let remainder_hint = query || {
-        let y2 = y2_int();
+        let x3 = x3_int();
         let y3 = y3_int();
         let x1 = x1_int();
-        let dividend = (y2 << 256) + y3;
+        let dividend = (x3 << 256) + y3;
         let remainder = dividend % x1;
         remainder
     };
@@ -339,8 +339,8 @@ machine Arith with
 
     /*******
     *
-    * EQ0: A(x1) * B(y1) + C(x2) = D (y2) * 2 ** 256 + op (y3)
-    *        x1 * y1 + x2 - y2 * 2**256 - y3 = 0
+    * EQ0: A(x1) * B(y1) + C(x2) = D (x3) * 2 ** 256 + op (y3)
+    *        x1 * y1 + x2 - x3 * 2**256 - y3 = 0
     *
     *******/
 
@@ -371,7 +371,7 @@ machine Arith with
     let eq0 = |nr|
         product(x1f, y1f)(nr)
         + x2f(nr)
-        - shift_right(y2f, 16)(nr)
+        - shift_right(x3f, 16)(nr)
         - y3f(nr);
 
     /*******
