@@ -1,0 +1,41 @@
+name: Generate rust cache for PR builds
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *' # run at 2 AM UTC
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Install Rust toolchain 1.77 (with clippy and rustfmt)
+      run: rustup toolchain install 1.77-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.77-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.77-x86_64-unknown-linux-gnu
+    - name: Install EStarkPolygon prover dependencies
+      run: sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm
+    - name: Lint
+      run: cargo clippy --all --all-targets --all-features --profile pr-tests -- -D warnings
+    - name: Lint
+      run: cargo clippy --all --all-targets --no-default-features --profile pr-tests -- -D warnings
+    - name: Format
+      run: cargo fmt --all --check --verbose
+    - name: Build
+      run: cargo build --all-targets --all --all-features --profile pr-tests
+    - name: Check without Halo2
+      run: cargo check --all --no-default-features --profile pr-tests
+    - name: ⚡ Save rust cache
+      uses: actions/cache/save@v3
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+          Cargo.lock
+        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.lock') }}
