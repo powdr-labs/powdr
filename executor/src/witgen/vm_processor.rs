@@ -8,10 +8,12 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
+use crate::witgen::machines::profiling;
 use crate::witgen::IncompleteCause;
 use crate::Identity;
 
 use super::data_structures::finalizable_data::FinalizableData;
+use super::machines::profiling::{record_end_identity, record_start_identity};
 use super::processor::{OuterQuery, Processor};
 
 use super::rows::{rows_are_equal, Row, RowIndex, UnknownStrategy};
@@ -154,6 +156,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                         loop_detection_log_level,
                         "Found loop with period {p} starting at row {row_index}"
                     );
+                    record_end_identity(profiling::UNUSED_IDENTITY_ID);
+                    profiling::reset_and_print_profile_summary_identity(self.fixed_data);
+                    record_start_identity(profiling::UNUSED_IDENTITY_ID);
                 }
             }
             if let Some(period) = looping_period {
@@ -346,10 +351,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             }
 
             progress |= self.processor.set_inputs_if_unset(row_index);
-            progress |= self
-                .processor
-                .process_queries(row_index)
-                .map_err(|e| vec![e])?;
+
+            record_start_identity(profiling::PROCESS_PROVER_QUERIES_ID);
+            progress |= self.processor.process_queries(row_index).map_err(|e| {
+                record_end_identity(profiling::PROCESS_PROVER_QUERIES_ID);
+                vec![e]
+            })?;
+            record_end_identity(profiling::PROCESS_PROVER_QUERIES_ID);
 
             if !progress {
                 break;
