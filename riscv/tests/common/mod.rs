@@ -35,3 +35,38 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     );
     verify_pipeline(pipeline, backend).unwrap();
 }
+
+pub fn verify_riscv_asm_file(case: &Path, runtime: &Runtime, use_pie: bool) {
+    let tmp_dir = Temp::new_dir().unwrap();
+    let executable = tmp_dir.join("executable");
+
+    // Assemble the file using clang, because it is the most likely thing to be already installed.
+    // i.e: clang --target=riscv32-unknown-elf -march=rv32imac -mabi=ilp32 -nostdlib -static -o {executable} {case} [-Wl,-pie | -Wl,--emit-relocs]
+    Command::new("clang")
+        .arg("--target=riscv32-unknown-elf")
+        .arg("-march=rv32imac")
+        .arg("-mabi=ilp32")
+        .arg("-nostdlib")
+        .arg("-static")
+        .arg(if use_pie {
+            "-Wl,-pie"
+        } else {
+            "-Wl,--emit-relocs"
+        })
+        .arg("-o")
+        .arg(executable)
+        .arg(case)
+        .spawn()
+        .unwrap()
+        .wait()
+        .unwrap();
+
+    let powdr_asm = powdr_riscv::elf::elf_translate::<GoldilocksField>(&executable, runtime, false);
+    verify_riscv_asm_string(
+        &format!("{case}.asm"),
+        &powdr_asm,
+        &[],
+        None,
+        BackendType::EStarkDump,
+    );
+}

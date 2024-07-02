@@ -5,7 +5,7 @@ use mktemp::Temp;
 use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{verify::verify, Pipeline};
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Command};
 use test_log::test;
 
 use powdr_riscv::{
@@ -18,12 +18,27 @@ use powdr_riscv::{
 pub fn test_continuations(case: &str) {
     let runtime = Runtime::base().with_poseidon();
     let temp_dir = Temp::new_dir().unwrap();
-    let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
+
+    let (elf_file, riscv_asm) = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, true);
 
+    // Test continuations from ELF file.
+    let powdr_asm =
+        powdr_riscv::elf::elf_translate::<GoldilocksField>(&elf_file.unwrap(), &runtime, true);
+    run_continuations_test(powdr_asm);
+
+    // Test continuations from assembly files.
+    let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(
+        load_riscv_asm_files(riscv_asm),
+        &runtime,
+        true,
+    );
+    run_continuations_test(powdr_asm);
+}
+
+fn run_continuations_test(powdr_asm: String) {
     // Manually create tmp dir, so that it is the same in all chunks.
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
 
@@ -252,6 +267,20 @@ fn two_sums_serde() {
     );
 }
 
+#[ignore = "Too slow"]
+#[test]
+fn dynamic_relocation_pie() {
+    let file = "dynamic_relocation/dynamic_relocation.s";
+    verify_riscv_asm_file(file, &Runtime::base().with_arith(), true);
+}
+
+#[ignore = "Too slow"]
+#[test]
+fn dynamic_relocation_non_pie() {
+    let file = "dynamic_relocation/dynamic_relocation.s";
+    verify_riscv_asm_file(file, &Runtime::base().with_arith(), false);
+}
+
 #[test]
 #[ignore = "Too slow"]
 #[should_panic(
@@ -365,7 +394,7 @@ fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'stati
     data: Option<Vec<(u32, S)>>,
     backend: BackendType,
 ) {
-    let temp_dir = Temp::new_dir().unwrap().release();
+    let temp_dir = Temp::new_dir().unwrap();
     println!("Directory: {}", temp_dir.display());
     let (executable, asm_files) = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
@@ -376,7 +405,7 @@ fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'stati
     let from_elf =
         powdr_riscv::elf::elf_translate::<GoldilocksField>(&executable.unwrap(), runtime, false);
     verify_riscv_asm_string(
-        &format!("{case}_from_elf"),
+        &format!("{case}_from_elf.asm"),
         &from_elf,
         &inputs,
         data.as_deref(),
@@ -390,7 +419,7 @@ fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'stati
         false,
     );
     verify_riscv_asm_string(
-        &format!("{case}_from_asm"),
+        &format!("{case}_from_asm.asm"),
         &from_asm,
         &inputs,
         data.as_deref(),
