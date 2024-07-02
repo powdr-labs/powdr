@@ -168,7 +168,6 @@ impl<T: FieldElement> CellValue<T> {
 
 #[derive(Clone, Default, PartialEq)]
 pub struct Row<'a, T: FieldElement> {
-    /// The values in the row, zero if unknown.
     values: WitnessColumnMap<CellValue<T>>,
     // TODO remove this.
     names: Vec<&'a str>,
