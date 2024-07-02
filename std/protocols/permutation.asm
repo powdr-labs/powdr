@@ -1,11 +1,9 @@
+use std::prover::challenge;
 use std::array::fold;
 use std::array::map;
-use std::utils::unwrap_or_else;
 use std::array::len;
 use std::check::assert;
 use std::check::panic;
-use std::field::known_field;
-use std::field::KnownField;
 use std::math::fp2::Fp2;
 use std::math::fp2::add_ext;
 use std::math::fp2::sub_ext;
@@ -15,7 +13,26 @@ use std::math::fp2::next_ext;
 use std::math::fp2::inv_ext;
 use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
+use std::math::fp2::compress_expression_array;
+use std::math::fp2::needs_extension;
+use std::math::fp2::assert_extension;
+use std::math::fp2::is_extension;
+use std::math::fp2::fp2_from_array;
 use std::math::fp2::constrain_eq_ext;
+
+let is_first: col = |i| if i == 0 { 1 } else { 0 };
+
+/// Get two phase-2 challenges to use in all permutation arguments.
+/// Note that this assumes that globally no other challenge of these IDs is used,
+/// and that challenges for multiple permutation arguments are re-used.
+/// We declare two components for each challenge here, in case we need to operate
+/// on the extension field. If we don't, we won't end up needing it and the optimizer
+/// will remove it.
+let alpha1: expr = challenge(0, 1);
+let alpha2: expr = challenge(0, 2);
+
+let beta1: expr = challenge(0, 3);
+let beta2: expr = challenge(0, 4);
 
 let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |permutation_constraint| match permutation_constraint {
     Constr::Permutation((lhs_selector, rhs_selector), values) => (
@@ -26,20 +43,6 @@ let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |per
     ),
     _ => panic("Expected permutation constraint")
 };
-
-/// Whether we need to operate on the F_{p^2} extension field (because the current field is too small).
-let needs_extension: -> bool = || match known_field() {
-    Option::Some(KnownField::Goldilocks) => true,
-    Option::Some(KnownField::BN254) => false,
-    None => panic("The permutation argument is not implemented for the current field!")
-};
-
-/// Maps [x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
-let<T: Add + Mul + FromLiteral> compress_expression_array: T[], Fp2<T> -> Fp2<T> = |expr_array, alpha| fold(
-    expr_array,
-    from_base(0),
-    |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), from_base(el))
-);
 
 /// Takes a boolean selector (0/1) and a value, returns equivalent of `if selector { value } else { 1 }`
 /// Implemented as: selector * (value - 1) + 1
@@ -53,6 +56,15 @@ let<T: Add + Mul + Sub + FromLiteral> selected_or_one: T, Fp2<T> -> Fp2<T> = |se
 let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc, alpha, beta, permutation_constraint| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
+
+    let alpha = if len(lhs) > 1 {
+        Fp2::Fp2(alpha1, alpha2)
+    } else {
+        // The optimizer will have removed alpha, but the compression function
+        // still accesses it (to multiply by 0 in this case)
+        from_base(0)
+    };
+    let beta = Fp2::Fp2(beta1, beta2);
     
     let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, compress_expression_array(lhs, alpha)));
     let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, compress_expression_array(rhs, alpha)));
@@ -98,21 +110,18 @@ let permutation: expr, expr[], Fp2<expr>, Fp2<expr>, Constr -> Constr[] = |is_fi
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
     let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
-    let with_extension = match len(acc) {
-        1 => false,
-        2 => true,
-        _ => panic("Expected 1 or 2 accumulator columns!")
-    };
 
     let _ = if !with_extension {
         assert(!needs_extension(), || "The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!")
     } else { () };
-    
+
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
     // in which case the operations below effectively only operate on the first component.
     let fp2_from_array = |arr| if with_extension { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
     let acc_ext = fp2_from_array(acc);
+    let alpha = fp2_from_array([alpha1, alpha2]);
+    let beta = fp2_from_array([beta1, beta2]);
 
     // If the selector is 1, contribute a factor of `beta - compress_expression_array(lhs)` to accumulator.
     // If the selector is 0, contribute a factor of 1 to the accumulator.
@@ -130,7 +139,7 @@ let permutation: expr, expr[], Fp2<expr>, Fp2<expr>, Constr -> Constr[] = |is_fi
     // Update rule:
     // acc' = acc * lhs_folded / rhs_folded
     // => rhs_folded * acc' - lhs_folded * acc = 0
-    let diff_from_expected = sub_ext(
+    let update_expr = sub_ext(
         mul_ext(rhs_folded, next_acc),
         mul_ext(lhs_folded, acc_ext)
     );
@@ -145,5 +154,5 @@ let permutation: expr, expr[], Fp2<expr>, Fp2<expr>, Constr -> Constr[] = |is_fi
         // Note that if with_extension is false, this generates 0 = 0 and is removed
         // by the optimizer.
         is_first * acc_2 = 0
-    ] + constrain_eq_ext(diff_from_expected, from_base(0))
+    ] + constrain_eq_ext(update_expr, from_base(0))
 };

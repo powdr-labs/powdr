@@ -1,4 +1,3 @@
-
 /// Evaluates to folder(...folder(folder(initial, f(0)), f(1)) ..., f(length - 1)),
 /// i.e. calls f(0), f(1), ..., f(length - 1) and combines the results
 /// using the function `folder`, starting with the value `initial`.
@@ -40,6 +39,9 @@ let new_bool: -> expr = constr || {
     force_bool(x);
     x
 };
+
+/// Creates a new witness column which is 1 on the first row 0 on the other rows
+let is_first: col = |i| if i == 0 { 1 } else { 0 };
 
 /// Creates a new witness column which is 1 on each row where `x` is zero
 /// and 0 otherwise.
