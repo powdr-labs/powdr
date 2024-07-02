@@ -54,10 +54,10 @@ fn get_namespace(name: &str) -> String {
 
 /// From an identity, get the namespaces of the symbols it references.
 fn referenced_namespaces<F: FieldElement>(
-    identity: &Identity<AlgebraicExpression<F>>,
+    expression_visitable: &impl ExpressionVisitable<AlgebraicExpression<F>>,
 ) -> BTreeSet<String> {
     let mut namespaces = BTreeSet::new();
-    identity.visit_expressions(
+    expression_visitable.visit_expressions(
         &mut (|expr| {
             match expr {
                 AlgebraicExpression::Reference(reference) => {
@@ -109,6 +109,16 @@ fn split_by_namespace<F: FieldElement>(
                     }
                     _ => match identity.kind {
                         IdentityKind::Plookup | IdentityKind::Permutation => {
+                            assert_eq!(
+                                referenced_namespaces(&identity.left).len(),
+                                1,
+                                "LHS of identity references multiple namespaces: {identity}"
+                            );
+                            assert_eq!(
+                                referenced_namespaces(&identity.right).len(),
+                                1,
+                                "RHS of identity references multiple namespaces: {identity}"
+                            );
                             log::debug!("Skipping connecting identity: {identity}");
                             None
                         }
