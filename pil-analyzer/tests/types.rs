@@ -565,9 +565,9 @@ fn empty_conditional() {
 fn simple_struct() {
     let input = "
     struct Dot { x: int, y: int }
-    let f: int -> Dot = |i| X{x: 0, y: i};
+    let f: int -> Dot = |i| X?{x: 0, y: i};
 
-    let x: int = f(0).y;
+    let x: int = f(0);
     ";
     type_check(input, &[]);
 }
@@ -576,7 +576,7 @@ fn simple_struct() {
 fn def_struct() {
     let input = "
     struct Dot { x: int, y: int }
-    let dot = Dot { x: 3, y: 4 };
+    let dot = Dot ?{ x: 3, y: 4 };
     let f: Dot -> int = |x| x.a;
 
     let x: int = f(dot);

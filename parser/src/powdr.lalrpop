@@ -585,7 +585,7 @@ Term: Box<Expression> = {
     MatchExpression,
     IfExpression,
     BlockExpression,
-    //StructExpression,
+    StructExpression,
     <start:@L> "[" <items:ExpressionList> "]" <end:@R> => ctx.to_expr_with_source_ref(ArrayLiteral{items}, start, end),
     <start:@L> "(" <head:Expression> "," <tail:ExpressionList> ")" <end:@R> => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start, end), list)) },
     <start:@L> "(" ")" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
@@ -633,7 +633,7 @@ IfExpression: Box<Expression> = {
 }
 
 StructExpression: Box<Expression> = {
-    <start:@L> <name:Identifier> "{" <fields:StructExpressionList> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
+    <start:@L> <name:Identifier> "?{" <fields:StructExpressionList> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
 }
 
 StructExpressionList: BTreeMap<String, Box<Expression>> = {
