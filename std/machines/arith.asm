@@ -9,10 +9,11 @@ use std::convert::fe;
 use std::convert::expr;
 use std::prover::eval;
 use std::prover::Query;
+use std::machines::memory::Memory;
 
 // Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 // Currently only supports "Equation 0", i.e., 256-Bit addition and multiplication.
-machine Arith with
+machine Arith(mem: Memory) with
     latch: CLK32_31,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
@@ -30,15 +31,16 @@ machine Arith with
     // mod_256(x3, y3, x1) = x2 computes (2 ** 256 * x3 + y3) % x1, where all inputs / outputs are 256-bit words.
     // While hint computes the modulus, there's no guarantee from user generated witness input that the remainder is smaller than the modulus.
     // In fact, the remainder can contain any multiples of modulus.
-    operation mod_256<1> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7], x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7] -> x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7];
+    // TODO: Make this work even though reads and writes are different.
+    // operation mod_256<1> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7], x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7] -> x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7];
 
-    // Performs elliptic curve addition of points (x1, y2) and (x2, y2).
+    // Performs elliptic curve addition of points (x1, y1) and (x2, y2).
     // Operation ID is 10 = 0b1010, i.e., we activate equations 1, 3, and 4.
-    operation ec_add<10> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7], y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
+    operation ec_add<10> input_addr1, input_addr2, output_addr, time_step ->;
     
-    // Performs elliptic curve doubling of point (x1, y2).
+    // Performs elliptic curve doubling of point (x1, y1).
     // Operation ID is 12 = 0b1100, i.e., we activate equations 2, 3, and 4.
-    operation ec_double<12> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
+    operation ec_double<12> input_addr1, output_addr, time_step ->;
 
     let BYTE: col = |i| i & 0xff;
     let BYTE2: col = |i| i & 0xffff;
@@ -471,4 +473,44 @@ machine Arith with
     selEq[2] * (eq2_sum + carry[0]) = selEq[2] * carry[0]' * 2**16;
     selEq[3] * (eq3_sum + carry[1]) = selEq[3] * carry[1]' * 2**16;
     selEq[3] * (eq4_sum + carry[2]) = selEq[3] * carry[2]' * 2**16;
+
+
+
+    // ------------- Begin memory read / write ---------------
+
+    // Get an intermediate column that indicates that we're in an
+    // actual block, not a default block. Its value is constant
+    // within the block.
+    // TODO: Witness needs this to be a witness column, but could be turned
+    // into an intermediate.
+    col witness used;
+    used = array::sum(sel);
+    array::map(sel, |s| unchanged_until(s, CLK32[31]));
+    std::utils::force_bool(used);
+
+    // Repeat the time step and input / output address in the whole block
+    col witness time_step;
+    col witness input_addr1;
+    col witness input_addr2;
+    col witness output_addr;
+    unchanged_until(time_step, CLK32[31]);
+    unchanged_until(input_addr1, CLK32[31]);
+    unchanged_until(input_addr2, CLK32[31]);
+    unchanged_until(output_addr, CLK32[31]);
+
+    // Read input 1 in rows 0..16 and input 2 in rows 16..32 (if has two inputs)
+    let first_half = sum(16, |i| CLK32[i]);
+    let do_mload = used * (selEq[1] + (1 - selEq[1]) * first_half);
+    let addr_mload = first_half * input_addr1 + (1 - first_half) * input_addr2 + sum(16, |i| expr(4 * i) * CLK32[i]) + sum(16, |i| expr(4 * i) * CLK32[i + 16]);
+    let output_mload = sum(8, |i| CLK32[i] * x1c[i]) + sum(8, |i| CLK32[i + 8] * y1c[i]) + sum(8, |i| CLK32[i + 16] * x2c[i]) + sum(8, |i| CLK32[i + 24] * y2c[i]);
+    link if do_mload ~> output_mload = mem.mload(addr_mload, time_step);
+
+    // Write (x3, y3) in rows 0..16
+    let do_mstore = used * first_half;
+    let addr_mstore = output_addr + sum(16, |i| expr(4 * i) * CLK32[i]);
+    let value_mstore = sum(8, |i| CLK32[i] * x3c[i]) + sum(8, |i| CLK32[i + 8] * y3c[i]);
+    link if do_mstore ~> mem.mstore(addr_mstore, time_step, value_mstore);
+
+
+    // ------------- End memory read / write ---------------
 }

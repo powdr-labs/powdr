@@ -1,235 +1,30 @@
 use std::machines::arith::Arith;
+use std::machines::memory::Memory;
 
 machine Main with degree: 65536 {
     reg pc[@pc];
-    reg A0[<=];
-    reg A1[<=];
-    reg A2[<=];
-    reg A3[<=];
-    reg A4[<=];
-    reg A5[<=];
-    reg A6[<=];
-    reg A7[<=];
-    reg B0[<=];
-    reg B1[<=];
-    reg B2[<=];
-    reg B3[<=];
-    reg B4[<=];
-    reg B5[<=];
-    reg B6[<=];
-    reg B7[<=];
-    reg C0[<=];
-    reg C1[<=];
-    reg C2[<=];
-    reg C3[<=];
-    reg C4[<=];
-    reg C5[<=];
-    reg C6[<=];
-    reg C7[<=];
-    reg D0[<=];
-    reg D1[<=];
-    reg D2[<=];
-    reg D3[<=];
-    reg D4[<=];
-    reg D5[<=];
-    reg D6[<=];
-    reg D7[<=];
-    reg E0[<=];
-    reg E1[<=];
-    reg E2[<=];
-    reg E3[<=];
-    reg E4[<=];
-    reg E5[<=];
-    reg E6[<=];
-    reg E7[<=];
-    reg F0[<=];
-    reg F1[<=];
-    reg F2[<=];
-    reg F3[<=];
-    reg F4[<=];
-    reg F5[<=];
-    reg F6[<=];
-    reg F7[<=];
+    reg X[<=];
+    reg Y[<=];
+    reg Z[<=];
     
-    reg t_0_0;
-    reg t_0_1;
-    reg t_0_2;
-    reg t_0_3;
-    reg t_0_4;
-    reg t_0_5;
-    reg t_0_6;
-    reg t_0_7;
-    reg t_1_0;
-    reg t_1_1;
-    reg t_1_2;
-    reg t_1_3;
-    reg t_1_4;
-    reg t_1_5;
-    reg t_1_6;
-    reg t_1_7;
+    reg A;
 
-    Arith arith;
+    col fixed STEP(i) { i };
+    Memory memory;
+    instr mload X -> Y link ~> Y = memory.mload(X, STEP);
+    instr mstore X, Y -> link ~> memory.mstore(X, STEP, Y);
 
-    instr affine_256 A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7, C0, C1, C2, C3, C4, C5, C6, C7 -> D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7
-        link ~> (D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7) = arith.affine_256(A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7, C0, C1, C2, C3, C4, C5, C6, C7);
+    Arith arith(memory);
 
-    instr ec_add A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7, C0, C1, C2, C3, C4, C5, C6, C7, D0, D1, D2, D3, D4, D5, D6, D7 -> E0, E1, E2, E3, E4, E5, E6, E7, F0, F1, F2, F3, F4, F5, F6, F7
-        link ~> (E0, E1, E2, E3, E4, E5, E6, E7, F0, F1, F2, F3, F4, F5, F6, F7) = arith.ec_add(A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7, C0, C1, C2, C3, C4, C5, C6, C7, D0, D1, D2, D3, D4, D5, D6, D7);
+    instr ec_add X, Y, Z -> link ~> arith.ec_add(X, Y, Z, STEP);
+    instr ec_double X, Y -> link ~> arith.ec_double(X, Y, STEP);
 
-    instr ec_double A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7 -> E0, E1, E2, E3, E4, E5, E6, E7, F0, F1, F2, F3, F4, F5, F6, F7
-        link ~> (E0, E1, E2, E3, E4, E5, E6, E7, F0, F1, F2, F3, F4, F5, F6, F7) = arith.ec_double(A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7);
-
-    instr mod_256 D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7, A0, A1, A2, A3, A4, A5, A6, A7 -> C0, C1, C2, C3, C4, C5, C6, C7
-        link ~> (C0, C1, C2, C3, C4, C5, C6, C7) = arith.mod_256(D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7, A0, A1, A2, A3, A4, A5, A6, A7);
-
-    instr assert_eq A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7 {
-        A0 = B0,
-        A1 = B1,
-        A2 = B2,
-        A3 = B3,
-        A4 = B4,
-        A5 = B5,
-        A6 = B6,
-        A7 = B7
+    instr assert_eq X, Y {
+        X = Y
     }
 
 
     function main {
-        // 0x0000000011111111222222223333333344444444555555556666666677777777
-        // * 0x8888888899999999aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff
-        // + 0xaaaaaaaabbbbbbbbbbbbbbbbaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbaaaaaaaa
-        // == 0x91a2b3c579be024740da740e6f8091a38e38e38f258bf259be024691fdb97530da740da60b60b60907f6e5d369d0369ca8641fda1907f6e33333333
-        // == 0x00000000_091a2b3c_579be024_740da740_e6f8091a_38e38e38_f258bf25_9be02469 * 2**256 + 0x1fdb9753_0da740da_60b60b60_907f6e5d_369d0369_ca8641fd_a1907f6e_33333333
-
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            0x77777777, 0x66666666, 0x55555555, 0x44444444, 0x33333333, 0x22222222, 0x11111111, 0x00000000,
-            0xffffffff, 0xeeeeeeee, 0xdddddddd, 0xcccccccc, 0xbbbbbbbb, 0xaaaaaaaa, 0x99999999, 0x88888888,
-            0xaaaaaaaa, 0xbbbbbbbb, 0xbbbbbbbb, 0xaaaaaaaa, 0xaaaaaaaa, 0xbbbbbbbb, 0xbbbbbbbb, 0xaaaaaaaa);
-        
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0x9be02469, 0xf258bf25, 0x38e38e38, 0xe6f8091a, 0x740da740, 0x579be024, 0x091a2b3c, 0x00000000;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0x33333333, 0xa1907f6e, 0xca8641fd, 0x369d0369, 0x907f6e5d, 0x60b60b60, 0x0da740da, 0x1fdb9753;
-
-        // Test vectors from: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/a4006af3d7fe4a57a85500c01dc791fb5013cef0/test/sm/sm_arith.js
-
-        // 2 * 3 + 5 = 11
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            2, 0, 0, 0, 0, 0, 0, 0,
-            3, 0, 0, 0, 0, 0, 0, 0,
-            5, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 11, 0, 0, 0, 0, 0, 0, 0;
-
-        // 256 * 256 + 1 = 65537
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            256, 0, 0, 0, 0, 0, 0, 0,
-            256, 0, 0, 0, 0, 0, 0, 0,
-            1, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 65537, 0, 0, 0, 0, 0, 0, 0;
-
-        // 3000 * 2000 + 5000 = 6005000
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            3000, 0, 0, 0, 0, 0, 0, 0,
-            2000, 0, 0, 0, 0, 0, 0, 0,
-            5000, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 6005000, 0, 0, 0, 0, 0, 0, 0;
-
-        // 3000000 * 2000000 + 5000000 = 6000005000000
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            3000000, 0, 0, 0, 0, 0, 0, 0,
-            2000000, 0, 0, 0, 0, 0, 0, 0,
-            5000000, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0xfc2aab40, 0x574, 0, 0, 0, 0, 0, 0;
-
-        // 3000 * 0 + 5000 = 5000
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            3000, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            5000, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 5000, 0, 0, 0, 0, 0, 0, 0;
-
-        // 2**255 * 2 + 0 = 2 ** 256
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            0, 0, 0, 0, 0, 0, 0, 0x80000000,
-            2, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 1, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0, 0, 0, 0, 0, 0, 0, 0;
-
-        // (2**256 - 1) * (2**256 - 1) + (2**256 - 1) = 2 ** 256 * 115792089237316195423570985008687907853269984665640564039457584007913129639935
-        // = 2 ** 256 * 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
-            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
-            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0, 0, 0, 0, 0, 0, 0, 0;
-
-        // (2**256 - 1) * 1 + (2**256 - 1) = 2 ** 256 + 115792089237316195423570985008687907853269984665640564039457584007913129639934
-        // = 2 ** 256 + 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
-            1, 0, 0, 0, 0, 0, 0, 0,
-            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 1, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0xfffffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
-
-        // Mod 256:
-        // 6 % 5 = 1
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7 <== mod_256(
-            0, 0, 0, 0, 0, 0, 0, 0,
-            6, 0, 0, 0, 0, 0, 0, 0,
-            5, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 1, 0, 0, 0, 0, 0, 0, 0;
-
-        // 3000 % 5000 = 3000
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7 <== mod_256(
-            0, 0, 0, 0, 0, 0, 0, 0,
-            3000, 0, 0, 0, 0, 0, 0, 0,
-            5000, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 3000, 0, 0, 0, 0, 0, 0, 0;
-        
-        // (2 ** 508) % (2 ** 255) = 0
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7 <== mod_256(
-            0, 0, 0, 0, 0, 0, 0, 0x10000000,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0x80000000);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
-
-        // (2 ** 508 + 1) % (2 ** 255) = 1
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7 <== mod_256(
-            0, 0, 0, 0, 0, 0, 0, 0x10000000,
-            1, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0x80000000);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 1, 0, 0, 0, 0, 0, 0, 0;
-
-        // 0xaaaaaaaabbbbbbbbcccccccc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011111111
-        // % 0xddddddddeeeeeeeeffffffff0000000000000000000000000000000022222222
-        // = 0x05973e6b48bd15d35f92aff26cad25d5b54f806e5ce298cda76b91baf89af7cf
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7 <== mod_256(
-            0, 0, 0, 0, 0, 0xcccccccc, 0xbbbbbbbb, 0xaaaaaaaa,
-            0x11111111, 0, 0, 0, 0, 0, 0, 0,
-            0x22222222, 0, 0, 0, 0, 0xffffffff, 0xeeeeeeee, 0xdddddddd);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0xF89AF7CF, 0xA76B91BA, 0x5CE298CD, 0xB54F806E, 0x6CAD25D5, 0x5F92AFF2, 0x48BD15D3, 0x05973E6B;
-
-        // 0x11111111222222223333333344444444555555556666666677777777888888889999999900000000aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff
-        // % 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f (secp_modulus)
-        // = 0xddddde1e 777777b9 55555596 999999da ddddde1f 22222263 7777783a 333428f9
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7 <== mod_256(
-            0x88888888, 0x77777777, 0x66666666, 0x55555555, 0x44444444, 0x33333333, 0x22222222, 0x11111111,
-            0xffffffff, 0xeeeeeeee, 0xdddddddd, 0xcccccccc, 0xbbbbbbbb, 0xaaaaaaaa, 0x00000000, 0x99999999,
-            0xfffffc2f, 0xfffffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0x333428f9, 0x7777783a, 0x22222263, 0xddddde1f, 0x999999da, 0x55555596, 0x777777b9, 0xddddde1e;
-
-        // ((2**256 - 1) * (2**256 - 1) + (2**256 - 1)) % (2**256 - 1)
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
 
         // EC Addition:
         // x1: 55066263022277343669578718895168534326250603453777594175500187360389116729240
@@ -244,13 +39,87 @@ machine Main with degree: 65536 {
         //     = 0xf9308a01 9258c310 49344f85 f89d5229 b531c845 836f99b0 8601f113 bce036f9
         // y3: 25583027980570883691656905877401976406448868254816295069919888960541586679410
         //     = 0x388f7b0f 632de814 0fe337e6 2a37f356 6500a999 34c2231b 6cb9fd75 84b8e672
+
+        /*
         t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== ec_add(
             0x16f81798, 0x59f2815b, 0x2dce28d9, 0x029bfcdb, 0xce870b07, 0x55a06295, 0xf9dcbbac, 0x79be667e,
             0xfb10d4b8, 0x9c47d08f, 0xa6855419, 0xfd17b448, 0x0e1108a8, 0x5da4fbfc, 0x26a3c465, 0x483ada77,
             0x5c709ee5, 0xabac09b9, 0x8cef3ca7, 0x5c778e4b, 0x95c07cd8, 0x3045406e, 0x41ed7d6d, 0xc6047f94,
             0x50cfe52a, 0x236431a9, 0x3266d0e1, 0xf7f63265, 0x466ceaee, 0xa3c58419, 0xa63dc339, 0x1ae168fe);
+        */
+        mstore 0, 0x16f81798;
+        mstore 4, 0x59f2815b;
+        mstore 8, 0x2dce28d9;
+        mstore 12, 0x029bfcdb;
+        mstore 16, 0xce870b07;
+        mstore 20, 0x55a06295;
+        mstore 24, 0xf9dcbbac;
+        mstore 28, 0x79be667e;
+        mstore 32, 0xfb10d4b8;
+        mstore 36, 0x9c47d08f;
+        mstore 40, 0xa6855419;
+        mstore 44, 0xfd17b448;
+        mstore 48, 0x0e1108a8;
+        mstore 52, 0x5da4fbfc;
+        mstore 56, 0x26a3c465;
+        mstore 60, 0x483ada77;
+        mstore 64, 0x5c709ee5;
+        mstore 68, 0xabac09b9;
+        mstore 72, 0x8cef3ca7;
+        mstore 76, 0x5c778e4b;
+        mstore 80, 0x95c07cd8;
+        mstore 84, 0x3045406e;
+        mstore 88, 0x41ed7d6d;
+        mstore 92, 0xc6047f94;
+        mstore 96, 0x50cfe52a;
+        mstore 100, 0x236431a9;
+        mstore 104, 0x3266d0e1;
+        mstore 108, 0xf7f63265;
+        mstore 112, 0x466ceaee;
+        mstore 116, 0xa3c58419;
+        mstore 120, 0xa63dc339;
+        mstore 124, 0x1ae168fe;
+        ec_add 0, 64, 128;
+
+        /*
         assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0xbce036f9, 0x8601f113, 0x836f99b0, 0xb531c845, 0xf89d5229, 0x49344f85, 0x9258c310, 0xf9308a01;
         assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0x84b8e672, 0x6cb9fd75, 0x34c2231b, 0x6500a999, 0x2a37f356, 0x0fe337e6, 0x632de814, 0x388f7b0f;
+        */
+
+        A <== mload(128);
+        assert_eq A, 0xbce036f9;
+        A <== mload(132);
+        assert_eq A, 0x8601f113;
+        A <== mload(136);
+        assert_eq A, 0x836f99b0;
+        A <== mload(140);
+        assert_eq A, 0xb531c845;
+        A <== mload(144);
+        assert_eq A, 0xf89d5229;
+        A <== mload(148);
+        assert_eq A, 0x49344f85;
+        A <== mload(152);
+        assert_eq A, 0x9258c310;
+        A <== mload(156);
+        assert_eq A, 0xf9308a01;
+        A <== mload(160);
+        assert_eq A, 0x84b8e672;
+        A <== mload(164);
+        assert_eq A, 0x6cb9fd75;
+        A <== mload(168);
+        assert_eq A, 0x34c2231b;
+        A <== mload(172);
+        assert_eq A, 0x6500a999;
+        A <== mload(176);
+        assert_eq A, 0x2a37f356;
+        A <== mload(180);
+        assert_eq A, 0x0fe337e6;
+        A <== mload(184);
+        assert_eq A, 0x632de814;
+        A <== mload(188);
+        assert_eq A, 0x388f7b0f;
+
+        /*
 
         // EC Double:
         // x1: 115780575977492633039504758427830329241728645270042306223540962614150928364886
@@ -261,11 +130,69 @@ machine Main with degree: 65536 {
         //     = 0xd01115d5 48e7561b 15c38f00 4d734633 687cf441 9620095b c5b0f470 70afe85a
         // y3: 76870767327212528811304566602812752860184934880685532702451763239157141742375
         //     = 0xa9f34ffd c815e0d7 a8b64537 e17bd815 79238c5d d9a86d52 6b051b13 f4062327
+        /*
         t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== ec_double(
             0x60297556, 0x2f057a14, 0x8568a18b, 0x82f6472f, 0x355235d3, 0x20453a14, 0x755eeea4, 0xfff97bd5,
             0xb075f297, 0x3c870c36, 0x518fe4a0, 0xde80f0f6, 0x7f45c560, 0xf3be9601, 0xacfbb620, 0xae12777a);
+        */
+        mstore 0, 0x60297556;
+        mstore 4, 0x2f057a14;
+        mstore 8, 0x8568a18b;
+        mstore 12, 0x82f6472f;
+        mstore 16, 0x355235d3;
+        mstore 20, 0x20453a14;
+        mstore 24, 0x755eeea4;
+        mstore 28, 0xfff97bd5;
+        mstore 32, 0xb075f297;
+        mstore 36, 0x3c870c36;
+        mstore 40, 0x518fe4a0;
+        mstore 44, 0xde80f0f6;
+        mstore 48, 0x7f45c560;
+        mstore 52, 0xf3be9601;
+        mstore 56, 0xacfbb620;
+        mstore 60, 0xae12777a;
+        mstore 124, 0xf0000000;
+        ec_double 0, 64;
+
+        /*
         assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0x70afe85a, 0xc5b0f470, 0x9620095b, 0x687cf441, 0x4d734633, 0x15c38f00, 0x48e7561b, 0xd01115d5;
         assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0xf4062327, 0x6b051b13, 0xd9a86d52, 0x79238c5d, 0xe17bd815, 0xa8b64537, 0xc815e0d7, 0xa9f34ffd;
+        */
+        A <== mload(64);
+        assert_eq A, 0x70afe85a;
+        A <== mload(68);
+        assert_eq A, 0xc5b0f470;
+        A <== mload(72);
+        assert_eq A, 0x9620095b;
+        A <== mload(76);
+        assert_eq A, 0x687cf441;
+        A <== mload(80);
+        assert_eq A, 0x4d734633;
+        A <== mload(84);
+        assert_eq A, 0x15c38f00;
+        A <== mload(88);
+        assert_eq A, 0x48e7561b;
+        A <== mload(92);
+        assert_eq A, 0xd01115d5;
+        A <== mload(96);
+        assert_eq A, 0xf4062327;
+        A <== mload(100);
+        assert_eq A, 0x6b051b13;
+        A <== mload(104);
+        assert_eq A, 0xd9a86d52;
+        A <== mload(108);
+        assert_eq A, 0x79238c5d;
+        A <== mload(112);
+        assert_eq A, 0xe17bd815;
+        A <== mload(116);
+        assert_eq A, 0xa8b64537;
+        A <== mload(120);
+        assert_eq A, 0xc815e0d7;
+        A <== mload(124);
+        assert_eq A, 0xa9f34ffd;
+
+        /*
+
 
         // Auto-generated rest of the test cases:
         t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== ec_double(
@@ -824,6 +751,8 @@ machine Main with degree: 65536 {
 
         // Left out these test cases, because the format is different...
         // https://github.com/0xPolygonHermez/zkevm-proverjs/blob/a4006af3d7fe4a57a85500c01dc791fb5013cef0/test/sm/sm_arith.js#L1196-L1211
+
+        */
 
     }
 }
