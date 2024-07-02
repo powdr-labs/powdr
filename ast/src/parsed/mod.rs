@@ -1063,17 +1063,26 @@ impl<E> Children<E> for IfExpression<E> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StructExpression<E = Expression<NamespacedPolynomialReference>> {
     pub name: String,
-    pub type_args: Option<Vec<Type<Expression>>>,
-    pub fields: Vec<NamedExpression<E>>,
+    pub fields: BTreeMap<String, Box<E>>, // Could be Vec<NamedExpression<E>> defined in PR about Traits
+}
+
+impl<Ref> From<StructExpression<Expression<Ref>>> for Expression<Ref> {
+    fn from(call: StructExpression<Expression<Ref>>) -> Self {
+        Expression::StructExpression(SourceRef::unknown(), call)
+    }
 }
 
 impl<R> Children<Expression<R>> for StructExpression<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(self.fields.iter().flat_map(|f| f.children()))
+        Box::new(self.fields.iter().flat_map(|f| f.1.as_ref().children()))
     }
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(self.fields.iter_mut().flat_map(|f| f.children_mut()))
+        Box::new(
+            self.fields
+                .iter_mut()
+                .flat_map(|f| f.1.as_mut().children_mut()),
+        )
     }
 }
 

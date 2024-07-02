@@ -660,7 +660,7 @@ impl<E: Display> Display for StructExpression<E> {
                     "{{ {} }}",
                     self.fields
                         .iter()
-                        .map(|named_expr| format!("{}: {}", named_expr.name, named_expr.value))
+                        .map(|named_expr| format!("{}: {}", named_expr.0, named_expr.1))
                         .format(", ")
                 )
             }

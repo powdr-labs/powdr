@@ -4,8 +4,8 @@ use powdr_ast::{
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BinaryOperation, BlockExpression,
         IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
-        NamedExpression, NamespacedPolynomialReference, Number, Pattern, SelectedExpressions,
-        StatementInsideBlock, StructExpression, SymbolCategory, UnaryOperation,
+        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
+        StructExpression, SymbolCategory, UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
@@ -198,28 +198,17 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 self.process_block_expression(statements, expr, src)
             }
             PExpression::FreeInput(_, _) => panic!(),
-            PExpression::StructExpression(
-                src,
-                StructExpression {
-                    name,
-                    type_args,
-                    fields,
-                },
-            ) => {
+            PExpression::StructExpression(src, StructExpression { name, fields }) => {
                 Expression::StructExpression(
                     src,
                     StructExpression {
                         name,
-                        type_args,
                         fields: fields
                             .into_iter()
-                            .map(|expr| NamedExpression {
-                                name: expr.name,
-                                value: self.process_expression(expr.value),
-                            })
+                            .map(|(name, expr)| (name, Box::new(self.process_expression(*expr))))
                             .collect(),
                     },
-                ) // TODO GZ
+                )
             }
         }
     }
