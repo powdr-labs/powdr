@@ -28,7 +28,7 @@ machine Binary with
     B' = B * (1 - latch) + B_byte * FACTOR;
     C' = C * (1 - latch) + C_byte * FACTOR;
 
-    {A_byte, B_byte, C_byte} in {P_A, P_B, P_C};
+    [A_byte, B_byte, C_byte] in [P_A, P_B, P_C];
 }
 
 machine Binary4 with
@@ -44,9 +44,9 @@ machine Binary4 with
     // Only enable the links in rows that have been 'used' by a call into this machine.
     let used = std::array::sum(sel);
     std::utils::force_bool(used);
-    link used ~> bin.or A, B -> X;
-    link used ~> bin.or C, D -> Y;
-    link used ~> bin.or X, Y -> E;
+    link if used ~> X = bin.or(A, B);
+    link if used ~> Y = bin.or(C, D);
+    link if used ~> E = bin.or(X, Y);
 
     col fixed operation_id = [0]*;
     col fixed latch = [1]*;
@@ -74,11 +74,11 @@ machine Main with degree: 65536 {
     Binary4 bin4;
 
     // two permutations to machine bin
-    instr or X, Y -> Z ~ bin.or;
-    instr or_into_B X, Y ~ bin.or X, Y -> B';
+    instr or X, Y -> Z link ~> Z = bin.or(X, Y);
+    instr or_into_B X, Y link ~> B' = bin.or(X, Y);
 
     // permutation to machine bin4
-    instr or4 X, Y, Z, W -> R ~ bin4.or4;
+    instr or4 X, Y, Z, W -> R link ~> R = bin4.or4(X, Y, Z, W);
 
     instr assert_eq X, Y { X = Y }
 

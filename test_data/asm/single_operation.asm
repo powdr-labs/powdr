@@ -12,5 +12,5 @@ machine SingleOperation with
 machine Main {
     SingleOperation m;
 
-    link 1 => m.nothing;
+    link => m.nothing();
 }

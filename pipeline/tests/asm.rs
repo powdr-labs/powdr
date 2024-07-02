@@ -229,6 +229,15 @@ fn vm_to_vm_to_vm() {
 }
 
 #[test]
+fn vm_to_block_multiple_links() {
+    let f = "asm/permutations/vm_to_block_multiple_links.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
+    test_halo2(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn mem_read_write() {
     let f = "asm/mem_read_write.asm";
     verify_asm(f, Default::default());
@@ -462,6 +471,38 @@ fn permutation_incoming_needs_selector() {
 #[test]
 fn call_selectors_with_no_permutation() {
     let f = "asm/permutations/call_selectors_with_no_permutation.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn vm_args() {
+    let f = "asm/vm_args.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn vm_args_memory() {
+    let f = "asm/vm_args_memory.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn vm_args_relative_path() {
+    let f = "asm/vm_args_relative_path.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn vm_args_two_levels() {
+    let f = "asm/vm_args_two_levels.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());

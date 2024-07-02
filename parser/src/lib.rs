@@ -139,8 +139,8 @@ pub fn unescape_string(s: &str) -> String {
 mod test {
     use super::*;
     use powdr_ast::parsed::{
-        asm::ASMProgram, build::direct_reference, PILFile, PilStatement, PolynomialName,
-        SelectedExpressions,
+        asm::ASMProgram, build::direct_reference, ArrayLiteral, PILFile, PilStatement,
+        PolynomialName, SelectedExpressions,
     };
     use powdr_parser_util::UnwrapErrToStderr;
     use pretty_assertions::assert_eq;
@@ -211,9 +211,11 @@ mod test {
 
     #[test]
     fn simple_plookup() {
-        let input = "f in g;";
+        let input = "[f] in [g];";
         let ctx = ParserContext::new(None, input);
-        let parsed = powdr::PILFileParser::new().parse(&ctx, "f in g;").unwrap();
+        let parsed = powdr::PILFileParser::new()
+            .parse(&ctx, "[f] in [g];")
+            .unwrap();
         assert_eq!(
             parsed,
             PILFile(vec![PilStatement::PlookupIdentity(
@@ -221,15 +223,25 @@ mod test {
                     file_name: None,
                     file_contents: Some(input.into()),
                     start: 0,
-                    end: 6,
+                    end: 10,
                 },
                 SelectedExpressions {
                     selector: None,
-                    expressions: vec![direct_reference("f")]
+                    expressions: Box::new(
+                        ArrayLiteral {
+                            items: vec![direct_reference("f")]
+                        }
+                        .into()
+                    )
                 },
                 SelectedExpressions {
                     selector: None,
-                    expressions: vec![direct_reference("g")]
+                    expressions: Box::new(
+                        ArrayLiteral {
+                            items: vec![direct_reference("g")]
+                        }
+                        .into()
+                    )
                 }
             )])
         );
@@ -259,14 +271,14 @@ mod test {
     // helper function to clear SourceRef's inside the AST so we can compare for equality
     fn asm_clear_source_refs(ast: &mut ASMProgram) {
         use powdr_ast::parsed::asm::{
-            ASMModule, FunctionStatement, Instruction, InstructionBody, Machine, MachineStatement,
-            Module, ModuleStatement, SymbolDefinition, SymbolValue,
+            ASMModule, FunctionStatement, Instruction, Machine, MachineStatement, Module,
+            ModuleStatement, SymbolDefinition, SymbolValue,
         };
 
         fn clear_machine_stmt(stmt: &mut MachineStatement) {
-            use test_utils::pil_statement_clear_source_ref;
+            use test_utils::{pil_expression_clear_source_ref, pil_statement_clear_source_ref};
             match stmt {
-                MachineStatement::Submachine(s, _, _)
+                MachineStatement::Submachine(s, _, _, _)
                 | MachineStatement::RegisterDeclaration(s, _, _)
                 | MachineStatement::OperationDeclaration(s, _, _, _)
                 | MachineStatement::LinkDeclaration(s, _) => {
@@ -276,13 +288,16 @@ mod test {
                     *s = SourceRef::unknown();
                     pil_statement_clear_source_ref(stmt)
                 }
-                MachineStatement::InstructionDeclaration(s, _, Instruction { body, .. }) => {
+                MachineStatement::InstructionDeclaration(s, _, Instruction { body, links, .. }) => {
                     *s = SourceRef::unknown();
-                    if let InstructionBody::Local(statements) = body {
-                        statements
-                            .iter_mut()
-                            .for_each(pil_statement_clear_source_ref)
-                    }
+                    body.0.iter_mut().for_each(pil_statement_clear_source_ref);
+                    links.iter_mut().for_each(|l| {
+                        pil_expression_clear_source_ref(&mut l.flag);
+                        l.link
+                            .params
+                            .inputs_and_outputs_mut()
+                            .for_each(pil_expression_clear_source_ref);
+                    });
                 }
                 MachineStatement::FunctionDeclaration(s, _, _, statements) => {
                     *s = SourceRef::unknown();
@@ -404,8 +419,8 @@ namespace Fibonacci(%N);
     pol constant ISLAST(i) { one_hot(i, %last_row) };
     pol commit arr[8];
     pol commit x, y;
-    { x + 2, y' } in { ISLAST, 7 };
-    y { x + 2, y' } is ISLAST { ISLAST, 7 };
+    [x + 2, y'] in [ISLAST, 7];
+    y $ [x + 2, y'] is ISLAST $ [ISLAST, 7];
     (x - 2) * y = 8;
     public out = y(%last_row);"#;
         let printed = format!("{}", parse(Some("input"), input).unwrap());

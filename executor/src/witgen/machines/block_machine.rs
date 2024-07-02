@@ -8,17 +8,17 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::{OuterQuery, Processor};
-use crate::witgen::rows::{CellValue, Row, RowIndex, RowPair, UnknownStrategy};
+use crate::witgen::rows::{merge_row_with, Row, RowIndex, RowPair, UnknownStrategy};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
 };
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
+use crate::Identity;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-    PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
@@ -103,13 +103,16 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// The row index (within the block) of the latch row
     latch_row: usize,
     /// Connecting identities, indexed by their ID.
-    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     /// The type of constraint used to connect this machine to its caller.
     connection_type: ConnectionType,
     /// The internal identities
-    identities: Vec<&'a Identity<Expression<T>>>,
+    identities: Vec<&'a Identity<T>>,
     /// The data of the machine.
     data: FinalizableData<'a, T>,
+    /// The index of the first row that has not been finalized yet.
+    /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
+    first_in_progress_row: usize,
     /// The set of witness columns that are actually part of this machine.
     witness_cols: HashSet<PolyID>,
     /// Cache that states the order in which to evaluate identities
@@ -123,8 +126,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
-        identities: &[&'a Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+        identities: &[&'a Identity<T>],
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
         let (is_permutation, block_size, latch_row) =
@@ -162,6 +165,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             connection_type: is_permutation,
             identities: identities.to_vec(),
             data,
+            first_in_progress_row: block_size,
             witness_cols: witness_cols.clone(),
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
@@ -175,7 +179,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
 fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
-    connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
+    connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
 ) -> Option<(ConnectionType, usize, usize)> {
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
@@ -460,6 +464,17 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         RowIndex::from_i64(self.rows() as i64 - 1, self.fixed_data.degree)
     }
 
+    fn last_latch_row_index(&self) -> Option<RowIndex> {
+        if self.rows() > self.block_size as DegreeType {
+            Some(RowIndex::from_degree(
+                self.rows() - self.block_size as DegreeType + self.latch_row as DegreeType,
+                self.fixed_data.degree,
+            ))
+        } else {
+            None
+        }
+    }
+
     fn get_row(&self, row: RowIndex) -> &Row<'a, T> {
         // The first block is a dummy block corresponding to rows (-block_size, 0),
         // so we have to add the block size to the row index.
@@ -483,31 +498,37 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
         // to validate the constraints.
-        if outer_query.left.iter().all(|v| v.is_constant()) && self.rows() > 0 {
+        if outer_query.left.iter().all(|v| v.is_constant()) {
             // All values on the left hand side are known, check if this is a query
             // to the last row.
-            let row_index = self.last_row_index();
+            if let Some(row_index) = self.last_latch_row_index() {
+                let current = &self.get_row(row_index);
+                let fresh_row = Row::fresh(self.fixed_data, row_index + 1);
+                let next = if self.latch_row == self.block_size - 1 {
+                    // We don't have the next row, because it would be the first row of the next block.
+                    // We'll use a fresh row instead.
+                    &fresh_row
+                } else {
+                    self.get_row(row_index + 1)
+                };
 
-            let current = &self.get_row(row_index);
-            // We don't have the next row, because it would be the first row of the next block.
-            // We'll use a fresh row instead.
-            let next = Row::fresh(self.fixed_data, row_index + 1);
-            let row_pair = RowPair::new(
-                current,
-                &next,
-                row_index,
-                self.fixed_data,
-                UnknownStrategy::Unknown,
-            );
+                let row_pair = RowPair::new(
+                    current,
+                    next,
+                    row_index,
+                    self.fixed_data,
+                    UnknownStrategy::Unknown,
+                );
 
-            let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
-            if let Ok(result) = identity_processor.process_link(&outer_query, &row_pair) {
-                if result.is_complete() && result.constraints.is_empty() {
-                    log::trace!(
-                        "End processing block machine '{}' (already solved)",
-                        self.name()
-                    );
-                    return Ok(result);
+                let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
+                if let Ok(result) = identity_processor.process_link(&outer_query, &row_pair) {
+                    if result.is_complete() && result.constraints.is_empty() {
+                        log::trace!(
+                            "End processing block machine '{}' (already solved)",
+                            self.name()
+                        );
+                        return Ok(result);
+                    }
                 }
             }
         }
@@ -623,27 +644,23 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // 1. Ignore the first row of the next block:
         new_block.pop();
         // 2. Merge the last row of the previous block
-        let updated_last_row = new_block.get_mut(0).unwrap();
-        for (poly_id, existing_value) in self.get_row(self.last_row_index()).iter() {
-            if let CellValue::Known(v) = existing_value.value {
-                if updated_last_row[&poly_id].value.is_known()
-                    && updated_last_row[&poly_id].value != existing_value.value
-                {
-                    return Err(EvalError::Generic(
-                        "Block machine overwrites existing value with different value!".to_string(),
-                    ));
-                }
-                updated_last_row[&poly_id].value = CellValue::Known(v);
-            }
-        }
-
+        merge_row_with(
+            new_block.get_mut(0).unwrap(),
+            self.get_row(self.last_row_index()),
+        )
+        .map_err(|_| {
+            EvalError::Generic(
+                "Block machine overwrites existing value with different value!".to_string(),
+            )
+        })?;
         // 3. Remove the last row of the previous block from data
         self.data.pop();
 
-        // 4. Finalize most of the block (unless it's the dummy block)
-        // The last row might be needed later, so we do not finalize it yet.
+        // 4. Finalize everything so far (except the dummy block)
         if self.data.len() > self.block_size {
-            new_block.finalize_range(0..self.block_size);
+            self.data
+                .finalize_range(self.first_in_progress_row..self.data.len());
+            self.first_in_progress_row = self.data.len();
         }
 
         // 5. Append the new block (including the merged last row of the previous block)

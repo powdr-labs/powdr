@@ -14,7 +14,7 @@ fn new_witness_column() {
     let y;
     let z = new_wit();
     z = y;
-    z { z } in { even };
+    z $ [z] in [even];
     let t = new_wit_arr();
     t[0] = t[1];
     "#;
@@ -33,7 +33,7 @@ fn new_witness_column() {
     let z: expr = N.new_wit();
     col witness x_1;
     N.x_1 = N.y;
-    N.x_1 { N.x_1 } in { N.even };
+    N.x_1 $ [N.x_1] in [N.even];
     let t: expr[] = N.new_wit_arr();
     col witness x_2;
     N.x_2 = N.x_2;
@@ -56,7 +56,7 @@ fn new_witness_column_name_clash() {
     col witness x;
     col witness x_1;
     col witness x_2;
-    N.x = (N.x_1 + N.x_2);
+    N.x = N.x_1 + N.x_2;
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -100,10 +100,10 @@ fn create_constraints() {
     col witness y;
     col witness x_is_zero_1;
     col witness x_inv;
-    (N.x_is_zero_1 * (1 - N.x_is_zero_1)) = 0;
-    N.x_is_zero_1 = (1 - (N.x * N.x_inv));
-    (N.x_is_zero_1 * N.x) = 0;
-    N.y = (N.x_is_zero_1 + 2);
+    N.x_is_zero_1 * (1 - N.x_is_zero_1) = 0;
+    N.x_is_zero_1 = 1 - N.x * N.x_inv;
+    N.x_is_zero_1 * N.x = 0;
+    N.y = N.x_is_zero_1 + 2;
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -168,9 +168,9 @@ pub fn constructed_constraints() {
     col witness y;
     col witness z;
     Main.x = Main.y;
-    1 { Main.x, 3 } in { Main.y, Main.z };
-    { Main.x, 3 } is Main.x { Main.y, Main.z };
-    { Main.x, Main.y } connect { Main.z, 3 };
+    1 $ [Main.x, 3] in [Main.y, Main.z];
+    [Main.x, 3] is Main.x $ [Main.y, Main.z];
+    [Main.x, Main.y] connect [Main.z, 3];
 "#;
     assert_eq!(formatted, expected);
 }
@@ -187,8 +187,8 @@ fn next() {
     let expected = r#"namespace N(16);
     col witness x;
     col witness y;
-    (N.x * N.y) = 1;
-    (N.x * N.y) = (1 + N.x');
+    N.x * N.y = 1;
+    N.x * N.y = 1 + N.x';
 "#;
     assert_eq!(formatted, expected);
 }

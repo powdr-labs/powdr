@@ -6,8 +6,8 @@ use std::num::NonZeroUsize;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
+    SelectedExpressions,
 };
-use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::FieldElement;
 
 use crate::witgen::affine_expression::AffineExpression;
@@ -230,12 +230,12 @@ impl<T: FieldElement> FixedLookup<T> {
             && !left.first().unwrap().is_constant()
             && right.peek().unwrap().poly_id.ptype == PolynomialType::Constant
         {
-            // Lookup of the form "c { X } in { B }". Might be a conditional range check.
+            // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
             return self.process_range_check(rows, left.first().unwrap(), right.peek().unwrap());
         }
 
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
-        // {1, 2, x} in {A, B, C} -> [[(A, 1), (B, 2)], [C, x]]
+        // [1, 2, x] in [A, B, C] -> [[(A, 1), (B, 2)], [C, x]]
 
         let mut input_assignment = vec![];
         let mut output_columns = vec![];

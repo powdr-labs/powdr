@@ -23,8 +23,8 @@ machine Arith with
     // - If the operation ID is different in the next execution, the
     //   cached sequence won't include the correct lookup.
     // Powdr should be able to recover from this.
-    (1 - operation_id) {x, y} in {X, DOUBLE};
-    operation_id {x, y} in {X, SQUARE};
+    (1 - operation_id) $ [x, y] in [X, DOUBLE];
+    operation_id $ [x, y] in [X, SQUARE];
 }
 
 machine Main with degree: 8 {
@@ -35,8 +35,8 @@ machine Main with degree: 8 {
     reg Y[<=];
     reg A;
 
-    instr double X -> Y = arith.double;
-    instr square X -> Y = arith.square;
+    instr double X -> Y link => Y = arith.double(X);
+    instr square X -> Y link => Y = arith.square(X);
     instr assert_eq X, Y { X = Y }
 
     function main {

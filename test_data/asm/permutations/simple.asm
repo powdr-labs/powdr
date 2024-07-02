@@ -30,7 +30,7 @@ machine Binary with
     B' = B * (1 - latch) + B_byte * FACTOR;
     C' = C * (1 - latch) + C_byte * FACTOR;
 
-    {A_byte, B_byte, C_byte} in {P_A, P_B, P_C};
+    [A_byte, B_byte, C_byte] in [P_A, P_B, P_C];
 }
 
 machine Main with degree: 65536 {
@@ -43,7 +43,7 @@ machine Main with degree: 65536 {
     Binary bin;
 
     // permutation to machine bin
-    instr or X, Y -> Z ~ bin.or;
+    instr or X, Y -> Z link ~> Z = bin.or(X, Y);
 
     instr assert_eq X, Y { X = Y }
 

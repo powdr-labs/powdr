@@ -36,7 +36,7 @@ pub fn test_continuations(case: &str) {
         // computing the constants file.
         let mut pipeline = pipeline.with_backend(BackendType::EStarkDump, None);
         pipeline.compute_proof().unwrap();
-        verify(pipeline.output_dir().unwrap()).unwrap();
+        verify(pipeline.output_dir().as_ref().unwrap()).unwrap();
 
         Ok(())
     };

@@ -50,5 +50,5 @@ machine Shift with
     C' = C * (1 - latch) + C_part;
 
     // TODO this way, we cannot prove anything that shifts by more than 31 bits.
-    {operation_id', A_byte, B', FACTOR_ROW, C_part} in {P_operation, P_A, P_B, P_ROW, P_C};
+    [operation_id', A_byte, B', FACTOR_ROW, C_part] in [P_operation, P_A, P_B, P_ROW, P_C];
 }

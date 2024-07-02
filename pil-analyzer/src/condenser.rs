@@ -10,15 +10,15 @@ use std::{
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-        Identity, IdentityKind, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol,
-        SymbolKind,
+        self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
+        FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
+        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
+        self,
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        SelectedExpressions,
     },
 };
 use powdr_number::{DegreeType, FieldElement};
@@ -33,7 +33,7 @@ pub fn condense<T: FieldElement>(
     degree: Option<DegreeType>,
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
-    identities: &[Identity<Expression>],
+    identities: &[Identity<parsed::SelectedExpressions<Expression>>],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
@@ -98,8 +98,8 @@ pub fn condense<T: FieldElement>(
                 }
                 s => Some(s),
             };
-            // Extract and prepend the new witness columns, then identites
-            // and finally the original statment (if it exists).
+            // Extract and prepend the new witness columns, then identities
+            // and finally the original statement (if it exists).
             let new_wits = condenser
                 .extract_new_witness_columns()
                 .into_iter()
@@ -196,7 +196,7 @@ impl<Expr> IdentityWithoutID<Expr> {
         }
     }
 
-    pub fn into_identity(self, id: u64) -> Identity<Expr> {
+    pub fn into_identity(self, id: u64) -> Identity<SelectedExpressions<Expr>> {
         Identity {
             id,
             kind: self.kind,
@@ -234,7 +234,10 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         }
     }
 
-    pub fn condense_identity(&mut self, identity: &'a Identity<Expression>) {
+    pub fn condense_identity(
+        &mut self,
+        identity: &'a Identity<parsed::SelectedExpressions<Expression>>,
+    ) {
         if identity.kind == IdentityKind::Polynomial {
             let expr = identity.expression_for_poly_id();
             evaluator::evaluate(expr, self)
@@ -280,18 +283,14 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 
     fn condense_selected_expressions(
         &mut self,
-        sel_expr: &'a SelectedExpressions<Expression>,
+        sel_expr: &'a parsed::SelectedExpressions<Expression>,
     ) -> SelectedExpressions<AlgebraicExpression<T>> {
         SelectedExpressions {
             selector: sel_expr
                 .selector
                 .as_ref()
                 .map(|expr| self.condense_to_algebraic_expression(expr)),
-            expressions: sel_expr
-                .expressions
-                .iter()
-                .map(|expr| self.condense_to_algebraic_expression(expr))
-                .collect(),
+            expressions: self.condense_to_array_of_algebraic_expressions(&sel_expr.expressions),
         }
     }
 
@@ -322,7 +321,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
                     _ => panic!("Expected expression but got {item}"),
                 })
                 .collect(),
-            _ => panic!("Expected array of algebraic expressions, but got {result}"),
+            _ => panic!("Expected array of algebraic expressions but got {result}"),
         }
     }
 }
@@ -486,11 +485,11 @@ fn to_constraint<T: FieldElement>(
             IdentityWithoutID {
                 kind: IdentityKind::Connect,
                 source,
-                left: SelectedExpressions {
+                left: analyzed::SelectedExpressions {
                     selector: None,
                     expressions: from.into_iter().map(to_expr).collect(),
                 },
-                right: SelectedExpressions {
+                right: analyzed::SelectedExpressions {
                     selector: None,
                     expressions: to.into_iter().map(to_expr).collect(),
                 },
