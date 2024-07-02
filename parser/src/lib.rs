@@ -146,6 +146,7 @@ mod test {
     use pretty_assertions::assert_eq;
     use similar::TextDiff;
     use test_log::test;
+    use test_utils::ClearSourceRefs;
     use walkdir::WalkDir;
 
     #[test]
@@ -268,71 +269,6 @@ mod test {
         })
     }
 
-    // helper function to clear SourceRef's inside the AST so we can compare for equality
-    fn asm_clear_source_refs(ast: &mut ASMProgram) {
-        use powdr_ast::parsed::asm::{
-            ASMModule, FunctionStatement, Instruction, Machine, MachineStatement, Module,
-            ModuleStatement, SymbolDefinition, SymbolValue,
-        };
-
-        fn clear_machine_stmt(stmt: &mut MachineStatement) {
-            use test_utils::{pil_expression_clear_source_ref, pil_statement_clear_source_ref};
-            match stmt {
-                MachineStatement::Submachine(s, _, _, _)
-                | MachineStatement::RegisterDeclaration(s, _, _)
-                | MachineStatement::OperationDeclaration(s, _, _, _)
-                | MachineStatement::LinkDeclaration(s, _) => {
-                    *s = SourceRef::unknown();
-                }
-                MachineStatement::Pil(s, stmt) => {
-                    *s = SourceRef::unknown();
-                    pil_statement_clear_source_ref(stmt)
-                }
-                MachineStatement::InstructionDeclaration(s, _, Instruction { body, links, .. }) => {
-                    *s = SourceRef::unknown();
-                    body.0.iter_mut().for_each(pil_statement_clear_source_ref);
-                    links.iter_mut().for_each(|l| {
-                        pil_expression_clear_source_ref(&mut l.flag);
-                        l.link
-                            .params
-                            .inputs_and_outputs_mut()
-                            .for_each(pil_expression_clear_source_ref);
-                    });
-                }
-                MachineStatement::FunctionDeclaration(s, _, _, statements) => {
-                    *s = SourceRef::unknown();
-                    for statement in statements {
-                        match statement {
-                            FunctionStatement::Assignment(s, _, _, _)
-                            | FunctionStatement::Instruction(s, _, _)
-                            | FunctionStatement::Label(s, _)
-                            | FunctionStatement::DebugDirective(s, _)
-                            | FunctionStatement::Return(s, _) => *s = SourceRef::unknown(),
-                        }
-                    }
-                }
-            }
-        }
-
-        fn clear_module_stmt(stmt: &mut ModuleStatement) {
-            let ModuleStatement::SymbolDefinition(SymbolDefinition { value, .. }) = stmt;
-            match value {
-                SymbolValue::Machine(Machine { statements, .. }) => {
-                    statements.iter_mut().for_each(clear_machine_stmt)
-                }
-                SymbolValue::Module(Module::Local(ASMModule { statements })) => {
-                    statements.iter_mut().for_each(clear_module_stmt);
-                }
-                SymbolValue::Module(Module::External(_))
-                | SymbolValue::Import(_)
-                | SymbolValue::Expression(_)
-                | SymbolValue::TypeDeclaration(_) => (),
-            }
-        }
-
-        ast.main.statements.iter_mut().for_each(clear_module_stmt);
-    }
-
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for asm files
     fn parse_write_reparse_asm() {
@@ -347,8 +283,8 @@ mod test {
                 &orig_asm_to_string,
             )
             .unwrap_err_to_stderr();
-            asm_clear_source_refs(&mut orig_asm);
-            asm_clear_source_refs(&mut reparsed_asm);
+            orig_asm.clear_source_refs();
+            reparsed_asm.clear_source_refs();
             if orig_asm != reparsed_asm {
                 let orig_ast = format!("{orig_asm:#?}");
                 let reparsed_ast = format!("{reparsed_asm:#?}");
@@ -370,7 +306,6 @@ mod test {
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for pil files
     fn parse_write_reparse_pil() {
-        use test_utils::pil_clear_source_refs;
         let crate_dir = env!("CARGO_MANIFEST_DIR");
         let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
         let pil_files = find_files_with_ext(basedir, "pil".into());
@@ -382,8 +317,8 @@ mod test {
                 &orig_pil_to_string,
             )
             .unwrap_err_to_stderr();
-            pil_clear_source_refs(&mut orig_pil);
-            pil_clear_source_refs(&mut reparsed_pil);
+            orig_pil.clear_source_refs();
+            reparsed_pil.clear_source_refs();
             assert_eq!(orig_pil, reparsed_pil);
             if orig_pil != reparsed_pil {
                 let orig_ast = format!("{orig_pil:#?}");
