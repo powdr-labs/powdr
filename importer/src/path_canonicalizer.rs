@@ -143,7 +143,18 @@ impl<'a> Folder for Canonicalizer<'a> {
                         canonicalize_inside_expression(e, &self.path, self.paths);
                     }
                 }
-                _ => {}
+                MachineStatement::InstructionDeclaration(_, _, i) => {
+                    for e in i.children_mut() {
+                        canonicalize_inside_expression(e, &self.path, self.paths);
+                    }
+                }
+                MachineStatement::LinkDeclaration(_, d) => {
+                    for e in d.children_mut() {
+                        canonicalize_inside_expression(e, &self.path, self.paths);
+                    }
+                }
+                MachineStatement::RegisterDeclaration(_, _, _) => {}
+                MachineStatement::OperationDeclaration(_, _, _, _) => {}
             }
         }
         // canonicalize machine parameter types
@@ -244,8 +255,6 @@ fn canonicalize_inside_expression(
                 // If resolving the reference fails, we assume it is a local variable that has been checked below.
                 if let Some(n) = paths.get(&path.clone().join(reference.path.clone())) {
                     *reference = n.relative_to(&Default::default()).into();
-                } else {
-                    assert!(reference.path.try_to_identifier().is_some());
                 }
             }
             Expression::BlockExpression(_, BlockExpression { statements, .. }) => {
@@ -1035,5 +1044,10 @@ mod tests {
             "prelude_non_local",
             Err("symbol not found in `::module`: `x`"),
         )
+    }
+
+    #[test]
+    fn instruction() {
+        expect("instruction", Ok(()))
     }
 }
