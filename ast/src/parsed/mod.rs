@@ -307,29 +307,33 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SelectedExpressions<Expr> {
-    pub selector: Option<Expr>,
-    pub expressions: Vec<Expr>,
+pub struct SelectedExpressions<E = Expression<NamespacedPolynomialReference>> {
+    pub selector: Option<E>,
+    pub expressions: Box<E>,
 }
 
-impl<Expr> Default for SelectedExpressions<Expr> {
+impl<T> Default for SelectedExpressions<Expression<T>> {
     fn default() -> Self {
         Self {
             selector: Default::default(),
-            expressions: Default::default(),
+            expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
         }
     }
 }
 
-impl<Expr> Children<Expr> for SelectedExpressions<Expr> {
+impl<T> Children<Expression<T>> for SelectedExpressions<Expression<T>> {
     /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
-    fn children(&self) -> Box<dyn Iterator<Item = &Expr> + '_> {
-        Box::new(self.selector.iter().chain(self.expressions.iter()))
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<T>> + '_> {
+        Box::new(self.selector.iter().chain(self.expressions.children()))
     }
 
     /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expr> + '_> {
-        Box::new(self.selector.iter_mut().chain(self.expressions.iter_mut()))
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<T>> + '_> {
+        Box::new(
+            self.selector
+                .iter_mut()
+                .chain(self.expressions.children_mut()),
+        )
     }
 }
 
@@ -560,7 +564,7 @@ impl<E> Children<E> for MatchExpression<E> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BlockExpression<E> {
     pub statements: Vec<StatementInsideBlock<E>>,
-    pub expr: Box<E>,
+    pub expr: Option<Box<E>>,
 }
 
 impl<Ref> From<BlockExpression<Expression<Ref>>> for Expression<Ref> {
@@ -575,7 +579,7 @@ impl<E> Children<E> for BlockExpression<E> {
             self.statements
                 .iter()
                 .flat_map(|s| s.children())
-                .chain(once(self.expr.as_ref())),
+                .chain(self.expr.iter().map(|boxed| &**boxed)),
         )
     }
 
@@ -584,7 +588,7 @@ impl<E> Children<E> for BlockExpression<E> {
             self.statements
                 .iter_mut()
                 .flat_map(|s| s.children_mut())
-                .chain(once(self.expr.as_mut())),
+                .chain(self.expr.iter_mut().map(|boxed| &mut **boxed)),
         )
     }
 }

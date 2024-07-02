@@ -68,6 +68,8 @@ pub struct InstructionDefinitionStatement {
 pub struct LinkDefinition {
     pub source: SourceRef,
     /// the instruction flag, if this is an instruction link. Should be boolean.
+    /// This is kept separate from the link flag to easily identity links from different instructions (for link merging).
+    /// The final link selector is the product of the instruction flag, if present, and the link flag.
     pub instr_flag: Option<Expression>,
     /// the link flag. Should be boolean.
     pub link_flag: Expression,

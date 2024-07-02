@@ -13,7 +13,7 @@ use powdr_ast::{
         asm::{CallableRef, InstructionBody, InstructionParams, LinkDeclaration},
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
-        ArrayExpression, BinaryOperation, BinaryOperator, Expression, FunctionCall,
+        ArrayExpression, ArrayLiteral, BinaryOperation, BinaryOperator, Expression, FunctionCall,
         FunctionDefinition, FunctionKind, LambdaExpression, MatchArm, MatchExpression, Number,
         Pattern, PilStatement, PolynomialName, SelectedExpressions, UnaryOperation, UnaryOperator,
     },
@@ -181,19 +181,29 @@ impl<T: FieldElement> VMConverter<T> {
             SourceRef::unknown(),
             SelectedExpressions {
                 selector: None,
-                expressions: self
-                    .line_lookup
-                    .iter()
-                    .map(|x| direct_reference(&x.0))
-                    .collect(),
+                expressions: Box::new(
+                    ArrayLiteral {
+                        items: self
+                            .line_lookup
+                            .iter()
+                            .map(|x| direct_reference(&x.0))
+                            .collect(),
+                    }
+                    .into(),
+                ),
             },
             SelectedExpressions {
                 selector: None,
-                expressions: self
-                    .line_lookup
-                    .iter()
-                    .map(|x| direct_reference(&x.1))
-                    .collect(),
+                expressions: Box::new(
+                    ArrayLiteral {
+                        items: self
+                            .line_lookup
+                            .iter()
+                            .map(|x| direct_reference(&x.1))
+                            .collect(),
+                    }
+                    .into(),
+                ),
             },
         ));
 

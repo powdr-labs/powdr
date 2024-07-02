@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicReference, PolyID};
 use powdr_number::FieldElement;
+
+use crate::Identity;
 
 use super::{
     data_structures::finalizable_data::FinalizableData,
@@ -22,7 +22,7 @@ use super::{
 pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     processor: Processor<'a, 'b, 'c, T, Q>,
     /// The list of identities
-    identities: &'c [&'a Identity<Expression<T>>],
+    identities: &'c [&'a Identity<T>],
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
@@ -30,7 +30,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         row_offset: RowIndex,
         data: FinalizableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
-        identities: &'c [&'a Identity<Expression<T>>],
+        identities: &'c [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
@@ -43,7 +43,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 
     pub fn from_processor(
         processor: Processor<'a, 'b, 'c, T, Q>,
-        identities: &'c [&'a Identity<Expression<T>>],
+        identities: &'c [&'a Identity<T>],
     ) -> Self {
         Self {
             processor,
@@ -208,8 +208,7 @@ mod tests {
 
                 for &(i, name, expected) in asserted_values.iter() {
                     let poly_id = poly_ids[name];
-                    let row = &data[i];
-                    let actual: T = row[&poly_id].value.unwrap_or_default();
+                    let actual: T = data[i][&poly_id].value_or_zero();
                     assert_eq!(actual, T::from(expected));
                 }
             },

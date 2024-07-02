@@ -21,10 +21,10 @@ machine FunctionalInstructions {
     col commit XB2;
     col commit XB3;
     col commit XB4;
-    { XB1 } in { BYTES };
-    { XB2 } in { BYTES };
-    { XB3 } in { BYTES };
-    { XB4 } in { BYTES };
+    [ XB1 ] in [ BYTES ];
+    [ XB2 ] in [ BYTES ];
+    [ XB3 ] in [ BYTES ];
+    [ XB4 ] in [ BYTES ];
     col commit wrap_bit;
     wrap_bit * (1 - wrap_bit) = 0;
 

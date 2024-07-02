@@ -53,8 +53,8 @@ machine Memory with
     col fixed STEP(i) { i };
     col fixed BIT16(i) { i & 0xffff };
 
-    {m_diff_lower} in {BIT16};
-    {m_diff_upper} in {BIT16};
+    [m_diff_lower] in [BIT16];
+    [m_diff_upper] in [BIT16];
 
     std::utils::force_bool(m_change);
 

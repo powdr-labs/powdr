@@ -20,10 +20,10 @@ machine BitAccess {
     col witness XB2;
     col witness XB3;
     col witness XB4;
-    { XB1 } in { BYTE };
-    { XB2 } in { BYTE };
-    { XB3 } in { BYTE };
-    { XB4 } in { BYTE };
+    [ XB1 ] in [ BYTE ];
+    [ XB2 ] in [ BYTE ];
+    [ XB3 ] in [ BYTE ];
+    [ XB4 ] in [ BYTE ];
     col commit wrap_bit;
     wrap_bit * (1 - wrap_bit) = 0;
 

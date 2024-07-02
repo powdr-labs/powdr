@@ -9,7 +9,7 @@ use powdr_ast::{
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, namespaced_reference},
-        PILFile, PilStatement, SelectedExpressions, TypedExpression,
+        ArrayLiteral, PILFile, PilStatement, SelectedExpressions, TypedExpression,
     },
 };
 use powdr_parser_util::SourceRef;
@@ -147,10 +147,15 @@ fn process_link(link: Link) -> PilStatement {
         // permutation lhs is `flag { operation_id, inputs, outputs }`
         let lhs = SelectedExpressions {
             selector: Some(combine_flags(from.instr_flag, from.link_flag)),
-            expressions: op_id
-                .chain(from.params.inputs)
-                .chain(from.params.outputs)
-                .collect(),
+            expressions: Box::new(
+                ArrayLiteral {
+                    items: op_id
+                        .chain(from.params.inputs)
+                        .chain(from.params.outputs)
+                        .collect(),
+                }
+                .into(),
+            ),
         };
 
         // permutation rhs is `(latch * selector[idx]) { operation_id, inputs, outputs }`
@@ -173,24 +178,35 @@ fn process_link(link: Link) -> PilStatement {
 
         let rhs = SelectedExpressions {
             selector: rhs_selector,
-            expressions: op_id
-                .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                    index_access(
-                        namespaced_reference(to_namespace.clone(), &i.name),
-                        i.index.clone(),
-                    )
-                }))
-                .collect(),
+            expressions: Box::new(
+                ArrayLiteral {
+                    items: op_id
+                        .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                            index_access(
+                                namespaced_reference(to_namespace.clone(), &i.name),
+                                i.index.clone(),
+                            )
+                        }))
+                        .collect(),
+                }
+                .into(),
+            ),
         };
+
         PilStatement::PermutationIdentity(SourceRef::unknown(), lhs, rhs)
     } else {
-        // plookup lhs is `flag { operation_id, inputs, outputs }`
+        // plookup lhs is `flag $ [ operation_id, inputs, outputs ]`
         let lhs = SelectedExpressions {
             selector: Some(combine_flags(from.instr_flag, from.link_flag)),
-            expressions: op_id
-                .chain(from.params.inputs)
-                .chain(from.params.outputs)
-                .collect(),
+            expressions: Box::new(
+                ArrayLiteral {
+                    items: op_id
+                        .chain(from.params.inputs)
+                        .chain(from.params.outputs)
+                        .collect(),
+                }
+                .into(),
+            ),
         };
 
         let to_namespace = to.machine.location.clone().to_string();
@@ -200,7 +216,7 @@ fn process_link(link: Link) -> PilStatement {
             .map(|oid| namespaced_reference(to_namespace.clone(), oid))
             .into_iter();
 
-        // plookup rhs is `latch { operation_id, inputs, outputs }`
+        // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
         let latch = Some(namespaced_reference(
             to_namespace.clone(),
             to.machine.latch.unwrap(),
@@ -208,14 +224,19 @@ fn process_link(link: Link) -> PilStatement {
 
         let rhs = SelectedExpressions {
             selector: latch,
-            expressions: op_id
-                .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                    index_access(
-                        namespaced_reference(to_namespace.clone(), &i.name),
-                        i.index.clone(),
-                    )
-                }))
-                .collect(),
+            expressions: Box::new(
+                ArrayLiteral {
+                    items: op_id
+                        .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                            index_access(
+                                namespaced_reference(to_namespace.clone(), &i.name),
+                                i.index.clone(),
+                            )
+                        }))
+                        .collect(),
+                }
+                .into(),
+            ),
         };
         PilStatement::PlookupIdentity(SourceRef::unknown(), lhs, rhs)
     }
@@ -322,7 +343,7 @@ mod test {
     pol constant p_instr__loop = [0, 0, 1] + [1]*;
     pol constant p_instr__reset = [1, 0, 0] + [0]*;
     pol constant p_instr_return = [0]*;
-    { pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return };
+    [pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in [p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return];
 "#;
 
         let file_name = format!(
@@ -407,10 +428,10 @@ mod test {
     pol constant p_read_Y_pc = [0]*;
     pol constant p_reg_write_X_A = [0]*;
     pol constant p_reg_write_Y_A = [0, 0, 1, 0, 0] + [0]*;
-    { pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc };
-    instr_identity { 2, X, Y } in main_sub.instr_return { main_sub._operation_id, main_sub._input_0, main_sub._output_0 };
-    instr_nothing { 3 } in main_sub.instr_return { main_sub._operation_id };
-    instr_one { 4, Y } in main_sub.instr_return { main_sub._operation_id, main_sub._output_0 };
+    [pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc] in [p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc];
+    instr_identity $ [2, X, Y] in main_sub.instr_return $ [main_sub._operation_id, main_sub._input_0, main_sub._output_0];
+    instr_nothing $ [3] in main_sub.instr_return $ [main_sub._operation_id];
+    instr_one $ [4, Y] in main_sub.instr_return $ [main_sub._operation_id, main_sub._output_0];
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
 namespace main_sub(16);
@@ -444,7 +465,7 @@ namespace main_sub(16);
     pol constant p_instr_return = [0, 0, 1, 1, 1, 0] + [0]*;
     pol constant p_read__output_0__input_0 = [0, 0, 1, 0, 0, 0] + [0]*;
     pol constant p_read__output_0_pc = [0]*;
-    { pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 };
+    [pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0] in [p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0];
 "#;
         let file_name = format!(
             "{}/../test_data/asm/different_signatures.asm",
@@ -522,7 +543,7 @@ namespace main_sub(16);
     pol constant p_read_X_pc = [0]*;
     pol constant p_reg_write_X_A = [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0] + [0]*;
     pol constant p_reg_write_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-    { pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { p_line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
+    [pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc] in [p_line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc];
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
 "#;
@@ -583,7 +604,7 @@ machine Machine {
     pol constant p_instr_inc_fp = [0, 0, 1, 0, 0] + [0]*;
     pol constant p_instr_inc_fp_param_amount = [0, 0, 7, 0, 0] + [0]*;
     pol constant p_instr_return = [0]*;
-    { pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t, instr__jump_to_operation, instr__reset, instr__loop, instr_return } in { p_line, p_instr_inc_fp, p_instr_inc_fp_param_amount, p_instr_adjust_fp, p_instr_adjust_fp_param_amount, p_instr_adjust_fp_param_t, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return };
+    [pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in [p_line, p_instr_inc_fp, p_instr_inc_fp_param_amount, p_instr_adjust_fp, p_instr_adjust_fp_param_amount, p_instr_adjust_fp_param_t, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return];
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
 "#;
@@ -675,8 +696,8 @@ machine Main {
     pol constant p_read_X_A = [0]*;
     pol constant p_read_X_pc = [0]*;
     pol constant p_reg_write_X_A = [0]*;
-    { pc, reg_write_X_A, instr_add5_into_A, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc } in { p_line, p_reg_write_X_A, p_instr_add5_into_A, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc };
-    instr_add5_into_A { 0, X, A' } in main_vm.latch { main_vm.operation_id, main_vm.x, main_vm.y };
+    [pc, reg_write_X_A, instr_add5_into_A, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc] in [p_line, p_reg_write_X_A, p_instr_add5_into_A, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc];
+    instr_add5_into_A $ [0, X, A'] in main_vm.latch $ [main_vm.operation_id, main_vm.x, main_vm.y];
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
 namespace main_vm(1024);
@@ -773,9 +794,9 @@ namespace main_vm(1024);
     pol constant p_reg_write_Y_B = [0]*;
     pol constant p_reg_write_Z_A = [0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     pol constant p_reg_write_Z_B = [0]*;
-    { pc, reg_write_X_A, reg_write_Y_A, reg_write_Z_A, reg_write_X_B, reg_write_Y_B, reg_write_Z_B, instr_or, instr_or_into_B, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_B, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_B, read_Y_pc, Z_const, Z_read_free, read_Z_A, read_Z_B, read_Z_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_reg_write_Z_A, p_reg_write_X_B, p_reg_write_Y_B, p_reg_write_Z_B, p_instr_or, p_instr_or_into_B, p_instr_assert_eq, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_B, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_B, p_read_Y_pc, p_Z_const, p_Z_read_free, p_read_Z_A, p_read_Z_B, p_read_Z_pc };
-    instr_or_into_B { 0, X, Y, B' } is main_bin.latch * main_bin.sel[0] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };
-    instr_or { 0, X, Y, Z } is main_bin.latch * main_bin.sel[1] { main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C };
+    [pc, reg_write_X_A, reg_write_Y_A, reg_write_Z_A, reg_write_X_B, reg_write_Y_B, reg_write_Z_B, instr_or, instr_or_into_B, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_B, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_B, read_Y_pc, Z_const, Z_read_free, read_Z_A, read_Z_B, read_Z_pc] in [p_line, p_reg_write_X_A, p_reg_write_Y_A, p_reg_write_Z_A, p_reg_write_X_B, p_reg_write_Y_B, p_reg_write_Z_B, p_instr_or, p_instr_or_into_B, p_instr_assert_eq, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_B, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_B, p_read_Y_pc, p_Z_const, p_Z_read_free, p_read_Z_A, p_read_Z_B, p_read_Z_pc];
+    instr_or_into_B $ [0, X, Y, B'] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];
+    instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[1] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
 namespace main_bin(65536);
@@ -796,7 +817,7 @@ namespace main_bin(65536);
     A' = A * (1 - latch) + A_byte * FACTOR;
     B' = B * (1 - latch) + B_byte * FACTOR;
     C' = C * (1 - latch) + C_byte * FACTOR;
-    { A_byte, B_byte, C_byte } in { P_A, P_B, P_C };
+    [A_byte, B_byte, C_byte] in [P_A, P_B, P_C];
     pol commit sel[2];
     std::array::map(sel, std::utils::force_bool);
 "#;
@@ -940,12 +961,12 @@ namespace main_bin(65536);
     pol constant p_reg_write_Z_A = [0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0] + [0]*;
     pol constant p_reg_write_Z_B = [0]*;
     pol constant p_reg_write_Z_C = [0]*;
-    { pc, reg_write_X_A, reg_write_Y_A, reg_write_Z_A, reg_write_W_A, reg_write_X_B, reg_write_Y_B, reg_write_Z_B, reg_write_W_B, reg_write_X_C, reg_write_Y_C, reg_write_Z_C, reg_write_W_C, instr_add, instr_sub_with_add, instr_addAB, instr_add3, instr_add_to_A, instr_add_BC_to_A, instr_sub, instr_add_with_sub, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_B, read_X_C, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_B, read_Y_C, read_Y_pc, Z_const, Z_read_free, read_Z_A, read_Z_B, read_Z_C, read_Z_pc, W_const, W_read_free, read_W_A, read_W_B, read_W_C, read_W_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_reg_write_Z_A, p_reg_write_W_A, p_reg_write_X_B, p_reg_write_Y_B, p_reg_write_Z_B, p_reg_write_W_B, p_reg_write_X_C, p_reg_write_Y_C, p_reg_write_Z_C, p_reg_write_W_C, p_instr_add, p_instr_sub_with_add, p_instr_addAB, p_instr_add3, p_instr_add_to_A, p_instr_add_BC_to_A, p_instr_sub, p_instr_add_with_sub, p_instr_assert_eq, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_B, p_read_X_C, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_B, p_read_Y_C, p_read_Y_pc, p_Z_const, p_Z_read_free, p_read_Z_A, p_read_Z_B, p_read_Z_C, p_read_Z_pc, p_W_const, p_W_read_free, p_read_W_A, p_read_W_B, p_read_W_C, p_read_W_pc };
-    instr_add_to_A { 0, X, Y, A' } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z };
-    instr_add_BC_to_A { 0, B, C, A' } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z };
-    instr_add + instr_add3 + instr_addAB + instr_sub_with_add { 0, X * instr_add + X * instr_add3 + A * instr_addAB + X * instr_sub_with_add, Y * instr_add + Y * instr_add3 + B * instr_addAB + Z * instr_sub_with_add, Z * instr_add + tmp * instr_add3 + X * instr_addAB + Y * instr_sub_with_add } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z };
-    instr_add3 { 0, tmp, Z, W } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z };
-    instr_add_with_sub + instr_sub { 1, X * instr_add_with_sub + X * instr_sub, Y * instr_add_with_sub + Y * instr_sub, Z * instr_add_with_sub + Z * instr_sub } in main_submachine.latch { main_submachine.operation_id, main_submachine.x, main_submachine.z, main_submachine.y };
+    [pc, reg_write_X_A, reg_write_Y_A, reg_write_Z_A, reg_write_W_A, reg_write_X_B, reg_write_Y_B, reg_write_Z_B, reg_write_W_B, reg_write_X_C, reg_write_Y_C, reg_write_Z_C, reg_write_W_C, instr_add, instr_sub_with_add, instr_addAB, instr_add3, instr_add_to_A, instr_add_BC_to_A, instr_sub, instr_add_with_sub, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_B, read_X_C, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_B, read_Y_C, read_Y_pc, Z_const, Z_read_free, read_Z_A, read_Z_B, read_Z_C, read_Z_pc, W_const, W_read_free, read_W_A, read_W_B, read_W_C, read_W_pc] in [p_line, p_reg_write_X_A, p_reg_write_Y_A, p_reg_write_Z_A, p_reg_write_W_A, p_reg_write_X_B, p_reg_write_Y_B, p_reg_write_Z_B, p_reg_write_W_B, p_reg_write_X_C, p_reg_write_Y_C, p_reg_write_Z_C, p_reg_write_W_C, p_instr_add, p_instr_sub_with_add, p_instr_addAB, p_instr_add3, p_instr_add_to_A, p_instr_add_BC_to_A, p_instr_sub, p_instr_add_with_sub, p_instr_assert_eq, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_B, p_read_X_C, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_B, p_read_Y_C, p_read_Y_pc, p_Z_const, p_Z_read_free, p_read_Z_A, p_read_Z_B, p_read_Z_C, p_read_Z_pc, p_W_const, p_W_read_free, p_read_W_A, p_read_W_B, p_read_W_C, p_read_W_pc];
+    instr_add_to_A $ [0, X, Y, A'] in main_submachine.latch $ [main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z];
+    instr_add_BC_to_A $ [0, B, C, A'] in main_submachine.latch $ [main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z];
+    instr_add + instr_add3 + instr_addAB + instr_sub_with_add $ [0, X * instr_add + X * instr_add3 + A * instr_addAB + X * instr_sub_with_add, Y * instr_add + Y * instr_add3 + B * instr_addAB + Z * instr_sub_with_add, Z * instr_add + tmp * instr_add3 + X * instr_addAB + Y * instr_sub_with_add] in main_submachine.latch $ [main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z];
+    instr_add3 $ [0, tmp, Z, W] in main_submachine.latch $ [main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z];
+    instr_add_with_sub + instr_sub $ [1, X * instr_add_with_sub + X * instr_sub, Y * instr_add_with_sub + Y * instr_sub, Z * instr_add_with_sub + Z * instr_sub] in main_submachine.latch $ [main_submachine.operation_id, main_submachine.x, main_submachine.z, main_submachine.y];
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
 namespace main_submachine(1024);
