@@ -44,7 +44,7 @@ pub struct Analyzed<T> {
 }
 
 impl<T> Analyzed<T> {
-    /// Returns the common degree in this [`Analyzed<T>`].
+    /// Returns the degree common among all symbols that have an explicit degree.
     ///
     /// # Panics
     ///
@@ -58,7 +58,7 @@ impl<T> Analyzed<T> {
             .unwrap()
     }
 
-    /// Returns the set of all degrees in this [`Analyzed<T>`].
+    /// Returns the set of all explicit degrees in this [`Analyzed<T>`].
     pub fn degrees(&self) -> HashSet<DegreeType> {
         self.definitions
             .values()

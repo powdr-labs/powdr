@@ -286,6 +286,14 @@ pub struct FixedData<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
+    /// Returns the common degree of a set or polynomials
+    ///
+    /// # Panics
+    ///
+    /// Panics if:
+    /// - the degree is not unique
+    /// - the set of polynomials is empty
+    /// - a declared polynomial does not have an explicit degree
     pub fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
         let ids: HashSet<_> = ids.into_iter().collect();
 

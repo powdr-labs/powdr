@@ -21,7 +21,7 @@ use super::*;
 
 impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let mut current_namespace = AbsoluteSymbolPath::default();
+        let (mut current_namespace, mut current_degree) = (AbsoluteSymbolPath::default(), None);
         let mut update_namespace =
             |name: &str, degree: Option<DegreeType>, f: &mut Formatter<'_>| {
                 let mut namespace =
@@ -29,12 +29,16 @@ impl<T: Display> Display for Analyzed<T> {
                 let name = namespace.pop().unwrap();
                 if namespace != current_namespace {
                     current_namespace = namespace;
+                    current_degree = degree;
                     writeln!(
                         f,
                         "namespace {}{};",
                         current_namespace.relative_to(&Default::default()),
                         degree.map(|d| format!("({d})")).unwrap_or_default()
                     )?;
+                } else {
+                    // If we're in the same namespace, the degree must match
+                    assert_eq!(current_degree, degree);
                 };
                 Ok((name, !current_namespace.is_empty()))
             };

@@ -67,7 +67,7 @@ fn create_stark_struct(degree: DegreeType, hash_type: &str) -> StarkStruct {
     }
 }
 
-type Constants<F> = Vec<(String, Vec<F>)>;
+type Fixed<F> = Vec<(String, Vec<F>)>;
 
 /// eStark provers require a fixed column with the equivalent semantics to
 /// Polygon zkEVM's `L1` column. Powdr generated PIL will always have
@@ -77,8 +77,8 @@ type Constants<F> = Vec<(String, Vec<F>)>;
 /// TODO Improve how this is done.
 fn first_step_fixup<F: FieldElement>(
     pil: &Analyzed<F>,
-    fixed: Arc<Constants<F>>,
-) -> (PIL, Arc<Constants<F>>) {
+    fixed: Arc<Fixed<F>>,
+) -> (PIL, Arc<Fixed<F>>) {
     let degree = pil.degree();
 
     let mut pil: PIL = json_exporter::export(pil);
@@ -123,7 +123,7 @@ struct EStarkFilesCommon<F: FieldElement> {
     pil: PIL,
     /// If this field is present, it means the constants were patched with
     /// "main.first_step" column and must be written again to a file.
-    constants: Arc<Constants<F>>,
+    constants: Arc<Fixed<F>>,
     output_dir: Option<PathBuf>,
     proof_type: ProofType,
 }
@@ -140,7 +140,7 @@ fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), E
 impl<'a, F: FieldElement> EStarkFilesCommon<F> {
     fn create(
         analyzed: &'a Analyzed<F>,
-        fixed: Arc<Constants<F>>,
+        fixed: Arc<Fixed<F>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -161,14 +161,14 @@ impl<'a, F: FieldElement> EStarkFilesCommon<F> {
         }
 
         // Pre-process the PIL and fixed columns.
-        let (pil, constants) = first_step_fixup(analyzed, fixed);
+        let (pil, fixed) = first_step_fixup(analyzed, fixed);
 
         let proof_type: ProofType = ProofType::from(options);
 
         Ok(EStarkFilesCommon {
             degree: analyzed.degree(),
             pil,
-            constants,
+            constants: fixed,
             output_dir,
             proof_type,
         })

@@ -41,8 +41,8 @@ fn write_polys_stream<T: FieldElement>(
     }
 
     for i in 0..degree {
-        for (_name, constant) in polys {
-            let bytes = constant[i].to_bytes_le();
+        for (_, values) in polys {
+            let bytes = values[i].to_bytes_le();
             assert_eq!(bytes.len(), width);
             file.write_all(&bytes)?;
         }
