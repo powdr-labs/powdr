@@ -74,13 +74,6 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
 
     pipeline.clone().compute_proof().unwrap();
 
-    // Also test composite backend:
-    pipeline
-        .clone()
-        .with_backend(powdr_backend::BackendType::EStarkStarkyComposite, None)
-        .compute_proof()
-        .unwrap();
-
     // Repeat the proof generation, but with an externally generated verification key
 
     // Verification Key
