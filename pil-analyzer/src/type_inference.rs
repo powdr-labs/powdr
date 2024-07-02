@@ -672,7 +672,7 @@ impl<'a> TypeChecker<'a> {
                 self.local_var_types.truncate(original_var_count);
                 result?
             }
-            Expression::StructExpression(_source_ref, struct_expr) => {
+            Expression::StructExpression(_, struct_expr) => {
                 Type::NamedType(SymbolPath::from_identifier(struct_expr.name.clone()), None)
             }
         })

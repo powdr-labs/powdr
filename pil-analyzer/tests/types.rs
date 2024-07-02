@@ -587,11 +587,11 @@ fn def_struct() {
 #[test]
 fn struct_constr() {
     let input = "
-    struct X {one: int, two: bool}
+    struct X {x: int, y: int}
     let v: int -> X = |i| match i {
-        1 => X with {one: 1, two: false},
-        2 => X with {one: 2, two: true},
-        _ => X with {one: 0, two: false}
+        1 => X with {one: 1, two: 0},
+        2 => X with {one: 2, two: 2},
+        _ => X with {one: 0, two: 1}
     };
 
     let x = v(1);
