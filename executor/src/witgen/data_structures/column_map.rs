@@ -94,6 +94,10 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
         self.values.into_iter()
     }
 
+    pub fn values_iter_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.values.iter_mut()
+    }
+
     pub fn len(&self) -> usize {
         self.values.len()
     }

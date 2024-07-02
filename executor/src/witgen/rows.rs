@@ -171,13 +171,13 @@ impl<T: FieldElement> Display for CellValue<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CellValue::Known(v) => write!(f, "{v}"),
-            CellValue::RangeConstraint(rc) => write!(f, "?  (range constraint: {})", rc),
+            CellValue::RangeConstraint(rc) => write!(f, "?  (range constraint: {rc})"),
             CellValue::Unknown => write!(f, "?"),
         }
     }
 }
 
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Row<'a, T: FieldElement> {
     values: WitnessColumnMap<CellValue<T>>,
     // TODO remove this.
@@ -215,15 +215,14 @@ impl<'a, T: FieldElement> Row<'a, T> {
         {
             return Err(());
         };
-        self.values = WitnessColumnMap::from(
-            std::mem::take(&mut self.values)
-                .values_into_iter()
-                .zip(other.values.values())
-                .map(|(cell1, cell2)| match (&cell1, &cell2) {
-                    (CellValue::Known(_), _) => cell1,
-                    _ => cell2.clone(),
-                }),
-        );
+
+        self.values
+            .values_iter_mut()
+            .zip(other.values.values())
+            .for_each(|(cell1, cell2)| match (&cell1, &cell2) {
+                (CellValue::Known(_), _) => {}
+                _ => *cell1 = cell2.clone(),
+            });
         Ok(())
     }
 
@@ -239,7 +238,7 @@ impl<'a, T: FieldElement> Row<'a, T> {
         self.values[poly_id].apply_update(constr);
     }
 
-    pub fn finalize(self, column_ids: &[PolyID]) -> FinalizedRow<T> {
+    pub fn finalize(&self, column_ids: &[PolyID]) -> FinalizedRow<T> {
         let (values, known_cells) = column_ids
             .iter()
             .map(|poly_id| {

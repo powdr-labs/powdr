@@ -126,7 +126,7 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
 
     pub fn finalize(&mut self, i: usize) -> bool {
         if let Entry::InProgress(row) = &mut self.data[i] {
-            self.data[i] = Entry::Finalized(std::mem::take(row).finalize(&self.column_ids));
+            self.data[i] = Entry::Finalized(row.finalize(&self.column_ids));
             true
         } else {
             false
