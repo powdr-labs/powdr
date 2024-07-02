@@ -5,7 +5,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
-use crate::witgen::rows::merge_row_with;
 use crate::witgen::EvalValue;
 use crate::Identity;
 
@@ -216,7 +215,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         is_main_run: bool,
     ) -> ProcessResult<'a, T> {
         log::trace!(
-            "Running main machine from row {row_offset} with the following initial values in the first row:\n{}", first_row.render_values(false, None)
+            "Running main machine from row {row_offset} with the following initial values in the first row:\n{}",
+            first_row.render_values(false, None, self.fixed_data)
         );
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.witnesses,
@@ -244,6 +244,6 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         assert_eq!(self.data.len() as DegreeType, self.fixed_data.degree + 1);
 
         let last_row = self.data.pop().unwrap();
-        merge_row_with(&mut self.data[0], &last_row).unwrap();
+        self.data[0].merge_with(&last_row).unwrap();
     }
 }
