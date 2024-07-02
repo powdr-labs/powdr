@@ -474,9 +474,8 @@ where
         {
             assert_eq!(symbol_kind, SymbolKind::Other());
             let struct_decl = self.process_struct_declaration(struct_decl);
-            //let shared_struct_decl = Arc::new(struct_decl.clone());
-            // TODO Need to handle struct fields as well.
-            /*let field_items = struct_decl.fields.iter().map(|(field_name, _ty)| {
+            let shared_struct_decl = Arc::new(struct_decl.clone());
+            let field_items = struct_decl.fields.iter().map(|(field_name, _ty)| {
                 let var_symbol = Symbol {
                     id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
                     source: source.clone(),
@@ -490,21 +489,18 @@ where
                 };
                 let value = FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
                     shared_struct_decl.clone(),
-                    vec![StructValue {
-                        name: field_name.clone(),
-                        value: Expression::String("1".to_string()), // TODO Just for testing purposes
-                    }],
+                    field_name.clone(),
                 ));
                 PILItem::Definition(var_symbol, Some(value))
             });
-            */
+
             return iter::once(PILItem::Definition(
                 symbol,
                 Some(FunctionValueDefinition::TypeDeclaration(
                     TypeDeclarationAnalyzed::Struct(struct_decl.clone()),
                 )),
             ))
-            //.chain(field_items)
+            .chain(field_items)
             .collect();
         }
 

@@ -5,7 +5,7 @@ use std::cmp::max;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use std::iter;
+use std::iter::{self, empty};
 use std::ops::{self, ControlFlow};
 use std::sync::Arc;
 
@@ -19,9 +19,7 @@ use crate::parsed::types::{ArrayType, Type, TypeScheme};
 use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
-use crate::parsed::{
-    self, ArrayLiteral, EnumDeclaration, EnumVariant, NamedExpression, StructDeclaration,
-};
+use crate::parsed::{self, ArrayLiteral, EnumDeclaration, EnumVariant, StructDeclaration};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub enum StatementIdentifier {
@@ -562,25 +560,21 @@ impl Children<Expression> for TypeDeclaration {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum TypeConstructor {
     Enum(Arc<EnumDeclaration>, EnumVariant),
-    Struct(Arc<StructDeclaration>, Vec<NamedExpression<Expression>>),
+    Struct(Arc<StructDeclaration>, String),
 }
 
 impl Children<Expression> for TypeConstructor {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
             TypeConstructor::Enum(_, variant) => variant.children(),
-            TypeConstructor::Struct(_, values) => {
-                Box::new(values.iter().flat_map(|v| v.children()))
-            }
+            TypeConstructor::Struct(_, _) => Box::new(empty()),
         }
     }
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
             TypeConstructor::Enum(_, variant) => variant.children_mut(),
-            TypeConstructor::Struct(_, values) => {
-                Box::new(values.iter_mut().flat_map(|v| v.children_mut()))
-            }
+            TypeConstructor::Struct(_, _) => Box::new(empty()),
         }
     }
 }

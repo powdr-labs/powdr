@@ -633,19 +633,19 @@ IfExpression: Box<Expression> = {
 }
 
 StructExpression: Box<Expression> = {
-    <start:@L> <name:Identifier> "?{" <fields:StructExpressionList> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
+    <start:@L> <name:Identifier> "with" "{" <fields:StructExpressionList> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
 }
 
 StructExpressionList: BTreeMap<String, Box<Expression>> = {
     => BTreeMap::new(),
-    <map:(<StructExpressionField> ",")*> <end:StructExpressionField> ","? => {
+    <map:(<NamedExpression> ",")*> <end:NamedExpression> ","? => {
         let mut hashmap = map.into_iter().collect::<BTreeMap<_, _>>();
         hashmap.insert(end.0, end.1);
         hashmap
     }
 }
 
-StructExpressionField: (String, Box<Expression>) = {
+NamedExpression: (String, Box<Expression>) = {
     <name:Identifier> ":" <value:BoxedExpression> => (name, value)
 }
 

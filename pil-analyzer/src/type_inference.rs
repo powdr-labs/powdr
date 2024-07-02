@@ -4,6 +4,7 @@ use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference},
     parsed::{
+        asm::SymbolPath,
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
@@ -671,8 +672,8 @@ impl<'a> TypeChecker<'a> {
                 self.local_var_types.truncate(original_var_count);
                 result?
             }
-            Expression::StructExpression(_source_ref, _struct_expr) => {
-                panic!("Struct expressions are not yet supported.");
+            Expression::StructExpression(_source_ref, struct_expr) => {
+                Type::NamedType(SymbolPath::from_identifier(struct_expr.name.clone()), None)
             }
         })
     }
