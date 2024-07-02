@@ -14,7 +14,7 @@ use super::{
         finalizable_data::FinalizableData,
     },
     identity_processor::IdentityProcessor,
-    rows::{CellValue, Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
+    rows::{Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
     Constraints, EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
@@ -223,14 +223,22 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
 Known values in current row (local: {row_index}, global {global_row_index}):
 {}
 ",
-                    self.data[row_index].render_values(false, Some(self.witness_cols))
+                    self.data[row_index].render_values(
+                        false,
+                        Some(self.witness_cols),
+                        self.fixed_data,
+                    )
                 );
                 if identity.contains_next_ref() {
                     error += &format!(
                         "Known values in next row (local: {}, global {}):\n{}\n",
                         row_index + 1,
                         global_row_index + 1,
-                        self.data[row_index + 1].render_values(false, Some(self.witness_cols))
+                        self.data[row_index + 1].render_values(
+                            false,
+                            Some(self.witness_cols),
+                            self.fixed_data,
+                        )
                     );
                 }
                 error += &format!("   => Error: {e}");
@@ -317,26 +325,23 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     pub fn set_inputs_if_unset(&mut self, row_index: usize) -> bool {
         let mut input_updates = EvalValue::complete(vec![]);
         for (poly_id, value) in self.inputs.iter() {
-            match &self.data[row_index][poly_id].value {
-                CellValue::Known(_) => {}
-                CellValue::RangeConstraint(_) | CellValue::Unknown => {
-                    input_updates.combine(EvalValue::complete(vec![(
-                        &self.fixed_data.witness_cols[poly_id].poly,
-                        Constraint::Assignment(*value),
-                    )]));
-                }
-            };
+            if !self.data[row_index].value_is_known(poly_id) {
+                input_updates.combine(EvalValue::complete(vec![(
+                    &self.fixed_data.witness_cols[poly_id].poly,
+                    Constraint::Assignment(*value),
+                )]));
+            }
         }
 
         for (poly, _) in &input_updates.constraints {
-            let poly_id = poly.poly_id;
-            if let Some(start_row) = self.previously_set_inputs.remove(&poly_id) {
+            let poly_id = &poly.poly_id;
+            if let Some(start_row) = self.previously_set_inputs.remove(poly_id) {
                 log::trace!(
                     "    Resetting previously set inputs for column: {}",
-                    self.fixed_data.column_name(&poly_id)
+                    self.fixed_data.column_name(poly_id)
                 );
                 for row_index in start_row..row_index {
-                    self.data[row_index][&poly_id].value = CellValue::Unknown;
+                    self.data[row_index].set_cell_unknown(poly_id);
                 }
             }
         }
@@ -515,8 +520,14 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .process_identity(identity, &row_pair)
             .is_err()
         {
-            log::debug!("Previous {:?}", &self.data[row_index - 1]);
-            log::debug!("Proposed {:?}", proposed_row);
+            log::debug!(
+                "Previous {}",
+                self.data[row_index - 1].render_values(true, None, self.fixed_data)
+            );
+            log::debug!(
+                "Proposed {:?}",
+                proposed_row.render_values(true, None, self.fixed_data)
+            );
             log::debug!("Failed on identity: {}", identity);
 
             return false;

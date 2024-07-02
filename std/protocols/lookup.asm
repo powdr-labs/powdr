@@ -1,4 +1,3 @@
-use std::prover::challenge;
 use std::array::fold;
 use std::utils::unwrap_or_else;
 use std::array::len;
@@ -17,13 +16,6 @@ use std::math::fp2::inv_ext;
 use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
 use std::math::fp2::constrain_eq_ext;
-
-// challenges to be used in polynomial evaluation and folding different columns
-let alpha1: expr = challenge(0, 1);
-let alpha2: expr = challenge(0, 2);
-
-let beta1: expr = challenge(0, 3);
-let beta2: expr = challenge(0, 4);
 
 let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_constraint| match lookup_constraint {
     Constr::Lookup((lhs_selector, rhs_selector), values) => (
@@ -51,16 +43,8 @@ let<T: Add + Mul + FromLiteral> compress_expression_array: T[], Fp2<T> -> Fp2<T>
 );
 
 // Compute z' = z + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector, using extension field arithmetic
-let compute_next_z: Fp2<expr>, Constr, expr -> fe[] = query |acc, lookup_constraint, multiplicities| {
+let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = query |acc, alpha, beta, lookup_constraint, multiplicities| {
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
-    let alpha = if len(lhs) > 1 {
-        Fp2::Fp2(alpha1, alpha2)
-    } else {
-        // The optimizer will have removed alpha, but the compression function
-        // still accesses it (to multiply by 0 in this case)
-        from_base(0)
-    };
-    let beta = Fp2::Fp2(beta1, beta2);
     
     let lhs_denom = sub_ext(beta, compress_expression_array(lhs, alpha));
     let rhs_denom = sub_ext(beta, compress_expression_array(rhs, alpha));
@@ -85,11 +69,14 @@ let compute_next_z: Fp2<expr>, Constr, expr -> fe[] = query |acc, lookup_constra
     
 // Adds constraints that enforce that rhs is the lookup for lhs
 // Arguments:
+// - is_first: A column that is 1 for the first row and 0 for the rest
+// - alpha: A challenge used to compress the LHS and RHS values
+// - beta: A challenge used to update the accumulator
 // - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
 //        are done on the F_{p^2} extension field.
 // - lookup_constraint: The lookup constraint
 // - multiplicities: The multiplicities which shows how many times each RHS value appears in the LHS                  
-let lookup: expr, expr[], Constr, expr -> Constr[] = |is_first, acc, lookup_constraint, multiplicities| {
+let lookup: expr, expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> Constr[] = |is_first, acc, alpha, beta, lookup_constraint, multiplicities| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
 
@@ -110,8 +97,6 @@ let lookup: expr, expr[], Constr, expr -> Constr[] = |is_first, acc, lookup_cons
     // in which case the operations below effectively only operate on the first component.
     let fp2_from_array = |arr| if with_extension { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
     let acc_ext = fp2_from_array(acc);
-    let alpha = fp2_from_array([alpha1, alpha2]);
-    let beta = fp2_from_array([beta1, beta2]);
 
     let lhs_denom = sub_ext(beta, compress_expression_array(lhs, alpha));
     let rhs_denom = sub_ext(beta, compress_expression_array(rhs, alpha));

@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use powdr_ast::{
-    asm_analysis::{self, AnalysisASMFile, Item, LinkDefinitionStatement},
+    asm_analysis::{self, combine_flags, AnalysisASMFile, Item, LinkDefinition},
     object::{
         Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph, TypeOrExpression,
     },
@@ -14,6 +14,9 @@ use powdr_ast::{
         Expression, PilStatement,
     },
 };
+
+use itertools::Either;
+use itertools::Itertools;
 
 use powdr_analysis::utils::parse_pil_statement;
 
@@ -271,29 +274,37 @@ impl<'a> ASMPILConverter<'a> {
             self.handle_pil_statement(block);
         }
 
-        let call_selectors = input.call_selectors;
-        let has_pc = input.pc.is_some();
-        let links = input
-            .links
-            .into_iter()
-            .map(|d| self.handle_link_def(d))
-            .collect();
+        let mut links = self.process_and_merge_links(&input.links[..]);
+
+        // for each permutation link, increase the permutation count in the destination machine and set its selector index
+        for link in &mut links {
+            if link.is_permutation {
+                let count = self
+                    .incoming_permutations
+                    .get_mut(&link.to.machine.location)
+                    .unwrap();
+                link.to.selector_idx = Some(*count);
+                *count += 1;
+            }
+        }
 
         Object {
             degree,
             pil: self.pil,
             links,
             latch: input.latch,
-            call_selectors,
-            has_pc,
+            call_selectors: input.call_selectors,
+            has_pc: input.pc.is_some(),
         }
     }
 
+    // Convert a link definition to a link, doing some basic checks in the process
     fn handle_link_def(
-        &mut self,
-        LinkDefinitionStatement {
+        &self,
+        LinkDefinition {
             source: _,
-            flag,
+            instr_flag,
+            link_flag,
             to:
                 CallableRef {
                     instance,
@@ -301,11 +312,12 @@ impl<'a> ASMPILConverter<'a> {
                     params,
                 },
             is_permutation,
-        }: LinkDefinitionStatement,
+        }: LinkDefinition,
     ) -> Link {
         let from = LinkFrom {
             params,
-            flag: flag.clone(),
+            instr_flag,
+            link_flag,
         };
 
         // get the type name for this submachine from the submachine declarations and parameters
@@ -322,17 +334,26 @@ impl<'a> ASMPILConverter<'a> {
             panic!();
         };
 
-        let mut selector_idx = None;
-
-        if is_permutation {
-            // increase the permutation count into the destination machine
-            let count = self
-                .incoming_permutations
-                .get_mut(&instance.location)
-                .unwrap();
-            selector_idx = Some(*count);
-            *count += 1;
-        }
+        // check that the operation exists and that it has the same number of inputs/outputs as the link
+        let operation = instance_ty
+            .operation_definitions()
+            .find(|o| o.name == callable)
+            .unwrap_or_else(|| {
+                panic!(
+                    "function/operation not found: {}.{}",
+                    &instance.name, callable
+                )
+            });
+        assert_eq!(
+            operation.operation.params.inputs.len(),
+            from.params.inputs.len(),
+            "link and operation have different number of inputs"
+        );
+        assert_eq!(
+            operation.operation.params.outputs.len(),
+            from.params.outputs.len(),
+            "link and operation have different number of outputs"
+        );
 
         Link {
             from,
@@ -351,12 +372,131 @@ impl<'a> ASMPILConverter<'a> {
                         id: d.operation.id.id.clone(),
                         params: d.operation.params.clone(),
                     },
-                    selector_idx,
+                    // this will be set later, after compatible links are merged
+                    selector_idx: None,
                 })
                 .unwrap()
                 .clone(),
             is_permutation,
         }
+    }
+
+    /// Process each link and then combine compatible links.
+    /// Links can be merged iff:
+    /// - they originate from the same machine instance
+    /// - they target the same instance.operation
+    /// - they are of the same kind (permutation/lookup)
+    /// - their flags are mutually exclusive
+    /// Right now we only consider links from different instructions,
+    /// as a single instruction can be active at a time.
+    fn process_and_merge_links(&self, defs: &[LinkDefinition]) -> Vec<Link> {
+        /// Helper struct to group links that can potentially be merged.
+        /// Besides these being equal, the links must be mutually exclusive (e.g., come from different instructions)
+        #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
+        struct LinkInfo {
+            from: Location,
+            to: Location,
+            operation: Operation,
+            is_permutation: bool,
+        }
+
+        // process links, partitioning them into (mergeable, non-mergeable)
+        let (mergeable_links, mut links): (Vec<_>, Vec<_>) = defs.iter().partition_map(|l| {
+            let link = self.handle_link_def(l.clone());
+            let info = LinkInfo {
+                from: self.location.clone(),
+                to: link.to.machine.location.clone(),
+                operation: link.to.operation.clone(),
+                is_permutation: link.is_permutation,
+            };
+
+            if link.from.instr_flag.is_none() {
+                // only merge links that from instructions
+                Either::Right(link)
+            } else if link
+                .from
+                .params
+                .inputs_and_outputs()
+                .any(|p| p.contains_next_ref())
+            {
+                // TODO: links with next references can't be merged due to a witgen limitation.
+                // This else if can be removed when witgen supports it.
+                Either::Right(link)
+            } else {
+                // mergeable
+                Either::Left((info, link))
+            }
+        });
+
+        // group links into compatible sets, the idea here is:
+        // - group by LinkInfo
+        // - inside each group, separate links into sets of mutually exclusive flags (that is, from different instructions)
+        let mut grouped_links: BTreeMap<LinkInfo, Vec<BTreeMap<Expression, Link>>> =
+            Default::default();
+        for (info, link) in mergeable_links {
+            // add to an existing compatible set where the instr flag is not yet present
+            let e = grouped_links.entry(info).or_default();
+            if let Some(link_set) = e
+                .iter_mut()
+                .find(|link_set| !link_set.contains_key(link.from.instr_flag.as_ref().unwrap()))
+            {
+                link_set.insert(link.from.instr_flag.clone().unwrap(), link);
+            } else {
+                // otherwise, create a new set
+                let mut new_set = BTreeMap::new();
+                new_set.insert(link.from.instr_flag.clone().unwrap(), link);
+                e.push(new_set);
+            }
+        }
+
+        // merge link sets
+        let merged_links = grouped_links
+            .into_values()
+            .flatten()
+            .filter_map(|link_set| {
+                // single link set, we don't need to combine the flag with inputs/outputs
+                if link_set.len() == 1 {
+                    return link_set.into_values().next();
+                }
+
+                // Merge links in set. Merging two links consists of adding their respective flags and inputs/outputs.
+                // For example (asm and respective pil):
+                //    instr foo X, Y -> Z link => Z = m.add(X, Y);
+                //    instr_foo { 0, X, Y, Z } in m.latch { m.op_id, m.x, m.y, m.z };
+                // and:
+                //    instr bar X, Z -> Y link => Y = m.add(X, Z);
+                //    instr_bar { 0, X, Z, Y } in m.latch { m.op_id, m.x, m.y, m.z };
+                // would be combined into the following link:
+                //    instr_foo + instr_bar { 0, X * instr_foo + X * instr_bar, Y * instr_foo + Z * instr_bar, Z * instr_bar + Y * instr_foo }
+                //          in m.latch { m.op_id, m.x, m.y, m.z };
+                link_set
+                    .into_values()
+                    .map(|mut link| {
+                        // clear instruction flag by combining into the link flag, then combine it with inputs/outputs
+                        link.from.link_flag =
+                            combine_flags(link.from.instr_flag.take(), link.from.link_flag.clone());
+                        link.from.params.inputs_and_outputs_mut().for_each(|p| {
+                            *p = p.clone() * link.from.link_flag.clone();
+                        });
+                        link
+                    })
+                    .reduce(|mut a, b| {
+                        // add flags and inputs/outputs of the two links
+                        assert_eq!(a.from.params.inputs.len(), b.from.params.inputs.len());
+                        assert_eq!(a.from.params.outputs.len(), b.from.params.outputs.len());
+                        a.from.link_flag = a.from.link_flag + b.from.link_flag;
+                        a.from
+                            .params
+                            .inputs_and_outputs_mut()
+                            .zip(b.from.params.inputs_and_outputs())
+                            .for_each(|(pa, pb)| {
+                                *pa = pa.clone() + pb.clone();
+                            });
+                        a
+                    })
+            });
+        links.extend(merged_links);
+        links
     }
 
     // Process machine parameters (already resolved to machine instance locations)

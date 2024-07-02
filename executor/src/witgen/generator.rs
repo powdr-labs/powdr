@@ -5,12 +5,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
-use crate::witgen::rows::CellValue;
 use crate::witgen::EvalValue;
 use crate::Identity;
 
 use super::block_processor::BlockProcessor;
-use super::data_structures::column_map::WitnessColumnMap;
 use super::machines::{FixedLookup, Machine};
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
@@ -218,7 +216,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         is_main_run: bool,
     ) -> ProcessResult<'a, T> {
         log::trace!(
-            "Running main machine from row {row_offset} with the following initial values in the first row:\n{}", first_row.render_values(false, None)
+            "Running main machine from row {row_offset} with the following initial values in the first row:\n{}",
+            first_row.render_values(false, None, self.fixed_data)
         );
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.witnesses,
@@ -249,15 +248,6 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         assert_eq!(self.data.len() as DegreeType, self.degree() + 1);
 
         let last_row = self.data.pop().unwrap();
-        self.data[0] = WitnessColumnMap::from(self.data[0].values().zip(last_row.values()).map(
-            |(cell1, cell2)| match (&cell1.value, &cell2.value) {
-                (CellValue::Known(v1), CellValue::Known(v2)) => {
-                    assert_eq!(v1, v2);
-                    cell1.clone()
-                }
-                (CellValue::Known(_), _) => cell1.clone(),
-                _ => cell2.clone(),
-            },
-        ));
+        self.data[0].merge_with(&last_row).unwrap();
     }
 }

@@ -1,4 +1,3 @@
-use std::prover::challenge;
 use std::array::fold;
 use std::array::map;
 use std::utils::unwrap_or_else;
@@ -17,18 +16,6 @@ use std::math::fp2::inv_ext;
 use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
 use std::math::fp2::constrain_eq_ext;
-
-/// Get two phase-2 challenges to use in all permutation arguments.
-/// Note that this assumes that globally no other challenge of these IDs is used,
-/// and that challenges for multiple permutation arguments are re-used.
-/// We declare two components for each challenge here, in case we need to operate
-/// on the extension field. If we don't, we won't end up needing it and the optimizer
-/// will remove it.
-let alpha1: expr = challenge(0, 1);
-let alpha2: expr = challenge(0, 2);
-
-let beta1: expr = challenge(0, 3);
-let beta2: expr = challenge(0, 4);
 
 let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |permutation_constraint| match permutation_constraint {
     Constr::Permutation((lhs_selector, rhs_selector), values) => (
@@ -63,18 +50,9 @@ let<T: Add + Mul + Sub + FromLiteral> selected_or_one: T, Fp2<T> -> Fp2<T> = |se
 /// the provided permutation constraint).
 /// This is intended to be used as a hint in the extension field case; for the base case
 /// automatic witgen is smart enough to figure out the value of the accumulator.
-let compute_next_z: Fp2<expr>, Constr -> fe[] = query |acc, permutation_constraint| {
+let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc, alpha, beta, permutation_constraint| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
-
-    let alpha = if len(lhs) > 1 {
-        Fp2::Fp2(alpha1, alpha2)
-    } else {
-        // The optimizer will have removed alpha, but the compression function
-        // still accesses it (to multiply by 0 in this case)
-        from_base(0)
-    };
-    let beta = Fp2::Fp2(beta1, beta2);
     
     let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, compress_expression_array(lhs, alpha)));
     let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, compress_expression_array(rhs, alpha)));
@@ -115,7 +93,7 @@ let compute_next_z: Fp2<expr>, Constr -> fe[] = query |acc, permutation_constrai
 /// the wrapping behavior: The first accumulator is constrained to be 1, and the last
 /// accumulator is the same as the first one, because of wrapping.
 /// For small fields, this computation should happen in the extension field.
-let permutation: expr, expr[], Constr -> Constr[] = |is_first, acc, permutation_constraint| {
+let permutation: expr, expr[], Fp2<expr>, Fp2<expr>, Constr -> Constr[] = |is_first, acc, alpha, beta, permutation_constraint| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
@@ -129,14 +107,12 @@ let permutation: expr, expr[], Constr -> Constr[] = |is_first, acc, permutation_
     let _ = if !with_extension {
         assert(!needs_extension(), || "The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!")
     } else { () };
-
+    
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
     // in which case the operations below effectively only operate on the first component.
     let fp2_from_array = |arr| if with_extension { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
     let acc_ext = fp2_from_array(acc);
-    let alpha = fp2_from_array([alpha1, alpha2]);
-    let beta = fp2_from_array([beta1, beta2]);
 
     // If the selector is 1, contribute a factor of `beta - compress_expression_array(lhs)` to accumulator.
     // If the selector is 0, contribute a factor of 1 to the accumulator.
