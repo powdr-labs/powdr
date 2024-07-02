@@ -377,7 +377,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
     fn rrr(&self) -> Result<(Register, Register, Register), Self::Error> {
         match self.args {
             HighLevelArgs {
-                imm: HighLevelImmediate::None | HighLevelImmediate::Value(0),
+                imm: HighLevelImmediate::None,
                 rd: Some(rd),
                 rs1: Some(rs1),
                 rs2: Some(rs2),
@@ -387,6 +387,22 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 Register::new(*rs2 as u8),
             )),
             _ => Err(format!("Expected: rd, rs1, rs2, got {:?}", self.args)),
+        }
+    }
+
+    fn rrr2(&self) -> Result<(Register, Register, Register), Self::Error> {
+        match self.args {
+            HighLevelArgs {
+                imm: HighLevelImmediate::Value(0),
+                rd: Some(rd),
+                rs1: Some(rs1),
+                rs2: Some(rs2),
+            } => Ok((
+                Register::new(*rd as u8),
+                Register::new(*rs2 as u8),
+                Register::new(*rs1 as u8),
+            )),
+            _ => Err(format!("Expected: rd, rs2, rs1, got {:?}", self.args)),
         }
     }
 

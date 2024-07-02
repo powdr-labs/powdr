@@ -12,7 +12,7 @@ mod instruction_tests {
 
     fn run_instruction_test(path: &Path, name: &str) {
         // Test from ELF path:
-        //verify_riscv_asm_file(path, &Runtime::base(), false);
+        verify_riscv_asm_file(path, &Runtime::base(), false);
 
         // Test from assembly path:
         // TODO Should we create one powdr-asm from all tests or keep them separate?

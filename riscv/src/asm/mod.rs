@@ -102,6 +102,11 @@ impl InstructionArgs for &[Argument] {
         }
     }
 
+    fn rrr2(&self) -> Result<(Register, Register, Register), &'static str> {
+        // When reading from assembly, this is identical to rrr
+        self.rrr()
+    }
+
     fn ri(&self) -> Result<(Register, u32), &'static str> {
         const ERR: &str = "Expected: register, immediate";
         match self {

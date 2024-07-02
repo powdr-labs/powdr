@@ -540,7 +540,10 @@ pub trait InstructionArgs {
     fn l(&self) -> Result<impl AsRef<str>, Self::Error>;
     fn r(&self) -> Result<Register, Self::Error>;
     fn rri(&self) -> Result<(Register, Register, u32), Self::Error>;
+    /// Returns the usual rd, rs1, rs2
     fn rrr(&self) -> Result<(Register, Register, Register), Self::Error>;
+    /// Special case used in amo* instructions, returning rd, rs2, rs1
+    fn rrr2(&self) -> Result<(Register, Register, Register), Self::Error>;
     fn ri(&self) -> Result<(Register, u32), Self::Error>;
     fn rr(&self) -> Result<(Register, Register), Self::Error>;
     fn rrl(&self) -> Result<(Register, Register, impl AsRef<str>), Self::Error>;
@@ -1074,7 +1077,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
 
         // atomic instructions
         insn if insn.starts_with("amoadd.w") => {
-            let (rd, rs2, rs1) = args.rrr()?;
+            let (rd, rs2, rs1) = args.rrr2()?;
 
             [
                 vec![
