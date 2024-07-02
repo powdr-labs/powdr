@@ -126,8 +126,8 @@ impl<'a> Profiler<'a> {
         // print stats
         for ((func_id, file), line_costs) in &loc_stats {
             let (dir, name) = self.debug_files[*file - 1];
-            writeln!(&mut w, "fl={}/{}", dir, name).unwrap();
-            writeln!(w, "fn=({})", func_id).unwrap();
+            writeln!(&mut w, "fl={dir}/{name}").unwrap();
+            writeln!(w, "fn=({func_id})").unwrap();
             for (line, cost) in line_costs {
                 writeln!(&mut w, "{line} {cost}").unwrap();
             }
@@ -135,10 +135,10 @@ impl<'a> Profiler<'a> {
                 call_stats.get(&(*func_id, *file)).unwrap_or(&vec![])
             {
                 let (dir, name) = self.debug_files[*file - 1];
-                writeln!(&mut w, "cfl={}/{}", dir, name).unwrap();
+                writeln!(&mut w, "cfl={dir}/{name}").unwrap();
                 writeln!(w, "cfn=({})", func_ids[&call.target.function]).unwrap();
-                writeln!(w, "calls={} {}", count, call.target.line).unwrap();
-                writeln!(w, "{} {}", call.from.line, cost).unwrap();
+                writeln!(w, "calls={count} {}", call.target.line).unwrap();
+                writeln!(w, "{} {cost}", call.from.line).unwrap();
             }
             writeln!(w).unwrap();
         }
