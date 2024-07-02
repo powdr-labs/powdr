@@ -42,23 +42,21 @@ unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
 // 3. Tail call the main function (in powdr, the return address register is already
 //    set, so that returning from the entry point function will cause the execution
 //    to succeed).
+// TODO: support Position Independent Executables (PIE) by using lla.
 global_asm!(
     r"
 .global __runtime_start
+.type __runtime_start, @function
 __runtime_start:
     .option push
     .option norelax
+    #lla gp, __global_pointer$
     lui gp, %hi(__global_pointer$)
     addi gp, gp, %lo(__global_pointer$)
     .option pop
+    #lla sp, __powdr_stack_start
     lui sp, %hi(__powdr_stack_start)
     addi sp, sp, %lo(__powdr_stack_start)
     tail main
 "
 );
-
-// TODO: ideally, the above code would use `la` instead of `lui` + `addi`, but
-// for some reason rustc automatically expands it to `auipc %pcrel_hi(...)`
-// + `addi %pcrel_lo(...)`, which our asm converter doesn't support on multiple
-// levels. We can't use `li` either, because rustc doesn't like `li` with
-// symbols.

@@ -18,10 +18,10 @@ pub use crate::runtime::Runtime;
 pub mod asm;
 mod code_gen;
 pub mod continuations;
+pub mod elf;
 pub mod runtime;
 
-/// Compiles a rust file all the way down to PIL and generates
-/// fixed and witness columns.
+/// Compiles a rust file to Powdr asm.
 #[allow(clippy::print_stderr)]
 pub fn compile_rust<T: FieldElement>(
     file_name: &str,
@@ -74,14 +74,14 @@ pub fn compile_rust<T: FieldElement>(
     )
 }
 
-#[allow(clippy::print_stderr)]
-pub fn compile_riscv_asm_bundle<T: FieldElement>(
+fn compile_program<P>(
     original_file_name: &str,
-    riscv_asm_files: BTreeMap<String, String>,
+    input_program: P,
     output_dir: &Path,
     force_overwrite: bool,
     runtime: &Runtime,
     with_bootloader: bool,
+    translator: impl FnOnce(P, &Runtime, bool) -> String,
 ) -> Option<(PathBuf, String)> {
     let powdr_asm_file_name = output_dir.join(format!(
         "{}.asm",
@@ -99,7 +99,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
         return None;
     }
 
-    let powdr_asm = asm::compile::<T>(riscv_asm_files, runtime, with_bootloader);
+    let powdr_asm = translator(input_program, runtime, with_bootloader);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -107,8 +107,27 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
     Some((powdr_asm_file_name, powdr_asm))
 }
 
-/// Compiles a riscv asm file all the way down to PIL and generates
-/// fixed and witness columns.
+#[allow(clippy::print_stderr)]
+pub fn compile_riscv_asm_bundle<T: FieldElement>(
+    original_file_name: &str,
+    riscv_asm_files: BTreeMap<String, String>,
+    output_dir: &Path,
+    force_overwrite: bool,
+    runtime: &Runtime,
+    with_bootloader: bool,
+) -> Option<(PathBuf, String)> {
+    compile_program::<BTreeMap<String, String>>(
+        original_file_name,
+        riscv_asm_files,
+        output_dir,
+        force_overwrite,
+        runtime,
+        with_bootloader,
+        asm::compile::<T>,
+    )
+}
+
+/// Compiles a riscv asm file to Powdr asm.
 pub fn compile_riscv_asm<T: FieldElement>(
     original_file_name: &str,
     file_names: impl Iterator<Item = String>,
@@ -132,22 +151,41 @@ pub fn compile_riscv_asm<T: FieldElement>(
     )
 }
 
+/// Translates a RISC-V ELF file to powdr asm.
+pub fn compile_riscv_elf<T: FieldElement>(
+    original_file_name: &str,
+    input_file: &Path,
+    output_dir: &Path,
+    force_overwrite: bool,
+    runtime: &Runtime,
+    with_bootloader: bool,
+) -> Option<(PathBuf, String)> {
+    compile_program::<&Path>(
+        original_file_name,
+        input_file,
+        output_dir,
+        force_overwrite,
+        runtime,
+        with_bootloader,
+        elf::elf_translate::<T>,
+    )
+}
+
 macro_rules! as_ref [
     ($t:ty; $($x:expr),* $(,)?) => {
         [$(AsRef::<$t>::as_ref(&$x)),+]
     };
 ];
 
-pub fn compile_rust_crate_to_riscv_asm(
+pub fn compile_rust_crate_to_riscv(
     input_dir: &str,
-    output_dir: &Path,
-) -> BTreeMap<String, String> {
+    target_dir: &Path,
+) -> (Option<PathBuf>, Vec<(String, PathBuf)>) {
     // We call cargo twice, once to get the build plan json, so we know exactly
     // which object file to use, and once to perform the actual building.
 
     // Real build run.
-    let target_dir = output_dir.join("cargo_target");
-    let build_status = build_cargo_command(input_dir, &target_dir, false)
+    let build_status = build_cargo_command(input_dir, target_dir, false)
         .status()
         .unwrap();
     assert!(build_status.success());
@@ -160,8 +198,17 @@ pub fn compile_rust_crate_to_riscv_asm(
         .unwrap();
     assert!(output.status.success());
 
-    let output_files = output_files_from_cargo_build_plan(&output.stdout, &tmp_dir);
-    drop(tmp_dir);
+    output_files_from_cargo_build_plan(&output.stdout, &tmp_dir)
+}
+
+const CARGO_TARGET_DIR: &str = "cargo_target";
+
+pub fn compile_rust_crate_to_riscv_asm(
+    input_dir: &str,
+    output_dir: &Path,
+) -> BTreeMap<String, String> {
+    let target_dir = output_dir.join(CARGO_TARGET_DIR);
+    let (_, output_files) = compile_rust_crate_to_riscv(input_dir, &target_dir);
 
     // Load all the expected assembly files:
     let mut assemblies = BTreeMap::new();
@@ -176,6 +223,13 @@ pub fn compile_rust_crate_to_riscv_asm(
         );
     }
     assemblies
+}
+
+pub fn compile_rust_crate_to_riscv_bin(input_dir: &str, output_dir: &Path) -> PathBuf {
+    let target_dir = output_dir.join(CARGO_TARGET_DIR);
+    let (executable, _) = compile_rust_crate_to_riscv(input_dir, &target_dir);
+
+    target_dir.join(executable.unwrap())
 }
 
 fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: bool) -> Command {
@@ -218,7 +272,7 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
 fn output_files_from_cargo_build_plan(
     build_plan_bytes: &[u8],
     target_dir: &Path,
-) -> Vec<(String, PathBuf)> {
+) -> (Option<PathBuf>, Vec<(String, PathBuf)>) {
     let json: JsonValue = serde_json::from_slice(build_plan_bytes).unwrap();
 
     let mut assemblies = Vec::new();
@@ -227,7 +281,7 @@ fn output_files_from_cargo_build_plan(
         panic!("no invocations in cargo build plan");
     };
 
-    let mut executable_found = false;
+    let mut executable = None;
 
     log::debug!("RISC-V assembly files of this build:");
     for i in invocations {
@@ -250,9 +304,10 @@ fn output_files_from_cargo_build_plan(
                         .strip_prefix("lib")
                         .unwrap()
                 } else if extension.is_none() {
-                    assert!(!executable_found, "Multiple executables found");
-                    executable_found = true;
-                    output.file_stem().unwrap().to_str().unwrap()
+                    assert!(executable.is_none(), "Multiple executables found");
+                    let file_stem = output.file_stem().unwrap();
+                    executable = Some(parent.join(file_stem));
+                    file_stem.to_str().unwrap()
                 } else {
                     continue;
                 };
@@ -266,5 +321,5 @@ fn output_files_from_cargo_build_plan(
         }
     }
 
-    assemblies
+    (executable, assemblies)
 }

@@ -8,7 +8,7 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-itertools = "^0.10"
+itertools = "0.13"
 
 [lints.clippy]
 uninlined_format_args = "deny"

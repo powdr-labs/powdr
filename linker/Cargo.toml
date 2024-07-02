@@ -14,7 +14,7 @@ powdr-number.workspace = true
 powdr-parser-util.workspace = true
 
 pretty_assertions = "1.4.0"
-itertools = "^0.10"
+itertools = "0.13"
 
 [dev-dependencies]
 powdr-airgen.workspace = true
