@@ -8,9 +8,10 @@ use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
+use crate::Identity;
 use powdr_number::{DegreeType, FieldElement};
 
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolyID};
+use powdr_ast::analyzed::{IdentityKind, PolyID};
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.
@@ -61,7 +62,7 @@ pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
     has_bootloader_write_column: bool,
     /// All selector IDs that are used on the right-hand side connecting identities.
     selector_ids: BTreeMap<u64, PolyID>,
-    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
 }
 
 struct Operation<T> {
@@ -79,7 +80,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
         // get the namespaces and column names

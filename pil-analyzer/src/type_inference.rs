@@ -663,7 +663,11 @@ impl<'a> TypeChecker<'a> {
                         }
                     }
                 }
-                let result = self.infer_type_of_expression(expr);
+                let result = match expr {
+                    Some(expr) => self.infer_type_of_expression(expr),
+                    None => Ok(Type::empty_tuple()),
+                };
+
                 self.local_var_types.truncate(original_var_count);
                 result?
             }

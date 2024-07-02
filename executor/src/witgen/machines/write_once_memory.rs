@@ -2,14 +2,15 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::{Either, Itertools};
 
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, Identity, IdentityKind, PolyID, PolynomialType,
-};
+use powdr_ast::analyzed::{IdentityKind, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::witgen::{
-    rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
-    IncompleteCause, MutableState, QueryCallback,
+use crate::{
+    witgen::{
+        rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
+        IncompleteCause, MutableState, QueryCallback,
+    },
+    Identity,
 };
 
 use super::{FixedLookup, Machine};
@@ -21,14 +22,14 @@ use super::{FixedLookup, Machine};
 /// let ADDR = |i| i;
 /// let v;
 /// // Stores a value, fails if the cell already has a value that's different
-/// instr mstore X, Y -> { {X, Y} in {ADDR, v} }
+/// instr mstore X, Y -> { [X, Y] in [ADDR, v] }
 /// // Loads a value. If the cell is empty, the prover can choose a value.
 /// // Note that this is the same lookup, only Y is considered an output instead
 /// // of an input.
-/// instr mload X -> Y { {X, Y} in {ADDR, v} }
+/// instr mload X -> Y { [X, Y] in [ADDR, v] }
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
-    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
     /// The polynomials that are used as values (witness polynomials on the RHS)
@@ -44,8 +45,8 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
-        identities: &[&Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+        identities: &[&Identity<T>],
     ) -> Option<Self> {
         if !identities.is_empty() {
             return None;

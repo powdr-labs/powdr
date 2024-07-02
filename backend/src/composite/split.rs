@@ -4,6 +4,7 @@ use std::{
     str::FromStr,
 };
 
+use powdr_ast::analyzed::SelectedExpressions;
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, Analyzed, Identity, IdentityKind, StatementIdentifier, Symbol,
@@ -176,7 +177,7 @@ fn build_machine_pil<F: FieldElement>(
             if identities.contains(&(identity_index as u64)) {
                 identity.clone()
             } else {
-                Identity::from_polynomial_identity(
+                Identity::<SelectedExpressions<AlgebraicExpression<F>>>::from_polynomial_identity(
                     identity.id,
                     identity.source.clone(),
                     AlgebraicExpression::Number(F::zero()),

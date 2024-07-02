@@ -1,17 +1,15 @@
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
-use crate::witgen::rows::CellValue;
+use crate::witgen::rows::merge_row_with;
 use crate::witgen::EvalValue;
+use crate::Identity;
 
 use super::block_processor::BlockProcessor;
-use super::data_structures::column_map::WitnessColumnMap;
 use super::machines::{FixedLookup, Machine};
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
@@ -24,9 +22,9 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
-    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     fixed_data: &'a FixedData<'a, T>,
-    identities: Vec<&'a Identity<Expression<T>>>,
+    identities: Vec<&'a Identity<T>>,
     witnesses: HashSet<PolyID>,
     data: FinalizableData<'a, T>,
     latch: Option<Expression<T>>,
@@ -109,8 +107,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
-        identities: Vec<&'a Identity<Expression<T>>>,
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+        identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
         latch: Option<Expression<T>>,
     ) -> Self {
@@ -246,15 +244,6 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         assert_eq!(self.data.len() as DegreeType, self.fixed_data.degree + 1);
 
         let last_row = self.data.pop().unwrap();
-        self.data[0] = WitnessColumnMap::from(self.data[0].values().zip(last_row.values()).map(
-            |(cell1, cell2)| match (&cell1.value, &cell2.value) {
-                (CellValue::Known(v1), CellValue::Known(v2)) => {
-                    assert_eq!(v1, v2);
-                    cell1.clone()
-                }
-                (CellValue::Known(_), _) => cell1.clone(),
-                _ => cell2.clone(),
-            },
-        ));
+        merge_row_with(&mut self.data[0], &last_row).unwrap();
     }
 }

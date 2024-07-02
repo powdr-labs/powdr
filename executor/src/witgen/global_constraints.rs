@@ -5,12 +5,13 @@ use num_traits::Zero;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, Identity, IdentityKind, PolyID, PolynomialType,
+    AlgebraicReference, IdentityKind, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
 
 use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
+use crate::Identity;
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::range_constraints::RangeConstraint;
@@ -109,8 +110,8 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConst
 /// TODO at some point, we should check that they still hold.
 pub fn set_global_constraints<'a, T: FieldElement>(
     fixed_data: FixedData<T>,
-    identities: impl IntoIterator<Item = &'a Identity<Expression<T>>>,
-) -> (FixedData<T>, Vec<&'a Identity<Expression<T>>>) {
+    identities: impl IntoIterator<Item = &'a Identity<T>>,
+) -> (FixedData<T>, Vec<&'a Identity<T>>) {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
     // but also have one row for each possible value.
@@ -208,7 +209,7 @@ fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(RangeConstraint
 /// no further information than the range constraint.
 fn propagate_constraints<T: FieldElement>(
     mut known_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
-    identity: &Identity<Expression<T>>,
+    identity: &Identity<T>,
     full_span: &BTreeSet<PolyID>,
 ) -> (BTreeMap<PolyID, RangeConstraint<T>>, bool) {
     let mut remove = false;
@@ -427,12 +428,12 @@ namespace Global(2**20);
     // A bit more complicated to see that the 'pattern matcher' works properly.
     (1 - A + 0) * (A + 1 - 1) = 0;
     col witness B;
-    { B } in { BYTE };
+    [ B ] in [ BYTE ];
     col witness C;
     C = A * 512 + B;
     col witness D;
-    { D } in { BYTE };
-    { D } in { SHIFTED };
+    [ D ] in [ BYTE ];
+    [ D ] in [ SHIFTED ];
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
         let constants = crate::constant_evaluator::generate(&analyzed);
@@ -495,7 +496,7 @@ namespace Global(2**20);
 namespace Global(1024);
     let bytes: col = |i| i % 256;
     let X;
-    { X * 4 } in { bytes };
+    [ X * 4 ] in [ bytes ];
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
         let known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]
