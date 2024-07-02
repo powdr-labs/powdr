@@ -255,8 +255,6 @@ fn canonicalize_inside_expression(
                 // If resolving the reference fails, we assume it is a local variable that has been checked below.
                 if let Some(n) = paths.get(&path.clone().join(reference.path.clone())) {
                     *reference = n.relative_to(&Default::default()).into();
-                } else {
-                    assert!(reference.path.try_to_identifier().is_some());
                 }
             }
             Expression::BlockExpression(_, BlockExpression { statements, .. }) => {
