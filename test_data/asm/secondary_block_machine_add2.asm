@@ -31,7 +31,7 @@ machine Main with degree: 16 {
     0 = (1 - RESET) * (add_two_input - add_two_input');
 
     instr add2 Y -> X {
-        {Y, X} in add_two_RESET { add_two_input, add_two_state }
+        [Y, X] in add_two_RESET $ [ add_two_input, add_two_state ]
     }
 
     function main {

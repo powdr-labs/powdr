@@ -778,7 +778,10 @@ fn check_expression(
                     }
                 }
             }
-            check_expression(location, expr, state, &local_variables)
+            match expr {
+                Some(expr) => check_expression(location, expr, state, &local_variables),
+                None => Ok(()),
+            }
         }
     }
 }

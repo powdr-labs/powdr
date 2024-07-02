@@ -159,7 +159,7 @@ PolynomialConstantDefinition: PilStatement = {
 }
 
 FunctionDefinition: FunctionDefinition = {
-    <start:@L> "(" <params:ParameterList> ")" <body:BracedExpression> <end:@R> => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{kind: FunctionKind::Pure, params, body})),
+    <start:@L> "(" <params:ParameterList> ")" <body:BlockExpression> <end:@R> => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{kind: FunctionKind::Pure, params, body})),
     <start:@L> "=" <array:ArrayLiteralExpression> <end:@R> => FunctionDefinition::Array(array),
 }
 
@@ -209,8 +209,7 @@ PlookupIdentity: PilStatement = {
 }
 
 SelectedExpressions: SelectedExpressions<Expression> = {
-    <selector:Expression?> "{" <expressions:ExpressionList> "}" => SelectedExpressions{<>},
-    Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
+    <selector:(<Expression> "$")?> <expr:Expression> => SelectedExpressions{selector, expressions: Box::new(expr)},
 }
 
 PermutationIdentityStatement: PilStatement = {
@@ -226,7 +225,7 @@ ConnectIdentityStatement: PilStatement = {
 }
 
 ConnectIdentity: PilStatement = {
-    <start:@L> "{" <list1:ExpressionList> "}" "connect" "{" <list2:ExpressionList> "}" <end:@R> => PilStatement::ConnectIdentity(ctx.source_ref(start, end), list1, list2)
+    <start:@L> "[" <list1:ExpressionList> "]" "connect" "[" <list2:ExpressionList> "]" <end:@R> => PilStatement::ConnectIdentity(ctx.source_ref(start, end), list1, list2)
 }
 
 ExpressionStatement: PilStatement = {
@@ -621,19 +620,15 @@ MatchArm: MatchArm = {
 
 IfExpression: Box<Expression> = {
     <start:@L> "if" <condition:BoxedExpression>
-        <body:BracedExpression>
+        <body:BlockExpression>
         "else"
-        <else_body:BracedExpression>
+        <else_body:BlockExpression>
         <end:@R> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start, end),
 }
 
-BlockExpression: Box<Expression> = {
-    <start:@L> "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
-}
 
-BracedExpression: Box<Expression> = {
-    <start:@L> "{" <statements:StatementInsideBlock+> <expr:BoxedExpression> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
-    <start:@L> "{" <expr:BoxedExpression> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements: vec![], expr}, start, end),
+BlockExpression: Box<Expression> = {
+    <start:@L> "{" <statements:StatementInsideBlock*> <expr:BoxedExpression?> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
 }
 
 StatementInsideBlock: StatementInsideBlock = {

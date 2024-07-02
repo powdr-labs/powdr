@@ -6,8 +6,8 @@ use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
         FunctionBody, FunctionStatements, FunctionSymbol, InstructionDefinitionStatement,
-        InstructionStatement, Item, LabelStatement, LinkDefinitionStatement, Machine,
-        OperationSymbol, RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
+        InstructionStatement, Item, LabelStatement, LinkDefinition, Machine, OperationSymbol,
+        RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
     },
     parsed::{
         self,
@@ -75,9 +75,10 @@ impl TypeChecker {
                         link,
                         is_permutation,
                     },
-                ) => links.push(LinkDefinitionStatement {
+                ) => links.push(LinkDefinition {
                     source,
-                    flag,
+                    instr_flag: None,
+                    link_flag: flag,
                     to: link,
                     is_permutation,
                 }),

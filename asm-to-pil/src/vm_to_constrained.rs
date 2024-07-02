@@ -4,16 +4,16 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use powdr_ast::{
     asm_analysis::{
-        AssignmentStatement, Batch, DebugDirective, FunctionStatement,
-        InstructionDefinitionStatement, InstructionStatement, LabelStatement,
-        LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Rom,
+        combine_flags, AssignmentStatement, Batch, DebugDirective, FunctionStatement,
+        InstructionDefinitionStatement, InstructionStatement, LabelStatement, LinkDefinition,
+        Machine, RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
         self,
         asm::{CallableRef, InstructionBody, InstructionParams, LinkDeclaration},
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
-        ArrayExpression, BinaryOperation, BinaryOperator, Expression, FunctionCall,
+        ArrayExpression, ArrayLiteral, BinaryOperation, BinaryOperator, Expression, FunctionCall,
         FunctionDefinition, FunctionKind, LambdaExpression, MatchArm, MatchExpression, Number,
         Pattern, PilStatement, PolynomialName, SelectedExpressions, UnaryOperation, UnaryOperator,
     },
@@ -181,19 +181,29 @@ impl<T: FieldElement> VMConverter<T> {
             SourceRef::unknown(),
             SelectedExpressions {
                 selector: None,
-                expressions: self
-                    .line_lookup
-                    .iter()
-                    .map(|x| direct_reference(&x.0))
-                    .collect(),
+                expressions: Box::new(
+                    ArrayLiteral {
+                        items: self
+                            .line_lookup
+                            .iter()
+                            .map(|x| direct_reference(&x.0))
+                            .collect(),
+                    }
+                    .into(),
+                ),
             },
             SelectedExpressions {
                 selector: None,
-                expressions: self
-                    .line_lookup
-                    .iter()
-                    .map(|x| direct_reference(&x.1))
-                    .collect(),
+                expressions: Box::new(
+                    ArrayLiteral {
+                        items: self
+                            .line_lookup
+                            .iter()
+                            .map(|x| direct_reference(&x.1))
+                            .collect(),
+                    }
+                    .into(),
+                ),
             },
         ));
 
@@ -480,7 +490,7 @@ impl<T: FieldElement> VMConverter<T> {
         instr_flag: &str,
         instr_params: &InstructionParams,
         link_decl: LinkDeclaration,
-    ) -> LinkDefinitionStatement {
+    ) -> LinkDefinition {
         let callable: CallableRef = link_decl.link;
         let lhs = instr_params;
         let rhs = &callable.params;
@@ -526,25 +536,22 @@ impl<T: FieldElement> VMConverter<T> {
             );
         }
 
-        // link is active only if the instruction is also active
-        let flag = if link_decl.flag == 1.into() {
-            direct_reference(instr_flag)
-        } else {
-            direct_reference(instr_flag) * link_decl.flag
-        };
+        let instr_flag = direct_reference(instr_flag);
 
         // if a write register next reference (R') is used in the instruction link,
         // we must induce a tautology in the update clause (R' = R') when the
         // link is active, to allow the operation plookup to match.
+        let flag = combine_flags(Some(instr_flag.clone()), link_decl.flag.clone());
         for name in rhs_next_write_registers {
             let reg = self.registers.get_mut(&name).unwrap();
             let value = next_reference(name);
             reg.conditioned_updates.push((flag.clone(), value));
         }
 
-        LinkDefinitionStatement {
+        LinkDefinition {
             source,
-            flag,
+            instr_flag: Some(instr_flag),
+            link_flag: link_decl.flag,
             to: callable,
             is_permutation: link_decl.is_permutation,
         }
