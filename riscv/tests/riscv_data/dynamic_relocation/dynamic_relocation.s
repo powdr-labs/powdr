@@ -20,11 +20,22 @@ _start:
     lw a1, 0(a0)
     # Call the function pointer
     jalr ra, a1
-    
+
+    # Bail if the result is not 1
+    li a2, 1
+    beq a0, a2, continue
+    unimp
+
+continue:
     # Load the second pointer from data_section
     lw a1, 4(a0)
     # Call the function pointer
     jalr ra, a1
+
+    # Bail if the result is not 2
+    li a2, 2
+    beq a0, a2, final_loop
+    unimp
 
     # Finish in an infinite loop
 final_loop:
