@@ -1,5 +1,3 @@
-use std::prover::challenge;
-use std::array::fold;
 use std::array::map;
 use std::array::len;
 use std::check::assert;
