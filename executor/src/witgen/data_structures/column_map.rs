@@ -122,6 +122,16 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
     pub fn column_id_range(&self) -> Range<usize> {
         self.column_id_range.clone()
     }
+
+    #[inline]
+    pub fn get(&self, poly_id: &PolyID) -> Option<&V> {
+        debug_assert!(poly_id.ptype == T::P_TYPE);
+        if self.column_id_range.contains(&(poly_id.id as usize)) {
+            Some(&self.values[poly_id.id as usize - self.column_id_range.start])
+        } else {
+            None
+        }
+    }
 }
 
 impl<V, T: PolynomialTypeTrait> Default for ColumnMap<V, T> {
