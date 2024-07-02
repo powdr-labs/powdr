@@ -52,8 +52,9 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub fn generate_trace_rows(&self) -> RowMajorMatrix<Goldilocks> {
         // an iterator over all columns, committed then fixed
         let witness = self.witness().iter();
+
         let publics = self.get_publics().into_iter();
-        let len = self.analyzed.degree.unwrap();
+        let len = self.analyzed.degree();
 
         // for each row, get the value of each column
         let values = (0..len)

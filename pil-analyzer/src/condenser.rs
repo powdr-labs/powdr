@@ -144,7 +144,6 @@ pub fn condense<T: FieldElement>(
         reference.poly_id = Some(symbol.into());
     }
     Analyzed {
-        degree,
         definitions,
         public_declarations,
         intermediate_columns,
@@ -368,6 +367,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             stage: None,
             kind: SymbolKind::Poly(PolynomialType::Committed),
             length: None,
+            degree: Some(self.degree.unwrap()),
         };
         self.next_witness_id += 1;
         self.all_new_witness_names.insert(name.clone());

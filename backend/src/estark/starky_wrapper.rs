@@ -46,14 +46,15 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         if verification_app_key.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
+        if pil.degrees().len() > 1 {
+            return Err(Error::NoVariableDegreeAvailable);
+        }
 
         let proof_type: ProofType = ProofType::from(options);
 
         let params = create_stark_struct(pil.degree(), proof_type.hash_type());
 
-        let (pil_json, patched_fixed) = first_step_fixup(&pil, &fixed);
-
-        let fixed = patched_fixed.map_or_else(|| fixed.clone(), Arc::new);
+        let (pil_json, fixed) = first_step_fixup(&pil, fixed);
 
         let const_pols = to_starky_pols_array(&fixed, &pil_json, PolKind::Constant);
 

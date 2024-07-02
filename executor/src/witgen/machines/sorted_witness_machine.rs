@@ -15,7 +15,7 @@ use crate::Identity;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID,
 };
-use powdr_number::FieldElement;
+use powdr_number::{DegreeType, FieldElement};
 
 /// A machine that can support a lookup in a set of columns that are sorted
 /// by one specific column and values in that column have to be unique.
@@ -25,6 +25,7 @@ use powdr_number::FieldElement;
 ///  - NOTLAST is zero only on the last row
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses<'a, T: FieldElement> {
+    degree: DegreeType,
     rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
     connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     key_col: PolyID,
@@ -43,10 +44,13 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         identities: &[&Identity<T>],
         witnesses: &HashSet<PolyID>,
     ) -> Option<Self> {
+        let degree = fixed_data.common_degree(witnesses);
+
         if identities.len() != 1 {
             return None;
         }
-        check_identity(fixed_data, identities.first().unwrap()).and_then(|key_col| {
+
+        check_identity(fixed_data, identities.first().unwrap(), degree).and_then(|key_col| {
             let witness_positions = witnesses
                 .iter()
                 .filter(|&w| *w != key_col)
@@ -79,6 +83,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
             }
 
             Some(SortedWitnesses {
+                degree,
                 rhs_references,
                 connecting_identities: connecting_identities.clone(),
                 name,
@@ -91,7 +96,11 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     }
 }
 
-fn check_identity<T: FieldElement>(fixed_data: &FixedData<T>, id: &Identity<T>) -> Option<PolyID> {
+fn check_identity<T: FieldElement>(
+    fixed_data: &FixedData<T>,
+    id: &Identity<T>,
+    degree: DegreeType,
+) -> Option<PolyID> {
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
     if id.kind != IdentityKind::Plookup
         || id.right.selector.is_some()
@@ -108,7 +117,7 @@ fn check_identity<T: FieldElement>(fixed_data: &FixedData<T>, id: &Identity<T>) 
 
     // TODO this could be rather slow. We should check the code for identity instead
     // of evaluating it.
-    let degree = fixed_data.degree as usize;
+    let degree = degree as usize;
     for row in 0..(degree) {
         let ev = ExpressionEvaluator::new(FixedEvaluator::new(fixed_data, row));
         let nl = ev.evaluate(not_last).ok()?.constant_value()?;
@@ -166,6 +175,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
         &self.name
     }
 
+    fn degree(&self) -> DegreeType {
+        self.degree
+    }
+
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,
@@ -186,7 +199,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
             std::mem::take(&mut self.data).into_iter().unzip();
 
         let mut last_key = keys.last().cloned().unwrap_or_default();
-        while keys.len() < self.fixed_data.degree as usize {
+        while keys.len() < self.degree() as usize {
             last_key += 1u64.into();
             keys.push(last_key);
         }
@@ -197,7 +210,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
                 .iter_mut()
                 .map(|row| std::mem::take(&mut row[i]).unwrap_or_default())
                 .collect::<Vec<_>>();
-            col_values.resize(self.fixed_data.degree as usize, 0.into());
+            col_values.resize(self.degree() as usize, 0.into());
             result.insert(self.fixed_data.column_name(col).to_string(), col_values);
         }
 

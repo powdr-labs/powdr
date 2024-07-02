@@ -20,6 +20,7 @@ machine Main with degree: 8 {
     // TODO: Functions currently cannot add witness columns at later stages,
     // so we have to manually create it here and pass it to permutation(). 
     col witness stage(1) z;
-    permutation([z], permutation_constraint);
+    let is_first: col = |i| if i == 0 { 1 } else { 0 };
+    permutation(is_first, [z], permutation_constraint);
 
 }

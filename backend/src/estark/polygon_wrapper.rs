@@ -23,7 +23,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         Ok(Box::new(PolygonBackend(EStarkFilesCommon::create(
             &analyzed,
-            &fixed,
+            fixed,
             output_dir,
             setup,
             verification_key,
@@ -40,8 +40,7 @@ struct PolygonBackend<F: FieldElement>(EStarkFilesCommon<F>);
 impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<F> {
     fn prove(
         &self,
-        // Witness is taken from file written by the pipeline.
-        _witness: &[(String, Vec<F>)],
+        witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
         // TODO: Implement challenges
         _witgen_callback: WitgenCallback<F>,
@@ -58,16 +57,14 @@ impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<F> {
             tmp_dir.to_path_buf()
         };
 
-        let input_paths = self.0.write_files(&output_dir)?;
-
-        let commits_path = output_dir.join("commits.bin");
+        let input_paths = self.0.write_files(witness, &output_dir)?;
 
         // Generate the proof.
         let proof_paths = pil_stark_prover::generate_proof(
             &input_paths.contraints,
             &input_paths.stark_struct,
             &input_paths.constants,
-            &commits_path,
+            &input_paths.commits,
             &output_dir,
         )
         .map_err(|e| Error::BackendError(e.to_string()))?;

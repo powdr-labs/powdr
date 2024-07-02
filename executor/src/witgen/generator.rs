@@ -29,11 +29,16 @@ pub struct Generator<'a, T: FieldElement> {
     data: FinalizableData<'a, T>,
     latch: Option<Expression<T>>,
     name: String,
+    degree: DegreeType,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.connecting_identities.keys().cloned().collect()
+    }
+
+    fn degree(&self) -> DegreeType {
+        self.degree
     }
 
     fn name(&self) -> &str {
@@ -113,7 +118,9 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&witnesses);
+
         Self {
+            degree: fixed_data.common_degree(&witnesses),
             connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
@@ -137,7 +144,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         &mut self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) {
-        if self.data.len() < self.fixed_data.degree as usize + 1 {
+        if self.data.len() < self.degree() as usize + 1 {
             assert!(self.latch.is_some());
 
             let first_row = self.data.pop().unwrap();
@@ -169,14 +176,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.witnesses,
             [
-                Row::fresh(
-                    self.fixed_data,
-                    RowIndex::from_i64(-1, self.fixed_data.degree),
-                ),
-                Row::fresh(
-                    self.fixed_data,
-                    RowIndex::from_i64(0, self.fixed_data.degree),
-                ),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree())),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree())),
             ]
             .into_iter(),
         );
@@ -191,7 +192,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
             .collect::<Vec<_>>();
         let mut processor = BlockProcessor::new(
-            RowIndex::from_i64(-1, self.fixed_data.degree),
+            RowIndex::from_i64(-1, self.degree()),
             data,
             mutable_state,
             &identities_with_next_reference,
@@ -222,8 +223,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             &self.witnesses,
             [first_row].into_iter(),
         );
+
+        let degree = self.degree();
+
         let mut processor = VmProcessor::new(
-            RowIndex::from_degree(row_offset, self.fixed_data.degree),
+            RowIndex::from_degree(row_offset, degree),
             self.fixed_data,
             &self.identities,
             &self.witnesses,
@@ -241,7 +245,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     /// At the end of the solving algorithm, we'll have computed the first row twice
     /// (as row 0 and as row <degree>). This function merges the two versions.
     fn fix_first_row(&mut self) {
-        assert_eq!(self.data.len() as DegreeType, self.fixed_data.degree + 1);
+        assert_eq!(self.data.len() as DegreeType, self.degree() + 1);
 
         let last_row = self.data.pop().unwrap();
         merge_row_with(&mut self.data[0], &last_row).unwrap();
