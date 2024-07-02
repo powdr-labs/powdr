@@ -1,7 +1,12 @@
+use mktemp::Temp;
 use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{test_util::verify_pipeline, Pipeline};
-use std::path::PathBuf;
+use powdr_riscv::Runtime;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 /// Like compiler::test_util::verify_asm_string, but also runs RISCV executor.
 pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
@@ -36,12 +41,12 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     verify_pipeline(pipeline, backend).unwrap();
 }
 
-pub fn verify_riscv_asm_file(case: &Path, runtime: &Runtime, use_pie: bool) {
+pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) {
     let tmp_dir = Temp::new_dir().unwrap();
     let executable = tmp_dir.join("executable");
 
-    // Assemble the file using clang, because it is the most likely thing to be already installed.
-    // i.e: clang --target=riscv32-unknown-elf -march=rv32imac -mabi=ilp32 -nostdlib -static -o {executable} {case} [-Wl,-pie | -Wl,--emit-relocs]
+    // Assemble the file using clang, because it is the most likely thing to be
+    // already installed that supports RISC-V 32.
     Command::new("clang")
         .arg("--target=riscv32-unknown-elf")
         .arg("-march=rv32imac")
@@ -54,16 +59,18 @@ pub fn verify_riscv_asm_file(case: &Path, runtime: &Runtime, use_pie: bool) {
             "-Wl,--emit-relocs"
         })
         .arg("-o")
-        .arg(executable)
-        .arg(case)
+        .arg(&executable)
+        .arg(asm_file)
         .spawn()
         .unwrap()
         .wait()
         .unwrap();
 
+    let case_name = asm_file.file_stem().unwrap().to_str().unwrap();
+
     let powdr_asm = powdr_riscv::elf::elf_translate::<GoldilocksField>(&executable, runtime, false);
-    verify_riscv_asm_string(
-        &format!("{case}.asm"),
+    verify_riscv_asm_string::<()>(
+        &format!("{case_name}.asm"),
         &powdr_asm,
         &[],
         None,

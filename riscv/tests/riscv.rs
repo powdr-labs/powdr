@@ -1,11 +1,11 @@
 mod common;
 
-use common::verify_riscv_asm_string;
+use common::{verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
 use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{verify::verify, Pipeline};
-use std::{path::PathBuf, process::Command};
+use std::path::{Path, PathBuf};
 use test_log::test;
 
 use powdr_riscv::{
@@ -27,7 +27,7 @@ pub fn test_continuations(case: &str) {
     // Test continuations from ELF file.
     let powdr_asm =
         powdr_riscv::elf::elf_translate::<GoldilocksField>(&elf_file.unwrap(), &runtime, true);
-    run_continuations_test(powdr_asm);
+    run_continuations_test(case, powdr_asm);
 
     // Test continuations from assembly files.
     let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(
@@ -35,10 +35,10 @@ pub fn test_continuations(case: &str) {
         &runtime,
         true,
     );
-    run_continuations_test(powdr_asm);
+    run_continuations_test(case, powdr_asm);
 }
 
-fn run_continuations_test(powdr_asm: String) {
+fn run_continuations_test(case: &str, powdr_asm: String) {
     // Manually create tmp dir, so that it is the same in all chunks.
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
 
@@ -271,14 +271,14 @@ fn two_sums_serde() {
 #[test]
 fn dynamic_relocation_pie() {
     let file = "dynamic_relocation/dynamic_relocation.s";
-    verify_riscv_asm_file(file, &Runtime::base().with_arith(), true);
+    verify_riscv_asm_file(Path::new(file), &Runtime::base().with_arith(), true);
 }
 
 #[ignore = "Too slow"]
 #[test]
 fn dynamic_relocation_non_pie() {
     let file = "dynamic_relocation/dynamic_relocation.s";
-    verify_riscv_asm_file(file, &Runtime::base().with_arith(), false);
+    verify_riscv_asm_file(Path::new(file), &Runtime::base().with_arith(), false);
 }
 
 #[test]
