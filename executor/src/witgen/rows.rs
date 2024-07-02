@@ -1,10 +1,12 @@
 use std::{
     collections::HashSet,
-    ops::{Add, Sub},
+    ops::{Add, Range, Sub},
 };
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
+};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::Constraint;
@@ -119,12 +121,12 @@ enum CellValue<T: FieldElement> {
 }
 
 impl<T: FieldElement> CellValue<T> {
-    pub fn is_known(&self) -> bool {
+    fn is_known(&self) -> bool {
         matches!(self, CellValue::Known(_))
     }
 
     /// Returns the value if known, otherwise zero.
-    pub fn unwrap_or_zero(&self) -> T {
+    fn unwrap_or_zero(&self) -> T {
         match self {
             CellValue::Known(v) => *v,
             _ => Default::default(),
@@ -132,7 +134,7 @@ impl<T: FieldElement> CellValue<T> {
     }
 
     /// Returns Some(value) if known, otherwise None.
-    pub fn value(&self) -> Option<T> {
+    fn value(&self) -> Option<T> {
         match self {
             CellValue::Known(v) => Some(*v),
             _ => None,
@@ -143,7 +145,7 @@ impl<T: FieldElement> CellValue<T> {
     ///
     /// # Panics
     /// Panics if the update is not an improvement.
-    pub fn apply_update(&mut self, c: &Constraint<T>) {
+    fn apply_update(&mut self, c: &Constraint<T>) {
         match (&self, c) {
             (CellValue::Known(_), _) => {
                 // Note that this is a problem even if the value that was set is the same,
@@ -174,23 +176,28 @@ pub struct Row<T: FieldElement> {
 
 impl<T: FieldElement> Row<T> {
     pub fn value_or_zero(&self, poly_id: &PolyID) -> T {
+        // This should not return zero for columns outside the set of columns, because they might be known.
         self.values[poly_id].unwrap_or_zero()
     }
 
     pub fn value(&self, poly_id: &PolyID) -> Option<T> {
-        self.values[poly_id].value()
+        self.values.get(poly_id).and_then(|v| v.value())
     }
 
     pub fn range_constraint(&self, poly_id: &PolyID) -> Option<RangeConstraint<T>> {
-        match &self.values[poly_id] {
+        self.values.get(poly_id).and_then(|v| match v {
             CellValue::RangeConstraint(c) => Some(c.clone()),
             _ => None,
-        }
+        })
     }
 
     /// Merges two rows, updating the first.
     /// Range constraints from the second row are ignored.
     pub fn merge_with(&mut self, other: &Row<T>) -> Result<(), ()> {
+        debug_assert_eq!(
+            self.values.column_id_range(),
+            other.values.column_id_range()
+        );
         // First check for conflicts, otherwise we would have to roll back changes.
         if self
             .values
@@ -203,15 +210,13 @@ impl<T: FieldElement> Row<T> {
         {
             return Err(());
         };
-        self.values = WitnessColumnMap::from(
-            std::mem::take(&mut self.values)
-                .values_into_iter()
-                .zip(other.values.values())
-                .map(|(cell1, cell2)| match (&cell1, &cell2) {
-                    (CellValue::Known(_), _) => cell1,
-                    _ => cell2.clone(),
-                }),
-        );
+        self.values
+            .values_iter_mut()
+            .zip(other.values.values())
+            .for_each(|(cell1, cell2)| match (&cell1, &cell2) {
+                (CellValue::Known(_), _) => {}
+                _ => *cell1 = cell2.clone(),
+            });
         Ok(())
     }
 
@@ -242,21 +247,25 @@ impl<T: FieldElement> Row<T> {
 
 impl<T: FieldElement> Row<T> {
     /// Creates a "fresh" row, i.e., one that is empty but initialized with the global range constraints.
-    pub fn fresh(fixed_data: &FixedData<'_, T>, row: RowIndex) -> Row<T> {
-        // TODO this instance could be computed exactly once (per column set) and then cloned.
-        // TODO and we could copy in the external witnesses later on
-        // TODO we should really only have a subset of the columns.
+    pub fn fresh(fixed_data: &FixedData<'_, T>, columns: impl Iterator<Item = PolyID>) -> Row<T> {
+        let column_id_range = columns
+            .map(|poly_id| poly_id.id as usize)
+            .minmax()
+            .into_option()
+            .map(|(min, max)| min..(max + 1))
+            .unwrap_or_default();
+        println!("Creating row with columns: {:?}", column_id_range);
+
         let values = WitnessColumnMap::from(
+            column_id_range.clone(),
             fixed_data
                 .global_range_constraints()
                 .witness_constraints
                 .iter()
-                .map(|(poly_id, rc)| {
-                    if let Some(external_witness) =
-                        fixed_data.external_witness(row.into(), &poly_id)
-                    {
-                        CellValue::Known(external_witness)
-                    } else if let Some(rc) = rc {
+                // TODO maybe the Range should be over PolyID directly instead of usize?
+                .filter(|(poly_id, _)| column_id_range.contains(&(poly_id.id as usize)))
+                .map(|(_, rc)| {
+                    if let Some(rc) = rc {
                         CellValue::RangeConstraint(rc.clone())
                     } else {
                         CellValue::Unknown
@@ -264,6 +273,22 @@ impl<T: FieldElement> Row<T> {
                 }),
         );
         Self { values }
+    }
+
+    /// Adds the externally-provided witness values for the given row.
+    pub fn with_external_witness_values(
+        mut self,
+        fixed_data: &FixedData<'_, T>,
+        row: RowIndex,
+    ) -> Self {
+        // TODO we should store which witness cols have external data at some point higher up in the call chain
+        let row = DegreeType::from(row);
+        for (poly_id, cell) in self.values.iter_mut() {
+            if let Some(external_witness) = fixed_data.external_witness(row, &poly_id) {
+                *cell = CellValue::Known(external_witness);
+            }
+        }
+        self
     }
 
     /// Builds a string representing the current row
@@ -328,7 +353,10 @@ impl<T: FieldElement> Row<T> {
 impl<T: FieldElement> From<Row<T>> for WitnessColumnMap<T> {
     /// Builds a map from polynomial ID to value. Unknown values are set to zero.
     fn from(row: Row<T>) -> Self {
-        WitnessColumnMap::from(row.values.values_into_iter().map(|c| c.unwrap_or_zero()))
+        WitnessColumnMap::from(
+            row.values.column_id_range(),
+            row.values.values_into_iter().map(|c| c.unwrap_or_zero()),
+        )
     }
 }
 
@@ -465,6 +493,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn get_value(&self, poly: &AlgebraicReference) -> Option<T> {
         let row = self.get_row(poly.next);
         if self.unknown_strategy == UnknownStrategy::Zero {
+            // TODO this should panic if the column is out of range.
             Some(row.value_or_zero(&poly.poly_id))
         } else {
             row.value(&poly.poly_id)
@@ -486,6 +515,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
 
 impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'_, '_, T> {
     fn value<'b>(&self, poly: &'b AlgebraicReference) -> AffineResult<&'b AlgebraicReference, T> {
+        // TODO this should not panic if the column is out of range.
         Ok(match self.get_value(poly) {
             Some(v) => v.into(),
             None => AffineExpression::from_variable_id(poly),

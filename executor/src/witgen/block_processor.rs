@@ -106,9 +106,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, iter::repeat};
 
-    use powdr_ast::analyzed::{PolyID, PolynomialType};
+    use powdr_ast::analyzed::PolyID;
     use powdr_number::{FieldElement, GoldilocksField};
     use powdr_pil_analyzer::analyze_string;
 
@@ -154,16 +154,11 @@ mod tests {
         let mut fixed_lookup = FixedLookup::new(fixed_data.global_range_constraints().clone());
         let mut machines = [];
 
-        let columns = (0..fixed_data.witness_cols.len())
-            .map(move |i| PolyID {
-                id: i as u64,
-                ptype: PolynomialType::Committed,
-            })
-            .collect();
+        let columns = fixed_data.witness_cols.keys().collect();
+        let basic_row = Row::fresh(&fixed_data, fixed_data.witness_cols.keys());
         let data = FinalizableData::with_initial_rows_in_progress(
             &columns,
-            (0..fixed_data.degree)
-                .map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, fixed_data.degree))),
+            repeat(basic_row).take(fixed_data.degree as usize),
         );
 
         let mut mutable_state = MutableState {
