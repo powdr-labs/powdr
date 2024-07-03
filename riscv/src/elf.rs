@@ -21,7 +21,7 @@ use powdr_asm_utils::data_storage::SingleDataValue;
 use powdr_number::FieldElement;
 use raki::{
     decode::Decode,
-    instruction::{Instruction as Ins, OpcodeKind as Op},
+    instruction::{Extensions, Instruction as Ins, OpcodeKind as Op},
     Isa,
 };
 
@@ -393,7 +393,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
     fn rrr2(&self) -> Result<(Register, Register, Register), Self::Error> {
         match self.args {
             HighLevelArgs {
-                imm: HighLevelImmediate::Value(0),
+                imm: HighLevelImmediate::None,
                 rd: Some(rd),
                 rs1: Some(rs1),
                 rs2: Some(rs2),
@@ -493,7 +493,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 *imm as u32,
             )),
             _ => Err(format!(
-                "Expected: {{rd, rs2 | rs1, rs1}}, imm, got {:?}",
+                "Expected: {{rd, rs1 | rs2, rs1}}, imm, got {:?}",
                 self.args
             )),
         }
@@ -765,6 +765,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                             op: l_op.to_string(),
                             args: HighLevelArgs {
                                 rd: Some(*rd_l as u32),
+                                rs1: Some(0), // this is x0 because the entire address is in the immediate
                                 imm: HighLevelImmediate::Value(addr),
                                 ..Default::default()
                             },
@@ -853,7 +854,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             };
         };
 
-        let imm = match insn.opc {
+        let mut imm = match insn.opc {
             // All jump instructions that have the immediate as an address
             Op::JAL | Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
                 let addr = (insn.imm.unwrap() + original_address as i32) as u32;
@@ -897,6 +898,14 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 None => HighLevelImmediate::None,
             },
         };
+
+        // For some reason, atomic instructions comes with the immediate set to
+        // zero instead of None (maybe to mimic assembly syntax? Who knows). Fix
+        // this.
+        if let Extensions::A = insn.extension {
+            assert!(matches!(imm, HighLevelImmediate::Value(0)));
+            imm = HighLevelImmediate::None;
+        }
 
         // TODO: lift other instructions to their pseudoinstructions,
         // because they can have simplified implementations (like the

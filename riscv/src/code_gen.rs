@@ -1102,7 +1102,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
 
         insn if insn.starts_with("sc.w") => {
             // Some overlap with "sw", but also writes 0 to rd on success
-            let (rd, rs2, rs1) = args.rrr()?;
+            let (rd, rs2, rs1) = args.rrr2()?;
             // TODO: misaligned access should raise misaligned address exceptions
             let mut statements = vec![
                 "skip_if_zero lr_sc_reservation, 1;".into(),
