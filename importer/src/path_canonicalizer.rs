@@ -919,12 +919,15 @@ fn check_trait_declaration(
 
     let type_vars = trait_decl.type_vars.vars().collect::<HashSet<_>>();
 
-    trait_decl
-        .functions
-        .iter()
-        .flat_map(|v| v.fields.iter())
-        .flat_map(|v| v.iter())
-        .try_for_each(|ty| check_type(location, ty, state, &type_vars, &Default::default()))
+    trait_decl.functions.iter().try_for_each(|function| {
+        check_type(
+            location,
+            &function.ty,
+            state,
+            &type_vars,
+            &Default::default(),
+        )
+    })
 }
 
 #[cfg(test)]
