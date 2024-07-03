@@ -680,7 +680,7 @@ fn check_expression(
             check_expressions(location, items, state, local_variables)
         }
         Expression::LambdaExpression(
-            _source_ref,
+            _,
             LambdaExpression {
                 kind: _,
                 params,
