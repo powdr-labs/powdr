@@ -267,18 +267,26 @@ fn two_sums_serde() {
     );
 }
 
+const DYNAMIC_RELOCATION_S: &str = "tests/riscv_data/dynamic_relocation/dynamic_relocation.s";
+
 #[ignore = "Too slow"]
 #[test]
 fn dynamic_relocation_pie() {
-    let file = "dynamic_relocation/dynamic_relocation.s";
-    verify_riscv_asm_file(Path::new(file), &Runtime::base().with_arith(), true);
+    verify_riscv_asm_file(
+        Path::new(DYNAMIC_RELOCATION_S),
+        &Runtime::base().with_arith(),
+        true,
+    );
 }
 
 #[ignore = "Too slow"]
 #[test]
 fn dynamic_relocation_non_pie() {
-    let file = "dynamic_relocation/dynamic_relocation.s";
-    verify_riscv_asm_file(Path::new(file), &Runtime::base().with_arith(), false);
+    verify_riscv_asm_file(
+        Path::new(DYNAMIC_RELOCATION_S),
+        &Runtime::base().with_arith(),
+        false,
+    );
 }
 
 #[test]
