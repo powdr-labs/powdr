@@ -1040,7 +1040,10 @@ impl Iterator for RiscVInstructionIterator<'_> {
                         );
                         None
                     }
-                    Err(err) => panic!("Unexpected decoding error: {err:?}"),
+                    Err(err) => panic!(
+                        "Unexpected decoding error at {:08x}: {err:?}",
+                        self.curr_address
+                    ),
                 },
             };
         }

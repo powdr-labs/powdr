@@ -63,11 +63,7 @@ implement, following amoadd_w suit.
 
 - `rvc`
 
-TODO: update this to reflect the ELF translation
-
-This RISC-V "C" extension doesn't make much sense for Powdr, as we execute
-directly the assembly file, not the binary format. All the alignment and precise
-spacing of the `.text` section in this test doesn't make sense for Powdr.
-
-We just compile to riscv32imac instead of riscv32ima because the later is not
-supported by rust.
+The RISC-V "C" test is only supported when converting from the ELF executable,
+and only a modified version of the test is supported, because the original
+inserts data in the middle of the text section, which breaks our expected
+separation between data and code address space.
