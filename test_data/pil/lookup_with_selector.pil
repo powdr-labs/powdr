@@ -1,4 +1,4 @@
-let N = 4;
+let N: int = 4;
 
 namespace main(N);
     col witness w;
