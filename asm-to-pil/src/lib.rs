@@ -22,7 +22,7 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
                             Item::Machine(vm_to_constrained::convert_machine::<T>(m, rom))
                         }
                         Item::Expression(e) => Item::Expression(e),
-                        Item::TypeDeclaration(enum_decl) => Item::TypeDeclaration(enum_decl),
+                        Item::TypeDeclaration(type_decl) => Item::TypeDeclaration(type_decl),
                     },
                 )
             })

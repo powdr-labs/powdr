@@ -66,6 +66,15 @@ impl Display for SymbolDefinition {
     }
 }
 
+impl Display for asm::TypeDeclaration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            asm::TypeDeclaration::Enum(e) => write!(f, "{e}"),
+            asm::TypeDeclaration::Struct(s) => write!(f, "{s}"),
+        }
+    }
+}
+
 impl Display for Module {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {

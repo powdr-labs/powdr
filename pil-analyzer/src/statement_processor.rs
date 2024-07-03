@@ -475,7 +475,7 @@ where
             assert_eq!(symbol_kind, SymbolKind::Other());
             let struct_decl = self.process_struct_declaration(struct_decl);
             let shared_struct_decl = Arc::new(struct_decl.clone());
-            let field_items = struct_decl.fields.iter().map(|(field_name, _ty)| {
+            let field_items = struct_decl.fields.keys().map(|field_name| {
                 let var_symbol = Symbol {
                     id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
                     source: source.clone(),

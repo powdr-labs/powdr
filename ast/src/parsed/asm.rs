@@ -16,7 +16,7 @@ use crate::parsed::{BinaryOperation, BinaryOperator};
 
 use super::{
     visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, SourceReference,
-    TypedExpression,
+    StructDeclaration, TypedExpression,
 };
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -58,8 +58,8 @@ pub enum SymbolValue {
     Module(Module),
     /// A generic symbol / function.
     Expression(TypedExpression),
-    /// A type declaration (currently only enums)
-    TypeDeclaration(EnumDeclaration<Expression>),
+    /// A type declaration (currently only enums or structs)
+    TypeDeclaration(TypeDeclaration),
 }
 
 impl SymbolValue {
@@ -84,10 +84,28 @@ pub enum SymbolValueRef<'a> {
     Module(ModuleRef<'a>),
     /// A generic symbol / function.
     Expression(&'a TypedExpression),
-    /// A type declaration (currently only enums)
-    TypeDeclaration(&'a EnumDeclaration<Expression>),
+    /// A type declaration (currently only enums or structs)
+    TypeDeclaration(&'a TypeDeclaration),
     /// A type constructor of an enum.
     TypeConstructor(&'a EnumVariant<Expression>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeDeclaration {
+    Enum(EnumDeclaration<Expression>),
+    Struct(StructDeclaration<Expression>),
+}
+
+impl From<EnumDeclaration<Expression>> for SymbolValue {
+    fn from(value: EnumDeclaration<Expression>) -> Self {
+        SymbolValue::TypeDeclaration(TypeDeclaration::Enum(value))
+    }
+}
+
+impl From<StructDeclaration<Expression>> for SymbolValue {
+    fn from(value: StructDeclaration<Expression>) -> Self {
+        SymbolValue::TypeDeclaration(TypeDeclaration::Struct(value))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]

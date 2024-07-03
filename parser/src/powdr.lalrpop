@@ -31,12 +31,12 @@ ModuleStatement: ModuleStatement = {
     <LetStatementAtModuleLevel> => ModuleStatement::SymbolDefinition(<>),
     <EnumDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
             name: <>.name.clone(),
-            value: SymbolValue::TypeDeclaration(<>),
+            value: <>.into(),
         }),
-    //<StructDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
-    //        name: <>.name.clone(),
-    //        value: SymbolValue::TypeDeclaration(<>),
-    //    }),
+    <StructDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
+            name: <>.name.clone(),
+            value: <>.into(),
+        }),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
