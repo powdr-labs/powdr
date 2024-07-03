@@ -612,7 +612,10 @@ where
         &self,
         trait_decl: parsed::TraitDeclaration<parsed::Expression>,
     ) -> TraitDeclaration {
-        let type_vars = trait_decl.type_vars.vars().collect();
+        let type_vars = trait_decl
+            .type_vars
+            .as_ref()
+            .map_or_else(HashSet::new, |v| v.iter().collect());
         let functions = trait_decl
             .functions
             .into_iter()
