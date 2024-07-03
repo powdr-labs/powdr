@@ -26,8 +26,8 @@ machine Arith(mem: Memory) with
     // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 32-Bit limbs in little-endian order).
     // More precisely, affine_256(x1, y1, x2) = (x3, y3), where x1 * y1 + x2 = 2**256 * x3 + y3
     // Operation ID is 1 = 0b0001, i.e., we activate equation 0.
-    operation affine_256<1> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
-    
+    operation affine_256<1> input_addr1, input_addr2, output_addr, time_step ->;
+
     // mod_256(x3, y3, x1) = x2 computes (2 ** 256 * x3 + y3) % x1, where all inputs / outputs are 256-bit words.
     // While hint computes the modulus, there's no guarantee from user generated witness input that the remainder is smaller than the modulus.
     // In fact, the remainder can contain any multiples of modulus.

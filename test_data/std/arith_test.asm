@@ -18,6 +18,7 @@ machine Main with degree: 65536 {
 
     instr ec_add X, Y, Z -> link ~> arith.ec_add(X, Y, Z, STEP);
     instr ec_double X, Y -> link ~> arith.ec_double(X, Y, STEP);
+    instr affine_256 X, Y, Z -> link ~> arith.affine_256(X, Y, Z, STEP);
 
     instr assert_eq X, Y {
         X = Y
@@ -25,6 +26,77 @@ machine Main with degree: 65536 {
 
 
     function main {
+
+        // 0x0000000011111111222222223333333344444444555555556666666677777777
+        // * 0x8888888899999999aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff
+        // + 0xaaaaaaaabbbbbbbbbbbbbbbbaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbaaaaaaaa
+        // == 0x91a2b3c579be024740da740e6f8091a38e38e38f258bf259be024691fdb97530da740da60b60b60907f6e5d369d0369ca8641fda1907f6e33333333
+        // == 0x00000000_091a2b3c_579be024_740da740_e6f8091a_38e38e38_f258bf25_9be02469 * 2**256 + 0x1fdb9753_0da740da_60b60b60_907f6e5d_369d0369_ca8641fd_a1907f6e_33333333
+
+        mstore 0, 0x00000000;
+        mstore 4, 0x11111111;
+        mstore 8, 0x22222222;
+        mstore 12, 0x33333333;
+        mstore 16, 0x44444444;
+        mstore 20, 0x55555555;
+        mstore 24, 0x66666666;
+        mstore 28, 0x77777777;
+        mstore 32, 0x88888888;
+        mstore 36, 0x99999999;
+        mstore 40, 0xaaaaaaaa;
+        mstore 44, 0xbbbbbbbb;
+        mstore 48, 0xcccccccc;
+        mstore 52, 0xdddddddd;
+        mstore 56, 0xeeeeeeee;
+        mstore 60, 0xffffffff;
+        mstore 64, 0xaaaaaaaa;
+        mstore 68, 0xbbbbbbbb;
+        mstore 72, 0xbbbbbbbb;
+        mstore 76, 0xaaaaaaaa;
+        mstore 80, 0xaaaaaaaa;
+        mstore 84, 0xbbbbbbbb;
+        mstore 88, 0xbbbbbbbb;
+        mstore 92, 0xaaaaaaaa;
+
+        // TODO: Somehow the constrains are still failing
+        // affine_256 0, 64, 128;
+
+        // TODO: Somehow the machine is not writing yet
+        /*
+        A <== mload(128);
+        assert_eq A, 0x00000000;
+        A <== mload(132);
+        assert_eq A, 0x091a2b3c;
+        A <== mload(136);
+        assert_eq A, 0x579be024;
+        A <== mload(140);
+        assert_eq A, 0x740da740;
+        A <== mload(144);
+        assert_eq A, 0xe6f8091a;
+        A <== mload(148);
+        assert_eq A, 0x38e38e38;
+        A <== mload(152);
+        assert_eq A, 0xf258bf25;
+        A <== mload(156);
+        assert_eq A, 0x9be02469;
+        A <== mload(160);
+        assert_eq A, 0x1fdb9753;
+        A <== mload(164);
+        assert_eq A, 0x0da740da;
+        A <== mload(168);
+        assert_eq A, 0x60b60b60;
+        A <== mload(172);
+        assert_eq A, 0x907f6e5d;
+        A <== mload(176);
+        assert_eq A, 0x369d0369;
+        A <== mload(180);
+        assert_eq A, 0xca8641fd;
+        A <== mload(184);
+        assert_eq A, 0xa1907f6e;
+        A <== mload(188);
+        assert_eq A, 0x33333333;
+        */
+
 
         // EC Addition:
         // x1: 55066263022277343669578718895168534326250603453777594175500187360389116729240

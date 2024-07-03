@@ -489,16 +489,16 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     ) -> EvalResult<'a, T> {
         let outer_query = OuterQuery::new(caller_rows, self.connecting_identities[&identity_id]);
 
-        log::trace!("Start processing block machine '{}'", self.name());
-        log::trace!("Left values of lookup:");
+        log::info!("Start processing block machine '{}'", self.name());
+        log::info!("Left values of lookup:");
         for l in &outer_query.left {
-            log::trace!("  {}", l);
+            log::info!("  {}", l);
         }
 
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
         // to validate the constraints.
-        if outer_query.left.iter().all(|v| v.is_constant()) {
+        if false && outer_query.left.iter().all(|v| v.is_constant()) {
             // All values on the left hand side are known, check if this is a query
             // to the last row.
             if let Some(row_index) = self.last_latch_row_index() {
@@ -570,7 +570,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         match process_result {
             ProcessResult::Success(new_block, updates) => {
-                log::trace!(
+                log::info!(
                     "End processing block machine '{}' (successfully)",
                     self.name()
                 );
@@ -582,8 +582,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 // let updates = updates.report_side_effect();
 
                 // We solved the query, so report it to the cache.
-                self.processing_sequence_cache
-                    .report_processing_sequence(&outer_query.left, sequence_iterator);
+                // self.processing_sequence_cache
+                //     .report_processing_sequence(&outer_query.left, sequence_iterator);
                 Ok(updates)
             }
             ProcessResult::Incomplete(updates) => {
