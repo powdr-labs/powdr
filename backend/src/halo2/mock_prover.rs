@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 
@@ -8,7 +10,7 @@ use powdr_number::{FieldElement, KnownField};
 
 // Can't depend on compiler::pipeline::GeneratedWitness because of circular dependencies...
 pub fn mock_prove<T: FieldElement>(
-    pil: &Analyzed<T>,
+    pil: Arc<Analyzed<T>>,
     constants: &[(String, Vec<T>)],
     witness: &[(String, Vec<T>)],
     witgen_callback: WitgenCallback<T>,

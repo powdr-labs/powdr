@@ -34,7 +34,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
     ) -> Option<EvalResult<'a, T>> {
         let column = &self.fixed_data.witness_cols[poly_id];
 
-        if rows.get_value(&column.poly).is_none() {
+        if !rows.value_is_known(&column.poly) {
             Some(self.process_witness_query(column.query.unwrap(), &column.poly, rows))
         } else {
             None
