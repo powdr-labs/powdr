@@ -538,7 +538,7 @@ impl<'a> TypeChecker<'a> {
                     .map(|item| self.infer_type_of_expression(item))
                     .collect::<Result<_, _>>()?,
             }),
-            Expression::LambdaExpression(_source_ref, LambdaExpression { kind, params, body }) => {
+            Expression::LambdaExpression(_, LambdaExpression { kind, params, body }) => {
                 let old_len = self.local_var_types.len();
                 let result = params
                     .iter()
