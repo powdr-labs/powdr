@@ -53,7 +53,7 @@ impl<T: Display> Display for Analyzed<T> {
                             definition,
                             Some(FunctionValueDefinition::TraitFunction(_, _))
                         ) {
-                            // These are printed as part of the enum.
+                            // These are printed as part of the enum / trait.
                             continue;
                         }
                         let (name, is_local) = update_namespace(name, f)?;
