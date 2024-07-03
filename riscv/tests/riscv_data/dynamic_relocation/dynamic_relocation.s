@@ -11,6 +11,9 @@ data_section:
     .global _start
 
 _start:
+    # Save the return pointer
+    mv a3, ra
+
     # Load the address of data_section
     la a0, data_section
     
@@ -32,19 +35,19 @@ continue:
 
     # Bail if the result is not 2
     li a2, 2
-    beq a1, a2, final_loop
+    beq a1, a2, finish
     unimp
 
-    # Finish in an infinite loop
-final_loop:
-    j final_loop
+finish:
+    # Finish the test (returning from _start)
+    jr a3
 
 text_label1:
     # Function at text_label1
-    li a1, 1          # For example, setting a0 to 1
+    li a1, 1
     ret
 
 text_label2:
     # Function at text_label2
-    li a1, 2          # For example, setting a0 to 2
+    li a1, 2
     ret
