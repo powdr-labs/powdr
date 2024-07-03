@@ -990,10 +990,19 @@ impl Iterator for RiscVInstructionIterator<'_> {
             let insn = u32::from_le_bytes(
                 self.remaining_data[0..4]
                     .try_into()
-                    .expect("Not enough bytes to complete a 32-bit instruction!"),
+                    .expect("Not enough bytes to complete a 32-bit instruction"),
             )
             .decode(Isa::Rv32)
-            .expect("Failed to decode instruction.");
+            .unwrap_or_else(|_| {
+                // TODO: maybe instead of failing we should just emit `unimp`.
+                // This way we would support the garbage default GNU binutils
+                // linker script, that places the ELF header in the text
+                // section.
+                panic!(
+                    "Failed to decode 32-bit instruction at {:08x}",
+                    self.curr_address
+                )
+            });
 
             maybe_insn = MaybeInstruction {
                 address: self.curr_address,
@@ -1005,7 +1014,7 @@ impl Iterator for RiscVInstructionIterator<'_> {
             let bin_instruction = u16::from_le_bytes(
                 self.remaining_data[0..2]
                     .try_into()
-                    .expect("Not enough bytes to complete a 16-bit instruction!"),
+                    .expect("Not enough bytes to complete a 16-bit instruction"),
             );
             maybe_insn = MaybeInstruction {
                 address: self.curr_address,
@@ -1017,7 +1026,13 @@ impl Iterator for RiscVInstructionIterator<'_> {
                         // its own mnemonic "unimp"), so we support it here.
                         // Otherwise, there is something more fishy going on, and we
                         // panic.
-                        assert_eq!(bin_instruction, 0, "Illegal instruction found!");
+
+                        // TODO: we should just emit `unimp` for every unknown.
+                        assert_eq!(
+                            bin_instruction, 0,
+                            "Failed to decode 16-bit instruction at {:08x}",
+                            self.curr_address
+                        );
                         None
                     }
                     Err(err) => panic!("Unexpected decoding error: {err:?}"),

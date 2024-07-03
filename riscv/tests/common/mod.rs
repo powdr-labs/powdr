@@ -44,32 +44,35 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
 pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) {
     let tmp_dir = Temp::new_dir().unwrap();
     let executable = tmp_dir.join("executable");
+    let obj_file = tmp_dir.join("obj.o");
 
-    // Assemble the file using either clang or gcc. The magic thing is:
-    // clang/llvm does not support 64-bit literals, which the RISC-V testsuite
-    // uses, and gcc/binutils does not support the -pie flag for RISCV32 target,
-    // which one of the tests uses.
-    //
-    // The hacky solution is then to use clang for PIE, and gcc for everything
-    // else.
-    let mut cmd = if use_pie {
-        // Compile with clang for PIE
-        let mut cmd = Command::new("clang");
-        cmd.arg("--target=riscv32-unknown-elf").arg("-Wl,-pie");
-        cmd
-    } else {
-        // Compile with gcc for non-PIE
-        let mut cmd = Command::new("riscv64-unknown-elf-gcc");
-        cmd.arg("-Wl,--emit-relocs");
-        cmd
-    };
-    cmd.arg("-march=rv32imac")
+    // We have a bit of a conundrum here. GNU assembler is better, as it
+    // supports 64-bit literals that some tests in the RISC-V testsuite use. But
+    // LLVM linker is better as it supports the -pie flag in the default build
+    // (which one of the tests uses), and has a functional default linker
+    // script, as opposed to the the braindead one of GNU, that places the ELF
+    // header inside the text section.
+
+    // So, our hacky solution is to assemble with GNU, and link with LLVM.
+
+    // Assemble with GNU
+    Command::new("riscv64-unknown-elf-as")
+        .arg("-march=rv32imac")
         .arg("-mabi=ilp32")
-        .arg("-nostdlib")
-        .arg("-static")
+        .arg("-o")
+        .arg(&obj_file)
+        .arg(asm_file)
+        .spawn()
+        .unwrap()
+        .wait()
+        .unwrap();
+
+    // Link with LLVM
+    Command::new("ld.lld")
+        .arg(if use_pie { "-pie" } else { "--emit-relocs" })
         .arg("-o")
         .arg(&executable)
-        .arg(asm_file)
+        .arg(obj_file)
         .spawn()
         .unwrap()
         .wait()
