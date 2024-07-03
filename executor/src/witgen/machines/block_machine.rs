@@ -24,12 +24,12 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
-    Success(FinalizableData<'a, T>, EvalValue<&'a AlgebraicReference, T>),
+    Success(FinalizableData<T>, EvalValue<&'a AlgebraicReference, T>),
     Incomplete(EvalValue<&'a AlgebraicReference, T>),
 }
 
 impl<'a, T: FieldElement> ProcessResult<'a, T> {
-    fn new(data: FinalizableData<'a, T>, updates: EvalValue<&'a AlgebraicReference, T>) -> Self {
+    fn new(data: FinalizableData<T>, updates: EvalValue<&'a AlgebraicReference, T>) -> Self {
         match updates.is_complete() {
             true => ProcessResult::Success(data, updates),
             false => ProcessResult::Incomplete(updates),
@@ -111,7 +111,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// The internal identities
     identities: Vec<&'a Identity<T>>,
     /// The data of the machine.
-    data: FinalizableData<'a, T>,
+    data: FinalizableData<T>,
     /// The index of the first row that has not been finalized yet.
     /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
     first_in_progress_row: usize,
@@ -486,7 +486,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
     }
 
-    fn get_row(&self, row: RowIndex) -> &Row<'a, T> {
+    fn get_row(&self, row: RowIndex) -> &Row<T> {
         // The first block is a dummy block corresponding to rows (-block_size, 0),
         // so we have to add the block size to the row index.
         &self.data[(row + self.block_size).into()]
@@ -644,7 +644,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// the last row of its previous block is merged with the one we have already.
     /// This is necessary to handle non-rectangular block machines, which already use
     /// unused cells in the previous block.
-    fn append_block(&mut self, mut new_block: FinalizableData<'a, T>) -> Result<(), EvalError<T>> {
+    fn append_block(&mut self, mut new_block: FinalizableData<T>) -> Result<(), EvalError<T>> {
         assert!(
             (self.rows() + self.block_size as DegreeType) < self.degree,
             "Block machine is full (this should have been checked before)"

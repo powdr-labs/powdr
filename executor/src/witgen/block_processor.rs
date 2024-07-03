@@ -28,7 +28,7 @@ pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
     pub fn new(
         row_offset: RowIndex,
-        data: FinalizableData<'a, T>,
+        data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         identities: &'c [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
@@ -99,7 +99,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         }
     }
 
-    pub fn finish(self) -> FinalizableData<'a, T> {
+    pub fn finish(self) -> FinalizableData<T> {
         self.processor.finish()
     }
 }
