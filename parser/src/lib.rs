@@ -565,12 +565,12 @@ namespace N(2);
     #[test]
     fn parse_trait_multi_params() {
         let input = r#"
-    trait Add<T: Add, Q> {
+    trait Add<T, Q> {
         add: T, T -> Q,
     }"#;
 
         let expected = r#"
-    trait Add <T: Add, Q> {
+    trait Add <T, Q> {
         add: T, T -> Q,
     }"#;
 

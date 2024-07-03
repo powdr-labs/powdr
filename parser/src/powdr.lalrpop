@@ -695,7 +695,7 @@ TraitFunctions: Vec<TraitFunction<Expression>> = {
 }
 
 TraitFunction: TraitFunction<Expression> = {
-    <name:Identifier> ":" <params:TypeTermList> "->" <value:TypeTermBox> => TraitFunction { name, _type: Type::Function(FunctionType{params, value}) }
+    <name:Identifier> ":" <params:TypeTermList> "->" <value:TypeTermBox> => TraitFunction { name, ty: Type::Function(FunctionType{params, value}) }
 }
 
 
