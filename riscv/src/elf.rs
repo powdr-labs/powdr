@@ -724,6 +724,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             ) => {
                 let hi = hi.wrapping_add(original_address as i32);
                 match insn2 {
+                    // la rd, symbol
                     Ins {
                         opc: Op::ADDI,
                         rd: Some(rd_addi),
@@ -743,10 +744,6 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                             original_address,
                         }
                     }
-                    // TODO: uncomment when powdr supports the pseudoinstruction
-                    // version of l{b|h|w} and s{b|h|w}. For now, it is better
-                    // to just fail here if we encounter this usage of auipc.
-                    /*
                     // l{b|h|w} rd, symbol
                     Ins {
                         opc: l_op,
@@ -759,11 +756,16 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         && rd_auipc == rd_l
                         && rd_l == rs1_l =>
                     {
+                        // We don't support code introspection, so it is better
+                        // to panic if this is the case:
+                        let addr = hi.wrapping_add(*lo);
+                        assert!(!self.address_map.is_in_text_section(addr as u32));
+
                         HighLevelInsn {
                             op: l_op.to_string(),
                             args: HighLevelArgs {
                                 rd: Some(*rd_l as u32),
-                                imm: HighLevelImmediate::Value(hi.wrapping_add(*lo)),
+                                imm: HighLevelImmediate::Value(addr),
                                 ..Default::default()
                             },
                             original_address,
@@ -774,26 +776,20 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         opc: l_op,
                         rd: None,
                         rs1: Some(rt_l),
-                        rs2: Some(rd),
+                        rs2: Some(_),
                         imm: Some(lo),
                         ..
-                    } if matches!(l_op, Op::LB | Op::LH | Op::LW) && rd_auipc == rt_l => {
-                        HighLevelInsn {
-                            op: l_op.to_string(),
-                            args: HighLevelArgs {
-                                // TODO: If this pseudoinstruction is ever
-                                // implemented in powdr, rs1 should end up
-                                // containing the output of auipc, a value which
-                                // doen't make sense in powdr.
-                                rs1: Some(*rd_auipc as u32),
-                                rs2: Some(*rd as u32),
-                                imm: HighLevelImmediate::Value(hi.wrapping_add(*lo)),
-                                ..Default::default()
-                            },
-                            original_address,
-                        }
+                    } if matches!(l_op, Op::SB | Op::SH | Op::SW) && rd_auipc == rt_l => {
+                        // We don't support code modification, so it is better
+                        // to panic if this is the case:
+                        let addr = hi.wrapping_add(*lo);
+                        assert!(!self.address_map.is_in_text_section(addr as u32));
+
+                        // Otherwise, this is a data store instruction. To be
+                        // more conformant, it is better to let two
+                        // instructions be handled separately.
+                        return None;
                     }
-                    */
                     // call offset
                     Ins {
                         opc: Op::JALR,

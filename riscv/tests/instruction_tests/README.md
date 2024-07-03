@@ -9,6 +9,15 @@ kind of arithmetic over `.text` label and addresses, nor alignment or spacing
 directives in `.text` sections. Most unsupported instructions are related to
 this limitation.
 
+One consequence of this limitation is that all the supported uses of `auipc` and
+`lui`, when referring to a `.text` label, is when they can be fused with the
+next instruction to make use of the loaded address immediately (e.g. `addi` or
+`jalr`). Furthermore, the register used to store the high bits of the text
+address will not be modified, as required by a conformant implementation! For
+instance, the `tail` pseudoinstruction, which expands to `auipc` + `jarl`, is
+supposed to leave the high bits of the return address in `x6`. This does not
+happen in Powdr!
+
 Following there is a list of tests from the test suite that we do not support:
 
 ## From the basic instruction set (rv32ui):
@@ -38,14 +47,14 @@ These instructions are not yet implemented.
 
 ## From the "A" (atomic) extension (rv32ua):
 
-- amoand_w
-- amomax_w
-- amomaxu_w
-- amomin_w
-- amominu_w
-- amoor_w
-- amoswap_w
-- amoxor_w
+- `amoand_w`
+- `momax_w`
+- `amomaxu_w`
+- `amomin_w`
+- `amominu_w`
+- `amoor_w`
+- `amoswap_w`
+- `amoxor_w`
 
 We do not (yet) support the instructions of these tests, but should be easy to
 implement, following amoadd_w suit.
