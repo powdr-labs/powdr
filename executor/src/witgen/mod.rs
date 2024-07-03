@@ -67,11 +67,8 @@ impl<T: FieldElement> WitgenCallback<T> {
         }
     }
 
-    pub fn with_pil(&self, analyzed: Arc<Analyzed<T>>) -> Self {
-        Self {
-            analyzed,
-            ..self.clone()
-        }
+    pub fn with_pil(self, analyzed: Arc<Analyzed<T>>) -> Self {
+        Self { analyzed, ..self }
     }
 
     /// Computes the next-stage witness, given the current witness and challenges.

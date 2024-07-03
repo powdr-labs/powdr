@@ -85,12 +85,12 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
     }
 }
 
-struct MachineData<'a, F: FieldElement> {
+struct MachineData<'a, F> {
     pil: Arc<Analyzed<F>>,
     backend: Box<dyn Backend<'a, F> + 'a>,
 }
 
-pub(crate) struct CompositeBackend<'a, F: FieldElement> {
+pub(crate) struct CompositeBackend<'a, F> {
     machine_data: BTreeMap<String, MachineData<'a, F>>,
 }
 

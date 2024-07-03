@@ -31,7 +31,7 @@ pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, A
         .collect()
 }
 
-/// Given a set of columns and a set of symbols, returns the columns that correspond to the symbols.
+/// Given a set of columns and a set of polynomial symbols, returns the columns that correspond to the symbols.
 pub(crate) fn select_machine_columns<'a, F: FieldElement>(
     columns: &[(String, Vec<F>)],
     symbols: impl Iterator<Item = &'a Symbol>,
@@ -87,16 +87,16 @@ fn referenced_namespaces<F: FieldElement>(
 fn split_by_namespace<F: FieldElement>(
     pil: &Analyzed<F>,
 ) -> BTreeMap<String, Vec<StatementIdentifier>> {
-    let mut current_namespace = String::new();
-
     let mut statements_by_namespace: BTreeMap<String, Vec<StatementIdentifier>> = BTreeMap::new();
     for statement in pil.source_order.clone() {
-        let statement = match &statement {
+        match &statement {
             StatementIdentifier::Definition(name)
             | StatementIdentifier::PublicDeclaration(name) => {
-                let new_namespace = extract_namespace(name);
-                current_namespace = new_namespace;
-                Some(statement)
+                let namespace = extract_namespace(name);
+                statements_by_namespace
+                    .entry(namespace)
+                    .or_default()
+                    .push(statement);
             }
             StatementIdentifier::Identity(i) => {
                 let identity = &pil.identities[*i];
@@ -104,10 +104,10 @@ fn split_by_namespace<F: FieldElement>(
 
                 match namespaces.len() {
                     0 => panic!("Identity references no namespace: {identity}"),
-                    1 => {
-                        assert!(namespaces.iter().next().unwrap() == &current_namespace);
-                        Some(statement)
-                    }
+                    1 => statements_by_namespace
+                        .entry(namespaces.into_iter().next().unwrap())
+                        .or_default()
+                        .push(statement),
                     _ => match identity.kind {
                         IdentityKind::Plookup | IdentityKind::Permutation => {
                             assert_eq!(
@@ -121,7 +121,6 @@ fn split_by_namespace<F: FieldElement>(
                                 "RHS of identity references multiple namespaces: {identity}"
                             );
                             log::debug!("Skipping connecting identity: {identity}");
-                            None
                         }
                         _ => {
                             panic!("Identity references multiple namespaces: {identity}");
@@ -130,13 +129,6 @@ fn split_by_namespace<F: FieldElement>(
                 }
             }
         };
-
-        if let Some(statement) = statement {
-            statements_by_namespace
-                .entry(current_namespace.clone())
-                .or_default()
-                .push(statement);
-        }
     }
     statements_by_namespace
 }
