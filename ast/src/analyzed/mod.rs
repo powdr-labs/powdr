@@ -431,13 +431,20 @@ pub fn type_from_definition(
                 panic!("Requested type of trait declaration.")
             }
             FunctionValueDefinition::TraitFunction(trait_decl, trait_func) => {
-                let vars = trait_decl.type_vars.iter().map(|var| {
-                    let bounds = BTreeSet::new();
-                    (var.clone(), bounds)
-                });
+                let vars = if let Some(ref type_vars) = trait_decl.type_vars {
+                    type_vars
+                        .iter()
+                        .map(|var| {
+                            let bounds = BTreeSet::new();
+                            (var.clone(), bounds)
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
 
                 Some(TypeScheme {
-                    vars: TypeBounds::new(vars),
+                    vars: TypeBounds::new(vars.into_iter()),
                     ty: trait_func.ty.clone(),
                 })
             }

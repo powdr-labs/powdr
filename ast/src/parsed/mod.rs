@@ -320,7 +320,7 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TraitDeclaration<E = u64> {
     pub name: String,
-    pub type_vars: Vec<String>,
+    pub type_vars: Option<Vec<String>>,
     pub functions: Vec<TraitFunction<E>>,
 }
 

@@ -576,11 +576,16 @@ impl Display for FunctionDefinition {
 
 impl<E: Display> Display for TraitDeclaration<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let type_vars = if self.type_vars.is_empty() {
-            Default::default()
+        let type_vars = if let Some(ref vars) = self.type_vars {
+            if vars.is_empty() {
+                Default::default()
+            } else {
+                format!("<{}>", vars.join(", "))
+            }
         } else {
-            format!("<{}>", self.type_vars.iter().format(", "))
+            Default::default()
         };
+
         write!(
             f,
             "trait {name}{type_vars} {{\n{functions}}}",

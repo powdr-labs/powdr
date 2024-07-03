@@ -686,7 +686,12 @@ PatternList: Vec<Pattern> = {
 // ---------------------------- Trait/Impl Declaration -----------------------------
 
 TraitDeclaration: TraitDeclaration<Expression> = {
-    "trait" <name:Identifier> <type_vars:("<" <TypeVarBounds> ">")?> "{" <functions:TraitFunctions> "}" => TraitDeclaration { name, type_vars: type_vars.unwrap_or_default(), functions }
+    "trait" <name:Identifier> <type_vars:("<" <TraitVars> ">")?> "{" <functions:TraitFunctions> "}" => TraitDeclaration { name, type_vars, functions }
+}
+
+TraitVars: Vec<String> = {
+    => vec![],
+    <mut list:( <TypeVar> "," )*> <end:TypeVar> ","  => { list.push(end); list }
 }
 
 TraitFunctions: Vec<TraitFunction<Expression>> = {
