@@ -5,7 +5,7 @@ use std::cmp::max;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use std::iter;
+use std::iter::{self, empty};
 use std::ops::{self, ControlFlow};
 use std::sync::Arc;
 
@@ -571,6 +571,24 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
         }
+    }
+}
+
+impl Children<Expression> for TraitDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(empty())
+    }
+}
+
+impl Children<Expression> for TraitFunction {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(empty())
     }
 }
 
