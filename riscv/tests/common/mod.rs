@@ -41,6 +41,16 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     verify_pipeline(pipeline, backend).unwrap();
 }
 
+fn which_as_is_available() -> &'static str {
+    let options = ["riscv64-elf-as", "riscv64-unknown-elf-as"];
+    for option in options.iter() {
+        if Command::new(option).arg("--version").output().is_ok() {
+            return option;
+        }
+    }
+    panic!("No RISC-V assembler found");
+}
+
 pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) {
     let tmp_dir = Temp::new_dir().unwrap();
     let executable = tmp_dir.join("executable");
@@ -56,15 +66,15 @@ pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) 
     // So, our hacky solution is to assemble with GNU, and link with LLVM.
 
     // Assemble with GNU
-    Command::new("riscv64-unknown-elf-as")
+    let assembler = which_as_is_available();
+    log::info!("Using assembler: {}", assembler);
+    Command::new(assembler)
         .arg("-march=rv32imac")
         .arg("-mabi=ilp32")
         .arg("-o")
         .arg(&obj_file)
         .arg(asm_file)
-        .spawn()
-        .unwrap()
-        .wait()
+        .status()
         .unwrap();
 
     // Link with LLVM
@@ -73,9 +83,7 @@ pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) 
         .arg("-o")
         .arg(&executable)
         .arg(obj_file)
-        .spawn()
-        .unwrap()
-        .wait()
+        .status()
         .unwrap();
 
     let case_name = asm_file.file_stem().unwrap().to_str().unwrap();
