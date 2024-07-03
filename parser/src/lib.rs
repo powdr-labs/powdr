@@ -586,7 +586,7 @@ namespace N(2);
     }"#;
 
         let expected = r#"
-    trait Iterator <S, I> {
+    trait Iterator<S, I> {
         next: S -> (S, Option<I>),
     }"#;
 
