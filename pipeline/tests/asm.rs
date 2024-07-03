@@ -447,9 +447,7 @@ fn permutation_to_vm() {
 }
 
 #[test]
-#[should_panic = "Verifier did not say 'PIL OK'."]
 fn permutation_to_block_to_block() {
-    // TODO: witgen issue (https://github.com/powdr-labs/powdr/issues/1385)
     let f = "asm/permutations/block_to_block.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());

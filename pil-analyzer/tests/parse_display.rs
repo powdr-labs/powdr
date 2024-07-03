@@ -714,3 +714,15 @@ namespace T(8);
     let analyzed = analyze_string::<GoldilocksField>(input);
     assert_eq!(expected, analyzed.to_string());
 }
+
+#[test]
+fn reparse_generic_function_call() {
+    let input = r#"namespace X(16);
+    let<T: Add + FromLiteral> inc: T -> T = (|x| x + 1);
+namespace N(16);
+    let x: int = 7;
+    let y: int = X::inc::<int>(N.x);
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}
