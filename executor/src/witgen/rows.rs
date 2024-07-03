@@ -1,12 +1,12 @@
 use std::{
     collections::HashSet,
     fmt::Display,
-    ops::{Add, Range, Sub},
+    ops::{Add, Sub},
 };
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -265,7 +265,6 @@ impl<T: FieldElement> Row<T> {
             .into_option()
             .map(|(min, max)| min..(max + 1))
             .unwrap_or_default();
-        println!("Creating row with columns: {:?}", column_id_range);
 
         let values = WitnessColumnMap::from(
             column_id_range.clone(),

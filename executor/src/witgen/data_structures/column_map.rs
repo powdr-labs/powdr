@@ -86,7 +86,7 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
     }
 
     pub fn keys(&self) -> impl Iterator<Item = PolyID> {
-        self.column_id_range.clone().into_iter().map(|i| PolyID {
+        self.column_id_range.clone().map(|i| PolyID {
             id: i as u64,
             ptype: T::P_TYPE,
         })

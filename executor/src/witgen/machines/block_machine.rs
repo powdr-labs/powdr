@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::iter;
-use std::ops::Range;
+
 
 use super::{EvalResult, FixedData, FixedLookup};
 
