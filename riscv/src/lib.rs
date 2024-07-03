@@ -2,6 +2,7 @@
 #![deny(clippy::print_stdout)]
 
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     ffi::OsStr,
     path::{Path, PathBuf},
@@ -28,6 +29,7 @@ pub fn compile_rust<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     runtime: &Runtime,
+    via_elf: bool,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     if with_bootloader {
@@ -37,41 +39,60 @@ pub fn compile_rust<T: FieldElement>(
         );
     }
 
-    let riscv_asm = if file_name.ends_with("Cargo.toml") {
-        compile_rust_crate_to_riscv_asm(file_name, output_dir)
+    let file_path = if file_name.ends_with("Cargo.toml") {
+        Cow::Borrowed(file_name)
     } else if fs::metadata(file_name).unwrap().is_dir() {
-        compile_rust_crate_to_riscv_asm(&format!("{file_name}/Cargo.toml"), output_dir)
+        Cow::Owned(format!("{file_name}/Cargo.toml"))
     } else {
         panic!("input must be a crate directory or `Cargo.toml` file");
     };
-    if !output_dir.exists() {
-        fs::create_dir_all(output_dir).unwrap()
-    }
-    for (asm_file_name, contents) in &riscv_asm {
-        let riscv_asm_file_name = output_dir.join(format!(
-            "{}_riscv_{asm_file_name}.asm",
-            Path::new(file_name).file_stem().unwrap().to_str().unwrap(),
-        ));
-        if riscv_asm_file_name.exists() && !force_overwrite {
-            eprintln!(
-                "Target file {} already exists. Not overwriting.",
-                riscv_asm_file_name.to_str().unwrap()
-            );
-            return None;
+
+    if via_elf {
+        let elf_path = compile_rust_crate_to_riscv_bin(&file_path, output_dir);
+
+        compile_riscv_elf::<T>(
+            file_name,
+            &elf_path,
+            output_dir,
+            force_overwrite,
+            runtime,
+            with_bootloader,
+        )
+    } else {
+        let riscv_asm = compile_rust_crate_to_riscv_asm(&file_path, output_dir);
+        if !output_dir.exists() {
+            fs::create_dir_all(output_dir).unwrap()
+        }
+        for (asm_file_name, contents) in &riscv_asm {
+            let riscv_asm_file_name = output_dir.join(format!(
+                "{}_riscv_{asm_file_name}.asm",
+                Path::new(file_path.as_ref())
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+            ));
+            if riscv_asm_file_name.exists() && !force_overwrite {
+                eprintln!(
+                    "Target file {} already exists. Not overwriting.",
+                    riscv_asm_file_name.to_str().unwrap()
+                );
+                return None;
+            }
+
+            fs::write(riscv_asm_file_name.clone(), contents).unwrap();
+            log::info!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
         }
 
-        fs::write(riscv_asm_file_name.clone(), contents).unwrap();
-        log::info!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
+        compile_riscv_asm_bundle::<T>(
+            file_name,
+            riscv_asm,
+            output_dir,
+            force_overwrite,
+            runtime,
+            with_bootloader,
+        )
     }
-
-    compile_riscv_asm_bundle::<T>(
-        file_name,
-        riscv_asm,
-        output_dir,
-        force_overwrite,
-        runtime,
-        with_bootloader,
-    )
 }
 
 fn compile_program<P>(
