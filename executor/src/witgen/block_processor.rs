@@ -75,6 +75,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
             let progress = match action {
                 Action::InternalIdentity(identity_index) => {
                     if is_identity_complete[row_index][identity_index] {
+                        // The identity has been completed already, there is no point in processing it again.
                         false
                     } else {
                         let res = self.processor.process_identity(
