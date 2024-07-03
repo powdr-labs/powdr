@@ -351,7 +351,7 @@ impl<R> Children<Expression<R>> for TraitDeclaration<Expression<R>> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TraitFunction<E = u64> {
     pub name: String,
-    pub _type: Type<E>,
+    pub ty: Type<E>,
 }
 
 impl<R> Children<Expression<R>> for TraitFunction<u64> {

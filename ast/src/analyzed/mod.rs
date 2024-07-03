@@ -434,7 +434,7 @@ pub fn type_from_definition(
                 let vars = trait_decl.type_vars.clone();
                 Some(TypeScheme {
                     vars,
-                    ty: trait_func._type.clone(),
+                    ty: trait_func.ty.clone(),
                 })
             }
         }

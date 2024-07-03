@@ -107,10 +107,7 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 let type_vars = trait_decl.type_vars.vars().collect();
                                 for f in &mut trait_decl.functions {
                                     canonicalize_inside_type(
-                                        &mut f._type,
-                                        &type_vars,
-                                        &self.path,
-                                        self.paths,
+                                        &mut f.ty, &type_vars, &self.path, self.paths,
                                     );
                                 }
                                 Some(Ok(SymbolValue::TraitDeclaration(trait_decl)))

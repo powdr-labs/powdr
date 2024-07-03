@@ -620,7 +620,7 @@ where
             .into_iter()
             .map(|f| TraitFunction {
                 name: f.name,
-                _type: self.type_processor(&type_vars).process_type(f._type),
+                ty: self.type_processor(&type_vars).process_type(f.ty),
             })
             .collect();
         TraitDeclaration {
