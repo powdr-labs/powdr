@@ -724,8 +724,24 @@ fn trait_def() {
     }
 ";
 
-    let expected = "    trait Add <T: Add, Q> {
+    let expected = "    trait Add<T: Add, Q> {
         add: T, T -> Q,
+    }
+";
+
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(expected, analyzed.to_string())
+}
+
+#[test]
+fn array_type_trait() {
+    let input = "trait ArraySum<T> {
+        array_sum: T[5] -> T,
+    }
+";
+
+    let expected = "    trait ArraySum<T> {
+        array_sum: T[5] -> T,
     }
 ";
 
