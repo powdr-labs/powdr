@@ -53,32 +53,10 @@ impl<T: Display> Display for Analyzed<T> {
                             // These are printed as part of the enum.
                             continue;
                         }
-                        let (name, is_local) = update_namespace(name, f)?;
+                        let (name, _) = update_namespace(name, f)?;
                         match symbol.kind {
                             SymbolKind::Poly(_) => {
                                 writeln_indented(f, format_poly(&name, symbol, definition))?;
-                            }
-                            SymbolKind::Constant() => {
-                                assert!(symbol.stage.is_none());
-                                let Some(FunctionValueDefinition::Expression(TypedExpression {
-                                    e,
-                                    type_scheme,
-                                })) = &definition
-                                else {
-                                    panic!(
-                                        "Invalid constant value: {}",
-                                        definition.as_ref().unwrap()
-                                    );
-                                };
-                                assert!(
-                                    type_scheme.is_none()
-                                        || type_scheme == &Some((Type::Fe).into())
-                                );
-                                writeln_indented_by(
-                                    f,
-                                    format!("constant {name} = {e};"),
-                                    is_local.into(),
-                                )?;
                             }
                             SymbolKind::Other() => {
                                 assert!(symbol.stage.is_none());

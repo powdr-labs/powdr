@@ -218,9 +218,9 @@ mod tests {
     #[test]
     fn fibonacci() {
         let src = r#"
-            constant %N = 8;
+            let N: int = 8;
 
-            namespace Fibonacci(%N);
+            namespace Fibonacci(N);
                 col fixed ISFIRST = [1] + [0]*;
                 col fixed ISLAST = [0]* + [1];
                 col witness x, y;

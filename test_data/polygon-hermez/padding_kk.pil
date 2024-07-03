@@ -8,7 +8,7 @@
 
 include "padding_kkbit.pil";
 
-namespace PaddingKK(%N);
+namespace PaddingKK(N);
 
     // Polynomials that are used to compute a hash chunk
     pol commit freeIn;
