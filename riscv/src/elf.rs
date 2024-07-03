@@ -1180,8 +1180,14 @@ fn to_32bit_equivalent(mut insn: Ins) -> Ins {
     insn
 }
 
+/// Helper trait for function `try_map_two_by_two`.
+///
+/// Provides the methods to try to map two elements into one first, and one to
+/// one as fallback.
 trait TwoOrOneMapper<E, R> {
+    /// Tries to map two elements into one. If it fails, `map_one` is called.
     fn try_map_two(&mut self, first: &E, second: &E) -> Option<R>;
+    /// Maps one element individually. This one can not fail.
     fn map_one(&mut self, element: E) -> R;
 }
 
