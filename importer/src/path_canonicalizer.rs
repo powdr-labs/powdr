@@ -645,9 +645,14 @@ fn check_machine(
                 }
             }
             MachineStatement::InstructionDeclaration(_, _, instr) => {
-                // Add the instruction parameters, ignore collisions.
+                // Add the names of the typed instruction parameters since they introduce new names.
                 let mut local_variables = local_variables.clone();
-                local_variables.extend(instr.params.inputs_and_outputs().map(|p| p.name.clone()));
+                local_variables.extend(
+                    instr
+                        .params
+                        .inputs_and_outputs()
+                        .filter_map(|p| p.ty.as_ref().map(|_| p.name.clone())),
+                );
                 for e in instr.children() {
                     check_expression(&module_location, e, state, &local_variables)?;
                 }
