@@ -87,16 +87,15 @@ fn referenced_namespaces<F: FieldElement>(
 fn split_by_namespace<F: FieldElement>(
     pil: &Analyzed<F>,
 ) -> BTreeMap<String, Vec<StatementIdentifier>> {
-    let mut statements_by_namespace: BTreeMap<String, Vec<StatementIdentifier>> = BTreeMap::new();
-    for statement in pil.source_order.clone() {
-        match &statement {
+    pil.source_order
+        .iter()
+        // split, filtering out some statements
+        .filter_map(|statement| match &statement {
             StatementIdentifier::Definition(name)
             | StatementIdentifier::PublicDeclaration(name) => {
                 let namespace = extract_namespace(name);
-                statements_by_namespace
-                    .entry(namespace)
-                    .or_default()
-                    .push(statement);
+                // add `statement` to `namespace`
+                Some((namespace, statement))
             }
             StatementIdentifier::Identity(i) => {
                 let identity = &pil.identities[*i];
@@ -104,10 +103,8 @@ fn split_by_namespace<F: FieldElement>(
 
                 match namespaces.len() {
                     0 => panic!("Identity references no namespace: {identity}"),
-                    1 => statements_by_namespace
-                        .entry(namespaces.into_iter().next().unwrap())
-                        .or_default()
-                        .push(statement),
+                    // add this identity to the only referenced namespace
+                    1 => Some((namespaces.into_iter().next().unwrap(), statement)),
                     _ => match identity.kind {
                         IdentityKind::Plookup | IdentityKind::Permutation => {
                             assert_eq!(
@@ -121,6 +118,7 @@ fn split_by_namespace<F: FieldElement>(
                                 "RHS of identity references multiple namespaces: {identity}"
                             );
                             log::debug!("Skipping connecting identity: {identity}");
+                            None
                         }
                         _ => {
                             panic!("Identity references multiple namespaces: {identity}");
@@ -128,9 +126,12 @@ fn split_by_namespace<F: FieldElement>(
                     },
                 }
             }
-        };
-    }
-    statements_by_namespace
+        })
+        // collect into a map
+        .fold(Default::default(), |mut acc, (namespace, statement)| {
+            acc.entry(namespace).or_default().push(statement.clone());
+            acc
+        })
 }
 
 /// Given a PIL and a list of statements, returns a new PIL that only contains the
