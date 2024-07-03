@@ -133,6 +133,16 @@ mod tests {
     }
 
     #[test]
+    #[should_panic = "assertion failed: width >= 1"]
+    // The above failure is from a debug assertion, so we can only run this
+    // test if debug assertions are activated.
+    #[cfg(debug_assertions)]
+    fn empty() {
+        let content = "namespace Global(8);";
+        run_test_goldilocks(content);
+    }
+
+    #[test]
     fn add() {
         let content = r#"
         namespace Add(8);
