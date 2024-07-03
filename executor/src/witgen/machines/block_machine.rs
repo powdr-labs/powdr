@@ -527,7 +527,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                             "End processing block machine '{}' (already solved)",
                             self.name()
                         );
-                        return Ok(result);
+                        panic!("This should not happen anymore!");
                     }
                 }
             }
