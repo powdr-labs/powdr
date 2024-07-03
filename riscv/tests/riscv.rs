@@ -272,21 +272,13 @@ const DYNAMIC_RELOCATION_S: &str = "tests/riscv_data/dynamic_relocation/dynamic_
 #[ignore = "Too slow"]
 #[test]
 fn dynamic_relocation_pie() {
-    verify_riscv_asm_file(
-        Path::new(DYNAMIC_RELOCATION_S),
-        &Runtime::base().with_arith(),
-        true,
-    );
+    verify_riscv_asm_file(Path::new(DYNAMIC_RELOCATION_S), &Runtime::base(), true);
 }
 
 #[ignore = "Too slow"]
 #[test]
 fn dynamic_relocation_non_pie() {
-    verify_riscv_asm_file(
-        Path::new(DYNAMIC_RELOCATION_S),
-        &Runtime::base().with_arith(),
-        false,
-    );
+    verify_riscv_asm_file(Path::new(DYNAMIC_RELOCATION_S), &Runtime::base(), false);
 }
 
 #[test]

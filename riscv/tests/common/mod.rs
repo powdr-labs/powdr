@@ -4,6 +4,7 @@ use powdr_number::GoldilocksField;
 use powdr_pipeline::{test_util::verify_pipeline, Pipeline};
 use powdr_riscv::Runtime;
 use std::{
+    fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -89,6 +90,7 @@ pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) 
     let case_name = asm_file.file_stem().unwrap().to_str().unwrap();
 
     let powdr_asm = powdr_riscv::elf::elf_translate::<GoldilocksField>(&executable, runtime, false);
+    fs::write(format!("/tmp/{case_name}.asm"), &powdr_asm).unwrap();
     verify_riscv_asm_string::<()>(
         &format!("{case_name}.asm"),
         &powdr_asm,
