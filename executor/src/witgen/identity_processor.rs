@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    process::id,
     sync::Mutex,
 };
 
@@ -163,11 +164,17 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         identity: &'a Identity<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
+        // println!(
+        //     "Permutation at index {}: {}",
+        //     rows.current_row_index, identity
+        // );
         if let Some(left_selector) = &identity.left.selector {
             if let Some(status) = self.handle_left_selector(left_selector, rows) {
+                // println!("  Left selector not 1: {:?}", status);
                 return Ok(status);
             }
         }
+        // println!("  Processing identity");
 
         let left = identity.left.expressions.iter().map(|e| rows.evaluate(e));
 

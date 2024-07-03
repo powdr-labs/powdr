@@ -401,7 +401,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 }
             };
 
-            log::trace!(
+            log::info!(
                 "Memory write: addr={:x}, step={step}, value={:x}",
                 addr,
                 value
@@ -420,7 +420,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 .is_none()
         } else {
             let value = self.data.entry(addr).or_default();
-            log::trace!(
+            log::info!(
                 "Memory read: addr={:x}, step={step}, value={:x}",
                 addr,
                 value
