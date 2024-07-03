@@ -14,7 +14,7 @@ use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::parsed::types::{ArrayType, Type, TypeScheme};
+use crate::parsed::types::{ArrayType, Type, TypeBounds, TypeScheme};
 use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
@@ -431,9 +431,13 @@ pub fn type_from_definition(
                 panic!("Requested type of trait declaration.")
             }
             FunctionValueDefinition::TraitFunction(trait_decl, trait_func) => {
-                let vars = trait_decl.type_vars.clone();
+                let vars = trait_decl.type_vars.iter().map(|var| {
+                    let bounds = BTreeSet::new();
+                    (var.clone(), bounds)
+                });
+
                 Some(TypeScheme {
-                    vars,
+                    vars: TypeBounds::new(vars),
                     ty: trait_func.ty.clone(),
                 })
             }

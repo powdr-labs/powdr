@@ -748,3 +748,23 @@ fn array_type_trait() {
     let analyzed = analyze_string::<GoldilocksField>(input);
     assert_eq!(expected, analyzed.to_string())
 }
+
+#[test]
+fn trait_enum_collisions() {
+    let input = "trait Add<T: Add, Q> {
+        add: T, T -> Q,
+    }
+    enum Add {
+        Add,
+    }";
+
+    let expected = "    trait Add<T: Add, Q> {
+        add: T, T -> Q,
+    }
+    enum Add {
+        Add,
+    }";
+
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(expected, analyzed.to_string())
+}

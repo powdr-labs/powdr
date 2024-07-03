@@ -579,7 +579,7 @@ impl<E: Display> Display for TraitDeclaration<E> {
         let type_vars = if self.type_vars.is_empty() {
             Default::default()
         } else {
-            format!("<{}>", self.type_vars)
+            format!("<{}>", self.type_vars.iter().format(", "))
         };
         write!(
             f,
