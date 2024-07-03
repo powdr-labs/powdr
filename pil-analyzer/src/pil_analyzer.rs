@@ -346,9 +346,6 @@ impl PILAnalyzer {
                 vec![]
             }
             PilStatement::Include(_, _) => unreachable!(),
-            PilStatement::TraitDeclaration(_, _) => {
-                vec![]
-            }
             _ => {
                 let names = statement
                     .symbol_definition_names_and_contained()

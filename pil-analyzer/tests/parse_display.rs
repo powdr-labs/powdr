@@ -750,7 +750,7 @@ fn array_type_trait() {
 }
 
 #[test]
-#[should_panic = "Add already defined."]
+#[should_panic = "Duplicate symbol definition: Add"]
 fn trait_enum_collisions() {
     let input = "trait Add<T, Q> {
         add: T, T -> Q,
