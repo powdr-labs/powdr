@@ -75,7 +75,9 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                 backend.map(|backend| (machine_name.to_string(), MachineData { pil, backend }))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
-        Ok(Box::new(CompositeBackend { machine_data: per_machine_data }))
+        Ok(Box::new(CompositeBackend {
+            machine_data: per_machine_data,
+        }))
     }
 
     fn generate_setup(&self, _size: DegreeType, _output: &mut dyn io::Write) -> Result<(), Error> {
