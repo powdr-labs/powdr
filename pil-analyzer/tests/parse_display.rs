@@ -719,12 +719,12 @@ namespace T(8);
 
 #[test]
 fn trait_def() {
-    let input = "trait Add<T: Add, Q> {
+    let input = "trait Add<T, Q> {
         add: T, T -> Q,
     }
 ";
 
-    let expected = "    trait Add<T: Add, Q> {
+    let expected = "    trait Add<T, Q> {
         add: T, T -> Q,
     }
 ";
