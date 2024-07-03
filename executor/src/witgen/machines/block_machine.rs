@@ -6,9 +6,8 @@ use super::{EvalResult, FixedData, FixedLookup};
 
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::{OuterQuery, Processor};
-use crate::witgen::rows::{Row, RowIndex, RowPair, UnknownStrategy};
+use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
 };
@@ -464,17 +463,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         RowIndex::from_i64(self.rows() as i64 - 1, self.fixed_data.degree)
     }
 
-    fn last_latch_row_index(&self) -> Option<RowIndex> {
-        if self.rows() > self.block_size as DegreeType {
-            Some(RowIndex::from_degree(
-                self.rows() - self.block_size as DegreeType + self.latch_row as DegreeType,
-                self.fixed_data.degree,
-            ))
-        } else {
-            None
-        }
-    }
-
     fn get_row(&self, row: RowIndex) -> &Row<T> {
         // The first block is a dummy block corresponding to rows (-block_size, 0),
         // so we have to add the block size to the row index.
@@ -493,44 +481,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         log::trace!("Left values of lookup:");
         for l in &outer_query.left {
             log::trace!("  {}", l);
-        }
-
-        // First check if we already store the value.
-        // This can happen in the loop detection case, where this function is just called
-        // to validate the constraints.
-        if outer_query.left.iter().all(|v| v.is_constant()) {
-            // All values on the left hand side are known, check if this is a query
-            // to the last row.
-            if let Some(row_index) = self.last_latch_row_index() {
-                let current = &self.get_row(row_index);
-                let fresh_row = Row::fresh(self.fixed_data, row_index + 1);
-                let next = if self.latch_row == self.block_size - 1 {
-                    // We don't have the next row, because it would be the first row of the next block.
-                    // We'll use a fresh row instead.
-                    &fresh_row
-                } else {
-                    self.get_row(row_index + 1)
-                };
-
-                let row_pair = RowPair::new(
-                    current,
-                    next,
-                    row_index,
-                    self.fixed_data,
-                    UnknownStrategy::Unknown,
-                );
-
-                let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
-                if let Ok(result) = identity_processor.process_link(&outer_query, &row_pair) {
-                    if result.is_complete() && result.constraints.is_empty() {
-                        log::trace!(
-                            "End processing block machine '{}' (already solved)",
-                            self.name()
-                        );
-                        panic!("This should not happen anymore!");
-                    }
-                }
-            }
         }
 
         // TODO this assumes we are always using the same lookup for this machine.
