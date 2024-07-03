@@ -23,7 +23,7 @@ use powdr_parser_util::SourceRef;
 use self::{
     asm::{Part, SymbolPath},
     types::{FunctionType, Type, TypeBounds, TypeScheme},
-    visitor::Children,
+    visitor::{Children, ExpressionVisitable},
 };
 
 #[derive(Display, Clone, Copy, PartialEq, Eq)]
@@ -576,7 +576,6 @@ impl<Ref> Expression<Ref> {
     /// if `f` returns true on any of them.
     pub fn any(&self, mut f: impl FnMut(&Self) -> bool) -> bool {
         use std::ops::ControlFlow;
-        use visitor::ExpressionVisitable;
         self.pre_visit_expressions_return(&mut |e| {
             if f(e) {
                 ControlFlow::Break(())
@@ -743,6 +742,22 @@ impl<R> Expression<R> {
             Expression::BlockExpression(_, block_expr) => block_expr.children_mut(),
             Expression::StructExpression(_, struct_expr) => struct_expr.children_mut(),
         }
+    }
+
+    /// Returns true if the expression contains a reference to a next value
+    pub fn contains_next_ref(&self) -> bool {
+        self.expr_any(|e| {
+            matches!(
+                e,
+                Expression::UnaryOperation(
+                    _,
+                    UnaryOperation {
+                        op: UnaryOperator::Next,
+                        ..
+                    }
+                )
+            )
+        })
     }
 }
 

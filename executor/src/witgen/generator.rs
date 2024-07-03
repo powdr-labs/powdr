@@ -5,12 +5,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
-use crate::witgen::rows::CellValue;
 use crate::witgen::EvalValue;
 use crate::Identity;
 
 use super::block_processor::BlockProcessor;
-use super::data_structures::column_map::WitnessColumnMap;
 use super::machines::{FixedLookup, Machine};
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
@@ -19,7 +17,7 @@ use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<&'a AlgebraicReference, T>,
-    block: FinalizableData<'a, T>,
+    block: FinalizableData<T>,
 }
 
 pub struct Generator<'a, T: FieldElement> {
@@ -27,7 +25,7 @@ pub struct Generator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
     witnesses: HashSet<PolyID>,
-    data: FinalizableData<'a, T>,
+    data: FinalizableData<T>,
     latch: Option<Expression<T>>,
     name: String,
 }
@@ -160,7 +158,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     fn compute_partial_first_row<Q: QueryCallback<T>>(
         &self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
-    ) -> Row<'a, T> {
+    ) -> Row<T> {
         // Use `BlockProcessor` + `DefaultSequenceIterator` using a "block size" of 0. Because `BlockProcessor`
         // expects `data` to include the row before and after the block, this means we'll run the
         // solver on exactly one row pair.
@@ -203,21 +201,21 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             DefaultSequenceIterator::new(0, identities_with_next_reference.len(), None),
         );
         processor.solve(&mut sequence_iterator).unwrap();
-        let first_row = processor.finish().remove(1);
 
-        first_row
+        processor.finish().remove(1)
     }
 
     fn process<'b, Q: QueryCallback<T>>(
         &self,
-        first_row: Row<'a, T>,
+        first_row: Row<T>,
         row_offset: DegreeType,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
         outer_query: Option<OuterQuery<'a, 'b, T>>,
         is_main_run: bool,
     ) -> ProcessResult<'a, T> {
         log::trace!(
-            "Running main machine from row {row_offset} with the following initial values in the first row:\n{}", first_row.render_values(false, None)
+            "Running main machine from row {row_offset} with the following initial values in the first row:\n{}",
+            first_row.render_values(false, None, self.fixed_data)
         );
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.witnesses,
@@ -245,15 +243,6 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         assert_eq!(self.data.len() as DegreeType, self.fixed_data.degree + 1);
 
         let last_row = self.data.pop().unwrap();
-        self.data[0] = WitnessColumnMap::from(self.data[0].values().zip(last_row.values()).map(
-            |(cell1, cell2)| match (&cell1.value, &cell2.value) {
-                (CellValue::Known(v1), CellValue::Known(v2)) => {
-                    assert_eq!(v1, v2);
-                    cell1.clone()
-                }
-                (CellValue::Known(_), _) => cell1.clone(),
-                _ => cell2.clone(),
-            },
-        ));
+        self.data[0].merge_with(&last_row).unwrap();
     }
 }
