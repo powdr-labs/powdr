@@ -554,7 +554,7 @@ namespace N(2);
     }"#;
 
         let expected = r#"
-    trait Add <T> {
+    trait Add<T> {
         add: T, T -> T,
     }"#;
 
@@ -570,7 +570,7 @@ namespace N(2);
     }"#;
 
         let expected = r#"
-    trait Add <T, Q> {
+    trait Add<T, Q> {
         add: T, T -> Q,
     }"#;
 
