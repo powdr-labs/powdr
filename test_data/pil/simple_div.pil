@@ -1,6 +1,6 @@
-constant %N = 0x10000;
+let N = 0x10000;
 
-namespace SimpleDiv(%N);
+namespace SimpleDiv(N);
     col fixed BYTE(i) { i & 0xff };
 
     col witness X;

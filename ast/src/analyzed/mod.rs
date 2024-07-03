@@ -509,8 +509,6 @@ impl Symbol {
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
     Poly(PolynomialType),
-    /// A constant value.
-    Constant(),
     /// Other symbol, depends on the type.
     /// Examples include functions not of the type "int -> fe".
     Other(),

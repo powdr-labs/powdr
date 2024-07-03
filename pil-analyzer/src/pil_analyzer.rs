@@ -452,13 +452,7 @@ impl<'a> AnalysisDriver for Driver<'a> {
     fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath {
         path.iter()
             .fold(self.0.current_namespace.clone(), |path, part| {
-                if part.starts_with('%') {
-                    // Constants are not namespaced
-                    AbsoluteSymbolPath::default()
-                } else {
-                    path
-                }
-                .with_part(part)
+                path.with_part(part)
             })
     }
 

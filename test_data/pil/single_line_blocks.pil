@@ -1,14 +1,14 @@
-constant %N = 4;
+let N = 4;
 
 // a block machine which performs addition
-namespace Add(%N);
+namespace Add(N);
     col witness A;
     col witness B;
     col witness C;
     A + B = C;
 
 // a machine which calls `Add` every other row on made up inputs
-namespace Main(%N);
+namespace Main(N);
     col fixed a(i) { (i + 13) & 0xffffffff };
     col fixed b(i) { ((i + 19) * 17) & 0xffffffff };
     col witness c;
