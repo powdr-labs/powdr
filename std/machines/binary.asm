@@ -51,5 +51,5 @@ machine Binary with
     B' = B * (1 - latch) + B_byte * FACTOR;
     C' = C * (1 - latch) + C_byte * FACTOR;
 
-    {operation_id', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
+    [operation_id', A_byte, B_byte, C_byte] in [P_operation, P_A, P_B, P_C];
 }

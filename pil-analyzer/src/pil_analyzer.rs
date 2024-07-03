@@ -9,10 +9,11 @@ use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
+    SymbolCategory,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
@@ -63,7 +64,7 @@ struct PILAnalyzer {
     /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    identities: Vec<Identity<Expression>>,
+    identities: Vec<Identity<SelectedExpressions<Expression>>>,
     /// The order in which definitions and identities
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
@@ -154,7 +155,7 @@ impl PILAnalyzer {
     fn core_types_if_not_present(&self) -> Option<PILFile> {
         // We are extracting some specific symbols from the prelude file.
         let prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../std/prelude.asm"));
-        let missing_symbols = ["Constr", "Option"]
+        let missing_symbols = ["Constr", "Option", "challenge"]
             .into_iter()
             .filter(|symbol| {
                 !self
@@ -288,9 +289,15 @@ impl PILAnalyzer {
                     if let Some(selector) = &mut part.selector {
                         expressions.push((selector, Type::Expr.into()))
                     }
-                    for e in &mut part.expressions {
-                        expressions.push((e, Type::Expr.into()))
-                    }
+
+                    expressions.push((
+                        part.expressions.as_mut(),
+                        Type::Array(ArrayType {
+                            base: Box::new(Type::Expr),
+                            length: None,
+                        })
+                        .into(),
+                    ))
                 }
             }
         }

@@ -42,7 +42,7 @@ lazy_static! {
         ("std::convert::expr", ("T: FromLiteral", "T -> expr")),
         ("std::debug::print", ("T: ToString", "T -> ()")),
         ("std::field::modulus", ("", "-> int")),
-        ("std::prover::challenge", ("", "int, int -> expr")),
+        ("std::prelude::challenge", ("", "int, int -> expr")),
         ("std::prover::degree", ("", "-> int")),
         ("std::prover::eval", ("", "expr -> fe")),
     ]

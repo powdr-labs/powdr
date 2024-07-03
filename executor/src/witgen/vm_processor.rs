@@ -1,8 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicReference, IdentityKind, PolyID};
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
@@ -11,6 +9,7 @@ use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
 use crate::witgen::IncompleteCause;
+use crate::Identity;
 
 use super::data_structures::finalizable_data::FinalizableData;
 use super::processor::{OuterQuery, Processor};
@@ -25,18 +24,18 @@ const REPORT_FREQUENCY: u64 = 1_000;
 
 /// A list of identities with a flag whether it is complete.
 struct CompletableIdentities<'a, T: FieldElement> {
-    identities_with_complete: Vec<(&'a Identity<Expression<T>>, bool)>,
+    identities_with_complete: Vec<(&'a Identity<T>, bool)>,
 }
 
 impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
-    fn new(identities: impl Iterator<Item = &'a Identity<Expression<T>>>) -> Self {
+    fn new(identities: impl Iterator<Item = &'a Identity<T>>) -> Self {
         Self {
             identities_with_complete: identities.map(|identity| (identity, false)).collect(),
         }
     }
 
     /// Yields immutable references to the identity and mutable references to the complete flag.
-    fn iter_mut(&mut self) -> impl Iterator<Item = (&'a Identity<Expression<T>>, &mut bool)> {
+    fn iter_mut(&mut self) -> impl Iterator<Item = (&'a Identity<T>, &mut bool)> {
         self.identities_with_complete
             .iter_mut()
             .map(|(identity, complete)| (*identity, complete))
@@ -51,10 +50,10 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     fixed_data: &'a FixedData<'a, T>,
     /// The subset of identities that contains a reference to the next row
     /// (precomputed once for performance reasons)
-    identities_with_next_ref: Vec<&'a Identity<Expression<T>>>,
+    identities_with_next_ref: Vec<&'a Identity<T>>,
     /// The subset of identities that does not contain a reference to the next row
     /// (precomputed once for performance reasons)
-    identities_without_next_ref: Vec<&'a Identity<Expression<T>>>,
+    identities_without_next_ref: Vec<&'a Identity<T>>,
     last_report: DegreeType,
     last_report_time: Instant,
     processor: Processor<'a, 'b, 'c, T, Q>,
@@ -65,9 +64,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     pub fn new(
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
-        identities: &[&'a Identity<Expression<T>>],
+        identities: &[&'a Identity<T>],
         witnesses: &'c HashSet<PolyID>,
-        data: FinalizableData<'a, T>,
+        data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
@@ -101,7 +100,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         Self { processor, ..self }
     }
 
-    pub fn finish(self) -> FinalizableData<'a, T> {
+    pub fn finish(self) -> FinalizableData<T> {
         self.processor.finish()
     }
 
@@ -220,13 +219,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
 
         let row = row_index as usize;
         (1..MAX_PERIOD).find(|&period| {
-            (1..=period).all(|i| {
-                self.processor
-                    .row(row - i - period)
-                    .values()
-                    .zip(self.processor.row(row - i).values())
-                    .all(|(a, b)| a.value == b.value)
-            })
+            (1..=period)
+                .all(|i| self.processor.row(row - i - period) == self.processor.row(row - i))
         })
     }
 
@@ -299,7 +293,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                     row_index as DegreeType + self.row_offset
                 ),
                 true,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
 
@@ -401,7 +396,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     fn process_identity(
         &mut self,
         row_index: DegreeType,
-        identity: &'a Identity<Expression<T>>,
+        identity: &'a Identity<T>,
         is_complete: &mut bool,
         unknown_strategy: UnknownStrategy,
     ) -> Result<Option<bool>, EvalError<T>> {
@@ -444,7 +439,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index).render(
                 &format!("Current row ({row_index})"),
                 false,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!(
@@ -452,7 +448,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index + 1).render(
                 &format!("Next row ({})", row_index + 1),
                 false,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!("Set RUST_LOG=trace to understand why these values were chosen.");
@@ -480,7 +477,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index).render(
                 &format!("Current row ({row_index})"),
                 true,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!(
@@ -488,7 +486,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index + 1).render(
                 &format!("Next row ({})", row_index + 1),
                 true,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!("\nSet RUST_LOG=trace to understand why these values were (not) chosen.");
@@ -502,7 +501,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    fn try_proposed_row(&mut self, row_index: DegreeType, proposed_row: Row<'a, T>) -> bool {
+    fn try_proposed_row(&mut self, row_index: DegreeType, proposed_row: Row<T>) -> bool {
         let constraints_valid = self.identities_with_next_ref.iter().all(|i| {
             self.processor
                 .check_row_pair(row_index as usize, &proposed_row, i, true)

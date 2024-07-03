@@ -11,9 +11,8 @@ use halo2_proofs::{
 };
 use powdr_executor::witgen::WitgenCallback;
 
-use powdr_ast::{
-    analyzed::{AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression},
-    parsed::SelectedExpressions,
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, SelectedExpressions,
 };
 use powdr_ast::{
     analyzed::{Analyzed, IdentityKind},

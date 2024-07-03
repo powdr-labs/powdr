@@ -8,8 +8,8 @@ use powdr_ast::analyzed::TypedExpression;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
-    EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression, PilStatement,
-    PolynomialName, SelectedExpressions, TraitDeclaration, TraitFunction,
+    ArrayLiteral, EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression,
+    PilStatement, PolynomialName, SelectedExpressions, TraitDeclaration, TraitFunction,
 };
 
 use powdr_number::DegreeType;
@@ -28,7 +28,7 @@ use crate::expression_processor::ExpressionProcessor;
 pub enum PILItem {
     Definition(Symbol, Option<FunctionValueDefinition>),
     PublicDeclaration(PublicDeclaration),
-    Identity(Identity<Expression>),
+    Identity(Identity<SelectedExpressions<Expression>>),
 }
 
 pub struct Counters {
@@ -325,7 +325,7 @@ where
                         self.expression_processor(&Default::default())
                             .process_expression(expression),
                     ),
-                    expressions: vec![],
+                    expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
                 },
                 SelectedExpressions::default(),
             ),
@@ -348,18 +348,10 @@ where
             PilStatement::ConnectIdentity(source, left, right) => (
                 source,
                 IdentityKind::Connect,
-                SelectedExpressions {
-                    selector: None,
-                    expressions: self
-                        .expression_processor(&Default::default())
-                        .process_expressions(left),
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: self
-                        .expression_processor(&Default::default())
-                        .process_expressions(right),
-                },
+                self.expression_processor(&Default::default())
+                    .process_vec_into_selected_expression(left),
+                self.expression_processor(&Default::default())
+                    .process_vec_into_selected_expression(right),
             ),
             // TODO at some point, these should all be caught by the type checker.
             _ => {

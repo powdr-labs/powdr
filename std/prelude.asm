@@ -24,3 +24,8 @@ enum Constr {
     /// A connection constraint (copy constraint).
     Connection((expr, expr)[])
 }
+
+/// Constructs a challenge object.
+/// The arguments are the proof stage and the id of the challenge, in this order.
+/// This is a built-in function.
+let challenge: int, int -> expr = [];

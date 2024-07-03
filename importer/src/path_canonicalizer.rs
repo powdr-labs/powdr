@@ -126,9 +126,12 @@ impl<'a> Folder for Canonicalizer<'a> {
     fn fold_machine(&mut self, mut machine: Machine) -> Result<Machine, Self::Error> {
         for s in &mut machine.statements {
             match s {
-                MachineStatement::Submachine(_, path, _) => {
+                MachineStatement::Submachine(_, path, _, args) => {
                     let p = self.path.clone().join(path.clone());
                     *path = self.paths.get(&p).cloned().unwrap().into();
+                    for expr in args {
+                        canonicalize_inside_expression(expr, &self.path, self.paths);
+                    }
                 }
                 MachineStatement::Pil(_start, statement) => {
                     if let PilStatement::LetStatement(_, _, Some(type_scheme), expr) = statement {
@@ -154,6 +157,11 @@ impl<'a> Folder for Canonicalizer<'a> {
                 }
                 _ => {}
             }
+        }
+        // canonicalize machine parameter types
+        for param in &mut machine.params.0 {
+            let p = self.path.clone().join(param.ty.clone().unwrap());
+            param.ty = Some(self.paths.get(&p).cloned().unwrap().into());
         }
 
         Ok(machine)
@@ -609,11 +617,19 @@ fn check_machine(
                 .with_error(format!("Duplicate name `{name}` in machine `{location}`")));
         }
     }
+    for param in &m.params.0 {
+        let path: SymbolPath = param.ty.clone().unwrap();
+        check_path(module_location.clone().join(path), state)
+            .map_err(|e| SourceRef::default().with_error(e))?
+    }
     for statement in &m.statements {
         match statement {
-            MachineStatement::Submachine(source_ref, path, _) => {
+            MachineStatement::Submachine(source_ref, path, _, args) => {
                 check_path(module_location.clone().join(path.clone()), state)
-                    .map_err(|e| source_ref.with_error(e))?
+                    .map_err(|e| source_ref.with_error(e))?;
+                args.iter().try_for_each(|expr| {
+                    check_expression(&module_location, expr, state, &local_variables)
+                })?
             }
             MachineStatement::FunctionDeclaration(_, _, _, statements) => statements
                 .iter()
@@ -768,7 +784,10 @@ fn check_expression(
                     }
                 }
             }
-            check_expression(location, expr, state, &local_variables)
+            match expr {
+                Some(expr) => check_expression(location, expr, state, &local_variables),
+                None => Ok(()),
+            }
         }
     }
 }
