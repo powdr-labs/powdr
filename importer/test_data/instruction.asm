@@ -22,8 +22,8 @@ machine Main {
     reg X[<=];
     reg Y[<=];
 
-    instr id X -> Y
-        link => X = id.id(identity(X))
+    instr id X, l: label -> Y
+        link => X = id.id(identity(l))
         link => Y = id.id(identity(Y))
     {
         Y = identity(X)
