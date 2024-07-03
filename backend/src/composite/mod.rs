@@ -72,10 +72,10 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                     None,
                     backend_options.clone(),
                 );
-                backend.map(|backend| (machine_name.to_string(), PerMachineData { pil, backend }))
+                backend.map(|backend| (machine_name.to_string(), MachineData { pil, backend }))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
-        Ok(Box::new(CompositeBackend { per_machine_data }))
+        Ok(Box::new(CompositeBackend { machine_data: per_machine_data }))
     }
 
     fn generate_setup(&self, _size: DegreeType, _output: &mut dyn io::Write) -> Result<(), Error> {
@@ -83,13 +83,13 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
     }
 }
 
-struct PerMachineData<'a, F: FieldElement> {
+struct MachineData<'a, F: FieldElement> {
     pil: Arc<Analyzed<F>>,
     backend: Box<dyn Backend<'a, F> + 'a>,
 }
 
 pub(crate) struct CompositeBackend<'a, F: FieldElement> {
-    per_machine_data: BTreeMap<String, PerMachineData<'a, F>>,
+    machine_data: BTreeMap<String, MachineData<'a, F>>,
 }
 
 // TODO: This just forwards to the backend for now. In the future this should:
@@ -110,9 +110,9 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
 
         let proof = CompositeProof {
             proofs: self
-                .per_machine_data
+                .machine_data
                 .iter()
-                .map(|(machine, PerMachineData { pil, backend })| {
+                .map(|(machine, MachineData { pil, backend })| {
                     let witgen_callback = witgen_callback.clone().with_pil(pil.clone());
 
                     log::info!("== Proving machine: {}", machine);
@@ -138,7 +138,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
         let proof: CompositeProof = serde_json::from_slice(proof).unwrap();
         for (machine, machine_proof) in proof.proofs {
             let machine_data = self
-                .per_machine_data
+                .machine_data
                 .get(&machine)
                 .ok_or_else(|| Error::BackendError(format!("Unknown machine: {machine}")))?;
             machine_data.backend.verify(&machine_proof, instances)?;

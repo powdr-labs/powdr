@@ -47,7 +47,7 @@ pub(crate) fn select_machine_columns<'a, F: FieldElement>(
 }
 
 /// From a symbol name, get the namespace of the symbol.
-fn get_namespace(name: &str) -> String {
+fn extract_namespace(name: &str) -> String {
     let mut namespace = AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
     namespace.pop().unwrap();
     namespace.relative_to(&Default::default()).to_string()
@@ -62,7 +62,7 @@ fn referenced_namespaces<F: FieldElement>(
         &mut (|expr| {
             match expr {
                 AlgebraicExpression::Reference(reference) => {
-                    namespaces.insert(get_namespace(&reference.name));
+                    namespaces.insert(extract_namespace(&reference.name));
                 }
                 AlgebraicExpression::PublicReference(_) => unimplemented!(),
                 AlgebraicExpression::Challenge(_) => {}
@@ -94,7 +94,7 @@ fn split_by_namespace<F: FieldElement>(
         let statement = match &statement {
             StatementIdentifier::Definition(name)
             | StatementIdentifier::PublicDeclaration(name) => {
-                let new_namespace = get_namespace(name);
+                let new_namespace = extract_namespace(name);
                 current_namespace = new_namespace;
                 Some(statement)
             }
