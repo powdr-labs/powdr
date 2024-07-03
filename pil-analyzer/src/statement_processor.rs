@@ -455,9 +455,7 @@ where
             ))
             .chain(var_items)
             .collect();
-        }
-
-        if let Some(FunctionDefinition::TraitDeclaration(trait_decl)) = value {
+        } else if let Some(FunctionDefinition::TraitDeclaration(trait_decl)) = value {
             let trait_decl = self.process_trait_declaration(trait_decl);
             let shared_trait_decl = Arc::new(trait_decl.clone());
             let trait_functions = trait_decl.functions.iter().map(|function| {
