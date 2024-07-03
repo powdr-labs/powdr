@@ -454,14 +454,19 @@ impl Display for PilStatement {
         match self {
             PilStatement::Include(_, path) => write!(f, "include {};", quote(path)),
             PilStatement::Namespace(_, name, poly_length) => {
-                write!(
-                    f,
-                    "namespace {name}{};",
-                    poly_length
-                        .as_ref()
-                        .map(|l| format!("({l})"))
-                        .unwrap_or_default()
-                )
+                write!(f, "namespace")?;
+                let name = name.to_string();
+                match poly_length {
+                    None if name.is_empty() => {
+                        write!(f, ";")
+                    }
+                    None => {
+                        write!(f, " {name};")
+                    }
+                    Some(poly_length) => {
+                        write!(f, " {name}({poly_length});")
+                    }
+                }
             }
             PilStatement::LetStatement(_, pattern, type_scheme, value) => write_indented_by(
                 f,

@@ -593,4 +593,26 @@ namespace N(2);
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(expected.trim(), printed.trim());
     }
+
+    #[test]
+    fn empty_namespace() {
+        let input = r#"
+namespace(2);
+    let x = 2;
+namespace;
+    let y = 4;
+namespace N(8);
+    let z = 8;
+"#;
+        let expected = r#"
+namespace (2);
+    let x = 2;
+namespace;
+    let y = 4;
+namespace N(8);
+    let z = 8;
+"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
 }
