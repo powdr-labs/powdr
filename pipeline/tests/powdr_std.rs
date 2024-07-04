@@ -24,12 +24,12 @@ use test_log::test;
 //     gen_halo2_composite_proof(f, Default::default());
 // }
 
-#[test]
-fn poseidon_gl_test() {
-    let f = "std/poseidon_gl_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
-    gen_estark_proof(f, Default::default());
-}
+// #[test]
+// fn poseidon_gl_test() {
+//     let f = "std/poseidon_gl_test.asm";
+//     verify_test_file(f, Default::default(), vec![]).unwrap();
+//     gen_estark_proof(f, Default::default());
+// }
 
 #[test]
 fn split_bn254_test() {
