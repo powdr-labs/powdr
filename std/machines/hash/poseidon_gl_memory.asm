@@ -72,7 +72,10 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // Do *two* memory reads in each of the first STATE_SIZE rows
     // For input i, we expect the low word at address input_addr + 8 * i and
     // the high word at address input_addr + 8 * i + 4
-    let do_mload = used * sum(STATE_SIZE, |i| CLK[i]);
+    // TODO: This could be an intermediate polynomial, but for some reason estark-starky
+    // fails then, so we keep it as a witness for now
+    let do_mload;
+    do_mload = used * sum(STATE_SIZE, |i| CLK[i]);
     let input_index = sum(STATE_SIZE, |i| expr(i) * CLK[i]);
     link if do_mload ~> word_low = mem.mload(input_addr + 8 * input_index, time_step);
     link if do_mload ~> word_high = mem.mload(input_addr + 8 * input_index + 4, time_step);
