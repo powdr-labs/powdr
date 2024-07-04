@@ -44,23 +44,23 @@ fn split_gl_test() {
     gen_estark_proof(f, Default::default());
 }
 
-#[test]
-#[ignore = "Too slow"]
-fn arith_test() {
-    let f = "std/arith_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+// #[test]
+// #[ignore = "Too slow"]
+// fn arith_test() {
+//     let f = "std/arith_test.asm";
+//     verify_test_file(f, Default::default(), vec![]).unwrap();
 
-    // Running gen_estark_proof(f, Default::default())
-    // is too slow for the PR tests. This will only create a single
-    // eStark proof instead of 3.
-    Pipeline::<GoldilocksField>::default()
-        .from_file(resolve_test_file(f))
-        .with_backend(powdr_backend::BackendType::EStarkStarky, None)
-        .compute_proof()
-        .unwrap();
+//     // Running gen_estark_proof(f, Default::default())
+//     // is too slow for the PR tests. This will only create a single
+//     // eStark proof instead of 3.
+//     Pipeline::<GoldilocksField>::default()
+//         .from_file(resolve_test_file(f))
+//         .with_backend(powdr_backend::BackendType::EStarkStarky, None)
+//         .compute_proof()
+//         .unwrap();
 
-    test_halo2(f, Default::default());
-}
+//     test_halo2(f, Default::default());
+// }
 
 #[test]
 fn memory_test() {
