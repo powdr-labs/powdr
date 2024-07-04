@@ -86,9 +86,6 @@ pub fn cast_to_goldilocks<T: FieldElement>(v: T) -> Val {
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub(crate) fn new(analyzed: &'a Analyzed<T>) -> Self {
-        if analyzed.constant_count() > 0 {
-            unimplemented!("Fixed columns are not supported in Plonky3");
-        }
         if analyzed
             .definitions
             .iter()
@@ -193,9 +190,11 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                         r.poly_id.id as usize
                     }
                     PolynomialType::Constant => {
-                        unreachable!(
-                            "fixed columns are not supported, should have been checked earlier"
-                        )
+                        assert!(
+                            r.poly_id.id < self.analyzed.constant_count() as u64,
+                            "Plonky3 expects `poly_id` to be contiguous"
+                        );
+                        self.analyzed.commitment_count() + r.poly_id.id as usize
                     }
                     PolynomialType::Intermediate => {
                         unreachable!("intermediate polynomials should have been inlined")
@@ -238,8 +237,9 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
-        assert_eq!(self.analyzed.constant_count(), 0);
-        self.analyzed.commitment_count() + 3 * self.analyzed.publics_count()
+        self.analyzed.commitment_count()
+            + self.analyzed.constant_count()
+            + 3 * self.analyzed.publics_count()
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
@@ -258,14 +258,16 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for P
         let pi_moved = pi.to_vec();
         let (local, next) = (matrix.row_slice(0), matrix.row_slice(1));
 
+        let public_offset = self.analyzed.commitment_count() + self.analyzed.constant_count();
+
         publics.iter().zip(pi_moved).enumerate().for_each(
             |(index, ((_, col_id, row_id), public_value))| {
                 //set decr for each public to be row_id in the first row and decrement by 1 each row
                 let (decr, inv_decr, s, decr_next) = (
-                    local[self.analyzed.commitment_count() + 3 * index],
-                    local[self.analyzed.commitment_count() + 3 * index + 1],
-                    local[self.analyzed.commitment_count() + 3 * index + 2],
-                    next[self.analyzed.commitment_count() + 3 * index],
+                    local[public_offset + 3 * index],
+                    local[public_offset + 3 * index + 1],
+                    local[public_offset + 3 * index + 2],
+                    next[public_offset + 3 * index],
                 );
 
                 let mut when_first_row = builder.when_first_row();

@@ -31,6 +31,12 @@ p3-challenger = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af
 p3-util = { git = "https://github.com/Plonky3/Plonky3.git", rev = "7e4f7af" }
 lazy_static = "1.4.0"
 rand_chacha = "0.3.1"
+tracing = "0.1.37"
+itertools = "0.12.0"
+serde = "1.0.203"
+rayon = "1.10.0"
+
 
 [dev-dependencies]
 powdr-pipeline.workspace = true
+test-log = "0.2.12"

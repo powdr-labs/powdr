@@ -1,21 +1,29 @@
 //! A plonky3 prover using FRI and Poseidon
 
+mod folder;
 mod params;
+mod prover;
+mod verifier;
 
 use p3_matrix::dense::RowMajorMatrix;
+
+use params::Proof;
+use prover::prove;
+
 use std::sync::Arc;
+use verifier::verify;
 
 use params::{Challenger, StarkProvingKey, StarkVerifyingKey};
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use p3_uni_stark::{prove, verify, Proof, StarkGenericConfig};
+use p3_uni_stark::StarkGenericConfig;
 use powdr_number::{FieldElement, KnownField};
 
 use crate::circuit_builder::{cast_to_goldilocks, PowdrCircuit};
 
-use self::params::{get_challenger, get_config};
+use self::params::{get_challenger, get_config, Config};
 
 pub struct Plonky3Prover<T> {
     /// The analyzed PIL
@@ -23,9 +31,9 @@ pub struct Plonky3Prover<T> {
     /// The value of the fixed columns
     fixed: Arc<Vec<(String, Vec<T>)>>,
     /// Proving key
-    proving_key: Option<StarkProvingKey>,
+    proving_key: Option<StarkProvingKey<Config>>,
     /// Verifying key
-    verifying_key: Option<StarkVerifyingKey>,
+    verifying_key: Option<StarkVerifyingKey<Config>>,
 }
 
 impl<T> Plonky3Prover<T> {
@@ -44,6 +52,10 @@ impl<T: FieldElement> Plonky3Prover<T> {
         // get fixed columns
         let fixed = &self.fixed;
 
+        if fixed.is_empty() {
+            return;
+        }
+
         // get the config
         let config = get_config(self.analyzed.degree());
 
@@ -53,7 +65,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
             pcs,
             self.analyzed.degree() as usize,
         );
-        // write fixed into matrix row by row. I'm not sure ordering them like this makes a difference
+        // write fixed into matrix row by row
         let matrix = RowMajorMatrix::new(
             (0..self.analyzed.degree())
                 .flat_map(|i| {
@@ -67,13 +79,14 @@ impl<T: FieldElement> Plonky3Prover<T> {
         let evaluations = vec![(domain, matrix)];
 
         // commit to the evaluations
-        let (commit, data) = <_ as p3_commit::Pcs<_, Challenger>>::commit(pcs, evaluations);
+        let (fixed_commit, fixed_data) =
+            <_ as p3_commit::Pcs<_, Challenger>>::commit(pcs, evaluations);
 
         let proving_key = StarkProvingKey {
-            // commit,
-            data,
+            fixed_commit,
+            fixed_data,
         };
-        let verifying_key = StarkVerifyingKey { commit };
+        let verifying_key = StarkVerifyingKey { fixed_commit };
 
         self.proving_key = Some(proving_key);
         self.verifying_key = Some(verifying_key);
@@ -96,13 +109,50 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         let config = get_config(self.analyzed.degree());
 
-        let mut challenger = get_challenger();
+        let mut challenger: p3_challenger::DuplexChallenger<
+            p3_goldilocks::Goldilocks,
+            p3_poseidon::Poseidon<
+                p3_goldilocks::Goldilocks,
+                p3_goldilocks::MdsMatrixGoldilocks,
+                8,
+                7,
+            >,
+            8,
+        > = get_challenger();
 
-        let proof = prove(&config, &circuit, &mut challenger, trace, &publics);
+        let proving_key = self.proving_key.as_ref();
 
-        let mut challenger = get_challenger();
+        let proof = prove(
+            &config,
+            proving_key,
+            &circuit,
+            &mut challenger,
+            trace,
+            &publics,
+        );
 
-        verify(&config, &circuit, &mut challenger, &proof, &publics).unwrap();
+        let mut challenger: p3_challenger::DuplexChallenger<
+            p3_goldilocks::Goldilocks,
+            p3_poseidon::Poseidon<
+                p3_goldilocks::Goldilocks,
+                p3_goldilocks::MdsMatrixGoldilocks,
+                8,
+                7,
+            >,
+            8,
+        > = get_challenger();
+
+        let verifying_key = self.verifying_key.as_ref();
+
+        verify(
+            &config,
+            verifying_key,
+            &circuit,
+            &mut challenger,
+            &proof,
+            &publics,
+        )
+        .unwrap();
         Ok(serde_json::to_vec(&proof).unwrap())
     }
 
@@ -119,8 +169,11 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         let mut challenger = get_challenger();
 
+        let verifying_key = self.verifying_key.as_ref();
+
         verify(
             &config,
+            verifying_key,
             &PowdrCircuit::new(&self.analyzed),
             &mut challenger,
             &proof,
@@ -134,6 +187,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
 mod tests {
     use powdr_number::GoldilocksField;
     use powdr_pipeline::Pipeline;
+    use test_log::test;
 
     use crate::Plonky3Prover;
 
@@ -150,7 +204,8 @@ mod tests {
         let witness = pipeline.compute_witness().unwrap();
         let fixed = pipeline.compute_fixed_cols().unwrap();
 
-        let prover = Plonky3Prover::new(pil, fixed);
+        let mut prover = Plonky3Prover::new(pil, fixed);
+        prover.setup();
         let proof = prover.prove(&witness, witness_callback);
 
         assert!(proof.is_ok());
@@ -202,6 +257,17 @@ mod tests {
             col witness y;
             col witness z;
             x + y = z;
+        "#;
+        run_test_goldilocks(content);
+    }
+
+    #[test]
+    fn fixed() {
+        let content = r#"
+        namespace Add(8);
+            col witness x;
+            col fixed y = [1, 0]*;
+            x * y = y;
         "#;
         run_test_goldilocks(content);
     }
