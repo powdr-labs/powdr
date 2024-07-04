@@ -38,6 +38,7 @@ struct ElfProgram {
     entry_point: u32,
 }
 
+/// Generates a Powdr Assembly program from a RISC-V 32 executable ELF file.
 pub fn elf_translate<F: FieldElement>(
     file_name: &Path,
     runtime: &Runtime,
@@ -53,26 +54,26 @@ fn load_elf(file_name: &Path) -> ElfProgram {
 
     let elf = Elf::parse(&file_buffer).unwrap();
 
-    // Assert this is an 32-bit ELF file.
+    // Assert the file is 32 bits.
     assert_eq!(
         elf.header.e_ident[EI_CLASS], ELFCLASS32,
         "Only 32-bit ELF files are supported!"
     );
 
-    // Assert this is a little-endian ELF file.
+    // Assert the file is little-endian.
     assert_eq!(
         elf.header.e_ident[EI_DATA], ELFDATA2LSB,
         "Only little-endian ELF files are supported!"
     );
 
-    // Assert this is a RISC-V ELF file.
+    // Assert the file contains RISC-V code.
     assert_eq!(
         elf.header.e_machine, EM_RISCV,
         "Only RISC-V ELF files are supported!"
     );
 
     // Assert this is either a PIE file, or that we have the relocation symbols
-    // available. This is needed because we need to lift all the references to
+    // available. This is needed because we have to lift all the references to
     // code addresses into labels.
     assert!(
         elf.header.e_type == ET_DYN || !elf.shdr_relocs.is_empty(),
@@ -235,6 +236,7 @@ fn static_relocate_data_sections(
     }
 }
 
+/// Index the symbols by their addresses.
 struct SymbolTable(HashMap<u32, String>);
 
 impl SymbolTable {
@@ -256,10 +258,12 @@ impl SymbolTable {
         )
     }
 
+    /// Get the symbol if the address had one.
     fn try_get(&self, addr: u32) -> Option<&str> {
         self.0.get(&addr).map(|name| name.as_str())
     }
 
+    /// Get the symbol or a default label formed from the address value.
     fn get(&self, addr: u32) -> Cow<str> {
         self.0
             .get(&addr)
@@ -267,6 +271,7 @@ impl SymbolTable {
             .unwrap_or_else(|| Cow::Owned(format!("L{addr:08x}")))
     }
 
+    /// Get the symbol or a default label formed from the address value.
     fn get_as_string(&self, addr: u32) -> String {
         self.get(addr).into_owned()
     }
@@ -326,6 +331,8 @@ impl RiscVProgram for ElfProgram {
     }
 }
 
+/// The instruction arguments for code generation. Needs the symbol table to
+/// translate addresses to labels in the output code.
 struct WrappedArgs<'a> {
     args: &'a HighLevelArgs,
     symbol_table: &'a SymbolTable,
@@ -512,6 +519,9 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
     }
 }
 
+/// Indexes the program sections by their virtual address.
+///
+/// Allows for querying if an address is in a data or text section.
 struct AddressMap<'a>(BTreeMap<u32, &'a program_header::ProgramHeader>);
 
 impl AddressMap<'_> {
@@ -555,9 +565,9 @@ enum Data {
 }
 
 fn load_data_section(mut addr: u32, data: &[u8], data_map: &mut BTreeMap<u32, Data>) {
-    for chunk in data.chunks(4) {
+    for word in data.chunks(4) {
         let mut padded = [0; 4];
-        padded[..chunk.len()].copy_from_slice(chunk);
+        padded[..word.len()].copy_from_slice(word);
 
         let value = u32::from_le_bytes(padded);
         if value != 0 {
