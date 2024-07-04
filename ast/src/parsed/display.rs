@@ -583,7 +583,7 @@ impl<E: Display> Display for TraitDeclaration<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "trait {name}{type_vars} {{\n{functions}}}",
+            "trait {name}<{type_vars}> {{\n{functions}}}",
             name = self.name,
             type_vars = self.type_vars.iter().format(", "),
             functions = indent(
