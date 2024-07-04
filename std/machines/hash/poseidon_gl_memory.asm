@@ -39,6 +39,7 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // Similarly, the output data is written to memory at the provided pointer as
     // 8 32-Bit machine words representing 4 field elements in little-endian format
     // (in canonical form).
+    // Reads happen at the provided time step; writes happen at the next time step.
     operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
 
     col witness operation_id;
@@ -110,8 +111,8 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // TODO: This translates to two additional permutations. But because they go to the same machine
     // as the mloads above *and* never happen at the same time, they could actually be combined with
     // the mload permutations. But there is currently no way to express this.
-    link if do_mstore ~> mem.mstore(output_addr + 8 * output_index, time_step, word_low);
-    link if do_mstore ~> mem.mstore(output_addr + 8 * output_index + 4, time_step, word_high);
+    link if do_mstore ~> mem.mstore(output_addr + 8 * output_index, time_step + 1, word_low);
+    link if do_mstore ~> mem.mstore(output_addr + 8 * output_index + 4, time_step + 1, word_high);
 
     // Make sure that in row i + STATE_SIZE, word_low and word_high correspond to output i
     let current_output = array::sum(array::new(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]));
