@@ -17,7 +17,12 @@ use std::math::fp2::is_extension;
 use std::math::fp2::fp2_from_array;
 use std::math::fp2::needs_extension;
 use std::math::fp2::constrain_eq_ext;
-use std::protocols::fingerprint::fingerprint;
+use std::prover::alpha1;
+use std::prover::alpha2;
+use std::prover::beta1;
+use std::prover::beta2;
+use std::utils::is_first;
+use std::utils::unwrap_or_else;
 
 let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_constraint| match lookup_constraint {
     Constr::Lookup((lhs_selector, rhs_selector), values) => (
@@ -32,9 +37,18 @@ let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_c
 // Compute z' = z + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector, using extension field arithmetic
 let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = query |acc, alpha, beta, lookup_constraint, multiplicities| {
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
+
+    let alpha = if len(lhs) > 1 {
+        Fp2::Fp2(alpha1, alpha2)
+    } else {
+        // The optimizer will have removed alpha, but the compression function
+        // still accesses it (to multiply by 0 in this case)
+        from_base(0)
+    };
+    let beta = Fp2::Fp2(beta1, beta2);
     
-    let lhs_denom = sub_ext(beta, fingerprint(lhs, alpha));
-    let rhs_denom = sub_ext(beta, fingerprint(rhs, alpha));
+    let lhs_denom = sub_ext(beta, compress_expression_array(lhs, alpha));
+    let rhs_denom = sub_ext(beta, compress_expression_array(rhs, alpha));
     let m_ext = from_base(multiplicities);
     
     // acc' = acc + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector
@@ -75,8 +89,9 @@ let lookup: expr, expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> Constr[] = |is_f
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
     // in which case the operations below effectively only operate on the first component.
-    let fp2_from_array = |arr| if is_extension(acc) { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
-    let acc_ext = fp2_from_array(acc);
+    let acc_ext = fp2_from_array(acc, with_extension);
+    let alpha = fp2_from_array([alpha1, alpha2], with_extension);
+    let beta = fp2_from_array([beta1, beta2], with_extension);
 
     let lhs_denom = sub_ext(beta, fingerprint(lhs, alpha));
     let rhs_denom = sub_ext(beta, fingerprint(rhs, alpha));
