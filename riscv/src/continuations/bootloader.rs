@@ -120,10 +120,6 @@ static P4: &str = SYSCALL_REGISTERS[4];
 static P5: &str = SYSCALL_REGISTERS[5];
 static P6: &str = SYSCALL_REGISTERS[6];
 static P7: &str = SYSCALL_REGISTERS[7];
-static P8: &str = SYSCALL_REGISTERS[8];
-static P9: &str = SYSCALL_REGISTERS[9];
-static P10: &str = SYSCALL_REGISTERS[10];
-static P11: &str = SYSCALL_REGISTERS[11];
 
 /// The bootloader: An assembly program that can be executed at the beginning a RISC-V execution.
 /// It lets the prover provide arbitrary memory pages and writes them to memory, as well as values for
@@ -217,28 +213,50 @@ x3 <== and(x3, {PAGE_NUMBER_MASK});
 // construction. The initial P0-P3 values are 0, and the capacity (P8-P11) is 0 throughout the
 // bootloader execution.
 
-{P0} <=X= 0;
-{P1} <=X= 0;
-{P2} <=X= 0;
-{P3} <=X= 0;
-{P4} <=X= 0;
-{P5} <=X= 0;
-{P6} <=X= 0;
-{P7} <=X= 0;
+mstore 0xff000000, 0;
+mstore 0xff000004, 0;
+mstore 0xff000008, 0;
+mstore 0xff00000c, 0;
+mstore 0xff000010, 0;
+mstore 0xff000014, 0;
+mstore 0xff000018, 0;
+mstore 0xff00001c, 0;
+mstore 0xff000020, 0;
+mstore 0xff000024, 0;
+mstore 0xff000028, 0;
+mstore 0xff00002c, 0;
+mstore 0xff000030, 0;
+mstore 0xff000034, 0;
+mstore 0xff000038, 0;
+mstore 0xff00003c, 0;
+mstore 0xff000040, 0;
+mstore 0xff000044, 0;
+mstore 0xff000048, 0;
+mstore 0xff00004c, 0;
+mstore 0xff000050, 0;
+mstore 0xff000054, 0;
+mstore 0xff000058, 0;
+mstore 0xff00005c, 0;
+
+
 "#,
     ));
 
     for i in 0..WORDS_PER_PAGE {
-        let reg = SYSCALL_REGISTERS[(i % 4) + 4];
+        let reg_index = i % 4 + 4;
+        let reg = SYSCALL_REGISTERS[reg_index];
         bootloader.push_str(&format!(
             r#"
 {reg} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {i});
+tmp1, tmp2 <== split_gl({reg});
+mstore 0xff000000 + {reg_index} * 8, tmp1;
+mstore 0xff000000 + {reg_index} * 8 + 4, tmp2;
 mstore_bootloader x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD}, {reg};"#
         ));
 
         // Hash if buffer is full
         if i % 4 == 3 {
-            bootloader.push_str("poseidon_gl;");
+            bootloader.push_str("poseidon_gl 0xff000000, 0xff000000;");
         }
     }
 
@@ -286,21 +304,57 @@ bootloader_merkle_proof_validation_loop:
 x4 <== and(x3, {mask});
 branch_if_nonzero x4, bootloader_level_{i}_is_right;
 {P4} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0);
+tmp1, tmp2 <== split_gl({P4});
+mstore 0xff000000 + 4 * 8, tmp1;
+mstore 0xff000000 + 4 * 8 + 4, tmp2;
 {P5} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
+tmp1, tmp2 <== split_gl({P5});
+mstore 0xff000000 + 5 * 8, tmp1;
+mstore 0xff000000 + 5 * 8 + 4, tmp2;
 {P6} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
+tmp1, tmp2 <== split_gl({P6});
+mstore 0xff000000 + 6 * 8, tmp1;
+mstore 0xff000000 + 6 * 8 + 4, tmp2;
 {P7} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
+tmp1, tmp2 <== split_gl({P7});
+mstore 0xff000000 + 7 * 8, tmp1;
+mstore 0xff000000 + 7 * 8 + 4, tmp2;
 tmp1 <== jump(bootloader_level_{i}_end);
 bootloader_level_{i}_is_right:
-{P4} <=X= {P0};
-{P5} <=X= {P1};
-{P6} <=X= {P2};
-{P7} <=X= {P3};
+tmp1, tmp2 <== mload(0xff000000);
+mstore 0xff000000 + 4 * 8, tmp1;
+tmp1, tmp2 <== mload(0xff000004);
+mstore 0xff000000 + 4 * 8 + 4, tmp1;
+tmp1, tmp2 <== mload(0xff000008);
+mstore 0xff000000 + 5 * 8, tmp1;
+tmp1, tmp2 <== mload(0xff00000c);
+mstore 0xff000000 + 5 * 8 + 4, tmp1;
+tmp1, tmp2 <== mload(0xff000010);
+mstore 0xff000000 + 6 * 8, tmp1;
+tmp1, tmp2 <== mload(0xff000014);
+mstore 0xff000000 + 6 * 8 + 4, tmp1;
+tmp1, tmp2 <== mload(0xff000018);
+mstore 0xff000000 + 7 * 8, tmp1;
+tmp1, tmp2 <== mload(0xff00001c);
+mstore 0xff000000 + 7 * 8 + 4, tmp1;
 {P0} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0);
+tmp1, tmp2 <== split_gl({P0});
+mstore 0xff000000, tmp1;
+mstore 0xff000004, tmp2;
 {P1} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
+tmp1, tmp2 <== split_gl({P1});
+mstore 0xff000008, tmp1;
+mstore 0xff00000c, tmp2;
 {P2} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
+tmp1, tmp2 <== split_gl({P2});
+mstore 0xff000010, tmp1;
+mstore 0xff000014, tmp2;
 {P3} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
+tmp1, tmp2 <== split_gl({P3});
+mstore 0xff000018, tmp1;
+mstore 0xff00001c, tmp2;
 bootloader_level_{i}_end:
-    poseidon_gl;
+    poseidon_gl 0xff000000, 0xff000000;
 "#
         ));
     }
@@ -438,30 +492,44 @@ x3 <== and(x3, {PAGE_NUMBER_MASK});
 // construction. The initial P0-P3 values are 0, and the capacity (P8-P11) is 0 throughout the
 // execution of the shutdown routine.
 
-{P0} <=X= 0;
-{P1} <=X= 0;
-{P2} <=X= 0;
-{P3} <=X= 0;
-{P4} <=X= 0;
-{P5} <=X= 0;
-{P6} <=X= 0;
-{P7} <=X= 0;
-{P8} <=X= 0;
-{P9} <=X= 0;
-{P10} <=X= 0;
-{P11} <=X= 0;
+mstore 0xff000000, 0;
+mstore 0xff000004, 0;
+mstore 0xff000008, 0;
+mstore 0xff00000c, 0;
+mstore 0xff000010, 0;
+mstore 0xff000014, 0;
+mstore 0xff000018, 0;
+mstore 0xff00001c, 0;
+mstore 0xff000020, 0;
+mstore 0xff000024, 0;
+mstore 0xff000028, 0;
+mstore 0xff00002c, 0;
+mstore 0xff000030, 0;
+mstore 0xff000034, 0;
+mstore 0xff000038, 0;
+mstore 0xff00003c, 0;
+mstore 0xff000040, 0;
+mstore 0xff000044, 0;
+mstore 0xff000048, 0;
+mstore 0xff00004c, 0;
+mstore 0xff000050, 0;
+mstore 0xff000054, 0;
+mstore 0xff000058, 0;
+mstore 0xff00005c, 0;
 "#,
     ));
 
     for i in 0..WORDS_PER_PAGE {
-        let reg = SYSCALL_REGISTERS[(i % 4) + 4];
+        let reg_index = i % 4 + 4;
+        let reg = SYSCALL_REGISTERS[reg_index];
+        // TODO: This is broken still
         bootloader.push_str(&format!(
-            "{reg}, x0 <== mload(x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD});\n"
+            "{reg}, x0 <== mload(x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD});\nmstore 0xff000000 + {reg_index} * 4, {reg};\n",
         ));
 
         // Hash if buffer is full
         if i % 4 == 3 {
-            bootloader.push_str("poseidon_gl;\n");
+            bootloader.push_str("poseidon_gl 0xff000000, 0xff000000;\n");
         }
     }
 

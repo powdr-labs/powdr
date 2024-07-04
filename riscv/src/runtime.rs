@@ -150,40 +150,20 @@ impl Runtime {
 
     pub fn with_poseidon(mut self) -> Self {
         self.add_submachine(
-            "std::machines::hash::poseidon_gl::PoseidonGL",
+            "std::machines::hash::poseidon_gl_memory::PoseidonGLMemory",
             None,
             "poseidon_gl",
-            [format!(
-                "instr poseidon_gl link ~> {};",
-                instr_link("poseidon_gl.poseidon_permutation", 0, 12, 4)
-            )],
+            ["instr poseidon_gl X, Y link ~> poseidon_gl.poseidon_permutation(X, Y, STEP);"],
             0,
             // init call
-            std::iter::once("poseidon_gl;".to_string())
-                // zero out output registers
-                .chain((0..4).map(|i| format!("{} <=X= 0;", reg(i)))),
+            std::iter::once("poseidon_gl 0xff000000, 0xff000000;"), // zero out output registers
+                                                                    // TODO: .chain((0..4).map(|i| format!("{} <=X= 0;", reg(i)))),
         );
 
         // The poseidon syscall has a single argument passed on x10, the
         // memory address of the 12 field element input array. Since the memory
         // offset is chosen by LLVM, we assume it's properly aligned.
-        let implementation =
-            // The poseidon syscall uses x10 for input, we store it in tmp3 and
-            // reuse x10 as input to the poseidon machine instruction.
-            std::iter::once("tmp3 <=X= x10;".to_string())
-            // The poseidon instruction uses registers 0..12 as input/output.
-            // The memory field elements are loaded into these registers before calling the instruction.
-            // They might be in use by the riscv machine, so we save the registers on the stack.
-            .chain((0..12).flat_map(|i| push_register(&reg(i))))
-            .chain((0..12).flat_map(|i| load_gl_fe("tmp3", i as u32 * 8, &reg(i))))
-            .chain(std::iter::once("poseidon_gl;".to_string()))
-            .chain((0..4).flat_map(|i| store_gl_fe("tmp3", i as u32 * 8, &reg(i))))
-            // After copying the result back into memory, we restore the original register values.
-            .chain(
-                (0..12)
-                    .rev()
-                    .flat_map(|i| pop_register(SYSCALL_REGISTERS[i])),
-            );
+        let implementation = std::iter::once("poseidon_gl x10, x10;".to_string());
 
         self.add_syscall(Syscall::PoseidonGL, implementation);
         self
@@ -526,28 +506,6 @@ fn instr_link(call: &str, start_idx: usize, inputs: usize, outputs: usize) -> St
         call,
         (start_idx..start_idx + inputs).map(reg).join(", ")
     )
-}
-
-/// Load gl field element from addr+offset into register
-fn load_gl_fe(addr: &str, offset: u32, reg: &str) -> [String; 3] {
-    let lo = offset;
-    let hi = offset + 4;
-    [
-        format!("{reg}, tmp2 <== mload({lo} + {addr});"),
-        format!("tmp1, tmp2 <== mload({hi} + {addr});"),
-        format!("{reg} <=X= {reg} + tmp1 * 2**32;"),
-    ]
-}
-
-/// Store gl field element from register into addr+offset
-fn store_gl_fe(addr: &str, offset: u32, reg: &str) -> [String; 3] {
-    let lo = offset;
-    let hi = offset + 4;
-    [
-        format!("tmp1, tmp2 <== split_gl({reg});"),
-        format!("mstore {lo} + {addr}, tmp1;"),
-        format!("mstore {hi} + {addr}, tmp2;"),
-    ]
 }
 
 /// Load word from addr+offset into register
