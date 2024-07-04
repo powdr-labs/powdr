@@ -378,14 +378,14 @@ impl<E: Display> Display for MatchArm<E> {
 impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Pattern::CatchAll => write!(f, "_"),
-            Pattern::Ellipsis => write!(f, ".."),
-            Pattern::Number(n) => write!(f, "{n}"),
-            Pattern::String(s) => write!(f, "{}", quote(s)),
-            Pattern::Tuple(t) => write!(f, "({})", t.iter().format(", ")),
-            Pattern::Array(a) => write!(f, "[{}]", a.iter().format(", ")),
-            Pattern::Variable(v) => write!(f, "{v}"),
-            Pattern::Enum(name, fields) => write!(
+            Pattern::CatchAll(_) => write!(f, "_"),
+            Pattern::Ellipsis(_) => write!(f, ".."),
+            Pattern::Number(_, n) => write!(f, "{n}"),
+            Pattern::String(_, s) => write!(f, "{}", quote(s)),
+            Pattern::Tuple(_, t) => write!(f, "({})", t.iter().format(", ")),
+            Pattern::Array(_, a) => write!(f, "[{}]", a.iter().format(", ")),
+            Pattern::Variable(_, v) => write!(f, "{v}"),
+            Pattern::Enum(_, name, fields) => write!(
                 f,
                 "{name}{}",
                 fields
@@ -1067,7 +1067,8 @@ mod tests {
 
     #[cfg(test)]
     mod parentheses {
-        use powdr_parser::{parse, test_utils::pil_clear_source_refs};
+        use powdr_parser::parse;
+        use powdr_parser::test_utils::ClearSourceRefs;
         use powdr_parser_util::UnwrapErrToStderr;
         use pretty_assertions::assert_eq;
         use test_log::test;
@@ -1081,8 +1082,8 @@ mod tests {
             assert_eq!(expected.trim(), printed.trim());
             let mut re_parsed = parse(None, printed.as_str()).unwrap_err_to_stderr();
 
-            pil_clear_source_refs(&mut parsed);
-            pil_clear_source_refs(&mut re_parsed);
+            parsed.clear_source_refs();
+            re_parsed.clear_source_refs();
             assert_eq!(parsed, re_parsed);
         }
 
