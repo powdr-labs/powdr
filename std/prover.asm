@@ -30,15 +30,3 @@ let require_min_degree: int -> () = |m| std::check::assert(degree() >= m, || "De
 
 /// Asserts that the current degree or row count is at most m;
 let require_max_degree: int -> () = |m| std::check::assert(degree() <= m, || "Degree too large.");
-
-/// Get two phase-2 challenges to use in all permutation/lookup arguments.
-/// Note that this assumes that globally no other challenge of these IDs is used,
-/// and that challenges for multiple permutation/lookup arguments are re-used.
-/// We declare two components for each challenge here, in case we need to operate
-/// on the extension field. If we don't, we won't end up needing it and the optimizer
-/// will remove it.
-let alpha1: expr = challenge(0, 1);
-let alpha2: expr = challenge(0, 2);
-
-let beta1: expr = challenge(0, 3);
-let beta2: expr = challenge(0, 4);

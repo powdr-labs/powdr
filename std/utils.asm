@@ -40,9 +40,6 @@ let new_bool: -> expr = constr || {
     x
 };
 
-/// Creates a new witness column which is 1 on the first row 0 on the other rows
-let is_first: col = |i| if i == 0 { 1 } else { 0 };
-
 /// Creates a new witness column which is 1 on each row where `x` is zero
 /// and 0 otherwise.
 let is_zero: expr -> expr = constr |x| {

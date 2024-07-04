@@ -21,7 +21,6 @@ use std::prover::alpha1;
 use std::prover::alpha2;
 use std::prover::beta1;
 use std::prover::beta2;
-use std::utils::is_first;
 use std::utils::unwrap_or_else;
 
 let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_constraint| match lookup_constraint {
