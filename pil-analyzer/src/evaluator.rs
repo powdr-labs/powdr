@@ -16,9 +16,10 @@ use powdr_ast::{
     parsed::{
         display::quote,
         types::{Type, TypeScheme},
-        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
-        IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, StatementInsideBlock, StructExpression, UnaryOperation, UnaryOperator,
+        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FieldAccess, FunctionCall,
+        IfExpression, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
+        MatchExpression, Number, Pattern, StatementInsideBlock, StructExpression, UnaryOperation,
+        UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -752,6 +753,15 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.op_stack.push(Operation::Combine(expr));
                 self.op_stack.push(Operation::Expand(index));
                 self.expand(array)?;
+            }
+            Expression::FieldAccess(
+                _,
+                FieldAccess {
+                    object: _,
+                    field: _,
+                },
+            ) => {
+                unimplemented!("TODO GZ: Field access not implemented yet.")
             }
             Expression::FunctionCall(
                 _,

@@ -15,7 +15,7 @@ use powdr_ast::parsed::{
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
-    FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
+    FieldAccess, FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
     MatchExpression, Pattern, PilStatement, StatementInsideBlock, StructDeclaration,
     TypedExpression, UnaryOperation,
 };
@@ -202,6 +202,7 @@ fn free_inputs_in_expression<'a>(
         Expression::LambdaExpression(_, _) => todo!(),
         Expression::ArrayLiteral(_, _) => todo!(),
         Expression::IndexAccess(_, _) => todo!(),
+        Expression::FieldAccess(_, _) => todo!(),
         Expression::MatchExpression(_, _) => todo!(),
         Expression::IfExpression(_, _) => todo!(),
         Expression::BlockExpression(_, _) => todo!(),
@@ -243,6 +244,7 @@ fn free_inputs_in_expression_mut<'a>(
         Expression::LambdaExpression(_, _) => todo!(),
         Expression::ArrayLiteral(_, _) => todo!(),
         Expression::IndexAccess(_, _) => todo!(),
+        Expression::FieldAccess(_, _) => todo!(),
         Expression::MatchExpression(_, _) => todo!(),
         Expression::IfExpression(_, _) => todo!(),
         Expression::BlockExpression(_, _) => todo!(),
@@ -726,6 +728,9 @@ fn check_expression(
             check_expression(location, a.as_ref(), state, local_variables)?;
             check_expression(location, b.as_ref(), state, local_variables)
         }
+        Expression::FieldAccess(_, FieldAccess { object, .. }) => {
+            check_expression(location, object, state, local_variables)
+        }
         Expression::UnaryOperation(_, UnaryOperation { expr, .. })
         | Expression::FreeInput(_, expr) => {
             check_expression(location, expr, state, local_variables)
@@ -879,7 +884,6 @@ fn check_struct_declaration(
                 .then_some(acc)
                 .ok_or(format!("Duplicate variant `{name}` in enum `{location}`"))
         })
-        // TODO enum declaration should have source reference.
         .map_err(|e| SourceRef::default().with_error(e))?;
 
     let type_vars = struct_decl.type_vars.vars().collect::<HashSet<_>>();

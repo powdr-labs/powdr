@@ -8,9 +8,9 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
-        ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
-        LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number, Pattern,
-        SourceReference, StatementInsideBlock, UnaryOperation,
+        ArrayLiteral, BinaryOperation, BlockExpression, FieldAccess, FunctionCall, FunctionKind,
+        IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
+        Pattern, SourceReference, StatementInsideBlock, UnaryOperation,
     },
 };
 use powdr_parser_util::{Error, SourceRef};
@@ -602,6 +602,15 @@ impl<'a> TypeChecker<'a> {
 
                 self.expect_type(&Type::Int, index)?;
                 result
+            }
+            Expression::FieldAccess(
+                _,
+                FieldAccess {
+                    object: _,
+                    field: _,
+                },
+            ) => {
+                unimplemented!("Get type from object and look up using field")
             }
             Expression::FunctionCall(
                 source_ref,

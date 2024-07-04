@@ -573,13 +573,13 @@ fn simple_struct() {
 }
 
 #[test]
-fn def_struct() {
+fn def_struct_and_field() {
     let input = "
     struct Dot { x: int, y: int }
     let dot = Dot with { x: 3, y: 4 };
-    let f: Dot -> int = |x| x.y;
+    let f: Dot -> int = |d| d.y;
 
-    let x: int = f(dot);
+    let res: int = f(dot);
     ";
     type_check(input, &[]);
 }
@@ -601,7 +601,7 @@ fn struct_constr_var_typed() {
 }
 
 #[test]
-fn struct_field() {
+fn struct_field_in_expr() {
     let input = "
     struct X {x: int, y: int}
     let v: int -> X = |i| match i {
