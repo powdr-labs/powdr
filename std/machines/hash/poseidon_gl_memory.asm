@@ -1,4 +1,5 @@
 use std::array;
+use std::check::assert;
 use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::utils::sum;
@@ -9,6 +10,17 @@ use std::machines::split::split_gl::SplitGL;
 // Implements the Poseidon permutation for the Goldilocks field.
 // This version of the Poseidon machine receives memory pointers and interacts
 // with memory directly to fetch its inputs and write its outputs.
+// In comparison to std::machines::hash::poseidon_gl::PoseidonGL, this machine has:
+// - 18 extra witness columns:
+//   - 12 to make the input state available in all rows
+//   - 3 to make the time step, input address, and output address available in all rows
+//   - 2 to store the low and high words of the memory read
+//   - 1 to store whether a memory read should be done (could be removed if we use an intermediate polynomial, see below)
+// - 16 extra fixed columns to store a one-hot encoding of the row number (for the first 12 + 4 rows)
+// - 5 extra permutations:
+//   - 2 to read the low and high words from the memory
+//   - 2 to write the low and high words to the memory
+//   - 1 to split the current output into low and high words
 machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     latch: CLK_0,
     operation_id: operation_id,
@@ -21,6 +33,12 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // When the hash function is used only once, the capacity elements should be
     // set to constants, where different constants can be used to define different
     // hash functions.
+    // The input data is passed via a memory pointer: The machine will read 24
+    // 32-Bit machine words, interpreted as 12 field elements stored in little-endian
+    // format.
+    // Similarly, the output data is written to memory at the provided pointer as
+    // 8 32-Bit machine words representing 4 field elements in little-endian format
+    // (in canonical form).
     operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
 
     col witness operation_id;
@@ -63,7 +81,7 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     unchanged_until(output_addr, LAST);
     
     // One-hot encoding of the row number (for the first <STATE_SIZE + OUTPUT_SIZE> rows)
-    // TODO: Assert that STATE_SIZE + OUTPUT_SIZE < ROWS_PER_HASH
+    assert(STATE_SIZE + OUTPUT_SIZE < ROWS_PER_HASH, || "Not enough rows to do memory read / write");
     let CLK: col[STATE_SIZE + OUTPUT_SIZE] = array::new(STATE_SIZE + OUTPUT_SIZE, |i| |row| if row % ROWS_PER_HASH == i { 1 } else { 0 });
     let CLK_0 = CLK[0];
 
@@ -89,6 +107,9 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // the high word at address output_addr + 8 * i + 4
     let do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE]);
     let output_index = sum(OUTPUT_SIZE, |i| expr(i) * CLK[i + STATE_SIZE]);
+    // TODO: This translates to two additional permutations. But because they go to the same machine
+    // as the mloads above *and* never happen at the same time, they could actually be combined with
+    // the mload permutations. But there is currently no way to express this.
     link if do_mstore ~> mem.mstore(output_addr + 8 * output_index, time_step, word_low);
     link if do_mstore ~> mem.mstore(output_addr + 8 * output_index + 4, time_step, word_high);
 
