@@ -577,7 +577,7 @@ fn def_struct() {
     let input = "
     struct Dot { x: int, y: int }
     let dot = Dot with { x: 3, y: 4 };
-    let f: Dot -> int = |x| x.a;
+    let f: Dot -> int = |x| x.y;
 
     let x: int = f(dot);
     ";
