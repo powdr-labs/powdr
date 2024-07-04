@@ -4,11 +4,8 @@ use std::{
     str::FromStr,
 };
 
-use powdr_ast::analyzed::SelectedExpressions;
 use powdr_ast::{
-    analyzed::{
-        AlgebraicExpression, Analyzed, Identity, IdentityKind, StatementIdentifier, Symbol,
-    },
+    analyzed::{AlgebraicExpression, Analyzed, IdentityKind, StatementIdentifier, Symbol},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         visitor::{ExpressionVisitable, VisitOrder},
@@ -23,10 +20,28 @@ use powdr_number::FieldElement;
 pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
     let statements_by_machine = split_by_namespace(&pil);
 
+    // Merge std and empty namespaces into the other namespaces
+    let (std_statements, statements_by_machine) = statements_by_machine
+        .into_iter()
+        .partition::<BTreeMap<_, _>, _>(|(namespace, _)| {
+            namespace.starts_with("std::") || namespace.is_empty()
+        });
+    let std_statements = std_statements
+        .into_iter()
+        .flat_map(|(_, statements)| statements)
+        .collect::<Vec<_>>();
+    let statements_by_machine = statements_by_machine
+        .into_iter()
+        .map(|(namespace, mut statements)| {
+            statements.extend(std_statements.iter().cloned());
+            (namespace, statements)
+        })
+        .collect::<BTreeMap<_, _>>();
+
     statements_by_machine
         .into_iter()
-        .filter_map(|(machine_name, statements)| {
-            build_machine_pil(pil.clone(), statements).map(|pil| (machine_name, pil))
+        .map(|(machine_name, statements)| {
+            (machine_name, build_machine_pil(pil.clone(), statements))
         })
         .collect()
 }
@@ -140,48 +155,11 @@ fn split_by_namespace<F: FieldElement>(
 fn build_machine_pil<F: FieldElement>(
     pil: Analyzed<F>,
     statements: Vec<StatementIdentifier>,
-) -> Option<Analyzed<F>> {
-    // TODO: After #1488 is fixed, we can implement this like so:
-    // let pil = Analyzed {
-    //     source_order: statements,
-    //     ..pil.clone()
-    // };
-    // let parsed_string = powdr_parser::parse(None, &pil.to_string()).unwrap();
-    // let pil = powdr_pil_analyzer::analyze_ast(parsed_string);
-
-    // HACK: Replace unreferenced identities with 0 = 0, to avoid having to re-assign IDs.
-    let identities = statements
-        .iter()
-        .filter_map(|statement| match statement {
-            StatementIdentifier::Identity(i) => Some(*i as u64),
-            _ => None,
-        })
-        .collect::<BTreeSet<_>>();
-    if identities.is_empty() {
-        // This can happen if a hint references some std module,
-        // but the module is empty.
-        return None;
-    }
-    let identities = pil
-        .identities
-        .iter()
-        .enumerate()
-        .map(|(identity_index, identity)| {
-            if identities.contains(&(identity_index as u64)) {
-                identity.clone()
-            } else {
-                Identity::<SelectedExpressions<AlgebraicExpression<F>>>::from_polynomial_identity(
-                    identity.id,
-                    identity.source.clone(),
-                    AlgebraicExpression::Number(F::zero()),
-                )
-            }
-        })
-        .collect();
-
-    Some(Analyzed {
+) -> Analyzed<F> {
+    let pil = Analyzed {
         source_order: statements,
-        identities,
         ..pil
-    })
+    };
+    let parsed_string = powdr_parser::parse(None, &pil.to_string()).unwrap();
+    powdr_pil_analyzer::analyze_ast(parsed_string)
 }

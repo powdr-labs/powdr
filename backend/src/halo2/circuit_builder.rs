@@ -249,6 +249,8 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
             .collect::<Vec<_>>();
         if !identities.is_empty() {
             meta.create_gate("main", |meta| -> Vec<(String, Expression<F>)> {
+                let dummy_constraint = meta.query_fixed(config.enable, Rotation::cur())
+                    - meta.query_fixed(config.enable, Rotation::cur());
                 identities
                     .iter()
                     .map(|id| {
@@ -258,6 +260,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                         let expr = expr * meta.query_fixed(config.enable, Rotation::cur());
                         (name, expr)
                     })
+                    .chain([("dummy".to_string(), dummy_constraint)])
                     .collect()
             });
         }
@@ -266,6 +269,8 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         // This forces the prover to simulate wrapping correctly.
         meta.create_gate("enforce_wrapping", |meta| -> Vec<(String, Expression<F>)> {
             let first_step = meta.query_fixed(config.fixed[FIRST_STEP_NAME], Rotation::cur());
+            let dummy_constraint = meta.query_fixed(config.enable, Rotation::cur())
+                - meta.query_fixed(config.enable, Rotation::cur());
             config
                 .advice
                 .keys()
@@ -278,11 +283,19 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                     let expr = first_step.clone() * (first_row - last_row);
                     (format!("enforce wrapping ({name})"), expr)
                 })
+                .chain([("dummy (enforce wrapping)".to_string(), dummy_constraint)])
                 .collect()
         });
 
         // Challenge used to combine the lookup tuple with the selector
-        let beta = Expression::Challenge(meta.challenge_usable_after(FirstPhase));
+        let identities = analyzed.identities_with_inlined_intermediate_polynomials();
+        let beta = if !identities.is_empty() {
+            Some(Expression::Challenge(
+                meta.challenge_usable_after(FirstPhase),
+            ))
+        } else {
+            None
+        };
 
         let to_lookup_tuple = |expr: &SelectedExpressions<AlgebraicExpression<T>>,
                                meta: &mut VirtualCells<'_, F>| {
@@ -303,12 +316,12 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                     // Note that they use a different transformation for lookups, because this transformation would fail
                     // if the RHS selector was 1 on all rows (and not on the LHS). This is never the case for us though,
                     // because we multiply with the __enable column!
-                    selector.clone() * (expr - beta.clone()) + beta.clone()
+                    selector.clone() * (expr - beta.clone().unwrap()) + beta.clone().unwrap()
                 })
                 .collect::<Vec<_>>()
         };
 
-        for id in analyzed.identities_with_inlined_intermediate_polynomials() {
+        for id in identities {
             match id.kind {
                 // Already handled above
                 IdentityKind::Polynomial => {}
