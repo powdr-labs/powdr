@@ -466,9 +466,7 @@ where
             ))
             .chain(var_items)
             .collect();
-        }
-
-        if let Some(FunctionDefinition::TypeDeclaration(TypeDeclarationParsed::Struct(
+        } else if let Some(FunctionDefinition::TypeDeclaration(TypeDeclarationParsed::Struct(
             struct_decl,
         ))) = value
         {

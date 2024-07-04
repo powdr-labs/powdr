@@ -728,3 +728,13 @@ namespace N(16);
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);
 }
+
+#[test]
+fn reparse_non_function_fixed_cols() {
+    let input = r#"namespace X(16);
+    let A: int -> int = (|i| i);
+    let B: col = X.A;
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}

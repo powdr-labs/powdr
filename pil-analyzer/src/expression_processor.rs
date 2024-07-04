@@ -218,45 +218,55 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     /// to anything into Variable patterns.
     fn process_pattern(&mut self, pattern: Pattern) -> Pattern {
         match pattern {
-            Pattern::CatchAll | Pattern::Ellipsis | Pattern::Number(_) | Pattern::String(_) => {
-                pattern
-            }
-            Pattern::Array(items) => {
+            Pattern::CatchAll(_)
+            | Pattern::Ellipsis(_)
+            | Pattern::Number(_, _)
+            | Pattern::String(_, _) => pattern,
+            Pattern::Array(source_ref, items) => {
                 // If there is more than one Pattern::Ellipsis in items, it is an error
-                if items.iter().filter(|p| *p == &Pattern::Ellipsis).count() > 1 {
+                if items
+                    .iter()
+                    .filter(|p| matches!(p, Pattern::Ellipsis(_)))
+                    .count()
+                    > 1
+                {
                     panic!("Only one \"..\"-item allowed in array pattern");
                 }
-                Pattern::Array(self.process_pattern_vec(items))
+                Pattern::Array(source_ref, self.process_pattern_vec(items))
             }
-            Pattern::Tuple(items) => Pattern::Tuple(self.process_pattern_vec(items)),
-            Pattern::Variable(name) => self.process_variable_pattern(name),
-            Pattern::Enum(name, None) | Pattern::Struct(name, None) => {
+            Pattern::Tuple(source_ref, items) => {
+                Pattern::Tuple(source_ref, self.process_pattern_vec(items))
+            }
+            Pattern::Variable(source_ref, name) => self.process_variable_pattern(source_ref, name),
+            Pattern::Enum(source_ref, name, None) => {
                 // The parser cannot distinguish between Enum and Variable patterns.
                 // So if "name" is a single identifier that does not resolve to an enum variant,
                 // it is a variable pattern.
 
                 if let Some((resolved_name, category)) = self.driver.try_resolve_ref(&name) {
                     if category.compatible_with_request(SymbolCategory::TypeConstructor) {
-                        self.process_enum_pattern(resolved_name, None)
+                        self.process_enum_pattern(source_ref, resolved_name, None)
                     } else if let Some(identifier) = name.try_to_identifier() {
                         // It's a single identifier that does not resolve to an enum variant.
-                        self.process_variable_pattern(identifier.clone())
+                        self.process_variable_pattern(source_ref, identifier.clone())
                     } else {
                         panic!("Expected enum variant but got {category}: {resolved_name}");
                     }
                 } else if let Some(identifier) = name.try_to_identifier() {
                     // It's a single identifier that does not resolve to an enum variant.
-                    self.process_variable_pattern(identifier.clone())
+                    self.process_variable_pattern(source_ref, identifier.clone())
                 } else {
                     panic!("Symbol not found: {name}");
                 }
             }
-            Pattern::Enum(name, fields) => {
-                self.process_enum_pattern(self.driver.resolve_value_ref(&name), fields)
+            Pattern::Enum(source_ref, name, fields) => {
+                self.process_enum_pattern(source_ref, self.driver.resolve_value_ref(&name), fields)
             }
-            Pattern::Struct(name, fields) => {
-                self.process_struct_pattern(self.driver.resolve_value_ref(&name), fields)
-            }
+            Pattern::Struct(source_ref, name, fields) => self.process_struct_pattern(
+                source_ref,
+                self.driver.resolve_value_ref(&name),
+                fields,
+            ),
         }
     }
 
@@ -267,17 +277,23 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             .collect()
     }
 
-    fn process_variable_pattern(&mut self, name: String) -> Pattern {
+    fn process_variable_pattern(&mut self, source_ref: SourceRef, name: String) -> Pattern {
         let id = self.local_variable_counter;
         if self.local_variables.insert(name.clone(), id).is_some() {
             panic!("Variable already defined: {name}");
         }
         self.local_variable_counter += 1;
-        Pattern::Variable(name)
+        Pattern::Variable(source_ref, name)
     }
 
-    fn process_enum_pattern(&mut self, name: String, fields: Option<Vec<Pattern>>) -> Pattern {
+    fn process_enum_pattern(
+        &mut self,
+        source_ref: SourceRef,
+        name: String,
+        fields: Option<Vec<Pattern>>,
+    ) -> Pattern {
         Pattern::Enum(
+            source_ref,
             SymbolPath::from_str(&name).unwrap(),
             fields.map(|fields| {
                 fields
@@ -288,8 +304,14 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         )
     }
 
-    fn process_struct_pattern(&mut self, name: String, fields: Option<Vec<Pattern>>) -> Pattern {
+    fn process_struct_pattern(
+        &mut self,
+        source_ref: SourceRef,
+        name: String,
+        fields: Option<Vec<Pattern>>,
+    ) -> Pattern {
         Pattern::Struct(
+            source_ref,
             SymbolPath::from_str(&name).unwrap(),
             fields.map(|fields| {
                 fields
@@ -346,7 +368,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value }) => {
                     let value = value.map(|v| self.process_expression(v));
                     let pattern = self.process_pattern(pattern);
-                    if value.is_none() && !matches!(pattern, Pattern::Variable(_)) {
+                    if value.is_none() && !matches!(pattern, Pattern::Variable(_, _)) {
                         panic!("Let statement without value requires a single variable, but got {pattern}.");
                     }
                     if !pattern.is_irrefutable() {

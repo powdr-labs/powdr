@@ -24,6 +24,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     extract_constant_lookups(&mut pil_file);
     remove_constant_witness_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
+    remove_trivial_selectors(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
     remove_duplicate_identities(&mut pil_file);
     remove_unreferenced_definitions(&mut pil_file);
@@ -358,6 +359,26 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
             }
         }
         _ => {}
+    }
+}
+
+/// Removes lookup and permutation selectors which are equal to 1
+/// TODO: refactor `SelectedExpression` to not use an optional selector
+fn remove_trivial_selectors<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    let one = AlgebraicExpression::from(T::from(1));
+
+    for identity in &mut pil_file
+        .identities
+        .iter_mut()
+        .filter(|id| id.kind == IdentityKind::Plookup || id.kind == IdentityKind::Permutation)
+    {
+        if identity.left.selector.as_ref() == Some(&one) {
+            identity.left.selector = None;
+        }
+
+        if identity.right.selector.as_ref() == Some(&one) {
+            identity.right.selector = None;
+        }
     }
 }
 
