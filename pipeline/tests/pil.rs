@@ -307,6 +307,13 @@ fn naive_byte_decomposition_gl() {
 }
 
 #[test]
+#[should_panic = "NoVariableDegreeAvailable"]
+fn different_degrees() {
+    let f = "pil/different_degrees.pil";
+    verify_pil(f, Default::default());
+}
+
+#[test]
 fn serialize_deserialize_optimized_pil() {
     let f = "pil/fibonacci.pil";
     let path = powdr_pipeline::test_util::resolve_test_file(f);

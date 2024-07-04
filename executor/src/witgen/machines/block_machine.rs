@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
-use std::iter;
+use std::iter::{self, once};
 
 use super::{EvalResult, FixedData, FixedLookup};
 
@@ -97,6 +97,8 @@ impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
 /// TODO we do not actually "detect" the machine yet, we just check if
 /// the lookup has a binary selector that is 1 every k rows for some k
 pub struct BlockMachine<'a, T: FieldElement> {
+    /// The unique degree of all columns in this machine
+    degree: DegreeType,
     /// Block size, the period of the selector.
     block_size: usize,
     /// The row index (within the block) of the latch row
@@ -129,6 +131,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identities: &[&'a Identity<T>],
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
+        let degree = fixed_data.common_degree(witness_cols);
+
         let (is_permutation, block_size, latch_row) =
             detect_connection_type_and_block_size(fixed_data, connecting_identities)?;
 
@@ -145,19 +149,20 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             }
         }
 
-        assert!(block_size <= fixed_data.degree as usize);
+        assert!(block_size <= degree as usize);
         // Because block shapes are not always rectangular, we add the last block to the data at the
         // beginning. It starts out with unknown values. Should the first block decide to write to
         // rows < 0, they will be written to this block.
         // In `take_witness_col_values()`, this block will be removed and its values will be used to
         // construct the "default" block used to fill up unused rows.
-        let start_index = RowIndex::from_i64(-(block_size as i64), fixed_data.degree);
+        let start_index = RowIndex::from_i64(-(block_size as i64), degree);
         let data = FinalizableData::with_initial_rows_in_progress(
             witness_cols,
             (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
         );
         Some(BlockMachine {
             name,
+            degree,
             block_size,
             latch_row,
             connecting_identities: connecting_identities.clone(),
@@ -249,11 +254,13 @@ fn try_to_period<T: FieldElement>(
                 return None;
             }
 
+            let degree = fixed_data.common_degree(once(&poly.poly_id));
+
             let values = fixed_data.fixed_cols[&poly.poly_id].values;
 
             let offset = values.iter().position(|v| v.is_one())?;
             let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;
-            if period > fixed_data.degree as usize / 2 {
+            if period > degree as usize / 2 {
                 // This filters out columns like [0]* + [1], which might appear in a block machine
                 // but shouldn't be detected as the latch.
                 return None;
@@ -278,6 +285,10 @@ fn try_to_period<T: FieldElement>(
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.connecting_identities.keys().copied().collect()
+    }
+
+    fn degree(&self) -> DegreeType {
+        self.degree
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -327,7 +338,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
 
             // Instantiate a processor
-            let row_offset = RowIndex::from_i64(-1, self.fixed_data.degree);
+            let row_offset = RowIndex::from_i64(-1, self.degree);
             let mut mutable_state = MutableState {
                 fixed_lookup,
                 machines: vec![].into_iter().into(),
@@ -385,7 +396,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
                 // For all constraints to be satisfied, unused cells have to be filled with valid values.
                 // We do this, we construct a default block, by repeating the first input to the block machine.
-                values.resize(self.fixed_data.degree as usize, None);
+                values.resize(self.degree as usize, None);
 
                 // Use the block as the default block. However, it needs to be merged with the dummy block,
                 // to handle blocks of non-rectangular shape.
@@ -448,7 +459,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 .ends_with("_operation_id_no_change")
             {
                 log::trace!("Setting _operation_id_no_change to 0.");
-                col[self.fixed_data.degree as usize - 1] = T::zero();
+                col[self.degree as usize - 1] = T::zero();
             }
         }
     }
@@ -460,7 +471,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     }
 
     fn last_row_index(&self) -> RowIndex {
-        RowIndex::from_i64(self.rows() as i64 - 1, self.fixed_data.degree)
+        RowIndex::from_i64(self.rows() as i64 - 1, self.degree)
     }
 
     fn get_row(&self, row: RowIndex) -> &Row<T> {
@@ -499,7 +510,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             ));
         }
 
-        if self.rows() + self.block_size as DegreeType >= self.fixed_data.degree {
+        if self.rows() + self.block_size as DegreeType >= self.degree {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
@@ -585,7 +596,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// unused cells in the previous block.
     fn append_block(&mut self, mut new_block: FinalizableData<T>) -> Result<(), EvalError<T>> {
         assert!(
-            (self.rows() + self.block_size as DegreeType) < self.fixed_data.degree,
+            (self.rows() + self.block_size as DegreeType) < self.degree,
             "Block machine is full (this should have been checked before)"
         );
 
