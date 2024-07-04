@@ -58,10 +58,10 @@ pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) 
 
     // We have a bit of a conundrum here. GNU assembler is better, as it
     // supports 64-bit literals that some tests in the RISC-V testsuite use. But
-    // LLVM linker is better as it supports the -pie flag in the default build
-    // (which one of the tests uses), and has a functional default linker
-    // script, as opposed to the braindead one of GNU, that places the ELF
-    // header inside the text section.
+    // LLVM linker is better as it always supports the -pie flag (which one of
+    // the tests uses), and has a functional default linker script, as opposed
+    // to the braindead one of GNU, that places the ELF header inside the text
+    // section.
 
     // So, our hacky solution is to assemble with GNU, and link with LLVM.
 
