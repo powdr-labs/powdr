@@ -42,15 +42,6 @@ let<T: Add + Mul + Sub + FromLiteral> selected_or_one: T, Fp2<T> -> Fp2<T> = |se
 let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc, alpha, beta, permutation_constraint| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
-
-    let alpha = if len(lhs) > 1 {
-        Fp2::Fp2(alpha1, alpha2)
-    } else {
-        // The optimizer will have removed alpha, but the fingerprint
-        // still accesses it (to multiply by 0 in this case)
-        from_base(0)
-    };
-    let beta = Fp2::Fp2(beta1, beta2);
     
     let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, fingerprint(lhs, alpha)));
     let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint(rhs, alpha)));
@@ -103,9 +94,8 @@ let permutation: expr, expr[], Fp2<expr>, Fp2<expr>, Constr -> Constr[] = |is_fi
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
     // in which case the operations below effectively only operate on the first component.
+    let fp2_from_array = |arr| if is_extension(acc) { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
     let acc_ext = fp2_from_array(acc);
-    let alpha = fp2_from_array([alpha1, alpha2]);
-    let beta = fp2_from_array([beta1, beta2]);
 
     // If the selector is 1, contribute a factor of `beta - fingerprint(lhs)` to accumulator.
     // If the selector is 0, contribute a factor of 1 to the accumulator.

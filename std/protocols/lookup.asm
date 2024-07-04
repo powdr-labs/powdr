@@ -75,7 +75,7 @@ let lookup: expr, expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> Constr[] = |is_f
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
     // in which case the operations below effectively only operate on the first component.
-    let fp2_from_array = |arr| if with_extension { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
+    let fp2_from_array = |arr| if is_extension(acc) { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
     let acc_ext = fp2_from_array(acc);
 
     let lhs_denom = sub_ext(beta, fingerprint(lhs, alpha));
