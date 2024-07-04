@@ -41,7 +41,7 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     verify_pipeline(pipeline, backend).unwrap();
 }
 
-fn which_as_is_available() -> &'static str {
+fn find_assembler() -> &'static str {
     let options = ["riscv64-elf-as", "riscv64-unknown-elf-as"];
     for option in options.iter() {
         if Command::new(option).arg("--version").output().is_ok() {
@@ -66,7 +66,7 @@ pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) 
     // So, our hacky solution is to assemble with GNU, and link with LLVM.
 
     // Assemble with GNU
-    let assembler = which_as_is_available();
+    let assembler = find_assembler();
     log::info!("Using assembler: {}", assembler);
     Command::new(assembler)
         .arg("-march=rv32imac")

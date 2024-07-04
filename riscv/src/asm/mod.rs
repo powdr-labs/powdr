@@ -89,15 +89,8 @@ impl InstructionArgs for &[Argument] {
 
     fn rrr(&self) -> Result<(Register, Register, Register), &'static str> {
         match self {
-            [Argument::Register(r1), Argument::Register(r2), Argument::Register(r3)] => {
-                Ok((*r1, *r2, *r3))
-            }
-            [Argument::Register(r1), Argument::Register(r2), Argument::RegOffset(None | Some(Expression::Number(0)), r3)] =>
-            {
-                // Special syntax used by atomic instructions
-                Ok((*r1, *r2, *r3))
-            }
-
+            [Argument::Register(r1), Argument::Register(r2), Argument::Register(r3)
+            | Argument::RegOffset(None | Some(Expression::Number(0)), r3)] => Ok((*r1, *r2, *r3)),
             _ => Err("Expected: register, register, register"),
         }
     }
@@ -117,9 +110,7 @@ impl InstructionArgs for &[Argument] {
 
     fn rr(&self) -> Result<(Register, Register), &'static str> {
         match self {
-            [Argument::Register(r1), Argument::Register(r2)] => Ok((*r1, *r2)),
-            [Argument::Register(r1), Argument::RegOffset(None, r2)] => {
-                // Special syntax used by lr.w
+            [Argument::Register(r1), Argument::Register(r2) | Argument::RegOffset(None, r2)] => {
                 Ok((*r1, *r2))
             }
             _ => Err("Expected: register, register"),
