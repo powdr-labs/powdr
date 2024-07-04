@@ -9,7 +9,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use parsed::{display::format_list_of_types, LambdaExpression, TypedExpression};
+use parsed::{display::format_type_args, LambdaExpression, TypedExpression};
 
 use crate::{parsed::FunctionKind, writeln_indented, writeln_indented_by};
 
@@ -476,7 +476,7 @@ impl Display for PolynomialReference {
                 } else {
                     self.name.clone()
                 };
-                write!(f, "{name}::<{}>", format_list_of_types(type_args))?;
+                write!(f, "{name}::{}", format_type_args(type_args))?;
                 return Ok(());
             }
         }

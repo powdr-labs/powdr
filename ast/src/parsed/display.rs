@@ -680,7 +680,7 @@ impl Display for PolynomialName {
 impl Display for NamespacedPolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if let Some(type_args) = &self.type_args {
-            write!(f, "{}::<{}>", self.path, format_list(type_args))
+            write!(f, "{}::{}", self.path, format_type_args(type_args))
         } else {
             write!(f, "{}", self.path.to_dotted_string())
         }
@@ -870,7 +870,7 @@ impl<E: Display> Display for Type<E> {
             Type::Function(fun) => write!(f, "{fun}"),
             Type::TypeVar(name) => write!(f, "{name}"),
             Type::NamedType(name, Some(args)) => {
-                write!(f, "{name}<{}>", args.iter().format(", "))
+                write!(f, "{name}{}", format_type_args(args))
             }
             Type::NamedType(name, None) => write!(f, "{name}"),
         }
@@ -914,12 +914,25 @@ fn format_type_with_parentheses<E: Display>(name: &Type<E>) -> String {
     }
 }
 
-pub fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
+fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
     types
         .iter()
         .map(format_type_with_parentheses)
         .format(", ")
         .to_string()
+}
+
+/// Formats a list of types to be used as values for type arguments
+/// and puts them in angle brackets.
+/// Puts the last item in parentheses if it ends in `>` to avoid parser problems.
+pub fn format_type_args<E: Display>(args: &[Type<E>]) -> String {
+    let mut items = args.iter().map(|arg| format!("{arg}")).rev().peekable();
+    items.peek_mut().map(|last| {
+        if last.ends_with('>') {
+            *last = format!("({last})");
+        }
+    });
+    format!("<{}>", items.rev().join(", "))
 }
 
 pub fn format_type_scheme_around_name<E: Display, N: Display>(

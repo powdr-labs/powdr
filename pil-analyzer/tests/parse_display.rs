@@ -751,3 +751,17 @@ namespace Main(16);
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);
 }
+
+#[test]
+fn reparse_type_args_generic_enum() {
+    let input = r#"namespace X(16);
+    enum Option<T> {
+        None,
+        Some(T),
+    }
+    let<T> consume: T -> () = (|_| { });
+    let p: int -> () = (|i| X::consume::<(X::Option<int>)>(X::Option::Some::<int>(i)));
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}
