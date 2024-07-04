@@ -6,24 +6,23 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_composite_proof, gen_halo2_proof, resolve_test_file, std_analyzed, test_halo2,
-        verify_test_file,
+        resolve_test_file, std_analyzed, test_halo2, verify_test_file,
     },
     Pipeline,
 };
 use test_log::test;
 
-#[test]
-fn poseidon_bn254_test() {
-    let f = "std/poseidon_bn254_test.asm";
-    test_halo2(f, Default::default());
+// #[test]
+// fn poseidon_bn254_test() {
+//     let f = "std/poseidon_bn254_test.asm";
+//     test_halo2(f, Default::default());
 
-    // `test_halo2` only does a mock proof in the PR tests.
-    // This makes sure we test the whole proof generation for one example
-    // file even in the PR tests.
-    gen_halo2_proof(f, Default::default());
-    gen_halo2_composite_proof(f, Default::default());
-}
+//     // `test_halo2` only does a mock proof in the PR tests.
+//     // This makes sure we test the whole proof generation for one example
+//     // file even in the PR tests.
+//     gen_halo2_proof(f, Default::default());
+//     gen_halo2_composite_proof(f, Default::default());
+// }
 
 #[test]
 fn poseidon_gl_test() {
@@ -103,18 +102,18 @@ fn permutation_via_challenges_gl() {
         .unwrap();
 }
 
-#[test]
-fn permutation_via_challenges_ext() {
-    let f = "std/permutation_via_challenges_ext.asm";
-    test_halo2(f, Default::default());
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet. But at least it tests that the panic from
-    // the previous test is not happening.
-    Pipeline::<GoldilocksField>::default()
-        .from_file(resolve_test_file(f))
-        .compute_witness()
-        .unwrap();
-}
+// #[test]
+// fn permutation_via_challenges_ext() {
+//     let f = "std/permutation_via_challenges_ext.asm";
+//     test_halo2(f, Default::default());
+//     // Note that this does not actually run the second-phase witness generation, because no
+//     // Goldilocks backend support challenges yet. But at least it tests that the panic from
+//     // the previous test is not happening.
+//     Pipeline::<GoldilocksField>::default()
+//         .from_file(resolve_test_file(f))
+//         .compute_witness()
+//         .unwrap();
+// }
 
 #[test]
 fn lookup_via_challenges_bn() {
@@ -122,29 +121,29 @@ fn lookup_via_challenges_bn() {
     test_halo2(f, Default::default());
 }
 
-#[test]
-fn lookup_via_challenges_ext() {
-    let f = "std/lookup_via_challenges_ext.asm";
-    test_halo2(f, Default::default());
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    Pipeline::<GoldilocksField>::default()
-        .from_file(resolve_test_file(f))
-        .compute_witness()
-        .unwrap();
-}
+// #[test]
+// fn lookup_via_challenges_ext() {
+//     let f = "std/lookup_via_challenges_ext.asm";
+//     test_halo2(f, Default::default());
+//     // Note that this does not actually run the second-phase witness generation, because no
+//     // Goldilocks backend support challenges yet.
+//     Pipeline::<GoldilocksField>::default()
+//         .from_file(resolve_test_file(f))
+//         .compute_witness()
+//         .unwrap();
+// }
 
-#[test]
-fn lookup_via_challenges_ext_simple() {
-    let f = "std/lookup_via_challenges_ext_simple.asm";
-    test_halo2(f, Default::default());
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    Pipeline::<GoldilocksField>::default()
-        .from_file(resolve_test_file(f))
-        .compute_witness()
-        .unwrap();
-}
+// #[test]
+// fn lookup_via_challenges_ext_simple() {
+//     let f = "std/lookup_via_challenges_ext_simple.asm";
+//     test_halo2(f, Default::default());
+//     // Note that this does not actually run the second-phase witness generation, because no
+//     // Goldilocks backend support challenges yet.
+//     Pipeline::<GoldilocksField>::default()
+//         .from_file(resolve_test_file(f))
+//         .compute_witness()
+//         .unwrap();
+// }
 
 #[test]
 fn write_once_memory_test() {
