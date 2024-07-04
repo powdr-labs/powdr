@@ -716,3 +716,25 @@ namespace T(8);
     assert_eq!(analyzed.degree, Some(8));
     assert_eq!(expected, analyzed.to_string());
 }
+
+#[test]
+fn reparse_generic_function_call() {
+    let input = r#"namespace X(16);
+    let<T: Add + FromLiteral> inc: T -> T = (|x| x + 1);
+namespace N(16);
+    let x: int = 7;
+    let y: int = X::inc::<int>(N.x);
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}
+
+#[test]
+fn reparse_non_function_fixed_cols() {
+    let input = r#"namespace X(16);
+    let A: int -> int = (|i| i);
+    let B: col = X.A;
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}

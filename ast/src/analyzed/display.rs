@@ -9,6 +9,7 @@ use std::{
 };
 
 use itertools::Itertools;
+use parsed::LambdaExpression;
 
 use crate::{parsed::FunctionKind, writeln_indented, writeln_indented_by};
 
@@ -165,7 +166,13 @@ fn format_poly(
         .as_ref()
         .map(ToString::to_string)
         .unwrap_or_default();
-    format!("col {kind}{stage}{name}{length}{value};")
+    if should_be_formatted_as_column(poly_type, definition) {
+        format!("col {kind}{stage}{name}{length}{value};")
+    } else {
+        assert!(symbol.stage.is_none());
+        assert!(length.is_empty());
+        format!("let {name}: col{value};")
+    }
 }
 
 fn format_public_declaration(name: &str, decl: &PublicDeclaration) -> String {
@@ -205,6 +212,32 @@ impl Display for FunctionValueDefinition {
                 panic!("Should not use this formatting function.")
             }
         }
+    }
+}
+
+fn should_be_formatted_as_column(
+    poly_type: PolynomialType,
+    definition: &Option<FunctionValueDefinition>,
+) -> bool {
+    if !matches!(poly_type, PolynomialType::Constant) {
+        return true;
+    }
+    let Some(definition) = definition else {
+        return true;
+    };
+    match definition {
+        FunctionValueDefinition::Array(_) => true,
+        FunctionValueDefinition::Expression(TypedExpression {
+            e: Expression::LambdaExpression(_, LambdaExpression { params, .. }),
+            type_scheme,
+        }) => {
+            params.len() == 1
+                && type_scheme
+                    .as_ref()
+                    .map(|ts| *ts == Type::Col.into())
+                    .unwrap_or(true)
+        }
+        _ => false,
     }
 }
 
@@ -406,12 +439,23 @@ impl Display for AlgebraicReference {
 
 impl Display for PolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.name)?;
         if let Some(type_args) = &self.type_args {
             if !type_args.is_empty() {
-                write!(f, "::<{}>", type_args.iter().join(", "))?;
+                // We need to add a `::`-component, so the name should not contain a `.`.
+                // NOTE: This special handling can be removed once we remove
+                // the `to_dotted_string` function.
+                let name = if self.name.contains('.') {
+                    // Re-format the name with ``::`-separators.
+                    SymbolPath::from_str(&self.name).unwrap().to_string()
+                } else {
+                    self.name.clone()
+                };
+                write!(f, "{name}::<{}>", type_args.iter().join(", "))?;
+                return Ok(());
             }
         }
+        write!(f, "{}", self.name)?;
+
         Ok(())
     }
 }
