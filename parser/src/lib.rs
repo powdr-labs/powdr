@@ -579,6 +579,17 @@ namespace N(2);
     }
 
     #[test]
+    #[should_panic = "Parse error"]
+    fn parse_trait_no_type_vars() {
+        let input = r#"
+    trait Add {
+        add: int, int -> int,
+    }"#;
+
+        let _ = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+    }
+
+    #[test]
     fn parse_trait_multi_params2() {
         let input = r#"
     trait Iterator<S, I> {

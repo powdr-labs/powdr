@@ -320,7 +320,7 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TraitDeclaration<E = u64> {
     pub name: String,
-    pub type_vars: Option<Vec<String>>,
+    pub type_vars: Vec<String>,
     pub functions: Vec<TraitFunction<E>>,
 }
 
@@ -332,10 +332,10 @@ impl TraitDeclaration<u64> {
 
 impl<R> Children<Expression<R>> for TraitDeclaration<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(empty())
+        Box::new(self.functions.iter().flat_map(|f| f.children()))
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(empty())
+        Box::new(self.functions.iter_mut().flat_map(|f| f.children_mut()))
     }
 }
 
@@ -343,6 +343,15 @@ impl<R> Children<Expression<R>> for TraitDeclaration<Expression<R>> {
 pub struct TraitFunction<E = u64> {
     pub name: String,
     pub ty: Type<E>,
+}
+
+impl<R> Children<Expression<R>> for TraitFunction<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        self.ty.children()
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        self.ty.children_mut()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]

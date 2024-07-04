@@ -104,7 +104,7 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 Some(Ok(SymbolValue::TypeDeclaration(enum_decl)))
                             }
                             SymbolValue::TraitDeclaration(mut trait_decl) => {
-                                let type_vars = trait_decl.type_vars.iter().flatten().collect();
+                                let type_vars = trait_decl.type_vars.iter().collect();
                                 for f in &mut trait_decl.functions {
                                     canonicalize_inside_type(
                                         &mut f.ty, &type_vars, &self.path, self.paths,
@@ -917,7 +917,7 @@ fn check_trait_declaration(
         },
     )?;
 
-    let type_vars = trait_decl.type_vars.iter().flatten().collect();
+    let type_vars = trait_decl.type_vars.iter().collect();
 
     trait_decl.functions.iter().try_for_each(|function| {
         check_type(

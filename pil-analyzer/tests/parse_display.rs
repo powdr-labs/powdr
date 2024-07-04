@@ -736,7 +736,7 @@ fn trait_def() {
 #[test]
 fn array_type_trait() {
     let input = "trait ArraySum<T> {
-        array_sum: T[5] -> T,
+        array_sum: T[4 + 1] -> T,
     }
 ";
 
