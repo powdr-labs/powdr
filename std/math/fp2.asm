@@ -1,3 +1,4 @@
+use std::array::len;
 use std::array::fold;
 use std::check::assert;
 use std::check::panic;
@@ -102,27 +103,15 @@ let needs_extension: -> bool = || match known_field() {
     None => panic("The permutation/lookup argument is not implemented for the current field!")
 };
 
-/// Matches whether the correct length is given to operate on the extension field
-let is_extension: int -> bool = |length| match length {
+/// Matches whether the length of a given array is correct to operate on the extension field
+let is_extension = |arr| match len(arr) {
         1 => false,
         2 => true,
         _ => panic("Expected 1 or 2 accumulator columns!")
 };
 
-/// If we don't need an extension field, we can simply set the second component to 0
-let fp2_from_array = |arr, is_ext| if is_ext { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
-
-/// Asserts wheter we need to operate on the extension field
-let assert_extension = |is_ext| if !is_ext{
-    assert(!needs_extension(), || "The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!")
-} else { () };
-
-/// Maps [x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
-let<T: Add + Mul + FromLiteral> compress_expression_array: T[], Fp2<T> -> Fp2<T> = |expr_array, alpha| fold(
-    expr_array,
-    from_base(0),
-    |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), from_base(el))
-);
+/// Constructs an extension field element `a0 + a1 * X` from either `[a0, a1]` or `[a0]` (setting `a1`to zero in that case)
+let fp2_from_array = |arr| if is_extension(arr) { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
 
 mod test {
     use super::Fp2;

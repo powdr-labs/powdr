@@ -13,26 +13,12 @@ use std::math::fp2::next_ext;
 use std::math::fp2::inv_ext;
 use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
-use std::math::fp2::compress_expression_array;
 use std::math::fp2::needs_extension;
-use std::math::fp2::assert_extension;
 use std::math::fp2::is_extension;
 use std::math::fp2::fp2_from_array;
 use std::math::fp2::constrain_eq_ext;
-
-let is_first: col = |i| if i == 0 { 1 } else { 0 };
-
-/// Get two phase-2 challenges to use in all permutation arguments.
-/// Note that this assumes that globally no other challenge of these IDs is used,
-/// and that challenges for multiple permutation arguments are re-used.
-/// We declare two components for each challenge here, in case we need to operate
-/// on the extension field. If we don't, we won't end up needing it and the optimizer
-/// will remove it.
-let alpha1: expr = challenge(0, 1);
-let alpha2: expr = challenge(0, 2);
-
-let beta1: expr = challenge(0, 3);
-let beta2: expr = challenge(0, 4);
+use std::protocols::fingerprint::fingerprint;
+use std::utils::unwrap_or_else;
 
 let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |permutation_constraint| match permutation_constraint {
     Constr::Permutation((lhs_selector, rhs_selector), values) => (
@@ -60,14 +46,14 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
     let alpha = if len(lhs) > 1 {
         Fp2::Fp2(alpha1, alpha2)
     } else {
-        // The optimizer will have removed alpha, but the compression function
+        // The optimizer will have removed alpha, but the fingerprint
         // still accesses it (to multiply by 0 in this case)
         from_base(0)
     };
     let beta = Fp2::Fp2(beta1, beta2);
     
-    let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, compress_expression_array(lhs, alpha)));
-    let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, compress_expression_array(rhs, alpha)));
+    let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, fingerprint(lhs, alpha)));
+    let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint(rhs, alpha)));
     
     // acc' = acc * lhs_folded / rhs_folded
     let res = mul_ext(
@@ -96,7 +82,7 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
 /// page 99, paragraph "Multiset equality checking (a.k.a. permutation checking)
 /// via fingerprinting". In short:
 /// 1. The LHS and RHS are Reed-Solomon fingerprinted using challenge $\alpha$
-///    (see `compress_expression_array`).
+///    (see `std::fingerprint::fingerprint`).
 /// 2. If the selector is one, the accumulator is updated as:
 ///    `acc' = acc * (beta - lhs) / (beta - rhs)`.
 /// This iteratively evaluates the fraction of polynomials $\prod_i (X - lhs_i)$
@@ -110,26 +96,24 @@ let permutation: expr, expr[], Fp2<expr>, Fp2<expr>, Constr -> Constr[] = |is_fi
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
     let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
-
-    let _ = if !with_extension {
+    let _ = if !is_extension(acc) {
         assert(!needs_extension(), || "The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!")
-    } else { () };
+    } else { };
 
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
     // in which case the operations below effectively only operate on the first component.
-    let fp2_from_array = |arr| if with_extension { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
     let acc_ext = fp2_from_array(acc);
     let alpha = fp2_from_array([alpha1, alpha2]);
     let beta = fp2_from_array([beta1, beta2]);
 
-    // If the selector is 1, contribute a factor of `beta - compress_expression_array(lhs)` to accumulator.
+    // If the selector is 1, contribute a factor of `beta - fingerprint(lhs)` to accumulator.
     // If the selector is 0, contribute a factor of 1 to the accumulator.
-    // Implemented as: folded = selector * (beta - compress_expression_array(values) - 1) + 1;
-    let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, compress_expression_array(lhs, alpha)));
-    let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, compress_expression_array(rhs, alpha)));
+    // Implemented as: folded = selector * (beta - fingerprint(values) - 1) + 1;
+    let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, fingerprint(lhs, alpha)));
+    let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint(rhs, alpha)));
 
-    let next_acc = if with_extension {
+    let next_acc = if is_extension(acc) {
         next_ext(acc_ext)
     } else {
         // The second component is 0, but the next operator is not defined on it...

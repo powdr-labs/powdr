@@ -13,12 +13,11 @@ use std::math::fp2::next_ext;
 use std::math::fp2::inv_ext;
 use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
-use std::math::fp2::compress_expression_array;
-use std::math::fp2::assert_extension;
 use std::math::fp2::is_extension;
 use std::math::fp2::fp2_from_array;
 use std::math::fp2::needs_extension;
 use std::math::fp2::constrain_eq_ext;
+use std::protocols::fingerprint::fingerprint;
 
 let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_constraint| match lookup_constraint {
     Constr::Lookup((lhs_selector, rhs_selector), values) => (
@@ -34,8 +33,8 @@ let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_c
 let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = query |acc, alpha, beta, lookup_constraint, multiplicities| {
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
     
-    let lhs_denom = sub_ext(beta, compress_expression_array(lhs, alpha));
-    let rhs_denom = sub_ext(beta, compress_expression_array(rhs, alpha));
+    let lhs_denom = sub_ext(beta, fingerprint(lhs, alpha));
+    let rhs_denom = sub_ext(beta, fingerprint(rhs, alpha));
     let m_ext = from_base(multiplicities);
     
     // acc' = acc + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector
@@ -69,9 +68,9 @@ let lookup: expr, expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> Constr[] = |is_f
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
 
     let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
-
-    let with_extension = is_extension(len(acc));
-    let _ = assert_extension(with_extension);
+    let _ = if !is_extension(acc) {
+        assert(!needs_extension(), || "The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!")
+    } else { };
 
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
@@ -79,11 +78,11 @@ let lookup: expr, expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> Constr[] = |is_f
     let fp2_from_array = |arr| if with_extension { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
     let acc_ext = fp2_from_array(acc);
 
-    let lhs_denom = sub_ext(beta, compress_expression_array(lhs, alpha));
-    let rhs_denom = sub_ext(beta, compress_expression_array(rhs, alpha));
+    let lhs_denom = sub_ext(beta, fingerprint(lhs, alpha));
+    let rhs_denom = sub_ext(beta, fingerprint(rhs, alpha));
     let m_ext = from_base(multiplicities);
 
-    let next_acc = if with_extension {
+    let next_acc = if is_extension(acc) {
         next_ext(acc_ext)
     } else {
         // The second component is 0, but the next operator is not defined on it...
