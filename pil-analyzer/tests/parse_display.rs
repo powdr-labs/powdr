@@ -738,3 +738,16 @@ fn reparse_non_function_fixed_cols() {
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);
 }
+
+#[test]
+fn reparse_array_typed_fixed_col() {
+    let input = r#"namespace std::array(16);
+    let<T> len: T[] -> int = 19;
+namespace Main(16);
+    let<T> make_array: int, (int -> T) -> T[] = (|n, f| if n == 0 { [] } else { Main::make_array::<T>(n - 1, f) + [f(n - 1)] });
+    let nth_clock: int -> (int -> int) = (|k| (|i| if i % std::array::len::<expr>(Main.clocks) == k { 1 } else { 0 }));
+    let clocks: col[4] = Main::make_array::<(int -> int)>(4, Main.nth_clock);
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}

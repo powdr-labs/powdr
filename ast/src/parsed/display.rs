@@ -914,7 +914,7 @@ fn format_type_with_parentheses<E: Display>(name: &Type<E>) -> String {
     }
 }
 
-fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
+pub fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
     types
         .iter()
         .map(format_type_with_parentheses)
