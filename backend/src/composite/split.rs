@@ -202,7 +202,6 @@ fn merge_empty_namespaces(
 
 /// Given a PIL and a list of statements, returns a new PIL that only contains the
 /// given subset of statements.
-/// Returns None if there are no identities in the subset of statements.
 fn build_machine_pil<F: FieldElement>(
     pil: Analyzed<F>,
     statements: Vec<StatementIdentifier>,
