@@ -1010,7 +1010,7 @@ impl Iterator for RiscVInstructionIterator<'_> {
             .decode(Isa::Rv32)
             .unwrap_or_else(|_| {
                 // TODO: maybe instead of failing we should just emit `unimp`.
-                // This way we would support the garbage default GNU binutils
+                // This way we would support the default GNU binutils
                 // linker script, that places the ELF header in the text
                 // section.
                 panic!(
