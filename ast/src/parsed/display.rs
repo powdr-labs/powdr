@@ -370,9 +370,9 @@ impl<E: Display> Display for IndexAccess<Expression<E>> {
 impl<E: Display> Display for FieldAccess<Expression<E>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.object.precedence().is_none() {
-            write!(f, "{}.{}", self.object, self.field)
+            write!(f, "{}->{}", self.object, self.field)
         } else {
-            write!(f, "({}).{}", self.object, self.field)
+            write!(f, "({})->{}", self.object, self.field)
         }
     }
 }
@@ -663,7 +663,7 @@ impl<E: Display> Display for StructDeclaration<E> {
             indent(
                 self.fields
                     .iter()
-                    .map(|v| format!("{}:{},\n", v.0, v.1))
+                    .map(|v| format!("{}: {},\n", v.0, v.1))
                     .format(""),
                 1
             )
@@ -675,7 +675,7 @@ impl<E: Display> Display for StructExpression<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{}",
+            "{} with {}",
             self.name,
             if self.fields.is_empty() {
                 "".to_string()

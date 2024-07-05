@@ -577,7 +577,7 @@ fn def_struct_and_field() {
     let input = "
     struct Dot { x: int, y: int }
     let dot = Dot with { x: 3, y: 4 };
-    let f: Dot -> int = |d| d.y;
+    let f: Dot -> int = |d| d->y;
 
     let res: int = f(dot);
     ";
@@ -610,7 +610,7 @@ fn struct_field_in_expr() {
         _ => X with {x: 0, y: 1}
     };
 
-    let x: int = v(1).y;
+    let x: X = v(1)->y;
     ";
 
     type_check(input, &[])
