@@ -26,7 +26,7 @@
 
 use std::{any::TypeId, collections::BTreeMap};
 
-use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
+use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use p3_matrix::{dense::RowMajorMatrix, MatrixRowSlices};
@@ -169,47 +169,42 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     fn to_plonky3_expr<AB: AirBuilder<F = Val>>(
         &self,
         e: &AlgebraicExpression<T>,
-        matrix: &AB::M,
+        main: &AB::M,
+        fixed: &AB::M,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
                 let poly_id = r.poly_id;
 
-                let row = match r.next {
-                    true => matrix.row_slice(1),
-                    false => matrix.row_slice(0),
-                };
-
-                // witness columns indexes are unchanged, fixed ones are offset by `commitment_count`
-                let index = match poly_id.ptype {
+                match poly_id.ptype {
                     PolynomialType::Committed => {
                         assert!(
                             r.poly_id.id < self.analyzed.commitment_count() as u64,
                             "Plonky3 expects `poly_id` to be contiguous"
                         );
-                        r.poly_id.id as usize
+                        let row = main.row_slice(r.next as usize);
+                        row[r.poly_id.id as usize].into()
                     }
                     PolynomialType::Constant => {
                         assert!(
                             r.poly_id.id < self.analyzed.constant_count() as u64,
                             "Plonky3 expects `poly_id` to be contiguous"
                         );
-                        self.analyzed.commitment_count() + r.poly_id.id as usize
+                        let row = fixed.row_slice(r.next as usize);
+                        row[r.poly_id.id as usize].into()
                     }
                     PolynomialType::Intermediate => {
                         unreachable!("intermediate polynomials should have been inlined")
                     }
-                };
-
-                row[index].into()
+                }
             }
             AlgebraicExpression::PublicReference(_) => unimplemented!(
                 "public references are not supported inside algebraic expressions in plonky3"
             ),
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let left = self.to_plonky3_expr::<AB>(left, matrix);
-                let right = self.to_plonky3_expr::<AB>(right, matrix);
+                let left = self.to_plonky3_expr::<AB>(left, main, fixed);
+                let right = self.to_plonky3_expr::<AB>(right, main, fixed);
 
                 match op {
                     AlgebraicBinaryOperator::Add => left + right,
@@ -221,7 +216,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(expr, matrix);
+                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(expr, main, fixed);
 
                 match op {
                     AlgebraicUnaryOperator::Minus => -expr,
@@ -247,16 +242,19 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for PowdrCircuit<'a, T> {
+impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder> Air<AB>
+    for PowdrCircuit<'a, T>
+{
     fn eval(&self, builder: &mut AB) {
-        let matrix = builder.main();
+        let main = builder.main();
+        let fixed = builder.preprocessed();
         let pi = builder.public_values();
         let publics = self.get_publics();
         assert_eq!(publics.len(), pi.len());
 
         // public constraints
         let pi_moved = pi.to_vec();
-        let (local, next) = (matrix.row_slice(0), matrix.row_slice(1));
+        let (local, next) = (main.row_slice(0), main.row_slice(1));
 
         let public_offset = self.analyzed.commitment_count() + self.analyzed.constant_count();
 
@@ -301,8 +299,11 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val>> Air<AB> for P
                     assert_eq!(identity.right.expressions.len(), 0);
                     assert!(identity.right.selector.is_none());
 
-                    let left = self
-                        .to_plonky3_expr::<AB>(identity.left.selector.as_ref().unwrap(), &matrix);
+                    let left = self.to_plonky3_expr::<AB>(
+                        identity.left.selector.as_ref().unwrap(),
+                        &main,
+                        &fixed,
+                    );
 
                     builder.assert_zero(left);
                 }

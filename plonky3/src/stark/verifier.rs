@@ -3,9 +3,8 @@ use p3_air::{Air, BaseAir, TwoRowMatrixView};
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
 use p3_commit::{Pcs, PolynomialSpace};
 use p3_field::{AbstractExtensionField, AbstractField, Field};
-use p3_uni_stark::{
-    get_log_quotient_degree, StarkGenericConfig, SymbolicAirBuilder, Val, VerificationError,
-};
+use p3_uni_stark::{StarkGenericConfig, Val, VerificationError};
+use p3_util::log2_ceil_usize;
 
 use super::{
     folder::VerifierConstraintFolder,
@@ -22,7 +21,7 @@ pub fn verify<SC, A>(
 ) -> Result<(), VerificationError>
 where
     SC: StarkGenericConfig,
-    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<VerifierConstraintFolder<'a, SC>>,
+    A: for<'a> Air<VerifierConstraintFolder<'a, SC>>,
 {
     let verifying_key = verifying_key.expect("fixed please");
 
@@ -34,7 +33,8 @@ where
     } = proof;
 
     let degree = 1 << degree_bits;
-    let log_quotient_degree = get_log_quotient_degree::<Val<SC>, A>(air, public_values.len());
+    let constraint_degree = 2; // TODO: enforce that
+    let log_quotient_degree = log2_ceil_usize(constraint_degree - 1);
     let quotient_degree = 1 << log_quotient_degree;
 
     let pcs = config.pcs();

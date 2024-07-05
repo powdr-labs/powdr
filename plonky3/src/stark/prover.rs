@@ -7,8 +7,9 @@ use p3_commit::{Pcs, PolynomialSpace};
 use p3_field::{AbstractExtensionField, AbstractField, PackedValue};
 use p3_matrix::MatrixGet;
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_uni_stark::{get_log_quotient_degree, Domain, SymbolicAirBuilder, Val};
+use p3_uni_stark::{Domain, Val};
 use p3_uni_stark::{PackedChallenge, PackedVal, StarkGenericConfig};
+use p3_util::log2_ceil_usize;
 use p3_util::log2_strict_usize;
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
@@ -26,14 +27,15 @@ pub fn prove<SC, A>(
 ) -> Proof<SC>
 where
     SC: StarkGenericConfig,
-    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<ProverConstraintFolder<'a, SC>>,
+    A: for<'a> Air<ProverConstraintFolder<'a, SC>>,
 {
     let proving_key = proving_key.expect("only fixed pls");
 
     let degree = trace.height();
     let log_degree = log2_strict_usize(degree);
 
-    let log_quotient_degree = get_log_quotient_degree::<Val<SC>, A>(air, public_values.len());
+    let constraint_degree = 2; // TODO: enforce that
+    let log_quotient_degree = log2_ceil_usize(constraint_degree - 1);
     let quotient_degree = 1 << log_quotient_degree;
 
     let pcs = config.pcs();

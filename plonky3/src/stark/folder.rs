@@ -1,4 +1,4 @@
-use p3_air::{AirBuilder, AirBuilderWithPublicValues, TwoRowMatrixView};
+use p3_air::{AirBuilder, AirBuilderWithPublicValues, PairBuilder, TwoRowMatrixView};
 use p3_field::AbstractField;
 
 use p3_uni_stark::{PackedChallenge, PackedVal, StarkGenericConfig, Val};
@@ -68,6 +68,12 @@ impl<'a, SC: StarkGenericConfig> AirBuilderWithPublicValues for ProverConstraint
     }
 }
 
+impl<'a, SC: StarkGenericConfig> PairBuilder for ProverConstraintFolder<'a, SC> {
+    fn preprocessed(&self) -> Self::M {
+        self.fixed
+    }
+}
+
 impl<'a, SC: StarkGenericConfig> AirBuilder for VerifierConstraintFolder<'a, SC> {
     type F = Val<SC>;
     type Expr = SC::Challenge;
@@ -105,5 +111,11 @@ impl<'a, SC: StarkGenericConfig> AirBuilderWithPublicValues for VerifierConstrai
 
     fn public_values(&self) -> &[Self::F] {
         self.public_values
+    }
+}
+
+impl<'a, SC: StarkGenericConfig> PairBuilder for VerifierConstraintFolder<'a, SC> {
+    fn preprocessed(&self) -> Self::M {
+        self.fixed
     }
 }
