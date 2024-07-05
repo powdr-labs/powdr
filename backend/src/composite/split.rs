@@ -52,9 +52,8 @@ pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, A
 pub(crate) fn machine_witness_columns<F: FieldElement>(
     all_witness_columns: &[(String, Vec<F>)],
     machine_pil: &Analyzed<F>,
+    machine_name: &str,
 ) -> Vec<(String, Vec<F>)> {
-    let machine_name = extract_namespace(&all_witness_columns.iter().next().unwrap().0);
-
     let dummy_column_name = format!("{machine_name}.__dummy");
     let dummy_column = vec![F::zero(); machine_pil.degree() as usize];
     iter::once((dummy_column_name, dummy_column))

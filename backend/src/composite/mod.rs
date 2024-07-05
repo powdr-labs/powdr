@@ -115,7 +115,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                     log::info!("== Proving machine: {} (size {})", machine, pil.degree());
                     log::debug!("PIL:\n{}", pil);
 
-                    let witness = machine_witness_columns(witness, pil);
+                    let witness = machine_witness_columns(witness, pil, machine);
 
                     backend
                         .prove(&witness, None, witgen_callback)
