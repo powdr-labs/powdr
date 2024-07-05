@@ -1,10 +1,12 @@
 use itertools::Itertools;
-use p3_air::{Air, BaseAir, TwoRowMatrixView};
+use p3_air::TwoRowMatrixView;
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
 use p3_commit::{Pcs, PolynomialSpace};
 use p3_field::{AbstractExtensionField, AbstractField, Field};
 use p3_uni_stark::{StarkGenericConfig, Val, VerificationError};
 use p3_util::log2_ceil_usize;
+
+use crate::circuit_builder::PowdrAir;
 
 use super::{
     folder::VerifierConstraintFolder,
@@ -21,7 +23,7 @@ pub fn verify<SC, A>(
 ) -> Result<(), VerificationError>
 where
     SC: StarkGenericConfig,
-    A: for<'a> Air<VerifierConstraintFolder<'a, SC>>,
+    A: for<'a> PowdrAir<VerifierConstraintFolder<'a, SC>>,
 {
     let verifying_key = verifying_key.expect("fixed please");
 
@@ -43,8 +45,11 @@ where
         trace_domain.create_disjoint_domain(1 << (degree_bits + log_quotient_degree));
     let quotient_chunks_domains = quotient_domain.split_domains(quotient_degree);
 
-    let air_width = <A as BaseAir<Val<SC>>>::width(air);
-    let valid_shape = opened_values.trace_local.len() == air_width
+    let air_width = air.width();
+    let air_fixed_width = air.fixed_width();
+    let valid_shape = opened_values.fixed_local.len() == air_fixed_width
+        && opened_values.fixed_next.len() == air_fixed_width
+        && opened_values.trace_local.len() == air_width
         && opened_values.trace_next.len() == air_width
         && opened_values.quotient_chunks.len() == quotient_degree
         && opened_values

@@ -76,6 +76,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
                 .collect(),
             self.fixed.len(),
         );
+
         let evaluations = vec![(domain, matrix)];
 
         // commit to the evaluations
@@ -109,16 +110,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         let config = get_config(self.analyzed.degree());
 
-        let mut challenger: p3_challenger::DuplexChallenger<
-            p3_goldilocks::Goldilocks,
-            p3_poseidon::Poseidon<
-                p3_goldilocks::Goldilocks,
-                p3_goldilocks::MdsMatrixGoldilocks,
-                8,
-                7,
-            >,
-            8,
-        > = get_challenger();
+        let mut challenger = get_challenger();
 
         let proving_key = self.proving_key.as_ref();
 
@@ -131,16 +123,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
             &publics,
         );
 
-        let mut challenger: p3_challenger::DuplexChallenger<
-            p3_goldilocks::Goldilocks,
-            p3_poseidon::Poseidon<
-                p3_goldilocks::Goldilocks,
-                p3_goldilocks::MdsMatrixGoldilocks,
-                8,
-                7,
-            >,
-            8,
-        > = get_challenger();
+        let mut challenger = get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
 

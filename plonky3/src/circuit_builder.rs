@@ -230,11 +230,22 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 }
 
+pub trait PowdrAir<AB: AirBuilder>: Air<AB> {
+    /// Returns the number of fixed columns
+    fn fixed_width(&self) -> usize;
+}
+
+impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder> PowdrAir<AB>
+    for PowdrCircuit<'a, T>
+{
+    fn fixed_width(&self) -> usize {
+        self.analyzed.constant_count()
+    }
+}
+
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
-        self.analyzed.commitment_count()
-            + self.analyzed.constant_count()
-            + 3 * self.analyzed.publics_count()
+        self.analyzed.commitment_count() + 3 * self.analyzed.publics_count()
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {

@@ -91,11 +91,16 @@ where
         ],
         challenger,
     );
+    assert_eq!(opened_values[0].len(), 1);
+    assert_eq!(opened_values[0][0].len(), 2);
+    assert_eq!(opened_values[1].len(), 1);
+    assert_eq!(opened_values[1][0].len(), 2);
+    assert_eq!(opened_values[2].len(), quotient_degree);
     let fixed_local = opened_values[0][0][0].clone();
     let fixed_next = opened_values[0][0][1].clone();
     let trace_local = opened_values[1][0][0].clone();
     let trace_next = opened_values[1][0][1].clone();
-    let quotient_chunks = opened_values[1].iter().map(|v| v[0].clone()).collect_vec();
+    let quotient_chunks = opened_values[2].iter().map(|v| v[0].clone()).collect_vec();
     let opened_values = OpenedValues {
         trace_local,
         trace_next,
