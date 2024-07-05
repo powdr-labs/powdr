@@ -723,7 +723,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 }
             }
             (
-                // All other double instructions we can lift starts with auipc.
+                // All other double instructions we can lift start with auipc.
                 Ins {
                     opc: Op::AUIPC,
                     rd: Some(rd_auipc),
