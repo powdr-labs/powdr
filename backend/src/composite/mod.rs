@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, io, iter, marker::PhantomData, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -126,6 +126,12 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                             .into_iter()
                             .map(|(symbol, _)| symbol),
                     );
+
+                    let dummy_column_name = format!("{machine}.__dummy");
+                    let dummy_column = vec![F::zero(); pil.degree() as usize];
+                    let witness = iter::once((dummy_column_name, dummy_column))
+                        .chain(witness.into_iter())
+                        .collect::<Vec<_>>();
 
                     backend
                         .prove(&witness, None, witgen_callback)

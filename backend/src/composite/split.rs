@@ -160,6 +160,18 @@ fn build_machine_pil<F: FieldElement>(
         source_order: statements,
         ..pil
     };
-    let parsed_string = powdr_parser::parse(None, &pil.to_string()).unwrap();
+    let pil_string = pil.to_string();
+    let mut lines = pil_string.lines().collect::<Vec<_>>();
+    let namespace_row = lines
+        .iter()
+        .position(|line| line.starts_with("namespace"))
+        .unwrap()
+        + 1;
+    lines.splice(
+        namespace_row..namespace_row,
+        vec!["    col witness __dummy;", "    __dummy = __dummy;"],
+    );
+    let pil_string = lines.join("\n");
+    let parsed_string = powdr_parser::parse(None, &pil_string).unwrap();
     powdr_pil_analyzer::analyze_ast(parsed_string)
 }
