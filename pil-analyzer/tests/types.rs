@@ -601,13 +601,24 @@ fn struct_constr_var_typed() {
 }
 
 #[test]
+fn struct_field_direct_access() {
+    let input = "
+    struct X {x: int, y: int}
+    let v = X with {x: 1, y: 0};
+    let x: int = v->y;
+    ";
+
+    type_check(input, &[])
+}
+
+#[test]
 fn struct_field_in_expr() {
     let input = "
     struct X {x: int, y: int}
     let v: int -> X = |i| match i {
         1 => X with {x: 1, y: 0},
         2 => X with {x: 2, y: 2},
-        _ => X with {x: 0, y: 1}
+        _ => X with {x: 0, y: 1},
     };
 
     let x: X = v(1)->y;

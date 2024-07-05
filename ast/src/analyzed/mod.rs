@@ -560,14 +560,14 @@ impl Children<Expression> for TypeDeclaration {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum TypeConstructor {
     Enum(Arc<EnumDeclaration>, EnumVariant),
-    Struct(Arc<StructDeclaration>, String),
+    Struct(Arc<StructDeclaration>, (String, Type)),
 }
 
 impl Children<Expression> for TypeConstructor {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
             TypeConstructor::Enum(_, variant) => variant.children(),
-            TypeConstructor::Struct(_, _) => Box::new(empty()),
+            TypeConstructor::Struct(_, _) => Box::new(empty()), //TODO GZ: Check types if needed
         }
     }
 

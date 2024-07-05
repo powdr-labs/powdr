@@ -243,14 +243,14 @@ pub struct StructDeclaration<E = u64> {
 
 impl<R> Children<Expression<R>> for StructDeclaration<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(empty())
+        Box::new(self.fields.values().flat_map(|f| f.children()))
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(empty())
+        Box::new(self.fields.values_mut().flat_map(|f| f.children_mut()))
     }
 }
 
-impl<R> Children<Expression<R>> for StructDeclaration {
+impl<R> Children<Expression<R>> for StructDeclaration<u64> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(empty())
     }

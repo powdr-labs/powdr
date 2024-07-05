@@ -603,14 +603,23 @@ impl<'a> TypeChecker<'a> {
                 self.expect_type(&Type::Int, index)?;
                 result
             }
-            Expression::FieldAccess(
-                _,
-                FieldAccess {
-                    object: _,
-                    field: _,
-                },
-            ) => {
-                unimplemented!("Get type from object and look up using field")
+            Expression::FieldAccess(_, FieldAccess { object, field }) => {
+                let object_type = self.infer_type_of_expression(object)?;
+                let inferred_type = self.type_into_substituted(object_type.clone());
+                let name = match inferred_type {
+                    Type::NamedType(name, _) => name.clone(),
+                    _ => {
+                        return Err(object.source_reference().with_error(format!(
+                            "Cannot access field `{field}` on type {inferred_type}."
+                        )))
+                    }
+                };
+                let access_name = format!("{name}.{field}");
+                //println!("access_name: {access_name}");
+                let field_type = self.declared_types[&access_name].1.ty.clone();
+                //println!("access: {:?}", field_type);
+
+                field_type
             }
             Expression::FunctionCall(
                 source_ref,
@@ -676,6 +685,10 @@ impl<'a> TypeChecker<'a> {
                 result?
             }
             Expression::StructExpression(_, struct_expr) => {
+                for expr in struct_expr.fields.values_mut() {
+                    self.infer_type_of_expression(expr)?;
+                }
+
                 Type::NamedType(SymbolPath::from_identifier(struct_expr.name.clone()), None)
             }
         })

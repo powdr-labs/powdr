@@ -485,9 +485,10 @@ where
                     kind: SymbolKind::Other(),
                     length: None,
                 };
+                let ty = struct_decl.fields[field_name].clone();
                 let value = FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
                     shared_struct_decl.clone(),
-                    field_name.clone(),
+                    (field_name.clone(), ty),
                 ));
                 PILItem::Definition(var_symbol, Some(value))
             });
