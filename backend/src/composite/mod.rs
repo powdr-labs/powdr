@@ -49,7 +49,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         fixed: Arc<Vec<(String, Vec<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
-        _verification_key: Option<&mut dyn std::io::Read>,
+        verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         backend_options: BackendOptions,
     ) -> Result<Box<dyn Backend<'a, F> + 'a>, Error> {
@@ -66,11 +66,25 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             })
             .unwrap_or_default();
 
+        let verification_key: Option<CompositeVerificationKey> = verification_key
+            .map(|verification_key| bincode::deserialize_from(verification_key).unwrap());
+
         let per_machine_data = split::split_pil((*pil).clone())
             .into_iter()
-            .map(|(machine_name, pil)| {
-                let mut cursor = Cursor::new(&setup_bytes);
-                let setup: Option<&mut dyn std::io::Read> = has_setup.then_some(&mut cursor);
+            .enumerate()
+            .map(|(i, (machine_name, pil))| {
+                let mut setup_cursor = Cursor::new(&setup_bytes);
+                let setup: Option<&mut dyn std::io::Read> = has_setup.then_some(&mut setup_cursor);
+
+                let has_verification_key = verification_key.is_some();
+                let verification_key = verification_key
+                    .as_ref()
+                    .map(|verification_key| verification_key.verification_key[i].clone())
+                    .unwrap_or_default();
+                let mut verification_key_cursor = Cursor::new(&verification_key);
+                let verification_key: Option<&mut dyn std::io::Read> =
+                    has_verification_key.then_some(&mut verification_key_cursor);
+
                 let pil = Arc::new(pil);
                 let output_dir = output_dir
                     .clone()
@@ -89,7 +103,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                     fixed,
                     output_dir,
                     setup,
-                    None,
+                    verification_key,
                     // TODO: Handle verification_app_key
                     None,
                     backend_options.clone(),
@@ -107,8 +121,8 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         }))
     }
 
-    fn generate_setup(&self, _size: DegreeType, _output: &mut dyn io::Write) -> Result<(), Error> {
-        Err(Error::NoSetupAvailable)
+    fn generate_setup(&self, size: DegreeType, output: &mut dyn io::Write) -> Result<(), Error> {
+        self.factory.generate_setup(size, output)
     }
 }
 
@@ -164,7 +178,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
     }
 
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
-        let proof: CompositeProof = serde_json::from_slice(proof).unwrap();
+        let proof: CompositeProof = bincode::deserialize(proof).unwrap();
         for (machine, machine_proof) in self.machine_names.iter().zip(proof.proofs) {
             let machine_data = self
                 .machine_data
@@ -175,8 +189,14 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
         Ok(())
     }
 
-    fn export_setup(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
-        unimplemented!()
+    fn export_setup(&self, output: &mut dyn io::Write) -> Result<(), Error> {
+        // All backend are the same, just pick the first
+        self.machine_data
+            .values()
+            .next()
+            .unwrap()
+            .backend
+            .export_setup(output)
     }
 
     fn get_verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
