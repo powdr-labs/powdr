@@ -1,12 +1,15 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     iter,
     ops::ControlFlow,
     str::FromStr,
 };
 
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, Analyzed, IdentityKind, StatementIdentifier, Symbol},
+    analyzed::{
+        AlgebraicExpression, Analyzed, FunctionValueDefinition, IdentityKind, StatementIdentifier,
+        Symbol, SymbolKind,
+    },
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         visitor::{ExpressionVisitable, VisitOrder},
@@ -20,24 +23,7 @@ use powdr_number::FieldElement;
 /// 2. Any lookups or permutations that reference multiple namespaces are removed.
 pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
     let statements_by_namespace = split_by_namespace(&pil);
-
-    // Merge std and empty namespaces into the other namespaces
-    let (std_statements, statements_by_machine) = statements_by_namespace
-        .into_iter()
-        .partition::<BTreeMap<_, _>, _>(|(namespace, _)| {
-            namespace.starts_with("std::") || namespace.is_empty()
-        });
-    let std_statements = std_statements
-        .into_iter()
-        .flat_map(|(_, statements)| statements)
-        .collect::<Vec<_>>();
-    let statements_by_machine = statements_by_machine
-        .into_iter()
-        .map(|(namespace, mut statements)| {
-            statements.extend(std_statements.iter().cloned());
-            (namespace, statements)
-        })
-        .collect::<BTreeMap<_, _>>();
+    let statements_by_machine = merge_empty_namespaces(statements_by_namespace, &pil.definitions);
 
     statements_by_machine
         .into_iter()
@@ -75,6 +61,7 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
     )
 }
 
+/// Filter the given columns to only include those that are referenced by the given symbols.
 fn select_machine_columns<F: FieldElement, T>(
     columns: &[(String, Vec<F>)],
     symbols: Vec<&(Symbol, T)>,
@@ -176,6 +163,33 @@ fn split_by_namespace<F: FieldElement>(
             acc.entry(namespace).or_default().push(statement.clone());
             acc
         })
+}
+
+fn merge_empty_namespaces(
+    statements_by_namespace: BTreeMap<String, Vec<StatementIdentifier>>,
+    definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+) -> BTreeMap<String, Vec<StatementIdentifier>> {
+    let (proper_machines, empty_machines) = statements_by_namespace
+        .into_iter()
+        .partition::<BTreeMap<_, _>, _>(|(_, statements)| {
+            statements.iter().any(|statement| match statement {
+                StatementIdentifier::Definition(name) => {
+                    matches!(definitions[name].0.kind, SymbolKind::Poly(_))
+                }
+                _ => false,
+            })
+        });
+    proper_machines
+        .into_iter()
+        .map(|(namespace, mut statements)| {
+            statements.extend(
+                empty_machines
+                    .iter()
+                    .flat_map(|(_, statements)| statements.clone()),
+            );
+            (namespace, statements)
+        })
+        .collect::<BTreeMap<_, _>>()
 }
 
 /// Given a PIL and a list of statements, returns a new PIL that only contains the
