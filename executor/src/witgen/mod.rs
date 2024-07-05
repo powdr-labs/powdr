@@ -1,6 +1,7 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
     PolynomialType, SymbolKind, TypedExpression,
@@ -200,23 +201,30 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
-        let mut generator = Generator::new(
-            "Main Machine".to_string(),
-            &fixed,
-            &BTreeMap::new(), // No connecting identities
-            base_identities,
-            base_witnesses,
-            // We could set the latch of the main VM here, but then we would have to detect it.
-            // Instead, the main VM will be computed in one block, directly continuing into the
-            // infinite loop after the first return.
-            None,
-        );
 
-        generator.run(&mut mutable_state);
+        let main_columns = (!base_witnesses.is_empty())
+            .then(|| {
+                let mut generator = Generator::new(
+                    "Main Machine".to_string(),
+                    &fixed,
+                    &BTreeMap::new(), // No connecting identities
+                    base_identities,
+                    base_witnesses,
+                    // We could set the latch of the main VM here, but then we would have to detect it.
+                    // Instead, the main VM will be computed in one block, directly continuing into the
+                    // infinite loop after the first return.
+                    None,
+                );
+
+                generator.run(&mut mutable_state);
+                generator.take_witness_col_values(
+                    mutable_state.fixed_lookup,
+                    mutable_state.query_callback,
+                )
+            })
+            .unwrap_or_default();
 
         // Get columns from machines
-        let main_columns = generator
-            .take_witness_col_values(mutable_state.fixed_lookup, mutable_state.query_callback);
         let mut columns = mutable_state
             .machines
             .iter_mut()
@@ -274,7 +282,6 @@ pub fn extract_publics<T: FieldElement>(
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
-    degree: DegreeType,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
     column_by_name: HashMap<String, PolyID>,
@@ -283,6 +290,42 @@ pub struct FixedData<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
+    /// Returns the common degree of a set or polynomials
+    ///
+    /// # Panics
+    ///
+    /// Panics if:
+    /// - the degree is not unique
+    /// - the set of polynomials is empty
+    /// - a declared polynomial does not have an explicit degree
+    pub fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
+        let ids: HashSet<_> = ids.into_iter().collect();
+
+        self.analyzed
+            // get all definitions
+            .definitions
+            .iter()
+            // only keep polynomials
+            .filter_map(|(_, (symbol, _))| {
+                matches!(symbol.kind, SymbolKind::Poly(_)).then_some(symbol)
+            })
+            // get all array elements and their degrees
+            .flat_map(|symbol| {
+                symbol.array_elements().map(|(_, id)| {
+                    (
+                        id,
+                        symbol.degree.expect("all polynomials should have a degree"),
+                    )
+                })
+            })
+            // only keep the ones matching our set
+            .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
+            // get the common degree
+            .unique()
+            .exactly_one()
+            .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
+    }
+
     pub fn new(
         analyzed: &'a Analyzed<T>,
         fixed_col_values: &'a [(String, Vec<T>)],
@@ -302,13 +345,13 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                         .map(|(name, poly_id)| {
                             let external_values = external_witness_values.remove(name.as_str());
                             if let Some(external_values) = &external_values {
-                                if external_values.len() != analyzed.degree() as usize {
+                                if external_values.len() != poly.degree.unwrap() as usize {
                                     log::debug!(
                                         "External witness values for column {} were only partially provided \
                                         (length is {} but the degree is {})",
                                         name,
                                         external_values.len(),
-                                        analyzed.degree()
+                                        poly.degree.unwrap()
                                     );
                                 }
                             }
@@ -344,7 +387,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
         FixedData {
             analyzed,
-            degree: analyzed.degree(),
             fixed_cols,
             witness_cols,
             column_by_name: analyzed
@@ -398,11 +440,13 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {
-        let row = row % self.degree;
         self.witness_cols[column]
             .external_values
             .as_ref()
-            .and_then(|v| v.get(row as usize).cloned())
+            .and_then(|v| {
+                let row = row % v.len() as u64;
+                v.get(row as usize).cloned()
+            })
     }
 }
 
