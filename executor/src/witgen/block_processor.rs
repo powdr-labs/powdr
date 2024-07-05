@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicReference, PolyID};
 use powdr_number::FieldElement;
+
+use crate::Identity;
 
 use super::{
     data_structures::finalizable_data::FinalizableData,
@@ -22,15 +22,15 @@ use super::{
 pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     processor: Processor<'a, 'b, 'c, T, Q>,
     /// The list of identities
-    identities: &'c [&'a Identity<Expression<T>>],
+    identities: &'c [&'a Identity<T>],
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
     pub fn new(
         row_offset: RowIndex,
-        data: FinalizableData<'a, T>,
+        data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
-        identities: &'c [&'a Identity<Expression<T>>],
+        identities: &'c [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
@@ -43,7 +43,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 
     pub fn from_processor(
         processor: Processor<'a, 'b, 'c, T, Q>,
-        identities: &'c [&'a Identity<Expression<T>>],
+        identities: &'c [&'a Identity<T>],
     ) -> Self {
         Self {
             processor,
@@ -67,17 +67,25 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     ) -> Result<EvalValue<&'a AlgebraicReference, T>, EvalError<T>> {
         let mut outer_assignments = vec![];
 
+        let mut is_identity_complete =
+            vec![vec![false; self.identities.len()]; self.processor.len()];
+
         while let Some(SequenceStep { row_delta, action }) = sequence_iterator.next() {
             let row_index = (1 + row_delta) as usize;
             let progress = match action {
                 Action::InternalIdentity(identity_index) => {
-                    self.processor
-                        .process_identity(
+                    if is_identity_complete[row_index][identity_index] {
+                        // The identity has been completed already, there is no point in processing it again.
+                        false
+                    } else {
+                        let res = self.processor.process_identity(
                             row_index,
                             self.identities[identity_index],
                             UnknownStrategy::Unknown,
-                        )?
-                        .progress
+                        )?;
+                        is_identity_complete[row_index][identity_index] = res.is_complete;
+                        res.progress
+                    }
                 }
                 Action::OuterQuery => {
                     let (progress, new_outer_assignments) =
@@ -99,7 +107,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         }
     }
 
-    pub fn finish(self) -> FinalizableData<'a, T> {
+    pub fn finish(self) -> FinalizableData<T> {
         self.processor.finish()
     }
 }
@@ -154,6 +162,8 @@ mod tests {
         let mut fixed_lookup = FixedLookup::new(fixed_data.global_range_constraints().clone());
         let mut machines = [];
 
+        let degree = fixed_data.analyzed.degree();
+
         let columns = (0..fixed_data.witness_cols.len())
             .map(move |i| PolyID {
                 id: i as u64,
@@ -162,8 +172,7 @@ mod tests {
             .collect();
         let data = FinalizableData::with_initial_rows_in_progress(
             &columns,
-            (0..fixed_data.degree)
-                .map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, fixed_data.degree))),
+            (0..degree).map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, degree))),
         );
 
         let mut mutable_state = MutableState {
@@ -171,7 +180,7 @@ mod tests {
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
-        let row_offset = RowIndex::from_degree(0, fixed_data.degree);
+        let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let witness_cols = fixed_data.witness_cols.keys().collect();
 
@@ -187,7 +196,7 @@ mod tests {
         f(
             processor,
             name_to_poly_id(&fixed_data),
-            analyzed.degree(),
+            degree,
             identities.len(),
         )
     }
@@ -208,8 +217,7 @@ mod tests {
 
                 for &(i, name, expected) in asserted_values.iter() {
                     let poly_id = poly_ids[name];
-                    let row = &data[i];
-                    let actual: T = row[&poly_id].value.unwrap_or_default();
+                    let actual: T = data[i].value_or_zero(&poly_id);
                     assert_eq!(actual, T::from(expected));
                 }
             },

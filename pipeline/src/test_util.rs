@@ -16,6 +16,19 @@ pub fn resolve_test_file(file_name: &str) -> PathBuf {
     ))
 }
 
+pub fn execute_test_file(
+    file_name: &str,
+    inputs: Vec<GoldilocksField>,
+    external_witness_values: Vec<(String, Vec<GoldilocksField>)>,
+) -> Result<(), Vec<String>> {
+    Pipeline::default()
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs)
+        .add_external_witness_values(external_witness_values)
+        .compute_witness()
+        .map(|_| ())
+}
+
 pub fn verify_test_file(
     file_name: &str,
     inputs: Vec<GoldilocksField>,
@@ -73,13 +86,6 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         .with_backend(powdr_backend::BackendType::EStarkStarky, None);
 
     pipeline.clone().compute_proof().unwrap();
-
-    // Also test composite backend:
-    pipeline
-        .clone()
-        .with_backend(powdr_backend::BackendType::EStarkStarkyComposite, None)
-        .compute_proof()
-        .unwrap();
 
     // Repeat the proof generation, but with an externally generated verification key
 

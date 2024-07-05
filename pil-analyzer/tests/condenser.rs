@@ -14,7 +14,7 @@ fn new_witness_column() {
     let y;
     let z = new_wit();
     z = y;
-    z { z } in { even };
+    z $ [z] in [even];
     let t = new_wit_arr();
     t[0] = t[1];
     "#;
@@ -33,7 +33,7 @@ fn new_witness_column() {
     let z: expr = N.new_wit();
     col witness x_1;
     N.x_1 = N.y;
-    N.x_1 { N.x_1 } in { N.even };
+    N.x_1 $ [N.x_1] in [N.even];
     let t: expr[] = N.new_wit_arr();
     col witness x_2;
     N.x_2 = N.x_2;
@@ -122,9 +122,9 @@ pub fn degree() {
             w = std::convert::expr(d);
     "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
-    let expected = r#"namespace std::convert(8);
+    let expected = r#"namespace std::convert;
     let expr = [];
-namespace std::prover(8);
+namespace std::prover;
     let degree = [];
 namespace Main(8);
     let d: int = std::prover::degree();
@@ -168,9 +168,9 @@ pub fn constructed_constraints() {
     col witness y;
     col witness z;
     Main.x = Main.y;
-    1 { Main.x, 3 } in { Main.y, Main.z };
-    { Main.x, 3 } is Main.x { Main.y, Main.z };
-    { Main.x, Main.y } connect { Main.z, 3 };
+    1 $ [Main.x, 3] in [Main.y, Main.z];
+    [Main.x, 3] is Main.x $ [Main.y, Main.z];
+    [Main.x, Main.y] connect [Main.z, 3];
 "#;
     assert_eq!(formatted, expected);
 }

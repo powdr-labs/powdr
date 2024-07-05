@@ -197,7 +197,7 @@ fn constraints() {
     let input = "
         let a;
         let BYTE: col = |i| std::convert::fe(i & 0xff);
-        { a + 1 } in {BYTE};
+        [ a + 1 ] in [BYTE];
         namespace std::convert(8);
         let fe = 18;
     ";
@@ -479,7 +479,7 @@ fn multi_ellipsis() {
 }
 
 #[test]
-#[should_panic = "Expected enum variant for pattern X::A but got int -> X - maybe you forgot the parentheses?"]
+#[should_panic = "Expected enum variant for pattern but got int -> X - maybe you forgot the parentheses?"]
 fn enum_no_paren_for_paren() {
     let input = "
     enum X { A(int) }
@@ -492,7 +492,7 @@ fn enum_no_paren_for_paren() {
 }
 
 #[test]
-#[should_panic = "Enum variant X::A does not have fields, but is used with parentheses in X::A()"]
+#[should_panic = "Enum variant X::A does not have fields, but is used with parentheses in pattern"]
 fn enum_paren_for_no_paren() {
     let input = "
     enum X { A }
@@ -513,6 +513,50 @@ fn enum_too_many_fields() {
         X::A(_, _) => 2,
         _ => 3,
     };
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn empty_function() {
+    let input = "
+    let f: int -> () = |i| { };
+    let g: int -> () = |i| {
+        f(i);
+    };
+    
+    let h: () = g(4);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn empty_match() {
+    let input = "
+    let h: int -> int = |i| i;
+    let f: int -> () = |i| match i {
+        5 => { 
+            let _ = h(4);
+        },
+        _ => { }
+    };
+
+    let g: () = f(4);
+    let k: () = f(5);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn empty_conditional() {
+    let input = "
+    let h: int -> int = |i| i;
+    let f: int -> () = |i| if i == 5 {
+        let _ = h(4);
+    } else { };
+
+    let g: () = f(4);
+    let k: () = f(5);
     ";
     type_check(input, &[]);
 }

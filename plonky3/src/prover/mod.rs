@@ -134,6 +134,9 @@ mod tests {
 
     #[test]
     #[should_panic = "assertion failed: width >= 1"]
+    // The above failure is from a debug assertion, so we can only run this
+    // test if debug assertions are activated.
+    #[cfg(debug_assertions)]
     fn empty() {
         let content = "namespace Global(8);";
         run_test_goldilocks(content);
@@ -156,14 +159,9 @@ mod tests {
     fn challenge() {
         let content = r#"
         let N: int = 8;
-        namespace std::prover(N);
-            let challenge = [];
-            enum Query {
-                Hint(int)
-            }
         
         namespace Global(N); 
-            let beta: expr = std::prover::challenge(0, 42); 
+            let beta: expr = std::prelude::challenge(0, 42);
             col witness stage(0) x;
             col witness stage(1) y;
             x = y + beta;
@@ -181,7 +179,7 @@ mod tests {
     #[test]
     #[should_panic = "not implemented"]
     fn lookup() {
-        let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; a in z;";
+        let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; [a] in [z];";
         run_test_goldilocks(content);
     }
 }

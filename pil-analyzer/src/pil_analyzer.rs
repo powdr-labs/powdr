@@ -9,10 +9,11 @@ use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
+    SymbolCategory,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
@@ -63,7 +64,7 @@ struct PILAnalyzer {
     /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    identities: Vec<Identity<Expression>>,
+    identities: Vec<Identity<SelectedExpressions<Expression>>>,
     /// The order in which definitions and identities
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
@@ -154,7 +155,7 @@ impl PILAnalyzer {
     fn core_types_if_not_present(&self) -> Option<PILFile> {
         // We are extracting some specific symbols from the prelude file.
         let prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../std/prelude.asm"));
-        let missing_symbols = ["Constr", "Option"]
+        let missing_symbols = ["Constr", "Option", "challenge"]
             .into_iter()
             .filter(|symbol| {
                 !self
@@ -287,9 +288,15 @@ impl PILAnalyzer {
                     if let Some(selector) = &mut part.selector {
                         expressions.push((selector, Type::Expr.into()))
                     }
-                    for e in &mut part.expressions {
-                        expressions.push((e, Type::Expr.into()))
-                    }
+
+                    expressions.push((
+                        part.expressions.as_mut(),
+                        Type::Array(ArrayType {
+                            base: Box::new(Type::Expr),
+                            length: None,
+                        })
+                        .into(),
+                    ))
                 }
             }
         }
@@ -321,7 +328,6 @@ impl PILAnalyzer {
 
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
         condenser::condense(
-            self.polynomial_degree,
             self.definitions,
             self.public_declarations,
             &self.identities,
@@ -409,27 +415,22 @@ impl PILAnalyzer {
     }
 
     fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::Expression>) {
-        if let Some(degree) = degree {
-            let degree = ExpressionProcessor::new(self.driver(), &Default::default())
-                .process_expression(degree);
+        self.polynomial_degree = degree
+            .map(|degree| {
+                ExpressionProcessor::new(self.driver(), &Default::default())
+                    .process_expression(degree)
+            })
             // TODO we should maybe implement a separate evaluator that is able to run before type checking
             // and is field-independent (only uses integers)?
-            let namespace_degree: u64 = u64::try_from(
-                evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
-                    .unwrap()
-                    .try_to_integer()
-                    .unwrap(),
-            )
-            .unwrap();
-            if let Some(degree) = self.polynomial_degree {
-                assert_eq!(
-                    degree, namespace_degree,
-                    "all namespaces must have the same degree"
-                );
-            } else {
-                self.polynomial_degree = Some(namespace_degree);
-            }
-        }
+            .map(|degree| {
+                u64::try_from(
+                    evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
+                        .unwrap()
+                        .try_to_integer()
+                        .unwrap(),
+                )
+                .unwrap()
+            });
         self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }
 

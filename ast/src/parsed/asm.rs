@@ -389,7 +389,7 @@ impl Display for Part {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Machine {
-    pub arguments: MachineArguments,
+    pub params: MachineParams,
     pub properties: MachineProperties,
     pub statements: Vec<MachineStatement>,
 }
@@ -402,27 +402,27 @@ impl Machine {
                 .iter()
                 .flat_map(|s| -> Box<dyn Iterator<Item = &String> + '_> {
                     match s {
-                        MachineStatement::RegisterDeclaration(_, name, _) => Box::new(once(name)),
+                        MachineStatement::Submachine(_, _, name, _)
+                        | MachineStatement::RegisterDeclaration(_, name, _) => Box::new(once(name)),
                         MachineStatement::Pil(_, statement) => {
                             Box::new(statement.symbol_definition_names().map(|(s, _)| s))
                         }
-                        MachineStatement::Submachine(_, _, _)
-                        | MachineStatement::InstructionDeclaration(_, _, _)
+                        MachineStatement::InstructionDeclaration(_, _, _)
                         | MachineStatement::LinkDeclaration(_, _)
                         | MachineStatement::FunctionDeclaration(_, _, _, _)
                         | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
                     }
                 })
-                .chain(self.arguments.defined_names())
+                .chain(self.params.defined_names())
                 .chain(self.properties.defined_names()),
         )
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
-pub struct MachineArguments(pub Vec<Param>);
+pub struct MachineParams(pub Vec<Param>);
 
-impl MachineArguments {
+impl MachineParams {
     pub fn defined_names(&self) -> impl Iterator<Item = &String> {
         self.0.iter().map(|p| &p.name)
     }
@@ -433,7 +433,7 @@ impl MachineArguments {
                 return Err(source_ref.with_error(format!("invalid machine argument: `{p}`")));
             }
         }
-        Ok(MachineArguments(params))
+        Ok(MachineParams(params))
     }
 }
 
@@ -561,10 +561,31 @@ pub struct Instruction {
     pub body: InstructionBody,
 }
 
+impl Children<Expression> for Instruction {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(
+            self.body
+                .0
+                .iter()
+                .flat_map(|s| s.children())
+                .chain(self.links.iter().flat_map(|d| d.children())),
+        )
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(
+            self.body
+                .0
+                .iter_mut()
+                .flat_map(|s| s.children_mut())
+                .chain(self.links.iter_mut().flat_map(|d| d.children_mut())),
+        )
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement {
     Pil(SourceRef, PilStatement),
-    Submachine(SourceRef, SymbolPath, String),
+    Submachine(SourceRef, SymbolPath, String, Vec<Expression>),
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),
     InstructionDeclaration(SourceRef, String, Instruction),
     LinkDeclaration(SourceRef, LinkDeclaration),
@@ -577,6 +598,15 @@ pub struct LinkDeclaration {
     pub flag: Expression,
     pub link: CallableRef,
     pub is_permutation: bool,
+}
+
+impl Children<Expression> for LinkDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(once(&self.flag).chain(self.link.params.inputs_and_outputs()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(once(&mut self.flag).chain(self.link.params.inputs_and_outputs_mut()))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -717,7 +747,7 @@ pub enum RegisterFlag {
 pub struct Param {
     pub name: String,
     pub index: Option<BigUint>,
-    pub ty: Option<String>,
+    pub ty: Option<SymbolPath>,
 }
 
 #[cfg(test)]

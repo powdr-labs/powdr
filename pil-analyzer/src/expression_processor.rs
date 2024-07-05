@@ -1,9 +1,4 @@
 use core::panic;
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-};
-
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
@@ -15,6 +10,10 @@ use powdr_ast::{
 };
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 use crate::{type_processor::TypeProcessor, AnalysisDriver};
 
@@ -44,7 +43,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     ) -> SelectedExpressions<Expression> {
         SelectedExpressions {
             selector: expr.selector.map(|e| self.process_expression(e)),
-            expressions: self.process_expressions(expr.expressions),
+            expressions: Box::new(self.process_expression(*expr.expressions)),
         }
     }
 
@@ -82,6 +81,23 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             .into_iter()
             .map(|e| self.process_expression(e))
             .collect()
+    }
+
+    pub fn process_vec_into_selected_expression(
+        &mut self,
+        exprs: Vec<parsed::Expression>,
+    ) -> SelectedExpressions<Expression> {
+        let exprs = Expression::ArrayLiteral(
+            SourceRef::unknown(),
+            ArrayLiteral {
+                items: self.process_expressions(exprs),
+            },
+        );
+
+        SelectedExpressions {
+            selector: None,
+            expressions: Box::new(exprs),
+        }
     }
 
     pub fn process_expression(&mut self, expr: parsed::Expression) -> Expression {
@@ -179,7 +195,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 },
             ),
             PExpression::BlockExpression(src, BlockExpression { statements, expr }) => {
-                self.process_block_expression(statements, *expr, src)
+                self.process_block_expression(statements, expr, src)
             }
             PExpression::FreeInput(_, _) => panic!(),
         }
@@ -190,41 +206,49 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     /// to anything into Variable patterns.
     fn process_pattern(&mut self, pattern: Pattern) -> Pattern {
         match pattern {
-            Pattern::CatchAll | Pattern::Ellipsis | Pattern::Number(_) | Pattern::String(_) => {
-                pattern
-            }
-            Pattern::Array(items) => {
+            Pattern::CatchAll(_)
+            | Pattern::Ellipsis(_)
+            | Pattern::Number(_, _)
+            | Pattern::String(_, _) => pattern,
+            Pattern::Array(source_ref, items) => {
                 // If there is more than one Pattern::Ellipsis in items, it is an error
-                if items.iter().filter(|p| *p == &Pattern::Ellipsis).count() > 1 {
+                if items
+                    .iter()
+                    .filter(|p| matches!(p, Pattern::Ellipsis(_)))
+                    .count()
+                    > 1
+                {
                     panic!("Only one \"..\"-item allowed in array pattern");
                 }
-                Pattern::Array(self.process_pattern_vec(items))
+                Pattern::Array(source_ref, self.process_pattern_vec(items))
             }
-            Pattern::Tuple(items) => Pattern::Tuple(self.process_pattern_vec(items)),
-            Pattern::Variable(name) => self.process_variable_pattern(name),
-            Pattern::Enum(name, None) => {
+            Pattern::Tuple(source_ref, items) => {
+                Pattern::Tuple(source_ref, self.process_pattern_vec(items))
+            }
+            Pattern::Variable(source_ref, name) => self.process_variable_pattern(source_ref, name),
+            Pattern::Enum(source_ref, name, None) => {
                 // The parser cannot distinguish between Enum and Variable patterns.
                 // So if "name" is a single identifier that does not resolve to an enum variant,
                 // it is a variable pattern.
 
                 if let Some((resolved_name, category)) = self.driver.try_resolve_ref(&name) {
                     if category.compatible_with_request(SymbolCategory::TypeConstructor) {
-                        self.process_enum_pattern(resolved_name, None)
+                        self.process_enum_pattern(source_ref, resolved_name, None)
                     } else if let Some(identifier) = name.try_to_identifier() {
                         // It's a single identifier that does not resolve to an enum variant.
-                        self.process_variable_pattern(identifier.clone())
+                        self.process_variable_pattern(source_ref, identifier.clone())
                     } else {
                         panic!("Expected enum variant but got {category}: {resolved_name}");
                     }
                 } else if let Some(identifier) = name.try_to_identifier() {
                     // It's a single identifier that does not resolve to an enum variant.
-                    self.process_variable_pattern(identifier.clone())
+                    self.process_variable_pattern(source_ref, identifier.clone())
                 } else {
                     panic!("Symbol not found: {name}");
                 }
             }
-            Pattern::Enum(name, fields) => {
-                self.process_enum_pattern(self.driver.resolve_value_ref(&name), fields)
+            Pattern::Enum(source_ref, name, fields) => {
+                self.process_enum_pattern(source_ref, self.driver.resolve_value_ref(&name), fields)
             }
         }
     }
@@ -236,17 +260,23 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             .collect()
     }
 
-    fn process_variable_pattern(&mut self, name: String) -> Pattern {
+    fn process_variable_pattern(&mut self, source_ref: SourceRef, name: String) -> Pattern {
         let id = self.local_variable_counter;
         if self.local_variables.insert(name.clone(), id).is_some() {
             panic!("Variable already defined: {name}");
         }
         self.local_variable_counter += 1;
-        Pattern::Variable(name)
+        Pattern::Variable(source_ref, name)
     }
 
-    fn process_enum_pattern(&mut self, name: String, fields: Option<Vec<Pattern>>) -> Pattern {
+    fn process_enum_pattern(
+        &mut self,
+        source_ref: SourceRef,
+        name: String,
+        fields: Option<Vec<Pattern>>,
+    ) -> Pattern {
         Pattern::Enum(
+            source_ref,
             SymbolPath::from_str(&name).unwrap(),
             fields.map(|fields| {
                 fields
@@ -292,7 +322,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     fn process_block_expression(
         &mut self,
         statements: Vec<StatementInsideBlock>,
-        expr: ::powdr_ast::parsed::Expression,
+        expr: Option<Box<::powdr_ast::parsed::Expression>>,
         src: SourceRef,
     ) -> Expression {
         let vars = self.save_local_variables();
@@ -303,7 +333,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value }) => {
                     let value = value.map(|v| self.process_expression(v));
                     let pattern = self.process_pattern(pattern);
-                    if value.is_none() && !matches!(pattern, Pattern::Variable(_)) {
+                    if value.is_none() && !matches!(pattern, Pattern::Variable(_, _)) {
                         panic!("Let statement without value requires a single variable, but got {pattern}.");
                     }
                     if !pattern.is_irrefutable() {
@@ -317,13 +347,14 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             })
             .collect::<Vec<_>>();
 
-        let processed_expr = self.process_expression(expr);
+        let processed_expr = expr.map(|expr| Box::new(self.process_expression(*expr)));
+
         self.reset_local_variables(vars);
         Expression::BlockExpression(
             src,
             BlockExpression {
                 statements: processed_statements,
-                expr: Box::new(processed_expr),
+                expr: processed_expr,
             },
         )
     }

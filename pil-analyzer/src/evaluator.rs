@@ -225,29 +225,29 @@ impl<'a, T: FieldElement> Value<'a, T> {
         pattern: &Pattern,
     ) -> Option<Vec<Arc<Value<'b, T>>>> {
         match pattern {
-            Pattern::Ellipsis => unreachable!("Should be handled higher up"),
-            Pattern::CatchAll => Some(vec![]),
-            Pattern::Number(n) => match v.as_ref() {
+            Pattern::Ellipsis(_) => unreachable!("Should be handled higher up"),
+            Pattern::CatchAll(_) => Some(vec![]),
+            Pattern::Number(_, n) => match v.as_ref() {
                 Value::Integer(x) if x == n => Some(vec![]),
                 Value::FieldElement(x) if BigInt::from(x.to_arbitrary_integer()) == *n => {
                     Some(vec![])
                 }
                 _ => None,
             },
-            Pattern::String(s) => match v.as_ref() {
+            Pattern::String(_, s) => match v.as_ref() {
                 Value::String(x) if x == s => Some(vec![]),
                 _ => None,
             },
-            Pattern::Tuple(items) => match v.as_ref() {
+            Pattern::Tuple(_, items) => match v.as_ref() {
                 Value::Tuple(values) => Value::try_match_pattern_list(values, items),
                 _ => unreachable!(),
             },
-            Pattern::Array(items) => {
+            Pattern::Array(_, items) => {
                 let Value::Array(values) = v.as_ref() else {
                     panic!("Type error")
                 };
                 // Index of ".."
-                let ellipsis_pos = items.iter().position(|i| *i == Pattern::Ellipsis);
+                let ellipsis_pos = items.iter().position(|i| matches!(i, Pattern::Ellipsis(_)));
                 // Check if the value is too short.
                 let length_matches = match ellipsis_pos {
                     Some(_) => values.len() >= items.len() - 1,
@@ -266,7 +266,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     items.len() - ellipsis_pos.map(|_| 1).unwrap_or_default()
                 );
                 left.chain(right)
-                    .zip(items.iter().filter(|&i| *i != Pattern::Ellipsis))
+                    .zip(items.iter().filter(|&i| !matches!(i, Pattern::Ellipsis(_))))
                     .try_fold(vec![], |mut vars, (e, p)| {
                         Value::try_match_pattern(e, p).map(|v| {
                             vars.extend(v);
@@ -274,8 +274,8 @@ impl<'a, T: FieldElement> Value<'a, T> {
                         })
                     })
             }
-            Pattern::Variable(_) => Some(vec![v.clone()]),
-            Pattern::Enum(name, fields_pattern) => {
+            Pattern::Variable(_, _) => Some(vec![v.clone()]),
+            Pattern::Enum(_, name, fields_pattern) => {
                 let Value::Enum(n, data) = v.as_ref() else {
                     panic!()
                 };
@@ -316,7 +316,7 @@ const BUILTINS: [(&str, BuiltinFunction); 10] = [
     ("std::convert::int", BuiltinFunction::ToInt),
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
-    ("std::prover::challenge", BuiltinFunction::Challenge),
+    ("std::prelude::challenge", BuiltinFunction::Challenge),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
@@ -638,7 +638,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     let value = if s.value.is_some() {
                         self.value_stack.pop().unwrap()
                     } else {
-                        let Pattern::Variable(name) = &s.pattern else {
+                        let Pattern::Variable(_, name) = &s.pattern else {
                             unreachable!()
                         };
                         self.symbols
@@ -749,7 +749,10 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
                 self.op_stack
                     .push(Operation::TruncateLocals(self.local_vars.len()));
-                self.op_stack.push(Operation::Expand(expr));
+                match expr {
+                    Some(expr) => self.op_stack.push(Operation::Expand(expr)),
+                    None => self.value_stack.push(Value::Tuple(vec![]).into()),
+                }
                 for s in statements.iter().rev() {
                     match s {
                         StatementInsideBlock::LetStatement(s) => {
@@ -1646,5 +1649,29 @@ mod test {
             evaluate_function::<GoldilocksField>(src, "main.test"),
             7u64.into()
         );
+    }
+
+    #[test]
+    fn no_stmts_in_block() {
+        let input = "
+    let f: int -> () = |i| ();
+    let g: int -> () = |i| {
+        f(1)
+    };
+    
+    let h: () = g(1);
+    ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "h"), "()".to_string());
+    }
+
+    #[test]
+    fn called_with_empty_block() {
+        let input = "
+    let<T1, T2: FromLiteral> f: T1 -> T2 = |_| 7;
+    let g: int = f({ });
+    ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "g"), "7".to_string());
     }
 }

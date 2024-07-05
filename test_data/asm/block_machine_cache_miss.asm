@@ -23,8 +23,8 @@ machine Arith with
     // - If the operation ID is different in the next execution, the
     //   cached sequence won't include the correct lookup.
     // Powdr should be able to recover from this.
-    (1 - operation_id) {x, y} in {X, DOUBLE};
-    operation_id {x, y} in {X, SQUARE};
+    (1 - operation_id) $ [x, y] in [X, DOUBLE];
+    operation_id $ [x, y] in [X, SQUARE];
 }
 
 machine Main with degree: 8 {
