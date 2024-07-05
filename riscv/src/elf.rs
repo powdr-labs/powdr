@@ -865,7 +865,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         };
 
         let mut imm = match insn.opc {
-            // All jump instructions that have the immediate as an address
+            // All jump instructions that have an address as immediate
             Op::JAL | Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
                 let addr = (insn.imm.unwrap() + original_address as i32) as u32;
                 if let ReadOrWrite::Write(refs) = &mut self.referenced_text_addrs {
