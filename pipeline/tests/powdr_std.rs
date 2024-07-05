@@ -5,8 +5,9 @@ use powdr_number::{BigInt, Bn254Field, GoldilocksField};
 use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
-        evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_composite_proof,
-        gen_halo2_proof, resolve_test_file, std_analyzed, test_halo2, verify_test_file,
+        evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
+        gen_halo2_composite_proof, gen_halo2_proof, resolve_test_file, std_analyzed, test_halo2,
+        verify_test_file,
     },
     Pipeline,
 };
@@ -93,7 +94,7 @@ fn permutation_via_challenges_bn() {
 }
 
 #[test]
-#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation([main.z], main.permutation_constraint)\nError: FailedAssertion(\"The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!\")"]
+#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation(main.is_first, [main.z], main.alpha, main.beta, main.permutation_constraint)\nError: FailedAssertion(\"The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!\""]
 fn permutation_via_challenges_gl() {
     let f = "std/permutation_via_challenges.asm";
     Pipeline::<GoldilocksField>::default()
@@ -353,5 +354,5 @@ fn sort() {
 #[test]
 fn btree() {
     let f = "std/btree_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    execute_test_file(f, Default::default(), vec![]).unwrap();
 }

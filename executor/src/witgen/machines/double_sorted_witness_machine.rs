@@ -83,6 +83,8 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
+        let degree = fixed_data.common_degree(witness_cols);
+
         // get the namespaces and column names
         let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = witness_cols
             .iter()
@@ -152,7 +154,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                     name,
                     namespace,
                     fixed: fixed_data,
-                    degree: fixed_data.degree,
+                    degree,
                     diff_columns_base,
                     has_bootloader_write_column,
                     trace: Default::default(),
@@ -168,7 +170,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 name,
                 namespace,
                 fixed: fixed_data,
-                degree: fixed_data.degree,
+                degree,
                 diff_columns_base: None,
                 has_bootloader_write_column,
                 trace: Default::default(),
@@ -183,6 +185,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.selector_ids.keys().cloned().collect()
+    }
+
+    fn degree(&self) -> DegreeType {
+        self.degree
     }
 
     fn name(&self) -> &str {

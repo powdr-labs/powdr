@@ -690,13 +690,12 @@ fn namespace_no_degree() {
 namespace T(8);
     let k = X::y;
 ";
-    let expected = "namespace X(8);
+    let expected = "namespace X;
     let y: int = 7;
 namespace T(8);
     let k: int = X.y;
 ";
     let analyzed = analyze_string::<GoldilocksField>(input);
-    assert_eq!(analyzed.degree, Some(8));
     assert_eq!(expected, analyzed.to_string());
 }
 
@@ -707,12 +706,33 @@ fn find_in_prelude() {
 namespace T(8);
     let k = y;
 ";
-    let expected = "namespace std::prelude(8);
+    let expected = "namespace std::prelude;
     let y: int = 7;
 namespace T(8);
     let k: int = std::prelude::y;
 ";
     let analyzed = analyze_string::<GoldilocksField>(input);
-    assert_eq!(analyzed.degree, Some(8));
     assert_eq!(expected, analyzed.to_string());
+}
+
+#[test]
+fn reparse_generic_function_call() {
+    let input = r#"namespace X(16);
+    let<T: Add + FromLiteral> inc: T -> T = (|x| x + 1);
+namespace N(16);
+    let x: int = 7;
+    let y: int = X::inc::<int>(N.x);
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}
+
+#[test]
+fn reparse_non_function_fixed_cols() {
+    let input = r#"namespace X(16);
+    let A: int -> int = (|i| i);
+    let B: col = X.A;
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
 }

@@ -14,7 +14,7 @@ use crate::Identity;
 use super::data_structures::finalizable_data::FinalizableData;
 use super::processor::{OuterQuery, Processor};
 
-use super::rows::{rows_are_equal, Row, RowIndex, UnknownStrategy};
+use super::rows::{Row, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
 
 /// Maximal period checked during loop detection.
@@ -43,6 +43,8 @@ impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
 }
 
 pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
+    /// The common degree of all referenced columns
+    degree: DegreeType,
     /// The global index of the first row of [VmProcessor::data].
     row_offset: DegreeType,
     /// The witness columns belonging to this machine
@@ -66,15 +68,17 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         fixed_data: &'a FixedData<'a, T>,
         identities: &[&'a Identity<T>],
         witnesses: &'c HashSet<PolyID>,
-        data: FinalizableData<'a, T>,
+        data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
+        let degree = fixed_data.common_degree(witnesses);
+
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
         let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witnesses);
 
-        let progress_bar = ProgressBar::new(fixed_data.degree);
+        let progress_bar = ProgressBar::new(degree);
         progress_bar.set_style(
             ProgressStyle::with_template(
                 "[{elapsed_precise} (ETA: {eta_precise})] {bar} {percent}% - {msg}",
@@ -83,6 +87,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         );
 
         VmProcessor {
+            degree,
             row_offset: row_offset.into(),
             witnesses: witnesses.clone(),
             fixed_data,
@@ -100,7 +105,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         Self { processor, ..self }
     }
 
-    pub fn finish(self) -> FinalizableData<'a, T> {
+    pub fn finish(self) -> FinalizableData<T> {
         self.processor.finish()
     }
 
@@ -110,7 +115,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         assert!(self.processor.len() == 1);
 
         if is_main_run {
-            log::info!("Running main machine for {} rows", self.fixed_data.degree);
+            log::info!("Running main machine for {} rows", self.degree);
             self.progress_bar.reset();
             self.progress_bar.set_message("Starting...");
             self.progress_bar.tick();
@@ -125,7 +130,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         } else {
             log::Level::Debug
         };
-        let rows_left = self.fixed_data.degree - self.row_offset + 1;
+        let rows_left = self.degree - self.row_offset + 1;
         let mut finalize_start = 1;
         for row_index in 0..rows_left {
             if is_main_run {
@@ -200,7 +205,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
 
         assert_eq!(
             self.processor.len() as DegreeType + self.row_offset,
-            self.fixed_data.degree + 1
+            self.degree + 1
         );
 
         if is_main_run {
@@ -219,12 +224,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
 
         let row = row_index as usize;
         (1..MAX_PERIOD).find(|&period| {
-            (1..=period).all(|i| {
-                rows_are_equal(
-                    self.processor.row(row - i - period),
-                    self.processor.row(row - i),
-                )
-            })
+            (1..=period)
+                .all(|i| self.processor.row(row - i - period) == self.processor.row(row - i))
         })
     }
 
@@ -235,7 +236,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                 self.processor.len(),
                 Row::fresh(
                     self.fixed_data,
-                    RowIndex::from_degree(row_index, self.fixed_data.degree) + 1,
+                    RowIndex::from_degree(row_index, self.degree) + 1,
                 ),
             );
         }
@@ -297,7 +298,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                     row_index as DegreeType + self.row_offset
                 ),
                 true,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
 
@@ -442,7 +444,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index).render(
                 &format!("Current row ({row_index})"),
                 false,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!(
@@ -450,7 +453,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index + 1).render(
                 &format!("Next row ({})", row_index + 1),
                 false,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!("Set RUST_LOG=trace to understand why these values were chosen.");
@@ -478,7 +482,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index).render(
                 &format!("Current row ({row_index})"),
                 true,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!(
@@ -486,7 +491,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index + 1).render(
                 &format!("Next row ({})", row_index + 1),
                 true,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!("\nSet RUST_LOG=trace to understand why these values were (not) chosen.");
@@ -500,7 +506,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    fn try_proposed_row(&mut self, row_index: DegreeType, proposed_row: Row<'a, T>) -> bool {
+    fn try_proposed_row(&mut self, row_index: DegreeType, proposed_row: Row<T>) -> bool {
         let constraints_valid = self.identities_with_next_ref.iter().all(|i| {
             self.processor
                 .check_row_pair(row_index as usize, &proposed_row, i, true)

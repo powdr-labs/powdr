@@ -28,7 +28,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Vec<T>)
             // for non-arrays, set index to None.
             for (index, (name, id)) in poly.array_elements().enumerate() {
                 let index = poly.is_array().then_some(index as u64);
-                let values = generate_values(analyzed, analyzed.degree(), &name, value, index);
+                let values = generate_values(analyzed, poly.degree.unwrap(), &name, value, index);
                 assert!(fixed_cols.insert(name, (id, values)).is_none());
             }
         }

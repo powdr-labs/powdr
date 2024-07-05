@@ -29,6 +29,7 @@ use super::{FixedLookup, Machine};
 /// instr mload X -> Y { [X, Y] in [ADDR, v] }
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
+    degree: DegreeType,
     connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
@@ -99,8 +100,10 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         });
 
+        let degree = fixed_data.common_degree(key_polys.iter().chain(value_polys.iter()));
+
         let mut key_to_index = BTreeMap::new();
-        for row in 0..fixed_data.degree {
+        for row in 0..degree {
             let key = key_polys
                 .iter()
                 .map(|k| fixed_data.fixed_cols[k].values[row as usize])
@@ -112,6 +115,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         Some(Self {
+            degree,
             connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
@@ -229,6 +233,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
         &self.name
     }
 
+    fn degree(&self) -> DegreeType {
+        self.degree
+    }
+
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
@@ -252,11 +260,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
                     .cloned()
                     .map(|mut external_values| {
                         // External witness values might only be provided partially.
-                        external_values.resize(self.fixed_data.degree as usize, T::zero());
+                        external_values.resize(self.degree as usize, T::zero());
                         external_values
                     })
                     .unwrap_or_else(|| {
-                        let mut column = vec![T::zero(); self.fixed_data.degree as usize];
+                        let mut column = vec![T::zero(); self.degree as usize];
                         for (row, values) in self.data.iter() {
                             column[*row as usize] = values[value_index].unwrap_or_default();
                         }
