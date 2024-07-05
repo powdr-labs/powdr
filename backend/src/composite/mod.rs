@@ -16,9 +16,11 @@ use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 mod split;
 
+/// A composite verification key that contains a verification key for each machine separately.
 #[derive(Serialize, Deserialize)]
 struct CompositeVerificationKey {
-    verification_key: Vec<Vec<u8>>,
+    /// Verification key for each machine
+    verification_keys: Vec<Vec<u8>>,
 }
 
 /// A composite proof that contains a proof for each machine separately.
@@ -57,6 +59,9 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             unimplemented!();
         }
 
+        let pils = split::split_pil((*pil).clone());
+
+        // Read the setup once to pass to all backends.
         let has_setup = setup.is_some();
         let setup_bytes = setup
             .map(|setup| {
@@ -66,21 +71,23 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             })
             .unwrap_or_default();
 
-        let verification_key: Option<CompositeVerificationKey> = verification_key
-            .map(|verification_key| bincode::deserialize_from(verification_key).unwrap());
+        // Read all verification keys (or create empty ones if none are provided)
+        let has_verification_key = verification_key.is_some();
+        let verification_keys = verification_key
+            .map(|verification_key| bincode::deserialize_from(verification_key).unwrap())
+            .unwrap_or(CompositeVerificationKey {
+                verification_keys: vec![Vec::new(); pils.len()],
+            })
+            .verification_keys;
 
-        let per_machine_data = split::split_pil((*pil).clone())
+        let per_machine_data = pils
             .into_iter()
-            .enumerate()
-            .map(|(i, (machine_name, pil))| {
+            .zip(verification_keys.into_iter())
+            .map(|((machine_name, pil), verification_key)| {
+                // Set up readers for the setup and verification key
                 let mut setup_cursor = Cursor::new(&setup_bytes);
                 let setup: Option<&mut dyn std::io::Read> = has_setup.then_some(&mut setup_cursor);
 
-                let has_verification_key = verification_key.is_some();
-                let verification_key = verification_key
-                    .as_ref()
-                    .map(|verification_key| verification_key.verification_key[i].clone())
-                    .unwrap_or_default();
                 let mut verification_key_cursor = Cursor::new(&verification_key);
                 let verification_key: Option<&mut dyn std::io::Read> =
                     has_verification_key.then_some(&mut verification_key_cursor);
@@ -201,7 +208,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
 
     fn get_verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
         let verification_key = CompositeVerificationKey {
-            verification_key: self
+            verification_keys: self
                 .machine_names
                 .iter()
                 .map(|machine| {
