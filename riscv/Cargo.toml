@@ -24,7 +24,9 @@ powdr-pipeline.workspace = true
 powdr-riscv-executor.workspace = true
 powdr-riscv-syscalls.workspace = true
 
-goblin = { version = "0.8" }
+addr2line = "0.23"
+gimli = "0.30"
+goblin = "0.8"
 lazy_static = "1.4.0"
 itertools = "0.13"
 lalrpop-util = { version = "^0.19", features = ["lexer"] }
