@@ -1,10 +1,10 @@
-use std::{collections::BTreeMap, io, iter, marker::PhantomData, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
 use serde::{Deserialize, Serialize};
-use split::select_machine_columns;
+use split::{machine_fixed_columns, machine_witness_columns};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
@@ -56,12 +56,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                 if let Some(ref output_dir) = output_dir {
                     std::fs::create_dir_all(output_dir)?;
                 }
-                let fixed = Arc::new(select_machine_columns(
-                    &fixed,
-                    pil.constant_polys_in_source_order()
-                        .into_iter()
-                        .map(|(symbol, _)| symbol),
-                ));
+                let fixed = Arc::new(machine_fixed_columns(&fixed, &pil));
                 let backend = self.factory.create(
                     pil.clone(),
                     fixed,
@@ -120,18 +115,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                     log::info!("== Proving machine: {} (size {})", machine, pil.degree());
                     log::debug!("PIL:\n{}", pil);
 
-                    let witness = select_machine_columns(
-                        witness,
-                        pil.committed_polys_in_source_order()
-                            .into_iter()
-                            .map(|(symbol, _)| symbol),
-                    );
-
-                    let dummy_column_name = format!("{machine}.__dummy");
-                    let dummy_column = vec![F::zero(); pil.degree() as usize];
-                    let witness = iter::once((dummy_column_name, dummy_column))
-                        .chain(witness.into_iter())
-                        .collect::<Vec<_>>();
+                    let witness = machine_witness_columns(witness, pil);
 
                     backend
                         .prove(&witness, None, witgen_callback)
