@@ -17,10 +17,13 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
+const DUMMY_COLUMN_NAME: &str = "__dummy";
+
 /// Splits a PIL into multiple PILs, one for each "machine".
 /// The rough algorithm is as follows:
 /// 1. The PIL is split into namespaces
-/// 2. Any lookups or permutations that reference multiple namespaces are removed.
+/// 2. Namespaces without any columns are duplicated and merged with the other namespaces
+/// 3. Any lookups or permutations that reference multiple namespaces are removed.
 pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
     let statements_by_namespace = split_by_namespace(&pil);
     let statements_by_machine = merge_empty_namespaces(statements_by_namespace, &pil.definitions);
@@ -40,7 +43,7 @@ pub(crate) fn machine_witness_columns<F: FieldElement>(
     machine_pil: &Analyzed<F>,
     machine_name: &str,
 ) -> Vec<(String, Vec<F>)> {
-    let dummy_column_name = format!("{machine_name}.__dummy");
+    let dummy_column_name = format!("{machine_name}.{DUMMY_COLUMN_NAME}");
     let dummy_column = vec![F::zero(); machine_pil.degree() as usize];
     iter::once((dummy_column_name, dummy_column))
         .chain(select_machine_columns(
@@ -165,10 +168,14 @@ fn split_by_namespace<F: FieldElement>(
         })
 }
 
+/// Merges namespaces without any polynomials into the other namespaces.
+/// For example, a hint might reference a symbol in an std namespace, so we just make
+/// those available to all machines.
 fn merge_empty_namespaces(
     statements_by_namespace: BTreeMap<String, Vec<StatementIdentifier>>,
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
 ) -> BTreeMap<String, Vec<StatementIdentifier>> {
+    // Separate out machines without any polynomials
     let (proper_machines, empty_machines) = statements_by_namespace
         .into_iter()
         .partition::<BTreeMap<_, _>, _>(|(_, statements)| {
@@ -179,6 +186,7 @@ fn merge_empty_namespaces(
                 _ => false,
             })
         });
+    // Merge empty machines into the proper machines
     proper_machines
         .into_iter()
         .map(|(namespace, mut statements)| {
@@ -208,16 +216,22 @@ fn build_machine_pil<F: FieldElement>(
     powdr_pil_analyzer::analyze_ast(parsed_string)
 }
 
+/// Insert a dummy witness column and identity into the PIL string, just after the namespace.
+/// This ensures that all machine PILs have at least one witness column and identity.
+/// In the future, this will always be the case, as interacting with the bus will require
+/// at least one witness column & identity, so this is only necessary for now.
 fn add_dummy_witness_column(pil_string: &str) -> String {
-    let mut lines = pil_string.lines().collect::<Vec<_>>();
+    let lines = pil_string.lines().collect::<Vec<_>>();
     let namespace_row = lines
         .iter()
         .position(|line| line.starts_with("namespace"))
-        .unwrap()
-        + 1;
-    lines.splice(
-        namespace_row..namespace_row,
-        vec!["    col witness __dummy;", "    __dummy = __dummy;"],
-    );
-    lines.join("\n")
+        .unwrap();
+    lines
+        .iter()
+        .cloned()
+        .take(namespace_row + 1)
+        .chain(["    col witness __dummy;", "    __dummy = __dummy;"])
+        .chain(lines.iter().cloned().skip(namespace_row + 1))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
