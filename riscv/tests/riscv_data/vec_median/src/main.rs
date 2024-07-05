@@ -23,7 +23,7 @@ use powdr_riscv_runtime::print;
 
 /// entry point called by the runtime
 #[no_mangle]
-pub fn main() {
+fn main() {
     let expected = read_u32(0);
     let len = read_u32(1);
 

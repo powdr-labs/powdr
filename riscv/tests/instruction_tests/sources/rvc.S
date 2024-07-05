@@ -20,8 +20,22 @@ RVTEST_CODE_BEGIN
   #define RVC_TEST_CASE(n, r, v, code...) \
     TEST_CASE (n, r, v, .option push; .option rvc; code; .align 2; .option pop)
 
-  // Powdr note: there was a test case from the original riscv-tests here,
-  // that we don't support and was removed. It inserted data in the middle of the code.
+
+# Powdr note: we don't support the following test because it inserts data in
+# the middle of the code, which breaks our expected separation of code and
+# data.
+#  // Make sure fetching a 4-byte instruction across a page boundary works.
+#  li TESTNUM, 2
+#  li a1, 666
+#  TEST_CASE (2, a1, 667, \
+#        j 1f; \
+#        .align 3; \
+#        data: \
+#          .dword 0xfedcba9876543210; \
+#          .dword 0xfedcba9876543210; \
+#        .align 12; \
+#        .skip 4094; \
+#      1: addi a1, a1, 1)
 
   li sp, 0x1234
   RVC_TEST_CASE (3, a0, 0x1234 + 1020, c.addi4spn a0, sp, 1020)
@@ -104,7 +118,26 @@ RVTEST_CODE_BEGIN
       2:j fail; \
       1:)
 
-// Powdr note: tests 36 and 37 were removed, as they did arithmetic on text addresses, which we don't support.
+## Powdr note: we don't support tests 36 and 37 because they do arithmetic on text addresses, which we don't support.
+#  RVC_TEST_CASE (36, ra, -2, \
+#        la t0, 1f; \
+#        li ra, 0; \
+#        c.jalr t0; \
+#        c.j 2f; \
+#      1:c.j 1f; \
+#      2:j fail; \
+#      1:sub ra, ra, t0)
+#
+##if __riscv_xlen == 32
+#  RVC_TEST_CASE (37, ra, -2, \
+#        la t0, 1f; \
+#        li ra, 0; \
+#        c.jal 1f; \
+#        c.j 2f; \
+#      1:c.j 1f; \
+#      2:j fail; \
+#      1:sub ra, ra, t0)
+##endif
 
   la sp, data
   RVC_TEST_CASE (40, a2, 0xfffffffffedcba99, c.lwsp a0, 12(sp); addi a0, a0, 1; c.swsp a0, 12(sp); c.lwsp a2, 12(sp))

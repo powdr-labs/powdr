@@ -1,3 +1,7 @@
+# Dispatch table test
+#
+# Text addresses are stored in the data section and called through function pointers.
+
     .section .data
     .align 4
     .global data_section

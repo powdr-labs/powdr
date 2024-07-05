@@ -26,7 +26,7 @@ pub fn test_continuations(case: &str) {
 
     // Test continuations from ELF file.
     let powdr_asm =
-        powdr_riscv::elf::elf_translate::<GoldilocksField>(&elf_file.unwrap(), &runtime, true);
+        powdr_riscv::elf::translate::<GoldilocksField>(&elf_file.unwrap(), &runtime, true);
     run_continuations_test(case, powdr_asm);
 
     // Test continuations from assembly files.
@@ -267,18 +267,20 @@ fn two_sums_serde() {
     );
 }
 
-const DYNAMIC_RELOCATION_S: &str = "tests/riscv_data/dynamic_relocation/dynamic_relocation.s";
+const DISPATCH_TABLE_S: &str = "tests/riscv_data/dispatch_table/dispatch_table.s";
 
+/// Tests that the dispatch table is correctly relocated when PIE is enabled.
 #[ignore = "Too slow"]
 #[test]
-fn dynamic_relocation_pie() {
-    verify_riscv_asm_file(Path::new(DYNAMIC_RELOCATION_S), &Runtime::base(), true);
+fn dispatch_table_pie_relocation() {
+    verify_riscv_asm_file(Path::new(DISPATCH_TABLE_S), &Runtime::base(), true);
 }
 
+/// Tests that the dispatch table is correctly relocated when PIE is disabled.
 #[ignore = "Too slow"]
 #[test]
-fn dynamic_relocation_non_pie() {
-    verify_riscv_asm_file(Path::new(DYNAMIC_RELOCATION_S), &Runtime::base(), false);
+fn dispatch_table_static_relocation() {
+    verify_riscv_asm_file(Path::new(DISPATCH_TABLE_S), &Runtime::base(), false);
 }
 
 #[test]
@@ -395,7 +397,6 @@ fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'stati
     backend: BackendType,
 ) {
     let temp_dir = Temp::new_dir().unwrap();
-    println!("Directory: {}", temp_dir.display());
     let (executable, asm_files) = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
@@ -403,7 +404,7 @@ fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'stati
 
     log::info!("Verifying {case} converted from ELF file");
     let from_elf =
-        powdr_riscv::elf::elf_translate::<GoldilocksField>(&executable.unwrap(), runtime, false);
+        powdr_riscv::elf::translate::<GoldilocksField>(&executable.unwrap(), runtime, false);
     verify_riscv_asm_string(
         &format!("{case}_from_elf.asm"),
         &from_elf,

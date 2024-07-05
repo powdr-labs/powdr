@@ -110,9 +110,8 @@ impl InstructionArgs for &[Argument] {
 
     fn rr(&self) -> Result<(Register, Register), &'static str> {
         match self {
-            [Argument::Register(r1), Argument::Register(r2) | Argument::RegOffset(None, r2)] => {
-                Ok((*r1, *r2))
-            }
+            [Argument::Register(r1), Argument::Register(r2)
+            | Argument::RegOffset(None | Some(Expression::Number(0)), r2)] => Ok((*r1, *r2)),
             _ => Err("Expected: register, register"),
         }
     }

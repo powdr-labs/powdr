@@ -15,7 +15,7 @@ mod instruction_tests {
         verify_riscv_asm_file(path, &Runtime::base(), false);
 
         if name == "rvc" {
-            // "rvc" test is not via assembly path
+            // "rvc" test is not supported via assembly path
             return;
         }
 

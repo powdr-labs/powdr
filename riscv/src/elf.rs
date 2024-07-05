@@ -39,7 +39,7 @@ struct ElfProgram {
 }
 
 /// Generates a Powdr Assembly program from a RISC-V 32 executable ELF file.
-pub fn elf_translate<F: FieldElement>(
+pub fn translate<F: FieldElement>(
     file_name: &Path,
     runtime: &Runtime,
     with_bootloader: bool,
@@ -241,9 +241,10 @@ struct SymbolTable(HashMap<u32, String>);
 
 impl SymbolTable {
     fn new(elf: &Elf) -> SymbolTable {
-        // TODO: read the symbols from the debug information to be more comprehensive.
         let mut deduplicator = HashMap::new();
         for sym in elf.syms.iter() {
+            // We only care about global symbols that have string names, and are
+            // either functions or variables.
             if sym.st_name == 0 || (sym.st_type() != STT_OBJECT && sym.st_type() != STT_FUNC) {
                 continue;
             }
@@ -710,8 +711,8 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             ) if rd_lui == rs1_addi => {
                 // Sometimes, in non-PIE code, this pair of instructions is used
                 // to load an address into a register. We must check if this is
-                // the case, and if the address points to the text section, so
-                // we must load it from a label.
+                // the case, and if the address points to a text section, we
+                // must load it from a label.
                 let is_address = self.rellocs_set.contains(&original_address);
                 let (op, args) =
                     self.composed_immediate(*hi, *lo, *rd_lui, *rd_addi, insn2_addr, is_address)?;
@@ -910,8 +911,8 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         };
 
         // For some reason, atomic instructions comes with the immediate set to
-        // zero instead of None (maybe to mimic assembly syntax? Who knows). Fix
-        // this.
+        // zero instead of None (maybe to mimic assembly syntax? Who knows). We
+        // must fix this:
         if let Extensions::A = insn.extension {
             assert!(matches!(imm, HighLevelImmediate::Value(0)));
             imm = HighLevelImmediate::None;
@@ -1042,7 +1043,7 @@ impl Iterator for RiscVInstructionIterator<'_> {
                         // Otherwise, there is something more fishy going on, and we
                         // panic.
 
-                        // TODO: we should just emit `unimp` for every unknown.
+                        // TODO: maybe we should just emit `unimp` for every unknown.
                         assert_eq!(
                             bin_instruction, 0,
                             "Failed to decode 16-bit instruction at {:08x}",

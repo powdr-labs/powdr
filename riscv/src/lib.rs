@@ -29,7 +29,7 @@ pub fn compile_rust<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     runtime: &Runtime,
-    via_elf: bool,
+    asm: bool,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     if with_bootloader {
@@ -47,18 +47,7 @@ pub fn compile_rust<T: FieldElement>(
         panic!("input must be a crate directory or `Cargo.toml` file");
     };
 
-    if via_elf {
-        let elf_path = compile_rust_crate_to_riscv_bin(&file_path, output_dir);
-
-        compile_riscv_elf::<T>(
-            file_name,
-            &elf_path,
-            output_dir,
-            force_overwrite,
-            runtime,
-            with_bootloader,
-        )
-    } else {
+    if asm {
         let riscv_asm = compile_rust_crate_to_riscv_asm(&file_path, output_dir);
         if !output_dir.exists() {
             fs::create_dir_all(output_dir).unwrap()
@@ -87,6 +76,17 @@ pub fn compile_rust<T: FieldElement>(
         compile_riscv_asm_bundle::<T>(
             file_name,
             riscv_asm,
+            output_dir,
+            force_overwrite,
+            runtime,
+            with_bootloader,
+        )
+    } else {
+        let elf_path = compile_rust_crate_to_riscv_bin(&file_path, output_dir);
+
+        compile_riscv_elf::<T>(
+            file_name,
+            &elf_path,
             output_dir,
             force_overwrite,
             runtime,
@@ -128,7 +128,6 @@ fn compile_program<P>(
     Some((powdr_asm_file_name, powdr_asm))
 }
 
-#[allow(clippy::print_stderr)]
 pub fn compile_riscv_asm_bundle<T: FieldElement>(
     original_file_name: &str,
     riscv_asm_files: BTreeMap<String, String>,
@@ -188,7 +187,7 @@ pub fn compile_riscv_elf<T: FieldElement>(
         force_overwrite,
         runtime,
         with_bootloader,
-        elf::elf_translate::<T>,
+        elf::translate::<T>,
     )
 }
 
@@ -202,6 +201,7 @@ pub fn compile_rust_crate_to_riscv(
     input_dir: &str,
     output_dir: &Path,
 ) -> (Option<PathBuf>, BTreeMap<String, PathBuf>) {
+    const CARGO_TARGET_DIR: &str = "cargo_target";
     let target_dir = output_dir.join(CARGO_TARGET_DIR);
 
     // We call cargo twice, once to perform the actual building, and once to get
@@ -280,8 +280,6 @@ pub fn compile_rust_crate_to_riscv(
 
     (executable, assemblies)
 }
-
-const CARGO_TARGET_DIR: &str = "cargo_target";
 
 pub fn compile_rust_crate_to_riscv_asm(
     input_dir: &str,

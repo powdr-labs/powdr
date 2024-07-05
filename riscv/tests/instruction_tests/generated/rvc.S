@@ -89,8 +89,14 @@
 
 
 
+# Powdr note: we don't support the following test because it inserts data in
+# the middle of the code, which breaks our expected separation of code and
+# data.
 
-
+# li x28, 2
+# li a1, 666
+# test_2: li x10, 2; ebreak; # j 1f; # .align 3; # data: # .dword 0xfedcba9876543210; # .dword 0xfedcba9876543210; # .align 12; # .skip 4094; # 1: addi a1, a1, 1; li x29, 667; li x28, 2; bne a1, x29, fail;
+# 40 "sources/rvc.S"
   li sp, 0x1234
   test_3: li x10, 3; ebreak; .option push; .option rvc; c.addi4spn a0, sp, 1020; .align 2; .option pop; li x29, 0x1234 + 1020; li x28, 3; bne a0, x29, fail;
   test_4: li x10, 4; ebreak; .option push; .option rvc; c.addi16sp sp, 496; .align 2; .option pop; li x29, 0x1234 + 496; li x28, 4; bne sp, x29, fail;
@@ -164,7 +170,21 @@
 
 
   test_35: li x10, 35; ebreak; .option push; .option rvc; la t0, 1f; li ra, 0; c.jr t0; c.j 2f; 1:c.j 1f; 2:j fail; 1:; .align 2; .option pop; li x29, 0; li x28, 35; bne ra, x29, fail;
-# 109 "sources/rvc.S"
+# 121 "sources/rvc.S"
+## Powdr note: we don't support tests 36 and 37 because they do arithmetic on text addresses, which we don't support.
+# test_36: li x10, 36; ebreak; .option push; .option rvc; # la t0, 1f; # li ra, 0; # c.jalr t0; # c.j 2f; # 1:c.j 1f; # 2:j fail; # 1:sub ra, ra, t0; .align 2; .option pop; li x29, -2; li x28, 36; bne ra, x29, fail;
+# 131 "sources/rvc.S"
+##if 32 == 32
+# test_37: li x10, 37; ebreak; .option push; .option rvc; # la t0, 1f; # li ra, 0; # c.jal 1f; # c.j 2f; # 1:c.j 1f; # 2:j fail; # 1:sub ra, ra, t0; .align 2; .option pop; li x29, -2; li x28, 37; bne ra, x29, fail;
+
+
+
+
+
+
+
+##endif
+
   la sp, data
   test_40: li x10, 40; ebreak; .option push; .option rvc; c.lwsp a0, 12(sp); addi a0, a0, 1; c.swsp a0, 12(sp); c.lwsp a2, 12(sp); .align 2; .option pop; li x29, 0xfffffffffedcba99; li x28, 40; bne a2, x29, fail;
 

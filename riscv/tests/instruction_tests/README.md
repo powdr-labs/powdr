@@ -9,13 +9,13 @@ kind of arithmetic over `.text` label and addresses, nor alignment or spacing
 directives in `.text` sections. Most unsupported instructions are related to
 this limitation.
 
-One consequence of this limitation is that all the supported uses of `auipc` and
-`lui`, when referring to a `.text` label, is when they can be fused with the
-next instruction to make use of the loaded address immediately (e.g. `addi` or
-`jalr`). Furthermore, the register used to store the high bits of the text
-address will not be modified, as required by a conformant implementation! For
-instance, the `tail` pseudoinstruction, which expands to `auipc` + `jarl`, is
-supposed to leave the high bits of the return address in `x6`. This does not
+As a consequence, we have limited support for the instructions `auipc` and
+`lui`: they can only be used to refer to a `.text` label if they can be fused
+with the next instruction, making use of the loaded address immediately (e.g.
+`addi` or `jalr`). Furthermore, the register used to store the high bits of the
+text address will not be modified, as required by a conformant implementation!
+For instance, the `tail` pseudoinstruction, which expands to `auipc` + `jarl`,
+is supposed to leave the high bits of the return address in `x6`. This does not
 happen in Powdr!
 
 Following there is a list of tests from the test suite that we do not support:
@@ -48,7 +48,7 @@ These instructions are not yet implemented.
 ## From the "A" (atomic) extension (rv32ua):
 
 - `amoand_w`
-- `momax_w`
+- `amomax_w`
 - `amomaxu_w`
 - `amomin_w`
 - `amominu_w`
@@ -57,13 +57,11 @@ These instructions are not yet implemented.
 - `amoxor_w`
 
 We do not (yet) support the instructions of these tests, but should be easy to
-implement, following amoadd_w suit.
+implement, following `amoadd_w` suit.
 
 ## From the "C" (compressed) extension (rv32uc):
 
 - `rvc`
 
-The RISC-V "C" test is only supported when converting from the ELF executable,
-and only a modified version of the test is supported, because the original
-inserts data in the middle of the text section, which breaks our expected
-separation between data and code address space.
+The RISC-V "C" test file is only partially supported when converting from the
+ELF executable. Some tests that we don't support were disable.
