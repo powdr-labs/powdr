@@ -724,7 +724,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 }
             }
             (
-                // All other double instructions we can lift starts with auipc.
+                // All other double instructions we can lift start with auipc.
                 Ins {
                     opc: Op::AUIPC,
                     rd: Some(rd_auipc),
@@ -866,7 +866,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         };
 
         let mut imm = match insn.opc {
-            // All jump instructions that have the immediate as an address
+            // All jump instructions that have an address as immediate
             Op::JAL | Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
                 let addr = (insn.imm.unwrap() + original_address as i32) as u32;
                 if let ReadOrWrite::Write(refs) = &mut self.referenced_text_addrs {
@@ -1011,7 +1011,7 @@ impl Iterator for RiscVInstructionIterator<'_> {
             .decode(Isa::Rv32)
             .unwrap_or_else(|_| {
                 // TODO: maybe instead of failing we should just emit `unimp`.
-                // This way we would support the garbage default GNU binutils
+                // This way we would support the default GNU binutils
                 // linker script, that places the ELF header in the text
                 // section.
                 panic!(
