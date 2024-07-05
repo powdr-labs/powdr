@@ -152,8 +152,8 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
         unimplemented!()
     }
 
-    fn export_verification_key(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
-        unimplemented!();
+    fn get_verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
+        todo!()
     }
 
     fn export_ethereum_verifier(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
