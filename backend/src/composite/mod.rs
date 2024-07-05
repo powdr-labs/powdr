@@ -117,7 +117,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                 .map(|(machine, MachineData { pil, backend })| {
                     let witgen_callback = witgen_callback.clone().with_pil(pil.clone());
 
-                    log::info!("== Proving machine: {}", machine);
+                    log::info!("== Proving machine: {} (size {})", machine, pil.degree());
                     log::debug!("PIL:\n{}", pil);
 
                     let witness = select_machine_columns(
