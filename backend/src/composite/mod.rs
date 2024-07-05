@@ -1,4 +1,10 @@
-use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    io::{self, Cursor},
+    marker::PhantomData,
+    path::PathBuf,
+    sync::Arc,
+};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
@@ -10,11 +16,16 @@ use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 mod split;
 
+#[derive(Serialize, Deserialize)]
+struct CompositeVerificationKey {
+    verification_key: Vec<Vec<u8>>,
+}
+
 /// A composite proof that contains a proof for each machine separately.
 #[derive(Serialize, Deserialize)]
 struct CompositeProof {
     /// Map from machine name to proof
-    proofs: BTreeMap<String, Vec<u8>>,
+    proofs: Vec<Vec<u8>>,
 }
 
 pub(crate) struct CompositeBackendFactory<F: FieldElement, B: BackendFactory<F>> {
@@ -38,17 +49,28 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         fixed: Arc<Vec<(String, Vec<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
-        verification_key: Option<&mut dyn std::io::Read>,
+        _verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         backend_options: BackendOptions,
     ) -> Result<Box<dyn Backend<'a, F> + 'a>, Error> {
-        if setup.is_some() || verification_key.is_some() || verification_app_key.is_some() {
+        if verification_app_key.is_some() {
             unimplemented!();
         }
+
+        let has_setup = setup.is_some();
+        let setup_bytes = setup
+            .map(|setup| {
+                let mut setup_data = Vec::new();
+                setup.read_to_end(&mut setup_data).unwrap();
+                setup_data
+            })
+            .unwrap_or_default();
 
         let per_machine_data = split::split_pil((*pil).clone())
             .into_iter()
             .map(|(machine_name, pil)| {
+                let mut cursor = Cursor::new(&setup_bytes);
+                let setup: Option<&mut dyn std::io::Read> = has_setup.then_some(&mut cursor);
                 let pil = Arc::new(pil);
                 let output_dir = output_dir
                     .clone()
@@ -66,17 +88,22 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                     pil.clone(),
                     fixed,
                     output_dir,
-                    // TODO: Handle setup, verification_key, verification_app_key
+                    setup,
                     None,
-                    None,
+                    // TODO: Handle verification_app_key
                     None,
                     backend_options.clone(),
                 );
                 backend.map(|backend| (machine_name.to_string(), MachineData { pil, backend }))
             })
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
+        let machine_names = per_machine_data
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect::<Vec<_>>();
         Ok(Box::new(CompositeBackend {
-            machine_data: per_machine_data,
+            machine_data: per_machine_data.into_iter().collect(),
+            machine_names,
         }))
     }
 
@@ -92,6 +119,7 @@ struct MachineData<'a, F> {
 
 pub(crate) struct CompositeBackend<'a, F> {
     machine_data: BTreeMap<String, MachineData<'a, F>>,
+    machine_names: Vec<String>,
 }
 
 // TODO: This just forwards to the backend for now. In the future this should:
@@ -112,9 +140,10 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
 
         let proof = CompositeProof {
             proofs: self
-                .machine_data
+                .machine_names
                 .iter()
-                .map(|(machine, MachineData { pil, backend })| {
+                .map(|machine| {
+                    let MachineData { pil, backend } = self.machine_data.get(machine).unwrap();
                     let witgen_callback = witgen_callback.clone().with_pil(pil.clone());
 
                     log::info!("== Proving machine: {}", machine);
@@ -127,21 +156,19 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                             .map(|(symbol, _)| symbol),
                     );
 
-                    backend
-                        .prove(&witness, None, witgen_callback)
-                        .map(|proof| (machine.clone(), proof))
+                    backend.prove(&witness, None, witgen_callback)
                 })
                 .collect::<Result<_, _>>()?,
         };
-        Ok(serde_json::to_vec(&proof).unwrap())
+        Ok(bincode::serialize(&proof).unwrap())
     }
 
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
         let proof: CompositeProof = serde_json::from_slice(proof).unwrap();
-        for (machine, machine_proof) in proof.proofs {
+        for (machine, machine_proof) in self.machine_names.iter().zip(proof.proofs) {
             let machine_data = self
                 .machine_data
-                .get(&machine)
+                .get(machine)
                 .ok_or_else(|| Error::BackendError(format!("Unknown machine: {machine}")))?;
             machine_data.backend.verify(&machine_proof, instances)?;
         }
@@ -153,7 +180,17 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
     }
 
     fn get_verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
-        todo!()
+        let verification_key = CompositeVerificationKey {
+            verification_key: self
+                .machine_names
+                .iter()
+                .map(|machine| {
+                    let backend = self.machine_data.get(machine).unwrap().backend.as_ref();
+                    backend.get_verification_key_bytes()
+                })
+                .collect::<Result<_, _>>()?,
+        };
+        Ok(bincode::serialize(&verification_key).unwrap())
     }
 
     fn export_ethereum_verifier(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
