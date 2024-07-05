@@ -15,7 +15,6 @@ use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::parsed::asm::SymbolPath;
 use crate::parsed::types::{ArrayType, Type, TypeScheme};
 use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
@@ -443,15 +442,19 @@ pub fn type_from_definition(
             FunctionValueDefinition::TypeConstructor(TypeConstructor::Enum(enum_decl, variant)) => {
                 Some(variant.constructor_type(enum_decl))
             }
-            FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(struct_decl, _)) => {
-                let name = SymbolPath::from_identifier(struct_decl.name.clone());
+            FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
+                struct_decl,
+                field,
+            )) => {
+                //let name = SymbolPath::from_identifier(struct_decl.name.clone());
                 let vars = struct_decl.type_vars.clone();
-                let generic_args = (!vars.is_empty())
-                    .then(|| vars.vars().cloned().map(Type::TypeVar).collect::<Vec<_>>());
 
-                let ty = Type::NamedType(name, generic_args);
+                //let named_type = Type::NamedType(name, None);
 
-                Some(TypeScheme { vars, ty })
+                Some(TypeScheme {
+                    vars,
+                    ty: field.1.clone(),
+                })
             }
         }
     } else {

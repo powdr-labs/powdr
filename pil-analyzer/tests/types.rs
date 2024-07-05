@@ -603,7 +603,7 @@ fn struct_constr_var_typed() {
 #[test]
 fn struct_field_direct_access() {
     let input = "
-    struct X {x: int, y: int}
+    struct X {x: fe, y: int}
     let v = X with {x: 1, y: 0};
     let x: int = v->y;
     ";
@@ -621,7 +621,7 @@ fn struct_field_in_expr() {
         _ => X with {x: 0, y: 1},
     };
 
-    let x: X = v(1)->y;
+    let x: int = v(1)->y;
     ";
 
     type_check(input, &[])

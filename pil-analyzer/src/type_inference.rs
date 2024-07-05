@@ -615,11 +615,9 @@ impl<'a> TypeChecker<'a> {
                     }
                 };
                 let access_name = format!("{name}.{field}");
-                //println!("access_name: {access_name}");
-                let field_type = self.declared_types[&access_name].1.ty.clone();
-                //println!("access: {:?}", field_type);
+                let field_type = self.declared_types[&access_name].1.clone();
 
-                field_type
+                field_type.ty
             }
             Expression::FunctionCall(
                 source_ref,

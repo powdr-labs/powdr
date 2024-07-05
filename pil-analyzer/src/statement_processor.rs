@@ -487,6 +487,7 @@ where
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
+                    degree: None,
                 };
                 let ty = struct_decl.fields[field_name].clone();
                 let value = FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
