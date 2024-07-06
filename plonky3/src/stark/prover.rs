@@ -1,4 +1,7 @@
+use crate::circuit_builder::PowdrAir;
 use crate::stark::folder::ProverConstraintFolder;
+use crate::symbolic_builder::get_max_constraint_degree;
+use crate::symbolic_builder::SymbolicAirBuilder;
 use itertools::izip;
 use itertools::Itertools;
 use p3_air::{Air, TwoRowMatrixView};
@@ -28,12 +31,12 @@ pub fn prove<SC, A>(
 ) -> Proof<SC>
 where
     SC: StarkGenericConfig,
-    A: for<'a> Air<ProverConstraintFolder<'a, SC>>,
+    A: PowdrAir<SymbolicAirBuilder<Val<SC>>> + for<'a> PowdrAir<ProverConstraintFolder<'a, SC>>,
 {
     let degree = trace.height();
     let log_degree = log2_strict_usize(degree);
 
-    let constraint_degree = 2; // TODO: enforce that
+    let constraint_degree = get_max_constraint_degree(air, public_values.len());
     let log_quotient_degree = log2_ceil_usize(constraint_degree - 1);
     let quotient_degree = 1 << log_quotient_degree;
 

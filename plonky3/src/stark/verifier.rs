@@ -1,12 +1,14 @@
 use itertools::Itertools;
-use p3_air::TwoRowMatrixView;
+use p3_air::{Air, TwoRowMatrixView};
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
 use p3_commit::{Pcs, PolynomialSpace};
 use p3_field::{AbstractExtensionField, AbstractField, Field};
 use p3_uni_stark::{StarkGenericConfig, Val, VerificationError};
-use p3_util::log2_ceil_usize;
 
-use crate::circuit_builder::PowdrAir;
+use crate::{
+    circuit_builder::PowdrAir,
+    symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder},
+};
 
 use super::{
     folder::VerifierConstraintFolder,
@@ -24,7 +26,7 @@ pub fn verify<SC, A>(
 ) -> Result<(), VerificationError>
 where
     SC: StarkGenericConfig,
-    A: for<'a> PowdrAir<VerifierConstraintFolder<'a, SC>>,
+    A: PowdrAir<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<VerifierConstraintFolder<'a, SC>>,
 {
     let Proof {
         commitments,
@@ -34,8 +36,7 @@ where
     } = proof;
 
     let degree = 1 << degree_bits;
-    let constraint_degree = 2; // TODO: enforce that
-    let log_quotient_degree = log2_ceil_usize(constraint_degree - 1);
+    let log_quotient_degree = get_log_quotient_degree::<Val<SC>, A>(air, public_values.len());
     let quotient_degree = 1 << log_quotient_degree;
 
     let pcs = config.pcs();
@@ -45,8 +46,8 @@ where
     let quotient_chunks_domains = quotient_domain.split_domains(quotient_degree);
 
     let air_width = air.width();
-    let air_fixed_width = air.fixed_width();
-    let valid_shape = (air_fixed_width == 0 || verifying_key.is_some()) // if we have fixed columns, we have a verifying key
+    let air_fixed_width = <A as PowdrAir<SymbolicAirBuilder<Val<SC>>>>::fixed_width(air);
+    let valid_shape = ((air_fixed_width > 0) == verifying_key.is_some()) // we have fixed columns iff we have a verifying key
         && opened_values.fixed_local.len() == air_fixed_width
         && opened_values.fixed_next.len() == air_fixed_width
         && opened_values.trace_local.len() == air_width

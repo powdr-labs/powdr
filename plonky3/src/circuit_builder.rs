@@ -242,6 +242,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 }
 
+/// An extension of [Air] allowing access to the number of fixed columns
 pub trait PowdrAir<AB: AirBuilder>: Air<AB> {
     /// Returns the number of fixed columns
     fn fixed_width(&self) -> usize;
