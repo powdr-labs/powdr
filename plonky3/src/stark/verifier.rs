@@ -13,6 +13,7 @@ use super::{
     params::{Proof, StarkVerifyingKey},
 };
 
+/// Verifies a proof. Assumes that the maximum constraint degree is 2.
 pub fn verify<SC, A>(
     config: &SC,
     verifying_key: Option<&StarkVerifyingKey<SC>>,
@@ -46,8 +47,8 @@ where
     let air_width = air.width();
     let air_fixed_width = air.fixed_width();
     let valid_shape = (air_fixed_width == 0 || verifying_key.is_some()) // if we have fixed columns, we have a verifying key
-        && opened_values.fixed_local.as_ref().map(|v| v.len()).unwrap_or_default() == air_fixed_width
-        && opened_values.fixed_next.as_ref().map(|v| v.len()).unwrap_or_default() == air_fixed_width
+        && opened_values.fixed_local.len() == air_fixed_width
+        && opened_values.fixed_next.len() == air_fixed_width
         && opened_values.trace_local.len() == air_width
         && opened_values.trace_next.len() == air_width
         && opened_values.quotient_chunks.len() == quotient_degree
@@ -67,6 +68,7 @@ where
     let zeta_next = trace_domain.next_point(zeta).unwrap();
 
     pcs.verify(
+        // only verify fixed openings in the presence of a verification key
         verifying_key
             .map(|verifying_key| {
                 (
@@ -74,11 +76,8 @@ where
                     (vec![(
                         trace_domain,
                         vec![
-                            (zeta, opened_values.fixed_local.as_ref().unwrap().clone()),
-                            (
-                                zeta_next,
-                                opened_values.fixed_next.as_ref().unwrap().clone(),
-                            ),
+                            (zeta, opened_values.fixed_local.clone()),
+                            (zeta_next, opened_values.fixed_next.clone()),
                         ],
                     )]),
                 )
@@ -145,10 +144,10 @@ where
             local: &opened_values.trace_local,
             next: &opened_values.trace_next,
         },
-        fixed: verifying_key.is_some().then(|| TwoRowMatrixView {
-            local: opened_values.fixed_local.as_ref().unwrap(),
-            next: opened_values.fixed_next.as_ref().unwrap(),
-        }),
+        fixed: TwoRowMatrixView {
+            local: &opened_values.fixed_local,
+            next: &opened_values.fixed_next,
+        },
         public_values,
         is_first_row: sels.is_first_row,
         is_last_row: sels.is_last_row,

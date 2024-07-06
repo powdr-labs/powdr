@@ -17,6 +17,7 @@ use tracing::info_span;
 
 use super::params::{Commitments, OpenedValues, Proof, StarkProvingKey};
 
+/// Generates a proof. Assumes that the maximum constraint degree is 2.
 pub fn prove<SC, A>(
     config: &SC,
     proving_key: Option<&StarkProvingKey<SC>>,
@@ -80,6 +81,7 @@ where
     let zeta_next = trace_domain.next_point(zeta).unwrap();
 
     let (opened_values, opening_proof) = pcs.open(
+        // only open fixed commitments in the presence of a proving key
         proving_key
             .map(|proving_key| (&proving_key.fixed_data, vec![vec![zeta, zeta_next]]))
             .into_iter()
@@ -102,9 +104,9 @@ where
         let value = opened_values.next().unwrap();
         assert_eq!(value.len(), 1);
         assert_eq!(value[0].len(), 2);
-        (Some(value[0][0].clone()), Some(value[0][1].clone()))
+        (value[0][0].clone(), value[0][1].clone())
     } else {
-        (None, None)
+        (vec![], vec![])
     };
 
     // get values for the trace
@@ -149,7 +151,10 @@ where
     Mat: MatrixGet<Val<SC>> + Sync,
 {
     let quotient_size = quotient_domain.size();
-    let fixed_width = fixed_on_quotient_domain.as_ref().map(Matrix::width);
+    let fixed_width = fixed_on_quotient_domain
+        .as_ref()
+        .map(Matrix::width)
+        .unwrap_or_default();
     let width = trace_on_quotient_domain.width();
     let sels = trace_domain.selectors_on_coset(quotient_domain);
 
@@ -170,27 +175,27 @@ where
             let is_transition = *PackedVal::<SC>::from_slice(&sels.is_transition[i_range.clone()]);
             let inv_zeroifier = *PackedVal::<SC>::from_slice(&sels.inv_zeroifier[i_range.clone()]);
 
-            let fixed = fixed_on_quotient_domain
-                .as_ref()
-                .map(|fixed_on_quotient_domain| {
-                    (
-                        (0..fixed_width.unwrap())
-                            .map(|col| {
-                                PackedVal::<SC>::from_fn(|offset| {
-                                    fixed_on_quotient_domain.get(wrap(i_start + offset), col)
-                                })
-                            })
-                            .collect_vec(),
-                        (0..fixed_width.unwrap())
-                            .map(|col| {
-                                PackedVal::<SC>::from_fn(|offset| {
-                                    fixed_on_quotient_domain
-                                        .get(wrap(i_start + next_step + offset), col)
-                                })
-                            })
-                            .collect_vec(),
-                    )
-                });
+            let fixed_local = (0..fixed_width)
+                .map(|col| {
+                    PackedVal::<SC>::from_fn(|offset| {
+                        fixed_on_quotient_domain
+                            .as_ref()
+                            .unwrap()
+                            .get(wrap(i_start + offset), col)
+                    })
+                })
+                .collect_vec();
+
+            let fixed_next = (0..fixed_width)
+                .map(|col| {
+                    PackedVal::<SC>::from_fn(|offset| {
+                        fixed_on_quotient_domain
+                            .as_ref()
+                            .unwrap()
+                            .get(wrap(i_start + next_step + offset), col)
+                    })
+                })
+                .collect_vec();
 
             let local = (0..width)
                 .map(|col| {
@@ -214,12 +219,10 @@ where
                     local: &local,
                     next: &next,
                 },
-                fixed: fixed
-                    .as_ref()
-                    .map(|(fixed_local, fixed_next)| TwoRowMatrixView {
-                        local: fixed_local,
-                        next: fixed_next,
-                    }),
+                fixed: TwoRowMatrixView {
+                    local: &fixed_local,
+                    next: &fixed_next,
+                },
                 public_values,
                 is_first_row,
                 is_last_row,

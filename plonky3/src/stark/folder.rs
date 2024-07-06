@@ -6,7 +6,7 @@ use p3_uni_stark::{PackedChallenge, PackedVal, StarkGenericConfig, Val};
 #[derive(Debug)]
 pub struct ProverConstraintFolder<'a, SC: StarkGenericConfig> {
     pub main: TwoRowMatrixView<'a, PackedVal<SC>>,
-    pub fixed: Option<TwoRowMatrixView<'a, PackedVal<SC>>>,
+    pub fixed: TwoRowMatrixView<'a, PackedVal<SC>>,
     pub public_values: &'a Vec<Val<SC>>,
     pub is_first_row: PackedVal<SC>,
     pub is_last_row: PackedVal<SC>,
@@ -18,7 +18,7 @@ pub struct ProverConstraintFolder<'a, SC: StarkGenericConfig> {
 #[derive(Debug)]
 pub struct VerifierConstraintFolder<'a, SC: StarkGenericConfig> {
     pub main: TwoRowMatrixView<'a, SC::Challenge>,
-    pub fixed: Option<TwoRowMatrixView<'a, SC::Challenge>>,
+    pub fixed: TwoRowMatrixView<'a, SC::Challenge>,
     pub public_values: &'a Vec<Val<SC>>,
     pub is_first_row: SC::Challenge,
     pub is_last_row: SC::Challenge,
@@ -70,7 +70,7 @@ impl<'a, SC: StarkGenericConfig> AirBuilderWithPublicValues for ProverConstraint
 
 impl<'a, SC: StarkGenericConfig> PairBuilder for ProverConstraintFolder<'a, SC> {
     fn preprocessed(&self) -> Self::M {
-        self.fixed.unwrap()
+        self.fixed
     }
 }
 
@@ -116,6 +116,6 @@ impl<'a, SC: StarkGenericConfig> AirBuilderWithPublicValues for VerifierConstrai
 
 impl<'a, SC: StarkGenericConfig> PairBuilder for VerifierConstraintFolder<'a, SC> {
     fn preprocessed(&self) -> Self::M {
-        self.fixed.unwrap()
+        self.fixed
     }
 }
