@@ -20,7 +20,6 @@ use tracing::info_span;
 
 use super::params::{Commitments, OpenedValues, Proof, StarkProvingKey};
 
-/// Generates a proof. Assumes that the maximum constraint degree is 2.
 pub fn prove<SC, A>(
     config: &SC,
     proving_key: Option<&StarkProvingKey<SC>>,

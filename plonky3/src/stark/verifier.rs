@@ -15,7 +15,6 @@ use super::{
     params::{Proof, StarkVerifyingKey},
 };
 
-/// Verifies a proof. Assumes that the maximum constraint degree is 2.
 pub fn verify<SC, A>(
     config: &SC,
     verifying_key: Option<&StarkVerifyingKey<SC>>,
