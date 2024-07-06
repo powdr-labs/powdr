@@ -52,29 +52,41 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub fn generate_trace_rows(&self) -> RowMajorMatrix<Goldilocks> {
         // an iterator over all columns, committed then fixed
         let witness = self.witness().iter();
-        let publics = self.get_publics().into_iter();
-        let len = self.analyzed.degree.unwrap();
 
-        // for each row, get the value of each column
-        let values = (0..len)
-            .flat_map(move |i| {
-                // witness values
-                witness.clone().map(move |(_, v)| v[i as usize]).chain(
-                    // publics rows: decrementor | inverse | selector
-                    publics.clone().flat_map(move |(_, _, row_id)| {
-                        let decr = T::from(row_id as u64) - T::from(i);
-                        let inv_decr = if i as usize == row_id {
-                            T::zero()
-                        } else {
-                            T::one() / decr
-                        };
-                        let s = T::from(i as usize == row_id);
-                        [decr, inv_decr, s]
-                    }),
-                )
-            })
-            .map(cast_to_goldilocks)
-            .collect();
+        let publics = self.get_publics().into_iter();
+        let degrees = self.analyzed.degrees();
+
+        let values = match degrees.len() {
+            1 => {
+                // for each row, get the value of each column
+                let degree = degrees.iter().next().unwrap();
+                (0..*degree)
+                    .flat_map(move |i| {
+                        // witness values
+                        witness.clone().map(move |(_, v)| v[i as usize]).chain(
+                            // publics rows: decrementor | inverse | selector
+                            publics.clone().flat_map(move |(_, _, row_id)| {
+                                let decr = T::from(row_id as u64) - T::from(i);
+                                let inv_decr = if i as usize == row_id {
+                                    T::zero()
+                                } else {
+                                    T::one() / decr
+                                };
+                                let s = T::from(i as usize == row_id);
+                                [decr, inv_decr, s]
+                            }),
+                        )
+                    })
+                    .map(cast_to_goldilocks)
+                    .collect()
+            }
+            0 => {
+                // in this case, there are no columns, so there are no values
+                assert!(witness.clone().next().is_none());
+                vec![]
+            }
+            _ => unreachable!(),
+        };
         RowMajorMatrix::new(values, self.width())
     }
 }
