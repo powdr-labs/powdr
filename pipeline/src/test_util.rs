@@ -233,6 +233,18 @@ pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
         .map(|(_name, v)| *v)
         .collect();
 
+    pipeline.verify(&proof, &[publics.clone()]).unwrap();
+
+    // Export verification Key
+    let vkey_file_path = tmp_dir.as_path().join("verification_key.bin");
+    buffered_write_file(&vkey_file_path, |writer| {
+        pipeline.export_verification_key(writer).unwrap()
+    })
+    .unwrap();
+
+    let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
+
+    // Verify the proof again
     pipeline.verify(&proof, &[publics]).unwrap();
 }
 

@@ -63,4 +63,13 @@ impl<'a, T: FieldElement> Backend<'a, T> for Plonky3Prover<T> {
 
         Ok(self.prove(witness, witgen_callback)?)
     }
+
+    fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
+        let vk = self
+            .get_verifying_key()
+            .ok_or_else(|| Error::BackendError("No verification key set".into()))?;
+        serde_json::to_writer(output, vk).unwrap();
+
+        Ok(())
+    }
 }
