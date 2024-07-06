@@ -1,19 +1,15 @@
 //! A plonky3 prover using FRI and Poseidon
 
-mod folder;
 mod params;
-mod prover;
-mod verifier;
+mod with_fixed;
+mod without_fixed;
 
 use p3_matrix::dense::RowMajorMatrix;
-
-use params::Proof;
-use prover::prove;
+use with_fixed::{StarkProvingKey, StarkVerifyingKey};
 
 use std::sync::Arc;
-use verifier::verify;
 
-use params::{Challenger, StarkProvingKey, StarkVerifyingKey};
+use params::Challenger;
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
@@ -114,34 +110,48 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         let proving_key = self.proving_key.as_ref();
 
-        let proof = prove(
-            &config,
-            proving_key,
-            &circuit,
-            &mut challenger,
-            trace,
-            &publics,
-        );
+        Ok(match proving_key {
+            Some(proving_key) => {
+                assert!(self.analyzed.constant_count() > 0);
+                let proof = with_fixed::prove(
+                    &config,
+                    proving_key,
+                    &circuit,
+                    &mut challenger,
+                    trace,
+                    &publics,
+                );
 
-        let mut challenger = get_challenger();
+                let mut challenger = get_challenger();
 
-        let verifying_key = self.verifying_key.as_ref();
+                let verifying_key = self.verifying_key.as_ref().unwrap();
 
-        verify(
-            &config,
-            verifying_key,
-            &circuit,
-            &mut challenger,
-            &proof,
-            &publics,
-        )
-        .unwrap();
-        Ok(serde_json::to_vec(&proof).unwrap())
+                with_fixed::verify(
+                    &config,
+                    verifying_key,
+                    &circuit,
+                    &mut challenger,
+                    &proof,
+                    &publics,
+                )
+                .unwrap();
+                serde_json::to_vec(&proof).unwrap()
+            }
+            None => {
+                assert_eq!(self.analyzed.constant_count(), 0);
+                let proof =
+                    without_fixed::prove(&config, &circuit, &mut challenger, trace, &publics);
+
+                let mut challenger = get_challenger();
+
+                without_fixed::verify(&config, &circuit, &mut challenger, &proof, &publics)
+                    .unwrap();
+                serde_json::to_vec(&proof).unwrap()
+            }
+        })
     }
 
     pub fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), String> {
-        let proof: Proof<_> = serde_json::from_slice(proof)
-            .map_err(|e| format!("Failed to deserialize proof: {e}"))?;
         let publics = instances
             .iter()
             .flatten()
@@ -154,14 +164,33 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         let verifying_key = self.verifying_key.as_ref();
 
-        verify(
-            &config,
-            verifying_key,
-            &PowdrCircuit::new(&self.analyzed),
-            &mut challenger,
-            &proof,
-            &publics,
-        )
+        match verifying_key {
+            Some(verifying_key) => {
+                let proof: with_fixed::Proof<_> = serde_json::from_slice(proof)
+                    .map_err(|e| format!("Failed to deserialize proof: {e}"))?;
+
+                with_fixed::verify(
+                    &config,
+                    verifying_key,
+                    &PowdrCircuit::new(&self.analyzed),
+                    &mut challenger,
+                    &proof,
+                    &publics,
+                )
+            }
+            None => {
+                let proof: without_fixed::Proof<_> = serde_json::from_slice(proof)
+                    .map_err(|e| format!("Failed to deserialize proof: {e}"))?;
+
+                without_fixed::verify(
+                    &config,
+                    &PowdrCircuit::new(&self.analyzed),
+                    &mut challenger,
+                    &proof,
+                    &publics,
+                )
+            }
+        }
         .map_err(|e| format!("Failed to verify proof: {e:?}"))
     }
 }
@@ -271,7 +300,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "not implemented"]
     fn polynomial_identity() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
         run_test_goldilocks(content);

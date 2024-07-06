@@ -15,7 +15,7 @@ use super::{
 
 pub fn verify<SC, A>(
     config: &SC,
-    verifying_key: Option<&StarkVerifyingKey<SC>>,
+    verifying_key: &StarkVerifyingKey<SC>,
     air: &A,
     challenger: &mut SC::Challenger,
     proof: &Proof<SC>,
@@ -25,8 +25,6 @@ where
     SC: StarkGenericConfig,
     A: for<'a> PowdrAir<VerifierConstraintFolder<'a, SC>>,
 {
-    let verifying_key = verifying_key.expect("fixed please");
-
     let Proof {
         commitments,
         opened_values,

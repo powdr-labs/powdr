@@ -4,7 +4,7 @@
 use lazy_static::lazy_static;
 
 use p3_challenger::DuplexChallenger;
-use p3_commit::{ExtensionMmcs, Pcs};
+use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
 use p3_field::{extension::BinomialExtensionField, Field};
 use p3_fri::{FriConfig, TwoAdicFriPcs};
@@ -12,10 +12,9 @@ use p3_goldilocks::MdsMatrixGoldilocks;
 use p3_merkle_tree::FieldMerkleTreeMmcs;
 use p3_poseidon::Poseidon;
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
-use p3_uni_stark::{StarkConfig, StarkGenericConfig};
+use p3_uni_stark::StarkConfig;
 use p3_util::log2_ceil_usize;
 use rand::{distributions::Standard, Rng, SeedableRng};
-use serde::{Deserialize, Serialize};
 
 use crate::circuit_builder::Val;
 
@@ -46,58 +45,6 @@ type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
 type Dft = Radix2DitParallel;
 type MyPcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
 pub type Config = StarkConfig<MyPcs, Challenge, Challenger>;
-
-pub type PcsProverData<SC> = <<SC as StarkGenericConfig>::Pcs as p3_commit::Pcs<
-    <SC as StarkGenericConfig>::Challenge,
-    <SC as StarkGenericConfig>::Challenger,
->>::ProverData;
-
-pub type Commitment<SC> = <<SC as StarkGenericConfig>::Pcs as p3_commit::Pcs<
-    <SC as StarkGenericConfig>::Challenge,
-    <SC as StarkGenericConfig>::Challenger,
->>::Commitment;
-
-pub struct StarkProvingKey<SC: StarkGenericConfig> {
-    pub fixed_commit: Commitment<SC>,
-    pub fixed_data: PcsProverData<SC>,
-}
-
-pub struct StarkVerifyingKey<SC: StarkGenericConfig> {
-    pub fixed_commit: Commitment<SC>,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct Proof<SC: StarkGenericConfig> {
-    pub(crate) commitments: Commitments<Com<SC>>,
-    pub(crate) opened_values: OpenedValues<SC::Challenge>,
-    pub(crate) opening_proof: PcsProof<SC>,
-    pub(crate) degree_bits: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Commitments<Com> {
-    pub(crate) trace: Com,
-    pub(crate) quotient_chunks: Com,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct OpenedValues<Challenge> {
-    pub(crate) trace_local: Vec<Challenge>,
-    pub(crate) trace_next: Vec<Challenge>,
-    pub(crate) fixed_local: Vec<Challenge>,
-    pub(crate) fixed_next: Vec<Challenge>,
-    pub(crate) quotient_chunks: Vec<Vec<Challenge>>,
-}
-
-type Com<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
-    <SC as StarkGenericConfig>::Challenge,
-    <SC as StarkGenericConfig>::Challenger,
->>::Commitment;
-type PcsProof<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
-    <SC as StarkGenericConfig>::Challenge,
-    <SC as StarkGenericConfig>::Challenger,
->>::Proof;
 
 const HALF_NUM_FULL_ROUNDS: usize = 4;
 const NUM_PARTIAL_ROUNDS: usize = 22;

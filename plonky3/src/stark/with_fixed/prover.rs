@@ -1,4 +1,3 @@
-use crate::stark::folder::ProverConstraintFolder;
 use itertools::izip;
 use itertools::Itertools;
 use p3_air::{Air, TwoRowMatrixView};
@@ -15,11 +14,14 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 
 use tracing::info_span;
 
-use super::params::{Commitments, OpenedValues, Proof, StarkProvingKey};
+use super::folder::ProverConstraintFolder;
+use super::params::{Commitments, OpenedValues, Proof};
+use super::StarkProvingKey;
 
+/// Generates a proof. This assumes that the maximum degree of the constraints is 2.
 pub fn prove<SC, A>(
     config: &SC,
-    proving_key: Option<&StarkProvingKey<SC>>,
+    proving_key: &StarkProvingKey<SC>,
     air: &A,
     challenger: &mut SC::Challenger,
     trace: RowMajorMatrix<Val<SC>>,
@@ -29,8 +31,6 @@ where
     SC: StarkGenericConfig,
     A: for<'a> Air<ProverConstraintFolder<'a, SC>>,
 {
-    let proving_key = proving_key.expect("only fixed pls");
-
     let degree = trace.height();
     let log_degree = log2_strict_usize(degree);
 
