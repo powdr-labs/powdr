@@ -76,6 +76,13 @@ impl<F: Field> SymbolicAirBuilder<F> {
         let public_values = (0..num_public_values)
             .map(move |index| SymbolicVariable::new(Entry::Public, index))
             .collect();
+
+        // `RowMajorMatrix` panics in debug mode when instantiated with size 0, so we create it with a width of at least one.
+        // This is hacky but fine in this context because the fixed matrix is never accessed if the original `fixed_width` is 0.
+        // In release mode this change is not required.
+        #[cfg(debug_assertions)]
+        let fixed_width = fixed_width.max(1);
+
         Self {
             main: RowMajorMatrix::new(main_values, width),
             fixed: RowMajorMatrix::new(fixed_values, fixed_width),
