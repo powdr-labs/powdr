@@ -25,8 +25,6 @@ where
     SC: StarkGenericConfig,
     A: for<'a> PowdrAir<VerifierConstraintFolder<'a, SC>>,
 {
-    let verifying_key = verifying_key.expect("fixed please");
-
     let Proof {
         commitments,
         opened_values,
@@ -47,8 +45,9 @@ where
 
     let air_width = air.width();
     let air_fixed_width = air.fixed_width();
-    let valid_shape = opened_values.fixed_local.len() == air_fixed_width
-        && opened_values.fixed_next.len() == air_fixed_width
+    let valid_shape = (air_fixed_width == 0 || verifying_key.is_some()) // if we have fixed columns, we have a verifying key
+        && opened_values.fixed_local.as_ref().map(|v| v.len()).unwrap_or_default() == air_fixed_width
+        && opened_values.fixed_next.as_ref().map(|v| v.len()).unwrap_or_default() == air_fixed_width
         && opened_values.trace_local.len() == air_width
         && opened_values.trace_next.len() == air_width
         && opened_values.quotient_chunks.len() == quotient_degree
@@ -68,36 +67,44 @@ where
     let zeta_next = trace_domain.next_point(zeta).unwrap();
 
     pcs.verify(
-        vec![
-            (
-                verifying_key.fixed_commit.clone(),
-                (vec![(
-                    trace_domain,
-                    vec![
-                        (zeta, opened_values.fixed_local.clone()),
-                        (zeta_next, opened_values.fixed_next.clone()),
-                    ],
-                )]),
-            ),
-            (
-                commitments.trace.clone(),
-                vec![(
-                    trace_domain,
-                    vec![
-                        (zeta, opened_values.trace_local.clone()),
-                        (zeta_next, opened_values.trace_next.clone()),
-                    ],
-                )],
-            ),
-            (
-                commitments.quotient_chunks.clone(),
-                quotient_chunks_domains
-                    .iter()
-                    .zip(&opened_values.quotient_chunks)
-                    .map(|(domain, values)| (*domain, vec![(zeta, values.clone())]))
-                    .collect_vec(),
-            ),
-        ],
+        verifying_key
+            .map(|verifying_key| {
+                (
+                    verifying_key.fixed_commit.clone(),
+                    (vec![(
+                        trace_domain,
+                        vec![
+                            (zeta, opened_values.fixed_local.as_ref().unwrap().clone()),
+                            (
+                                zeta_next,
+                                opened_values.fixed_next.as_ref().unwrap().clone(),
+                            ),
+                        ],
+                    )]),
+                )
+            })
+            .into_iter()
+            .chain([
+                (
+                    commitments.trace.clone(),
+                    vec![(
+                        trace_domain,
+                        vec![
+                            (zeta, opened_values.trace_local.clone()),
+                            (zeta_next, opened_values.trace_next.clone()),
+                        ],
+                    )],
+                ),
+                (
+                    commitments.quotient_chunks.clone(),
+                    quotient_chunks_domains
+                        .iter()
+                        .zip(&opened_values.quotient_chunks)
+                        .map(|(domain, values)| (*domain, vec![(zeta, values.clone())]))
+                        .collect_vec(),
+                ),
+            ])
+            .collect(),
         opening_proof,
         challenger,
     )
@@ -138,10 +145,10 @@ where
             local: &opened_values.trace_local,
             next: &opened_values.trace_next,
         },
-        fixed: TwoRowMatrixView {
-            local: &opened_values.fixed_local,
-            next: &opened_values.fixed_next,
-        },
+        fixed: verifying_key.is_some().then(|| TwoRowMatrixView {
+            local: opened_values.fixed_local.as_ref().unwrap(),
+            next: opened_values.fixed_next.as_ref().unwrap(),
+        }),
         public_values,
         is_first_row: sels.is_first_row,
         is_last_row: sels.is_last_row,

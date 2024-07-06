@@ -29,8 +29,6 @@ where
     SC: StarkGenericConfig,
     A: for<'a> Air<ProverConstraintFolder<'a, SC>>,
 {
-    let proving_key = proving_key.expect("only fixed pls");
-
     let degree = trace.height();
     let log_degree = log2_strict_usize(degree);
 
@@ -50,8 +48,10 @@ where
     let quotient_domain =
         trace_domain.create_disjoint_domain(1 << (log_degree + log_quotient_degree));
 
-    let fixed_on_quotient_domain =
-        pcs.get_evaluations_on_domain(&proving_key.fixed_data, 0, quotient_domain);
+    let fixed_on_quotient_domain = proving_key.map(|proving_key| {
+        pcs.get_evaluations_on_domain(&proving_key.fixed_data, 0, quotient_domain)
+    });
+
     let trace_on_quotient_domain = pcs.get_evaluations_on_domain(&trace_data, 0, quotient_domain);
 
     let quotient_values = quotient_values(
@@ -80,27 +80,45 @@ where
     let zeta_next = trace_domain.next_point(zeta).unwrap();
 
     let (opened_values, opening_proof) = pcs.open(
-        vec![
-            (&proving_key.fixed_data, vec![vec![zeta, zeta_next]]),
-            (&trace_data, vec![vec![zeta, zeta_next]]),
-            (
-                &quotient_data,
-                // open every chunk at zeta
-                (0..quotient_degree).map(|_| vec![zeta]).collect_vec(),
-            ),
-        ],
+        proving_key
+            .map(|proving_key| (&proving_key.fixed_data, vec![vec![zeta, zeta_next]]))
+            .into_iter()
+            .chain([
+                (&trace_data, vec![vec![zeta, zeta_next]]),
+                (
+                    &quotient_data,
+                    // open every chunk at zeta
+                    (0..quotient_degree).map(|_| vec![zeta]).collect_vec(),
+                ),
+            ])
+            .collect(),
         challenger,
     );
-    assert_eq!(opened_values[0].len(), 1);
-    assert_eq!(opened_values[0][0].len(), 2);
-    assert_eq!(opened_values[1].len(), 1);
-    assert_eq!(opened_values[1][0].len(), 2);
-    assert_eq!(opened_values[2].len(), quotient_degree);
-    let fixed_local = opened_values[0][0][0].clone();
-    let fixed_next = opened_values[0][0][1].clone();
-    let trace_local = opened_values[1][0][0].clone();
-    let trace_next = opened_values[1][0][1].clone();
-    let quotient_chunks = opened_values[2].iter().map(|v| v[0].clone()).collect_vec();
+
+    let mut opened_values = opened_values.iter();
+
+    // maybe get values for the fixed columns
+    let (fixed_local, fixed_next) = if proving_key.is_some() {
+        let value = opened_values.next().unwrap();
+        assert_eq!(value.len(), 1);
+        assert_eq!(value[0].len(), 2);
+        (Some(value[0][0].clone()), Some(value[0][1].clone()))
+    } else {
+        (None, None)
+    };
+
+    // get values for the trace
+    let value = opened_values.next().unwrap();
+    assert_eq!(value.len(), 1);
+    assert_eq!(value[0].len(), 2);
+    let trace_local = value[0][0].clone();
+    let trace_next = value[0][1].clone();
+
+    // get values for the quotient
+    let value = opened_values.next().unwrap();
+    assert_eq!(value.len(), quotient_degree);
+    let quotient_chunks = value.iter().map(|v| v[0].clone()).collect_vec();
+
     let opened_values = OpenedValues {
         trace_local,
         trace_next,
@@ -121,7 +139,7 @@ fn quotient_values<SC, A, Mat>(
     public_values: &Vec<Val<SC>>,
     trace_domain: Domain<SC>,
     quotient_domain: Domain<SC>,
-    fixed_on_quotient_domain: Mat,
+    fixed_on_quotient_domain: Option<Mat>,
     trace_on_quotient_domain: Mat,
     alpha: SC::Challenge,
 ) -> Vec<SC::Challenge>
@@ -131,7 +149,7 @@ where
     Mat: MatrixGet<Val<SC>> + Sync,
 {
     let quotient_size = quotient_domain.size();
-    let fixed_width = fixed_on_quotient_domain.width();
+    let fixed_width = fixed_on_quotient_domain.as_ref().map(Matrix::width);
     let width = trace_on_quotient_domain.width();
     let sels = trace_domain.selectors_on_coset(quotient_domain);
 
@@ -152,21 +170,23 @@ where
             let is_transition = *PackedVal::<SC>::from_slice(&sels.is_transition[i_range.clone()]);
             let inv_zeroifier = *PackedVal::<SC>::from_slice(&sels.inv_zeroifier[i_range.clone()]);
 
-            let fixed_local = (0..fixed_width)
-                .map(|col| {
-                    PackedVal::<SC>::from_fn(|offset| {
-                        fixed_on_quotient_domain.get(wrap(i_start + offset), col)
-                    })
-                })
-                .collect_vec();
-
-            let fixed_next = (0..fixed_width)
-                .map(|col| {
-                    PackedVal::<SC>::from_fn(|offset| {
-                        fixed_on_quotient_domain.get(wrap(i_start + next_step + offset), col)
-                    })
-                })
-                .collect_vec();
+            let fixed = fixed_on_quotient_domain.as_ref().map(|fixed_on_quotient_domain| (
+                    (0..fixed_width.unwrap())
+                        .map(|col| {
+                            PackedVal::<SC>::from_fn(|offset| {
+                                fixed_on_quotient_domain.get(wrap(i_start + offset), col)
+                            })
+                        })
+                        .collect_vec(),
+                    (0..fixed_width.unwrap())
+                        .map(|col| {
+                            PackedVal::<SC>::from_fn(|offset| {
+                                fixed_on_quotient_domain
+                                    .get(wrap(i_start + next_step + offset), col)
+                            })
+                        })
+                        .collect_vec(),
+                ));
 
             let local = (0..width)
                 .map(|col| {
@@ -190,10 +210,12 @@ where
                     local: &local,
                     next: &next,
                 },
-                fixed: TwoRowMatrixView {
-                    local: &fixed_local,
-                    next: &fixed_next,
-                },
+                fixed: fixed
+                    .as_ref()
+                    .map(|(fixed_local, fixed_next)| TwoRowMatrixView {
+                        local: fixed_local,
+                        next: fixed_next,
+                    }),
                 public_values,
                 is_first_row,
                 is_last_row,

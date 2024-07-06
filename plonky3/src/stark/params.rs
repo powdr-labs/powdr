@@ -85,8 +85,8 @@ pub struct Commitments<Com> {
 pub struct OpenedValues<Challenge> {
     pub(crate) trace_local: Vec<Challenge>,
     pub(crate) trace_next: Vec<Challenge>,
-    pub(crate) fixed_local: Vec<Challenge>,
-    pub(crate) fixed_next: Vec<Challenge>,
+    pub(crate) fixed_local: Option<Vec<Challenge>>,
+    pub(crate) fixed_next: Option<Vec<Challenge>>,
     pub(crate) quotient_chunks: Vec<Vec<Challenge>>,
 }
 

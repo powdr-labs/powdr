@@ -170,7 +170,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         &self,
         e: &AlgebraicExpression<T>,
         main: &AB::M,
-        fixed: &AB::M,
+        fixed: &Option<AB::M>,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -190,7 +190,10 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                             r.poly_id.id < self.analyzed.constant_count() as u64,
                             "Plonky3 expects `poly_id` to be contiguous"
                         );
-                        let row = fixed.row_slice(r.next as usize);
+                        let row = fixed
+                            .as_ref()
+                            .expect("no fixed matrix to resolve reference to fixed polynomial")
+                            .row_slice(r.next as usize);
                         row[r.poly_id.id as usize].into()
                     }
                     PolynomialType::Intermediate => {
@@ -258,7 +261,8 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
-        let fixed = builder.preprocessed();
+        // get fixed only if we have constant columns, otherwise it panics. We could solve this by implementing our own `PairBuilder` returning an `Option`
+        let fixed = (self.analyzed.constant_count() > 0).then(|| builder.preprocessed());
         let pi = builder.public_values();
         let publics = self.get_publics();
         assert_eq!(publics.len(), pi.len());

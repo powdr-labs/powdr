@@ -271,7 +271,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "not implemented"]
     fn polynomial_identity() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
         run_test_goldilocks(content);
