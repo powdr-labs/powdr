@@ -398,6 +398,7 @@ where
 
         let id = self.counters.dispense_symbol_id(symbol_kind, length);
         let absolute_name = self.driver.resolve_decl(&name);
+
         let symbol = Symbol {
             id,
             source: source.clone(),
@@ -405,6 +406,7 @@ where
             absolute_name: absolute_name.clone(),
             kind: symbol_kind,
             length,
+            degree: self.degree,
         };
 
         if let Some(FunctionDefinition::TypeDeclaration(enum_decl)) = value {
@@ -424,6 +426,7 @@ where
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
+                    degree: None,
                 };
                 let value = FunctionValueDefinition::TypeConstructor(
                     shared_enum_decl.clone(),

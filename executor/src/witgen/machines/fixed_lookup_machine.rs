@@ -109,7 +109,15 @@ impl<T: FieldElement> IndexedColumns<T> {
             .map(|id| fixed_data.fixed_cols[id].values)
             .collect::<Vec<_>>();
 
-        let index: BTreeMap<Vec<T>, IndexValue> = (0..fixed_data.degree as usize)
+        let degree = input_column_values
+            .iter()
+            .chain(output_column_values.iter())
+            .map(|values| values.len())
+            .unique()
+            .exactly_one()
+            .expect("all columns in a given lookup are expected to have the same degree");
+
+        let index: BTreeMap<Vec<T>, IndexValue> = (0..degree)
             .fold(
                 (
                     BTreeMap::<Vec<T>, IndexValue>::default(),
