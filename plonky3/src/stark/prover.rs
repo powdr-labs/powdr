@@ -170,23 +170,27 @@ where
             let is_transition = *PackedVal::<SC>::from_slice(&sels.is_transition[i_range.clone()]);
             let inv_zeroifier = *PackedVal::<SC>::from_slice(&sels.inv_zeroifier[i_range.clone()]);
 
-            let fixed = fixed_on_quotient_domain.as_ref().map(|fixed_on_quotient_domain| (
-                    (0..fixed_width.unwrap())
-                        .map(|col| {
-                            PackedVal::<SC>::from_fn(|offset| {
-                                fixed_on_quotient_domain.get(wrap(i_start + offset), col)
+            let fixed = fixed_on_quotient_domain
+                .as_ref()
+                .map(|fixed_on_quotient_domain| {
+                    (
+                        (0..fixed_width.unwrap())
+                            .map(|col| {
+                                PackedVal::<SC>::from_fn(|offset| {
+                                    fixed_on_quotient_domain.get(wrap(i_start + offset), col)
+                                })
                             })
-                        })
-                        .collect_vec(),
-                    (0..fixed_width.unwrap())
-                        .map(|col| {
-                            PackedVal::<SC>::from_fn(|offset| {
-                                fixed_on_quotient_domain
-                                    .get(wrap(i_start + next_step + offset), col)
+                            .collect_vec(),
+                        (0..fixed_width.unwrap())
+                            .map(|col| {
+                                PackedVal::<SC>::from_fn(|offset| {
+                                    fixed_on_quotient_domain
+                                        .get(wrap(i_start + next_step + offset), col)
+                                })
                             })
-                        })
-                        .collect_vec(),
-                ));
+                            .collect_vec(),
+                    )
+                });
 
             let local = (0..width)
                 .map(|col| {

@@ -45,6 +45,10 @@ impl<T> Plonky3Prover<T> {
             verifying_key: None,
         }
     }
+
+    pub fn set_verifying_key(&mut self, rdr: &mut dyn std::io::Read) {
+        self.verifying_key = Some(serde_json::from_reader(rdr).unwrap());
+    }
 }
 
 impl<T: FieldElement> Plonky3Prover<T> {

@@ -62,6 +62,8 @@ pub struct StarkProvingKey<SC: StarkGenericConfig> {
     pub fixed_data: PcsProverData<SC>,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct StarkVerifyingKey<SC: StarkGenericConfig> {
     pub fixed_commit: Commitment<SC>,
 }

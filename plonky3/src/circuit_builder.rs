@@ -283,7 +283,7 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
         let pi_moved = pi.to_vec();
         let (local, next) = (main.row_slice(0), main.row_slice(1));
 
-        let public_offset = self.analyzed.commitment_count() + self.analyzed.constant_count();
+        let public_offset = self.analyzed.commitment_count();
 
         publics.iter().zip(pi_moved).enumerate().for_each(
             |(index, ((_, col_id, row_id), public_value))| {
