@@ -1,5 +1,5 @@
 mod circuit_builder;
+mod params;
 mod stark;
-mod symbolic_builder;
 
 pub use stark::Plonky3Prover;

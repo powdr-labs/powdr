@@ -29,7 +29,7 @@ use std::{any::TypeId, collections::BTreeMap};
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
-use p3_matrix::{dense::RowMajorMatrix, MatrixRowSlices};
+use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolynomialType,
@@ -46,6 +46,9 @@ pub(crate) struct PowdrCircuit<'a, T> {
     witness: Option<&'a [(String, Vec<T>)]>,
     /// Callback to augment the witness in the later stages
     _witgen_callback: Option<WitgenCallback<T>>,
+    /// The matrix of preprocessed values, used in debug mode to check the constraints before proving
+    #[cfg(debug_assertions)]
+    preprocessed: Option<RowMajorMatrix<Goldilocks>>,
 }
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
@@ -110,6 +113,8 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             analyzed,
             witness: None,
             _witgen_callback: None,
+            #[cfg(debug_assertions)]
+            preprocessed: None,
         }
     }
 
@@ -177,6 +182,15 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             ..self
         }
     }
+
+    pub(crate) fn with_preprocessed(
+        mut self,
+        preprocessed_matrix: RowMajorMatrix<Goldilocks>,
+    ) -> Self {
+        self.preprocessed = Some(preprocessed_matrix);
+        self
+    }
+
     /// Conversion to plonky3 expression
     fn to_plonky3_expr<AB: AirBuilder<F = Val>>(
         &self,
@@ -242,26 +256,21 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 }
 
-/// An extension of [Air] allowing access to the number of fixed columns
-pub trait PowdrAir<AB: AirBuilder>: Air<AB> {
-    /// Returns the number of fixed columns
-    fn fixed_width(&self) -> usize;
-}
-
-impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder> PowdrAir<AB>
-    for PowdrCircuit<'a, T>
-{
-    fn fixed_width(&self) -> usize {
-        self.analyzed.constant_count()
-    }
-}
-
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
         self.analyzed.commitment_count() + 3 * self.analyzed.publics_count()
     }
 
+    fn preprocessed_width(&self) -> usize {
+        self.analyzed.constant_count()
+    }
+
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
+        #[cfg(debug_assertions)]
+        {
+            self.preprocessed.clone()
+        }
+        #[cfg(not(debug_assertions))]
         unimplemented!()
     }
 }

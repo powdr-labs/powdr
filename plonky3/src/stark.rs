@@ -1,29 +1,23 @@
 //! A plonky3 prover using FRI and Poseidon
 
-mod folder;
-mod params;
-mod prover;
-mod verifier;
-
+use p3_goldilocks::Goldilocks;
 use p3_matrix::dense::RowMajorMatrix;
 
-use params::Proof;
-use prover::prove;
-
 use std::sync::Arc;
-use verifier::verify;
 
-use params::{Challenger, StarkProvingKey, StarkVerifyingKey};
+use crate::params::Challenger;
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use p3_uni_stark::StarkGenericConfig;
+use p3_uni_stark::{
+    prove_with_key, verify_with_key, Proof, StarkGenericConfig, StarkProvingKey, StarkVerifyingKey,
+};
 use powdr_number::{FieldElement, KnownField};
 
 use crate::circuit_builder::{cast_to_goldilocks, PowdrCircuit};
 
-use self::params::{get_challenger, get_config, Config};
+use crate::params::{get_challenger, get_config, Config};
 
 pub struct Plonky3Prover<T> {
     /// The analyzed PIL
@@ -36,7 +30,7 @@ pub struct Plonky3Prover<T> {
     verifying_key: Option<StarkVerifyingKey<Config>>,
 }
 
-impl<T> Plonky3Prover<T> {
+impl<T: FieldElement> Plonky3Prover<T> {
     pub fn new(analyzed: Arc<Analyzed<T>>, fixed: Arc<Vec<(String, Vec<T>)>>) -> Self {
         Self {
             analyzed,
@@ -53,6 +47,22 @@ impl<T> Plonky3Prover<T> {
     pub fn get_verifying_key(&self) -> Option<&StarkVerifyingKey<Config>> {
         self.verifying_key.as_ref()
     }
+
+    pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<Goldilocks> {
+        match self.fixed.len() {
+            0 => RowMajorMatrix::new(Vec::<Goldilocks>::new(), 0),
+            _ => RowMajorMatrix::new(
+                (0..self.analyzed.degree())
+                    .flat_map(|i| {
+                        self.fixed
+                            .iter()
+                            .map(move |(_, values)| cast_to_goldilocks(values[i as usize]))
+                    })
+                    .collect(),
+                self.fixed.len(),
+            ),
+        }
+    }
 }
 
 impl<T: FieldElement> Plonky3Prover<T> {
@@ -65,7 +75,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
         }
 
         // get the config
-        let config = get_config(self.analyzed.degree());
+        let config = get_config();
 
         // commit to the fixed columns
         let pcs = config.pcs();
@@ -74,16 +84,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
             self.analyzed.degree() as usize,
         );
         // write fixed into matrix row by row
-        let matrix = RowMajorMatrix::new(
-            (0..self.analyzed.degree())
-                .flat_map(|i| {
-                    fixed
-                        .iter()
-                        .map(move |(_, values)| cast_to_goldilocks(values[i as usize]))
-                })
-                .collect(),
-            self.fixed.len(),
-        );
+        let matrix = self.get_preprocessed_matrix();
 
         let evaluations = vec![(domain, matrix)];
 
@@ -92,10 +93,12 @@ impl<T: FieldElement> Plonky3Prover<T> {
             <_ as p3_commit::Pcs<_, Challenger>>::commit(pcs, evaluations);
 
         let proving_key = StarkProvingKey {
-            fixed_commit,
-            fixed_data,
+            preprocessed_commit: fixed_commit,
+            preprocessed_data: fixed_data,
         };
-        let verifying_key = StarkVerifyingKey { fixed_commit };
+        let verifying_key = StarkVerifyingKey {
+            preprocessed_commit: fixed_commit,
+        };
 
         self.proving_key = Some(proving_key);
         self.verifying_key = Some(verifying_key);
@@ -112,17 +115,20 @@ impl<T: FieldElement> Plonky3Prover<T> {
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
+        #[cfg(debug_assertions)]
+        let circuit = circuit.with_preprocessed(self.get_preprocessed_matrix());
+
         let publics = circuit.get_public_values();
 
         let trace = circuit.generate_trace_rows();
 
-        let config = get_config(self.analyzed.degree());
+        let config = get_config();
 
         let mut challenger = get_challenger();
 
         let proving_key = self.proving_key.as_ref();
 
-        let proof = prove(
+        let proof = prove_with_key(
             &config,
             proving_key,
             &circuit,
@@ -135,7 +141,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         let verifying_key = self.verifying_key.as_ref();
 
-        verify(
+        verify_with_key(
             &config,
             verifying_key,
             &circuit,
@@ -156,13 +162,13 @@ impl<T: FieldElement> Plonky3Prover<T> {
             .map(|v| cast_to_goldilocks(*v))
             .collect();
 
-        let config = get_config(self.analyzed.degree());
+        let config = get_config();
 
         let mut challenger = get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
 
-        verify(
+        verify_with_key(
             &config,
             verifying_key,
             &PowdrCircuit::new(&self.analyzed),
@@ -213,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = r#"called `Result::unwrap()` on an `Err` value: "Failed to verify proof: OodEvaluationMismatch""#]
+    #[should_panic = "fri err: InvalidPowWitness"]
     fn public_inputs_malicious() {
         let content = r#"
         namespace Add(8);
@@ -231,10 +237,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "assertion failed: width >= 1"]
-    // The above failure is from a debug assertion, so we can only run this
-    // test if debug assertions are activated.
-    #[cfg(debug_assertions)]
+    #[should_panic = "assertion `left == right` failed: Not a power of two: 0\n  left: 0\n right: 1"]
     fn empty() {
         let content = "namespace Global(8);";
         run_test_goldilocks(content);
