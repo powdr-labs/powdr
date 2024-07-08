@@ -4,8 +4,8 @@ mod types {
         Some(T, T)
     }
 
-    trait ArraySum<T, DoubleOpt<T> > {
-        array_sum: T[4 + 1] -> DoubleOpt,
+    trait ArraySum<T> {
+        array_sum: T[4 + 1] -> DoubleOpt<T>,
     }
 }
 

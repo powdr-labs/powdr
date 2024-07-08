@@ -348,26 +348,6 @@ impl PILAnalyzer {
                 vec![]
             }
             PilStatement::Include(_, _) => unreachable!(),
-            PilStatement::TraitDeclaration(_, _) => {
-                let names = statement
-                    .symbol_definition_names_and_contained()
-                    .filter_map(|(name, sub_name, symbol_category)| match sub_name {
-                        None => Some((self.driver().resolve_decl(name), symbol_category)),
-                        Some(_) => None,
-                    })
-                    .collect::<Vec<_>>();
-
-                for (name, symbol_kind) in &names {
-                    if self
-                        .known_symbols
-                        .insert(name.clone(), *symbol_kind)
-                        .is_some()
-                    {
-                        panic!("Duplicate symbol definition: {name}");
-                    }
-                }
-                names
-            }
             _ => {
                 let names = statement
                     .symbol_definition_names_and_contained()
