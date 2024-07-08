@@ -140,9 +140,18 @@ impl PilStatement {
                         .map(move |v| (name, Some(&v.name), SymbolCategory::TypeConstructor)),
                 ),
             ),
-            PilStatement::TraitDeclaration(_, TraitDeclaration { name, .. }) => {
-                Box::new(once((name, None, SymbolCategory::TraitDeclaration)))
-            }
+            PilStatement::TraitDeclaration(
+                _,
+                TraitDeclaration {
+                    name, functions, ..
+                },
+            ) => Box::new(
+                once((name, None, SymbolCategory::TraitDeclaration)).chain(
+                    functions
+                        .iter()
+                        .map(move |f| (name, Some(&f.name), SymbolCategory::TypeConstructor)),
+                ),
+            ),
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
             | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => Box::new(
                 polynomials
