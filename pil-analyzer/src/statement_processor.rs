@@ -71,10 +71,8 @@ impl Counters {
             counters.public_counter = id + 1;
         }
         for (kind, id) in symbols {
-            counters
-                .symbol_counters
-                .get_mut(&kind)
-                .map(|counter| *counter = std::cmp::max(*counter, id + 1));
+            let counter = counters.symbol_counters.get_mut(&kind).unwrap();
+            *counter = std::cmp::max(*counter, id + 1);
         }
         counters
     }
