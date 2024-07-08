@@ -543,8 +543,8 @@ pub trait SymbolLookup<'a, T: FieldElement> {
     fn new_column(
         &mut self,
         name: &str,
-        value: Option<Arc<Value<'a, T>>>,
-        source: SourceRef,
+        _value: Option<Arc<Value<'a, T>>>,
+        _source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::Unsupported(format!(
             "Tried to create column outside of statement context: {name}"

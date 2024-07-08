@@ -655,9 +655,7 @@ impl<'a> TypeChecker<'a> {
                                 (Some(ty), None) => {
                                     if *ty != Type::Col {
                                         // TODO better source ref
-                                        return Err(source_ref.with_error(format!(
-                                            "Let-declared variables without value must have type 'col'."
-                                        )));
+                                        return Err(source_ref.with_error("Let-declared variables without value must have type 'col'.".to_string()));
                                     }
                                     ty.clone()
                                 }

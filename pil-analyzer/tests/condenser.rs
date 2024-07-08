@@ -222,8 +222,8 @@ fn new_fixed_column() {
         even
     });
     let ev: expr = N.f();
-    col fixed even(i) { i * 2 };
     col witness x;
+    col fixed even(i) { i * 2 };
     N.x = N.even;
 "#;
     assert_eq!(formatted, expected);
