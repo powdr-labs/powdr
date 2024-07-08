@@ -17,7 +17,8 @@ use powdr_parser_util::{Error, SourceRef};
 use crate::{
     call_graph::sort_called_first,
     type_builtins::{
-        binary_operator_scheme, builtin_schemes, type_for_reference, unary_operator_scheme,
+        binary_operator_scheme, builtin_schemes, constr_function_statement_type,
+        type_for_reference, unary_operator_scheme,
     },
     type_unifier::Unifier,
 };
@@ -671,7 +672,7 @@ impl<'a> TypeChecker<'a> {
     /// Returns the type expected at statement level, given the current function context.
     fn statement_type(&self) -> ExpectedType {
         if self.lambda_kind == FunctionKind::Constr {
-            self.constr_function_statement_type.clone()
+            constr_function_statement_type()
         } else {
             Type::empty_tuple().into()
         }
