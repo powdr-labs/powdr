@@ -663,9 +663,7 @@ impl<'a> TypeChecker<'a> {
                                 }
                                 (None, None) => Type::Col,
                             };
-                            println!("Pat: {pattern}, val: {value_type}");
                             let var_type = type_for_reference(&value_type);
-                            println!("for ref: {var_type}");
                             self.expect_type_of_pattern(&var_type, pattern)?;
                         }
                         StatementInsideBlock::Expression(expr) => {
