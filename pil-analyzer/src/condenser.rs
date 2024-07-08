@@ -309,13 +309,27 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Ok(Value::Integer(degree.into()).into())
     }
 
-    fn new_witness_column(
+    fn new_column(
         &mut self,
         name: &str,
+        value: Option<Arc<Value<'a, T>>>,
         source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = self.find_unused_name(name);
         let kind = SymbolKind::Poly(PolynomialType::Committed);
+        // TODO use fixed column ID for fixed column.
+        if let Some(value) = value {
+            if let Value::Closure(evaluator::Closure {
+                lambda,
+                environment: _,
+                type_args: _,
+            }) = value.as_ref()
+            {
+                // TODO check that the lambda does not reference any outside variables.
+                let value = Expression::LambdaExpression(source.clone(), (*lambda).clone());
+            }
+        }
+
         let symbol = Symbol {
             id: self.counters.dispense_symbol_id(kind, None),
             source,

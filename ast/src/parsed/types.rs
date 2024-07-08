@@ -229,6 +229,16 @@ impl<R> Children<Expression<R>> for Type<Expression<R>> {
     }
 }
 
+impl<R> Children<Expression<R>> for Type<u64> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(empty())
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(empty())
+    }
+}
+
 impl<R: Display> From<Type<Expression<R>>> for Type<u64> {
     fn from(value: Type<Expression<R>>) -> Self {
         match value {

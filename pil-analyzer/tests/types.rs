@@ -560,3 +560,30 @@ fn empty_conditional() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+fn cols_in_func() {
+    let input = "
+    namespace Main(104);
+    let h: -> () = constr || {
+        let w: col;
+        let f: col = |j| j + 1;
+        w = f;
+    };
+    h();
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn type_vars_in_block_let() {
+    let input = "
+    let<T> f: T -> T[] = |i| [i];
+    let<Q> x: Q -> Q[][] = |i| {
+        let y: Q[] = f(i);
+        [y]
+    };
+    ";
+    type_check(input, &[]);
+}
+// TODO also check type vars used in types and also check this all for asm code.

@@ -19,10 +19,18 @@ impl<'a, D: AnalysisDriver> TypeProcessor<'a, D> {
         Self { driver, type_vars }
     }
 
+    /// Processes a type name by evaluating array lengths, changing named type references to type
+    /// variables to actual type variables and resolving references to named types.
     pub fn process_type(&self, ty: Type<Expression>) -> Type {
-        let mut ty = self.evaluate_array_lengths(ty.clone())
+        let ty = self.evaluate_array_lengths(ty.clone())
             .map_err(|e| panic!("Error evaluating expressions in type name \"{ty}\" to reduce it to a type:\n{e})"))
             .unwrap();
+        self.process_number_type(ty)
+    }
+
+    /// Processes a type name by changing named type references to type variables to actual type
+    /// variables and resolving references to named types.
+    pub fn process_number_type(&self, mut ty: Type<u64>) -> Type {
         ty.map_to_type_vars(self.type_vars);
         ty.contained_named_types_mut().for_each(|n| {
             let name = self.driver.resolve_type_ref(n);
