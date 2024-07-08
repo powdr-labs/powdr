@@ -172,11 +172,7 @@ pub struct Condenser<'a, T> {
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
     pub fn new(symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
-        let counters = Counters::with_existing(
-            symbols.values().map(|(sym, _)| (sym.kind, sym.id)),
-            None,
-            None,
-        );
+        let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
             symbols,
             degree: None,
