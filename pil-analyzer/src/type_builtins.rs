@@ -89,6 +89,7 @@ lazy_static! {
     .into_iter()
     .map(|(op, (vars, ty))| (op, parse_type_scheme(vars, ty)))
     .collect();
+
     static ref CONSTR_FUNCTION_STATEMENT_TYPE: ExpectedType = ExpectedType {
         ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
         allow_array: true,
