@@ -381,13 +381,20 @@ fn read_poly_files() {
         if !fixed.is_empty() {
             assert_eq!(
                 pil.degree(),
-                fixed[0].1.values().next().unwrap().len() as u64
+                fixed
+                    .get_only_size()
+                    .unwrap()
+                    .iter()
+                    .next()
+                    .unwrap()
+                    .1
+                    .len() as u64
             );
         }
 
         // check witness cols (examples assumed to have at least one witness col)
         let witness = read_witness_poly_set::<WitnessPolySet, Bn254Field>(tmp_dir.as_path());
-        assert_eq!(pil.degree(), witness[0].1.len() as u64);
+        assert_eq!(pil.degree(), witness.0[0].1.len() as u64);
     }
 }
 

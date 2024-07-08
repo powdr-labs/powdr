@@ -1,14 +1,13 @@
 #![deny(clippy::print_stdout)]
 
-use std::collections::BTreeMap;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::{get_only_size, Backend, BackendFactory, BackendOptions, Error, Proof};
+use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement, FixedColumns};
 use prover::{generate_setup, Halo2Prover};
 
 use serde::de::{self, Deserializer};
@@ -77,7 +76,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, BTreeMap<usize, Vec<F>>)>>,
+        fixed: Arc<FixedColumns<F>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
@@ -88,12 +87,12 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
             return Err(Error::NoVariableDegreeAvailable);
         }
         let proof_type = ProofType::from(options);
-        let mut halo2 = Box::new(Halo2Prover::new(
-            pil,
-            Arc::new(get_only_size(&fixed)?),
-            setup,
-            proof_type,
-        )?);
+        let fixed = Arc::new(
+            fixed
+                .get_only_size()
+                .map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
+        let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup, proof_type)?);
         if let Some(vk) = verification_key {
             halo2.add_verification_key(vk);
         }
@@ -191,7 +190,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, BTreeMap<usize, Vec<F>>)>>,
+        fixed: Arc<FixedColumns<F>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
@@ -208,10 +207,13 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
             return Err(Error::NoAggregationAvailable);
         }
 
-        Ok(Box::new(Halo2Mock {
-            pil,
-            fixed: Arc::new(get_only_size(&fixed)?),
-        }))
+        let fixed = Arc::new(
+            fixed
+                .get_only_size()
+                .map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
+
+        Ok(Box::new(Halo2Mock { pil, fixed }))
     }
 }
 

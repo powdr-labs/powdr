@@ -436,7 +436,9 @@ namespace Global(2**20);
     [ D ] in [ SHIFTED ];
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
-        let constants = crate::constant_evaluator::generate(&analyzed);
+        let constants = crate::constant_evaluator::generate(&analyzed)
+            .get_only_size()
+            .unwrap();
         let fixed_polys = (0..constants.len())
             .map(|i| constant_poly_id(i as u64))
             .collect::<Vec<_>>();
@@ -444,7 +446,6 @@ namespace Global(2**20);
             .iter()
             .zip(&constants)
             .filter_map(|(&poly_id, (_, values))| {
-                let values = values.values().next().unwrap();
                 process_fixed_column(values).map(|(constraint, _full)| (poly_id, constraint))
             })
             .collect::<BTreeMap<_, _>>();

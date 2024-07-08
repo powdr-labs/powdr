@@ -1,12 +1,12 @@
+use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
-use std::{collections::BTreeMap, io};
 
-use crate::{get_only_size, Backend, BackendFactory, BackendOptions, Error};
+use crate::{Backend, BackendFactory, BackendOptions, Error};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{FieldElement, GoldilocksField, LargeInt};
+use powdr_number::{FieldElement, FixedColumns, GoldilocksField, LargeInt};
 
 use starky::{
     merklehash::MerkleTreeGL,
@@ -27,7 +27,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, BTreeMap<usize, Vec<F>>)>>,
+        fixed: Arc<FixedColumns<F>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -50,7 +50,11 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
             return Err(Error::NoVariableDegreeAvailable);
         }
 
-        let fixed = Arc::new(get_only_size(&fixed)?);
+        let fixed = Arc::new(
+            fixed
+                .get_only_size()
+                .map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
 
         let proof_type: ProofType = ProofType::from(options);
 

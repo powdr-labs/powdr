@@ -2,11 +2,11 @@ use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::A
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement, FixedColumns};
 use serde::{Deserialize, Serialize};
 use split::select_machine_columns;
 
-use crate::{get_only_size, Backend, BackendFactory, BackendOptions, Error, Proof};
+use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 mod split;
 
@@ -35,7 +35,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, BTreeMap<usize, Vec<F>>)>>,
+        fixed: Arc<FixedColumns<F>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -47,7 +47,11 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         }
 
         // TODO: Handle multiple sizes.
-        let fixed = Arc::new(get_only_size(&fixed)?);
+        let fixed = Arc::new(
+            fixed
+                .get_only_size()
+                .map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
 
         let per_machine_data = split::split_pil((*pil).clone())
             .into_iter()
@@ -70,7 +74,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                     .map(|(column_name, values)| {
                         (column_name, [(values.len(), values)].into_iter().collect())
                     })
-                    .collect(),
+                    .into(),
                 );
                 let backend = self.factory.create(
                     pil.clone(),

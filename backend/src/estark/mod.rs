@@ -5,7 +5,6 @@ pub mod polygon_wrapper;
 pub mod starky_wrapper;
 
 use std::{
-    collections::BTreeMap,
     fs::File,
     io::{self, BufWriter, Write},
     iter::{once, repeat},
@@ -13,11 +12,11 @@ use std::{
     sync::Arc,
 };
 
-use crate::{get_only_size, Backend, BackendFactory, BackendOptions, Error, Proof};
+use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement, FixedColumns};
 use serde::Serialize;
 use starky::types::{StarkStruct, Step, PIL};
 
@@ -223,14 +222,18 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
     fn create<'a>(
         &self,
         analyzed: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, BTreeMap<usize, Vec<F>>)>>,
+        fixed: Arc<FixedColumns<F>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
-        let fixed = Arc::new(get_only_size(&fixed)?);
+        let fixed = Arc::new(
+            fixed
+                .get_only_size()
+                .map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
         Ok(Box::new(DumpBackend(EStarkFilesCommon::create(
             &analyzed,
             fixed,

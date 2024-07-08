@@ -1,6 +1,6 @@
 use powdr_ast::analyzed::{Analyzed, FunctionValueDefinition, Symbol};
-use powdr_number::{read_fixed_file, read_witness_file, FieldElement};
-use std::{collections::BTreeMap, fs::File, io::BufReader, path::Path};
+use powdr_number::{FieldElement, FixedColumns, ReadWrite, WitnessColumns};
+use std::{fs::File, io::BufReader, path::Path};
 
 pub trait PolySet {
     const FILE_NAME: &'static str;
@@ -31,16 +31,12 @@ impl PolySet for WitnessPolySet {
     }
 }
 
-#[allow(clippy::type_complexity)]
-pub fn read_witness_poly_set<P: PolySet, T: FieldElement>(dir: &Path) -> Vec<(String, Vec<T>)> {
+pub fn read_witness_poly_set<P: PolySet, T: FieldElement>(dir: &Path) -> WitnessColumns<T> {
     let path = dir.join(P::FILE_NAME);
-    read_witness_file(&mut BufReader::new(File::open(path).unwrap()))
+    WitnessColumns::read(&mut BufReader::new(File::open(path).unwrap()))
 }
 
-#[allow(clippy::type_complexity)]
-pub fn read_fixed_poly_set<P: PolySet, T: FieldElement>(
-    dir: &Path,
-) -> Vec<(String, BTreeMap<usize, Vec<T>>)> {
+pub fn read_fixed_poly_set<P: PolySet, T: FieldElement>(dir: &Path) -> FixedColumns<T> {
     let path = dir.join(P::FILE_NAME);
-    read_fixed_file(&mut BufReader::new(File::open(path).unwrap()))
+    FixedColumns::read(&mut BufReader::new(File::open(path).unwrap()))
 }

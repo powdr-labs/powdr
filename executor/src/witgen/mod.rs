@@ -8,7 +8,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement, WitnessColumns};
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -87,6 +87,7 @@ impl<T: FieldElement> WitgenCallback<T> {
         .with_external_witness_values(current_witness)
         .with_challenges(stage, challenges)
         .generate()
+        .0
     }
 }
 
@@ -154,7 +155,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
-    pub fn generate(self) -> Vec<(String, Vec<T>)> {
+    pub fn generate(self) -> WitnessColumns<T> {
         record_start(OUTER_CODE_NAME);
         let fixed = FixedData::new(
             self.analyzed,
@@ -250,7 +251,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 assert!(!column.is_empty());
                 (name, column)
             })
-            .collect::<Vec<_>>();
+            .into();
 
         log::debug!("Publics:");
         for (name, value) in extract_publics(&witness_cols, self.analyzed) {
@@ -261,10 +262,11 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 }
 
 pub fn extract_publics<T: FieldElement>(
-    witness: &[(String, Vec<T>)],
+    witness: &WitnessColumns<T>,
     pil: &Analyzed<T>,
 ) -> Vec<(String, T)> {
     let witness = witness
+        .0
         .iter()
         .map(|(name, col)| (name.clone(), col))
         .collect::<BTreeMap<_, _>>();

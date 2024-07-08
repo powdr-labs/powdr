@@ -1,6 +1,5 @@
 use std::{
     borrow::Borrow,
-    collections::BTreeMap,
     fmt::Display,
     fs,
     io::{self, BufReader},
@@ -26,7 +25,7 @@ use powdr_executor::{
     },
 };
 use powdr_number::{
-    write_fixed_file, write_polys_csv_file, write_witness_file, CsvRenderMode, FieldElement,
+    write_polys_csv_file, CsvRenderMode, FieldElement, FixedColumns, ReadWrite, WitnessColumns,
 };
 use powdr_schemas::SerializedAnalyzed;
 
@@ -34,23 +33,6 @@ use crate::{
     handle_simple_queries_callback, inputs_to_query_callback, serde_data_to_query_callback,
     util::{read_fixed_poly_set, read_witness_poly_set, FixedPolySet, WitnessPolySet},
 };
-
-fn get_only_size<F: Clone>(columns: &[(String, BTreeMap<usize, Vec<F>>)]) -> Vec<(String, Vec<F>)> {
-    // TODO: This clones the values
-    columns
-        .iter()
-        .map(|(name, column_by_size)| {
-            if column_by_size.len() != 1 {
-                panic!();
-            }
-            let values = column_by_size.values().next().unwrap().clone();
-            (name.clone(), values)
-        })
-        .collect()
-}
-
-type Columns<T> = Vec<(String, Vec<T>)>;
-type VariablySizedColumns<T> = Vec<(String, BTreeMap<usize, Vec<T>>)>;
 
 #[derive(Default, Clone)]
 pub struct Artifacts<T: FieldElement> {
@@ -82,9 +64,9 @@ pub struct Artifacts<T: FieldElement> {
     /// An optimized .pil file.
     optimized_pil: Option<Arc<Analyzed<T>>>,
     /// Fully evaluated fixed columns.
-    fixed_cols: Option<Arc<VariablySizedColumns<T>>>,
+    fixed_cols: Option<Arc<FixedColumns<T>>>,
     /// Generated witnesses.
-    witness: Option<Arc<Columns<T>>>,
+    witness: Option<Arc<WitnessColumns<T>>>,
     /// The proof (if successful).
     proof: Option<Proof>,
 }
@@ -426,6 +408,7 @@ impl<T: FieldElement> Pipeline<T> {
 
     /// Sets the witness to the provided value.
     pub fn set_witness(mut self, witness: Vec<(String, Vec<T>)>) -> Self {
+        let witness = witness.into_iter().into();
         if self.output_dir.is_some() {
             // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
             let fixed_cols = self.compute_fixed_cols().unwrap();
@@ -502,29 +485,26 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
-    fn maybe_write_constants(
-        &self,
-        constants: &[(String, BTreeMap<usize, Vec<T>>)],
-    ) -> Result<(), Vec<String>> {
+    fn maybe_write_constants(&self, constants: &FixedColumns<T>) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|_| "constants.bin".to_string())? {
-            write_fixed_file(&path, constants).map_err(|e| vec![format!("{}", e)])?;
+            constants.write(&path).map_err(|e| vec![format!("{}", e)])?;
         }
         Ok(())
     }
 
     fn maybe_write_witness(
         &self,
-        fixed: &[(String, BTreeMap<usize, Vec<T>>)],
-        witness: &[(String, Vec<T>)],
+        fixed: &FixedColumns<T>,
+        witness: &WitnessColumns<T>,
     ) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
-            write_witness_file(&path, witness).map_err(|e| vec![format!("{}", e)])?;
+            witness.write(&path).map_err(|e| vec![format!("{}", e)])?;
         }
 
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
-                let fixed = get_only_size(fixed);
-                let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
+                let fixed = fixed.get_only_size().unwrap();
+                let columns = fixed.iter().chain(witness.0.iter()).collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
                 write_polys_csv_file(csv_file, self.arguments.csv_render_mode, &columns);
@@ -806,7 +786,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.optimized_pil.as_ref().unwrap().clone())
     }
 
-    pub fn compute_fixed_cols(&mut self) -> Result<Arc<VariablySizedColumns<T>>, Vec<String>> {
+    pub fn compute_fixed_cols(&mut self) -> Result<Arc<FixedColumns<T>>, Vec<String>> {
         if let Some(ref fixed_cols) = self.artifact.fixed_cols {
             return Ok(fixed_cols.clone());
         }
@@ -825,11 +805,11 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
     }
 
-    pub fn fixed_cols(&self) -> Result<Arc<VariablySizedColumns<T>>, Vec<String>> {
+    pub fn fixed_cols(&self) -> Result<Arc<FixedColumns<T>>, Vec<String>> {
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
     }
 
-    pub fn compute_witness(&mut self) -> Result<Arc<Columns<T>>, Vec<String>> {
+    pub fn compute_witness(&mut self) -> Result<Arc<WitnessColumns<T>>, Vec<String>> {
         if let Some(ref witness) = self.artifact.witness {
             return Ok(witness.clone());
         }
@@ -848,10 +828,11 @@ impl<T: FieldElement> Pipeline<T> {
             .query_callback
             .clone()
             .unwrap_or_else(|| Arc::new(unused_query_callback()));
-        let fixed_cols_one_size = get_only_size(&fixed_cols);
-        let witness = WitnessGenerator::new(&pil, &fixed_cols_one_size, query_callback.borrow())
-            .with_external_witness_values(&external_witness_values)
-            .generate();
+        let fixed_cols_one_size = fixed_cols.get_only_size().unwrap();
+        let witness: WitnessColumns<T> =
+            WitnessGenerator::new(&pil, &fixed_cols_one_size, query_callback.borrow())
+                .with_external_witness_values(&external_witness_values)
+                .generate();
 
         self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
@@ -862,7 +843,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }
 
-    pub fn witness(&self) -> Result<Arc<Columns<T>>, Vec<String>> {
+    pub fn witness(&self) -> Result<Arc<WitnessColumns<T>>, Vec<String>> {
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }
 
@@ -873,7 +854,7 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn witgen_callback(&mut self) -> Result<WitgenCallback<T>, Vec<String>> {
-        let fixed_cols = Arc::new(get_only_size(&self.compute_fixed_cols()?));
+        let fixed_cols = Arc::new(self.compute_fixed_cols()?.get_only_size().unwrap());
         Ok(WitgenCallback::new(
             self.compute_optimized_pil()?,
             fixed_cols,
@@ -938,7 +919,7 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| fs::read(path).unwrap());
 
-        let proof = match backend.prove(&witness, existing_proof, witgen_callback) {
+        let proof = match backend.prove(&witness.0, existing_proof, witgen_callback) {
             Ok(proof) => proof,
             Err(powdr_backend::Error::BackendError(e)) => {
                 return Err(vec![e.to_string()]);

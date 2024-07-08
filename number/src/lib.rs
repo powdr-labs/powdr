@@ -9,9 +9,11 @@ mod goldilocks;
 mod serialize;
 mod traits;
 
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
 pub use serialize::{
-    buffered_write_file, read_fixed_file, read_polys_csv_file, read_witness_file, write_fixed_file,
-    write_polys_csv_file, write_witness_file, CsvRenderMode,
+    buffered_write_file, read_polys_csv_file, write_polys_csv_file, CsvRenderMode, ReadWrite,
 };
 
 pub use bn254::Bn254Field;
@@ -29,6 +31,51 @@ pub type DegreeType = u64;
 pub fn log2_exact(n: BigUint) -> Option<usize> {
     n.trailing_zeros()
         .filter(|zeros| n == (BigUint::from(1u32) << zeros))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct WitnessColumns<F>(pub Vec<(String, Vec<F>)>);
+
+#[derive(Serialize, Deserialize)]
+pub struct FixedColumns<F>(pub Vec<(String, BTreeMap<usize, Vec<F>>)>);
+
+#[derive(Debug)]
+pub struct HasMultipleSizesError;
+
+impl<F: Clone> FixedColumns<F> {
+    pub fn get_only_size(&self) -> Result<Vec<(String, Vec<F>)>, HasMultipleSizesError> {
+        // TODO: This clones the values
+        self.0
+            .iter()
+            .map(|(name, column_by_size)| {
+                if column_by_size.len() != 1 {
+                    return Err(HasMultipleSizesError);
+                }
+                let values = column_by_size.values().next().unwrap().clone();
+                Ok((name.clone(), values))
+            })
+            .collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl<T: Iterator<Item = (String, BTreeMap<usize, Vec<F>>)>, F: Clone> From<T> for FixedColumns<F> {
+    fn from(iter: T) -> Self {
+        Self(iter.collect())
+    }
+}
+
+impl<T: Iterator<Item = (String, Vec<F>)>, F: Clone> From<T> for WitnessColumns<F> {
+    fn from(iter: T) -> Self {
+        Self(iter.collect())
+    }
 }
 
 #[cfg(test)]
