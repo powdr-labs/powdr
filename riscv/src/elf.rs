@@ -10,10 +10,10 @@ use goblin::{
     elf::sym::STT_OBJECT,
     elf::{
         header::{EI_CLASS, EI_DATA, ELFCLASS32, ELFDATA2LSB, EM_RISCV, ET_DYN},
-        program_header,
+        program_header::{PF_X, PT_LOAD},
         reloc::{R_RISCV_32, R_RISCV_HI20, R_RISCV_RELATIVE},
         sym::STT_FUNC,
-        Elf,
+        Elf, ProgramHeader,
     },
 };
 use itertools::{Either, Itertools};
@@ -85,7 +85,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
     let address_map = AddressMap(
         elf.program_headers
             .iter()
-            .filter(|p| p.p_type == program_header::PT_LOAD)
+            .filter(|p| p.p_type == PT_LOAD)
             .map(|p| (p.p_vaddr as u32, p))
             .collect(),
     );
@@ -109,7 +109,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
         let section_data = &file_buffer[p.p_offset as usize..(p.p_offset + p.p_filesz) as usize];
 
         // Test if executable
-        if p.p_flags & 1 == 1 {
+        if p.p_flags & PF_X == 1 {
             search_text_addrs(
                 addr,
                 section_data,
@@ -271,11 +271,6 @@ impl SymbolTable {
             .map(|name| Cow::Borrowed(name.as_str()))
             .unwrap_or_else(|| Cow::Owned(format!("L{addr:08x}")))
     }
-
-    /// Get the symbol or a default label formed from the address value.
-    fn get_as_string(&self, addr: u32) -> String {
-        self.get(addr).into_owned()
-    }
 }
 
 impl RiscVProgram for ElfProgram {
@@ -288,7 +283,7 @@ impl RiscVProgram for ElfProgram {
         self.data_map.iter().map(|(addr, data)| {
             let value = match data {
                 Data::TextLabel(label) => {
-                    SingleDataValue::LabelReference(self.symbol_table.get_as_string(*label))
+                    SingleDataValue::LabelReference(self.symbol_table.get(*label).into())
                 }
                 Data::Value(value) => SingleDataValue::Value(*value),
             };
@@ -349,7 +344,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 rd: None,
                 rs1: None,
                 rs2: None,
-            } => Ok(self.symbol_table.get_as_string(*addr)),
+            } => Ok(self.symbol_table.get(*addr).into()),
             _ => Err(format!("Expected: label, got {:?}", self.args)),
         }
     }
@@ -448,7 +443,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
             } => Ok((
                 Register::new(*rs1 as u8),
                 Register::new(*rs2 as u8),
-                self.symbol_table.get_as_string(*addr),
+                self.symbol_table.get(*addr).into(),
             )),
             _ => Err(format!("Expected: rs1, rs2, label, got {:?}", self.args)),
         }
@@ -463,7 +458,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 rs2: None,
             } => Ok((
                 Register::new(*rs1 as u8),
-                self.symbol_table.get_as_string(*addr),
+                self.symbol_table.get(*addr).into(),
             )),
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
@@ -472,7 +467,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 rs2: None,
             } => Ok((
                 Register::new(*rd as u8),
-                self.symbol_table.get_as_string(*addr),
+                self.symbol_table.get(*addr).into(),
             )),
             _ => Err(format!("Expected: {{rs1|rd}}, label, got {:?}", self.args)),
         }
@@ -523,7 +518,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
 /// Indexes the program sections by their virtual address.
 ///
 /// Allows for querying if an address is in a data or text section.
-struct AddressMap<'a>(BTreeMap<u32, &'a program_header::ProgramHeader>);
+struct AddressMap<'a>(BTreeMap<u32, &'a ProgramHeader>);
 
 impl AddressMap<'_> {
     fn is_in_data_section(&self, addr: u32) -> bool {
@@ -542,7 +537,7 @@ impl AddressMap<'_> {
         }
     }
 
-    fn get_section_of_addr(&self, addr: u32) -> Option<&program_header::ProgramHeader> {
+    fn get_section_of_addr(&self, addr: u32) -> Option<&ProgramHeader> {
         // Get the latest section that starts before the address.
         let section = self
             .0

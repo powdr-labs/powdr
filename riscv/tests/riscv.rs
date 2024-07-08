@@ -10,7 +10,7 @@ use test_log::test;
 
 use powdr_riscv::{
     continuations::{rust_continuations, rust_continuations_dry_run},
-    load_riscv_asm_files, Runtime,
+    Runtime,
 };
 
 /// Compiles and runs a rust program with continuations, runs the full
@@ -19,22 +19,22 @@ pub fn test_continuations(case: &str) {
     let runtime = Runtime::base().with_poseidon();
     let temp_dir = Temp::new_dir().unwrap();
 
-    let (elf_file, riscv_asm) = powdr_riscv::compile_rust_crate_to_riscv(
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
 
     // Test continuations from ELF file.
-    let powdr_asm =
-        powdr_riscv::elf::translate::<GoldilocksField>(&elf_file.unwrap(), &runtime, true);
-    run_continuations_test(case, powdr_asm);
-
-    // Test continuations from assembly files.
-    let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(
-        load_riscv_asm_files(riscv_asm),
+    let powdr_asm = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
         &runtime,
         true,
     );
+    run_continuations_test(case, powdr_asm);
+
+    // Test continuations from assembly files.
+    let powdr_asm =
+        powdr_riscv::asm::compile::<GoldilocksField>(compiled.load_asm_files(), &runtime, true);
     run_continuations_test(case, powdr_asm);
 }
 
@@ -397,14 +397,17 @@ fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'stati
     backend: BackendType,
 ) {
     let temp_dir = Temp::new_dir().unwrap();
-    let (executable, asm_files) = powdr_riscv::compile_rust_crate_to_riscv(
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf =
-        powdr_riscv::elf::translate::<GoldilocksField>(&executable.unwrap(), runtime, false);
+    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        runtime,
+        false,
+    );
     verify_riscv_asm_string(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -414,11 +417,8 @@ fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'stati
     );
 
     log::info!("Verifying {case} converted from assembly files");
-    let from_asm = powdr_riscv::asm::compile::<GoldilocksField>(
-        load_riscv_asm_files(asm_files),
-        runtime,
-        false,
-    );
+    let from_asm =
+        powdr_riscv::asm::compile::<GoldilocksField>(compiled.load_asm_files(), runtime, false);
     verify_riscv_asm_string(
         &format!("{case}_from_asm.asm"),
         &from_asm,

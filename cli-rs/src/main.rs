@@ -12,8 +12,8 @@ use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::ProfilerOptions;
 
 use std::ffi::OsStr;
-use std::io;
 use std::{borrow::Cow, io::Write, path::Path};
+use std::{fs, io};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
@@ -353,9 +353,14 @@ fn compile_riscv_asm<F: FieldElement>(
         None => powdr_riscv::Runtime::base(),
     };
 
-    powdr_riscv::compile_riscv_asm::<F>(
+    powdr_riscv::compile_riscv_asm_bundle::<F>(
         original_file_name,
-        file_names,
+        file_names
+            .map(|name| {
+                let contents = fs::read_to_string(&name).unwrap();
+                (name, contents)
+            })
+            .collect(),
         output_dir,
         true,
         &runtime,

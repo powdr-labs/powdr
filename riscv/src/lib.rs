@@ -147,30 +147,6 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
     )
 }
 
-/// Compiles a riscv asm file to Powdr asm.
-pub fn compile_riscv_asm<T: FieldElement>(
-    original_file_name: &str,
-    file_names: impl Iterator<Item = String>,
-    output_dir: &Path,
-    force_overwrite: bool,
-    runtime: &Runtime,
-    with_bootloader: bool,
-) -> Option<(PathBuf, String)> {
-    compile_riscv_asm_bundle::<T>(
-        original_file_name,
-        file_names
-            .map(|name| {
-                let contents = fs::read_to_string(&name).unwrap();
-                (name, contents)
-            })
-            .collect(),
-        output_dir,
-        force_overwrite,
-        runtime,
-        with_bootloader,
-    )
-}
-
 /// Translates a RISC-V ELF file to powdr asm.
 pub fn compile_riscv_elf<T: FieldElement>(
     original_file_name: &str,
@@ -197,10 +173,24 @@ macro_rules! as_ref [
     };
 ];
 
-pub fn compile_rust_crate_to_riscv(
-    input_dir: &str,
-    output_dir: &Path,
-) -> (Option<PathBuf>, BTreeMap<String, PathBuf>) {
+pub struct CompilationResult {
+    pub executable: Option<PathBuf>,
+    assemblies: BTreeMap<String, PathBuf>,
+}
+
+impl CompilationResult {
+    pub fn load_asm_files(self) -> BTreeMap<String, String> {
+        self.assemblies
+            .into_iter()
+            .map(|(name, filename)| {
+                let contents = fs::read_to_string(filename).unwrap();
+                (name, contents)
+            })
+            .collect()
+    }
+}
+
+pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> CompilationResult {
     const CARGO_TARGET_DIR: &str = "cargo_target";
     let target_dir = output_dir.join(CARGO_TARGET_DIR);
 
@@ -278,31 +268,22 @@ pub fn compile_rust_crate_to_riscv(
         }
     }
 
-    (executable, assemblies)
+    CompilationResult {
+        executable,
+        assemblies,
+    }
 }
 
 pub fn compile_rust_crate_to_riscv_asm(
     input_dir: &str,
     output_dir: &Path,
 ) -> BTreeMap<String, String> {
-    let (_, output_files) = compile_rust_crate_to_riscv(input_dir, output_dir);
-
-    load_riscv_asm_files(output_files)
-}
-
-pub fn load_riscv_asm_files(asm_files: BTreeMap<String, PathBuf>) -> BTreeMap<String, String> {
-    asm_files
-        .into_iter()
-        .map(|(name, filename)| {
-            let contents = fs::read_to_string(filename).unwrap();
-            (name, contents)
-        })
-        .collect()
+    compile_rust_crate_to_riscv(input_dir, output_dir).load_asm_files()
 }
 
 pub fn compile_rust_crate_to_riscv_bin(input_dir: &str, output_dir: &Path) -> PathBuf {
     compile_rust_crate_to_riscv(input_dir, output_dir)
-        .0
+        .executable
         .unwrap()
 }
 
