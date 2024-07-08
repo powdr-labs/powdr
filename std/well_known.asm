@@ -1,2 +1,3 @@
-/// Creates a new witness column which is 1 on the first row 0 on the other rows
+/// Evaluates to 1 on the first row and 0 on all other rows.
+/// Useful to define a fixed column of that property.
 let is_first: int -> int = |i| if i == 0 { 1 } else { 0 };
