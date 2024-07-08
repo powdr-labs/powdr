@@ -2,7 +2,7 @@ use std::{io, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, VariablySizedColumns};
 use powdr_plonky3::Plonky3Prover;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
@@ -13,7 +13,7 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<T>>,
-        _fixed: Arc<Vec<(String, Vec<T>)>>,
+        _fixed: Arc<VariablySizedColumns<T>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,

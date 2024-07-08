@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, VariablySizedColumns};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
@@ -14,13 +14,18 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
         analyzed: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, Vec<F>)>>,
+        fixed: Arc<VariablySizedColumns<F>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+        let fixed = Arc::new(
+            fixed
+                .get_only_size()
+                .map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
         Ok(Box::new(PolygonBackend(EStarkFilesCommon::create(
             &analyzed,
             fixed,
