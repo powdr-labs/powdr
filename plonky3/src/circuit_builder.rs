@@ -183,6 +183,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         }
     }
 
+    #[cfg(debug_assertions)]
     pub(crate) fn with_preprocessed(
         mut self,
         preprocessed_matrix: RowMajorMatrix<Goldilocks>,
@@ -280,7 +281,6 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
-        // get fixed only if we have constant columns, otherwise it panics. We could solve this by implementing our own `PairBuilder` returning an `Option`
         let fixed = builder.preprocessed();
         let pi = builder.public_values();
         let publics = self.get_publics();

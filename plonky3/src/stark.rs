@@ -48,10 +48,13 @@ impl<T: FieldElement> Plonky3Prover<T> {
         self.verifying_key.as_ref()
     }
 
+    /// Returns preprocessed matrix based on the fixed inputs [`Plonky3Prover<T>`].
+    /// This is used when running the setup phase
     pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<Goldilocks> {
         match self.fixed.len() {
             0 => RowMajorMatrix::new(Vec::<Goldilocks>::new(), 0),
             _ => RowMajorMatrix::new(
+                // write fixed row by row
                 (0..self.analyzed.degree())
                     .flat_map(|i| {
                         self.fixed
@@ -83,7 +86,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
             pcs,
             self.analyzed.degree() as usize,
         );
-        // write fixed into matrix row by row
+        // get the preprocessed matrix
         let matrix = self.get_preprocessed_matrix();
 
         let evaluations = vec![(domain, matrix)];

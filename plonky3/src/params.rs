@@ -21,10 +21,10 @@ use crate::circuit_builder::Val;
 const D: usize = 2;
 type Challenge = BinomialExtensionField<Val, D>;
 const WIDTH: usize = 8;
-const RATE: usize = 4;
 const ALPHA: u64 = 7;
 type Perm = Poseidon<Val, MdsMatrixGoldilocks, WIDTH, ALPHA>;
 
+const RATE: usize = 4;
 const OUT: usize = 4;
 type Hash = PaddingFreeSponge<Perm, WIDTH, RATE, OUT>;
 
