@@ -23,7 +23,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         let fixed = Arc::new(
             fixed
-                .get_only_size()
+                .get_only_size_cloned()
                 .map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
         Ok(Box::new(PolygonBackend(EStarkFilesCommon::create(
