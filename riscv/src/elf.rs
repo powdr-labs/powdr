@@ -30,14 +30,6 @@ use crate::{
     Runtime,
 };
 
-struct ElfProgram {
-    symbol_table: SymbolTable,
-    data_map: BTreeMap<u32, Data>,
-    text_labels: BTreeSet<u32>,
-    instructions: Vec<HighLevelInsn>,
-    entry_point: u32,
-}
-
 /// Generates a Powdr Assembly program from a RISC-V 32 executable ELF file.
 pub fn translate<F: FieldElement>(
     file_name: &Path,
@@ -46,6 +38,14 @@ pub fn translate<F: FieldElement>(
 ) -> String {
     let elf_program = load_elf(file_name);
     code_gen::translate_program::<F>(elf_program, runtime, with_bootloader)
+}
+
+struct ElfProgram {
+    symbol_table: SymbolTable,
+    data_map: BTreeMap<u32, Data>,
+    text_labels: BTreeSet<u32>,
+    instructions: Vec<HighLevelInsn>,
+    entry_point: u32,
 }
 
 fn load_elf(file_name: &Path) -> ElfProgram {
