@@ -87,7 +87,6 @@ impl<T: FieldElement> WitgenCallback<T> {
         .with_external_witness_values(current_witness)
         .with_challenges(stage, challenges)
         .generate()
-        .0
     }
 }
 
@@ -251,7 +250,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 assert!(!column.is_empty());
                 (name, column)
             })
-            .into();
+            .collect();
 
         log::debug!("Publics:");
         for (name, value) in extract_publics(&witness_cols, self.analyzed) {
@@ -266,7 +265,6 @@ pub fn extract_publics<T: FieldElement>(
     pil: &Analyzed<T>,
 ) -> Vec<(String, T)> {
     let witness = witness
-        .0
         .iter()
         .map(|(name, col)| (name.clone(), col))
         .collect::<BTreeMap<_, _>>();

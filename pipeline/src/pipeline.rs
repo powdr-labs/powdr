@@ -408,7 +408,6 @@ impl<T: FieldElement> Pipeline<T> {
 
     /// Sets the witness to the provided value.
     pub fn set_witness(mut self, witness: Vec<(String, Vec<T>)>) -> Self {
-        let witness = witness.into_iter().into();
         if self.output_dir.is_some() {
             // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
             let fixed_cols = self.compute_fixed_cols().unwrap();
@@ -507,7 +506,7 @@ impl<T: FieldElement> Pipeline<T> {
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
                 let fixed = fixed.get_only_size().unwrap();
-                let columns = fixed.iter().chain(witness.0.iter()).collect::<Vec<_>>();
+                let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
                 write_polys_csv_file(csv_file, self.arguments.csv_render_mode, &columns);
@@ -922,7 +921,7 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| fs::read(path).unwrap());
 
-        let proof = match backend.prove(&witness.0, existing_proof, witgen_callback) {
+        let proof = match backend.prove(&witness, existing_proof, witgen_callback) {
             Ok(proof) => proof,
             Err(powdr_backend::Error::BackendError(e)) => {
                 return Err(vec![e.to_string()]);

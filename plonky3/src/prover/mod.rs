@@ -99,7 +99,7 @@ mod tests {
         let witness = pipeline.compute_witness().unwrap();
 
         let prover = Plonky3Prover::new(pil);
-        let proof = prover.prove(&witness.0, witness_callback);
+        let proof = prover.prove(&witness, witness_callback);
 
         assert!(proof.is_ok());
 

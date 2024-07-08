@@ -161,7 +161,7 @@ mod tests {
         let polys = test_polys();
 
         serde_cbor::to_writer(&mut buf, &polys).unwrap();
-        let read_polys = Columns::read(&mut Cursor::new(buf)).0;
+        let read_polys = Columns::read(&mut Cursor::new(buf));
 
         assert_eq!(read_polys, polys);
     }

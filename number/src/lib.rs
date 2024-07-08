@@ -33,8 +33,7 @@ pub fn log2_exact(n: BigUint) -> Option<usize> {
         .filter(|zeros| n == (BigUint::from(1u32) << zeros))
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Columns<F>(pub Vec<(String, Vec<F>)>);
+pub type Columns<F> = Vec<(String, Vec<F>)>;
 
 #[derive(Serialize, Deserialize)]
 pub struct VariablySizedColumns<F>(pub Vec<(String, BTreeMap<usize, Vec<F>>)>);
@@ -43,7 +42,7 @@ pub struct VariablySizedColumns<F>(pub Vec<(String, BTreeMap<usize, Vec<F>>)>);
 pub struct HasMultipleSizesError;
 
 impl<F: Clone> VariablySizedColumns<F> {
-    pub fn get_only_size(&self) -> Result<Vec<(String, Vec<F>)>, HasMultipleSizesError> {
+    pub fn get_only_size(&self) -> Result<Columns<F>, HasMultipleSizesError> {
         // TODO: This clones the values
         self.0
             .iter()
@@ -69,12 +68,6 @@ impl<F: Clone> VariablySizedColumns<F> {
 impl<T: Iterator<Item = (String, BTreeMap<usize, Vec<F>>)>, F: Clone> From<T>
     for VariablySizedColumns<F>
 {
-    fn from(iter: T) -> Self {
-        Self(iter.collect())
-    }
-}
-
-impl<T: Iterator<Item = (String, Vec<F>)>, F: Clone> From<T> for Columns<F> {
     fn from(iter: T) -> Self {
         Self(iter.collect())
     }

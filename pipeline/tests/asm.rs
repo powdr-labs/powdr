@@ -394,7 +394,7 @@ fn read_poly_files() {
 
         // check witness cols (examples assumed to have at least one witness col)
         let witness = read_witness_poly_set::<WitnessPolySet, Bn254Field>(tmp_dir.as_path());
-        assert_eq!(pil.degree(), witness.0[0].1.len() as u64);
+        assert_eq!(pil.degree(), witness[0].1.len() as u64);
     }
 }
 
