@@ -295,19 +295,15 @@ impl PILAnalyzer {
                 }
             }
         }
-        let inferred_types = infer_types(
-            definitions,
-            &mut expressions,
-            &constr_function_statement_type(),
-        )
-        .map_err(|mut errors| {
-            eprintln!("\nError during type inference:");
-            for e in &errors {
-                e.output_to_stderr();
-            }
-            errors.pop().unwrap()
-        })
-        .unwrap();
+        let inferred_types = infer_types(definitions, &mut expressions)
+            .map_err(|mut errors| {
+                eprintln!("\nError during type inference:");
+                for e in &errors {
+                    e.output_to_stderr();
+                }
+                errors.pop().unwrap()
+            })
+            .unwrap();
         // Store the inferred types.
         for (name, ty) in inferred_types {
             let Some(FunctionValueDefinition::Expression(TypedExpression {

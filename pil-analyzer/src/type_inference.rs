@@ -31,9 +31,8 @@ use crate::{
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
-    statement_type: &ExpectedType,
 ) -> Result<Vec<(String, Type)>, Vec<Error>> {
-    TypeChecker::new(statement_type).infer_types(definitions, expressions)
+    TypeChecker::new().infer_types(definitions, expressions)
 }
 
 /// A type to expect and a flag that says if arrays of that type are also fine.
@@ -56,9 +55,7 @@ impl From<Type> for ExpectedType {
     }
 }
 
-struct TypeChecker<'a> {
-    /// The expected type for expressions at statement level in block expressions inside a constr function.
-    constr_function_statement_type: &'a ExpectedType,
+struct TypeChecker {
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
     /// Declared types for all symbols and their source references.
@@ -74,10 +71,9 @@ struct TypeChecker<'a> {
     lambda_kind: FunctionKind,
 }
 
-impl<'a> TypeChecker<'a> {
-    pub fn new(statement_type: &'a ExpectedType) -> Self {
+impl TypeChecker {
+    pub fn new() -> Self {
         Self {
-            constr_function_statement_type: statement_type,
             local_var_types: Default::default(),
             declared_types: Default::default(),
             declared_type_vars: Default::default(),
