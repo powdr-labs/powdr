@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
@@ -23,7 +22,8 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
-use crate::type_inference::{infer_types, ExpectedType};
+use crate::type_builtins::constr_function_statement_type;
+use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
 
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
@@ -271,17 +271,12 @@ impl PILAnalyzer {
                 Some((name.clone(), (type_scheme, expr)))
             })
             .collect();
-        let constr_function_statement_type = ExpectedType {
-            ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
-            allow_array: true,
-            allow_empty: true,
-        };
         for id in &mut self.identities {
             if id.kind == IdentityKind::Polynomial {
                 // At statement level, we allow Constr, Constr[] or ().
                 expressions.push((
                     id.expression_for_poly_id_mut(),
-                    constr_function_statement_type.clone(),
+                    constr_function_statement_type(),
                 ));
             } else {
                 for part in [&mut id.left, &mut id.right] {
@@ -300,19 +295,15 @@ impl PILAnalyzer {
                 }
             }
         }
-        let inferred_types = infer_types(
-            definitions,
-            &mut expressions,
-            &constr_function_statement_type,
-        )
-        .map_err(|mut errors| {
-            eprintln!("\nError during type inference:");
-            for e in &errors {
-                e.output_to_stderr();
-            }
-            errors.pop().unwrap()
-        })
-        .unwrap();
+        let inferred_types = infer_types(definitions, &mut expressions)
+            .map_err(|mut errors| {
+                eprintln!("\nError during type inference:");
+                for e in &errors {
+                    e.output_to_stderr();
+                }
+                errors.pop().unwrap()
+            })
+            .unwrap();
         // Store the inferred types.
         for (name, ty) in inferred_types {
             let Some(FunctionValueDefinition::Expression(TypedExpression {
