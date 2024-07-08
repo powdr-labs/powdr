@@ -377,19 +377,11 @@ fn read_poly_files() {
         pipeline.compute_proof().unwrap();
 
         // check fixed cols (may have no fixed cols)
-        let fixed = FixedPolySet::<Bn254Field>::read(tmp_dir.as_path());
+        let fixed = FixedPolySet::<Bn254Field>::read(tmp_dir.as_path())
+            .get_only_size()
+            .unwrap();
         if !fixed.is_empty() {
-            assert_eq!(
-                pil.degree(),
-                fixed
-                    .get_only_size()
-                    .unwrap()
-                    .iter()
-                    .next()
-                    .unwrap()
-                    .1
-                    .len() as u64
-            );
+            assert_eq!(pil.degree(), fixed[0].1.len() as u64);
         }
 
         // check witness cols (examples assumed to have at least one witness col)
