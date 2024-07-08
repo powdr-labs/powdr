@@ -49,7 +49,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         // TODO: Handle multiple sizes.
         let fixed = Arc::new(
             fixed
-                .get_only_size()
+                .get_only_size_cloned()
                 .map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
 

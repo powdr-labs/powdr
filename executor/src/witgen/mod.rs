@@ -330,7 +330,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
     pub fn new(
         analyzed: &'a Analyzed<T>,
-        fixed_col_values: &'a [(String, Vec<T>)],
+        fixed_col_values: &'a [(String, &'a Vec<T>)],
         external_witness_values: &'a [(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
         stage: u8,

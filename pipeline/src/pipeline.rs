@@ -506,7 +506,7 @@ impl<T: FieldElement> Pipeline<T> {
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
                 // TODO: Handle multiple sizes
-                let fixed = fixed.get_only_size().unwrap();
+                let fixed = fixed.get_only_size_cloned().unwrap();
                 let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;

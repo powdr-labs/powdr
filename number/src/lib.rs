@@ -46,17 +46,23 @@ pub struct VariablySizedColumns<F> {
 pub struct HasMultipleSizesError;
 
 impl<F: Clone> VariablySizedColumns<F> {
-    pub fn get_only_size(&self) -> Result<Columns<F>, HasMultipleSizesError> {
-        // TODO: This clones the values
+    pub fn get_only_size(&self) -> Result<Vec<(String, &Vec<F>)>, HasMultipleSizesError> {
         self.columns
             .iter()
             .map(|(name, column_by_size)| {
                 if column_by_size.len() != 1 {
                     return Err(HasMultipleSizesError);
                 }
-                let values = column_by_size.values().next().unwrap().clone();
+                let values = column_by_size.values().next().unwrap();
                 Ok((name.clone(), values))
             })
+            .collect()
+    }
+
+    pub fn get_only_size_cloned(&self) -> Result<Vec<(String, Vec<F>)>, HasMultipleSizesError> {
+        self.get_only_size()?
+            .into_iter()
+            .map(|(name, values)| Ok((name, values.clone())))
             .collect()
     }
 

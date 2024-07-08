@@ -89,7 +89,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
         let proof_type = ProofType::from(options);
         let fixed = Arc::new(
             fixed
-                .get_only_size()
+                .get_only_size_cloned()
                 .map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
         let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup, proof_type)?);
@@ -209,7 +209,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
 
         let fixed = Arc::new(
             fixed
-                .get_only_size()
+                .get_only_size_cloned()
                 .map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
 
