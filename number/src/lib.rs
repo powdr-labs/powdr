@@ -36,7 +36,11 @@ pub fn log2_exact(n: BigUint) -> Option<usize> {
 pub type Columns<F> = Vec<(String, Vec<F>)>;
 
 #[derive(Serialize, Deserialize)]
-pub struct VariablySizedColumns<F>(pub Vec<(String, BTreeMap<usize, Vec<F>>)>);
+/// Like Columns, but each column can exist in multiple sizes
+pub struct VariablySizedColumns<F> {
+    /// Maps each column name to a (size -> values) map
+    columns: Vec<(String, BTreeMap<usize, Vec<F>>)>,
+}
 
 #[derive(Debug)]
 pub struct HasMultipleSizesError;
@@ -44,7 +48,7 @@ pub struct HasMultipleSizesError;
 impl<F: Clone> VariablySizedColumns<F> {
     pub fn get_only_size(&self) -> Result<Columns<F>, HasMultipleSizesError> {
         // TODO: This clones the values
-        self.0
+        self.columns
             .iter()
             .map(|(name, column_by_size)| {
                 if column_by_size.len() != 1 {
@@ -57,11 +61,11 @@ impl<F: Clone> VariablySizedColumns<F> {
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.columns.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.columns.is_empty()
     }
 }
 
@@ -69,7 +73,9 @@ impl<T: Iterator<Item = (String, BTreeMap<usize, Vec<F>>)>, F: Clone> From<T>
     for VariablySizedColumns<F>
 {
     fn from(iter: T) -> Self {
-        Self(iter.collect())
+        Self {
+            columns: iter.collect(),
+        }
     }
 }
 
