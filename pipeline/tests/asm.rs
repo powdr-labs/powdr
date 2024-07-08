@@ -731,3 +731,10 @@ fn connect_no_witgen() {
     let i = [];
     verify_asm(f, slice_to_vec(&i));
 }
+
+#[test]
+fn dynamic_fixed_cols() {
+    let f = "asm/dynamic_fixed_cols.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
+}
