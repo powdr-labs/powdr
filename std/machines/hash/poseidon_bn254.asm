@@ -2,9 +2,6 @@ use std::array;
 use std::utils::unchanged_until;
 
 // Implements the Poseidon permutation for the BN254 curve.
-// Note that this relies on the trace table being non-wrapping, so it will
-// only work with the Halo2 backend (which is the only backend that supports
-// the BN254 curve).
 machine PoseidonBN254 with
     latch: FIRSTBLOCK,
     operation_id: operation_id,
