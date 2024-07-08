@@ -150,51 +150,51 @@ where
     a.map_err(serde::de::Error::custom)
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::Bn254Field;
-//     use std::io::Cursor;
+#[cfg(test)]
+mod tests {
+    use crate::Bn254Field;
+    use std::io::Cursor;
 
-//     use super::*;
-//     use test_log::test;
+    use super::*;
+    use test_log::test;
 
-//     fn test_polys() -> Vec<(String, Vec<Bn254Field>)> {
-//         vec![
-//             ("a".to_string(), (0..16).map(Bn254Field::from).collect()),
-//             ("b".to_string(), (-16..0).map(Bn254Field::from).collect()),
-//         ]
-//     }
+    fn test_polys() -> Vec<(String, Vec<Bn254Field>)> {
+        vec![
+            ("a".to_string(), (0..16).map(Bn254Field::from).collect()),
+            ("b".to_string(), (-16..0).map(Bn254Field::from).collect()),
+        ]
+    }
 
-//     #[test]
-//     fn write_read() {
-//         let mut buf: Vec<u8> = vec![];
+    #[test]
+    fn write_read() {
+        let mut buf: Vec<u8> = vec![];
 
-//         let polys = test_polys();
+        let polys = test_polys();
 
-//         write_polys_stream(&mut buf, &polys).unwrap();
-//         let read_polys = read_polys_file::<Bn254Field>(&mut Cursor::new(buf));
+        serde_cbor::to_writer(&mut buf, &polys).unwrap();
+        let read_polys = WitnessColumns::read(&mut Cursor::new(buf)).0;
 
-//         assert_eq!(read_polys, polys);
-//     }
+        assert_eq!(read_polys, polys);
+    }
 
-//     #[test]
-//     fn write_read_csv() {
-//         let polys = test_polys()
-//             .into_iter()
-//             .map(|(name, values)| (name.to_string(), values))
-//             .collect::<Vec<_>>();
-//         let polys_ref = polys.iter().collect::<Vec<_>>();
+    #[test]
+    fn write_read_csv() {
+        let polys = test_polys()
+            .into_iter()
+            .map(|(name, values)| (name.to_string(), values))
+            .collect::<Vec<_>>();
+        let polys_ref = polys.iter().collect::<Vec<_>>();
 
-//         for render_mode in &[
-//             CsvRenderMode::SignedBase10,
-//             CsvRenderMode::UnsignedBase10,
-//             CsvRenderMode::Hex,
-//         ] {
-//             let mut buf: Vec<u8> = vec![];
-//             write_polys_csv_file(&mut buf, *render_mode, &polys_ref);
-//             let read_polys = read_polys_csv_file::<Bn254Field>(&mut Cursor::new(buf));
+        for render_mode in &[
+            CsvRenderMode::SignedBase10,
+            CsvRenderMode::UnsignedBase10,
+            CsvRenderMode::Hex,
+        ] {
+            let mut buf: Vec<u8> = vec![];
+            write_polys_csv_file(&mut buf, *render_mode, &polys_ref);
+            let read_polys = read_polys_csv_file::<Bn254Field>(&mut Cursor::new(buf));
 
-//             assert_eq!(read_polys, polys);
-//         }
-//     }
-// }
+            assert_eq!(read_polys, polys);
+        }
+    }
+}
