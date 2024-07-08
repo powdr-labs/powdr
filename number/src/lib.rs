@@ -46,6 +46,7 @@ pub struct VariablySizedColumns<F> {
 pub struct HasMultipleSizesError;
 
 impl<F: Clone> VariablySizedColumns<F> {
+    /// Create a view where each column has a single size. Fails if any column has multiple sizes.
     pub fn get_only_size(&self) -> Result<Vec<(String, &Vec<F>)>, HasMultipleSizesError> {
         self.columns
             .iter()
@@ -59,6 +60,7 @@ impl<F: Clone> VariablySizedColumns<F> {
             .collect()
     }
 
+    /// Like get_only_size, but clones the values.
     pub fn get_only_size_cloned(&self) -> Result<Vec<(String, Vec<F>)>, HasMultipleSizesError> {
         self.get_only_size()?
             .into_iter()
