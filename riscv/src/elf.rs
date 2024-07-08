@@ -10,7 +10,7 @@ use goblin::{
     elf::sym::STT_OBJECT,
     elf::{
         header::{EI_CLASS, EI_DATA, ELFCLASS32, ELFDATA2LSB, EM_RISCV, ET_DYN},
-        program_header::{PF_X, PT_LOAD},
+        program_header::PT_LOAD,
         reloc::{R_RISCV_32, R_RISCV_HI20, R_RISCV_RELATIVE},
         sym::STT_FUNC,
         Elf, ProgramHeader,
@@ -108,8 +108,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
     for (&addr, &p) in address_map.0.iter() {
         let section_data = &file_buffer[p.p_offset as usize..(p.p_offset + p.p_filesz) as usize];
 
-        // Test if executable
-        if p.p_flags & PF_X == 1 {
+        if p.is_executable() {
             search_text_addrs(
                 addr,
                 section_data,
@@ -137,7 +136,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
 
     // Load all the text sections.
     let mut lifted_text_sections = Vec::new();
-    for (&addr, &p) in address_map.0.iter().filter(|(_, p)| p.p_flags & 1 == 1) {
+    for (&addr, &p) in address_map.0.iter().filter(|(_, p)| p.is_executable()) {
         let section_data = &file_buffer[p.p_offset as usize..(p.p_offset + p.p_filesz) as usize];
         let insns = lift_instructions(
             addr,
@@ -522,19 +521,13 @@ struct AddressMap<'a>(BTreeMap<u32, &'a ProgramHeader>);
 
 impl AddressMap<'_> {
     fn is_in_data_section(&self, addr: u32) -> bool {
-        if let Some(section) = self.get_section_of_addr(addr) {
-            section.p_flags & 1 != 1
-        } else {
-            false
-        }
+        self.get_section_of_addr(addr)
+            .map_or(false, |section| !section.is_executable())
     }
 
     fn is_in_text_section(&self, addr: u32) -> bool {
-        if let Some(section) = self.get_section_of_addr(addr) {
-            section.p_flags & 1 == 1
-        } else {
-            false
-        }
+        self.get_section_of_addr(addr)
+            .map_or(false, ProgramHeader::is_executable)
     }
 
     fn get_section_of_addr(&self, addr: u32) -> Option<&ProgramHeader> {
