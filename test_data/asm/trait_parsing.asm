@@ -1,13 +1,16 @@
-machine Trait with degree: 8 {
-    reg pc[@pc];
-    reg X[<=];
-    reg A;
+mod types {
+    enum DoubleOpt<T> {
+        None,
+        Some(T, T)
+    }
 
-    trait ArraySum<T> {
-        array_sum: T[4 + 1] -> T,
+    trait ArraySum<T, DoubleOpt<T> > {
+        array_sum: T[4 + 1] -> DoubleOpt,
     }
-	
-    function main {
-        A <=X= 1;
-    }
+}
+
+
+machine Empty {
+    col witness w;
+    w = w * w;
 }

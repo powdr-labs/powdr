@@ -149,7 +149,7 @@ impl PilStatement {
                 once((name, None, SymbolCategory::TraitDeclaration)).chain(
                     functions
                         .iter()
-                        .map(move |f| (name, Some(&f.name), SymbolCategory::TypeConstructor)),
+                        .map(move |f| (name, Some(&f.name), SymbolCategory::Value)),
                 ),
             ),
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
