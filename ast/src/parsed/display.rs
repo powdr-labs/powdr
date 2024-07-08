@@ -526,9 +526,6 @@ impl Display for PilStatement {
                 ),
                 1,
             ),
-            PilStatement::ConstantDefinition(_, name, value) => {
-                write_indented_by(f, format!("constant {name} = {value};"), 1)
-            }
             PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
         }

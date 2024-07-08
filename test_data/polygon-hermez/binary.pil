@@ -22,7 +22,7 @@
 
 include "global.pil";
 
-namespace Binary(%N);
+namespace Binary(N);
 
 //  ##############################################################
     //  CONSTANT POLINOMIALS

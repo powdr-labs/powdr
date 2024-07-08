@@ -6,4 +6,4 @@
  * All rights reserved by Polygon.
  */
 
-constant %N = 2**23;
+let N = 2**23;

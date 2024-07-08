@@ -167,7 +167,6 @@ fn symbol_kind_to_json_string(k: SymbolKind) -> &'static str {
     match k {
         SymbolKind::Poly(poly_type) => polynomial_type_to_json_string(poly_type),
         SymbolKind::Other() => panic!("Cannot translate \"other\" symbol to json."),
-        SymbolKind::Constant() => unreachable!(),
     }
 }
 
@@ -225,7 +224,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                         panic!("Should be in intermediates")
                     }
                     SymbolKind::Poly(_) => Some(symbol.id),
-                    SymbolKind::Other() | SymbolKind::Constant() => None,
+                    SymbolKind::Other() => None,
                 }?;
 
                 let out = Reference {

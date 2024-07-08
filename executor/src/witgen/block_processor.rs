@@ -162,6 +162,8 @@ mod tests {
         let mut fixed_lookup = FixedLookup::new(fixed_data.global_range_constraints().clone());
         let mut machines = [];
 
+        let degree = fixed_data.analyzed.degree();
+
         let columns = (0..fixed_data.witness_cols.len())
             .map(move |i| PolyID {
                 id: i as u64,
@@ -170,8 +172,7 @@ mod tests {
             .collect();
         let data = FinalizableData::with_initial_rows_in_progress(
             &columns,
-            (0..fixed_data.degree)
-                .map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, fixed_data.degree))),
+            (0..degree).map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, degree))),
         );
 
         let mut mutable_state = MutableState {
@@ -179,7 +180,7 @@ mod tests {
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
-        let row_offset = RowIndex::from_degree(0, fixed_data.degree);
+        let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let witness_cols = fixed_data.witness_cols.keys().collect();
 
@@ -195,7 +196,7 @@ mod tests {
         f(
             processor,
             name_to_poly_id(&fixed_data),
-            analyzed.degree(),
+            degree,
             identities.len(),
         )
     }
@@ -226,9 +227,9 @@ mod tests {
     #[test]
     fn fibonacci() {
         let src = r#"
-            constant %N = 8;
+            let N: int = 8;
 
-            namespace Fibonacci(%N);
+            namespace Fibonacci(N);
                 col fixed ISFIRST = [1] + [0]*;
                 col fixed ISLAST = [0]* + [1];
                 col witness x, y;
