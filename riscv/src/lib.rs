@@ -29,7 +29,7 @@ pub fn compile_rust<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     runtime: &Runtime,
-    asm: bool,
+    via_elf: bool,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     if with_bootloader {
@@ -47,7 +47,18 @@ pub fn compile_rust<T: FieldElement>(
         panic!("input must be a crate directory or `Cargo.toml` file");
     };
 
-    if asm {
+    if via_elf {
+        let elf_path = compile_rust_crate_to_riscv_bin(&file_path, output_dir);
+
+        compile_riscv_elf::<T>(
+            file_name,
+            &elf_path,
+            output_dir,
+            force_overwrite,
+            runtime,
+            with_bootloader,
+        )
+    } else {
         let riscv_asm = compile_rust_crate_to_riscv_asm(&file_path, output_dir);
         if !output_dir.exists() {
             fs::create_dir_all(output_dir).unwrap()
@@ -76,17 +87,6 @@ pub fn compile_rust<T: FieldElement>(
         compile_riscv_asm_bundle::<T>(
             file_name,
             riscv_asm,
-            output_dir,
-            force_overwrite,
-            runtime,
-            with_bootloader,
-        )
-    } else {
-        let elf_path = compile_rust_crate_to_riscv_bin(&file_path, output_dir);
-
-        compile_riscv_elf::<T>(
-            file_name,
-            &elf_path,
             output_dir,
             force_overwrite,
             runtime,

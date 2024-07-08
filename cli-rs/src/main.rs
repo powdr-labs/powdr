@@ -62,11 +62,10 @@ enum Commands {
         #[arg(long)]
         coprocessors: Option<String>,
 
-        /// Convert to powdr from the RISC-V assembly files instead of the ELF
-        /// executable.
+        /// Convert from the executable ELF file instead of the assembly.
         #[arg(short, long)]
         #[arg(default_value_t = false)]
-        asm: bool,
+        elf: bool,
 
         /// Run a long execution in chunks (Experimental and not sound!)
         #[arg(short, long)]
@@ -225,14 +224,14 @@ fn run_command(command: Commands) {
             field,
             output_directory,
             coprocessors,
-            asm,
+            elf,
             continuations,
         } => {
             call_with_field!(compile_rust::<field>(
                 &file,
                 Path::new(&output_directory),
                 coprocessors,
-                asm,
+                elf,
                 continuations
             ))
         }
@@ -318,7 +317,7 @@ fn compile_rust<F: FieldElement>(
     file_name: &str,
     output_dir: &Path,
     coprocessors: Option<String>,
-    asm: bool,
+    via_elf: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
     let mut runtime = match coprocessors {
@@ -332,8 +331,15 @@ fn compile_rust<F: FieldElement>(
         runtime = runtime.with_poseidon();
     }
 
-    powdr_riscv::compile_rust::<F>(file_name, output_dir, true, &runtime, asm, continuations)
-        .ok_or_else(|| vec!["could not compile rust".to_string()])?;
+    powdr_riscv::compile_rust::<F>(
+        file_name,
+        output_dir,
+        true,
+        &runtime,
+        via_elf,
+        continuations,
+    )
+    .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
     Ok(())
 }
