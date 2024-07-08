@@ -64,4 +64,4 @@ implement, following `amoadd_w` suit.
 - `rvc`
 
 The RISC-V "C" test file is only partially supported when converting from the
-ELF executable. Some tests that we don't support were disable.
+ELF executable. Some tests that we don't support were disabled.
