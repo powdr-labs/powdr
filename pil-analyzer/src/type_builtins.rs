@@ -109,6 +109,7 @@ pub fn unary_operator_scheme(op: UnaryOperator) -> TypeScheme {
     UNARY_OPERATOR_SCHEMES[&op].clone()
 }
 
+/// Returns the type allowed at statement level in `constr` functions.
 pub fn constr_function_statement_type() -> ExpectedType {
     CONSTR_FUNCTION_STATEMENT_TYPE.clone()
 }
