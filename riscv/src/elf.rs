@@ -910,7 +910,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             },
         };
 
-        // For some reason, atomic instructions comes with the immediate set to
+        // For some reason, atomic instructions come with the immediate set to
         // zero instead of None (maybe to mimic assembly syntax? Who knows). We
         // must fix this:
         if let Extensions::A = insn.extension {
