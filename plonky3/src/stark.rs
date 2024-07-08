@@ -3,6 +3,7 @@
 use p3_goldilocks::Goldilocks;
 use p3_matrix::dense::RowMajorMatrix;
 
+use core::fmt;
 use std::sync::Arc;
 
 use crate::params::Challenger;
@@ -30,6 +31,18 @@ pub struct Plonky3Prover<T> {
     verifying_key: Option<StarkVerifyingKey<Config>>,
 }
 
+pub enum VerificationKeyExportError {
+    NoVerificationKey,
+}
+
+impl fmt::Display for VerificationKeyExportError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoVerificationKey => write!(f, "No verification key set"),
+        }
+    }
+}
+
 impl<T: FieldElement> Plonky3Prover<T> {
     pub fn new(analyzed: Arc<Analyzed<T>>, fixed: Arc<Vec<(String, Vec<T>)>>) -> Self {
         Self {
@@ -41,11 +54,16 @@ impl<T: FieldElement> Plonky3Prover<T> {
     }
 
     pub fn set_verifying_key(&mut self, rdr: &mut dyn std::io::Read) {
-        self.verifying_key = Some(serde_json::from_reader(rdr).unwrap());
+        self.verifying_key = Some(bincode::deserialize_from(rdr).unwrap());
     }
 
-    pub fn get_verifying_key(&self) -> Option<&StarkVerifyingKey<Config>> {
-        self.verifying_key.as_ref()
+    pub fn export_verifying_key(&self) -> Result<Vec<u8>, VerificationKeyExportError> {
+        Ok(bincode::serialize(
+            self.verifying_key
+                .as_ref()
+                .ok_or(VerificationKeyExportError::NoVerificationKey)?,
+        )
+        .unwrap())
     }
 
     /// Returns preprocessed matrix based on the fixed inputs [`Plonky3Prover<T>`].
