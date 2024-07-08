@@ -751,6 +751,16 @@ namespace Main(16);
 }
 
 #[test]
+fn reparse_array_typed_intermediate_col() {
+    let input = r#"namespace Main(16);
+    col witness w;
+    let clocks: expr[4] = [Main.w, Main.w, Main.w, Main.w];
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}
+
+#[test]
 fn reparse_type_args_generic_enum() {
     let input = r#"namespace X(16);
     enum Option<T> {
