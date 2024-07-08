@@ -30,7 +30,7 @@ powdr-pilopt.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-schemas.workspace = true
 
-itertools = "0.13"
+itertools = "0.12"
 log = "0.4.17"
 mktemp = "0.5.0"
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
