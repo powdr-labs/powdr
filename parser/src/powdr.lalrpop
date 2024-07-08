@@ -686,8 +686,11 @@ TraitDeclaration: TraitDeclaration<Expression> = {
 }
 
 TraitVars: Vec<String> = {
-    => vec![],
-    <mut list:( <TypeVar> "," )*> <end:TypeVar> ","?  => { list.push(end); list }
+    <first:TypeVar> <list:( "," <TypeVar> )*> ","? => {
+        let mut vars = vec![first];
+        vars.extend(list);
+        vars
+    }
 }
 
 TraitFunctions: Vec<TraitFunction<Expression>> = {
