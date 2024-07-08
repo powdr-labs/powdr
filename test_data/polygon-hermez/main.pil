@@ -18,7 +18,7 @@ include "storage.pil";
 include "padding_kk.pil";
 include "mem.pil";
 
-namespace Main(%N);
+namespace Main(N);
 
 ///////////
 // Definitions
@@ -392,14 +392,14 @@ namespace Main(%N);
     public chainId = GAS(0);
     Global.L1 * (GAS - :chainId) = 0;
 
-    public newStateRoot0 = SR0(%N-1);
-    public newStateRoot1 = SR1(%N-1);
-    public newStateRoot2 = SR2(%N-1);
-    public newStateRoot3 = SR3(%N-1);
-    public newStateRoot4 = SR4(%N-1);
-    public newStateRoot5 = SR5(%N-1);
-    public newStateRoot6 = SR6(%N-1);
-    public newStateRoot7 = SR7(%N-1);
+    public newStateRoot0 = SR0(N-1);
+    public newStateRoot1 = SR1(N-1);
+    public newStateRoot2 = SR2(N-1);
+    public newStateRoot3 = SR3(N-1);
+    public newStateRoot4 = SR4(N-1);
+    public newStateRoot5 = SR5(N-1);
+    public newStateRoot6 = SR6(N-1);
+    public newStateRoot7 = SR7(N-1);
     Global.LLAST * (SR0 - :newStateRoot0) = 0;
     Global.LLAST * (SR1 - :newStateRoot1) = 0;
     Global.LLAST * (SR2 - :newStateRoot2) = 0;
@@ -409,14 +409,14 @@ namespace Main(%N);
     Global.LLAST * (SR6 - :newStateRoot6) = 0;
     Global.LLAST * (SR7 - :newStateRoot7) = 0;
 
-    public newAccInputHash0 = D0(%N -1);
-    public newAccInputHash1 = D1(%N -1);
-    public newAccInputHash2 = D2(%N -1);
-    public newAccInputHash3 = D3(%N -1);
-    public newAccInputHash4 = D4(%N -1);
-    public newAccInputHash5 = D5(%N -1);
-    public newAccInputHash6 = D6(%N -1);
-    public newAccInputHash7 = D7(%N -1);
+    public newAccInputHash0 = D0(N -1);
+    public newAccInputHash1 = D1(N -1);
+    public newAccInputHash2 = D2(N -1);
+    public newAccInputHash3 = D3(N -1);
+    public newAccInputHash4 = D4(N -1);
+    public newAccInputHash5 = D5(N -1);
+    public newAccInputHash6 = D6(N -1);
+    public newAccInputHash7 = D7(N -1);
     Global.LLAST * (D0 - :newAccInputHash0) = 0;
     Global.LLAST * (D1 - :newAccInputHash1) = 0;
     Global.LLAST * (D2 - :newAccInputHash2) = 0;
@@ -426,14 +426,14 @@ namespace Main(%N);
     Global.LLAST * (D6 - :newAccInputHash6) = 0;
     Global.LLAST * (D7 - :newAccInputHash7) = 0;
 
-    public localExitRoot0 = E0(%N-1);
-    public localExitRoot1 = E1(%N-1);
-    public localExitRoot2 = E2(%N-1);
-    public localExitRoot3 = E3(%N-1);
-    public localExitRoot4 = E4(%N-1);
-    public localExitRoot5 = E5(%N-1);
-    public localExitRoot6 = E6(%N-1);
-    public localExitRoot7 = E7(%N-1);
+    public localExitRoot0 = E0(N-1);
+    public localExitRoot1 = E1(N-1);
+    public localExitRoot2 = E2(N-1);
+    public localExitRoot3 = E3(N-1);
+    public localExitRoot4 = E4(N-1);
+    public localExitRoot5 = E5(N-1);
+    public localExitRoot6 = E6(N-1);
+    public localExitRoot7 = E7(N-1);
     Global.LLAST * (E0 - :localExitRoot0) = 0;
     Global.LLAST * (E1 - :localExitRoot1) = 0;
     Global.LLAST * (E2 - :localExitRoot2) = 0;
@@ -443,7 +443,7 @@ namespace Main(%N);
     Global.LLAST * (E6 - :localExitRoot6) = 0;
     Global.LLAST * (E7 - :localExitRoot7) = 0;
 
-    public newBatchNum = PC(%N-1);
+    public newBatchNum = PC(N-1);
     Global.LLAST * (PC - :newBatchNum) = 0;
 
 

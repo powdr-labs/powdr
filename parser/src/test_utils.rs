@@ -104,7 +104,6 @@ impl ClearSourceRefs for PilStatement {
             | PilStatement::PlookupIdentity(s, _, _)
             | PilStatement::PermutationIdentity(s, _, _)
             | PilStatement::ConnectIdentity(s, _, _)
-            | PilStatement::ConstantDefinition(s, _, _)
             | PilStatement::Expression(s, _)
             | PilStatement::EnumDeclaration(s, _) => *s = SourceRef::unknown(),
         }
