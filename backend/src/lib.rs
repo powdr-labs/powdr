@@ -11,7 +11,7 @@ mod composite;
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
-use std::{io, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
@@ -131,10 +131,11 @@ pub type Proof = Vec<u8>;
 pub trait BackendFactory<F: FieldElement> {
     /// Create a new backend object.
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::type_complexity)]
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, Vec<F>)>>,
+        fixed: Arc<Vec<(String, BTreeMap<usize, Vec<F>>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
@@ -184,4 +185,20 @@ pub trait Backend<'a, F: FieldElement> {
     fn export_ethereum_verifier(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
         Err(Error::NoEthereumVerifierAvailable)
     }
+}
+
+fn get_only_size<F: Clone>(
+    columns: &[(String, BTreeMap<usize, Vec<F>>)],
+) -> Result<Vec<(String, Vec<F>)>, Error> {
+    // TODO: This clones the values
+    columns
+        .iter()
+        .map(|(name, column_by_size)| {
+            if column_by_size.len() != 1 {
+                return Err(Error::NoVariableDegreeAvailable);
+            }
+            let values = column_by_size.values().next().unwrap().clone();
+            Ok((name.clone(), values))
+        })
+        .collect()
 }

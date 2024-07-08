@@ -6,7 +6,7 @@ use powdr_number::{DegreeType, FieldElement};
 use serde::{Deserialize, Serialize};
 use split::select_machine_columns;
 
-use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
+use crate::{get_only_size, Backend, BackendFactory, BackendOptions, Error, Proof};
 
 mod split;
 
@@ -35,7 +35,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, Vec<F>)>>,
+        fixed: Arc<Vec<(String, BTreeMap<usize, Vec<F>>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -45,6 +45,9 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         if setup.is_some() || verification_key.is_some() || verification_app_key.is_some() {
             unimplemented!();
         }
+
+        // TODO: Handle multiple sizes.
+        let fixed = Arc::new(get_only_size(&fixed)?);
 
         let per_machine_data = split::split_pil((*pil).clone())
             .into_iter()
@@ -56,12 +59,19 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                 if let Some(ref output_dir) = output_dir {
                     std::fs::create_dir_all(output_dir)?;
                 }
-                let fixed = Arc::new(select_machine_columns(
-                    &fixed,
-                    pil.constant_polys_in_source_order()
-                        .into_iter()
-                        .map(|(symbol, _)| symbol),
-                ));
+                let fixed = Arc::new(
+                    select_machine_columns(
+                        &fixed,
+                        pil.constant_polys_in_source_order()
+                            .into_iter()
+                            .map(|(symbol, _)| symbol),
+                    )
+                    .into_iter()
+                    .map(|(column_name, values)| {
+                        (column_name, [(values.len(), values)].into_iter().collect())
+                    })
+                    .collect(),
+                );
                 let backend = self.factory.create(
                     pil.clone(),
                     fixed,

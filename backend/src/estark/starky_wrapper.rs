@@ -1,9 +1,9 @@
-use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
+use std::{collections::BTreeMap, io};
 
-use crate::{Backend, BackendFactory, BackendOptions, Error};
+use crate::{get_only_size, Backend, BackendFactory, BackendOptions, Error};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
@@ -27,7 +27,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, Vec<F>)>>,
+        fixed: Arc<Vec<(String, BTreeMap<usize, Vec<F>>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -49,6 +49,8 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         if pil.degrees().len() > 1 {
             return Err(Error::NoVariableDegreeAvailable);
         }
+
+        let fixed = Arc::new(get_only_size(&fixed)?);
 
         let proof_type: ProofType = ProofType::from(options);
 

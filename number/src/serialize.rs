@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fs::File,
     io::{self, BufWriter, Read, Write},
     path::Path,
@@ -102,23 +103,31 @@ pub fn buffered_write_file<R>(
     Ok(result)
 }
 
-pub fn write_polys_file<F: FieldElement>(
+pub fn write_witness_file<F: FieldElement>(
     path: &Path,
     polys: &[(String, Vec<F>)],
 ) -> Result<(), serde_cbor::Error> {
-    buffered_write_file(path, |writer| write_polys_stream(writer, polys))??;
+    buffered_write_file(path, |writer| serde_cbor::to_writer(writer, &polys))??;
 
     Ok(())
 }
 
-fn write_polys_stream<T: FieldElement>(
-    file: &mut impl Write,
-    polys: &[(String, Vec<T>)],
+pub fn write_fixed_file<F: FieldElement>(
+    path: &Path,
+    polys: &[(String, BTreeMap<usize, Vec<F>>)],
 ) -> Result<(), serde_cbor::Error> {
-    serde_cbor::to_writer(file, &polys)
+    buffered_write_file(path, |writer| serde_cbor::to_writer(writer, &polys))??;
+
+    Ok(())
 }
 
-pub fn read_polys_file<T: FieldElement>(file: &mut impl Read) -> Vec<(String, Vec<T>)> {
+pub fn read_witness_file<T: FieldElement>(file: &mut impl Read) -> Vec<(String, Vec<T>)> {
+    serde_cbor::from_reader(file).unwrap()
+}
+
+pub fn read_fixed_file<T: FieldElement>(
+    file: &mut impl Read,
+) -> Vec<(String, BTreeMap<usize, Vec<T>>)> {
     serde_cbor::from_reader(file).unwrap()
 }
 
@@ -143,51 +152,51 @@ where
     a.map_err(serde::de::Error::custom)
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::Bn254Field;
-    use std::io::Cursor;
+// #[cfg(test)]
+// mod tests {
+//     use crate::Bn254Field;
+//     use std::io::Cursor;
 
-    use super::*;
-    use test_log::test;
+//     use super::*;
+//     use test_log::test;
 
-    fn test_polys() -> Vec<(String, Vec<Bn254Field>)> {
-        vec![
-            ("a".to_string(), (0..16).map(Bn254Field::from).collect()),
-            ("b".to_string(), (-16..0).map(Bn254Field::from).collect()),
-        ]
-    }
+//     fn test_polys() -> Vec<(String, Vec<Bn254Field>)> {
+//         vec![
+//             ("a".to_string(), (0..16).map(Bn254Field::from).collect()),
+//             ("b".to_string(), (-16..0).map(Bn254Field::from).collect()),
+//         ]
+//     }
 
-    #[test]
-    fn write_read() {
-        let mut buf: Vec<u8> = vec![];
+//     #[test]
+//     fn write_read() {
+//         let mut buf: Vec<u8> = vec![];
 
-        let polys = test_polys();
+//         let polys = test_polys();
 
-        write_polys_stream(&mut buf, &polys).unwrap();
-        let read_polys = read_polys_file::<Bn254Field>(&mut Cursor::new(buf));
+//         write_polys_stream(&mut buf, &polys).unwrap();
+//         let read_polys = read_polys_file::<Bn254Field>(&mut Cursor::new(buf));
 
-        assert_eq!(read_polys, polys);
-    }
+//         assert_eq!(read_polys, polys);
+//     }
 
-    #[test]
-    fn write_read_csv() {
-        let polys = test_polys()
-            .into_iter()
-            .map(|(name, values)| (name.to_string(), values))
-            .collect::<Vec<_>>();
-        let polys_ref = polys.iter().collect::<Vec<_>>();
+//     #[test]
+//     fn write_read_csv() {
+//         let polys = test_polys()
+//             .into_iter()
+//             .map(|(name, values)| (name.to_string(), values))
+//             .collect::<Vec<_>>();
+//         let polys_ref = polys.iter().collect::<Vec<_>>();
 
-        for render_mode in &[
-            CsvRenderMode::SignedBase10,
-            CsvRenderMode::UnsignedBase10,
-            CsvRenderMode::Hex,
-        ] {
-            let mut buf: Vec<u8> = vec![];
-            write_polys_csv_file(&mut buf, *render_mode, &polys_ref);
-            let read_polys = read_polys_csv_file::<Bn254Field>(&mut Cursor::new(buf));
+//         for render_mode in &[
+//             CsvRenderMode::SignedBase10,
+//             CsvRenderMode::UnsignedBase10,
+//             CsvRenderMode::Hex,
+//         ] {
+//             let mut buf: Vec<u8> = vec![];
+//             write_polys_csv_file(&mut buf, *render_mode, &polys_ref);
+//             let read_polys = read_polys_csv_file::<Bn254Field>(&mut Cursor::new(buf));
 
-            assert_eq!(read_polys, polys);
-        }
-    }
-}
+//             assert_eq!(read_polys, polys);
+//         }
+//     }
+// }

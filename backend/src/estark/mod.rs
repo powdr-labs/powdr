@@ -5,6 +5,7 @@ pub mod polygon_wrapper;
 pub mod starky_wrapper;
 
 use std::{
+    collections::BTreeMap,
     fs::File,
     io::{self, BufWriter, Write},
     iter::{once, repeat},
@@ -12,7 +13,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
+use crate::{get_only_size, Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
@@ -222,13 +223,14 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
     fn create<'a>(
         &self,
         analyzed: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, Vec<F>)>>,
+        fixed: Arc<Vec<(String, BTreeMap<usize, Vec<F>>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+        let fixed = Arc::new(get_only_size(&fixed)?);
         Ok(Box::new(DumpBackend(EStarkFilesCommon::create(
             &analyzed,
             fixed,

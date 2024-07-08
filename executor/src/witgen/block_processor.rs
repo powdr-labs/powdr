@@ -154,7 +154,7 @@ mod tests {
         let analyzed = analyze_string(src);
         let constants = generate(&analyzed)
             .into_iter()
-            .map(|(n, c)| (n.to_string(), c))
+            .map(|(n, c)| (n.to_string(), c.into_values().next().unwrap()))
             .collect::<Vec<_>>();
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 

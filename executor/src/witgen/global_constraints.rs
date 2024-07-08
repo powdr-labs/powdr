@@ -444,6 +444,7 @@ namespace Global(2**20);
             .iter()
             .zip(&constants)
             .filter_map(|(&poly_id, (_, values))| {
+                let values = values.values().next().unwrap();
                 process_fixed_column(values).map(|(constraint, _full)| (poly_id, constraint))
             })
             .collect::<BTreeMap<_, _>>();
