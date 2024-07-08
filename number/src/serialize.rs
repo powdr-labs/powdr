@@ -9,7 +9,7 @@ use csv::{Reader, Writer};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_with::{DeserializeAs, SerializeAs};
 
-use crate::{Columns, FieldElement, VariablySizedColumns};
+use crate::FieldElement;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CsvRenderMode {
@@ -105,26 +105,15 @@ pub fn buffered_write_file<R>(
 
 pub trait ReadWrite {
     fn read(file: &mut impl Read) -> Self;
-    fn write(&self, path: &Path) -> Result<(), io::Error>;
+    fn write(&self, path: &Path) -> Result<(), serde_cbor::Error>;
 }
 
-impl<T: DeserializeOwned + Serialize> ReadWrite for VariablySizedColumns<T> {
+impl<T: DeserializeOwned + Serialize> ReadWrite for T {
     fn read(file: &mut impl Read) -> Self {
-        VariablySizedColumns(serde_cbor::from_reader(file).unwrap())
+        serde_cbor::from_reader(file).unwrap()
     }
-    fn write(&self, path: &Path) -> Result<(), io::Error> {
-        buffered_write_file(path, |writer| serde_cbor::to_writer(writer, &self))?.unwrap();
-        Ok(())
-    }
-}
-
-impl<T: FieldElement> ReadWrite for Columns<T> {
-    fn read(file: &mut impl Read) -> Self {
-        Columns(serde_cbor::from_reader(file).unwrap())
-    }
-
-    fn write(&self, path: &Path) -> Result<(), io::Error> {
-        buffered_write_file(path, |writer| serde_cbor::to_writer(writer, &self))?.unwrap();
+    fn write(&self, path: &Path) -> Result<(), serde_cbor::Error> {
+        buffered_write_file(path, |writer| serde_cbor::to_writer(writer, &self))??;
         Ok(())
     }
 }
@@ -152,7 +141,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::Bn254Field;
+    use crate::{Bn254Field, Columns};
     use std::io::Cursor;
 
     use super::*;
