@@ -9,19 +9,7 @@ use std::convert::fe;
 use std::convert::expr;
 use std::prover::eval;
 use std::prover::Query;
-
-/// A machine to check that a field element represents two bytes. It uses an exhaustive lookup table.
-machine Byte2 with
-    degree: 65536,
-    latch: latch,
-    operation_id: operation_id
-{
-    operation check<0> BYTE2 -> ;
-
-    let BYTE2: col = |i| i & 0xffff;
-    col fixed latch = [1]*;
-    col fixed operation_id = [0]*;
-}
+use std::machines::byte2::Byte2;
 
 // Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 // Currently only supports "Equation 0", i.e., 256-Bit addition and multiplication.
