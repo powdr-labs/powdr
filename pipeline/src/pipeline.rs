@@ -505,6 +505,7 @@ impl<T: FieldElement> Pipeline<T> {
 
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
+                // TODO: Handle multiple sizes
                 let fixed = fixed.get_only_size().unwrap();
                 let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
 
@@ -830,8 +831,7 @@ impl<T: FieldElement> Pipeline<T> {
             .query_callback
             .clone()
             .unwrap_or_else(|| Arc::new(unused_query_callback()));
-        let fixed_cols_one_size = fixed_cols.get_only_size().unwrap();
-        let witness = WitnessGenerator::new(&pil, &fixed_cols_one_size, query_callback.borrow())
+        let witness = WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
             .with_external_witness_values(&external_witness_values)
             .generate();
 
@@ -855,10 +855,9 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn witgen_callback(&mut self) -> Result<WitgenCallback<T>, Vec<String>> {
-        let fixed_cols = Arc::new(self.compute_fixed_cols()?.get_only_size().unwrap());
         Ok(WitgenCallback::new(
             self.compute_optimized_pil()?,
-            fixed_cols,
+            self.compute_fixed_cols()?,
             self.arguments.query_callback.as_ref().cloned(),
         ))
     }
