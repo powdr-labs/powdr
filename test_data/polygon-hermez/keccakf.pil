@@ -9,7 +9,7 @@
 include "global.pil";
 
 
-namespace KeccakF(%N);
+namespace KeccakF(N);
 
     pol constant ConnA, ConnB, ConnC, GateType, kGateType, kA, kB, kC;
     pol commit a[4], b[4], c[4];

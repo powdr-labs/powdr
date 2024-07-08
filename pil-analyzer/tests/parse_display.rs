@@ -7,7 +7,7 @@ use pretty_assertions::assert_eq;
 #[test]
 fn parse_print_analyzed() {
     // This is rather a test for the Display trait than for the analyzer.
-    let input = r#"constant %N = 65536;
+    let input = r#"    let N: int = 65536;
 public P = T.pc(2);
 namespace Bin(65536);
     col witness bla;
@@ -105,15 +105,15 @@ fn intermediate_nested() {
 
 #[test]
 fn let_definitions() {
-    let input = r#"constant %r = 65536;
-namespace N(%r);
+    let input = r#"let r: int = 65536;
+namespace N(r);
     let x;
     let z: int = 2;
     let t: col = |i| i + z;
     let other = [1, z];
     let other_fun: int, fe -> (int, (int -> int)) = |i, j| (i + 7, (|k| k - i));
 "#;
-    let expected = r#"constant %r = 65536;
+    let expected = r#"    let r: int = 65536;
 namespace N(65536);
     col witness x;
     let z: int = 2;
@@ -265,7 +265,7 @@ fn parentheses_lambda() {
     "#;
     let expected = r#"namespace N(16);
     let w: -> fe = (|| 2);
-    constant x = (|i| (|| N.w()))(N.w())();
+    let x: fe = (|i| (|| N.w()))(N.w())();
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
