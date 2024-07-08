@@ -25,7 +25,7 @@ use powdr_executor::{
     },
 };
 use powdr_number::{
-    write_polys_csv_file, CsvRenderMode, FieldElement, FixedColumns, ReadWrite, WitnessColumns,
+    write_polys_csv_file, Columns, CsvRenderMode, FieldElement, ReadWrite, VariablySizedColumns,
 };
 use powdr_schemas::SerializedAnalyzed;
 
@@ -64,9 +64,9 @@ pub struct Artifacts<T: FieldElement> {
     /// An optimized .pil file.
     optimized_pil: Option<Arc<Analyzed<T>>>,
     /// Fully evaluated fixed columns.
-    fixed_cols: Option<Arc<FixedColumns<T>>>,
+    fixed_cols: Option<Arc<VariablySizedColumns<T>>>,
     /// Generated witnesses.
-    witness: Option<Arc<WitnessColumns<T>>>,
+    witness: Option<Arc<Columns<T>>>,
     /// The proof (if successful).
     proof: Option<Proof>,
 }
@@ -485,7 +485,10 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
-    fn maybe_write_constants(&self, constants: &FixedColumns<T>) -> Result<(), Vec<String>> {
+    fn maybe_write_constants(
+        &self,
+        constants: &VariablySizedColumns<T>,
+    ) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|_| "constants.bin".to_string())? {
             constants.write(&path).map_err(|e| vec![format!("{}", e)])?;
         }
@@ -494,8 +497,8 @@ impl<T: FieldElement> Pipeline<T> {
 
     fn maybe_write_witness(
         &self,
-        fixed: &FixedColumns<T>,
-        witness: &WitnessColumns<T>,
+        fixed: &VariablySizedColumns<T>,
+        witness: &Columns<T>,
     ) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
             witness.write(&path).map_err(|e| vec![format!("{}", e)])?;
@@ -786,7 +789,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.optimized_pil.as_ref().unwrap().clone())
     }
 
-    pub fn compute_fixed_cols(&mut self) -> Result<Arc<FixedColumns<T>>, Vec<String>> {
+    pub fn compute_fixed_cols(&mut self) -> Result<Arc<VariablySizedColumns<T>>, Vec<String>> {
         if let Some(ref fixed_cols) = self.artifact.fixed_cols {
             return Ok(fixed_cols.clone());
         }
@@ -805,11 +808,11 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
     }
 
-    pub fn fixed_cols(&self) -> Result<Arc<FixedColumns<T>>, Vec<String>> {
+    pub fn fixed_cols(&self) -> Result<Arc<VariablySizedColumns<T>>, Vec<String>> {
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
     }
 
-    pub fn compute_witness(&mut self) -> Result<Arc<WitnessColumns<T>>, Vec<String>> {
+    pub fn compute_witness(&mut self) -> Result<Arc<Columns<T>>, Vec<String>> {
         if let Some(ref witness) = self.artifact.witness {
             return Ok(witness.clone());
         }
@@ -829,7 +832,7 @@ impl<T: FieldElement> Pipeline<T> {
             .clone()
             .unwrap_or_else(|| Arc::new(unused_query_callback()));
         let fixed_cols_one_size = fixed_cols.get_only_size().unwrap();
-        let witness: WitnessColumns<T> =
+        let witness: Columns<T> =
             WitnessGenerator::new(&pil, &fixed_cols_one_size, query_callback.borrow())
                 .with_external_witness_values(&external_witness_values)
                 .generate();
@@ -843,7 +846,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }
 
-    pub fn witness(&self) -> Result<Arc<WitnessColumns<T>>, Vec<String>> {
+    pub fn witness(&self) -> Result<Arc<Columns<T>>, Vec<String>> {
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }
 

@@ -1,5 +1,5 @@
 use powdr_ast::analyzed::{Analyzed, FunctionValueDefinition, Symbol};
-use powdr_number::{FieldElement, FixedColumns, ReadWrite, WitnessColumns};
+use powdr_number::{Columns, FieldElement, ReadWrite, VariablySizedColumns};
 use std::{fs::File, io::BufReader, path::Path};
 
 pub trait PolySet {
@@ -31,12 +31,12 @@ impl PolySet for WitnessPolySet {
     }
 }
 
-pub fn read_witness_poly_set<P: PolySet, T: FieldElement>(dir: &Path) -> WitnessColumns<T> {
+pub fn read_witness_poly_set<P: PolySet, T: FieldElement>(dir: &Path) -> Columns<T> {
     let path = dir.join(P::FILE_NAME);
-    WitnessColumns::read(&mut BufReader::new(File::open(path).unwrap()))
+    Columns::read(&mut BufReader::new(File::open(path).unwrap()))
 }
 
-pub fn read_fixed_poly_set<P: PolySet, T: FieldElement>(dir: &Path) -> FixedColumns<T> {
+pub fn read_fixed_poly_set<P: PolySet, T: FieldElement>(dir: &Path) -> VariablySizedColumns<T> {
     let path = dir.join(P::FILE_NAME);
-    FixedColumns::read(&mut BufReader::new(File::open(path).unwrap()))
+    VariablySizedColumns::read(&mut BufReader::new(File::open(path).unwrap()))
 }

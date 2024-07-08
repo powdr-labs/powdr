@@ -9,7 +9,7 @@ use csv::{Reader, Writer};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_with::{DeserializeAs, SerializeAs};
 
-use crate::{FieldElement, FixedColumns, WitnessColumns};
+use crate::{Columns, FieldElement, VariablySizedColumns};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CsvRenderMode {
@@ -108,9 +108,9 @@ pub trait ReadWrite {
     fn write(&self, path: &Path) -> Result<(), io::Error>;
 }
 
-impl<T: DeserializeOwned + Serialize> ReadWrite for FixedColumns<T> {
+impl<T: DeserializeOwned + Serialize> ReadWrite for VariablySizedColumns<T> {
     fn read(file: &mut impl Read) -> Self {
-        FixedColumns(serde_cbor::from_reader(file).unwrap())
+        VariablySizedColumns(serde_cbor::from_reader(file).unwrap())
     }
     fn write(&self, path: &Path) -> Result<(), io::Error> {
         buffered_write_file(path, |writer| serde_cbor::to_writer(writer, &self))?.unwrap();
@@ -118,9 +118,9 @@ impl<T: DeserializeOwned + Serialize> ReadWrite for FixedColumns<T> {
     }
 }
 
-impl<T: FieldElement> ReadWrite for WitnessColumns<T> {
+impl<T: FieldElement> ReadWrite for Columns<T> {
     fn read(file: &mut impl Read) -> Self {
-        WitnessColumns(serde_cbor::from_reader(file).unwrap())
+        Columns(serde_cbor::from_reader(file).unwrap())
     }
 
     fn write(&self, path: &Path) -> Result<(), io::Error> {
@@ -172,7 +172,7 @@ mod tests {
         let polys = test_polys();
 
         serde_cbor::to_writer(&mut buf, &polys).unwrap();
-        let read_polys = WitnessColumns::read(&mut Cursor::new(buf)).0;
+        let read_polys = Columns::read(&mut Cursor::new(buf)).0;
 
         assert_eq!(read_polys, polys);
     }

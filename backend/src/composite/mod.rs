@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::A
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement, FixedColumns};
+use powdr_number::{DegreeType, FieldElement, VariablySizedColumns};
 use serde::{Deserialize, Serialize};
 use split::select_machine_columns;
 
@@ -35,7 +35,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<FixedColumns<F>>,
+        fixed: Arc<VariablySizedColumns<F>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,

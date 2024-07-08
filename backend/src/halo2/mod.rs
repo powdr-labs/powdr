@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement, FixedColumns};
+use powdr_number::{DegreeType, FieldElement, VariablySizedColumns};
 use prover::{generate_setup, Halo2Prover};
 
 use serde::de::{self, Deserializer};
@@ -76,7 +76,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<FixedColumns<F>>,
+        fixed: Arc<VariablySizedColumns<F>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
@@ -190,7 +190,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<FixedColumns<F>>,
+        fixed: Arc<VariablySizedColumns<F>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,

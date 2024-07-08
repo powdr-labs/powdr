@@ -8,7 +8,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
-use powdr_number::{DegreeType, FieldElement, WitnessColumns};
+use powdr_number::{Columns, DegreeType, FieldElement};
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -155,7 +155,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
-    pub fn generate(self) -> WitnessColumns<T> {
+    pub fn generate(self) -> Columns<T> {
         record_start(OUTER_CODE_NAME);
         let fixed = FixedData::new(
             self.analyzed,
@@ -262,7 +262,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 }
 
 pub fn extract_publics<T: FieldElement>(
-    witness: &WitnessColumns<T>,
+    witness: &Columns<T>,
     pil: &Analyzed<T>,
 ) -> Vec<(String, T)> {
     let witness = witness

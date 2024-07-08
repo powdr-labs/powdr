@@ -11,7 +11,7 @@ use powdr_ast::{
         IndexAccess,
     },
 };
-use powdr_number::{BigInt, BigUint, DegreeType, FieldElement, FixedColumns};
+use powdr_number::{BigInt, BigUint, DegreeType, FieldElement, VariablySizedColumns};
 use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
@@ -20,7 +20,7 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 /// @returns the names (in source order) and the values for the columns.
 /// Arrays of columns are flattened, the name of the `i`th array element
 /// is `name[i]`.
-pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> FixedColumns<T> {
+pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> VariablySizedColumns<T> {
     let mut fixed_cols = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {

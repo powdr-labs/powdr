@@ -6,7 +6,7 @@ use std::time::Instant;
 use crate::{Backend, BackendFactory, BackendOptions, Error};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{FieldElement, FixedColumns, GoldilocksField, LargeInt};
+use powdr_number::{FieldElement, GoldilocksField, LargeInt, VariablySizedColumns};
 
 use starky::{
     merklehash::MerkleTreeGL,
@@ -27,7 +27,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<FixedColumns<F>>,
+        fixed: Arc<VariablySizedColumns<F>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,

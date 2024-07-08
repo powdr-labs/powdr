@@ -16,7 +16,7 @@ use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement, FixedColumns};
+use powdr_number::{DegreeType, FieldElement, VariablySizedColumns};
 use serde::Serialize;
 use starky::types::{StarkStruct, Step, PIL};
 
@@ -222,7 +222,7 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
     fn create<'a>(
         &self,
         analyzed: Arc<Analyzed<F>>,
-        fixed: Arc<FixedColumns<F>>,
+        fixed: Arc<VariablySizedColumns<F>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
