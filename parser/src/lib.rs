@@ -58,7 +58,7 @@ impl ParserContext {
 lazy_static::lazy_static! {
     static ref PIL_FILE_PARSER: powdr::PILFileParser = powdr::PILFileParser::new();
     static ref ASM_MODULE_PARSER: powdr::ASMModuleParser = powdr::ASMModuleParser::new();
-    static ref TYPE_PARSER: powdr::TypeParser = powdr::TypeParser::new();
+    static ref TYPE_PARSER: powdr::TypeExprParser = powdr::TypeExprParser::new();
     static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
