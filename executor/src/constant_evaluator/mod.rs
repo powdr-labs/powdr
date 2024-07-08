@@ -28,7 +28,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Vec<T>)
             // for non-arrays, set index to None.
             for (index, (name, id)) in poly.array_elements().enumerate() {
                 let index = poly.is_array().then_some(index as u64);
-                let values = generate_values(analyzed, analyzed.degree(), &name, value, index);
+                let values = generate_values(analyzed, poly.degree.unwrap(), &name, value, index);
                 assert!(fixed_cols.insert(name, (id, values)).is_none());
             }
         }
@@ -197,8 +197,8 @@ mod test {
     #[test]
     fn counter() {
         let src = r#"
-            constant %N = 8;
-            namespace F(%N);
+            let N: int = 8;
+            namespace F(N);
             pol constant EVEN(i) { 2 * (i - 1) + 4 };
         "#;
         let analyzed = analyze_string(src);
@@ -216,8 +216,8 @@ mod test {
     #[test]
     fn xor() {
         let src = r#"
-            constant %N = 8;
-            namespace F(%N);
+            let N: int = 8;
+            namespace F(N);
             pol constant X(i) { i ^ (i + 17) | 3 };
         "#;
         let analyzed = analyze_string(src);
@@ -235,8 +235,8 @@ mod test {
     #[test]
     fn match_expression() {
         let src = r#"
-            constant %N = 8;
-            namespace F(%N);
+            let N: int = 8;
+            namespace F(N);
             pol constant X(i) { match i {
                 0 => 7,
                 3 => 9,
@@ -256,8 +256,8 @@ mod test {
     #[test]
     fn if_expression() {
         let src = r#"
-            constant %N = 8;
-            namespace F(%N);
+            let N: int = 8;
+            namespace F(N);
             let X: col = |i| if i < 3 { 7 } else { 9 };
         "#;
         let analyzed = analyze_string(src);
@@ -272,8 +272,8 @@ mod test {
     #[test]
     fn macro_directive() {
         let src = r#"
-            constant %N = 8;
-            namespace F(%N);
+            let N: int = 8;
+            namespace F(N);
             let minus_one: int -> int = |x| x - 1;
             pol constant EVEN(i) { 2 * minus_one(i) + 2 };
         "#;
@@ -372,8 +372,8 @@ mod test {
     #[test]
     fn repetition_front() {
         let src = r#"
-            constant %N = 10;
-            namespace F(%N);
+            let N: int = 10;
+            namespace F(N);
             col fixed arr = [0, 1, 2]* + [7];
         "#;
         let analyzed = analyze_string(src);
@@ -465,8 +465,8 @@ mod test {
     #[should_panic = "got `expr` when calling function F.w"]
     fn calling_witness() {
         let src = r#"
-            constant %N = 10;
-            namespace F(%N);
+            let N: int = 10;
+            namespace F(N);
             let w;
             let x: col = |i| w(i) + 1;
         "#;
@@ -479,8 +479,8 @@ mod test {
     #[should_panic = "Value symbol not found: w"]
     fn symbol_not_found() {
         let src = r#"
-            constant %N = 10;
-            namespace F(%N);
+            let N: int = 10;
+            namespace F(N);
             let x = |i| w(i) + 1;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
@@ -492,8 +492,8 @@ mod test {
     #[should_panic = "got `expr` when calling function F.y"]
     fn forward_reference_to_array() {
         let src = r#"
-            constant %N = 10;
-            namespace F(%N);
+            let N: int = 10;
+            namespace F(N);
             let x: col = |i| y(i) + 1;
             col fixed y = [1, 2, 3]*;
         "#;
@@ -505,8 +505,8 @@ mod test {
     #[test]
     fn forward_reference_to_function() {
         let src = r#"
-            constant %N = 4;
-            namespace F(%N);
+            let N: int = 4;
+            namespace F(N);
             let x = |i| y(i) + 1;
             let y = |i| i + 20;
             let X: col = x;
@@ -528,11 +528,11 @@ mod test {
     #[test]
     fn bigint_arith() {
         let src = r#"
-            constant %N = 4;
-            namespace std::convert(%N);
+            let N: int = 4;
+            namespace std::convert(N);
             let int = [];
             let fe = [];
-            namespace F(%N);
+            namespace F(N);
             let x: col = |i| (1 << (2000 + i)) >> 2000;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
@@ -547,11 +547,11 @@ mod test {
     #[test]
     fn modulo_negative() {
         let src = r#"
-            constant %N = 4;
-            namespace std::convert(%N);
+            let N: int = 4;
+            namespace std::convert(N);
             let int = [];
             let fe = [];
-            namespace F(%N);
+            namespace F(N);
             let x_arr = [ 3 % 4, (-3) % 4, 3 % (-4), (-3) % (-4)];
             let x: col = |i| 100 + x_arr[i];
         "#;

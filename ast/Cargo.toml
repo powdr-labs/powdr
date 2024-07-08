@@ -11,7 +11,7 @@ repository = { workspace = true }
 powdr-number.workspace = true
 powdr-parser-util.workspace = true
 
-itertools = "0.12"
+itertools = "0.13"
 num-traits = "0.2.15"
 derive_more = "0.99.17"
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }

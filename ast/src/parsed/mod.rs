@@ -99,7 +99,6 @@ pub enum PilStatement {
         SelectedExpressions<Expression>,
     ),
     ConnectIdentity(SourceRef, Vec<Expression>, Vec<Expression>),
-    ConstantDefinition(SourceRef, String, Expression),
     EnumDeclaration(SourceRef, EnumDeclaration<Expression>),
     Expression(SourceRef, Expression),
 }
@@ -126,7 +125,6 @@ impl PilStatement {
         match self {
             PilStatement::PolynomialDefinition(_, name, _)
             | PilStatement::PolynomialConstantDefinition(_, name, _)
-            | PilStatement::ConstantDefinition(_, name, _)
             | PilStatement::PublicDeclaration(_, name, _, _, _)
             | PilStatement::LetStatement(_, name, _, _) => {
                 Box::new(once((name, None, SymbolCategory::Value)))
@@ -168,8 +166,7 @@ impl Children<Expression> for PilStatement {
             }
             PilStatement::Expression(_, e)
             | PilStatement::Namespace(_, _, Some(e))
-            | PilStatement::PolynomialDefinition(_, _, e)
-            | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
+            | PilStatement::PolynomialDefinition(_, _, e) => Box::new(once(e)),
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children(),
 
@@ -203,8 +200,7 @@ impl Children<Expression> for PilStatement {
             }
             PilStatement::Expression(_, e)
             | PilStatement::Namespace(_, _, Some(e))
-            | PilStatement::PolynomialDefinition(_, _, e)
-            | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
+            | PilStatement::PolynomialDefinition(_, _, e) => Box::new(once(e)),
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children_mut(),
 
@@ -1188,25 +1184,25 @@ impl Children<Expression> for ArrayExpression {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Pattern {
-    CatchAll, // "_", matches a single value
-    Ellipsis, // "..", matches a series of values, only valid inside array patterns
+    CatchAll(SourceRef), // "_", matches a single value
+    Ellipsis(SourceRef), // "..", matches a series of values, only valid inside array patterns
     #[schemars(skip)]
-    Number(BigInt),
-    String(String),
-    Tuple(Vec<Pattern>),
-    Array(Vec<Pattern>),
+    Number(SourceRef, BigInt),
+    String(SourceRef, String),
+    Tuple(SourceRef, Vec<Pattern>),
+    Array(SourceRef, Vec<Pattern>),
     // A pattern that binds a variable. Variable references are parsed as
     // Enum and are then re-mapped to Variable if they do not reference
     // an enum variant.
-    Variable(String),
-    Enum(SymbolPath, Option<Vec<Pattern>>),
+    Variable(SourceRef, String),
+    Enum(SourceRef, SymbolPath, Option<Vec<Pattern>>),
 }
 
 impl Pattern {
     /// Returns an iterator over all variables in this pattern.
     pub fn variables(&self) -> Box<dyn Iterator<Item = &String> + '_> {
         match self {
-            Pattern::Variable(v) => Box::new(once(v)),
+            Pattern::Variable(_, v) => Box::new(once(v)),
             _ => Box::new(self.children().flat_map(|p| p.variables())),
         }
     }
@@ -1214,14 +1210,14 @@ impl Pattern {
     /// Return true if the pattern is irrefutable, i.e. matches all possible values of its type.
     pub fn is_irrefutable(&self) -> bool {
         match self {
-            Pattern::Ellipsis => unreachable!(),
-            Pattern::CatchAll | Pattern::Variable(_) => true,
-            Pattern::Number(_) | Pattern::String(_) | Pattern::Enum(_, _) => false,
-            Pattern::Array(items) => {
+            Pattern::Ellipsis(_) => unreachable!(),
+            Pattern::CatchAll(_) | Pattern::Variable(_, _) => true,
+            Pattern::Number(_, _) | Pattern::String(_, _) | Pattern::Enum(_, _, _) => false,
+            Pattern::Array(_, items) => {
                 // Only "[..]"" is irrefutable
-                items == &vec![Pattern::Ellipsis]
+                matches!(&items[..], [Pattern::Ellipsis(_)])
             }
-            Pattern::Tuple(p) => p.iter().all(|p| p.is_irrefutable()),
+            Pattern::Tuple(_, p) => p.iter().all(|p| p.is_irrefutable()),
         }
     }
 }
@@ -1229,25 +1225,52 @@ impl Pattern {
 impl Children<Pattern> for Pattern {
     fn children(&self) -> Box<dyn Iterator<Item = &Pattern> + '_> {
         match self {
-            Pattern::CatchAll
-            | Pattern::Ellipsis
-            | Pattern::Number(_)
-            | Pattern::String(_)
-            | Pattern::Variable(_) => Box::new(empty()),
-            Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter()),
-            Pattern::Enum(_, fields) => Box::new(fields.iter().flatten()),
+            Pattern::CatchAll(_)
+            | Pattern::Ellipsis(_)
+            | Pattern::Number(_, _)
+            | Pattern::String(_, _)
+            | Pattern::Variable(_, _) => Box::new(empty()),
+            Pattern::Tuple(_, p) | Pattern::Array(_, p) => Box::new(p.iter()),
+            Pattern::Enum(_, _, fields) => Box::new(fields.iter().flatten()),
         }
     }
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Pattern> + '_> {
         match self {
-            Pattern::CatchAll
-            | Pattern::Ellipsis
-            | Pattern::Number(_)
-            | Pattern::String(_)
-            | Pattern::Variable(_) => Box::new(empty()),
-            Pattern::Tuple(p) | Pattern::Array(p) => Box::new(p.iter_mut()),
-            Pattern::Enum(_, fields) => Box::new(fields.iter_mut().flatten()),
+            Pattern::CatchAll(_)
+            | Pattern::Ellipsis(_)
+            | Pattern::Number(_, _)
+            | Pattern::String(_, _)
+            | Pattern::Variable(_, _) => Box::new(empty()),
+            Pattern::Tuple(_, p) | Pattern::Array(_, p) => Box::new(p.iter_mut()),
+            Pattern::Enum(_, _, fields) => Box::new(fields.iter_mut().flatten()),
+        }
+    }
+}
+
+impl SourceReference for Pattern {
+    fn source_reference(&self) -> &SourceRef {
+        match self {
+            Pattern::CatchAll(s)
+            | Pattern::Ellipsis(s)
+            | Pattern::Number(s, _)
+            | Pattern::String(s, _)
+            | Pattern::Variable(s, _)
+            | Pattern::Tuple(s, _)
+            | Pattern::Array(s, _)
+            | Pattern::Enum(s, _, _) => s,
+        }
+    }
+    fn source_reference_mut(&mut self) -> &mut SourceRef {
+        match self {
+            Pattern::CatchAll(s)
+            | Pattern::Ellipsis(s)
+            | Pattern::Number(s, _)
+            | Pattern::String(s, _)
+            | Pattern::Variable(s, _)
+            | Pattern::Tuple(s, _)
+            | Pattern::Array(s, _)
+            | Pattern::Enum(s, _, _) => s,
         }
     }
 }
