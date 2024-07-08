@@ -1,9 +1,28 @@
 use std::array;
+use std::check::assert;
 use std::utils::unchanged_until;
+use std::utils::force_bool;
+use std::utils::sum;
+use std::convert::expr;
+use std::machines::memory::Memory;
+use std::machines::split::split_gl::SplitGL;
 
 // Implements the Poseidon permutation for the Goldilocks field.
-machine PoseidonGL with
-    latch: FIRSTBLOCK,
+// This version of the Poseidon machine receives memory pointers and interacts
+// with memory directly to fetch its inputs and write its outputs.
+// In comparison to std::machines::hash::poseidon_gl::PoseidonGL, this machine has:
+// - 18 extra witness columns:
+//   - 12 to make the input state available in all rows
+//   - 3 to make the time step, input address, and output address available in all rows
+//   - 2 to store the low and high words of the memory read
+//   - 1 to store whether a memory read should be done (could be removed if we use an intermediate polynomial, see below)
+// - 16 extra fixed columns to store a one-hot encoding of the row number (for the first 12 + 4 rows)
+// - 5 extra permutations:
+//   - 2 to read the low and high words from the memory
+//   - 2 to write the low and high words to the memory
+//   - 1 to split the current output into low and high words
+machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
+    latch: CLK_0,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
@@ -14,7 +33,14 @@ machine PoseidonGL with
     // When the hash function is used only once, the capacity elements should be
     // set to constants, where different constants can be used to define different
     // hash functions.
-    operation poseidon_permutation<0> state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7], state[8], state[9], state[10], state[11] -> output[0], output[1], output[2], output[3];
+    // The input data is passed via a memory pointer: The machine will read 24
+    // 32-Bit machine words, interpreted as 12 field elements stored in little-endian
+    // format.
+    // Similarly, the output data is written to memory at the provided pointer as
+    // 8 32-Bit machine words representing 4 field elements in little-endian format
+    // (in canonical form).
+    // Reads happen at the provided time step; writes happen at the next time step.
+    operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
 
     col witness operation_id;
 
@@ -32,7 +58,69 @@ machine PoseidonGL with
     let PARTIAL_ROUNDS: int = 22;
     let ROWS_PER_HASH = FULL_ROUNDS + PARTIAL_ROUNDS + 1;
 
-    pol constant FIRSTBLOCK(i) { if i % ROWS_PER_HASH == 0 { 1 } else { 0 } };
+
+    // ------------- Begin memory read / write ---------------
+
+    // Get an intermediate column that indicates that we're in an
+    // actual block, not a default block. Its value is constant
+    // within the block.
+    let used = array::sum(sel);
+    array::map(sel, |s| unchanged_until(s, LAST));
+    std::utils::force_bool(used);
+
+    // Repeat the input state in the whole block
+    col witness input[STATE_SIZE];
+    array::map(input, |c| unchanged_until(c, LAST));
+    array::zip(input, state, |i, s| CLK[0] * (i - s) = 0);
+
+    // Repeat the time step and input / output address in the whole block
+    col witness time_step;
+    col witness input_addr;
+    col witness output_addr;
+    unchanged_until(time_step, LAST);
+    unchanged_until(input_addr, LAST);
+    unchanged_until(output_addr, LAST);
+    
+    // One-hot encoding of the row number (for the first <STATE_SIZE + OUTPUT_SIZE> rows)
+    assert(STATE_SIZE + OUTPUT_SIZE < ROWS_PER_HASH, || "Not enough rows to do memory read / write");
+    let CLK: col[STATE_SIZE + OUTPUT_SIZE] = array::new(STATE_SIZE + OUTPUT_SIZE, |i| |row| if row % ROWS_PER_HASH == i { 1 } else { 0 });
+    let CLK_0 = CLK[0];
+
+    col witness word_low, word_high;
+
+    // Do *two* memory reads in each of the first STATE_SIZE rows
+    // For input i, we expect the low word at address input_addr + 8 * i and
+    // the high word at address input_addr + 8 * i + 4
+    // TODO: This could be an intermediate polynomial, but for some reason estark-starky
+    // fails then, so we keep it as a witness for now
+    let do_mload;
+    do_mload = used * sum(STATE_SIZE, |i| CLK[i]);
+    let input_index = sum(STATE_SIZE, |i| expr(i) * CLK[i]);
+    link if do_mload ~> word_low = mem.mload(input_addr + 8 * input_index, time_step);
+    link if do_mload ~> word_high = mem.mload(input_addr + 8 * input_index + 4, time_step);
+
+    // Combine the low and high words and write it into `input`
+    let current_input = array::sum(array::new(STATE_SIZE, |i| CLK[i] * input[i]));
+    do_mload * (word_low + word_high * 2**32 - current_input) = 0;
+
+    // Do *two* memory writes in each of the next OUTPUT_SIZE rows
+    // For output i, we write the low word at address output_addr + 8 * i and
+    // the high word at address output_addr + 8 * i + 4
+    let do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE]);
+    let output_index = sum(OUTPUT_SIZE, |i| expr(i) * CLK[i + STATE_SIZE]);
+    // TODO: This translates to two additional permutations. But because they go to the same machine
+    // as the mloads above *and* never happen at the same time, they could actually be combined with
+    // the mload permutations. But there is currently no way to express this.
+    link if do_mstore ~> mem.mstore(output_addr + 8 * output_index, time_step + 1, word_low);
+    link if do_mstore ~> mem.mstore(output_addr + 8 * output_index + 4, time_step + 1, word_high);
+
+    // Make sure that in row i + STATE_SIZE, word_low and word_high correspond to output i
+    let current_output = array::sum(array::new(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]));
+    link if do_mstore ~> (word_low, word_high) = split_gl.split(current_output);
+
+
+    // ------------- End memory read / write ---------------
+
     pol constant LASTBLOCK(i) { if i % ROWS_PER_HASH == ROWS_PER_HASH - 1 { 1 } else { 0 } };
     // Like LASTBLOCK, but also 1 in the last row of the table
     // Specified this way because we can't access the degree in the match statement

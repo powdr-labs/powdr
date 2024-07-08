@@ -8,7 +8,7 @@
 
 include "config.pil";
 
-namespace Rom(%N);
+namespace Rom(N);
 
     pol constant CONST0;
     pol constant CONST1;

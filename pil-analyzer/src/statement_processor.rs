@@ -44,7 +44,6 @@ impl Default for Counters {
                 SymbolKind::Poly(PolynomialType::Committed),
                 SymbolKind::Poly(PolynomialType::Constant),
                 SymbolKind::Poly(PolynomialType::Intermediate),
-                SymbolKind::Constant(),
                 SymbolKind::Other(),
             ]
             .into_iter()
@@ -157,14 +156,6 @@ where
                     Some(definition),
                 )
             }
-            PilStatement::ConstantDefinition(source, name, value) => self.handle_symbol_definition(
-                source,
-                name,
-                SymbolKind::Constant(),
-                None,
-                Some(Type::Fe.into()),
-                Some(FunctionDefinition::Expression(value)),
-            ),
             PilStatement::LetStatement(source, name, type_scheme, value) => {
                 self.handle_generic_definition(source, name, type_scheme, value)
             }
@@ -301,7 +292,6 @@ where
         }
         match &ts.ty {
             Type::Expr => SymbolKind::Poly(PolynomialType::Intermediate),
-            Type::Fe => SymbolKind::Constant(),
             Type::Col => SymbolKind::Poly(PolynomialType::Constant),
             Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Col => {
                 // Array of fixed columns
@@ -416,6 +406,7 @@ where
 
         let id = self.counters.dispense_symbol_id(symbol_kind, length);
         let absolute_name = self.driver.resolve_decl(&name);
+
         let symbol = Symbol {
             id,
             source: source.clone(),
@@ -423,6 +414,7 @@ where
             absolute_name: absolute_name.clone(),
             kind: symbol_kind,
             length,
+            degree: self.degree,
         };
 
         if let Some(FunctionDefinition::TypeDeclaration(enum_decl)) = value {
@@ -442,6 +434,7 @@ where
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
+                    degree: None,
                 };
                 let value = FunctionValueDefinition::TypeConstructor(
                     shared_enum_decl.clone(),

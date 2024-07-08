@@ -344,9 +344,9 @@ mod test {
     #[test]
     fn reparse() {
         let input = r#"
-    constant %N = 16;
-namespace Fibonacci(%N);
-    constant %last_row = %N - 1;
+    let N: int = 16;
+namespace Fibonacci(N);
+    let last_row = N - 1;
     let bool: expr -> expr = (|X| X * (1 - X));
     let one_hot = (|i, which| match i {
         which => 1,
@@ -380,7 +380,7 @@ namespace Fibonacci(%N);
 
     #[test]
     fn reparse_strings_and_tuples() {
-        let input = r#"constant %N = ("abc", 3);"#;
+        let input = r#"let N = ("abc", 3);"#;
         let printed = format!("{}", parse(Some("input"), input).unwrap());
         assert_eq!(input.trim(), printed.trim());
     }

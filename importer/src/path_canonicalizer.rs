@@ -7,9 +7,9 @@ use std::{
 
 use powdr_ast::parsed::{
     asm::{
-        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, Import, LinkDeclaration,
-        Machine, MachineStatement, Module, ModuleRef, ModuleStatement, SymbolDefinition,
-        SymbolPath, SymbolValue, SymbolValueRef,
+        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Machine,
+        MachineStatement, Module, ModuleRef, ModuleStatement, SymbolDefinition, SymbolPath,
+        SymbolValue, SymbolValueRef,
     },
     folder::Folder,
     types::{Type, TypeScheme},
@@ -152,7 +152,18 @@ impl<'a> Folder for Canonicalizer<'a> {
                         canonicalize_inside_expression(e, &self.path, self.paths);
                     }
                 }
-                _ => {}
+                MachineStatement::InstructionDeclaration(_, _, i) => {
+                    for e in i.children_mut() {
+                        canonicalize_inside_expression(e, &self.path, self.paths);
+                    }
+                }
+                MachineStatement::LinkDeclaration(_, d) => {
+                    for e in d.children_mut() {
+                        canonicalize_inside_expression(e, &self.path, self.paths);
+                    }
+                }
+                MachineStatement::RegisterDeclaration(_, _, _) => {}
+                MachineStatement::OperationDeclaration(_, _, _, _) => {}
             }
         }
         // canonicalize machine parameter types
@@ -638,22 +649,22 @@ fn check_machine(
                     check_expression(&module_location, e, state, &local_variables)
                 })?
             }
-            MachineStatement::LinkDeclaration(_, LinkDeclaration { flag, link, .. }) => {
-                check_expression(&module_location, flag, state, &local_variables)?;
-                link.params.inputs_and_outputs().try_for_each(|e| {
-                    check_expression(&module_location, e, state, &local_variables)
-                })?;
+            MachineStatement::LinkDeclaration(_, d) => {
+                for e in d.children() {
+                    check_expression(&module_location, e, state, &local_variables)?;
+                }
             }
             MachineStatement::InstructionDeclaration(_, _, instr) => {
-                for link_decl in &instr.links {
-                    check_expression(&module_location, &link_decl.flag, state, &local_variables)?;
-                    link_decl
-                        .link
+                // Add the names of the typed instruction parameters since they introduce new names.
+                let mut local_variables = local_variables.clone();
+                local_variables.extend(
+                    instr
                         .params
                         .inputs_and_outputs()
-                        .try_for_each(|e| {
-                            check_expression(&module_location, e, state, &local_variables)
-                        })?;
+                        .filter_map(|p| p.ty.as_ref().map(|_| p.name.clone())),
+                );
+                for e in instr.children() {
+                    check_expression(&module_location, e, state, &local_variables)?;
                 }
             }
             _ => {}
@@ -1068,5 +1079,10 @@ mod tests {
             "prelude_non_local",
             Err("symbol not found in `::module`: `x`"),
         )
+    }
+
+    #[test]
+    fn instruction() {
+        expect("instruction", Ok(()))
     }
 }

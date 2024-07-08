@@ -1,6 +1,6 @@
-constant %N = 4;
+let N: int = 4;
 
-namespace main(%N);
+namespace main(N);
     col witness w;
     col fixed s_w = [1, 0]*;
 

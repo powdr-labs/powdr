@@ -9,6 +9,7 @@ use std::iter::{self, empty};
 use std::ops::{self, ControlFlow};
 use std::sync::Arc;
 
+use itertools::Itertools;
 use powdr_number::{DegreeType, FieldElement};
 use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
@@ -33,8 +34,6 @@ pub enum StatementIdentifier {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
-    /// The degree of all namespaces, which must match if provided. If no degrees are given, then `None`.
-    pub degree: Option<DegreeType>,
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
@@ -47,10 +46,28 @@ pub struct Analyzed<T> {
 }
 
 impl<T> Analyzed<T> {
-    /// @returns the degree if any. Panics if there is none.
+    /// Returns the degree common among all symbols that have an explicit degree.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is no common degree or if there are no symbols
     pub fn degree(&self) -> DegreeType {
-        self.degree.unwrap()
+        self.definitions
+            .values()
+            .filter_map(|(symbol, _)| symbol.degree)
+            .unique()
+            .exactly_one()
+            .unwrap()
     }
+
+    /// Returns the set of all explicit degrees in this [`Analyzed<T>`].
+    pub fn degrees(&self) -> HashSet<DegreeType> {
+        self.definitions
+            .values()
+            .filter_map(|(symbol, _)| symbol.degree)
+            .collect::<HashSet<_>>()
+    }
+
     /// @returns the number of committed polynomials (with multiplicities for arrays)
     pub fn commitment_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Committed)
@@ -473,6 +490,7 @@ pub struct Symbol {
     pub stage: Option<u32>,
     pub kind: SymbolKind,
     pub length: Option<DegreeType>,
+    pub degree: Option<DegreeType>,
 }
 
 impl Symbol {
@@ -529,8 +547,6 @@ impl Symbol {
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
     Poly(PolynomialType),
-    /// A constant value.
-    Constant(),
     /// Other symbol, depends on the type.
     /// Examples include functions not of the type "int -> fe".
     Other(),
