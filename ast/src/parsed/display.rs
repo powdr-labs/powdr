@@ -923,13 +923,19 @@ fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
 /// and puts them in angle brackets.
 /// Puts the last item in parentheses if it ends in `>` to avoid parser problems.
 pub fn format_type_args<E: Display>(args: &[Type<E>]) -> String {
-    let mut items = args.iter().map(|arg| format!("{arg}")).rev().peekable();
-    if let Some(last) = items.peek_mut() {
-        if last.ends_with('>') {
-            *last = format!("({last})");
-        }
-    }
-    format!("<{}>", items.rev().join(", "))
+    format!(
+        "<{}>",
+        args.iter()
+            .map(|arg| arg.to_string())
+            .map(|s| {
+                if s.contains('>') {
+                    format!("({s})")
+                } else {
+                    s
+                }
+            })
+            .join(", ")
+    )
 }
 
 pub fn format_type_scheme_around_name<E: Display, N: Display>(
