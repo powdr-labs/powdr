@@ -462,6 +462,7 @@ where
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
+                    degree: None,
                 };
                 let value = FunctionValueDefinition::TraitFunction(
                     shared_trait_decl.clone(),
