@@ -31,7 +31,7 @@ use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
     handle_simple_queries_callback, inputs_to_query_callback, serde_data_to_query_callback,
-    util::{read_fixed_poly_set, read_witness_poly_set, FixedPolySet, WitnessPolySet},
+    util::{FixedPolySet, PolySet, WitnessPolySet},
 };
 
 #[derive(Default, Clone)]
@@ -382,7 +382,7 @@ impl<T: FieldElement> Pipeline<T> {
 
     /// Reads previously generated fixed columns from the provided directory.
     pub fn read_constants(self, directory: &Path) -> Self {
-        let fixed = read_fixed_poly_set::<FixedPolySet, T>(directory);
+        let fixed = FixedPolySet::<T>::read(directory);
 
         Pipeline {
             artifact: Artifacts {
@@ -395,7 +395,7 @@ impl<T: FieldElement> Pipeline<T> {
 
     /// Reads a previously generated witness from the provided directory.
     pub fn read_witness(self, directory: &Path) -> Self {
-        let witness = read_witness_poly_set::<WitnessPolySet, T>(directory);
+        let witness = WitnessPolySet::<T>::read(directory);
 
         Pipeline {
             artifact: Artifacts {

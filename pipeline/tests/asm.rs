@@ -2,7 +2,7 @@ use powdr_backend::BackendType;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{gen_estark_proof, resolve_test_file, test_halo2, verify_test_file},
-    util::{read_fixed_poly_set, read_witness_poly_set, FixedPolySet, WitnessPolySet},
+    util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
 };
 use test_log::test;
@@ -377,7 +377,7 @@ fn read_poly_files() {
         pipeline.compute_proof().unwrap();
 
         // check fixed cols (may have no fixed cols)
-        let fixed = read_fixed_poly_set::<FixedPolySet, Bn254Field>(tmp_dir.as_path());
+        let fixed = FixedPolySet::<Bn254Field>::read(tmp_dir.as_path());
         if !fixed.is_empty() {
             assert_eq!(
                 pil.degree(),
@@ -393,7 +393,7 @@ fn read_poly_files() {
         }
 
         // check witness cols (examples assumed to have at least one witness col)
-        let witness = read_witness_poly_set::<WitnessPolySet, Bn254Field>(tmp_dir.as_path());
+        let witness = WitnessPolySet::<Bn254Field>::read(tmp_dir.as_path());
         assert_eq!(pil.degree(), witness[0].1.len() as u64);
     }
 }
