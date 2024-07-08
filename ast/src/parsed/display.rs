@@ -924,11 +924,11 @@ fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
 /// Puts the last item in parentheses if it ends in `>` to avoid parser problems.
 pub fn format_type_args<E: Display>(args: &[Type<E>]) -> String {
     let mut items = args.iter().map(|arg| format!("{arg}")).rev().peekable();
-    items.peek_mut().map(|last| {
+    if let Some(last) = items.peek_mut() {
         if last.ends_with('>') {
             *last = format!("({last})");
         }
-    });
+    }
     format!("<{}>", items.rev().join(", "))
 }
 
