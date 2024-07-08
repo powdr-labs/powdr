@@ -831,10 +831,9 @@ impl<T: FieldElement> Pipeline<T> {
             .clone()
             .unwrap_or_else(|| Arc::new(unused_query_callback()));
         let fixed_cols_one_size = fixed_cols.get_only_size().unwrap();
-        let witness: Columns<T> =
-            WitnessGenerator::new(&pil, &fixed_cols_one_size, query_callback.borrow())
-                .with_external_witness_values(&external_witness_values)
-                .generate();
+        let witness = WitnessGenerator::new(&pil, &fixed_cols_one_size, query_callback.borrow())
+            .with_external_witness_values(&external_witness_values)
+            .generate();
 
         self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
