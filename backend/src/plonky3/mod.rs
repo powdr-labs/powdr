@@ -67,8 +67,8 @@ impl<'a, T: FieldElement> Backend<'a, T> for Plonky3Prover<T> {
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         let vk = self
             .export_verifying_key()
-            .map_err(|e| Error::Backend(e.to_string()))?;
-        vk.write(output).unwrap();
+            .map_err(|e| Error::BackendError(e.to_string()))?;
+        output.write(&vk).unwrap();
         Ok(())
     }
 }
