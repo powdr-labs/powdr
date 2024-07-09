@@ -5,6 +5,7 @@ use std::{
     str::FromStr,
 };
 
+use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, Analyzed, IdentityKind, StatementIdentifier, Symbol, SymbolKind,
@@ -225,17 +226,17 @@ fn build_machine_pil<F: FieldElement>(
 /// In the future, this will always be the case, as interacting with the bus will require
 /// at least one witness column & identity, so this is only necessary for now.
 fn add_dummy_witness_column(pil_string: &str) -> String {
-    let lines = pil_string.lines().collect::<Vec<_>>();
-    let namespace_row = lines
-        .iter()
-        .position(|line| line.starts_with("namespace"))
-        .unwrap();
-    lines
-        .iter()
-        .cloned()
-        .take(namespace_row + 1)
-        .chain(["    col witness __dummy;", "    __dummy = __dummy;"])
-        .chain(lines.iter().cloned().skip(namespace_row + 1))
-        .collect::<Vec<_>>()
+    let dummy_column = format!("    col witness {DUMMY_COLUMN_NAME};");
+    let dummy_constraint = format!("    {DUMMY_COLUMN_NAME} = {DUMMY_COLUMN_NAME};");
+
+    pil_string
+        .lines()
+        .flat_map(|line| {
+            if line.starts_with("namespace") {
+                vec![line, &dummy_column, &dummy_constraint]
+            } else {
+                vec![line]
+            }
+        })
         .join("\n")
 }
