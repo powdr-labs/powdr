@@ -603,18 +603,14 @@ impl TypeChecker {
             Expression::FieldAccess(_, FieldAccess { object, field }) => {
                 let object_type = self.infer_type_of_expression(object)?;
                 let inferred_type = self.type_into_substituted(object_type.clone());
-                let name = match inferred_type {
-                    Type::NamedType(name, _) => name.clone(),
-                    _ => {
-                        return Err(object.source_reference().with_error(format!(
-                            "Cannot access field `{field}` on type {inferred_type}."
-                        )))
+                match inferred_type {
+                    Type::NamedType(name, _) => {
+                        let access_name = format!("{name}.{field}");
+                        let field_type = self.declared_types[&access_name].1.clone();
+                        field_type.ty
                     }
-                };
-                let access_name = format!("{name}.{field}");
-                let field_type = self.declared_types[&access_name].1.clone();
-
-                field_type.ty
+                    _ => self.new_type_var(),
+                }
             }
             Expression::FunctionCall(
                 source_ref,
