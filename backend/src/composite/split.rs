@@ -229,11 +229,14 @@ fn build_machine_pil<F: FieldElement>(
 fn add_dummy_witness_column(pil_string: &str) -> String {
     let dummy_column = format!("    col witness {DUMMY_COLUMN_NAME};");
     let dummy_constraint = format!("    {DUMMY_COLUMN_NAME} = {DUMMY_COLUMN_NAME};");
+    let mut has_inserted_dummy_lines = false;
 
     pil_string
         .lines()
         .flat_map(|line| {
-            if line.starts_with("namespace") {
+            if line.starts_with("namespace") && !has_inserted_dummy_lines {
+                // All namespaces except the first are empty and should stay empty
+                has_inserted_dummy_lines = true;
                 vec![line, &dummy_column, &dummy_constraint]
             } else {
                 vec![line]
