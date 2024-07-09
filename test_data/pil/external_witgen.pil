@@ -1,6 +1,6 @@
-constant %N = 16;
+let N: int = 16;
 
-namespace main(%N);
+namespace main(N);
 
     // This column is not needed, but currently Powdr fails if there isn't at least one fied column
     col fixed L1 = [1] + [0]*;
