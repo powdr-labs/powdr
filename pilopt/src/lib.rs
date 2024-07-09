@@ -236,7 +236,9 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
         }
         FunctionValueDefinition::Expression(_)
         | FunctionValueDefinition::TypeDeclaration(_)
-        | FunctionValueDefinition::TypeConstructor(_, _) => None,
+        | FunctionValueDefinition::TypeConstructor(_, _)
+        | FunctionValueDefinition::TraitDeclaration(_)
+        | FunctionValueDefinition::TraitFunction(_, _) => None,
     }
 }
 
@@ -726,7 +728,7 @@ namespace N(65536);
         // make sure that "inter" is still an array of intermediate columns.
         let expectation = r#"namespace N(65536);
     col witness x[5];
-    col inter[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
+    let inter: expr[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
     N.x[2] = N.inter[4];
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
