@@ -460,14 +460,14 @@ namespace N(2);
     struct X {
     }
     struct Y {
-        a:int,
-        b:fe,
-        c:fe[3],
-        d:int -> fe,
-        e:int, int -> fe,
-        f:(int, fe), fe[2] -> (fe -> int),
-        g:(int -> fe) -> int,
-        h:int -> (fe -> int),
+        a: int,
+        b: fe,
+        c: fe[3],
+        d: int -> fe,
+        e: int, int -> fe,
+        f: (int, fe), fe[2] -> (fe -> int),
+        g: (int -> fe) -> int,
+        h: int -> (fe -> int),
     }
 "#;
 
