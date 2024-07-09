@@ -128,7 +128,6 @@ pub fn condense<T: FieldElement>(
         .collect();
 
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
-    // todo rename
     for (symbol, value) in new_columns {
         definitions.insert(symbol.absolute_name.clone(), (symbol, value));
     }
@@ -331,6 +330,9 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }) = v.as_ref()
             {
                 // TODO check that the lambda does not reference any outside variables.
+                // TODO the "easiest" way to do this is probably to check which variables
+                // are used at the point the closure is created. This could also allow
+                // us to trim down the environment.
                 Ok(FunctionValueDefinition::Expression(TypedExpression {
                     e: Expression::LambdaExpression(source.clone(), (*lambda).clone()),
                     type_scheme: None,
