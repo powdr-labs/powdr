@@ -742,3 +742,9 @@ fn connect_no_witgen() {
     let i = [];
     verify_asm(f, slice_to_vec(&i));
 }
+
+#[test]
+fn generics_preservation() {
+    let f = "asm/generics_preservation.asm";
+    verify_asm(f, Default::default());
+}

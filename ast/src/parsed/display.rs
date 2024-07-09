@@ -526,9 +526,6 @@ impl Display for PilStatement {
                 ),
                 1,
             ),
-            PilStatement::ConstantDefinition(_, name, value) => {
-                write_indented_by(f, format!("constant {name} = {value};"), 1)
-            }
             PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
         }
@@ -680,7 +677,7 @@ impl Display for PolynomialName {
 impl Display for NamespacedPolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if let Some(type_args) = &self.type_args {
-            write!(f, "{}::<{}>", self.path, format_list(type_args))
+            write!(f, "{}::{}", self.path, format_type_args(type_args))
         } else {
             write!(f, "{}", self.path.to_dotted_string())
         }
@@ -870,7 +867,7 @@ impl<E: Display> Display for Type<E> {
             Type::Function(fun) => write!(f, "{fun}"),
             Type::TypeVar(name) => write!(f, "{name}"),
             Type::NamedType(name, Some(args)) => {
-                write!(f, "{name}<{}>", args.iter().format(", "))
+                write!(f, "{name}{}", format_type_args(args))
             }
             Type::NamedType(name, None) => write!(f, "{name}"),
         }
@@ -920,6 +917,25 @@ fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
         .map(format_type_with_parentheses)
         .format(", ")
         .to_string()
+}
+
+/// Formats a list of types to be used as values for type arguments
+/// and puts them in angle brackets.
+/// Puts the last item in parentheses if it ends in `>` to avoid parser problems.
+pub fn format_type_args<E: Display>(args: &[Type<E>]) -> String {
+    format!(
+        "<{}>",
+        args.iter()
+            .map(|arg| arg.to_string())
+            .map(|s| {
+                if s.contains('>') {
+                    format!("({s})")
+                } else {
+                    s
+                }
+            })
+            .join(", ")
+    )
 }
 
 pub fn format_type_scheme_around_name<E: Display, N: Display>(

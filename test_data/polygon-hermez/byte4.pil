@@ -25,7 +25,7 @@ w^7     0       0       0          0
 
 include "global.pil";
 
-namespace Byte4(%N);
+namespace Byte4(N);
     /////// Constant Polynomials
     pol constant SET;    // 1, 0, 1, 0, 1, 0 ......
 
