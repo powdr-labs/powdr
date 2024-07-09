@@ -30,7 +30,7 @@ use powdr_schemas::SerializedAnalyzed;
 use crate::{
     dict_data_to_query_callback, handle_simple_queries_callback, inputs_to_query_callback,
     serde_data_to_query_callback,
-    util::{try_read_poly_set, FixedPolySet, WitnessPolySet},
+    util::{read_poly_set, FixedPolySet, WitnessPolySet},
 };
 use std::collections::BTreeMap;
 

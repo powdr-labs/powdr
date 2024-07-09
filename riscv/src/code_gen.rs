@@ -746,7 +746,7 @@ fn memory(with_bootloader: bool) -> String {
 "#
 }
 
-pub trait InstructionArgs: std::fmt::Debug {
+pub trait InstructionArgs {
     type Error: fmt::Display;
 
     fn l(&self) -> Result<impl AsRef<str>, Self::Error>;
@@ -830,8 +830,6 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
     let tmp3 = Register::from("tmp3");
     let tmp4 = Register::from("tmp4");
     let lr_sc_reservation = Register::from("lr_sc_reservation");
-    log::debug!("Processing instruction: {instr}");
-    log::debug!("      Arguments: {:?}", args);
     let statements = match instr {
         // load/store registers
         "li" | "la" => {
@@ -1557,10 +1555,9 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                 vec![
                     format!("mload {}, 0, {}, {};", rs1.addr(), tmp1.addr(), tmp2.addr()),
                     format!(
-                        "add_new {}, {}, {}, {};",
+                        "add_new {}, {}, 0, {};",
                         tmp1.addr(),
                         rs2.addr(),
-                        off,
                         tmp2.addr()
                     ),
                     format!("mstore {}, 0, 0, {};", rs1.addr(), tmp2.addr()),
