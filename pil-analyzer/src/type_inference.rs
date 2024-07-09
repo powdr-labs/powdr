@@ -852,54 +852,9 @@ impl TypeChecker {
                     }
                 }
             }
-            Pattern::Struct(source_ref, name, data) => {
-                let (ty, _generic_args) = self
-                    .instantiate_scheme(self.declared_types[&name.to_dotted_string()].1.clone());
-                let ty = type_for_reference(&ty);
-
-                match data {
-                    Some(data) => {
-                        let Type::Function(FunctionType { params, value }) = ty else {
-                            if matches!(ty, Type::NamedType(_, _)) {
-                                return Err(source_ref.with_error(format!("Struct {name} does not have fields, but is used with curly braces in {pattern}.")));
-                            } else {
-                                return Err(source_ref.with_error(format!(
-                                    "Expected struct for pattern {pattern} but got {ty}"
-                                )));
-                            }
-                        };
-                        if !matches!(value.as_ref(), Type::NamedType(_, _)) {
-                            return Err(source_ref.with_error(format!(
-                                "Expected struct for pattern {pattern} but got {value}"
-                            )));
-                        }
-                        if params.len() != data.len() {
-                            return Err(source_ref.with_error(format!(
-                                "Invalid number of data fields for struct {name}. Expected {} but got {}.",
-                                params.len(),
-                                data.len()
-                            )));
-                        }
-                        params
-                            .iter()
-                            .zip(data)
-                            .try_for_each(|(ty, pat)| self.expect_type_of_pattern(ty, &pat.1))?;
-                        (*value).clone()
-                    }
-                    None => {
-                        if let Type::NamedType(_, _) = ty {
-                            ty
-                        } else if matches!(ty, Type::Function(_)) {
-                            return Err(source_ref.with_error(format!(
-                                "Expected struct for pattern {pattern} but got {ty} - maybe you forgot the curly braces?"
-                            )));
-                        } else {
-                            return Err(source_ref.with_error(format!(
-                                "Expected struct for pattern {pattern} but got {ty}"
-                            )));
-                        }
-                    }
-                }
+            Pattern::Struct(_source_ref, name, _fields) => {
+                // TODO GZ: Type-check the fields of the struct pattern.
+                Type::NamedType(SymbolPath::from_identifier(name.to_string()), None)
             }
         })
     }

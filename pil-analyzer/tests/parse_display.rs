@@ -846,8 +846,8 @@ fn struct_as_pattern() {
         y: int,
     }
     let v: Point -> int = (|p| match p {
-        Point { x: 1, y: 0 } => 1,
-        Point { x: 2, y: 2 } => 2,
+        Point{ x: 1, y: 0 } => 1,
+        Point{ x: 2, .. } => 2,
         _ => 0,
     });
     let p: Point = Point with { x: 1, y: 0 };
