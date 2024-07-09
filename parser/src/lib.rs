@@ -497,6 +497,7 @@ namespace N(2);
         assert_eq!(expected.trim(), printed.trim());
     }
 
+    #[test]
     fn parse_trait() {
         let input = r#"
     trait Add<T> {
