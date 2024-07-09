@@ -737,3 +737,10 @@ fn generics_preservation() {
     let f = "asm/generics_preservation.asm";
     verify_asm(f, Default::default());
 }
+
+#[test]
+fn trait_parsing() {
+    // Should be expanded/renamed when traits functionality is fully implemented
+    let f = "asm/trait_parsing.asm";
+    verify_asm(f, Default::default());
+}
