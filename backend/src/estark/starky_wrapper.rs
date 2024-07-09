@@ -6,7 +6,7 @@ use std::time::Instant;
 use crate::{Backend, BackendFactory, BackendOptions, Error};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{FieldElement, GoldilocksField, LargeInt, VariablySizedColumns};
+use powdr_number::{get_only_size_cloned, FieldElement, GoldilocksField, LargeInt, VariablySizedColumn};
 
 use starky::{
     merklehash::MerkleTreeGL,
@@ -27,7 +27,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<VariablySizedColumns<F>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -50,11 +50,8 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
             return Err(Error::NoVariableDegreeAvailable);
         }
 
-        let fixed = Arc::new(
-            fixed
-                .get_only_size_cloned()
-                .map_err(|_| Error::NoVariableDegreeAvailable)?,
-        );
+        let fixed =
+            Arc::new(get_only_size_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?);
 
         let proof_type: ProofType = ProofType::from(options);
 

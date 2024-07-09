@@ -34,53 +34,47 @@ pub fn log2_exact(n: BigUint) -> Option<usize> {
 }
 
 #[derive(Serialize, Deserialize)]
-/// Like Columns, but each column can exist in multiple sizes
-pub struct VariablySizedColumns<F> {
-    /// Maps each column name to a (size -> values) map
-    columns: Vec<(String, BTreeMap<usize, Vec<F>>)>,
+pub struct VariablySizedColumn<F> {
+    column_by_size: BTreeMap<usize, Vec<F>>,
 }
 
 #[derive(Debug)]
 pub struct HasMultipleSizesError;
 
-impl<F: Clone> VariablySizedColumns<F> {
+impl<F> VariablySizedColumn<F> {
     /// Create a view where each column has a single size. Fails if any column has multiple sizes.
-    pub fn get_only_size(&self) -> Result<Vec<(String, &Vec<F>)>, HasMultipleSizesError> {
-        self.columns
-            .iter()
-            .map(|(name, column_by_size)| {
-                if column_by_size.len() != 1 {
-                    return Err(HasMultipleSizesError);
-                }
-                let values = column_by_size.values().next().unwrap();
-                Ok((name.clone(), values))
-            })
-            .collect()
-    }
-
-    /// Like get_only_size, but clones the values.
-    pub fn get_only_size_cloned(&self) -> Result<Vec<(String, Vec<F>)>, HasMultipleSizesError> {
-        self.get_only_size()?
-            .into_iter()
-            .map(|(name, values)| Ok((name, values.clone())))
-            .collect()
-    }
-
-    pub fn len(&self) -> usize {
-        self.columns.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.columns.is_empty()
+    pub fn get_only_size(&self) -> Result<&Vec<F>, HasMultipleSizesError> {
+        if self.column_by_size.len() != 1 {
+            return Err(HasMultipleSizesError);
+        }
+        Ok(self.column_by_size.values().next().unwrap())
     }
 }
 
-impl<T: Iterator<Item = (String, BTreeMap<usize, Vec<F>>)>, F: Clone> From<T>
-    for VariablySizedColumns<F>
-{
-    fn from(iter: T) -> Self {
-        Self {
-            columns: iter.collect(),
+pub fn get_only_size<F>(
+    column: &[(String, VariablySizedColumn<F>)],
+) -> Result<Vec<(String, &Vec<F>)>, HasMultipleSizesError> {
+    column
+        .iter()
+        .map(|(name, column)| Ok((name.clone(), column.get_only_size()?)))
+        .collect()
+}
+
+pub fn get_only_size_cloned<F: Clone>(
+    column: &[(String, VariablySizedColumn<F>)],
+) -> Result<Vec<(String, Vec<F>)>, HasMultipleSizesError> {
+    get_only_size(column).map(|column| {
+        column
+            .into_iter()
+            .map(|(name, column)| (name, column.clone()))
+            .collect()
+    })
+}
+
+impl<F> From<Vec<F>> for VariablySizedColumn<F> {
+    fn from(column: Vec<F>) -> Self {
+        VariablySizedColumn {
+            column_by_size: [(column.len(), column)].into_iter().collect(),
         }
     }
 }

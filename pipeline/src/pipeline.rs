@@ -25,7 +25,8 @@ use powdr_executor::{
     },
 };
 use powdr_number::{
-    write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite, VariablySizedColumns,
+    get_only_size_cloned, write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite,
+    VariablySizedColumn,
 };
 use powdr_schemas::SerializedAnalyzed;
 
@@ -35,6 +36,7 @@ use crate::{
 };
 
 type Columns<T> = Vec<(String, Vec<T>)>;
+type VariablySizedColumns<T> = Vec<(String, VariablySizedColumn<T>)>;
 
 #[derive(Default, Clone)]
 pub struct Artifacts<T: FieldElement> {
@@ -508,7 +510,7 @@ impl<T: FieldElement> Pipeline<T> {
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
                 // TODO: Handle multiple sizes
-                let fixed = fixed.get_only_size_cloned().unwrap();
+                let fixed = get_only_size_cloned(fixed).unwrap();
                 let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;

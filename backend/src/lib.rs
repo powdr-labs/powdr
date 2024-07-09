@@ -10,7 +10,7 @@ mod composite;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement, VariablySizedColumns};
+use powdr_number::{DegreeType, FieldElement, VariablySizedColumn};
 use std::{io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
 
@@ -134,7 +134,7 @@ pub trait BackendFactory<F: FieldElement> {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<VariablySizedColumns<F>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,

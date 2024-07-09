@@ -16,7 +16,7 @@ use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement, VariablySizedColumns};
+use powdr_number::{get_only_size_cloned, DegreeType, FieldElement, VariablySizedColumn};
 use serde::Serialize;
 use starky::types::{StarkStruct, Step, PIL};
 
@@ -222,18 +222,15 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
     fn create<'a>(
         &self,
         analyzed: Arc<Analyzed<F>>,
-        fixed: Arc<VariablySizedColumns<F>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
-        let fixed = Arc::new(
-            fixed
-                .get_only_size_cloned()
-                .map_err(|_| Error::NoVariableDegreeAvailable)?,
-        );
+        let fixed =
+            Arc::new(get_only_size_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?);
         Ok(Box::new(DumpBackend(EStarkFilesCommon::create(
             &analyzed,
             fixed,

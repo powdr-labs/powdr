@@ -117,7 +117,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use powdr_ast::analyzed::{PolyID, PolynomialType};
-    use powdr_number::{FieldElement, GoldilocksField};
+    use powdr_number::{get_only_size, FieldElement, GoldilocksField};
     use powdr_pil_analyzer::analyze_string;
 
     use crate::{
@@ -153,7 +153,7 @@ mod tests {
     ) -> R {
         let analyzed = analyze_string(src);
         let constants = generate(&analyzed);
-        let constants = constants.get_only_size().unwrap();
+        let constants = get_only_size(&constants).unwrap();
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 
         // No submachines

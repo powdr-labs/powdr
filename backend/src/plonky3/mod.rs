@@ -2,7 +2,9 @@ use std::{io, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{FieldElement, GoldilocksField, LargeInt, VariablySizedColumns};
+use powdr_number::{
+    get_only_size_cloned, FieldElement, GoldilocksField, LargeInt, VariablySizedColumn,
+};
 use powdr_plonky3::Plonky3Prover;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
@@ -13,7 +15,7 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<T>>,
-        fixed: Arc<VariablySizedColumns<T>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
@@ -34,11 +36,8 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
             return Err(Error::NoVariableDegreeAvailable);
         }
 
-        let fixed = Arc::new(
-            fixed
-                .get_only_size_cloned()
-                .map_err(|_| Error::NoVariableDegreeAvailable)?,
-        );
+        let fixed =
+            Arc::new(get_only_size_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?);
 
         let mut p3 = Box::new(Plonky3Prover::new(pil, fixed));
 

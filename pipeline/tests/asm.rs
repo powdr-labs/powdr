@@ -1,5 +1,5 @@
 use powdr_backend::BackendType;
-use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
+use powdr_number::{get_only_size, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{gen_estark_proof, resolve_test_file, test_halo2, verify_test_file},
     util::{FixedPolySet, PolySet, WitnessPolySet},
@@ -378,7 +378,7 @@ fn read_poly_files() {
 
         // check fixed cols (may have no fixed cols)
         let fixed = FixedPolySet::<Bn254Field>::read(tmp_dir.as_path());
-        let fixed = fixed.get_only_size().unwrap();
+        let fixed = get_only_size(&fixed).unwrap();
         if !fixed.is_empty() {
             assert_eq!(pil.degree(), fixed[0].1.len() as u64);
         }

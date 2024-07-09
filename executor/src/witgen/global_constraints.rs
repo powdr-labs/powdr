@@ -361,7 +361,7 @@ mod test {
     use std::collections::BTreeMap;
 
     use powdr_ast::analyzed::{PolyID, PolynomialType};
-    use powdr_number::GoldilocksField;
+    use powdr_number::{get_only_size, GoldilocksField};
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -437,7 +437,7 @@ namespace Global(2**20);
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
         let constants = crate::constant_evaluator::generate(&analyzed);
-        let constants = constants.get_only_size().unwrap();
+        let constants = get_only_size(&constants).unwrap();
         let fixed_polys = (0..constants.len())
             .map(|i| constant_poly_id(i as u64))
             .collect::<Vec<_>>();
