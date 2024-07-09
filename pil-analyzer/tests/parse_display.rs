@@ -718,12 +718,12 @@ namespace T(8);
 #[test]
 fn trait_def() {
     let input = "trait Add<T, Q> {
-        add: T, T -> Q,
+        add: T, T -> Q;
     }
 ";
 
     let expected = "    trait Add<T, Q> {
-        add: T, T -> Q,
+        add: T, T -> Q;
     }
 ";
 
@@ -734,12 +734,12 @@ fn trait_def() {
 #[test]
 fn array_type_trait() {
     let input = "trait ArraySum<T> {
-        array_sum: T[4 + 1] -> T,
+        array_sum: T[4 + 1] -> T;
     }
 ";
 
     let expected = "    trait ArraySum<T> {
-        array_sum: T[5] -> T,
+        array_sum: T[5] -> T;
     }
 ";
 
@@ -751,7 +751,7 @@ fn array_type_trait() {
 #[should_panic = "Duplicate symbol definition: Add"]
 fn trait_enum_collisions() {
     let input = "trait Add<T, Q> {
-        add: T, T -> Q,
+        add: T, T -> Q;
     }
     enum Add {
         X

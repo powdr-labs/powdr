@@ -691,7 +691,7 @@ TraitVars: Vec<String> = {
 
 TraitFunctions: Vec<TraitFunction<Expression>> = {
     => vec![],
-    <mut list:( <TraitFunction> "," )*> <end:TraitFunction> ","  => { list.push(end); list }
+    <mut list:( <TraitFunction> ";" )*> <end:TraitFunction> ";"  => { list.push(end); list }
 }
 
 TraitFunction: TraitFunction<Expression> = {
