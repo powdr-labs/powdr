@@ -601,6 +601,27 @@ pub struct Instruction {
     pub body: InstructionBody,
 }
 
+impl Children<Expression> for Instruction {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(
+            self.body
+                .0
+                .iter()
+                .flat_map(|s| s.children())
+                .chain(self.links.iter().flat_map(|d| d.children())),
+        )
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(
+            self.body
+                .0
+                .iter_mut()
+                .flat_map(|s| s.children_mut())
+                .chain(self.links.iter_mut().flat_map(|d| d.children_mut())),
+        )
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement {
     Pil(SourceRef, PilStatement),
@@ -617,6 +638,15 @@ pub struct LinkDeclaration {
     pub flag: Expression,
     pub link: CallableRef,
     pub is_permutation: bool,
+}
+
+impl Children<Expression> for LinkDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(once(&self.flag).chain(self.link.params.inputs_and_outputs()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(once(&mut self.flag).chain(self.link.params.inputs_and_outputs_mut()))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

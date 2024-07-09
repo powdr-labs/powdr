@@ -501,7 +501,7 @@ machine Machine {
     reg fp;
 
     instr inc_fp amount: unsigned { fp' = fp + amount }
-    instr adjust_fp amount: signed, t: label { fp' = fp + amount, pc' = label }
+    instr adjust_fp amount: signed, t: label { fp' = fp + amount, pc' = t }
 
     function main {
         inc_fp 7;
@@ -528,7 +528,7 @@ machine Machine {
     pol commit instr_return;
     pol constant first_step = [1] + [0]*;
     fp' = instr_inc_fp * (fp + instr_inc_fp_param_amount) + instr_adjust_fp * (fp + instr_adjust_fp_param_amount) + instr__reset * 0 + (1 - (instr_inc_fp + instr_adjust_fp + instr__reset)) * fp;
-    pol pc_update = instr_adjust_fp * label + instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr_adjust_fp + instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
+    pol pc_update = instr_adjust_fp * instr_adjust_fp_param_t + instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr_adjust_fp + instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     pol constant p_line = [0, 1, 2, 3, 4] + [4]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0] + [0]*;

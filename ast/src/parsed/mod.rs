@@ -99,7 +99,6 @@ pub enum PilStatement {
         SelectedExpressions<Expression>,
     ),
     ConnectIdentity(SourceRef, Vec<Expression>, Vec<Expression>),
-    ConstantDefinition(SourceRef, String, Expression),
     EnumDeclaration(SourceRef, EnumDeclaration<Expression>),
     StructDeclaration(SourceRef, StructDeclaration<Expression>),
     Expression(SourceRef, Expression),
@@ -127,7 +126,6 @@ impl PilStatement {
         match self {
             PilStatement::PolynomialDefinition(_, name, _)
             | PilStatement::PolynomialConstantDefinition(_, name, _)
-            | PilStatement::ConstantDefinition(_, name, _)
             | PilStatement::PublicDeclaration(_, name, _, _, _)
             | PilStatement::LetStatement(_, name, _, _) => {
                 Box::new(once((name, None, SymbolCategory::Value)))
@@ -176,8 +174,7 @@ impl Children<Expression> for PilStatement {
             }
             PilStatement::Expression(_, e)
             | PilStatement::Namespace(_, _, Some(e))
-            | PilStatement::PolynomialDefinition(_, _, e)
-            | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
+            | PilStatement::PolynomialDefinition(_, _, e) => Box::new(once(e)),
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children(),
             PilStatement::StructDeclaration(_, struct_decl) => struct_decl.children(),
@@ -212,8 +209,7 @@ impl Children<Expression> for PilStatement {
             }
             PilStatement::Expression(_, e)
             | PilStatement::Namespace(_, _, Some(e))
-            | PilStatement::PolynomialDefinition(_, _, e)
-            | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
+            | PilStatement::PolynomialDefinition(_, _, e) => Box::new(once(e)),
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children_mut(),
             PilStatement::StructDeclaration(_, struct_decl) => struct_decl.children_mut(),

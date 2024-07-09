@@ -1399,10 +1399,10 @@ mod test {
     #[should_panic = r#"FailedAssertion("this text")"#]
     fn panic_complex() {
         let src = r#"
-            constant %N = 2;
-            namespace std::check(%N);
+            let N: int = 2;
+            namespace std::check(N);
             let panic = 123;
-            namespace F(%N);
+            namespace F(N);
             let concat = |a, b| a + b;
             let arg: int = 1;
             let x: int[] = (|i| if i == 1 { std::check::panic(concat("this ", "text")) } else { [9] })(arg);
@@ -1414,10 +1414,10 @@ mod test {
     #[should_panic = r#"FailedAssertion("text")"#]
     fn panic_string() {
         let src = r#"
-            constant %N = 2;
-            namespace std::check(%N);
+            let N: int = 2;
+            namespace std::check(N);
             let panic = 123;
-            namespace F(%N);
+            namespace F(N);
             let x: int = std::check::panic("text");
         "#;
         parse_and_evaluate_symbol(src, "F.x");
