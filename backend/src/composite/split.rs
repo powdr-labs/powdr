@@ -222,7 +222,8 @@ fn build_machine_pil<F: FieldElement>(
 }
 
 /// Insert a dummy witness column and identity into the PIL string, just after the namespace.
-/// This ensures that all machine PILs have at least one witness column and identity.
+/// This ensures that all machine PILs have at least one witness column and identity, which is
+/// assumed by most backends.
 /// In the future, this will always be the case, as interacting with the bus will require
 /// at least one witness column & identity, so this is only necessary for now.
 fn add_dummy_witness_column(pil_string: &str) -> String {
