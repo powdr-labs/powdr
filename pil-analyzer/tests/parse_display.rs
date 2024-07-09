@@ -838,3 +838,22 @@ fn struct_field_in_expr() {
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);
 }
+
+#[test]
+fn struct_as_pattern() {
+    let input = "    struct Point {
+        x: int,
+        y: int,
+    }
+    let v: Point -> int = (|p| match p {
+        Point { x: 1, y: 0 } => 1,
+        Point { x: 2, y: 2 } => 2,
+        _ => 0,
+    });
+    let p: Point = Point with { x: 1, y: 0 };
+    let y: int = v(p);
+";
+
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}

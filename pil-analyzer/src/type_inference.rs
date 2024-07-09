@@ -883,7 +883,7 @@ impl TypeChecker {
                         params
                             .iter()
                             .zip(data)
-                            .try_for_each(|(ty, pat)| self.expect_type_of_pattern(ty, pat))?;
+                            .try_for_each(|(ty, pat)| self.expect_type_of_pattern(ty, &pat.1))?;
                         (*value).clone()
                     }
                     None => {

@@ -403,12 +403,35 @@ impl Display for Pattern {
             Pattern::Tuple(_, t) => write!(f, "({})", t.iter().format(", ")),
             Pattern::Array(_, a) => write!(f, "[{}]", a.iter().format(", ")),
             Pattern::Variable(_, v) => write!(f, "{v}"),
-            Pattern::Enum(_, name, fields) | Pattern::Struct(_, name, fields) => write!(
+            Pattern::Enum(_, name, fields) => write!(
                 f,
                 "{name}{}",
                 fields
                     .as_ref()
                     .map(|fields| format!("({})", fields.iter().format(", ")))
+                    .unwrap_or_default()
+            ),
+            Pattern::Struct(_, name, fields) => write!(
+                f,
+                "{name}{}",
+                fields
+                    .as_ref()
+                    .map(|fields| {
+                        format!(
+                            "{{ {} }}",
+                            fields
+                                .iter()
+                                .map(|(opt_str, pattern)| {
+                                    if let Some(s) = opt_str {
+                                        format!("{}: {}", s, pattern)
+                                    } else {
+                                        format!("{}", pattern)
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    })
                     .unwrap_or_default()
             ),
         }

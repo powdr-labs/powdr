@@ -702,15 +702,19 @@ StructPattern: Pattern = {
     <start:@L> <sp:SymbolPath> "{" <fields:StructPatternList?> "}" <end:@R> => Pattern::Struct(ctx.source_ref(start, end), sp, fields),
 }
 
-StructPatternList: Vec<Pattern> = {
-    <mut list:(<Pattern> ",")*> <start:@L> ".." <end:@R> => {
-        list.push(Pattern::Ellipsis(ctx.source_ref(start, end)));
+StructPatternList: Vec<(Option<String>, Pattern)> = {
+    <mut list:(<NamedPattern> ",")*> <start:@L> ".." <end:@R> => {
+        list.push((None, Pattern::Ellipsis(ctx.source_ref(start, end))));
         list
     },
-    <mut list:(<Pattern> ",")*> <last:Pattern> => {
+    <mut list:(<NamedPattern> ",")*> <last:NamedPattern> => {
         list.push(last);
         list
     },
+}
+
+NamedPattern: (Option<String>, Pattern) = {
+    <name:( <Identifier> ":")?> <pattern:Pattern> => (name, pattern)
 }
 
 PatternList: Vec<Pattern> = {

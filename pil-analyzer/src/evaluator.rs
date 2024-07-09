@@ -299,7 +299,8 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 }
                 if let Some(fields) = fields_pattern {
                     let patterns = data.values().cloned().collect::<Vec<_>>();
-                    Value::try_match_pattern_list(patterns.as_slice(), fields)
+                    let field_patterns: Vec<_> = fields.iter().map(|(_, p)| p.clone()).collect();
+                    Value::try_match_pattern_list(&patterns, &field_patterns)
                 } else {
                     Some(vec![])
                 }

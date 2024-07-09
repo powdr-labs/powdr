@@ -1312,7 +1312,11 @@ pub enum Pattern {
     // an enum variant.
     Variable(SourceRef, String),
     Enum(SourceRef, SymbolPath, Option<Vec<Pattern>>),
-    Struct(SourceRef, SymbolPath, Option<Vec<Pattern>>),
+    Struct(
+        SourceRef,
+        SymbolPath,
+        Option<Vec<(Option<String>, Pattern)>>,
+    ),
 }
 
 impl Pattern {
@@ -1351,8 +1355,9 @@ impl Children<Pattern> for Pattern {
             | Pattern::String(_, _)
             | Pattern::Variable(_, _) => Box::new(empty()),
             Pattern::Tuple(_, p) | Pattern::Array(_, p) => Box::new(p.iter()),
-            Pattern::Enum(_, _, fields) | Pattern::Struct(_, _, fields) => {
-                Box::new(fields.iter().flatten())
+            Pattern::Enum(_, _, fields) => Box::new(fields.iter().flatten()),
+            Pattern::Struct(_, _, fields) => {
+                Box::new(fields.iter().flatten().map(|(_, pattern)| pattern))
             }
         }
     }
@@ -1365,8 +1370,9 @@ impl Children<Pattern> for Pattern {
             | Pattern::String(_, _)
             | Pattern::Variable(_, _) => Box::new(empty()),
             Pattern::Tuple(_, p) | Pattern::Array(_, p) => Box::new(p.iter_mut()),
-            Pattern::Enum(_, _, fields) | Pattern::Struct(_, _, fields) => {
-                Box::new(fields.iter_mut().flatten())
+            Pattern::Enum(_, _, fields) => Box::new(fields.iter_mut().flatten()),
+            Pattern::Struct(_, _, fields) => {
+                Box::new(fields.iter_mut().flatten().map(|(_, pattern)| pattern))
             }
         }
     }
