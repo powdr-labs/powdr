@@ -857,3 +857,21 @@ fn struct_as_pattern() {
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);
 }
+
+#[test]
+#[should_panic = "Error checking pattern:\\nExpected type: int\\nInferred type: (T1, T2)"]
+fn struct_invalid_pattern() {
+    let input = "    struct Point {
+        x: int,
+        y: int,
+    }
+    let v: Point -> int = (|p| match p {
+        Point{ x: 1, y: 0 } => 1,
+        Point{ x: (2,5), .. } => 2,
+        _ => 0,
+    });
+";
+
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}

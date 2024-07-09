@@ -852,8 +852,34 @@ impl TypeChecker {
                     }
                 }
             }
-            Pattern::Struct(_source_ref, name, _fields) => {
-                // TODO GZ: Type-check the fields of the struct pattern.
+            Pattern::Struct(_source_ref, name, fields) => {
+                println!("Struct pattern: {:?}", fields);
+
+                // TODO GZ: REview this
+                match fields {
+                    Some(fields) => {
+                        for f in fields {
+                            if let Pattern::Ellipsis(_) = f.1 {
+                                continue;
+                            }
+
+                            match &f.0 {
+                                Some(field_name) => {
+                                    let fname = format!("{name}.{field_name}");
+
+                                    let (ty, _generic_args) = self
+                                        .instantiate_scheme(self.declared_types[&fname].1.clone());
+                                    let ty = type_for_reference(&ty);
+
+                                    self.expect_type_of_pattern(&ty, &f.1)?;
+                                }
+                                None => {}
+                            }
+                        }
+                    }
+                    None => {}
+                }
+
                 Type::NamedType(SymbolPath::from_identifier(name.to_string()), None)
             }
         })

@@ -893,7 +893,7 @@ fn check_struct_declaration(
         .try_fold(BTreeSet::default(), |mut acc, (name, _)| {
             acc.insert(name.clone())
                 .then_some(acc)
-                .ok_or(format!("Duplicate variant `{name}` in enum `{location}`"))
+                .ok_or(format!("Duplicate field `{name}` in struct `{location}`"))
         })
         .map_err(|e| SourceRef::default().with_error(e))?;
 
