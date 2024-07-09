@@ -283,13 +283,13 @@ fn conditional_fixed_constraints() {
     verify_pil("pil/conditional_fixed_constraints.pil", Default::default());
 }
 
-// #[test]
-// fn referencing_arrays() {
-//     let f = "pil/referencing_array.pil";
-//     verify_pil(f, Default::default());
-//     test_halo2(f, Default::default());
-//     gen_estark_proof(f, Default::default());
-// }
+#[test]
+fn referencing_arrays() {
+    let f = "pil/referencing_array.pil";
+    verify_pil(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
 
 #[test]
 fn naive_byte_decomposition_bn254() {

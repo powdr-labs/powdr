@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     iter,
     ops::ControlFlow,
     str::FromStr,
@@ -7,8 +7,7 @@ use std::{
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, Analyzed, FunctionValueDefinition, IdentityKind, StatementIdentifier,
-        Symbol, SymbolKind,
+        AlgebraicExpression, Analyzed, IdentityKind, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
@@ -26,7 +25,7 @@ const DUMMY_COLUMN_NAME: &str = "__dummy";
 /// 3. Any lookups or permutations that reference multiple namespaces are removed.
 pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
     let statements_by_namespace = split_by_namespace(&pil);
-    let statements_by_machine = merge_empty_namespaces(statements_by_namespace, &pil.definitions);
+    let statements_by_machine = merge_empty_namespaces(statements_by_namespace, &pil);
 
     statements_by_machine
         .into_iter()
@@ -171,9 +170,9 @@ fn split_by_namespace<F: FieldElement>(
 /// Merges namespaces without any polynomials into the other namespaces.
 /// For example, a hint might reference a symbol in an std namespace, so we just make
 /// those available to all machines.
-fn merge_empty_namespaces(
+fn merge_empty_namespaces<F>(
     statements_by_namespace: BTreeMap<String, Vec<StatementIdentifier>>,
-    definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    pil: &Analyzed<F>,
 ) -> BTreeMap<String, Vec<StatementIdentifier>> {
     // Separate out machines without any polynomials
     let (proper_machines, empty_machines) = statements_by_namespace
@@ -181,7 +180,13 @@ fn merge_empty_namespaces(
         .partition::<BTreeMap<_, _>, _>(|(_, statements)| {
             statements.iter().any(|statement| match statement {
                 StatementIdentifier::Definition(name) => {
-                    matches!(definitions[name].0.kind, SymbolKind::Poly(_))
+                    let symbol = pil
+                        .definitions
+                        .get(name)
+                        .map(|(symbol, _)| symbol)
+                        .or(pil.intermediate_columns.get(name).map(|(symbol, _)| symbol))
+                        .unwrap();
+                    matches!(symbol.kind, SymbolKind::Poly(_))
                 }
                 _ => false,
             })
