@@ -29,6 +29,10 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
         if verification_app_key.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
+        if pil.degrees().len() > 1 {
+            return Err(Error::NoVariableDegreeAvailable);
+        }
+
         Ok(Box::new(Plonky3Prover::new(pil)))
     }
 }
