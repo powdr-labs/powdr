@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use core::fmt::{self, Debug, Formatter};
 use core::hash::Hash;
+#[cfg(target_arch = "x86_64")]
 use core::hint::unreachable_unchecked;
 
 use crate::{BigUint, FieldElement, KnownField, LargeInt};
@@ -283,6 +284,7 @@ const fn split(x: u128) -> (u64, u64) {
 }
 
 #[inline(always)]
+#[cfg(target_arch = "x86_64")]
 pub fn assume(p: bool) {
     debug_assert!(p);
     if !p {

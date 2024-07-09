@@ -21,6 +21,7 @@ use alloc::vec::Vec;
 use powdr_riscv_runtime::io::read_u32;
 use powdr_riscv_runtime::print;
 
+/// entry point called by the runtime
 #[no_mangle]
 fn main() {
     let expected = read_u32(0);

@@ -6,8 +6,8 @@ use std::num::NonZeroUsize;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
+    SelectedExpressions,
 };
-use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::FieldElement;
 
 use crate::witgen::affine_expression::AffineExpression;
@@ -109,7 +109,15 @@ impl<T: FieldElement> IndexedColumns<T> {
             .map(|id| fixed_data.fixed_cols[id].values)
             .collect::<Vec<_>>();
 
-        let index: BTreeMap<Vec<T>, IndexValue> = (0..fixed_data.degree as usize)
+        let degree = input_column_values
+            .iter()
+            .chain(output_column_values.iter())
+            .map(|values| values.len())
+            .unique()
+            .exactly_one()
+            .expect("all columns in a given lookup are expected to have the same degree");
+
+        let index: BTreeMap<Vec<T>, IndexValue> = (0..degree)
             .fold(
                 (
                     BTreeMap::<Vec<T>, IndexValue>::default(),
@@ -230,12 +238,12 @@ impl<T: FieldElement> FixedLookup<T> {
             && !left.first().unwrap().is_constant()
             && right.peek().unwrap().poly_id.ptype == PolynomialType::Constant
         {
-            // Lookup of the form "c { X } in { B }". Might be a conditional range check.
+            // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
             return self.process_range_check(rows, left.first().unwrap(), right.peek().unwrap());
         }
 
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
-        // {1, 2, x} in {A, B, C} -> [[(A, 1), (B, 2)], [C, x]]
+        // [1, 2, x] in [A, B, C] -> [[(A, 1), (B, 2)], [C, x]]
 
         let mut input_assignment = vec![];
         let mut output_columns = vec![];

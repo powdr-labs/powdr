@@ -1,11 +1,11 @@
 mod common;
 
-use common::verify_riscv_asm_string;
+use common::{verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
 use powdr_backend::BackendType;
-use powdr_number::{FieldElement, GoldilocksField};
+use powdr_number::GoldilocksField;
 use powdr_pipeline::{verify::verify, Pipeline};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use test_log::test;
 
 use powdr_riscv::{
@@ -18,12 +18,27 @@ use powdr_riscv::{
 pub fn test_continuations(case: &str) {
     let runtime = Runtime::base().with_poseidon();
     let temp_dir = Temp::new_dir().unwrap();
-    let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
+
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, true);
 
+    // Test continuations from ELF file.
+    let powdr_asm = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        &runtime,
+        true,
+    );
+    run_continuations_test(case, powdr_asm);
+
+    // Test continuations from assembly files.
+    let powdr_asm =
+        powdr_riscv::asm::compile::<GoldilocksField>(compiled.load_asm_files(), &runtime, true);
+    run_continuations_test(case, powdr_asm);
+}
+
+fn run_continuations_test(case: &str, powdr_asm: String) {
     // Manually create tmp dir, so that it is the same in all chunks.
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
 
@@ -36,7 +51,7 @@ pub fn test_continuations(case: &str) {
         // computing the constants file.
         let mut pipeline = pipeline.with_backend(BackendType::EStarkDump, None);
         pipeline.compute_proof().unwrap();
-        verify(pipeline.output_dir().unwrap()).unwrap();
+        verify(pipeline.output_dir().as_ref().unwrap()).unwrap();
 
         Ok(())
     };
@@ -291,6 +306,22 @@ fn two_sums_serde() {
     );
 }
 
+const DISPATCH_TABLE_S: &str = "tests/riscv_data/dispatch_table/dispatch_table.s";
+
+/// Tests that the dispatch table is correctly relocated when PIE is enabled.
+#[ignore = "Too slow"]
+#[test]
+fn dispatch_table_pie_relocation() {
+    verify_riscv_asm_file(Path::new(DISPATCH_TABLE_S), &Runtime::base(), true);
+}
+
+/// Tests that the dispatch table is correctly relocated when PIE is disabled.
+#[ignore = "Too slow"]
+#[test]
+fn dispatch_table_static_relocation() {
+    verify_riscv_asm_file(Path::new(DISPATCH_TABLE_S), &Runtime::base(), false);
+}
+
 #[test]
 #[ignore = "Too slow"]
 #[should_panic(
@@ -385,8 +416,7 @@ fn verify_riscv_crate_with_backend(
     runtime: &Runtime,
     backend: BackendType,
 ) {
-    let powdr_asm = compile_riscv_crate::<GoldilocksField>(case, runtime);
-    verify_riscv_asm_string::<()>(&format!("{case}.asm"), &powdr_asm, inputs, None, backend);
+    verify_riscv_crate_from_both_paths::<()>(case, inputs, runtime, None, backend)
 }
 
 fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
@@ -395,22 +425,44 @@ fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
     runtime: &Runtime,
     data: Vec<(u32, S)>,
 ) {
-    let powdr_asm = compile_riscv_crate::<GoldilocksField>(case, runtime);
-
-    verify_riscv_asm_string(
-        &format!("{case}.asm"),
-        &powdr_asm,
-        inputs,
-        Some(data),
-        BackendType::EStarkDump,
-    );
+    verify_riscv_crate_from_both_paths(case, inputs, runtime, Some(data), BackendType::EStarkDump)
 }
 
-fn compile_riscv_crate<T: FieldElement>(case: &str, runtime: &Runtime) -> String {
+fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'static>(
+    case: &str,
+    inputs: Vec<GoldilocksField>,
+    runtime: &Runtime,
+    data: Option<Vec<(u32, S)>>,
+    backend: BackendType,
+) {
     let temp_dir = Temp::new_dir().unwrap();
-    let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    powdr_riscv::asm::compile::<T>(riscv_asm, runtime, false)
+
+    log::info!("Verifying {case} converted from ELF file");
+    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        runtime,
+        false,
+    );
+    verify_riscv_asm_string(
+        &format!("{case}_from_elf.asm"),
+        &from_elf,
+        &inputs,
+        data.as_deref(),
+        backend,
+    );
+
+    log::info!("Verifying {case} converted from assembly files");
+    let from_asm =
+        powdr_riscv::asm::compile::<GoldilocksField>(compiled.load_asm_files(), runtime, false);
+    verify_riscv_asm_string(
+        &format!("{case}_from_asm.asm"),
+        &from_asm,
+        &inputs,
+        data.as_deref(),
+        backend,
+    );
 }

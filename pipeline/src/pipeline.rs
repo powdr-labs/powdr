@@ -387,15 +387,8 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     /// Reads previously generated fixed columns from the provided directory.
-    pub fn read_constants(mut self, directory: &Path) -> Self {
-        let pil = self.compute_optimized_pil().unwrap();
-
-        let fixed = try_read_poly_set::<FixedPolySet, T>(&pil, directory)
-            .map(|(fixed, degree_fixed)| {
-                assert_eq!(pil.degree.unwrap(), degree_fixed);
-                fixed
-            })
-            .unwrap_or_default();
+    pub fn read_constants(self, directory: &Path) -> Self {
+        let fixed = read_poly_set::<FixedPolySet, T>(directory);
 
         Pipeline {
             artifact: Artifacts {
@@ -407,15 +400,8 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     /// Reads a previously generated witness from the provided directory.
-    pub fn read_witness(mut self, directory: &Path) -> Self {
-        let pil = self.compute_optimized_pil().unwrap();
-
-        let witness = try_read_poly_set::<WitnessPolySet, T>(&pil, directory)
-            .map(|(witness, degree_witness)| {
-                assert_eq!(pil.degree.unwrap(), degree_witness);
-                witness
-            })
-            .unwrap_or_default();
+    pub fn read_witness(self, directory: &Path) -> Self {
+        let witness = read_poly_set::<WitnessPolySet, T>(directory);
 
         Pipeline {
             artifact: Artifacts {
@@ -917,9 +903,9 @@ impl<T: FieldElement> Pipeline<T> {
         /* Create the backend */
         let backend = factory
             .create(
-                pil.borrow(),
-                &fixed_cols[..],
-                self.output_dir(),
+                pil.clone(),
+                fixed_cols.clone(),
+                self.output_dir.clone(),
                 setup.as_io_read(),
                 vkey.as_io_read(),
                 vkey_app.as_io_read(),
@@ -955,8 +941,8 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.proof.as_ref().unwrap())
     }
 
-    pub fn output_dir(&self) -> Option<&Path> {
-        self.output_dir.as_ref().map(|p| p.as_ref())
+    pub fn output_dir(&self) -> &Option<PathBuf> {
+        &self.output_dir
     }
 
     pub fn is_force_overwrite(&self) -> bool {
@@ -999,9 +985,9 @@ impl<T: FieldElement> Pipeline<T> {
 
         let backend = factory
             .create(
-                pil.borrow(),
-                &fixed_cols[..],
-                self.output_dir(),
+                pil.clone(),
+                fixed_cols.clone(),
+                self.output_dir.clone(),
                 setup_file
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),
@@ -1053,9 +1039,9 @@ impl<T: FieldElement> Pipeline<T> {
 
         let backend = factory
             .create(
-                pil.borrow(),
-                &fixed_cols[..],
-                self.output_dir(),
+                pil.clone(),
+                fixed_cols.clone(),
+                self.output_dir.clone(),
                 setup_file
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),
@@ -1101,9 +1087,9 @@ impl<T: FieldElement> Pipeline<T> {
 
         let backend = factory
             .create(
-                pil.borrow(),
-                &fixed_cols[..],
-                self.output_dir(),
+                pil.clone(),
+                fixed_cols.clone(),
+                self.output_dir.clone(),
                 setup_file
                     .as_mut()
                     .map(|file| file as &mut dyn std::io::Read),

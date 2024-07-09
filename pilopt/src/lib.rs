@@ -23,6 +23,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     extract_constant_lookups(&mut pil_file);
     remove_constant_witness_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
+    remove_trivial_selectors(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
     remove_duplicate_identities(&mut pil_file);
     remove_unreferenced_definitions(&mut pil_file);
@@ -346,6 +347,26 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
     }
 }
 
+/// Removes lookup and permutation selectors which are equal to 1
+/// TODO: refactor `SelectedExpression` to not use an optional selector
+fn remove_trivial_selectors<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    let one = AlgebraicExpression::from(T::from(1));
+
+    for identity in &mut pil_file
+        .identities
+        .iter_mut()
+        .filter(|id| id.kind == IdentityKind::Plookup || id.kind == IdentityKind::Permutation)
+    {
+        if identity.left.selector.as_ref() == Some(&one) {
+            identity.left.selector = None;
+        }
+
+        if identity.right.selector.as_ref() == Some(&one) {
+            identity.right.selector = None;
+        }
+    }
+}
+
 /// Extracts columns from lookups that are matched against constants and turns
 /// them into polynomial identities.
 fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
@@ -578,9 +599,9 @@ mod test {
     col witness W;
     col witness Z;
     col witness A;
-    (1 - A) { X, Y, A } in { zero, one, cnt };
-    { Y, W, Z, A } in (1 + A) { cnt, zero, two, one };
-    { W, Z } in (1 + A) { zero, one };
+    (1 - A) $ [ X, Y, A ] in [ zero, one, cnt ];
+    [ Y, W, Z, A ] in (1 + A) $ [ cnt, zero, two, one ];
+    [ W, Z ] in (1 + A) $ [ zero, one ];
 "#;
         let expectation = r#"namespace N(65536);
     col fixed cnt(i) { i };
@@ -588,8 +609,8 @@ mod test {
     col witness Y;
     col witness Z;
     col witness A;
-    1 - N.A { N.A } in { N.cnt };
-    { N.Y } in 1 + N.A { N.cnt };
+    1 - N.A $ [N.A] in [N.cnt];
+    [N.Y] in 1 + N.A $ [N.cnt];
     (1 - N.A) * N.X = 0;
     (1 - N.A) * N.Y = 1;
     N.Z = (1 + N.A) * 2;
@@ -649,20 +670,20 @@ namespace N(65536);
         x * (x - 1) = 0;
         x * (x - 1) = 0;
 
-        { x } in { cnt };
-        { x } in { cnt };
-        { x } in { cnt };
+        [ x ] in [ cnt ];
+        [ x ] in [ cnt ];
+        [ x ] in [ cnt ];
 
-        { x + 1 } in { cnt };
-        { x } in { cnt + 1 };
+        [ x + 1 ] in [ cnt ];
+        [ x ] in [ cnt + 1 ];
     "#;
         let expectation = r#"namespace N(65536);
     col witness x;
     col fixed cnt(i) { i };
     N.x * (N.x - 1) = 0;
-    { N.x } in { N.cnt };
-    { N.x + 1 } in { N.cnt };
-    { N.x } in { N.cnt + 1 };
+    [N.x] in [N.cnt];
+    [N.x + 1] in [N.cnt];
+    [N.x] in [N.cnt + 1];
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -681,14 +702,14 @@ namespace N(65536);
         let a: int -> int = |i| b(i + 1);
         let b: int -> int = |j| 8;
         // identity
-        { x } in { cnt };
+        [ x ] in [ cnt ];
 
     "#;
         let expectation = r#"namespace N(65536);
     col witness x;
     col fixed cnt(i) { N.inc(i) };
     let inc: int -> int = (|x| x + 1);
-    { N.x } in { N.cnt };
+    [N.x] in [N.cnt];
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);

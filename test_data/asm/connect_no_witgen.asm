@@ -21,5 +21,5 @@ machine Empty {
     std::check::assert(omega ** 512 != 1, || "");
     std::check::assert(omega ** 1024 == 1, || "");
 
-    { w } connect { r };
+    [ w ] connect [ r ];
 }

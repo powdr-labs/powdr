@@ -14,5 +14,7 @@ powdr-analysis.workspace = true
 
 log = "0.4.17"
 
+itertools = "0.13"
+
 [lints.clippy]
 uninlined_format_args = "deny"

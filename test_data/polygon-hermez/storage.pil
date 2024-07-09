@@ -9,7 +9,7 @@
 include "global.pil";
 include "poseidong.pil";
 
-namespace Storage(%N);
+namespace Storage(N);
 
     pol commit free0, free1, free2, free3;
 
@@ -175,13 +175,13 @@ namespace Storage(%N);
     level3' = setLevel*(op3-level3) + iRotateLevel*(rotatedLevel3-level3) + level3;
 
     // Instruction that guarantees that op = hash(hl, hr); the poseidon SM will do the work; the result will be feeded by free
-    iHash {
+    iHash $ [
         0, 0, 1,
         hashLeft0, hashLeft1, hashLeft2, hashLeft3,
         hashRight0, hashRight1, hashRight2, hashRight3,
         iHashType, 0, 0, 0,
         op0, op1, op2, op3
-    } is PoseidonG.result3 {
+     ] is PoseidonG.result3 $ [
             PoseidonG.result1, PoseidonG.result2, PoseidonG.result3,
             PoseidonG.in0,
             PoseidonG.in1,
@@ -198,7 +198,7 @@ namespace Storage(%N);
             PoseidonG.hash0,
             PoseidonG.hash1,
             PoseidonG.hash2,
-            PoseidonG.hash3};
+            PoseidonG.hash3];
 
     pol climbedKey0 = (level0*(rkey0*2 + rkeyBit - rkey0) + rkey0);
     pol climbedKey1 = (level1*(rkey1*2 + rkeyBit - rkey1) + rkey1);
@@ -266,19 +266,19 @@ namespace Storage(%N);
     pol constant rSetValueHigh;
     pol constant rSetValueLow;
 
-    {
+    [
         iHash, iHashType, iLatchGet, iLatchSet, iClimbRkey, iClimbSiblingRkey, iClimbSiblingRkeyN,
         iRotateLevel, iJmpz, iJmp, iConst0, iConst1, iConst2, iConst3, iAddress, pc,
         inFree, inNewRoot, inOldRoot, inRkey, inRkeyBit, inSiblingRkey, inSiblingValueHash,
         setHashLeft, setHashRight, setLevel, setNewRoot, setOldRoot, setRkey,
         setRkeyBit, setSiblingRkey, setSiblingValueHash, setValueHigh, setValueLow
-    }
+    ]
     in
-    {
+    [
         rHash, rHashType, rLatchGet, rLatchSet, rClimbRkey, rClimbSiblingRkey, rClimbSiblingRkeyN,
         rRotateLevel, rJmpz, rJmp, rConst0, rConst1, rConst2, rConst3, rAddress, rLine,
         rInFree, rInNewRoot, rInOldRoot, rInRkey, rInRkeyBit, rInSiblingRkey, rInSiblingValueHash,
         rSetHashLeft, rSetHashRight, rSetLevel, rSetNewRoot, rSetOldRoot, rSetRkey,
         rSetRkeyBit, rSetSiblingRkey, rSetSiblingValueHash, rSetValueHigh, rSetValueLow
-    };
+    ];
 

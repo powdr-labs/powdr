@@ -11,7 +11,7 @@ mod composite;
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
-use std::{io, path::Path};
+use std::{io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
@@ -19,6 +19,9 @@ pub enum BackendType {
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2")]
     Halo2,
+    #[cfg(feature = "halo2")]
+    #[strum(serialize = "halo2-composite")]
+    Halo2Composite,
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2-mock")]
     Halo2Mock,
@@ -28,13 +31,23 @@ pub enum BackendType {
     #[cfg(feature = "estark-polygon")]
     #[strum(serialize = "estark-polygon")]
     EStarkPolygon,
+    #[cfg(feature = "estark-polygon")]
+    #[strum(serialize = "estark-polygon-composite")]
+    EStarkPolygonComposite,
     #[strum(serialize = "estark-starky")]
     EStarkStarky,
+    #[strum(serialize = "estark-starky-composite")]
+    EStarkStarkyComposite,
     #[strum(serialize = "estark-dump")]
     EStarkDump,
+    #[strum(serialize = "estark-dump-composite")]
+    EStarkDumpComposite,
     #[cfg(feature = "plonky3")]
     #[strum(serialize = "plonky3")]
     Plonky3,
+    #[cfg(feature = "plonky3")]
+    #[strum(serialize = "plonky3-composite")]
+    Plonky3Composite,
 }
 
 pub type BackendOptions = String;
@@ -48,6 +61,10 @@ impl BackendType {
             #[cfg(feature = "halo2")]
             BackendType::Halo2 => Box::new(halo2::Halo2ProverFactory),
             #[cfg(feature = "halo2")]
+            BackendType::Halo2Composite => Box::new(composite::CompositeBackendFactory::new(
+                halo2::Halo2ProverFactory,
+            )),
+            #[cfg(feature = "halo2")]
             BackendType::Halo2Mock => Box::new(halo2::Halo2MockFactory),
             #[cfg(feature = "halo2")]
             BackendType::Halo2MockComposite => Box::new(composite::CompositeBackendFactory::new(
@@ -55,10 +72,24 @@ impl BackendType {
             )),
             #[cfg(feature = "estark-polygon")]
             BackendType::EStarkPolygon => Box::new(estark::polygon_wrapper::Factory),
+            #[cfg(feature = "estark-polygon")]
+            BackendType::EStarkPolygonComposite => Box::new(
+                composite::CompositeBackendFactory::new(estark::polygon_wrapper::Factory),
+            ),
             BackendType::EStarkStarky => Box::new(estark::starky_wrapper::Factory),
+            BackendType::EStarkStarkyComposite => Box::new(
+                composite::CompositeBackendFactory::new(estark::starky_wrapper::Factory),
+            ),
             BackendType::EStarkDump => Box::new(estark::DumpFactory),
+            BackendType::EStarkDumpComposite => {
+                Box::new(composite::CompositeBackendFactory::new(estark::DumpFactory))
+            }
             #[cfg(feature = "plonky3")]
             BackendType::Plonky3 => Box::new(plonky3::Factory),
+            #[cfg(feature = "plonky3")]
+            BackendType::Plonky3Composite => {
+                Box::new(composite::CompositeBackendFactory::new(plonky3::Factory))
+            }
         }
     }
 }
@@ -77,6 +108,8 @@ pub enum Error {
     NoEthereumVerifierAvailable,
     #[error("the backend does not support proof aggregation")]
     NoAggregationAvailable,
+    #[error("the backend does not support variable degrees")]
+    NoVariableDegreeAvailable,
     #[error("internal backend error")]
     BackendError(String),
 }
@@ -100,9 +133,9 @@ pub trait BackendFactory<F: FieldElement> {
     #[allow(clippy::too_many_arguments)]
     fn create<'a>(
         &self,
-        pil: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
-        output_dir: Option<&'a Path>,
+        pil: Arc<Analyzed<F>>,
+        fixed: Arc<Vec<(String, Vec<F>)>>,
+        output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,

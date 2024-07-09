@@ -88,10 +88,10 @@ impl fmt::Display for FunctionKind {
     }
 }
 
-pub enum Statement<'a, L: AsRef<str> + 'a, A: InstructionArgs + ?Sized + 'a> {
+pub enum Statement<'a, L: AsRef<str>, A: InstructionArgs> {
     DebugLoc { file: u64, line: u64, col: u64 },
     Label(L),
-    Instruction { op: &'a str, args: &'a A },
+    Instruction { op: &'a str, args: A },
 }
 
 pub struct MemEntry {
@@ -108,8 +108,6 @@ pub struct SourceFileInfo<'a> {
 
 /// A RISC-V program that can be translated to POWDR ASM.
 pub trait RiscVProgram {
-    type Args: InstructionArgs + ?Sized;
-
     /// Takes the listing of source files, to be used in the debug statements.
     fn take_source_files_info(&mut self) -> impl Iterator<Item = SourceFileInfo>;
 
@@ -119,10 +117,10 @@ pub trait RiscVProgram {
     /// Takes the executable statements and labels.
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = Statement<impl AsRef<str>, Self::Args>>;
+    ) -> impl Iterator<Item = Statement<impl AsRef<str>, impl InstructionArgs>>;
 
     /// The name of the function that should be called to start the program.
-    fn start_function(&self) -> &str;
+    fn start_function(&self) -> impl AsRef<str>;
 }
 
 /// Translates a RISC-V program to POWDR ASM.
@@ -254,7 +252,7 @@ fn translate_program_impl(
     }
     statements.extend([
         "set_reg 0, 0;".to_string(),
-        format!("jump {}, 1;", program.start_function()),
+        format!("jump {}, 1;", program.start_function().as_ref()),
         "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
     ]);
     for s in program.take_executable_statements() {
@@ -538,10 +536,10 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     col witness X_b2;
     col witness X_b3;
     col witness X_b4;
-    { X_b1 } in { bytes };
-    { X_b2 } in { bytes };
-    { X_b3 } in { bytes };
-    { X_b4 } in { bytes };
+    [ X_b1 ] in [ bytes ];
+    [ X_b2 ] in [ bytes ];
+    [ X_b3 ] in [ bytes ];
+    [ X_b4 ] in [ bytes ];
     col witness wrap_bit;
     wrap_bit * (1 - wrap_bit) = 0;
 
@@ -557,7 +555,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 
     col fixed seven_bit(i) { i & 0x7f };
     col witness Y_7bit;
-    { Y_7bit } in { seven_bit };
+    [ Y_7bit ] in [ seven_bit ];
 
     // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
     instr sign_extend_16_bits X, Y
@@ -601,19 +599,19 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     col witness Y_b6;
     col witness Y_b7;
     col witness Y_b8;
-    { Y_b5 } in { bytes };
-    { Y_b6 } in { bytes };
-    { Y_b7 } in { bytes };
-    { Y_b8 } in { bytes };
+    [ Y_b5 ] in [ bytes ];
+    [ Y_b6 ] in [ bytes ];
+    [ Y_b7 ] in [ bytes ];
+    [ Y_b8 ] in [ bytes ];
 
     col witness REM_b1;
     col witness REM_b2;
     col witness REM_b3;
     col witness REM_b4;
-    { REM_b1 } in { bytes };
-    { REM_b2 } in { bytes };
-    { REM_b3 } in { bytes };
-    { REM_b4 } in { bytes };
+    [ REM_b1 ] in [ bytes ];
+    [ REM_b2 ] in [ bytes ];
+    [ REM_b3 ] in [ bytes ];
+    [ REM_b4 ] in [ bytes ];
 
     // implements Z = Y / X and W = Y % X.
     instr divremu Y, X, Z, W
@@ -730,9 +728,9 @@ fn memory(with_bootloader: bool) -> String {
     link ~> regs.mstore(Z, STEP + 2, val3_col)
     link ~> regs.mstore(W, STEP + 3, val4_col)
     {
-        { val4_col } in { up_to_three },
+        [ val4_col ] in [ up_to_three ],
         val1_col + Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + val4_col,
-        { X_b1 } in { six_bits }
+        [ X_b1 ] in [ six_bits ]
     }
 
     /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
@@ -751,16 +749,18 @@ fn memory(with_bootloader: bool) -> String {
 pub trait InstructionArgs: std::fmt::Debug {
     type Error: fmt::Display;
 
-    fn l(&self) -> Result<String, Self::Error>;
+    fn l(&self) -> Result<impl AsRef<str>, Self::Error>;
     fn r(&self) -> Result<Register, Self::Error>;
     fn rri(&self) -> Result<(Register, Register, u32), Self::Error>;
+    /// Returns the usual rd, rs1, rs2
     fn rrr(&self) -> Result<(Register, Register, Register), Self::Error>;
+    /// Special case used in amo* instructions, returning rd, rs2, rs1
+    fn rrr2(&self) -> Result<(Register, Register, Register), Self::Error>;
     fn ri(&self) -> Result<(Register, u32), Self::Error>;
     fn rr(&self) -> Result<(Register, Register), Self::Error>;
-    fn rrl(&self) -> Result<(Register, Register, String), Self::Error>;
-    fn rl(&self) -> Result<(Register, String), Self::Error>;
+    fn rrl(&self) -> Result<(Register, Register, impl AsRef<str>), Self::Error>;
+    fn rl(&self) -> Result<(Register, impl AsRef<str>), Self::Error>;
     fn rro(&self) -> Result<(Register, Register, u32), Self::Error>;
-    fn rrro(&self) -> Result<(Register, Register, Register, u32), Self::Error>;
     fn empty(&self) -> Result<(), Self::Error>;
 }
 
@@ -824,10 +824,7 @@ pub fn pop_register(name: &str) -> Vec<String> {
     }
 }
 
-fn process_instruction<A: InstructionArgs + ?Sized>(
-    instr: &str,
-    args: &A,
-) -> Result<Vec<String>, A::Error> {
+fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<String>, A::Error> {
     let tmp1 = Register::from("tmp1");
     let tmp2 = Register::from("tmp2");
     let tmp3 = Register::from("tmp3");
@@ -843,6 +840,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
             // relative values. But since we work on a higher abstraction level,
             // for us they are the same thing.
             if let Ok((rd, label)) = args.rl() {
+                let label = escape_label(label.as_ref());
                 only_if_no_write_to_zero(rd, format!("load_label {}, {label};", rd.addr()))
             } else {
                 let (rd, imm) = args.ri()?;
@@ -1227,6 +1225,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         // branching
         "beq" => {
             let (r1, r2, label) = args.rrl()?;
+            let label = escape_label(label.as_ref());
             vec![format!(
                 "branch_if_zero {}, {}, 0, {label};",
                 r1.addr(),
@@ -1235,10 +1234,12 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         }
         "beqz" => {
             let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
             vec![format!("branch_if_zero {}, 0, 0, {label};", r1.addr())]
         }
         "bgeu" => {
             let (r1, r2, label) = args.rrl()?;
+            let label = escape_label(label.as_ref());
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![format!(
                 "branch_if_positive {}, {}, 1, {label};",
@@ -1248,6 +1249,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         }
         "bgez" => {
             let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
             vec![
                 format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
                 format!("branch_if_positive {}, 0, 1, {label};", tmp1.addr()),
@@ -1255,6 +1257,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         }
         "bltu" => {
             let (r1, r2, label) = args.rrl()?;
+            let label = escape_label(label.as_ref());
             vec![format!(
                 "branch_if_positive {}, {}, 0, {label};",
                 r2.addr(),
@@ -1263,6 +1266,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         }
         "blt" => {
             let (r1, r2, label) = args.rrl()?;
+            let label = escape_label(label.as_ref());
             // Branch if r1 < r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![
@@ -1277,6 +1281,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         }
         "bge" => {
             let (r1, r2, label) = args.rrl()?;
+            let label = escape_label(label.as_ref());
             // Branch if r1 >= r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![
@@ -1292,6 +1297,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         "bltz" => {
             // branch if 2**31 <= r1 < 2**32
             let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
             vec![format!(
                 "branch_if_positive {}, 0, -(2**31) + 1, {label};",
                 r1.addr()
@@ -1300,6 +1306,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         "blez" => {
             // branch less or equal zero
             let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
             vec![
                 format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
                 format!("branch_if_positive 0, {}, 1, {label};", tmp1.addr()),
@@ -1308,6 +1315,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         "bgtz" => {
             // branch if 0 < r1 < 2**31
             let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
             vec![
                 format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
                 format!("branch_if_positive {}, 0, 0, {label};", tmp1.addr()),
@@ -1315,6 +1323,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         }
         "bne" => {
             let (r1, r2, label) = args.rrl()?;
+            let label = escape_label(label.as_ref());
             vec![format!(
                 "branch_if_nonzero {}, {}, {label};",
                 r1.addr(),
@@ -1323,12 +1332,14 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         }
         "bnez" => {
             let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
             vec![format!("branch_if_nonzero {}, 0, {label};", r1.addr())]
         }
 
         // jump and call
         "j" | "tail" => {
             let label = args.l()?;
+            let label = escape_label(label.as_ref());
             vec![format!("jump {label}, {};", tmp1.addr(),)]
         }
         "jr" => {
@@ -1337,9 +1348,11 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         }
         "jal" => {
             if let Ok(label) = args.l() {
+                let label = escape_label(label.as_ref());
                 vec![format!("jump {label}, 1;")]
             } else {
                 let (rd, label) = args.rl()?;
+                let label = escape_label(label.as_ref());
                 if rd.is_zero() {
                     vec![format!("jump {label}, {};", tmp1.addr())]
                 } else {
@@ -1362,6 +1375,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         }
         "call" => {
             let label = args.l()?;
+            let label = escape_label(label.as_ref());
             vec![format!("jump {label}, 1;")]
         }
         "ecall" => {
@@ -1474,19 +1488,19 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
             )
         }
         "sw" => {
-            let (r1, r2, off) = args.rro()?;
-            vec![format!("mstore {}, 0, {off}, {};", r2.addr(), r1.addr())]
+            let (r2, r1, off) = args.rro()?;
+            vec![format!("mstore {}, 0, {off}, {};", r1.addr(), r2.addr())]
         }
         "sh" => {
             // store half word (two bytes)
             // TODO this code assumes it is at least aligned on
             // a two-byte boundary
 
-            let (rs, rd, off) = args.rro()?;
+            let (r2, r1, off) = args.rro()?;
             vec![
                 format!(
                     "mload {}, {off}, {}, {};",
-                    rd.addr(),
+                    r1.addr(),
                     tmp1.addr(),
                     tmp2.addr()
                 ),
@@ -1495,12 +1509,12 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
                 format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
                 format!("xor {}, 0, 0xffffffff, {};", tmp3.addr(), tmp3.addr()),
                 format!("and {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
-                format!("and {}, 0, 0xffff, {};", rs.addr(), tmp3.addr()),
+                format!("and {}, 0, 0xffff, {};", r2.addr(), tmp3.addr()),
                 format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
                 format!("or {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
                 format!(
                     "mstore {}, {}, {off}, {};",
-                    rd.addr(),
+                    r1.addr(),
                     tmp2.addr(),
                     tmp1.addr()
                 ),
@@ -1508,11 +1522,11 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
         }
         "sb" => {
             // store byte
-            let (rs, rd, off) = args.rro()?;
+            let (r2, r1, off) = args.rro()?;
             vec![
                 format!(
                     "mload {}, {off}, {}, {};",
-                    rd.addr(),
+                    r1.addr(),
                     tmp1.addr(),
                     tmp2.addr()
                 ),
@@ -1521,12 +1535,12 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
                 format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
                 format!("xor {}, 0, 0xffffffff, {};", tmp3.addr(), tmp3.addr()),
                 format!("and {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
-                format!("and {}, 0, 0xff, {};", rs.addr(), tmp3.addr()),
+                format!("and {}, 0, 0xff, {};", r2.addr(), tmp3.addr()),
                 format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
                 format!("or {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
                 format!(
                     "mstore {}, {}, {off}, {};",
-                    rd.addr(),
+                    r1.addr(),
                     tmp2.addr(),
                     tmp1.addr()
                 ),
@@ -1537,8 +1551,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
 
         // atomic instructions
         insn if insn.starts_with("amoadd.w") => {
-            let (rd, rs2, rs1, off) = args.rrro()?;
-            assert_eq!(off, 0);
+            let (rd, rs2, rs1) = args.rrr2()?;
 
             [
                 vec![
@@ -1562,8 +1575,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
 
         insn if insn.starts_with("lr.w") => {
             // Very similar to "lw":
-            let (rd, rs, off) = args.rro()?;
-            assert_eq!(off, 0);
+            let (rd, rs) = args.rr()?;
             // TODO misaligned access should raise misaligned address exceptions
             [
                 read_args(vec![rs]),
@@ -1583,8 +1595,7 @@ fn process_instruction<A: InstructionArgs + ?Sized>(
 
         insn if insn.starts_with("sc.w") => {
             // Some overlap with "sw", but also writes 0 to rd on success
-            let (rd, rs2, rs1, off) = args.rrro()?;
-            assert_eq!(off, 0);
+            let (rd, rs2, rs1) = args.rrr2()?;
             // TODO: misaligned access should raise misaligned address exceptions
             [
                 format!("skip_if_zero {}, 0, 0, 1;", lr_sc_reservation.addr()),

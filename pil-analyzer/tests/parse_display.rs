@@ -7,7 +7,7 @@ use pretty_assertions::assert_eq;
 #[test]
 fn parse_print_analyzed() {
     // This is rather a test for the Display trait than for the analyzer.
-    let input = r#"constant %N = 65536;
+    let input = r#"    let N: int = 65536;
 public P = T.pc(2);
 namespace Bin(65536);
     col witness bla;
@@ -61,7 +61,7 @@ namespace T(65536);
     col fixed p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0] + [0]*;
     col fixed p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-    { T.pc, T.reg_write_X_A, T.reg_write_X_CNT } in 1 - T.first_step { T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT };
+    [T.pc, T.reg_write_X_A, T.reg_write_X_CNT] in 1 - T.first_step $ [T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT];
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(input, formatted);
@@ -105,15 +105,15 @@ fn intermediate_nested() {
 
 #[test]
 fn let_definitions() {
-    let input = r#"constant %r = 65536;
-namespace N(%r);
+    let input = r#"let r: int = 65536;
+namespace N(r);
     let x;
     let z: int = 2;
     let t: col = |i| i + z;
     let other = [1, z];
     let other_fun: int, fe -> (int, (int -> int)) = |i, j| (i + 7, (|k| k - i));
 "#;
-    let expected = r#"constant %r = 65536;
+    let expected = r#"    let r: int = 65536;
 namespace N(65536);
     col witness x;
     let z: int = 2;
@@ -265,7 +265,7 @@ fn parentheses_lambda() {
     "#;
     let expected = r#"namespace N(16);
     let w: -> fe = (|| 2);
-    constant x = (|i| (|| N.w()))(N.w())();
+    let x: fe = (|i| (|| N.w()))(N.w())();
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -346,11 +346,11 @@ fn expression_but_expected_constraint() {
 }
 
 #[test]
-#[should_panic = "Expected type expr but got type std::prelude::Constr."]
+#[should_panic = "Expected type expr[] but got type std::prelude::Constr[]."]
 fn constraint_but_expected_expression() {
     let input = r#"namespace N(16);
     col witness y;
-    { (N.y - 2) = 0 } in { N.y };
+    [ (N.y - 2) = 0 ] in [ N.y ];
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);
@@ -447,26 +447,21 @@ namespace Main(8);
 #[test]
 fn challenges() {
     let input = "
-    namespace std::prover(8);
-        let challenge = [];
-
     namespace Main(8);
         col fixed first = [1] + [0]*;
         col witness x;
         col witness stage(2) y;
-        let a: expr = std::prover::challenge(2, 1);
+        let a: expr = challenge(2, 1);
 
         x' = (x + 1) * (1 - first);
         y' = (x + a) * (1 - first);
     ";
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
-    let expected = r#"namespace std::prover(8);
-    let challenge = [];
-namespace Main(8);
+    let expected = r#"namespace Main(8);
     col fixed first = [1] + [0]*;
     col witness x;
     col witness stage(2) y;
-    col a = std::prover::challenge(2, 1);
+    col a = std::prelude::challenge(2, 1);
     Main.x' = (Main.x + 1) * (1 - Main.first);
     Main.y' = (Main.x + Main.a) * (1 - Main.first);
 "#;
@@ -695,13 +690,12 @@ fn namespace_no_degree() {
 namespace T(8);
     let k = X::y;
 ";
-    let expected = "namespace X(8);
+    let expected = "namespace X;
     let y: int = 7;
 namespace T(8);
     let k: int = X.y;
 ";
     let analyzed = analyze_string::<GoldilocksField>(input);
-    assert_eq!(analyzed.degree, Some(8));
     assert_eq!(expected, analyzed.to_string());
 }
 
@@ -712,12 +706,33 @@ fn find_in_prelude() {
 namespace T(8);
     let k = y;
 ";
-    let expected = "namespace std::prelude(8);
+    let expected = "namespace std::prelude;
     let y: int = 7;
 namespace T(8);
     let k: int = std::prelude::y;
 ";
     let analyzed = analyze_string::<GoldilocksField>(input);
-    assert_eq!(analyzed.degree, Some(8));
     assert_eq!(expected, analyzed.to_string());
+}
+
+#[test]
+fn reparse_generic_function_call() {
+    let input = r#"namespace X(16);
+    let<T: Add + FromLiteral> inc: T -> T = (|x| x + 1);
+namespace N(16);
+    let x: int = 7;
+    let y: int = X::inc::<int>(N.x);
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}
+
+#[test]
+fn reparse_non_function_fixed_cols() {
+    let input = r#"namespace X(16);
+    let A: int -> int = (|i| i);
+    let B: col = X.A;
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
 }

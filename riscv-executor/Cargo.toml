@@ -17,7 +17,7 @@ powdr-parser.workspace = true
 powdr-riscv-syscalls.workspace = true
 
 log = "0.4.17"
-itertools = "0.11"
+itertools = "0.13"
 num-bigint = "0.4.3"
 num-traits = "0.2.15"
 k256 = { version = "0.13.3", features = [] }

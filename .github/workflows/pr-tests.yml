@@ -155,6 +155,8 @@ jobs:
         key: ${{ runner.os }}-pilcom-node-modules
     - name: Install Rust toolchain 1.77 (with clippy and rustfmt)
       run: rustup toolchain install 1.77-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.77-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.77-x86_64-unknown-linux-gnu
+    - name: Install test dependencies
+      run: sudo apt-get install -y binutils-riscv64-unknown-elf lld
     - name: Install nightly
       run: rustup toolchain install nightly-2024-02-01-x86_64-unknown-linux-gnu
     - name: Install riscv target

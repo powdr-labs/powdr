@@ -9,6 +9,7 @@ use std::convert::fe;
 use std::convert::expr;
 use std::prover::eval;
 use std::prover::Query;
+use std::machines::byte2::Byte2;
 
 // Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 // Currently only supports "Equation 0", i.e., 256-Bit addition and multiplication.
@@ -18,6 +19,7 @@ machine Arith with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    Byte2 byte2;
     
     // The operation ID will be bit-decomposed to yield selEq[], controlling which equations are activated.
     col witness operation_id;
@@ -39,9 +41,6 @@ machine Arith with
     // Performs elliptic curve doubling of point (x1, y2).
     // Operation ID is 12 = 0b1100, i.e., we activate equations 2, 3, and 4.
     operation ec_double<12> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
-
-    let BYTE: col = |i| i & 0xff;
-    let BYTE2: col = |i| i & 0xffff;
 
     let secp_modulus = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f;
 
@@ -309,12 +308,12 @@ machine Arith with
     *
     *****/
 
-    sum(16, |i| x1[i] * CLK32[i]) + sum(16, |i| y1[i] * CLK32[16 + i]) in BYTE2;
-    sum(16, |i| x2[i] * CLK32[i]) + sum(16, |i| y2[i] * CLK32[16 + i]) in BYTE2;
-    sum(16, |i| x3[i] * CLK32[i]) + sum(16, |i| y3[i] * CLK32[16 + i]) in BYTE2;
+    link => byte2.check(sum(16, |i| x1[i] * CLK32[i]) + sum(16, |i| y1[i] * CLK32[16 + i]));
+    link => byte2.check(sum(16, |i| x2[i] * CLK32[i]) + sum(16, |i| y2[i] * CLK32[16 + i]));
+    link => byte2.check(sum(16, |i| x3[i] * CLK32[i]) + sum(16, |i| y3[i] * CLK32[16 + i]));
     // Note that for q0-q2, we only range-constrain the first 15 limbs here
-    sum(16, |i| s[i] * CLK32[i]) + sum(15, |i| q0[i] * CLK32[16 + i]) in BYTE2;
-    sum(15, |i| q1[i] * CLK32[i]) + sum(15, |i| q2[i] * CLK32[16 + i]) in BYTE2;
+    link => byte2.check(sum(16, |i| s[i] * CLK32[i]) + sum(15, |i| q0[i] * CLK32[16 + i]));
+    link => byte2.check(sum(15, |i| q1[i] * CLK32[i]) + sum(15, |i| q2[i] * CLK32[16 + i]));
 
     // The most significant limbs of q0-q2 are constrained to be 32 bits
     // In Polygon's version they are 19 bits, but that requires increasing the minimum degree
@@ -324,7 +323,7 @@ machine Arith with
     // limbs of the prime, so the result is within 48 bits, still far from overflowing the
     // Goldilocks field.
     pol witness q0_15_high, q0_15_low, q1_15_high, q1_15_low, q2_15_high, q2_15_low;
-    q0_15_high * CLK32[0] + q0_15_low * CLK32[1] + q1_15_high * CLK32[2] + q1_15_low * CLK32[3] + q2_15_high * CLK32[4] + q2_15_low * CLK32[5] in BYTE2;
+    link => byte2.check(q0_15_high * CLK32[0] + q0_15_low * CLK32[1] + q1_15_high * CLK32[2] + q1_15_low * CLK32[3] + q2_15_high * CLK32[4] + q2_15_low * CLK32[5]);
 
     fixed_inside_32_block(q0_15_high);
     fixed_inside_32_block(q0_15_low);
@@ -442,12 +441,12 @@ machine Arith with
     // while still preventing overflows: The 32-bit carry gets added to 32 48-Bit values, which can't overflow
     // the Goldilocks field.
     pol witness carry_low[3], carry_high[3];
-    { carry_low[0] } in { BYTE2 };
-    { carry_low[1] } in { BYTE2 };
-    { carry_low[2] } in { BYTE2 };
-    { carry_high[0] } in { BYTE2 };
-    { carry_high[1] } in { BYTE2 };
-    { carry_high[2] } in { BYTE2 };
+    link => byte2.check(carry_low[0]);
+    link => byte2.check(carry_low[1]);
+    link => byte2.check(carry_low[2]);
+    link => byte2.check(carry_high[0]);
+    link => byte2.check(carry_high[1]);
+    link => byte2.check(carry_high[2]);
 
     // Carries can be any integer in the range [-2**31, 2**31 - 1)
     let carry: expr[3] = array::new(3, |i| carry_high[i] * 2**16 + carry_low[i] - 2 ** 31);
