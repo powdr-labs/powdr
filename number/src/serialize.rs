@@ -141,7 +141,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{Bn254Field, Columns};
+    use crate::Bn254Field;
     use std::io::Cursor;
 
     use super::*;
@@ -161,7 +161,7 @@ mod tests {
         let polys = test_polys();
 
         serde_cbor::to_writer(&mut buf, &polys).unwrap();
-        let read_polys = Columns::read(&mut Cursor::new(buf));
+        let read_polys: Vec<(String, Vec<Bn254Field>)> = ReadWrite::read(&mut Cursor::new(buf));
 
         assert_eq!(read_polys, polys);
     }

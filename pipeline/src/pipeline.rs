@@ -25,7 +25,7 @@ use powdr_executor::{
     },
 };
 use powdr_number::{
-    write_polys_csv_file, Columns, CsvRenderMode, FieldElement, ReadWrite, VariablySizedColumns,
+    write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite, VariablySizedColumns,
 };
 use powdr_schemas::SerializedAnalyzed;
 
@@ -33,6 +33,8 @@ use crate::{
     handle_simple_queries_callback, inputs_to_query_callback, serde_data_to_query_callback,
     util::{FixedPolySet, PolySet, WitnessPolySet},
 };
+
+type Columns<T> = Vec<(String, Vec<T>)>;
 
 #[derive(Default, Clone)]
 pub struct Artifacts<T: FieldElement> {

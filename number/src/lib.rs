@@ -33,8 +33,6 @@ pub fn log2_exact(n: BigUint) -> Option<usize> {
         .filter(|zeros| n == (BigUint::from(1u32) << zeros))
 }
 
-pub type Columns<F> = Vec<(String, Vec<F>)>;
-
 #[derive(Serialize, Deserialize)]
 /// Like Columns, but each column can exist in multiple sizes
 pub struct VariablySizedColumns<F> {

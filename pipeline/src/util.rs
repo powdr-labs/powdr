@@ -1,5 +1,5 @@
 use powdr_ast::analyzed::{Analyzed, FunctionValueDefinition, Symbol};
-use powdr_number::{Columns, ReadWrite, VariablySizedColumns};
+use powdr_number::{ReadWrite, VariablySizedColumns};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{fs::File, io::BufReader, marker::PhantomData, path::Path};
 
@@ -27,7 +27,7 @@ impl<T: Serialize + DeserializeOwned> PolySet<VariablySizedColumns<T>, T> for Fi
 pub struct WitnessPolySet<T> {
     _phantom: PhantomData<T>,
 }
-impl<T: Serialize + DeserializeOwned> PolySet<Columns<T>, T> for WitnessPolySet<T> {
+impl<T: Serialize + DeserializeOwned> PolySet<Vec<(String, Vec<T>)>, T> for WitnessPolySet<T> {
     const FILE_NAME: &'static str = "commits.bin";
 
     fn get_polys(pil: &Analyzed<T>) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
