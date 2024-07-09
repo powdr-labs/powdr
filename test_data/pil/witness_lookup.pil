@@ -1,4 +1,4 @@
-constant %N = 16;
+let N: int = 16;
 
 namespace std::convert(16);
     let fe = [];
@@ -8,7 +8,7 @@ namespace std::prover(16);
         Input(int)
     }
 
-namespace Quad(%N);
+namespace Quad(N);
     col fixed id(i) { i };
     col fixed double(i) { i * 2 };
 
@@ -16,7 +16,7 @@ namespace Quad(%N);
     col witness wdouble;
     col witness quadruple;
 
-    {input, wdouble} in {id, double};
-    {wdouble, quadruple} in {id, double};
+    [input, wdouble] in [id, double];
+    [wdouble, quadruple] in [id, double];
 
-    public out = quadruple(%N-1);
+    public out = quadruple(N-1);

@@ -196,19 +196,19 @@ impl Runtime {
             "arith",
             [
                 format!(
-                    "instr affine_256 link ~> {}",
+                    "instr affine_256 link ~> {};",
                     instr_link("arith.affine_256", 3, 24, 16) // will use registers 3..27
                 ),
                 format!(
-                    "instr ec_add link ~> {}",
+                    "instr ec_add link ~> {};",
                     instr_link("arith.ec_add", 4, 32, 16) // will use registers 4..36
                 ),
                 format!(
-                    "instr ec_double link ~> {}",
+                    "instr ec_double link ~> {};",
                     instr_link("arith.ec_double", 2, 16, 16) // will use registers 2..18
                 ),
                 format!(
-                    "instr mod_256 link ~> {}",
+                    "instr mod_256 link ~> {};",
                     instr_link("arith.mod_256", 3, 24, 8) // will use registers 3..27
                 ),
             ],

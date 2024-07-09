@@ -26,6 +26,7 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
                         Item::TraitImplementation(trait_impl) => {
                             Item::TraitImplementation(trait_impl)
                         }
+                        Item::TraitDeclaration(trait_decl) => Item::TraitDeclaration(trait_decl),
                     },
                 )
             })

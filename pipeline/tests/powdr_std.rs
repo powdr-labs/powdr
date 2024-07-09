@@ -5,8 +5,9 @@ use powdr_number::{BigInt, Bn254Field, GoldilocksField};
 use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
-        evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_composite_proof,
-        gen_halo2_proof, resolve_test_file, std_analyzed, test_halo2, verify_test_file,
+        evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
+        gen_halo2_composite_proof, gen_halo2_proof, resolve_test_file, std_analyzed, test_halo2,
+        verify_test_file,
     },
     Pipeline,
 };
@@ -27,6 +28,13 @@ fn poseidon_bn254_test() {
 #[test]
 fn poseidon_gl_test() {
     let f = "std/poseidon_gl_test.asm";
+    verify_test_file(f, Default::default(), vec![]).unwrap();
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn poseidon_gl_memory_test() {
+    let f = "std/poseidon_gl_memory_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
 }
@@ -93,7 +101,7 @@ fn permutation_via_challenges_bn() {
 }
 
 #[test]
-#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation([main.z], main.permutation_constraint)\nError: FailedAssertion(\"The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!\")"]
+#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation(main.is_first, [main.z], main.alpha, main.beta, main.permutation_constraint)\nError: FailedAssertion(\"The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!\""]
 fn permutation_via_challenges_gl() {
     let f = "std/permutation_via_challenges.asm";
     Pipeline::<GoldilocksField>::default()
@@ -109,6 +117,36 @@ fn permutation_via_challenges_ext() {
     // Note that this does not actually run the second-phase witness generation, because no
     // Goldilocks backend support challenges yet. But at least it tests that the panic from
     // the previous test is not happening.
+    Pipeline::<GoldilocksField>::default()
+        .from_file(resolve_test_file(f))
+        .compute_witness()
+        .unwrap();
+}
+
+#[test]
+fn lookup_via_challenges_bn() {
+    let f = "std/lookup_via_challenges.asm";
+    test_halo2(f, Default::default());
+}
+
+#[test]
+fn lookup_via_challenges_ext() {
+    let f = "std/lookup_via_challenges_ext.asm";
+    test_halo2(f, Default::default());
+    // Note that this does not actually run the second-phase witness generation, because no
+    // Goldilocks backend support challenges yet.
+    Pipeline::<GoldilocksField>::default()
+        .from_file(resolve_test_file(f))
+        .compute_witness()
+        .unwrap();
+}
+
+#[test]
+fn lookup_via_challenges_ext_simple() {
+    let f = "std/lookup_via_challenges_ext_simple.asm";
+    test_halo2(f, Default::default());
+    // Note that this does not actually run the second-phase witness generation, because no
+    // Goldilocks backend support challenges yet.
     Pipeline::<GoldilocksField>::default()
         .from_file(resolve_test_file(f))
         .compute_witness()
@@ -323,5 +361,5 @@ fn sort() {
 #[test]
 fn btree() {
     let f = "std/btree_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    execute_test_file(f, Default::default(), vec![]).unwrap();
 }

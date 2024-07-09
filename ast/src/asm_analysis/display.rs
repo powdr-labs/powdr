@@ -6,6 +6,7 @@ use std::{
 use itertools::Itertools;
 
 use crate::{
+    asm_analysis::combine_flags,
     indent,
     parsed::{
         asm::{AbsoluteSymbolPath, Part},
@@ -19,7 +20,7 @@ use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
     DebugDirective, FunctionBody, FunctionStatement, FunctionStatements, Incompatible,
     IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, Item, LabelStatement,
-    LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Return, Rom,
+    LinkDefinition, Machine, RegisterDeclarationStatement, RegisterTy, Return, Rom,
     SubmachineDeclaration,
 };
 
@@ -61,6 +62,9 @@ impl Display for AnalysisASMFile {
                 }
                 Item::TraitImplementation(trait_impl) => {
                     write_indented_by(f, trait_impl, current_path.len())?
+                }
+                Item::TraitDeclaration(trait_decl) => {
+                    write_indented_by(f, trait_decl, current_path.len())?
                 }
             }
         }
@@ -108,15 +112,16 @@ impl Display for Machine {
     }
 }
 
-impl Display for LinkDefinitionStatement {
+impl Display for LinkDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let flag = combine_flags(self.instr_flag.clone(), self.link_flag.clone());
         write!(
             f,
             "link {}{} {};",
-            if self.flag == 1.into() {
+            if flag == 1.into() {
                 "".to_string()
             } else {
-                format!("if {} ", self.flag)
+                format!("if {flag} ")
             },
             if self.is_permutation { "~>" } else { "=>" },
             self.to

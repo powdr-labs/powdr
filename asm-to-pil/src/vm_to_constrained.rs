@@ -4,16 +4,16 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use powdr_ast::{
     asm_analysis::{
-        AssignmentStatement, Batch, DebugDirective, FunctionStatement,
-        InstructionDefinitionStatement, InstructionStatement, LabelStatement,
-        LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Rom,
+        combine_flags, AssignmentStatement, Batch, DebugDirective, FunctionStatement,
+        InstructionDefinitionStatement, InstructionStatement, LabelStatement, LinkDefinition,
+        Machine, RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
         self,
         asm::{CallableRef, InstructionBody, InstructionParams, LinkDeclaration},
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
-        ArrayExpression, BinaryOperation, BinaryOperator, Expression, FunctionCall,
+        ArrayExpression, ArrayLiteral, BinaryOperation, BinaryOperator, Expression, FunctionCall,
         FunctionDefinition, FunctionKind, LambdaExpression, MatchArm, MatchExpression, Number,
         Pattern, PilStatement, PolynomialName, SelectedExpressions, UnaryOperation, UnaryOperator,
     },
@@ -181,19 +181,29 @@ impl<T: FieldElement> VMConverter<T> {
             SourceRef::unknown(),
             SelectedExpressions {
                 selector: None,
-                expressions: self
-                    .line_lookup
-                    .iter()
-                    .map(|x| direct_reference(&x.0))
-                    .collect(),
+                expressions: Box::new(
+                    ArrayLiteral {
+                        items: self
+                            .line_lookup
+                            .iter()
+                            .map(|x| direct_reference(&x.0))
+                            .collect(),
+                    }
+                    .into(),
+                ),
             },
             SelectedExpressions {
                 selector: None,
-                expressions: self
-                    .line_lookup
-                    .iter()
-                    .map(|x| direct_reference(&x.1))
-                    .collect(),
+                expressions: Box::new(
+                    ArrayLiteral {
+                        items: self
+                            .line_lookup
+                            .iter()
+                            .map(|x| direct_reference(&x.1))
+                            .collect(),
+                    }
+                    .into(),
+                ),
             },
         ));
 
@@ -338,16 +348,20 @@ impl<T: FieldElement> VMConverter<T> {
         let inputs: Vec<_> = params
             .inputs
             .into_iter()
-            .map(|param| match param.ty {
-                Some(ty) if ty == "label" => Input::Literal(param.name, LiteralKind::Label),
-                Some(ty) if ty == "signed" => {
-                    Input::Literal(param.name, LiteralKind::SignedConstant)
+            .map(|param| {
+                match param
+                    .ty
+                    .as_ref()
+                    .map(|ty| ty.try_to_identifier().map(|s| s.as_str()))
+                {
+                    Some(Some("label")) => Input::Literal(param.name, LiteralKind::Label),
+                    Some(Some("signed")) => Input::Literal(param.name, LiteralKind::SignedConstant),
+                    Some(Some("unsigned")) => {
+                        Input::Literal(param.name, LiteralKind::UnsignedConstant)
+                    }
+                    Some(_) => panic!("Invalid param type: {}", param.ty.as_ref().unwrap()),
+                    None => Input::Register(param.name),
                 }
-                Some(ty) if ty == "unsigned" => {
-                    Input::Literal(param.name, LiteralKind::UnsignedConstant)
-                }
-                None => Input::Register(param.name),
-                Some(ty) => panic!("Invalid param type {ty}"),
             })
             .collect();
 
@@ -373,10 +387,13 @@ impl<T: FieldElement> VMConverter<T> {
                 param.index.is_none(),
                 "Cannot use array elements for instruction parameters."
             );
-            match &param.ty {
-                Some(ty) if ty == "label" || ty == "signed" || ty == "unsigned" => {
-                    literal_arg_names.push(&param.name)
-                }
+            match param
+                .ty
+                .as_ref()
+                .map(|ty| ty.try_to_identifier().map(|s| s.as_str()))
+            {
+                Some(Some("label" | "signed" | "unsigned")) => literal_arg_names.push(&param.name),
+                Some(_) => panic!("Invalid param type: {}", param.ty.as_ref().unwrap()),
                 None => {
                     if !self
                         .registers
@@ -389,7 +406,6 @@ impl<T: FieldElement> VMConverter<T> {
                         );
                     }
                 }
-                Some(ty) => panic!("Invalid param type '{ty}'"),
             }
         }
 
@@ -474,7 +490,7 @@ impl<T: FieldElement> VMConverter<T> {
         instr_flag: &str,
         instr_params: &InstructionParams,
         link_decl: LinkDeclaration,
-    ) -> LinkDefinitionStatement {
+    ) -> LinkDefinition {
         let callable: CallableRef = link_decl.link;
         let lhs = instr_params;
         let rhs = &callable.params;
@@ -520,25 +536,22 @@ impl<T: FieldElement> VMConverter<T> {
             );
         }
 
-        // link is active only if the instruction is also active
-        let flag = if link_decl.flag == 1.into() {
-            direct_reference(instr_flag)
-        } else {
-            direct_reference(instr_flag) * link_decl.flag
-        };
+        let instr_flag = direct_reference(instr_flag);
 
         // if a write register next reference (R') is used in the instruction link,
         // we must induce a tautology in the update clause (R' = R') when the
         // link is active, to allow the operation plookup to match.
+        let flag = combine_flags(Some(instr_flag.clone()), link_decl.flag.clone());
         for name in rhs_next_write_registers {
             let reg = self.registers.get_mut(&name).unwrap();
             let value = next_reference(name);
             reg.conditioned_updates.push((flag.clone(), value));
         }
 
-        LinkDefinitionStatement {
+        LinkDefinition {
             source,
-            flag,
+            instr_flag: Some(instr_flag),
+            link_flag: link_decl.flag,
             to: callable,
             is_permutation: link_decl.is_permutation,
         }
@@ -886,7 +899,7 @@ impl<T: FieldElement> VMConverter<T> {
                                 .get_mut(assign_reg)
                                 .unwrap()
                                 .push(MatchArm {
-                                    pattern: Pattern::Number(i.into()),
+                                    pattern: Pattern::Number(SourceRef::unknown(), i.into()),
                                     value: expr.clone(),
                                 });
                         }
@@ -933,7 +946,7 @@ impl<T: FieldElement> VMConverter<T> {
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
                     let mut prover_query_arms = prover_query_arms;
                     prover_query_arms.push(MatchArm {
-                        pattern: Pattern::CatchAll,
+                        pattern: Pattern::CatchAll(SourceRef::unknown()),
                         value: absolute_reference("::std::prover::Query::None"),
                     });
 
@@ -947,7 +960,7 @@ impl<T: FieldElement> VMConverter<T> {
 
                     let lambda = LambdaExpression {
                         kind: FunctionKind::Query,
-                        params: vec![Pattern::Variable("__i".to_string())],
+                        params: vec![Pattern::Variable(SourceRef::unknown(), "__i".to_string())],
                         body: Box::new(
                             MatchExpression {
                                 scrutinee,
@@ -1225,7 +1238,14 @@ fn extract_update(expr: Expression) -> (Option<String>, Expression) {
 
 #[cfg(test)]
 mod test {
-    use powdr_ast::asm_analysis::AnalysisASMFile;
+    use powdr_ast::{
+        asm_analysis::{AnalysisASMFile, Item},
+        parsed::{
+            asm::{parse_absolute_path, Part, SymbolPath},
+            types::{FunctionType, Type},
+            TraitDeclaration,
+        },
+    };
     use powdr_importer::load_dependencies_and_resolve_str;
     use powdr_number::{FieldElement, GoldilocksField};
 
@@ -1257,5 +1277,52 @@ machine Main {
 }
 ";
         parse_analyze_and_compile::<GoldilocksField>(asm);
+    }
+
+    #[test]
+    fn trait_parsing() {
+        let asm = r"
+        mod types {
+            enum DoubleOpt<T> {
+                None,
+                Some(T, T)
+            }
+
+            trait ArraySum<T> {
+                array_sum: T[4 + 1] -> DoubleOpt<T>,
+            }
+        }
+
+        machine Empty {
+            col witness w;
+            w = w * w;
+        }
+        ";
+
+        let analyzed = parse_analyze_and_compile::<GoldilocksField>(asm);
+        let arraysum = parse_absolute_path("::types::ArraySum");
+        let trait_decl = analyzed.items.get(&arraysum).unwrap();
+        if let Item::TraitDeclaration(TraitDeclaration { functions, .. }) = trait_decl {
+            assert_eq!(functions.len(), 1);
+            let func_ty = &functions.iter().next().unwrap().ty;
+            match func_ty {
+                Type::Function(FunctionType { value, .. }) => {
+                    assert_eq!(
+                        value.as_ref(),
+                        &Type::NamedType(
+                            SymbolPath::from_parts(
+                                ["types", "DoubleOpt"]
+                                    .iter()
+                                    .map(|arg| Part::Named(arg.to_string()))
+                            ),
+                            Some(vec![Type::TypeVar("T".to_string())])
+                        )
+                    );
+                }
+                _ => panic!("Expected function type"),
+            }
+        } else {
+            panic!("Expected trait declaration");
+        }
     }
 }

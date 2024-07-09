@@ -7,17 +7,17 @@ use std::{
 
 use powdr_ast::parsed::{
     asm::{
-        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, Import, LinkDeclaration,
-        Machine, MachineStatement, Module, ModuleRef, ModuleStatement, SymbolDefinition,
-        SymbolPath, SymbolValue, SymbolValueRef,
+        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Machine,
+        MachineStatement, Module, ModuleRef, ModuleStatement, SymbolDefinition, SymbolPath,
+        SymbolValue, SymbolValueRef,
     },
     folder::Folder,
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
     FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
-    MatchExpression, Pattern, PilStatement, SourceReference, StatementInsideBlock, TypedExpression,
-    UnaryOperation,
+    MatchExpression, Pattern, PilStatement, StatementInsideBlock, TraitDeclaration, TraitFunction,
+    TypedExpression, UnaryOperation,
 };
 use powdr_parser_util::{Error, SourceRef};
 
@@ -103,6 +103,15 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 }
                                 Some(Ok(SymbolValue::TypeDeclaration(enum_decl)))
                             }
+                            SymbolValue::TraitDeclaration(mut trait_decl) => {
+                                let type_vars = trait_decl.type_vars.iter().collect();
+                                for f in &mut trait_decl.functions {
+                                    canonicalize_inside_type(
+                                        &mut f.ty, &type_vars, &self.path, self.paths,
+                                    );
+                                }
+                                Some(Ok(SymbolValue::TraitDeclaration(trait_decl)))
+                            }
                         }
                         .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
                     }
@@ -120,9 +129,12 @@ impl<'a> Folder for Canonicalizer<'a> {
     fn fold_machine(&mut self, mut machine: Machine) -> Result<Machine, Self::Error> {
         for s in &mut machine.statements {
             match s {
-                MachineStatement::Submachine(_, path, _) => {
+                MachineStatement::Submachine(_, path, _, args) => {
                     let p = self.path.clone().join(path.clone());
                     *path = self.paths.get(&p).cloned().unwrap().into();
+                    for expr in args {
+                        canonicalize_inside_expression(expr, &self.path, self.paths);
+                    }
                 }
                 MachineStatement::Pil(_start, statement) => {
                     if let PilStatement::LetStatement(_, _, Some(type_scheme), expr) = statement {
@@ -146,8 +158,24 @@ impl<'a> Folder for Canonicalizer<'a> {
                         canonicalize_inside_expression(e, &self.path, self.paths);
                     }
                 }
-                _ => {}
+                MachineStatement::InstructionDeclaration(_, _, i) => {
+                    for e in i.children_mut() {
+                        canonicalize_inside_expression(e, &self.path, self.paths);
+                    }
+                }
+                MachineStatement::LinkDeclaration(_, d) => {
+                    for e in d.children_mut() {
+                        canonicalize_inside_expression(e, &self.path, self.paths);
+                    }
+                }
+                MachineStatement::RegisterDeclaration(_, _, _) => {}
+                MachineStatement::OperationDeclaration(_, _, _, _) => {}
             }
+        }
+        // canonicalize machine parameter types
+        for param in &mut machine.params.0 {
+            let p = self.path.clone().join(param.ty.clone().unwrap());
+            param.ty = Some(self.paths.get(&p).cloned().unwrap().into());
         }
 
         Ok(machine)
@@ -241,7 +269,7 @@ fn canonicalize_inside_expression(
             Expression::Reference(_, reference) => {
                 // If resolving the reference fails, we assume it is a local variable that has been checked below.
                 if let Some(n) = paths.get(&path.clone().join(reference.path.clone())) {
-                    *reference = n.relative_to(&Default::default()).into();
+                    reference.path = n.relative_to(&Default::default());
                 } else {
                     assert!(reference.path.try_to_identifier().is_some());
                 }
@@ -274,20 +302,20 @@ fn canonicalize_inside_pattern(
     paths: &'_ PathMap,
 ) {
     match pattern {
-        Pattern::Enum(name, None) => {
+        Pattern::Enum(source_ref, name, None) => {
             // TODO Currently, we treat any identifier as a variable pattern.
             // If done properly, single identifiers that resolve to enum values
             // (like a single None) should not be treated as variables.
             // This is planned to be fixed with the refactoring of path_canonicalizer,
             // where we remove the two-step approach.
             if let Some(name) = name.try_to_identifier() {
-                *pattern = Pattern::Variable(name.clone())
+                *pattern = Pattern::Variable(source_ref.clone(), name.clone())
             } else {
                 let abs = paths.get(&path.clone().join(name.clone())).unwrap();
                 *name = abs.relative_to(&Default::default()).clone();
             }
         }
-        Pattern::Enum(name, _fields) => {
+        Pattern::Enum(_, name, _fields) => {
             let abs = paths.get(&path.clone().join(name.clone())).unwrap();
             *name = abs.relative_to(&Default::default()).clone();
         }
@@ -434,7 +462,8 @@ fn check_path_internal<'a>(
                     // machines, expressions and enum variants do not expose symbols
                     SymbolValueRef::Machine(_)
                     | SymbolValueRef::Expression(_)
-                    | SymbolValueRef::TypeConstructor(_) => {
+                    | SymbolValueRef::TypeConstructor(_)
+                    | SymbolValueRef::TraitDeclaration(_) => {
                         Err(format!("symbol not found in `{location}`: `{member}`"))
                     }
                     // modules expose symbols
@@ -562,14 +591,15 @@ fn check_module(
                 .map_err(|e| SourceRef::default().with_error(e))?,
             SymbolValue::Expression(TypedExpression { e, type_scheme }) => {
                 if let Some(type_scheme) = type_scheme {
-                    check_type_scheme(&location, type_scheme, state, &Default::default())
-                        .map_err(|err| e.source_reference().with_error(err))?;
+                    check_type_scheme(&location, type_scheme, state, &Default::default())?;
                 }
                 check_expression(&location, e, state, &HashSet::default())?
             }
             SymbolValue::TypeDeclaration(enum_decl) => {
-                check_type_declaration(&location, enum_decl, state)
-                    .map_err(|e| SourceRef::default().with_error(e))?
+                check_type_declaration(&location, enum_decl, state)?
+            }
+            SymbolValue::TraitDeclaration(trait_decl) => {
+                check_trait_declaration(&location, trait_decl, state)?
             }
         }
     }
@@ -598,11 +628,19 @@ fn check_machine(
                 .with_error(format!("Duplicate name `{name}` in machine `{location}`")));
         }
     }
+    for param in &m.params.0 {
+        let path: SymbolPath = param.ty.clone().unwrap();
+        check_path(module_location.clone().join(path), state)
+            .map_err(|e| SourceRef::default().with_error(e))?
+    }
     for statement in &m.statements {
         match statement {
-            MachineStatement::Submachine(source_ref, path, _) => {
+            MachineStatement::Submachine(source_ref, path, _, args) => {
                 check_path(module_location.clone().join(path.clone()), state)
-                    .map_err(|e| source_ref.with_error(e))?
+                    .map_err(|e| source_ref.with_error(e))?;
+                args.iter().try_for_each(|expr| {
+                    check_expression(&module_location, expr, state, &local_variables)
+                })?
             }
             MachineStatement::FunctionDeclaration(_, _, _, statements) => statements
                 .iter()
@@ -610,30 +648,29 @@ fn check_machine(
                 .flat_map(free_inputs_in_expression)
                 .try_for_each(|e| check_expression(&module_location, e, state, &local_variables))?,
             MachineStatement::Pil(_, statement) => {
-                if let PilStatement::LetStatement(source_ref, _, Some(type_scheme), _) = statement {
-                    check_type_scheme(&module_location, type_scheme, state, &local_variables)
-                        .map_err(|e| source_ref.with_error(e))?;
+                if let PilStatement::LetStatement(_, _, Some(type_scheme), _) = statement {
+                    check_type_scheme(&module_location, type_scheme, state, &local_variables)?;
                 }
                 statement.children().try_for_each(|e| {
                     check_expression(&module_location, e, state, &local_variables)
                 })?
             }
-            MachineStatement::LinkDeclaration(_, LinkDeclaration { flag, link, .. }) => {
-                check_expression(&module_location, flag, state, &local_variables)?;
-                link.params.inputs_and_outputs().try_for_each(|e| {
-                    check_expression(&module_location, e, state, &local_variables)
-                })?;
+            MachineStatement::LinkDeclaration(_, d) => {
+                for e in d.children() {
+                    check_expression(&module_location, e, state, &local_variables)?;
+                }
             }
             MachineStatement::InstructionDeclaration(_, _, instr) => {
-                for link_decl in &instr.links {
-                    check_expression(&module_location, &link_decl.flag, state, &local_variables)?;
-                    link_decl
-                        .link
+                // Add the names of the typed instruction parameters since they introduce new names.
+                let mut local_variables = local_variables.clone();
+                local_variables.extend(
+                    instr
                         .params
                         .inputs_and_outputs()
-                        .try_for_each(|e| {
-                            check_expression(&module_location, e, state, &local_variables)
-                        })?;
+                        .filter_map(|p| p.ty.as_ref().map(|_| p.name.clone())),
+                );
+                for e in instr.children() {
+                    check_expression(&module_location, e, state, &local_variables)?;
                 }
             }
             _ => {}
@@ -674,7 +711,7 @@ fn check_expression(
             check_expressions(location, items, state, local_variables)
         }
         Expression::LambdaExpression(
-            source_ref,
+            _,
             LambdaExpression {
                 kind: _,
                 params,
@@ -683,9 +720,7 @@ fn check_expression(
         ) => {
             // Add the local variables, ignore collisions.
             let mut local_variables = local_variables.clone();
-            local_variables.extend(
-                check_patterns(location, params, state).map_err(|e| source_ref.with_error(e))?,
-            );
+            local_variables.extend(check_patterns(location, params, state)?);
             check_expression(location, body, state, &local_variables)
         }
         Expression::BinaryOperation(
@@ -712,14 +747,11 @@ fn check_expression(
             check_expression(location, function, state, local_variables)?;
             check_expressions(location, arguments, state, local_variables)
         }
-        Expression::MatchExpression(source_ref, MatchExpression { scrutinee, arms }) => {
+        Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
                 let mut local_variables = local_variables.clone();
-                local_variables.extend(
-                    check_pattern(location, pattern, state)
-                        .map_err(|e| source_ref.with_error(e))?,
-                );
+                local_variables.extend(check_pattern(location, pattern, state)?);
                 check_expression(location, value, state, &local_variables)
             })
         }
@@ -735,7 +767,7 @@ fn check_expression(
             check_expression(location, body, state, local_variables)?;
             check_expression(location, else_body, state, local_variables)
         }
-        Expression::BlockExpression(source_ref, BlockExpression { statements, expr }) => {
+        Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
             let mut local_variables = local_variables.clone();
             for statement in statements {
                 match statement {
@@ -746,18 +778,17 @@ fn check_expression(
                         if let Some(value) = value {
                             check_expression(location, value, state, &local_variables)?;
                         }
-                        // TODO we need a much more fine-grained source ref here.
-                        local_variables.extend(
-                            check_pattern(location, pattern, state)
-                                .map_err(|e| source_ref.with_error(e))?,
-                        );
+                        local_variables.extend(check_pattern(location, pattern, state)?);
                     }
                     StatementInsideBlock::Expression(expr) => {
                         check_expression(location, expr, state, &local_variables)?;
                     }
                 }
             }
-            check_expression(location, expr, state, &local_variables)
+            match expr {
+                Some(expr) => check_expression(location, expr, state, &local_variables),
+                None => Ok(()),
+            }
         }
     }
 }
@@ -780,10 +811,10 @@ fn check_pattern<'b>(
     location: &AbsoluteSymbolPath,
     pattern: &'b Pattern,
     state: &mut State<'_>,
-) -> Result<Box<dyn Iterator<Item = String> + 'b>, String> {
+) -> Result<Box<dyn Iterator<Item = String> + 'b>, Error> {
     match pattern {
-        Pattern::Variable(n) => return Ok(Box::new(once(n.clone()))),
-        Pattern::Enum(name, fields) => {
+        Pattern::Variable(_, n) => return Ok(Box::new(once(n.clone()))),
+        Pattern::Enum(source_ref, name, fields) => {
             // The parser cannot distinguish between Enum and Variable patterns.
             // So if "name" is a single identifier that does not resolve to an enum variant,
             // it is a variable pattern.
@@ -795,7 +826,8 @@ fn check_pattern<'b>(
                     return Ok(Box::new(once(identifier.clone())));
                 }
             }
-            check_path_try_prelude(location.clone(), name.clone(), state)?
+            check_path_try_prelude(location.clone(), name.clone(), state)
+                .map_err(|e| source_ref.with_error(e))?;
         }
         _ => {}
     }
@@ -806,7 +838,7 @@ fn check_patterns<'b>(
     location: &AbsoluteSymbolPath,
     patterns: impl IntoIterator<Item = &'b Pattern>,
     state: &mut State<'_>,
-) -> Result<Box<dyn Iterator<Item = String> + 'b>, String> {
+) -> Result<Box<dyn Iterator<Item = String> + 'b>, Error> {
     let mut result: Box<dyn Iterator<Item = String>> = Box::new(empty());
     for p in patterns {
         result = Box::new(result.chain(check_pattern(location, p, state)?));
@@ -818,15 +850,17 @@ fn check_type_declaration(
     location: &AbsoluteSymbolPath,
     enum_decl: &EnumDeclaration<Expression>,
     state: &mut State<'_>,
-) -> Result<(), String> {
-    enum_decl.variants.iter().try_fold(
-        BTreeSet::default(),
-        |mut acc, EnumVariant { name, .. }| {
+) -> Result<(), Error> {
+    enum_decl
+        .variants
+        .iter()
+        .try_fold(BTreeSet::default(), |mut acc, EnumVariant { name, .. }| {
             acc.insert(name.clone())
                 .then_some(acc)
                 .ok_or(format!("Duplicate variant `{name}` in enum `{location}`"))
-        },
-    )?;
+        })
+        // TODO enum declaration should have source reference.
+        .map_err(|e| SourceRef::default().with_error(e))?;
 
     let type_vars = enum_decl.type_vars.vars().collect::<HashSet<_>>();
 
@@ -843,7 +877,7 @@ fn check_type_scheme(
     type_scheme: &TypeScheme<Expression>,
     state: &mut State<'_>,
     local_variables: &HashSet<String>,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     let type_vars = type_scheme.vars.vars().collect::<HashSet<_>>();
     check_type(
         location,
@@ -860,19 +894,48 @@ fn check_type(
     state: &mut State<'_>,
     type_vars: &HashSet<&String>,
     local_variables: &HashSet<String>,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     for p in ty.contained_named_types() {
         if let Some(id) = p.try_to_identifier() {
             if type_vars.contains(id) {
                 continue;
             }
         }
-        check_path_try_prelude(location.clone(), p.clone(), state)?
+        check_path_try_prelude(location.clone(), p.clone(), state)
+            .map_err(|e| SourceRef::unknown().with_error(e))?;
     }
-    // TODO once the return type of this function changes to Error,
-    // we can keep the erorr here.
-    ty.children().try_for_each(|e| {
-        check_expression(location, e, state, local_variables).map_err(|e| e.message().to_string())
+    ty.children()
+        .try_for_each(|e| check_expression(location, e, state, local_variables))
+}
+
+fn check_trait_declaration(
+    location: &AbsoluteSymbolPath,
+    trait_decl: &TraitDeclaration<Expression>,
+    state: &mut State<'_>,
+) -> Result<(), Error> {
+    trait_decl
+        .functions
+        .iter()
+        .try_fold(
+            BTreeSet::default(),
+            |mut acc, TraitFunction { name, .. }| {
+                acc.insert(name.clone()).then_some(acc).ok_or(format!(
+                    "Duplicate method `{name}` defined in trait `{location}`"
+                ))
+            },
+        )
+        .map_err(|e| SourceRef::unknown().with_error(e))?;
+
+    let type_vars = trait_decl.type_vars.iter().collect();
+
+    trait_decl.functions.iter().try_for_each(|function| {
+        check_type(
+            location,
+            &function.ty,
+            state,
+            &type_vars,
+            &Default::default(),
+        )
     })
 }
 
@@ -1022,5 +1085,10 @@ mod tests {
             "prelude_non_local",
             Err("symbol not found in `::module`: `x`"),
         )
+    }
+
+    #[test]
+    fn instruction() {
+        expect("instruction", Ok(()))
     }
 }

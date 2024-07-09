@@ -10,15 +10,15 @@ use std::{
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-        Identity, IdentityKind, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol,
-        SymbolKind,
+        self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
+        FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
+        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
+        self,
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        SelectedExpressions,
     },
 };
 use powdr_number::{DegreeType, FieldElement};
@@ -30,14 +30,13 @@ use crate::{
 };
 
 pub fn condense<T: FieldElement>(
-    degree: Option<DegreeType>,
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
-    identities: &[Identity<Expression>],
+    identities: &[Identity<parsed::SelectedExpressions<Expression>>],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
-    let mut condenser = Condenser::new(&definitions, degree);
+    let mut condenser = Condenser::new(&definitions);
 
     // Counter needed to re-assign identity IDs.
     let mut counters = Counters::default();
@@ -53,7 +52,7 @@ pub fn condense<T: FieldElement>(
                 let mut namespace =
                     AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
                 namespace.pop();
-                condenser.set_namespace(namespace);
+                condenser.set_namespace_and_degree(namespace, definitions[name].0.degree);
             }
             let statement = match s {
                 StatementIdentifier::Identity(index) => {
@@ -144,7 +143,6 @@ pub fn condense<T: FieldElement>(
         reference.poly_id = Some(symbol.into());
     }
     Analyzed {
-        degree,
         definitions,
         public_declarations,
         intermediate_columns,
@@ -196,7 +194,7 @@ impl<Expr> IdentityWithoutID<Expr> {
         }
     }
 
-    pub fn into_identity(self, id: u64) -> Identity<Expr> {
+    pub fn into_identity(self, id: u64) -> Identity<SelectedExpressions<Expr>> {
         Identity {
             id,
             kind: self.kind,
@@ -208,10 +206,7 @@ impl<Expr> IdentityWithoutID<Expr> {
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
-    pub fn new(
-        symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        degree: Option<DegreeType>,
-    ) -> Self {
+    pub fn new(symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
         let next_witness_id = symbols
             .values()
             .filter_map(|(sym, _)| match sym.kind {
@@ -223,8 +218,8 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             .max()
             .unwrap_or_default();
         Self {
-            degree,
             symbols,
+            degree: None,
             symbol_values: Default::default(),
             namespace: Default::default(),
             next_witness_id,
@@ -234,7 +229,10 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         }
     }
 
-    pub fn condense_identity(&mut self, identity: &'a Identity<Expression>) {
+    pub fn condense_identity(
+        &mut self,
+        identity: &'a Identity<parsed::SelectedExpressions<Expression>>,
+    ) {
         if identity.kind == IdentityKind::Polynomial {
             let expr = identity.expression_for_poly_id();
             evaluator::evaluate(expr, self)
@@ -264,8 +262,13 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Sets the current namespace which will be used for newly generated witness columns.
-    pub fn set_namespace(&mut self, namespace: AbsoluteSymbolPath) {
+    pub fn set_namespace_and_degree(
+        &mut self,
+        namespace: AbsoluteSymbolPath,
+        degree: Option<DegreeType>,
+    ) {
         self.namespace = namespace;
+        self.degree = degree;
     }
 
     /// Returns the witness columns generated since the last call to this function.
@@ -280,18 +283,14 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 
     fn condense_selected_expressions(
         &mut self,
-        sel_expr: &'a SelectedExpressions<Expression>,
+        sel_expr: &'a parsed::SelectedExpressions<Expression>,
     ) -> SelectedExpressions<AlgebraicExpression<T>> {
         SelectedExpressions {
             selector: sel_expr
                 .selector
                 .as_ref()
                 .map(|expr| self.condense_to_algebraic_expression(expr)),
-            expressions: sel_expr
-                .expressions
-                .iter()
-                .map(|expr| self.condense_to_algebraic_expression(expr))
-                .collect(),
+            expressions: self.condense_to_array_of_algebraic_expressions(&sel_expr.expressions),
         }
     }
 
@@ -322,7 +321,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
                     _ => panic!("Expected expression but got {item}"),
                 })
                 .collect(),
-            _ => panic!("Expected array of algebraic expressions, but got {result}"),
+            _ => panic!("Expected array of algebraic expressions but got {result}"),
         }
     }
 }
@@ -369,6 +368,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             stage: None,
             kind: SymbolKind::Poly(PolynomialType::Committed),
             length: None,
+            degree: Some(self.degree.unwrap()),
         };
         self.next_witness_id += 1;
         self.all_new_witness_names.insert(name.clone());
@@ -486,11 +486,11 @@ fn to_constraint<T: FieldElement>(
             IdentityWithoutID {
                 kind: IdentityKind::Connect,
                 source,
-                left: SelectedExpressions {
+                left: analyzed::SelectedExpressions {
                     selector: None,
                     expressions: from.into_iter().map(to_expr).collect(),
                 },
-                right: SelectedExpressions {
+                right: analyzed::SelectedExpressions {
                     selector: None,
                     expressions: to.into_iter().map(to_expr).collect(),
                 },

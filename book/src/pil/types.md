@@ -49,7 +49,7 @@ The integer value is converted to a field element during evaluation, but it has 
 the field modulus.
 
 If you reference such a symbol, the type of the reference is `expr`.
-A byte constraint is as easy as `{ X } in { byte }`, since the expected types in plookup columns is `expr`.
+A byte constraint is as easy as `[ X ] in [ byte ]`, since the expected types in plookup columns is `expr`.
 The downside is that you cannot evaluate columns as functions. If you want to do that, you either have to assign
 a copy to an `int -> int` symbol: `let byte_f: int -> int = |i| i & 0xff; let byte: col = byte_f;`.
 Or you can use the built-in function `std::prover::eval` if you want to do that inside a prover query or hint.
@@ -61,7 +61,7 @@ All other symbols use their declared type both for their value and for reference
 `FromLiteral`:
 Implemented by `int`, `fe`, `expr`. The type of a number literal needs to implement `FromLiteral`.
 
-``Add``: Implemented by `int`, `fe`, `expr`, `T[]`, `string`. Used by `<T: Add> +: T, T -> T` (binary plus).
+`Add`: Implemented by `int`, `fe`, `expr`, `T[]`, `string`. Used by `<T: Add> +: T, T -> T` (binary plus).
 
 `Sub`:
 Implemented by `int`, `fe`, `expr`. Used by `<T: Sub> -: T, T -> T` (binary minus).

@@ -7,7 +7,7 @@
  */
 
 include "global.pil";
-namespace Mem(%N);
+namespace Mem(N);
 
     pol INCS = Global.STEP + 1;
     pol ISNOTLAST = (1 - Global.LLAST);
@@ -21,7 +21,7 @@ namespace Mem(%N);
     // The list is sorted by [addr, step]
 
     lastAccess * (lastAccess - 1) = 0;
-    ISNOTLAST { lastAccess*(  addr' - addr - (step'-step) )  +   (step'-step) } in INCS;
+    ISNOTLAST $ [ lastAccess*(  addr' - addr - (step'-step) )  +   (step'-step) ] in INCS;
     (1 - lastAccess) * (addr' - addr) = 0;
 
     mOp * (mOp -1) = 0;

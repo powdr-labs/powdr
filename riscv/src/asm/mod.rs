@@ -8,7 +8,7 @@ use powdr_asm_utils::{
     data_storage::store_data_objects,
     parser::parse_asm,
     reachability::{self, symbols_in_args},
-    utils::{argument_to_escaped_symbol, argument_to_number, expression_to_number},
+    utils::{argument_to_number, argument_to_symbol, expression_to_number},
     Architecture,
 };
 use powdr_number::FieldElement;
@@ -36,8 +36,6 @@ struct AsmProgram {
 const START_FUNCTION: &str = "__runtime_start";
 
 impl RiscVProgram for AsmProgram {
-    type Args = [Argument];
-
     fn take_source_files_info(&mut self) -> impl Iterator<Item = SourceFileInfo> {
         self.file_ids.iter().map(|(id, dir, file)| SourceFileInfo {
             id: *id as u32,
@@ -52,7 +50,7 @@ impl RiscVProgram for AsmProgram {
 
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = code_gen::Statement<&str, Self::Args>> {
+    ) -> impl Iterator<Item = code_gen::Statement<&str, &[Argument]>> {
         self.statements.iter().filter_map(process_statement)
     }
 
@@ -61,13 +59,13 @@ impl RiscVProgram for AsmProgram {
     }
 }
 
-impl InstructionArgs for [Argument] {
+impl InstructionArgs for &[Argument] {
     type Error = &'static str;
 
-    fn l(&self) -> Result<String, &'static str> {
+    fn l(&self) -> Result<&str, &'static str> {
         const ERR: &str = "Expected: label";
         match self {
-            [l] => Ok(argument_to_escaped_symbol(l).ok_or(ERR)?),
+            [l] => Ok(argument_to_symbol(l).ok_or(ERR)?),
             _ => Err(ERR),
         }
     }
@@ -91,11 +89,15 @@ impl InstructionArgs for [Argument] {
 
     fn rrr(&self) -> Result<(Register, Register, Register), &'static str> {
         match self {
-            [Argument::Register(r1), Argument::Register(r2), Argument::Register(r3)] => {
-                Ok((*r1, *r2, *r3))
-            }
+            [Argument::Register(r1), Argument::Register(r2), Argument::Register(r3)
+            | Argument::RegOffset(None | Some(Expression::Number(0)), r3)] => Ok((*r1, *r2, *r3)),
             _ => Err("Expected: register, register, register"),
         }
+    }
+
+    fn rrr2(&self) -> Result<(Register, Register, Register), &'static str> {
+        // When reading from assembly, this is identical to rrr
+        self.rrr()
     }
 
     fn ri(&self) -> Result<(Register, u32), &'static str> {
@@ -108,61 +110,44 @@ impl InstructionArgs for [Argument] {
 
     fn rr(&self) -> Result<(Register, Register), &'static str> {
         match self {
-            [Argument::Register(r1), Argument::Register(r2)] => Ok((*r1, *r2)),
+            [Argument::Register(r1), Argument::Register(r2)
+            | Argument::RegOffset(None | Some(Expression::Number(0)), r2)] => Ok((*r1, *r2)),
             _ => Err("Expected: register, register"),
         }
     }
 
-    fn rrl(&self) -> Result<(Register, Register, String), &'static str> {
+    fn rrl(&self) -> Result<(Register, Register, &str), &'static str> {
         const ERR: &str = "Expected: register, register, label";
         match self {
             [Argument::Register(r1), Argument::Register(r2), l] => {
-                Ok((*r1, *r2, argument_to_escaped_symbol(l).ok_or(ERR)?))
+                Ok((*r1, *r2, argument_to_symbol(l).ok_or(ERR)?))
             }
             _ => Err(ERR),
         }
     }
 
-    fn rl(&self) -> Result<(Register, String), &'static str> {
+    fn rl(&self) -> Result<(Register, &str), &'static str> {
         const ERR: &str = "Expected: register, label";
         match self {
-            [Argument::Register(r1), l] => Ok((*r1, argument_to_escaped_symbol(l).ok_or(ERR)?)),
+            [Argument::Register(r1), l] => Ok((*r1, argument_to_symbol(l).ok_or(ERR)?)),
             _ => Err(ERR),
         }
     }
 
     fn rro(&self) -> Result<(Register, Register, u32), &'static str> {
-        if let [Argument::Register(r1), Argument::RegOffset(off, r2)] = self {
-            if let Some(off) = expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0)))
-            {
-                return Ok((*r1, *r2, off));
-            }
-        }
-        if let [Argument::Register(r1), Argument::Expression(off)] = self {
-            if let Some(off) = expression_to_number(off) {
-                // If the register is not specified, it defaults to x0
-                return Ok((*r1, Register::new(0), off));
-            }
-        }
+        const ERR: &str = "Expected: register, offset(register)";
 
-        Err("Expected: register, offset(register)")
-    }
-
-    fn rrro(&self) -> Result<(Register, Register, Register, u32), &'static str> {
-        if let [Argument::Register(r1), Argument::Register(r2), Argument::RegOffset(off, r3)] = self
-        {
-            if let Some(off) = expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0)))
-            {
-                return Ok((*r1, *r2, *r3, off));
+        match self {
+            [Argument::Register(r1), Argument::RegOffset(off, r2)] => Ok((
+                *r1,
+                *r2,
+                expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0))).ok_or(ERR)?,
+            )),
+            [Argument::Register(r1), Argument::Expression(off)] => {
+                Ok((*r1, Register::new(0), expression_to_number(off).ok_or(ERR)?))
             }
+            _ => Err(ERR),
         }
-        if let [Argument::Register(r1), Argument::Register(r2), Argument::Expression(off)] = self {
-            if let Some(off) = expression_to_number(off) {
-                // If the register is not specified, it defaults to x0
-                return Ok((*r1, *r2, Register::new(0), off));
-            }
-        }
-        Err("Expected: register, register, offset(register)")
     }
 
     fn empty(&self) -> Result<(), &'static str> {
@@ -380,7 +365,7 @@ fn substitute_symbols_with_values(
     statements
 }
 
-fn process_statement(s: &Statement) -> Option<code_gen::Statement<&str, [Argument]>> {
+fn process_statement(s: &Statement) -> Option<code_gen::Statement<&str, &[Argument]>> {
     match s {
         Statement::Label(l) => Some(code_gen::Statement::Label(l)),
         Statement::Directive(directive, args) => match (directive.as_str(), &args[..]) {

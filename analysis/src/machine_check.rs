@@ -6,8 +6,8 @@ use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
         FunctionBody, FunctionStatements, FunctionSymbol, InstructionDefinitionStatement,
-        InstructionStatement, Item, LabelStatement, LinkDefinitionStatement, Machine,
-        OperationSymbol, RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
+        InstructionStatement, Item, LabelStatement, LinkDefinition, Machine, OperationSymbol,
+        RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
     },
     parsed::{
         self,
@@ -75,19 +75,27 @@ impl TypeChecker {
                         link,
                         is_permutation,
                     },
-                ) => links.push(LinkDefinitionStatement {
+                ) => links.push(LinkDefinition {
                     source,
-                    flag,
+                    instr_flag: None,
+                    link_flag: flag,
                     to: link,
                     is_permutation,
                 }),
                 MachineStatement::Pil(_source, statement) => {
                     pil.push(statement);
                 }
-                MachineStatement::Submachine(_, ty, name) => {
+                MachineStatement::Submachine(_, ty, name, args) => {
+                    args.iter().for_each(|arg| {
+                        if arg.try_to_identifier().is_none() {
+                            errors
+                                .push(format!("submachine argument not a machine instance: {arg}"))
+                        }
+                    });
                     submachines.push(SubmachineDeclaration {
                         name,
                         ty: AbsoluteSymbolPath::default().join(ty),
+                        args,
                     });
                 }
                 MachineStatement::FunctionDeclaration(source, name, params, statements) => {
@@ -261,6 +269,7 @@ impl TypeChecker {
             latch,
             operation_id,
             call_selectors,
+            params: machine.params,
             pc: registers
                 .iter()
                 .enumerate()
@@ -331,6 +340,12 @@ impl TypeChecker {
                             res.insert(
                                 ctx.clone().with_part(&name),
                                 Item::TypeDeclaration(enum_decl),
+                            );
+                        }
+                        asm::SymbolValue::TraitDeclaration(trait_decl) => {
+                            res.insert(
+                                ctx.clone().with_part(&name),
+                                Item::TraitDeclaration(trait_decl),
                             );
                         }
                     }
