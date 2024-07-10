@@ -82,13 +82,10 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             .zip_eq(verification_keys.into_iter())
             .map(|((machine_name, pil), verification_key)| {
                 // Set up readers for the setup and verification key
-                let mut setup_cursor = setup_bytes
-                    .as_ref()
-                    .map(|setup_bytes| Cursor::new(setup_bytes));
+                let mut setup_cursor = setup_bytes.as_ref().map(Cursor::new);
                 let setup = setup_cursor.as_mut().map(|cursor| cursor as &mut dyn Read);
 
-                let mut verification_key_cursor =
-                    verification_key.as_ref().map(|vk| Cursor::new(vk));
+                let mut verification_key_cursor = verification_key.as_ref().map(Cursor::new);
                 let verification_key = verification_key_cursor
                     .as_mut()
                     .map(|cursor| cursor as &mut dyn Read);
