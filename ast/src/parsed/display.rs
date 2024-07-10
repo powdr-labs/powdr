@@ -625,28 +625,23 @@ impl<E: Display> EnumDeclaration<E> {
 
 impl<E: Display> Display for TraitImplementation<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let type_vars = self
-            .type_scheme
-            .as_ref()
-            .map_or_else(Default::default, |scheme| {
-                if scheme.vars.is_empty() {
-                    Default::default()
-                } else {
-                    format!("<{}>", scheme.vars)
-                }
-            });
-        let trait_vars = self
-            .type_scheme
-            .as_ref()
-            .map_or_else(Default::default, |scheme| {
-                if scheme.types.is_empty() {
-                    Default::default()
-                } else {
-                    let formatted_elements: Vec<String> =
-                        scheme.types.iter().map(|t| format!("{t}")).collect();
-                    format!("<{}>", formatted_elements.join(", "))
-                }
-            });
+        let type_vars = if self.type_scheme.vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_scheme.vars)
+        };
+
+        let trait_vars = if self.type_scheme.types.is_empty() {
+            Default::default()
+        } else {
+            let formatted_elements: Vec<String> = self
+                .type_scheme
+                .types
+                .iter()
+                .map(|t| format!("{t}"))
+                .collect();
+            format!("<{}>", formatted_elements.join(", "))
+        };
 
         write!(
             f,

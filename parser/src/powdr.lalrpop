@@ -33,7 +33,7 @@ ModuleStatement: ModuleStatement = {
             name: <>.name.clone(),
             value: SymbolValue::TypeDeclaration(<>),
         }),
-    <ImplDeclaration> => ModuleStatement::TraitImplementation(<>),
+    <TraitImplementation> => ModuleStatement::TraitImplementation(<>),
     <TraitDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
             name: <>.name.clone(),
             value: SymbolValue::TraitDeclaration(<>),
@@ -119,7 +119,7 @@ pub PilStatement = {
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
-    <start:@L> <impl_:ImplDeclaration> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
+    <start:@L> <impl_:TraitImplementation> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
     <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
     PlookupIdentityStatement,
     PermutationIdentityStatement,
@@ -683,13 +683,12 @@ PatternList: Vec<Pattern> = {
 
 // ---------------------------- Trait/Impl Declaration -----------------------------
 
-GenericTraitName: (String, Option<TraitScheme<Expression>>) = {
-    <name:Identifier> => (name, None),
-    <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <types:("<" <TypeTermList> ">")> =>
-        (name, Some(TraitScheme{ vars: vars.unwrap_or_default(), types }))
+GenericTraitName: (SymbolPath, TraitScheme<Expression>) = {
+    <vars:("<" <TypeVarBounds> ">")> <name:SymbolPath> <types:("<" <TypeTermList> ">")> =>
+        (name, TraitScheme{ vars, types })
 }
 
-ImplDeclaration: TraitImplementation<Expression> = {
+TraitImplementation: TraitImplementation<Expression> = {
     "impl" <type_scheme: GenericTraitName> "{" <functions:ImplFunctions> "}" => TraitImplementation { name: type_scheme.0, type_scheme: type_scheme.1, functions }
 }
 

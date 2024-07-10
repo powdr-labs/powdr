@@ -491,7 +491,7 @@ namespace N(2);
         let expected = r#"
     impl<T> Iterator<ArrayIterator<T>, T> {
         next: (|it| if it.pos >= 7 { (it, none) } else { some((increment(it), it.arr[it.pos])) }),
-        }"#;
+    }"#;
 
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(expected.trim(), printed.trim());

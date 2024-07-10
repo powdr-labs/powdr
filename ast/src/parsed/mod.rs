@@ -144,18 +144,6 @@ impl PilStatement {
                         .map(move |v| (name, Some(&v.name), SymbolCategory::TypeConstructor)),
                 ),
             ),
-            PilStatement::TraitImplementation(
-                _,
-                TraitImplementation {
-                    name, functions, ..
-                },
-            ) => Box::new(
-                once((name, None, SymbolCategory::Type)).chain(
-                    functions
-                        .iter()
-                        .map(move |m| (name, Some(&m.name), SymbolCategory::Value)),
-                ),
-            ),
             PilStatement::TraitDeclaration(
                 _,
                 TraitDeclaration {
@@ -180,7 +168,8 @@ impl PilStatement {
             | PilStatement::PlookupIdentity(_, _, _)
             | PilStatement::PermutationIdentity(_, _, _)
             | PilStatement::ConnectIdentity(_, _, _)
-            | PilStatement::Expression(_, _) => Box::new(empty()),
+            | PilStatement::Expression(_, _)
+            | PilStatement::TraitImplementation(_, _) => Box::new(empty()),
         }
     }
 }
@@ -340,8 +329,8 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TraitImplementation<Expr> {
-    pub name: String,
-    pub type_scheme: Option<TraitScheme<Expr>>,
+    pub name: SymbolPath,
+    pub type_scheme: TraitScheme<Expr>,
     pub functions: Vec<NamedExpression<Expr>>,
 }
 
