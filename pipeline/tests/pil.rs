@@ -2,10 +2,7 @@
 use powdr_number::Bn254Field;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::test_util::{
-    assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
-    assert_proofs_fail_for_invalid_witnesses_halo2,
-    assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, gen_halo2_composite_proof,
-    test_halo2, test_plonky3, verify_test_file,
+    assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark, assert_proofs_fail_for_invalid_witnesses_halo2, assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, gen_estark_proof_with_backend_variant, test_halo2, test_halo2_with_backend_variant, test_plonky3, verify_test_file, BackendVariant
 };
 
 use test_log::test;
@@ -312,7 +309,8 @@ fn different_degrees() {
     let f = "pil/different_degrees.pil";
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
-    gen_halo2_composite_proof(f, vec![]);
+    test_halo2_with_backend_variant(f, vec![], BackendVariant::Composite);
+    gen_estark_proof_with_backend_variant(f, vec![], BackendVariant::Composite);
 }
 
 #[test]
