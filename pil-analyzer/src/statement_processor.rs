@@ -7,7 +7,6 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     Expression, TypeConstructor, TypeDeclaration as TypeDeclarationAnalyzed,
 };
-use powdr_ast::parsed::TypedExpression;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
@@ -15,6 +14,7 @@ use powdr_ast::parsed::{
     PilStatement, PolynomialName, SelectedExpressions, StructDeclaration, TraitDeclaration,
     TraitFunction, TypeDeclaration as TypeDeclarationParsed,
 };
+use powdr_ast::parsed::{ArrayExpression, TypedExpression};
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
 
@@ -453,152 +453,216 @@ where
             degree: self.degree,
         };
 
-        if let Some(FunctionDefinition::TypeDeclaration(TypeDeclarationParsed::Enum(enum_decl))) =
-            value
-        {
-            // For enums, we add PILItems both for the enum itself and also for all
-            // its type constructors.
-            assert_eq!(symbol_kind, SymbolKind::Other());
-            let enum_decl = self.process_enum_declaration(enum_decl);
-            let shared_enum_decl = Arc::new(enum_decl.clone());
-            let var_items = enum_decl.variants.iter().map(|variant| {
-                let var_symbol = Symbol {
-                    id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
-                    source: source.clone(),
-                    absolute_name: self
-                        .driver
-                        .resolve_namespaced_decl(&[&name, &variant.name])
-                        .to_dotted_string(),
-                    stage: None,
-                    kind: SymbolKind::Other(),
-                    length: None,
-                    degree: None,
-                };
-                let value = FunctionValueDefinition::TypeConstructor(TypeConstructor::Enum(
-                    shared_enum_decl.clone(),
-                    variant.clone(),
-                ));
-                PILItem::Definition(var_symbol, Some(value))
-            });
-            return iter::once(PILItem::Definition(
-                symbol,
-                Some(FunctionValueDefinition::TypeDeclaration(
-                    TypeDeclarationAnalyzed::Enum(enum_decl.clone()),
-                )),
-            ))
-            .chain(var_items)
-            .collect();
-        } else if let Some(FunctionDefinition::TypeDeclaration(TypeDeclarationParsed::Struct(
-            struct_decl,
-        ))) = value
-        {
-            assert_eq!(symbol_kind, SymbolKind::Other());
-            let struct_decl = self.process_struct_declaration(struct_decl);
-            let shared_struct_decl = Arc::new(struct_decl.clone());
-            let field_items = struct_decl.fields.iter().map(|(field_name, ty)| {
-                let var_symbol = Symbol {
-                    id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
-                    source: source.clone(),
-                    absolute_name: self
-                        .driver
-                        .resolve_namespaced_decl(&[&name, &field_name])
-                        .to_dotted_string(),
-                    stage: None,
-                    kind: SymbolKind::Other(),
-                    length: None,
-                    degree: None,
-                };
-                let value = FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
-                    shared_struct_decl.clone(),
-                    (field_name.clone(), ty.clone()),
-                ));
-                PILItem::Definition(var_symbol, Some(value))
-            });
+        match value {
+            Some(value) => match value {
+                FunctionDefinition::TypeDeclaration(TypeDeclarationParsed::Enum(enum_decl)) => {
+                    assert_eq!(symbol_kind, SymbolKind::Other());
+                    self.handle_enum_declaration(source, name, symbol, enum_decl)
+                }
+                FunctionDefinition::TypeDeclaration(TypeDeclarationParsed::Struct(struct_decl)) => {
+                    self.handle_struct_declaration(source, name, symbol, struct_decl)
+                }
+                FunctionDefinition::TraitDeclaration(trait_decl) => {
+                    self.handle_trait_declaration(source, name, symbol, trait_decl)
+                }
+                FunctionDefinition::Expression(expr) => {
+                    self.handle_expression_symbol(symbol_kind, symbol, type_scheme, expr)
+                }
+                FunctionDefinition::Array(value) => {
+                    self.handle_array_symbol(symbol, type_scheme, value)
+                }
+            },
+            None => vec![PILItem::Definition(symbol, None)],
+        }
+    }
 
-            return iter::once(PILItem::Definition(
-                symbol,
-                Some(FunctionValueDefinition::TypeDeclaration(
-                    TypeDeclarationAnalyzed::Struct(struct_decl.clone()),
-                )),
-            ))
-            .chain(field_items)
+    fn handle_enum_declaration(
+        &mut self,
+        source: SourceRef,
+        name: String,
+        symbol: Symbol,
+        enum_decl: EnumDeclaration<parsed::Expression>,
+    ) -> Vec<PILItem> {
+        let enum_decl = self.process_enum_declaration(enum_decl);
+        let shared_enum_decl = Arc::new(enum_decl.clone());
+
+        let inner_items = enum_decl
+            .variants
+            .iter()
+            .map(|variant| {
+                (
+                    vec![name.clone(), variant.name.clone()],
+                    FunctionValueDefinition::TypeConstructor(TypeConstructor::Enum(
+                        shared_enum_decl.clone(),
+                        variant.clone(),
+                    )),
+                )
+            })
             .collect();
-        } else if let Some(FunctionDefinition::TraitDeclaration(trait_decl)) = value {
-            let trait_decl = self.process_trait_declaration(trait_decl);
-            let shared_trait_decl = Arc::new(trait_decl.clone());
-            let trait_functions = trait_decl.functions.iter().map(|function| {
-                let f_symbol = Symbol {
-                    id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
-                    source: source.clone(),
-                    absolute_name: self
-                        .driver
-                        .resolve_namespaced_decl(&[&name, &function.name])
-                        .to_dotted_string(),
-                    stage: None,
-                    kind: SymbolKind::Other(),
-                    length: None,
-                    degree: None,
-                };
-                let value = FunctionValueDefinition::TraitFunction(
-                    shared_trait_decl.clone(),
-                    function.clone(),
-                );
-                PILItem::Definition(f_symbol, Some(value))
-            });
-            return iter::once(PILItem::Definition(
-                symbol,
-                Some(FunctionValueDefinition::TraitDeclaration(
-                    trait_decl.clone(),
-                )),
-            ))
-            .chain(trait_functions)
+
+        let var_items = self.generate_items(source, inner_items);
+
+        iter::once(PILItem::Definition(
+            symbol,
+            Some(FunctionValueDefinition::TypeDeclaration(
+                TypeDeclarationAnalyzed::Enum(enum_decl.clone()),
+            )),
+        ))
+        .chain(var_items)
+        .collect()
+    }
+
+    fn handle_struct_declaration(
+        &mut self,
+        source: SourceRef,
+        name: String,
+        symbol: Symbol,
+        struct_decl: StructDeclaration<parsed::Expression>,
+    ) -> Vec<PILItem> {
+        let struct_decl = self.process_struct_declaration(struct_decl);
+        let shared_struct_decl = Arc::new(struct_decl.clone());
+
+        let inner_items = struct_decl
+            .fields
+            .iter()
+            .map(|(field_name, ty)| {
+                (
+                    vec![name.clone(), field_name.clone()],
+                    FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
+                        shared_struct_decl.clone(),
+                        (field_name.clone(), ty.clone()),
+                    )),
+                )
+            })
             .collect();
+        let field_items = self.generate_items(source, inner_items);
+
+        iter::once(PILItem::Definition(
+            symbol,
+            Some(FunctionValueDefinition::TypeDeclaration(
+                TypeDeclarationAnalyzed::Struct(struct_decl.clone()),
+            )),
+        ))
+        .chain(field_items)
+        .collect()
+    }
+
+    fn handle_trait_declaration(
+        &mut self,
+        source: SourceRef,
+        name: String,
+        symbol: Symbol,
+        trait_decl: TraitDeclaration<parsed::Expression>,
+    ) -> Vec<PILItem> {
+        let trait_decl = self.process_trait_declaration(trait_decl);
+        let shared_trait_decl = Arc::new(trait_decl.clone());
+
+        let inner_items = trait_decl
+            .functions
+            .iter()
+            .map(|function| {
+                (
+                    vec![name.clone(), function.name.clone()],
+                    FunctionValueDefinition::TraitFunction(
+                        shared_trait_decl.clone(),
+                        function.clone(),
+                    ),
+                )
+            })
+            .collect();
+        let trait_functions = self.generate_items(source, inner_items);
+
+        iter::once(PILItem::Definition(
+            symbol,
+            Some(FunctionValueDefinition::TraitDeclaration(
+                trait_decl.clone(),
+            )),
+        ))
+        .chain(trait_functions)
+        .collect()
+    }
+
+    fn handle_expression_symbol(
+        &mut self,
+        symbol_kind: SymbolKind,
+        symbol: Symbol,
+        type_scheme: Option<TypeScheme>,
+        expr: parsed::Expression,
+    ) -> Vec<PILItem> {
+        if symbol_kind == SymbolKind::Poly(PolynomialType::Committed) {
+            assert!(matches!(
+                expr,
+                parsed::Expression::LambdaExpression(
+                    _,
+                    LambdaExpression {
+                        kind: FunctionKind::Query,
+                        ..
+                    }
+                )
+            ));
+            assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
         }
 
-        let value = value.map(|v| match v {
-            FunctionDefinition::Expression(expr) => {
-                if symbol_kind == SymbolKind::Poly(PolynomialType::Committed) {
-                    // The only allowed value for a witness column is a query function.
-                    assert!(matches!(
-                        expr,
-                        parsed::Expression::LambdaExpression(
-                            _,
-                            LambdaExpression {
-                                kind: FunctionKind::Query,
-                                ..
-                            }
-                        )
-                    ));
-                    assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
-                }
-                let type_vars = type_scheme
-                    .as_ref()
-                    .map(|ts| ts.vars.vars().collect())
-                    .unwrap_or_default();
-                FunctionValueDefinition::Expression(TypedExpression {
-                    e: self
-                        .expression_processor(&type_vars)
-                        .process_expression(expr),
-                    type_scheme,
-                })
-            }
-            FunctionDefinition::Array(value) => {
-                let size = value.solve(self.degree.unwrap());
-                let expression = self
-                    .expression_processor(&Default::default())
-                    .process_array_expression(value, size);
-                assert_eq!(
-                    expression.iter().map(|e| e.size()).sum::<DegreeType>(),
-                    self.degree.unwrap()
-                );
-                assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
-                FunctionValueDefinition::Array(expression)
-            }
-            FunctionDefinition::TypeDeclaration(_) | FunctionDefinition::TraitDeclaration(_) => {
-                unreachable!()
-            }
+        let type_vars = type_scheme
+            .as_ref()
+            .map(|ts| ts.vars.vars().collect())
+            .unwrap_or_default();
+
+        let value = FunctionValueDefinition::Expression(TypedExpression {
+            e: self
+                .expression_processor(&type_vars)
+                .process_expression(expr),
+            type_scheme,
         });
-        vec![PILItem::Definition(symbol, value)]
+
+        vec![PILItem::Definition(symbol, Some(value))]
+    }
+
+    fn handle_array_symbol(
+        &mut self,
+        symbol: Symbol,
+        type_scheme: Option<TypeScheme>,
+        value: ArrayExpression,
+    ) -> Vec<PILItem> {
+        let size = value.solve(self.degree.unwrap());
+        let expression = self
+            .expression_processor(&Default::default())
+            .process_array_expression(value, size);
+
+        assert_eq!(
+            expression.iter().map(|e| e.size()).sum::<DegreeType>(),
+            self.degree.unwrap()
+        );
+        assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
+
+        let value = FunctionValueDefinition::Array(expression);
+
+        vec![PILItem::Definition(symbol, Some(value))]
+    }
+
+    fn generate_items(
+        &mut self,
+        source: SourceRef,
+        inner_items: Vec<(Vec<String>, FunctionValueDefinition)>,
+    ) -> Vec<PILItem> {
+        inner_items
+            .into_iter()
+            .map(|(names, value)| {
+                let symbol = Symbol {
+                    id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
+                    source: source.clone(),
+                    absolute_name: self
+                        .driver
+                        .resolve_namespaced_decl(&names.iter().collect::<Vec<&String>>())
+                        .to_dotted_string(),
+                    stage: None,
+                    kind: SymbolKind::Other(),
+                    length: None,
+                    degree: None,
+                };
+                PILItem::Definition(symbol, Some(value))
+            })
+            .collect()
     }
 
     fn handle_public_declaration(
