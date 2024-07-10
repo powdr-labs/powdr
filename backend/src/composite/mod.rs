@@ -1,11 +1,12 @@
 use std::{
     collections::BTreeMap,
-    io::{self, Cursor},
+    io::{self, Cursor, Read},
     marker::PhantomData,
     path::PathBuf,
     sync::Arc,
 };
 
+use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
@@ -19,8 +20,8 @@ mod split;
 /// A composite verification key that contains a verification key for each machine separately.
 #[derive(Serialize, Deserialize)]
 struct CompositeVerificationKey {
-    /// Verification key for each machine
-    verification_keys: Vec<Vec<u8>>,
+    /// Verification key for each machine (if available, otherwise None)
+    verification_keys: Vec<Option<Vec<u8>>>,
 }
 
 /// A composite proof that contains a proof for each machine separately.
@@ -61,36 +62,36 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
 
         let pils = split::split_pil((*pil).clone());
 
-        // Read the setup once to pass to all backends.
-        let has_setup = setup.is_some();
-        let setup_bytes = setup
-            .map(|setup| {
-                let mut setup_data = Vec::new();
-                setup.read_to_end(&mut setup_data).unwrap();
-                setup_data
-            })
-            .unwrap_or_default();
+        // Read the setup once (if any) to pass to all backends.
+        let setup_bytes = setup.map(|setup| {
+            let mut setup_data = Vec::new();
+            setup.read_to_end(&mut setup_data).unwrap();
+            setup_data
+        });
 
         // Read all verification keys (or create empty ones if none are provided)
-        let has_verification_key = verification_key.is_some();
         let verification_keys = verification_key
             .map(|verification_key| bincode::deserialize_from(verification_key).unwrap())
             .unwrap_or(CompositeVerificationKey {
-                verification_keys: vec![Vec::new(); pils.len()],
+                verification_keys: vec![None; pils.len()],
             })
             .verification_keys;
 
         let per_machine_data = pils
             .into_iter()
-            .zip(verification_keys.into_iter())
+            .zip_eq(verification_keys.into_iter())
             .map(|((machine_name, pil), verification_key)| {
                 // Set up readers for the setup and verification key
-                let mut setup_cursor = Cursor::new(&setup_bytes);
-                let setup: Option<&mut dyn std::io::Read> = has_setup.then_some(&mut setup_cursor);
+                let mut setup_cursor = setup_bytes
+                    .as_ref()
+                    .map(|setup_bytes| Cursor::new(setup_bytes));
+                let setup = setup_cursor.as_mut().map(|cursor| cursor as &mut dyn Read);
 
-                let mut verification_key_cursor = Cursor::new(&verification_key);
-                let verification_key: Option<&mut dyn std::io::Read> =
-                    has_verification_key.then_some(&mut verification_key_cursor);
+                let mut verification_key_cursor =
+                    verification_key.as_ref().map(|vk| Cursor::new(vk));
+                let verification_key = verification_key_cursor
+                    .as_mut()
+                    .map(|cursor| cursor as &mut dyn Read);
 
                 let pil = Arc::new(pil);
                 let output_dir = output_dir
@@ -186,7 +187,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
 
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
         let proof: CompositeProof = bincode::deserialize(proof).unwrap();
-        for (machine, machine_proof) in self.machine_names.iter().zip(proof.proofs) {
+        for (machine, machine_proof) in self.machine_names.iter().zip_eq(proof.proofs) {
             let machine_data = self
                 .machine_data
                 .get(machine)
@@ -213,7 +214,12 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                 .iter()
                 .map(|machine| {
                     let backend = self.machine_data.get(machine).unwrap().backend.as_ref();
-                    backend.get_verification_key_bytes()
+                    let vk_bytes = backend.get_verification_key_bytes();
+                    match vk_bytes {
+                        Ok(vk_bytes) => Ok(Some(vk_bytes)),
+                        Err(Error::NoVerificationAvailable) => Ok(None),
+                        Err(e) => Err(e),
+                    }
                 })
                 .collect::<Result<_, _>>()?,
         };
