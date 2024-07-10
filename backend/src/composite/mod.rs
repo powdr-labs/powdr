@@ -20,11 +20,11 @@ mod split;
 /// A composite verification key that contains a verification key for each machine separately.
 #[derive(Serialize, Deserialize)]
 struct CompositeVerificationKey {
-    /// Verification key for each machine (if available, otherwise None)
+    /// Verification key for each machine (if available, otherwise None), sorted by machine name.
     verification_keys: Vec<Option<Vec<u8>>>,
 }
 
-/// A composite proof that contains a proof for each machine separately.
+/// A composite proof that contains a proof for each machine separately, sorted by machine name.
 #[derive(Serialize, Deserialize)]
 struct CompositeProof {
     /// Map from machine name to proof
@@ -77,7 +77,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             })
             .verification_keys;
 
-        let per_machine_data = pils
+        let machine_data = pils
             .into_iter()
             .zip_eq(verification_keys.into_iter())
             .map(|((machine_name, pil), verification_key)| {
@@ -118,15 +118,8 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                 );
                 backend.map(|backend| (machine_name.to_string(), MachineData { pil, backend }))
             })
-            .collect::<Result<Vec<_>, _>>()?;
-        let machine_names = per_machine_data
-            .iter()
-            .map(|(name, _)| name.clone())
-            .collect::<Vec<_>>();
-        Ok(Box::new(CompositeBackend {
-            machine_data: per_machine_data.into_iter().collect(),
-            machine_names,
-        }))
+            .collect::<Result<_, _>>()?;
+        Ok(Box::new(CompositeBackend { machine_data }))
     }
 
     fn generate_setup(&self, size: DegreeType, output: &mut dyn io::Write) -> Result<(), Error> {
@@ -141,7 +134,6 @@ struct MachineData<'a, F> {
 
 pub(crate) struct CompositeBackend<'a, F> {
     machine_data: BTreeMap<String, MachineData<'a, F>>,
-    machine_names: Vec<String>,
 }
 
 // TODO: This just forwards to the backend for now. In the future this should:
@@ -162,10 +154,9 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
 
         let proof = CompositeProof {
             proofs: self
-                .machine_names
+                .machine_data
                 .iter()
-                .map(|machine| {
-                    let MachineData { pil, backend } = self.machine_data.get(machine).unwrap();
+                .map(|(machine, MachineData { pil, backend })| {
                     let witgen_callback = witgen_callback.clone().with_pil(pil.clone());
 
                     log::info!("== Proving machine: {}", machine);
@@ -187,11 +178,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
 
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
         let proof: CompositeProof = bincode::deserialize(proof).unwrap();
-        for (machine, machine_proof) in self.machine_names.iter().zip_eq(proof.proofs) {
-            let machine_data = self
-                .machine_data
-                .get(machine)
-                .ok_or_else(|| Error::BackendError(format!("Unknown machine: {machine}")))?;
+        for (machine_data, machine_proof) in self.machine_data.values().zip_eq(proof.proofs) {
             machine_data.backend.verify(&machine_proof, instances)?;
         }
         Ok(())
@@ -210,10 +197,10 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
     fn get_verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
         let verification_key = CompositeVerificationKey {
             verification_keys: self
-                .machine_names
-                .iter()
-                .map(|machine| {
-                    let backend = self.machine_data.get(machine).unwrap().backend.as_ref();
+                .machine_data
+                .values()
+                .map(|machine_data| {
+                    let backend = machine_data.backend.as_ref();
                     let vk_bytes = backend.get_verification_key_bytes();
                     match vk_bytes {
                         Ok(vk_bytes) => Ok(Some(vk_bytes)),
