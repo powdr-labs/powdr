@@ -75,16 +75,25 @@ pub fn verify_pipeline(
     pipeline.compute_proof().unwrap();
 
     verify(pipeline.output_dir().as_ref().unwrap())
-} // Foo
+}
+
+pub fn make_pipeline<T: FieldElement>(file_name: &str, inputs: Vec<T>) -> Pipeline<T> {
+    let mut pipeline = Pipeline::default()
+        .with_tmp_output_owned()
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs);
+    pipeline.compute_witness().unwrap();
+    pipeline
+}
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
-    gen_estark_proof_with_backend_variant(file_name, inputs.clone(), BackendVariant::Monolithic);
-    gen_estark_proof_with_backend_variant(file_name, inputs, BackendVariant::Composite);
+    let pipeline = make_pipeline(file_name, inputs);
+    gen_estark_proof_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
+    gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 pub fn gen_estark_proof_with_backend_variant(
-    file_name: &str,
-    inputs: Vec<GoldilocksField>,
+    pipeline: Pipeline<GoldilocksField>,
     backend_variant: BackendVariant,
 ) {
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
@@ -92,11 +101,7 @@ pub fn gen_estark_proof_with_backend_variant(
         BackendVariant::Monolithic => BackendType::EStarkStarky,
         BackendVariant::Composite => BackendType::EStarkStarkyComposite,
     };
-    let mut pipeline = Pipeline::default()
-        .with_tmp_output(&tmp_dir)
-        .from_file(resolve_test_file(file_name))
-        .with_prover_inputs(inputs)
-        .with_backend(backend, None);
+    let mut pipeline = pipeline.with_backend(backend, None);
 
     pipeline.clone().compute_proof().unwrap();
 

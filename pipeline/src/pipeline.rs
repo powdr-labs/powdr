@@ -5,11 +5,13 @@ use std::{
     io::{self, BufReader},
     marker::Send,
     path::{Path, PathBuf},
+    rc::Rc,
     sync::Arc,
     time::Instant,
 };
 
 use log::Level;
+use mktemp::Temp;
 use powdr_ast::{
     analyzed::Analyzed,
     asm_analysis::AnalysisASMFile,
@@ -114,6 +116,7 @@ pub struct Pipeline<T: FieldElement> {
     artifact: Artifacts<T>,
     /// Output directory for intermediate files. If None, no files are written.
     output_dir: Option<PathBuf>,
+    _tmp_dir: Option<Rc<Temp>>,
     /// The name of the pipeline. Used to name output files.
     name: Option<String>,
     /// Whether to overwrite existing files. If false, an error is returned if a file
@@ -140,6 +143,7 @@ where
         Pipeline {
             artifact: Default::default(),
             output_dir: None,
+            _tmp_dir: None,
             log_level: Level::Info,
             name: None,
             force_overwrite: false,
@@ -196,6 +200,16 @@ impl<T: FieldElement> Pipeline<T> {
         Pipeline {
             output_dir: Some(tmp_dir.to_path_buf()),
             force_overwrite: true,
+            ..self
+        }
+    }
+
+    pub fn with_tmp_output_owned(self) -> Self {
+        let tmp_dir = Rc::new(mktemp::Temp::new_dir().unwrap());
+        Pipeline {
+            output_dir: Some(tmp_dir.to_path_buf()),
+            force_overwrite: true,
+            _tmp_dir: Some(tmp_dir),
             ..self
         }
     }
