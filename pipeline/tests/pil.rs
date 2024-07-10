@@ -4,8 +4,8 @@ use powdr_number::GoldilocksField;
 use powdr_pipeline::test_util::{
     assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
     assert_proofs_fail_for_invalid_witnesses_halo2,
-    assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, test_halo2, test_plonky3,
-    verify_test_file,
+    assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, gen_halo2_composite_proof,
+    test_halo2, test_plonky3, verify_test_file,
 };
 
 use test_log::test;
@@ -308,10 +308,11 @@ fn naive_byte_decomposition_gl() {
 }
 
 #[test]
-#[should_panic = "NoVariableDegreeAvailable"]
 fn different_degrees() {
     let f = "pil/different_degrees.pil";
-    verify_pil(f, Default::default());
+    // Because machines have different lengths, this can only be proven
+    // with a composite proof.
+    gen_halo2_composite_proof(f, vec![]);
 }
 
 #[test]
