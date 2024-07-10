@@ -4,7 +4,7 @@ use powdr_ast::{
     analyzed::{
         Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
     },
-    parsed::{BlockExpression, FunctionKind, LambdaExpression, StatementInsideBlock},
+    parsed::{types::Type, BlockExpression, FunctionKind, LambdaExpression, StatementInsideBlock},
 };
 
 use lazy_static::lazy_static;
@@ -67,6 +67,11 @@ impl<'a> SideEffectChecker<'a> {
                         if ls.value.is_none() && self.context != FunctionKind::Constr {
                             return Err(format!(
                                 "Tried to create a witness column in a {} context: {ls}",
+                                self.context
+                            ));
+                        } else if ls.ty == Some(Type::Col) && self.context != FunctionKind::Constr {
+                            return Err(format!(
+                                "Tried to create a fixed column in a {} context: {ls}",
                                 self.context
                             ));
                         }
