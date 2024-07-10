@@ -58,6 +58,8 @@ pub enum LiteralKind {
 
 const ROM_OPERATION_ID: &str = "operation_id";
 const ROM_LATCH: &str = "latch";
+pub const ROM_SUBMACHINE_NAME: &str = "_rom";
+const ROM_ENTRY_POINT: &str = "get_line";
 
 fn rom_machine<'a>(
     mut pil: Vec<PilStatement>,
@@ -75,7 +77,7 @@ fn rom_machine<'a>(
         },
         callable: CallableSymbolDefinitions(
             once((
-                "get_line".into(),
+                ROM_ENTRY_POINT.into(),
                 CallableSymbol::Operation(OperationSymbol {
                     source: SourceRef::unknown(),
                     id: OperationId {
@@ -250,8 +252,8 @@ impl<T: FieldElement> VMConverter<T> {
             instr_flag: None,
             link_flag: Expression::from(1u32),
             to: CallableRef {
-                instance: "_rom".to_string(),
-                callable: "get_line".to_string(),
+                instance: ROM_SUBMACHINE_NAME.to_string(),
+                callable: ROM_ENTRY_POINT.to_string(),
                 params: CallableParams {
                     inputs: self.line_lookup[..1]
                         .iter()

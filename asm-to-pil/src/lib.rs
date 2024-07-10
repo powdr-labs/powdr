@@ -3,12 +3,12 @@
 use powdr_ast::asm_analysis::{AnalysisASMFile, Item, SubmachineDeclaration};
 use powdr_number::FieldElement;
 use romgen::generate_machine_rom;
+use vm_to_constrained::ROM_SUBMACHINE_NAME;
 mod common;
 mod romgen;
 mod vm_to_constrained;
 
 static ROM_SUFFIX: &str = "ROM";
-static ROM_SUBMACHINE_NAME: &str = "_rom";
 
 /// Remove all ASM from the machine tree. Takes a tree of virtual or constrained machines and returns a tree of constrained machines
 pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
