@@ -225,29 +225,29 @@ impl<'a, T: FieldElement> Value<'a, T> {
         pattern: &Pattern,
     ) -> Option<Vec<Arc<Value<'b, T>>>> {
         match pattern {
-            Pattern::Ellipsis => unreachable!("Should be handled higher up"),
-            Pattern::CatchAll => Some(vec![]),
-            Pattern::Number(n) => match v.as_ref() {
+            Pattern::Ellipsis(_) => unreachable!("Should be handled higher up"),
+            Pattern::CatchAll(_) => Some(vec![]),
+            Pattern::Number(_, n) => match v.as_ref() {
                 Value::Integer(x) if x == n => Some(vec![]),
                 Value::FieldElement(x) if BigInt::from(x.to_arbitrary_integer()) == *n => {
                     Some(vec![])
                 }
                 _ => None,
             },
-            Pattern::String(s) => match v.as_ref() {
+            Pattern::String(_, s) => match v.as_ref() {
                 Value::String(x) if x == s => Some(vec![]),
                 _ => None,
             },
-            Pattern::Tuple(items) => match v.as_ref() {
+            Pattern::Tuple(_, items) => match v.as_ref() {
                 Value::Tuple(values) => Value::try_match_pattern_list(values, items),
                 _ => unreachable!(),
             },
-            Pattern::Array(items) => {
+            Pattern::Array(_, items) => {
                 let Value::Array(values) = v.as_ref() else {
                     panic!("Type error")
                 };
                 // Index of ".."
-                let ellipsis_pos = items.iter().position(|i| *i == Pattern::Ellipsis);
+                let ellipsis_pos = items.iter().position(|i| matches!(i, Pattern::Ellipsis(_)));
                 // Check if the value is too short.
                 let length_matches = match ellipsis_pos {
                     Some(_) => values.len() >= items.len() - 1,
@@ -266,7 +266,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     items.len() - ellipsis_pos.map(|_| 1).unwrap_or_default()
                 );
                 left.chain(right)
-                    .zip(items.iter().filter(|&i| *i != Pattern::Ellipsis))
+                    .zip(items.iter().filter(|&i| !matches!(i, Pattern::Ellipsis(_))))
                     .try_fold(vec![], |mut vars, (e, p)| {
                         Value::try_match_pattern(e, p).map(|v| {
                             vars.extend(v);
@@ -274,8 +274,8 @@ impl<'a, T: FieldElement> Value<'a, T> {
                         })
                     })
             }
-            Pattern::Variable(_) => Some(vec![v.clone()]),
-            Pattern::Enum(name, fields_pattern) => {
+            Pattern::Variable(_, _) => Some(vec![v.clone()]),
+            Pattern::Enum(_, name, fields_pattern) => {
                 let Value::Enum(n, data) = v.as_ref() else {
                     panic!()
                 };
@@ -638,7 +638,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     let value = if s.value.is_some() {
                         self.value_stack.pop().unwrap()
                     } else {
-                        let Pattern::Variable(name) = &s.pattern else {
+                        let Pattern::Variable(_, name) = &s.pattern else {
                             unreachable!()
                         };
                         self.symbols
@@ -1350,10 +1350,10 @@ mod test {
     #[should_panic = r#"FailedAssertion("this text")"#]
     fn panic_complex() {
         let src = r#"
-            constant %N = 2;
-            namespace std::check(%N);
+            let N: int = 2;
+            namespace std::check(N);
             let panic = 123;
-            namespace F(%N);
+            namespace F(N);
             let concat = |a, b| a + b;
             let arg: int = 1;
             let x: int[] = (|i| if i == 1 { std::check::panic(concat("this ", "text")) } else { [9] })(arg);
@@ -1365,10 +1365,10 @@ mod test {
     #[should_panic = r#"FailedAssertion("text")"#]
     fn panic_string() {
         let src = r#"
-            constant %N = 2;
-            namespace std::check(%N);
+            let N: int = 2;
+            namespace std::check(N);
             let panic = 123;
-            namespace F(%N);
+            namespace F(N);
             let x: int = std::check::panic("text");
         "#;
         parse_and_evaluate_symbol(src, "F.x");

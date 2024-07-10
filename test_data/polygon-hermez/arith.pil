@@ -19,7 +19,7 @@
 */
 include "global.pil";
 
-namespace Arith(%N);
+namespace Arith(N);
 
     pol constant BYTE2_BIT19;
     pol constant SEL_BYTE2_BIT19;

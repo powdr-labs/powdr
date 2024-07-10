@@ -5,20 +5,23 @@ use std::cmp::max;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use std::iter;
+use std::iter::{self, empty};
 use std::ops::{self, ControlFlow};
 use std::sync::Arc;
 
+use itertools::Itertools;
 use powdr_number::{DegreeType, FieldElement};
 use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::parsed::types::{ArrayType, Type, TypeScheme};
+use crate::parsed::types::{ArrayType, Type, TypeBounds, TypeScheme};
 use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
-use crate::parsed::{self, ArrayLiteral, EnumDeclaration, EnumVariant};
+use crate::parsed::{
+    self, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration, TraitFunction,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub enum StatementIdentifier {
@@ -31,8 +34,6 @@ pub enum StatementIdentifier {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
-    /// The degree of all namespaces, which must match if provided. If no degrees are given, then `None`.
-    pub degree: Option<DegreeType>,
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
@@ -45,10 +46,28 @@ pub struct Analyzed<T> {
 }
 
 impl<T> Analyzed<T> {
-    /// @returns the degree if any. Panics if there is none.
+    /// Returns the degree common among all symbols that have an explicit degree.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is no common degree or if there are no symbols
     pub fn degree(&self) -> DegreeType {
-        self.degree.unwrap()
+        self.definitions
+            .values()
+            .filter_map(|(symbol, _)| symbol.degree)
+            .unique()
+            .exactly_one()
+            .unwrap()
     }
+
+    /// Returns the set of all explicit degrees in this [`Analyzed<T>`].
+    pub fn degrees(&self) -> HashSet<DegreeType> {
+        self.definitions
+            .values()
+            .filter_map(|(symbol, _)| symbol.degree)
+            .collect::<HashSet<_>>()
+    }
+
     /// @returns the number of committed polynomials (with multiplicities for arrays)
     pub fn commitment_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Committed)
@@ -425,6 +444,24 @@ pub fn type_from_definition(
             FunctionValueDefinition::TypeConstructor(enum_decl, variant) => {
                 Some(variant.constructor_type(enum_decl))
             }
+            FunctionValueDefinition::TraitDeclaration(_) => {
+                panic!("Requested type of trait declaration.")
+            }
+            FunctionValueDefinition::TraitFunction(trait_decl, trait_func) => {
+                let vars = trait_decl
+                    .type_vars
+                    .iter()
+                    .map(|var| {
+                        let bounds = BTreeSet::new();
+                        (var.clone(), bounds)
+                    })
+                    .collect::<Vec<_>>();
+
+                Some(TypeScheme {
+                    vars: TypeBounds::new(vars.into_iter()),
+                    ty: trait_func.ty.clone(),
+                })
+            }
         }
     } else {
         assert!(
@@ -453,6 +490,7 @@ pub struct Symbol {
     pub stage: Option<u32>,
     pub kind: SymbolKind,
     pub length: Option<DegreeType>,
+    pub degree: Option<DegreeType>,
 }
 
 impl Symbol {
@@ -509,8 +547,6 @@ impl Symbol {
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
     Poly(PolynomialType),
-    /// A constant value.
-    Constant(),
     /// Other symbol, depends on the type.
     /// Examples include functions not of the type "int -> fe".
     Other(),
@@ -522,6 +558,8 @@ pub enum FunctionValueDefinition {
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
+    TraitDeclaration(TraitDeclaration),
+    TraitFunction(Arc<TraitDeclaration>, TraitFunction),
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -537,6 +575,8 @@ impl Children<Expression> for FunctionValueDefinition {
                 enum_declaration.children()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
+            FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
         }
     }
 
@@ -552,7 +592,27 @@ impl Children<Expression> for FunctionValueDefinition {
                 enum_declaration.children_mut()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
+            FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
         }
+    }
+}
+
+impl Children<Expression> for TraitDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(empty())
+    }
+}
+
+impl Children<Expression> for TraitFunction {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(empty())
     }
 }
 

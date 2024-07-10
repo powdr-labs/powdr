@@ -5,8 +5,9 @@ use powdr_number::{BigInt, Bn254Field, GoldilocksField};
 use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
-        evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_composite_proof,
-        gen_halo2_proof, resolve_test_file, std_analyzed, test_halo2, verify_test_file,
+        evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
+        gen_halo2_composite_proof, gen_halo2_proof, resolve_test_file, std_analyzed, test_halo2,
+        verify_test_file,
     },
     Pipeline,
 };
@@ -27,6 +28,13 @@ fn poseidon_bn254_test() {
 #[test]
 fn poseidon_gl_test() {
     let f = "std/poseidon_gl_test.asm";
+    verify_test_file(f, Default::default(), vec![]).unwrap();
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn poseidon_gl_memory_test() {
+    let f = "std/poseidon_gl_memory_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
 }
@@ -353,5 +361,5 @@ fn sort() {
 #[test]
 fn btree() {
     let f = "std/btree_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    execute_test_file(f, Default::default(), vec![]).unwrap();
 }

@@ -9,7 +9,7 @@
 include "global.pil";
 include "poseidong.pil";
 
-namespace PaddingPG(%N);
+namespace PaddingPG(N);
 
     // Polynomials that are used to compute a hash chunk
     pol commit acc[8];

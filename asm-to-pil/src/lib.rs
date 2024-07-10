@@ -41,6 +41,9 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
                 }
                 Item::Expression(e) => vec![(name, Item::Expression(e))],
                 Item::TypeDeclaration(enum_decl) => vec![(name, Item::TypeDeclaration(enum_decl))],
+                Item::TraitDeclaration(trait_decl) => {
+                    vec![(name, Item::TraitDeclaration(trait_decl))]
+                }
             })
             .collect(),
     }

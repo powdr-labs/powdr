@@ -965,7 +965,7 @@ impl<T: FieldElement> VMConverter<T> {
                                 .get_mut(assign_reg)
                                 .unwrap()
                                 .push(MatchArm {
-                                    pattern: Pattern::Number(i.into()),
+                                    pattern: Pattern::Number(SourceRef::unknown(), i.into()),
                                     value: expr.clone(),
                                 });
                         }
@@ -1012,7 +1012,7 @@ impl<T: FieldElement> VMConverter<T> {
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
                     let mut prover_query_arms = prover_query_arms;
                     prover_query_arms.push(MatchArm {
-                        pattern: Pattern::CatchAll,
+                        pattern: Pattern::CatchAll(SourceRef::unknown()),
                         value: absolute_reference("::std::prover::Query::None"),
                     });
 
@@ -1026,7 +1026,7 @@ impl<T: FieldElement> VMConverter<T> {
 
                     let lambda = LambdaExpression {
                         kind: FunctionKind::Query,
-                        params: vec![Pattern::Variable("__i".to_string())],
+                        params: vec![Pattern::Variable(SourceRef::unknown(), "__i".to_string())],
                         body: Box::new(
                             MatchExpression {
                                 scrutinee,
@@ -1305,7 +1305,14 @@ fn extract_update(expr: Expression) -> (Option<String>, Expression) {
 
 #[cfg(test)]
 mod test {
-    use powdr_ast::asm_analysis::AnalysisASMFile;
+    use powdr_ast::{
+        asm_analysis::{AnalysisASMFile, Item},
+        parsed::{
+            asm::{parse_absolute_path, Part, SymbolPath},
+            types::{FunctionType, Type},
+            TraitDeclaration,
+        },
+    };
     use powdr_importer::load_dependencies_and_resolve_str;
     use powdr_number::{FieldElement, GoldilocksField};
 
@@ -1337,5 +1344,52 @@ machine Main {
 }
 ";
         parse_analyze_and_compile::<GoldilocksField>(asm);
+    }
+
+    #[test]
+    fn trait_parsing() {
+        let asm = r"
+        mod types {
+            enum DoubleOpt<T> {
+                None,
+                Some(T, T)
+            }
+
+            trait ArraySum<T> {
+                array_sum: T[4 + 1] -> DoubleOpt<T>,
+            }
+        }
+
+        machine Empty {
+            col witness w;
+            w = w * w;
+        }
+        ";
+
+        let analyzed = parse_analyze_and_compile::<GoldilocksField>(asm);
+        let arraysum = parse_absolute_path("::types::ArraySum");
+        let trait_decl = analyzed.items.get(&arraysum).unwrap();
+        if let Item::TraitDeclaration(TraitDeclaration { functions, .. }) = trait_decl {
+            assert_eq!(functions.len(), 1);
+            let func_ty = &functions.iter().next().unwrap().ty;
+            match func_ty {
+                Type::Function(FunctionType { value, .. }) => {
+                    assert_eq!(
+                        value.as_ref(),
+                        &Type::NamedType(
+                            SymbolPath::from_parts(
+                                ["types", "DoubleOpt"]
+                                    .iter()
+                                    .map(|arg| Part::Named(arg.to_string()))
+                            ),
+                            Some(vec![Type::TypeVar("T".to_string())])
+                        )
+                    );
+                }
+                _ => panic!("Expected function type"),
+            }
+        } else {
+            panic!("Expected trait declaration");
+        }
     }
 }

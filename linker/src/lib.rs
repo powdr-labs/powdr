@@ -31,24 +31,14 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         .clone()
         .unwrap_or_else(|| DEFAULT_DEGREE.into());
 
-    let mut errors = vec![];
-
     let mut pil = process_definitions(graph.definitions);
 
     for (location, object) in graph.objects.into_iter() {
-        if let Some(degree) = object.degree {
-            if degree != main_degree {
-                errors.push(format!(
-                    "Machine {location} should have degree {main_degree}, found {degree}"
-                ))
-            }
-        }
-
         // create a namespace for this object
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
-            Some(main_degree.clone()),
+            Some(object.degree.unwrap_or(main_degree.clone())),
         ));
 
         pil.extend(object.pil);
@@ -82,11 +72,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         }
     }
 
-    if !errors.is_empty() {
-        Err(errors)
-    } else {
-        Ok(PILFile(pil))
-    }
+    Ok(PILFile(pil))
 }
 
 // Extract the utilities and sort them into namespaces where possible.
@@ -246,18 +232,15 @@ fn process_link(link: Link) -> PilStatement {
 mod test {
     use std::fs;
 
-    use powdr_ast::{
-        object::{Location, Object, PILGraph},
-        parsed::PILFile,
-    };
-    use powdr_number::{BigUint, FieldElement, GoldilocksField};
+    use powdr_ast::object::PILGraph;
+    use powdr_number::{FieldElement, GoldilocksField};
 
     use powdr_analysis::convert_asm_to_pil;
     use powdr_parser::parse_asm;
 
     use pretty_assertions::assert_eq;
 
-    use crate::{link, DEFAULT_DEGREE};
+    use crate::link;
 
     fn parse_analyze_and_compile<T: FieldElement>(input: &str) -> PILGraph {
         let parsed = parse_asm(None, input).unwrap_or_else(|e| {
@@ -266,56 +249,6 @@ mod test {
         });
         let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
         powdr_airgen::compile(convert_asm_to_pil::<T>(resolved).unwrap())
-    }
-
-    #[test]
-    fn degree() {
-        // a graph with two objects of degree `main_degree` and `foo_degree`
-        let test_graph = |main_degree, foo_degree| PILGraph {
-            main: powdr_ast::object::Machine {
-                location: Location::main(),
-                operation_id: Some("operation_id".into()),
-                latch: Some("latch".into()),
-                call_selectors: None,
-            },
-            entry_points: vec![],
-            definitions: Default::default(),
-            objects: [
-                (Location::main(), Object::default().with_degree(main_degree)),
-                (
-                    Location::main().join("foo"),
-                    Object::default().with_degree(foo_degree),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        };
-        // a test over a pil file `f` checking if all namespaces have degree `n` (if they are set)
-        let all_namespaces_have_degree = |f: PILFile, n: u64| {
-            f.0.iter().all(|s| match s {
-                powdr_ast::parsed::PilStatement::Namespace(_, _, Some(e)) => {
-                    *e == BigUint::from(n).into()
-                }
-                _ => true,
-            })
-        };
-
-        let inferred: PILGraph = test_graph(Some(8), None);
-        assert!(all_namespaces_have_degree(link(inferred).unwrap(), 8));
-        let matches: PILGraph = test_graph(Some(8), Some(8));
-        assert!(all_namespaces_have_degree(link(matches).unwrap(), 8));
-        let default_infer: PILGraph = test_graph(None, Some(DEFAULT_DEGREE));
-        assert!(all_namespaces_have_degree(
-            link(default_infer).unwrap(),
-            1024
-        ));
-        let default_no_match: PILGraph = test_graph(None, Some(8));
-        assert_eq!(
-            link(default_no_match),
-            Err(vec![
-                "Machine main_foo should have degree 1024, found 8".to_string()
-            ])
-        );
     }
 
     fn extract_main(code: &str) -> &str {
@@ -565,7 +498,7 @@ machine Machine {
     reg fp;
 
     instr inc_fp amount: unsigned { fp' = fp + amount }
-    instr adjust_fp amount: signed, t: label { fp' = fp + amount, pc' = label }
+    instr adjust_fp amount: signed, t: label { fp' = fp + amount, pc' = t }
 
     function main {
         inc_fp 7;
@@ -592,7 +525,7 @@ machine Machine {
     pol commit instr_return;
     pol constant first_step = [1] + [0]*;
     fp' = instr_inc_fp * (fp + instr_inc_fp_param_amount) + instr_adjust_fp * (fp + instr_adjust_fp_param_amount) + instr__reset * 0 + (1 - (instr_inc_fp + instr_adjust_fp + instr__reset)) * fp;
-    pol pc_update = instr_adjust_fp * label + instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr_adjust_fp + instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
+    pol pc_update = instr_adjust_fp * instr_adjust_fp_param_t + instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr_adjust_fp + instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     pol constant p_line = [0, 1, 2, 3, 4] + [4]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0] + [0]*;

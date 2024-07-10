@@ -2,7 +2,7 @@ use powdr_backend::BackendType;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{gen_estark_proof, resolve_test_file, test_halo2, verify_test_file},
-    util::{try_read_poly_set, FixedPolySet, WitnessPolySet},
+    util::{read_poly_set, FixedPolySet, WitnessPolySet},
     Pipeline,
 };
 use test_log::test;
@@ -377,16 +377,13 @@ fn read_poly_files() {
         pipeline.compute_proof().unwrap();
 
         // check fixed cols (may have no fixed cols)
-        if let Some((fixed, degree)) = try_read_poly_set::<FixedPolySet, _>(&pil, tmp_dir.as_path())
-        {
-            assert_eq!(pil.degree(), degree);
+        let fixed = read_poly_set::<FixedPolySet, Bn254Field>(tmp_dir.as_path());
+        if !fixed.is_empty() {
             assert_eq!(pil.degree(), fixed[0].1.len() as u64);
         }
 
         // check witness cols (examples assumed to have at least one witness col)
-        let (witness, degree) =
-            try_read_poly_set::<WitnessPolySet, _>(&pil, tmp_dir.as_path()).unwrap();
-        assert_eq!(pil.degree(), degree);
+        let witness = read_poly_set::<WitnessPolySet, Bn254Field>(tmp_dir.as_path());
         assert_eq!(pil.degree(), witness[0].1.len() as u64);
     }
 }
@@ -450,9 +447,7 @@ fn permutation_to_vm() {
 }
 
 #[test]
-#[should_panic = "Verifier did not say 'PIL OK'."]
 fn permutation_to_block_to_block() {
-    // TODO: witgen issue (https://github.com/powdr-labs/powdr/issues/1385)
     let f = "asm/permutations/block_to_block.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
@@ -735,4 +730,17 @@ fn connect_no_witgen() {
     let f = "asm/connect_no_witgen.asm";
     let i = [];
     verify_asm(f, slice_to_vec(&i));
+}
+
+#[test]
+fn generics_preservation() {
+    let f = "asm/generics_preservation.asm";
+    verify_asm(f, Default::default());
+}
+
+#[test]
+fn trait_parsing() {
+    // Should be expanded/renamed when traits functionality is fully implemented
+    let f = "asm/trait_parsing.asm";
+    verify_asm(f, Default::default());
 }
