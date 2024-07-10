@@ -35,6 +35,8 @@ pub enum SymbolCategory {
     /// A type constructor, i.e. an enum variant, which can be used as a function or constant inside an expression
     /// or to deconstruct a value in a pattern.
     TypeConstructor,
+    /// A trait declaration, which can be used as a type.
+    TraitDeclaration,
 }
 impl SymbolCategory {
     /// Returns if a symbol of a given category can satisfy a request for a certain category.
@@ -46,6 +48,7 @@ impl SymbolCategory {
                 // Type constructors can also satisfy requests for values.
                 request == SymbolCategory::TypeConstructor || request == SymbolCategory::Value
             }
+            SymbolCategory::TraitDeclaration => request == SymbolCategory::TraitDeclaration,
         }
     }
 }
@@ -101,6 +104,7 @@ pub enum PilStatement {
     ConnectIdentity(SourceRef, Vec<Expression>, Vec<Expression>),
     EnumDeclaration(SourceRef, EnumDeclaration<Expression>),
     StructDeclaration(SourceRef, StructDeclaration<Expression>),
+    TraitDeclaration(SourceRef, TraitDeclaration<Expression>),
     Expression(SourceRef, Expression),
 }
 
@@ -144,6 +148,18 @@ impl PilStatement {
                         .map(move |f| (name, Some(&f.0), SymbolCategory::TypeConstructor)),
                 ),
             ),
+            PilStatement::TraitDeclaration(
+                _,
+                TraitDeclaration {
+                    name, functions, ..
+                },
+            ) => Box::new(
+                once((name, None, SymbolCategory::TraitDeclaration)).chain(
+                    functions
+                        .iter()
+                        .map(move |f| (name, Some(&f.name), SymbolCategory::Value)),
+                ),
+            ),
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
             | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => Box::new(
                 polynomials
@@ -178,6 +194,7 @@ impl Children<Expression> for PilStatement {
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children(),
             PilStatement::StructDeclaration(_, struct_decl) => struct_decl.children(),
+            PilStatement::TraitDeclaration(_, trait_decl) => trait_decl.children(),
 
             PilStatement::LetStatement(_, _, type_scheme, value) => Box::new(
                 type_scheme
@@ -213,6 +230,7 @@ impl Children<Expression> for PilStatement {
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children_mut(),
             PilStatement::StructDeclaration(_, struct_decl) => struct_decl.children_mut(),
+            PilStatement::TraitDeclaration(_, trait_decl) => trait_decl.children_mut(),
 
             PilStatement::LetStatement(_, _, ty, value) => {
                 Box::new(ty.iter_mut().flat_map(|t| t.ty.children_mut()).chain(value))
@@ -349,6 +367,43 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
                 .flat_map(|f| f.iter_mut())
                 .flat_map(|f| f.children_mut()),
         )
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TraitDeclaration<E = u64> {
+    pub name: String,
+    pub type_vars: Vec<String>,
+    pub functions: Vec<TraitFunction<E>>,
+}
+
+impl TraitDeclaration<u64> {
+    pub fn function_by_name(&self, name: &str) -> Option<&TraitFunction> {
+        self.functions.iter().find(|f| f.name == name)
+    }
+}
+
+impl<R> Children<Expression<R>> for TraitDeclaration<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(self.functions.iter().flat_map(|f| f.children()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(self.functions.iter_mut().flat_map(|f| f.children_mut()))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TraitFunction<E = u64> {
+    pub name: String,
+    pub ty: Type<E>,
+}
+
+impl<R> Children<Expression<R>> for TraitFunction<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        self.ty.children()
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        self.ty.children_mut()
     }
 }
 
@@ -1167,6 +1222,8 @@ pub enum FunctionDefinition {
     Expression(Expression),
     /// A type declaration.
     TypeDeclaration(TypeDeclaration),
+    /// A trait declaration.
+    TraitDeclaration(TraitDeclaration<Expression>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -1181,6 +1238,7 @@ impl Children<Expression> for FunctionDefinition {
             FunctionDefinition::Array(ae) => ae.children(),
             FunctionDefinition::Expression(e) => Box::new(once(e)),
             FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
+            FunctionDefinition::TraitDeclaration(trait_declaration) => trait_declaration.children(),
         }
     }
 
@@ -1189,6 +1247,9 @@ impl Children<Expression> for FunctionDefinition {
             FunctionDefinition::Array(ae) => ae.children_mut(),
             FunctionDefinition::Expression(e) => Box::new(once(e)),
             FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
+            FunctionDefinition::TraitDeclaration(trait_declaration) => {
+                trait_declaration.children_mut()
+            }
         }
     }
 }

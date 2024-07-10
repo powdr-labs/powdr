@@ -121,7 +121,9 @@ fn generate_values<T: FieldElement>(
                 })
         }
         FunctionValueDefinition::TypeDeclaration(_)
-        | FunctionValueDefinition::TypeConstructor(_) => panic!(),
+        | FunctionValueDefinition::TypeConstructor(_)
+        | FunctionValueDefinition::TraitDeclaration(_)
+        | FunctionValueDefinition::TraitFunction(_, _) => panic!(),
     };
     match result {
         Err(err) => {

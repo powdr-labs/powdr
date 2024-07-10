@@ -23,6 +23,7 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
                         }
                         Item::Expression(e) => Item::Expression(e),
                         Item::TypeDeclaration(type_decl) => Item::TypeDeclaration(type_decl),
+                        Item::TraitDeclaration(trait_decl) => Item::TraitDeclaration(trait_decl),
                     },
                 )
             })

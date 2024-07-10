@@ -55,8 +55,9 @@ impl<T: Display> Display for Analyzed<T> {
                         if matches!(
                             definition,
                             Some(FunctionValueDefinition::TypeConstructor(_))
+                                | Some(FunctionValueDefinition::TraitFunction(_, _))
                         ) {
-                            // These are printed as part of the enum/struct.
+                            // These are printed as part of the enum / trait.
                             continue;
                         }
                         let (name, _) = update_namespace(name, symbol.degree, f)?;
@@ -90,6 +91,11 @@ impl<T: Display> Display for Analyzed<T> {
                                         TypeDeclaration::Struct(struct_declaration),
                                     )) => {
                                         writeln_indented(f, struct_declaration)?;
+                                    }
+                                    Some(FunctionValueDefinition::TraitDeclaration(
+                                        trait_declaration,
+                                    )) => {
+                                        writeln_indented(f, trait_declaration)?;
                                     }
                                     _ => {
                                         unreachable!("Invalid definition for symbol: {}", name)
@@ -223,7 +229,9 @@ impl Display for FunctionValueDefinition {
                 write!(f, ": {} = {e}", ts.ty)
             }
             FunctionValueDefinition::TypeDeclaration(_)
-            | FunctionValueDefinition::TypeConstructor(_) => {
+            | FunctionValueDefinition::TypeConstructor(_)
+            | FunctionValueDefinition::TraitDeclaration(_)
+            | FunctionValueDefinition::TraitFunction(_, _) => {
                 panic!("Should not use this formatting function.")
             }
         }

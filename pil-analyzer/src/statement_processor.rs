@@ -11,11 +11,10 @@ use powdr_ast::parsed::TypedExpression;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
-    ArrayLiteral, EnumDeclaration, EnumVariant, FunctionDefinition, PilStatement, PolynomialName,
-    SelectedExpressions,
+    ArrayLiteral, EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression,
+    PilStatement, PolynomialName, SelectedExpressions, StructDeclaration, TraitDeclaration,
+    TraitFunction, TypeDeclaration as TypeDeclarationParsed,
 };
-use powdr_ast::parsed::{FunctionKind, LambdaExpression};
-use powdr_ast::parsed::{StructDeclaration, TypeDeclaration as TypeDeclarationParsed};
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
 
@@ -60,6 +59,28 @@ impl Default for Counters {
 }
 
 impl Counters {
+    /// Creates a new counter struct that can dispense IDs that do not conflict with the
+    /// provided existing IDs.
+    pub fn with_existing<'a>(
+        symbols: impl IntoIterator<Item = &'a Symbol>,
+        identity: Option<u64>,
+        public: Option<u64>,
+    ) -> Self {
+        let mut counters = Self::default();
+        if let Some(id) = identity {
+            counters.identity_counter = id + 1;
+        }
+        if let Some(id) = public {
+            counters.public_counter = id + 1;
+        }
+        for symbol in symbols {
+            let counter = counters.symbol_counters.get_mut(&symbol.kind).unwrap();
+            let next = symbol.id + symbol.length.unwrap_or(1);
+            *counter = std::cmp::max(*counter, next);
+        }
+        counters
+    }
+
     pub fn dispense_identity_id(&mut self) -> u64 {
         let id = self.identity_counter;
         self.identity_counter += 1;
@@ -185,6 +206,14 @@ where
                         TypeDeclarationParsed::Struct(struct_declaration.clone()),
                     )),
                 ),
+            PilStatement::TraitDeclaration(source, trait_decl) => self.handle_symbol_definition(
+                source,
+                trait_decl.name.clone(),
+                SymbolKind::Other(),
+                None,
+                None,
+                Some(FunctionDefinition::TraitDeclaration(trait_decl.clone())),
+            ),
             _ => self.handle_identity_statement(statement),
         }
     }
@@ -494,6 +523,36 @@ where
             ))
             .chain(field_items)
             .collect();
+        } else if let Some(FunctionDefinition::TraitDeclaration(trait_decl)) = value {
+            let trait_decl = self.process_trait_declaration(trait_decl);
+            let shared_trait_decl = Arc::new(trait_decl.clone());
+            let trait_functions = trait_decl.functions.iter().map(|function| {
+                let f_symbol = Symbol {
+                    id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
+                    source: source.clone(),
+                    absolute_name: self
+                        .driver
+                        .resolve_namespaced_decl(&[&name, &function.name])
+                        .to_dotted_string(),
+                    stage: None,
+                    kind: SymbolKind::Other(),
+                    length: None,
+                    degree: None,
+                };
+                let value = FunctionValueDefinition::TraitFunction(
+                    shared_trait_decl.clone(),
+                    function.clone(),
+                );
+                PILItem::Definition(f_symbol, Some(value))
+            });
+            return iter::once(PILItem::Definition(
+                symbol,
+                Some(FunctionValueDefinition::TraitDeclaration(
+                    trait_decl.clone(),
+                )),
+            ))
+            .chain(trait_functions)
+            .collect();
         }
 
         let value = value.map(|v| match v {
@@ -535,7 +594,9 @@ where
                 assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
                 FunctionValueDefinition::Array(expression)
             }
-            FunctionDefinition::TypeDeclaration(_type_declaration) => unreachable!(),
+            FunctionDefinition::TypeDeclaration(_) | FunctionDefinition::TraitDeclaration(_) => {
+                unreachable!()
+            }
         });
         vec![PILItem::Definition(symbol, value)]
     }
@@ -642,5 +703,24 @@ where
             field.0.to_string(),
             self.type_processor(type_vars).process_type(field.1),
         )
+    }
+    fn process_trait_declaration(
+        &self,
+        trait_decl: parsed::TraitDeclaration<parsed::Expression>,
+    ) -> TraitDeclaration {
+        let type_vars = trait_decl.type_vars.iter().collect();
+        let functions = trait_decl
+            .functions
+            .into_iter()
+            .map(|f| TraitFunction {
+                name: f.name,
+                ty: self.type_processor(&type_vars).process_type(f.ty),
+            })
+            .collect();
+        TraitDeclaration {
+            name: self.driver.resolve_decl(&trait_decl.name),
+            type_vars: trait_decl.type_vars,
+            functions,
+        }
     }
 }

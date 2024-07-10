@@ -17,7 +17,7 @@ use powdr_ast::parsed::{
     ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
     FieldAccess, FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
     MatchExpression, Pattern, PilStatement, StatementInsideBlock, StructDeclaration,
-    TypedExpression, UnaryOperation,
+    TraitDeclaration, TraitFunction, TypedExpression, UnaryOperation,
 };
 use powdr_parser_util::{Error, SourceRef};
 
@@ -117,6 +117,15 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 Some(Ok(SymbolValue::TypeDeclaration(TypeDeclaration::Struct(
                                     struct_decl,
                                 ))))
+                            }
+                            SymbolValue::TraitDeclaration(mut trait_decl) => {
+                                let type_vars = trait_decl.type_vars.iter().collect();
+                                for f in &mut trait_decl.functions {
+                                    canonicalize_inside_type(
+                                        &mut f.ty, &type_vars, &self.path, self.paths,
+                                    );
+                                }
+                                Some(Ok(SymbolValue::TraitDeclaration(trait_decl)))
                             }
                         }
                         .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
@@ -466,7 +475,8 @@ fn check_path_internal<'a>(
                     // machines, expressions and enum variants do not expose symbols
                     SymbolValueRef::Machine(_)
                     | SymbolValueRef::Expression(_)
-                    | SymbolValueRef::TypeConstructor(_) => {
+                    | SymbolValueRef::TypeConstructor(_)
+                    | SymbolValueRef::TraitDeclaration(_) => {
                         Err(format!("symbol not found in `{location}`: `{member}`"))
                     }
                     // modules expose symbols
@@ -606,6 +616,9 @@ fn check_module(
             }
             SymbolValue::TypeDeclaration(TypeDeclaration::Struct(struct_decl)) => {
                 check_struct_declaration(&location, struct_decl, state)?
+            }
+            SymbolValue::TraitDeclaration(trait_decl) => {
+                check_trait_declaration(&location, trait_decl, state)?
             }
         }
     }
@@ -938,6 +951,37 @@ fn check_type(
     }
     ty.children()
         .try_for_each(|e| check_expression(location, e, state, local_variables))
+}
+
+fn check_trait_declaration(
+    location: &AbsoluteSymbolPath,
+    trait_decl: &TraitDeclaration<Expression>,
+    state: &mut State<'_>,
+) -> Result<(), Error> {
+    trait_decl
+        .functions
+        .iter()
+        .try_fold(
+            BTreeSet::default(),
+            |mut acc, TraitFunction { name, .. }| {
+                acc.insert(name.clone()).then_some(acc).ok_or(format!(
+                    "Duplicate method `{name}` defined in trait `{location}`"
+                ))
+            },
+        )
+        .map_err(|e| SourceRef::unknown().with_error(e))?;
+
+    let type_vars = trait_decl.type_vars.iter().collect();
+
+    trait_decl.functions.iter().try_for_each(|function| {
+        check_type(
+            location,
+            &function.ty,
+            state,
+            &type_vars,
+            &Default::default(),
+        )
+    })
 }
 
 #[cfg(test)]

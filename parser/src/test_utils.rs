@@ -75,6 +75,9 @@ impl ClearSourceRefs for ModuleStatement {
             SymbolValue::TypeDeclaration(decl) => decl
                 .children_mut()
                 .for_each(ClearSourceRefs::clear_source_refs),
+            SymbolValue::TraitDeclaration(trait_decl) => trait_decl
+                .children_mut()
+                .for_each(ClearSourceRefs::clear_source_refs),
         }
     }
 }
@@ -106,7 +109,8 @@ impl ClearSourceRefs for PilStatement {
             | PilStatement::ConnectIdentity(s, _, _)
             | PilStatement::Expression(s, _)
             | PilStatement::EnumDeclaration(s, _)
-            | PilStatement::StructDeclaration(s, _) => *s = SourceRef::unknown(),
+            | PilStatement::StructDeclaration(s, _)
+            | PilStatement::TraitDeclaration(s, _) => *s = SourceRef::unknown(),
         }
     }
 }

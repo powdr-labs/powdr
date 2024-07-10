@@ -95,6 +95,9 @@ impl Folder for StdAdder {
                     SymbolValue::TypeDeclaration(TypeDeclaration::Struct(struct_decl)) => {
                         self.fold_struct_declaration(struct_decl).map(From::from)
                     }
+                    SymbolValue::TraitDeclaration(trait_decl) => {
+                        self.fold_trait_declaration(trait_decl).map(From::from)
+                    }
                 }
                 .map(|value| ModuleStatement::SymbolDefinition(SymbolDefinition { value, ..d })),
             })

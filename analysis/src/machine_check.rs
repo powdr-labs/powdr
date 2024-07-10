@@ -348,6 +348,12 @@ impl TypeChecker {
                                 Item::TypeDeclaration(struct_decl.into()),
                             );
                         }
+                        asm::SymbolValue::TraitDeclaration(trait_decl) => {
+                            res.insert(
+                                ctx.clone().with_part(&name),
+                                Item::TraitDeclaration(trait_decl),
+                            );
+                        }
                     }
                 }
             }

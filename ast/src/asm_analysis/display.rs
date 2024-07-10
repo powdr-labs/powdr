@@ -63,6 +63,9 @@ impl Display for AnalysisASMFile {
                 Item::TypeDeclaration(TypeDeclaration::Struct(struct_decl)) => {
                     write_indented_by(f, struct_decl, current_path.len())?
                 }
+                Item::TraitDeclaration(trait_decl) => {
+                    write_indented_by(f, trait_decl, current_path.len())?
+                }
             }
         }
         for i in (0..current_path.len()).rev() {
