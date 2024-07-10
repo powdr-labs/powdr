@@ -221,6 +221,14 @@ fn vm_to_block_array() {
 }
 
 #[test]
+fn vm_to_block_different_length() {
+    let f = "asm/vm_to_block_different_length.asm";
+    // Because machines have different lengths, this can only be proven
+    // with a composite proof.
+    gen_halo2_composite_proof(f, vec![]);
+}
+
+#[test]
 fn vm_to_vm_to_vm() {
     let f = "asm/vm_to_vm_to_vm.asm";
     let i = [];
