@@ -177,7 +177,7 @@ pub trait Backend<'a, F: FieldElement> {
     /// Exports the verification key in a backend specific format. Can be used
     /// to create a new backend object of the same kind.
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
-        let v = self.get_verification_key_bytes()?;
+        let v = self.verification_key_bytes()?;
         log::info!("Verification key size: {} bytes", v.len());
         output
             .write_all(&v)
@@ -185,7 +185,7 @@ pub trait Backend<'a, F: FieldElement> {
         Ok(())
     }
 
-    fn get_verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
         Err(Error::NoVerificationAvailable)
     }
 

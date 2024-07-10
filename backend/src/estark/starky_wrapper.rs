@@ -211,7 +211,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
         }
     }
 
-    fn get_verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
         serde_json::to_vec(&self.setup)
             .map_err(|_| Error::BackendError("Could not serialize verification key".to_string()))
     }

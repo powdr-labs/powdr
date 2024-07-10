@@ -194,14 +194,14 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
             .export_setup(output)
     }
 
-    fn get_verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
         let verification_key = CompositeVerificationKey {
             verification_keys: self
                 .machine_data
                 .values()
                 .map(|machine_data| {
                     let backend = machine_data.backend.as_ref();
-                    let vk_bytes = backend.get_verification_key_bytes();
+                    let vk_bytes = backend.verification_key_bytes();
                     match vk_bytes {
                         Ok(vk_bytes) => Ok(Some(vk_bytes)),
                         Err(Error::NoVerificationAvailable) => Ok(None),

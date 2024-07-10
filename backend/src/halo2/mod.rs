@@ -159,7 +159,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<T> {
         Ok(self.write_setup(&mut output)?)
     }
 
-    fn get_verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
         let vk = self.verification_key()?;
         Ok(vk.to_bytes(SerdeFormat::Processed))
     }
