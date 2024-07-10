@@ -7,6 +7,9 @@ mod common;
 mod romgen;
 mod vm_to_constrained;
 
+static ROM_SUFFIX: &str = "ROM";
+static ROM_SUBMACHINE_NAME: &str = "_rom";
+
 /// Remove all ASM from the machine tree. Takes a tree of virtual or constrained machines and returns a tree of constrained machines
 pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
     AnalysisASMFile {
@@ -18,26 +21,29 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
                     let (m, rom) = generate_machine_rom::<T>(m);
                     let (mut m, rom_machine) = vm_to_constrained::convert_machine::<T>(m, rom);
 
-                    let mut rom_ty = name.clone();
-                    let machine_name = rom_ty.pop().unwrap();
-                    rom_ty.push(format!("{machine_name}ROM"));
+                    match rom_machine {
+                        // in the absence of ROM, simply return the machine
+                        None => vec![(name, Item::Machine(m))],
+                        Some(rom_machine) => {
+                            // introduce a new name for the ROM machine, based on the original name
+                            let mut rom_name = name.clone();
+                            let machine_name = rom_name.pop().unwrap();
+                            rom_name.push(format!("{machine_name}{ROM_SUFFIX}"));
 
-                    if rom_machine.is_some() {
-                        m.submachines.push(SubmachineDeclaration {
-                            name: "_rom".into(),
-                            ty: rom_ty.clone(),
-                            args: vec![],
-                        });
+                            // add the ROM as a submachine
+                            m.submachines.push(SubmachineDeclaration {
+                                name: ROM_SUBMACHINE_NAME.into(),
+                                ty: rom_name.clone(),
+                                args: vec![],
+                            });
+
+                            // return both the machine and the rom
+                            vec![
+                                (name, Item::Machine(m)),
+                                (rom_name, Item::Machine(rom_machine)),
+                            ]
+                        }
                     }
-
-                    std::iter::once((name.clone(), m))
-                        .chain(
-                            rom_machine
-                                .into_iter()
-                                .map(|rom_machine| (rom_ty.clone(), rom_machine)),
-                        )
-                        .map(|(name, machine)| (name, Item::Machine(machine)))
-                        .collect()
                 }
                 Item::Expression(e) => vec![(name, Item::Expression(e))],
                 Item::TypeDeclaration(enum_decl) => vec![(name, Item::TypeDeclaration(enum_decl))],
