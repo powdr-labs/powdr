@@ -853,9 +853,7 @@ impl TypeChecker {
                 }
             }
             Pattern::Struct(_source_ref, name, fields) => {
-                println!("Struct pattern: {:?}", fields);
-
-                // TODO GZ: REview this
+                // TODO GZ: Review this
                 match fields {
                     Some(fields) => {
                         for f in fields {

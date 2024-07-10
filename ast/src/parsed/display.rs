@@ -423,9 +423,9 @@ impl Display for Pattern {
                                 .iter()
                                 .map(|(opt_str, pattern)| {
                                     if let Some(s) = opt_str {
-                                        format!("{}: {}", s, pattern)
+                                        format!("{s}: {pattern}")
                                     } else {
-                                        format!("{}", pattern)
+                                        format!("{pattern}")
                                     }
                                 })
                                 .collect::<Vec<_>>()
