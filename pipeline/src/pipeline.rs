@@ -18,7 +18,7 @@ use powdr_ast::{
 };
 use powdr_backend::{BackendOptions, BackendType, Proof};
 use powdr_executor::{
-    constant_evaluator::{self, get_only_size_cloned, VariablySizedColumn},
+    constant_evaluator::{self, get_uniquely_sized_cloned, VariablySizedColumn},
     witgen::{
         chain_callbacks, extract_publics, unused_query_callback, QueryCallback, WitgenCallback,
         WitnessGenerator,
@@ -507,7 +507,7 @@ impl<T: FieldElement> Pipeline<T> {
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
                 // TODO: Handle multiple sizes
-                let fixed = get_only_size_cloned(fixed).unwrap();
+                let fixed = get_uniquely_sized_cloned(fixed).unwrap();
                 let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;

@@ -2,7 +2,7 @@ use std::{io, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{
-    constant_evaluator::{get_only_size_cloned, VariablySizedColumn},
+    constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn},
     witgen::WitgenCallback,
 };
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
@@ -37,8 +37,9 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
             return Err(Error::NoVariableDegreeAvailable);
         }
 
-        let fixed =
-            Arc::new(get_only_size_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?);
+        let fixed = Arc::new(
+            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
 
         let mut p3 = Box::new(Plonky3Prover::new(pil, fixed));
 

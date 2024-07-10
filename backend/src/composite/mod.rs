@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::A
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{
-    constant_evaluator::{get_only_size_cloned, VariablySizedColumn},
+    constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn},
     witgen::WitgenCallback,
 };
 use powdr_number::{DegreeType, FieldElement};
@@ -50,8 +50,9 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         }
 
         // TODO: Handle multiple sizes.
-        let fixed =
-            Arc::new(get_only_size_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?);
+        let fixed = Arc::new(
+            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
 
         let per_machine_data = split::split_pil((*pil).clone())
             .into_iter()

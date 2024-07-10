@@ -16,7 +16,7 @@ use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::{
-    constant_evaluator::{get_only_size_cloned, VariablySizedColumn},
+    constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn},
     witgen::WitgenCallback,
 };
 use powdr_number::{DegreeType, FieldElement};
@@ -232,8 +232,9 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
-        let fixed =
-            Arc::new(get_only_size_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?);
+        let fixed = Arc::new(
+            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
         Ok(Box::new(DumpBackend(EStarkFilesCommon::create(
             &analyzed,
             fixed,

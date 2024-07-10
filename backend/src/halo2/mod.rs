@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::constant_evaluator::{get_only_size_cloned, VariablySizedColumn};
+use powdr_executor::constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn};
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
 use prover::{generate_setup, Halo2Prover};
@@ -88,8 +88,9 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
             return Err(Error::NoVariableDegreeAvailable);
         }
         let proof_type = ProofType::from(options);
-        let fixed =
-            Arc::new(get_only_size_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?);
+        let fixed = Arc::new(
+            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
         let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup, proof_type)?);
         if let Some(vk) = verification_key {
             halo2.add_verification_key(vk);
@@ -205,8 +206,9 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
             return Err(Error::NoAggregationAvailable);
         }
 
-        let fixed =
-            Arc::new(get_only_size_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?);
+        let fixed = Arc::new(
+            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
 
         Ok(Box::new(Halo2Mock { pil, fixed }))
     }

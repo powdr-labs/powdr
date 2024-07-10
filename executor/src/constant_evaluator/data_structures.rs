@@ -11,7 +11,7 @@ pub struct HasMultipleSizesError;
 
 impl<F> VariablySizedColumn<F> {
     /// Create a view where each column has a single size. Fails if any column has multiple sizes.
-    pub fn get_only_size(&self) -> Result<&Vec<F>, HasMultipleSizesError> {
+    pub fn get_uniquely_sized(&self) -> Result<&Vec<F>, HasMultipleSizesError> {
         if self.column_by_size.len() != 1 {
             return Err(HasMultipleSizesError);
         }
@@ -19,19 +19,19 @@ impl<F> VariablySizedColumn<F> {
     }
 }
 
-pub fn get_only_size<F>(
+pub fn get_uniquely_sized<F>(
     column: &[(String, VariablySizedColumn<F>)],
 ) -> Result<Vec<(String, &Vec<F>)>, HasMultipleSizesError> {
     column
         .iter()
-        .map(|(name, column)| Ok((name.clone(), column.get_only_size()?)))
+        .map(|(name, column)| Ok((name.clone(), column.get_uniquely_sized()?)))
         .collect()
 }
 
-pub fn get_only_size_cloned<F: Clone>(
+pub fn get_uniquely_sized_cloned<F: Clone>(
     column: &[(String, VariablySizedColumn<F>)],
 ) -> Result<Vec<(String, Vec<F>)>, HasMultipleSizesError> {
-    get_only_size(column).map(|column| {
+    get_uniquely_sized(column).map(|column| {
         column
             .into_iter()
             .map(|(name, column)| (name, column.clone()))

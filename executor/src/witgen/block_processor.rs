@@ -121,7 +121,7 @@ mod tests {
     use powdr_pil_analyzer::analyze_string;
 
     use crate::{
-        constant_evaluator::{generate, get_only_size},
+        constant_evaluator::{generate, get_uniquely_sized},
         witgen::{
             data_structures::finalizable_data::FinalizableData,
             identity_processor::Machines,
@@ -153,7 +153,7 @@ mod tests {
     ) -> R {
         let analyzed = analyze_string(src);
         let constants = generate(&analyzed);
-        let constants = get_only_size(&constants).unwrap();
+        let constants = get_uniquely_sized(&constants).unwrap();
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 
         // No submachines

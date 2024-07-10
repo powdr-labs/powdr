@@ -10,7 +10,7 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::constant_evaluator::{get_only_size, VariablySizedColumn};
+use crate::constant_evaluator::{get_uniquely_sized, VariablySizedColumn};
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -159,7 +159,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
         record_start(OUTER_CODE_NAME);
         // TODO: Handle multiple sizes
-        let fixed_col_values = get_only_size(self.fixed_col_values).unwrap();
+        let fixed_col_values = get_uniquely_sized(self.fixed_col_values).unwrap();
         let fixed = FixedData::new(
             self.analyzed,
             &fixed_col_values,
