@@ -130,6 +130,9 @@ struct MachineData<'a, F> {
 }
 
 pub(crate) struct CompositeBackend<'a, F> {
+    /// Maps each machine name to the corresponding machine data
+    /// Note that it is essential that we use BTreeMap here to ensure that the machines are
+    /// deterministically ordered.
     machine_data: BTreeMap<String, MachineData<'a, F>>,
 }
 
