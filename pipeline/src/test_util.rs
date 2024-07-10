@@ -75,7 +75,7 @@ pub fn verify_pipeline(
     pipeline.compute_proof().unwrap();
 
     verify(pipeline.output_dir().as_ref().unwrap())
-}
+} // Foo
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
     gen_estark_proof_with_backend_variant(file_name, inputs.clone(), BackendVariant::Monolithic);
