@@ -112,8 +112,8 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
     pipeline.verify(&proof, &[publics]).unwrap();
 }
 
-/// A subset of BackendType, but also available without the halo2 feature.
-pub enum Halo2Backend {
+/// Whether to compute a monolithic or composite proof.
+pub enum BackendVariant {
     Monolithic,
     Composite,
 }
@@ -144,8 +144,8 @@ pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
         .map(|v| v == "true")
         .unwrap_or(false);
     if is_nightly_test {
-        gen_halo2_proof(file_name, inputs.clone(), Halo2Backend::Monolithic);
-        gen_halo2_proof(file_name, inputs, Halo2Backend::Composite);
+        gen_halo2_proof(file_name, inputs.clone(), BackendVariant::Monolithic);
+        gen_halo2_proof(file_name, inputs, BackendVariant::Composite);
     }
 }
 
@@ -153,10 +153,10 @@ pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
 pub fn test_halo2(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 #[cfg(feature = "halo2")]
-pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>, backend: Halo2Backend) {
+pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>, backend: BackendVariant) {
     let backend = match backend {
-        Halo2Backend::Monolithic => BackendType::Halo2,
-        Halo2Backend::Composite => BackendType::Halo2Composite,
+        BackendVariant::Monolithic => BackendType::Halo2,
+        BackendVariant::Composite => BackendType::Halo2Composite,
     };
 
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
@@ -207,7 +207,7 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>, backend: Halo2B
 }
 
 #[cfg(not(feature = "halo2"))]
-pub fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>, _backend: Halo2Backend) {}
+pub fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>, _backend: BackendVariant) {}
 
 #[cfg(feature = "plonky3")]
 pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
