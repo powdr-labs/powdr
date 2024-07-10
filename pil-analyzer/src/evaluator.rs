@@ -637,7 +637,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 }
                 Operation::LetStatement(s) => {
                     let value = match (&s.ty, &s.value.as_ref()) {
-                        (Some(Type::Col) | None, value) => {
+                        (Some(Type::Col), value) | (None, value @ None) => {
                             let Pattern::Variable(_, name) = &s.pattern else {
                                 unreachable!()
                             };
