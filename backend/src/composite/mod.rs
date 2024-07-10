@@ -69,7 +69,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             setup_data
         });
 
-        // Read all verification keys (or create empty ones if none are provided)
+        // Read all provided verification keys
         let verification_keys = verification_key
             .map(|verification_key| bincode::deserialize_from(verification_key).unwrap())
             .unwrap_or(CompositeVerificationKey {
