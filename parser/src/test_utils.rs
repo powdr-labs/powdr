@@ -128,14 +128,11 @@ impl<R> ClearSourceRefs for Expression<R> {
             | Expression::FieldAccess(_, _)
             | Expression::FunctionCall(_, _)
             | Expression::FreeInput(_, _)
-            | Expression::IfExpression(_, _) => {}
+            | Expression::IfExpression(_, _)
+            | Expression::StructExpression(_, _) => {}
             Expression::BlockExpression(_, b) => b.clear_source_refs(),
             Expression::MatchExpression(_, m) => m.clear_source_refs(),
             Expression::LambdaExpression(_, l) => l.clear_source_refs(),
-            Expression::StructExpression(_, f) => f
-                .fields
-                .iter_mut()
-                .for_each(|ne| ne.expr.clear_source_refs()),
         }
     }
 }
