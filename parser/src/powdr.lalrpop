@@ -33,6 +33,10 @@ ModuleStatement: ModuleStatement = {
             name: <>.name.clone(),
             value: SymbolValue::TypeDeclaration(<>),
         }),
+    <TraitDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
+            name: <>.name.clone(),
+            value: SymbolValue::TraitDeclaration(<>),
+        }),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
@@ -108,13 +112,13 @@ pub PilStatement = {
     Include,
     Namespace,
     LetStatement,
-    ConstantDefinition,
     PolynomialDefinition,
     PublicDeclaration,
     PolynomialConstantDeclaration,
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
     PlookupIdentityStatement,
     PermutationIdentityStatement,
     ConnectIdentityStatement,
@@ -133,10 +137,6 @@ Namespace: PilStatement = {
 LetStatement: PilStatement = {
     <start:@L> "let" <name:GenericTypedName> <expr:( "=" <Expression> )?> <end:@R> ";" =>
         PilStatement::LetStatement(ctx.source_ref(start, end), name.0, name.1, expr)
-}
-
-ConstantDefinition: PilStatement = {
-    <start:@L> "constant" <id:ConstantIdentifier> "=" <expr:Expression> <end:@R> ";" => PilStatement::ConstantDefinition(ctx.source_ref(start, end), id, expr)
 }
 
 PolynomialDefinition: PilStatement = {
@@ -678,6 +678,26 @@ PatternList: Vec<Pattern> = {
     <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
     => vec![]
 }
+
+// ---------------------------- Trait/Impl Declaration -----------------------------
+
+TraitDeclaration: TraitDeclaration<Expression> = {
+    "trait" <name:Identifier> <type_vars:("<" <TraitVars> ">")> "{" <functions:TraitFunctions> "}" => TraitDeclaration { name, type_vars, functions }
+}
+
+TraitVars: Vec<String> = {
+    <mut list:( <TypeVar> "," )*> <end:TypeVar> ","?  => { list.push(end); list }
+}
+
+TraitFunctions: Vec<TraitFunction<Expression>> = {
+    => vec![],
+    <mut list:( <TraitFunction> "," )*> <end:TraitFunction> ","  => { list.push(end); list }
+}
+
+TraitFunction: TraitFunction<Expression> = {
+    <name:Identifier> ":" <params:TypeTermList> "->" <value:TypeTermBox> => TraitFunction { name, ty: Type::Function(FunctionType{params, value}) }
+}
+
 
 // ---------------------------- Type Declarations -----------------------------
 

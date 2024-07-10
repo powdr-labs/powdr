@@ -33,6 +33,13 @@ fn poseidon_gl_test() {
 }
 
 #[test]
+fn poseidon_gl_memory_test() {
+    let f = "std/poseidon_gl_memory_test.asm";
+    verify_test_file(f, Default::default(), vec![]).unwrap();
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     test_halo2(f, Default::default());

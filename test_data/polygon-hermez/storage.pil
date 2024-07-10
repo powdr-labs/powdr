@@ -9,7 +9,7 @@
 include "global.pil";
 include "poseidong.pil";
 
-namespace Storage(%N);
+namespace Storage(N);
 
     pol commit free0, free1, free2, free3;
 
