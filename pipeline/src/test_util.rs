@@ -60,6 +60,13 @@ pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     verify_pipeline(pipeline, BackendType::EStarkDump).unwrap();
 }
 
+pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Arc<Analyzed<T>> {
+    Pipeline::default()
+        .from_asm_string(contents.to_string(), None)
+        .compute_optimized_pil()
+        .unwrap()
+}
+
 pub fn verify_pipeline(
     pipeline: Pipeline<GoldilocksField>,
     backend: BackendType,

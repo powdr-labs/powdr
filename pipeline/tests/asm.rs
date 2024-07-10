@@ -1,7 +1,9 @@
 use powdr_backend::BackendType;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
-    test_util::{gen_estark_proof, resolve_test_file, test_halo2, verify_test_file},
+    test_util::{
+        asm_string_to_pil, gen_estark_proof, resolve_test_file, test_halo2, verify_test_file,
+    },
     util::{read_poly_set, FixedPolySet, WitnessPolySet},
     Pipeline,
 };
@@ -750,4 +752,28 @@ fn dynamic_fixed_cols() {
     let f = "asm/dynamic_fixed_cols.asm";
     let i = [];
     verify_asm(f, slice_to_vec(&i));
+}
+
+#[test]
+fn types_in_expressions() {
+    let input = r#"
+        enum O<X> {
+            A(X),
+            B,
+        }
+        let f: -> Constr = || {
+            let g: expr[] = [1, 2];
+            let h: expr -> O<expr> = |i| O::A::<expr>(i);
+            match h(g[1]) {
+                O::A(x) => x,
+            } = 0
+        };
+        machine Main {
+            col witness w;
+            f();
+        }
+        "#;
+    let output = asm_string_to_pil::<GoldilocksField>(input).to_string();
+    let expected = "    2 = 0;\n";
+    assert_eq!(output, expected);
 }
