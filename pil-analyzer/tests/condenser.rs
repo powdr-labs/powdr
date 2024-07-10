@@ -228,3 +228,18 @@ fn new_fixed_column() {
 "#;
     assert_eq!(formatted, expected);
 }
+
+#[test]
+#[should_panic = "Lambda expression for fixed column N.fi must not reference outer variables."]
+fn new_fixed_column_as_closure() {
+    let input = r#"namespace N(16);
+        let f = constr |j| {
+            let fi: col = |i| (i + j) * 2;
+            fi
+        };
+        let ev = f(2);
+        let x;
+        x = ev;
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}

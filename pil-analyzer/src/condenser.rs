@@ -329,10 +329,9 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                 type_args: _,
             }) = v.as_ref()
             {
-                // TODO check that the lambda does not reference any outside variables.
-                // TODO the "easiest" way to do this is probably to check which variables
-                // are used at the point the closure is created. This could also allow
-                // us to trim down the environment.
+                if !lambda.outer_var_references.is_empty() {
+                    return Err(EvalError::TypeError(format!("Lambda expression for fixed column {name} must not reference outer variables.")))
+                }
                 Ok(FunctionValueDefinition::Expression(TypedExpression {
                     e: Expression::LambdaExpression(source.clone(), (*lambda).clone()),
                     type_scheme: None,
