@@ -56,6 +56,28 @@ impl Default for Counters {
 }
 
 impl Counters {
+    /// Creates a new counter struct that can dispense IDs that do not conflict with the
+    /// provided existing IDs.
+    pub fn with_existing<'a>(
+        symbols: impl IntoIterator<Item = &'a Symbol>,
+        identity: Option<u64>,
+        public: Option<u64>,
+    ) -> Self {
+        let mut counters = Self::default();
+        if let Some(id) = identity {
+            counters.identity_counter = id + 1;
+        }
+        if let Some(id) = public {
+            counters.public_counter = id + 1;
+        }
+        for symbol in symbols {
+            let counter = counters.symbol_counters.get_mut(&symbol.kind).unwrap();
+            let next = symbol.id + symbol.length.unwrap_or(1);
+            *counter = std::cmp::max(*counter, next);
+        }
+        counters
+    }
+
     pub fn dispense_identity_id(&mut self) -> u64 {
         let id = self.identity_counter;
         self.identity_counter += 1;
