@@ -109,9 +109,9 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 mut struct_decl,
                             )) => {
                                 let type_vars = struct_decl.type_vars.vars().collect();
-                                for field in struct_decl.fields.values_mut() {
+                                for (_name, ty) in struct_decl.fields.iter_mut() {
                                     canonicalize_inside_type(
-                                        field, &type_vars, &self.path, self.paths,
+                                        ty, &type_vars, &self.path, self.paths,
                                     );
                                 }
                                 Some(Ok(SymbolValue::TypeDeclaration(TypeDeclaration::Struct(

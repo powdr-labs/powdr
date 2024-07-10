@@ -4,8 +4,8 @@ use powdr_ast::{
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BinaryOperation, BlockExpression,
         IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
-        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
-        StructExpression, SymbolCategory, UnaryOperation,
+        NamedExpression, NamespacedPolynomialReference, Number, Pattern, SelectedExpressions,
+        StatementInsideBlock, StructExpression, SymbolCategory, UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
@@ -212,7 +212,10 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                         name,
                         fields: fields
                             .into_iter()
-                            .map(|(name, expr)| (name, Box::new(self.process_expression(*expr))))
+                            .map(|named_expr| NamedExpression {
+                                name: named_expr.name,
+                                expr: Box::new(self.process_expression(*named_expr.expr)),
+                            })
                             .collect(),
                     },
                 )

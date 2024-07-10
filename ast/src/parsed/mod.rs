@@ -6,7 +6,7 @@ pub mod types;
 pub mod visitor;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     iter::{empty, once},
     ops,
     str::FromStr,
@@ -141,7 +141,7 @@ impl PilStatement {
                 once((name, None, SymbolCategory::Type)).chain(
                     fields
                         .iter()
-                        .map(move |f| (name, Some(f.0), SymbolCategory::TypeConstructor)),
+                        .map(move |f| (name, Some(&f.0), SymbolCategory::TypeConstructor)),
                 ),
             ),
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
@@ -234,15 +234,15 @@ impl Children<Expression> for PilStatement {
 pub struct StructDeclaration<E = u64> {
     pub name: String,
     pub type_vars: TypeBounds,
-    pub fields: BTreeMap<String, Type<E>>,
+    pub fields: Vec<(String, Type<E>)>,
 }
 
 impl<R> Children<Expression<R>> for StructDeclaration<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(self.fields.values().flat_map(|f| f.children()))
+        Box::new(self.fields.iter().flat_map(|f| f.1.children()))
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(self.fields.values_mut().flat_map(|f| f.children_mut()))
+        Box::new(self.fields.iter_mut().flat_map(|f| f.1.children_mut()))
     }
 }
 
@@ -258,15 +258,15 @@ impl<R> Children<Expression<R>> for StructDeclaration<u64> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct NamedExpression<Expression> {
     pub name: String,
-    pub value: Expression,
+    pub expr: Box<Expression>,
 }
 
 impl<R> Children<Expression<R>> for NamedExpression<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(once(&self.value))
+        Box::new(once(self.expr.as_ref()))
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(once(&mut self.value))
+        Box::new(once(self.expr.as_mut()))
     }
 }
 
@@ -1101,7 +1101,7 @@ impl<E> Children<E> for IfExpression<E> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StructExpression<E = Expression<NamespacedPolynomialReference>> {
     pub name: String,
-    pub fields: BTreeMap<String, Box<E>>, // Could be Vec<NamedExpression<E>> defined in PR about Traits
+    pub fields: Vec<NamedExpression<E>>,
 }
 
 impl<Ref> From<StructExpression<Expression<Ref>>> for Expression<Ref> {
@@ -1112,15 +1112,11 @@ impl<Ref> From<StructExpression<Expression<Ref>>> for Expression<Ref> {
 
 impl<R> Children<Expression<R>> for StructExpression<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(self.fields.iter().flat_map(|f| f.1.as_ref().children()))
+        Box::new(self.fields.iter().flat_map(|f| f.children()))
     }
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(
-            self.fields
-                .iter_mut()
-                .flat_map(|f| f.1.as_mut().children_mut()),
-        )
+        Box::new(self.fields.iter_mut().flat_map(|f| f.children_mut()))
     }
 }
 

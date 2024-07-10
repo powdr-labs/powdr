@@ -704,11 +704,17 @@ impl<E: Display> Display for StructExpression<E> {
                     "{{ {} }}",
                     self.fields
                         .iter()
-                        .map(|named_expr| format!("{}: {}", named_expr.0, named_expr.1))
+                        .map(|named_expr| format!("{named_expr}"))
                         .format(", ")
                 )
             }
         )
+    }
+}
+
+impl<E: Display> Display for NamedExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self.expr)
     }
 }
 

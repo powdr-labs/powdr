@@ -466,7 +466,7 @@ where
             assert_eq!(symbol_kind, SymbolKind::Other());
             let struct_decl = self.process_struct_declaration(struct_decl);
             let shared_struct_decl = Arc::new(struct_decl.clone());
-            let field_items = struct_decl.fields.keys().map(|field_name| {
+            let field_items = struct_decl.fields.iter().map(|(field_name, ty)| {
                 let var_symbol = Symbol {
                     id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
                     source: source.clone(),
@@ -479,10 +479,9 @@ where
                     length: None,
                     degree: None,
                 };
-                let ty = struct_decl.fields[field_name].clone();
                 let value = FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
                     shared_struct_decl.clone(),
-                    (field_name.clone(), ty),
+                    (field_name.clone(), ty.clone()),
                 ));
                 PILItem::Definition(var_symbol, Some(value))
             });

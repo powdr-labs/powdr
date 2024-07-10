@@ -676,8 +676,13 @@ impl TypeChecker {
                 result?
             }
             Expression::StructExpression(_, struct_expr) => {
-                for expr in struct_expr.fields.values_mut() {
-                    self.infer_type_of_expression(expr)?;
+                for named_expr in struct_expr.fields.iter_mut() {
+                    let expr_ty = self.declared_types
+                        [&format!("{}.{}", struct_expr.name, named_expr.name)]
+                        .1
+                        .ty
+                        .clone();
+                    self.expect_type(&expr_ty, named_expr.expr.as_mut())?;
                 }
 
                 Type::NamedType(SymbolPath::from_identifier(struct_expr.name.clone()), None)

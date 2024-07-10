@@ -132,9 +132,10 @@ impl<R> ClearSourceRefs for Expression<R> {
             Expression::BlockExpression(_, b) => b.clear_source_refs(),
             Expression::MatchExpression(_, m) => m.clear_source_refs(),
             Expression::LambdaExpression(_, l) => l.clear_source_refs(),
-            Expression::StructExpression(_, f) => {
-                f.fields.iter_mut().for_each(|(_, e)| e.clear_source_refs())
-            }
+            Expression::StructExpression(_, f) => f
+                .fields
+                .iter_mut()
+                .for_each(|ne| ne.expr.clear_source_refs()),
         }
     }
 }
