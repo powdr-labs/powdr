@@ -2,7 +2,10 @@ use powdr_backend::BackendType;
 use powdr_executor::constant_evaluator::get_uniquely_sized;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
-    test_util::{gen_estark_proof, resolve_test_file, test_halo2, verify_test_file},
+    test_util::{
+        gen_estark_proof, gen_halo2_composite_proof, resolve_test_file, test_halo2,
+        verify_test_file,
+    },
     util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
 };
