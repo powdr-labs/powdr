@@ -1,5 +1,6 @@
 use powdr_backend::BackendType;
-use powdr_number::{get_only_size, Bn254Field, FieldElement, GoldilocksField};
+use powdr_executor::constant_evaluator::get_only_size;
+use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{gen_estark_proof, resolve_test_file, test_halo2, verify_test_file},
     util::{FixedPolySet, PolySet, WitnessPolySet},

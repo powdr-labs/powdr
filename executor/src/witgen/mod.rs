@@ -8,7 +8,9 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
-use powdr_number::{get_only_size, DegreeType, FieldElement, VariablySizedColumn};
+use powdr_number::{DegreeType, FieldElement};
+
+use crate::constant_evaluator::{get_only_size, VariablySizedColumn};
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{

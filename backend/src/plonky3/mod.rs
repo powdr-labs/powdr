@@ -1,10 +1,11 @@
 use std::{io, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{
-    get_only_size_cloned, FieldElement, GoldilocksField, LargeInt, VariablySizedColumn,
+use powdr_executor::{
+    constant_evaluator::{get_only_size_cloned, VariablySizedColumn},
+    witgen::WitgenCallback,
 };
+use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 use powdr_plonky3::Plonky3Prover;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};

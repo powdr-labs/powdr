@@ -9,8 +9,8 @@ mod plonky3;
 mod composite;
 
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement, VariablySizedColumn};
+use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
+use powdr_number::{DegreeType, FieldElement};
 use std::{io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
 

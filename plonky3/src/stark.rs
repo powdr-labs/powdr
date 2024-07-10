@@ -205,7 +205,8 @@ impl<T: FieldElement> Plonky3Prover<T> {
 mod tests {
     use std::sync::Arc;
 
-    use powdr_number::{get_only_size_cloned, GoldilocksField};
+    use powdr_executor::constant_evaluator::get_only_size_cloned;
+    use powdr_number::GoldilocksField;
     use powdr_pipeline::Pipeline;
     use test_log::test;
 

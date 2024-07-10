@@ -1,8 +1,11 @@
 use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{get_only_size_cloned, DegreeType, FieldElement, VariablySizedColumn};
+use powdr_executor::{
+    constant_evaluator::{get_only_size_cloned, VariablySizedColumn},
+    witgen::WitgenCallback,
+};
+use powdr_number::{DegreeType, FieldElement};
 use serde::{Deserialize, Serialize};
 use split::select_machine_columns;
 

@@ -1,8 +1,11 @@
 use std::{fs, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{get_only_size_cloned, FieldElement, VariablySizedColumn};
+use powdr_executor::{
+    constant_evaluator::{get_only_size_cloned, VariablySizedColumn},
+    witgen::WitgenCallback,
+};
+use powdr_number::FieldElement;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 

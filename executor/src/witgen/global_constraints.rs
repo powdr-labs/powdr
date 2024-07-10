@@ -361,9 +361,11 @@ mod test {
     use std::collections::BTreeMap;
 
     use powdr_ast::analyzed::{PolyID, PolynomialType};
-    use powdr_number::{get_only_size, GoldilocksField};
+    use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
+
+    use crate::constant_evaluator::get_only_size;
 
     use super::*;
 

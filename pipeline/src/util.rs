@@ -1,5 +1,6 @@
 use powdr_ast::analyzed::{Analyzed, FunctionValueDefinition, Symbol};
-use powdr_number::{ReadWrite, VariablySizedColumn};
+use powdr_executor::constant_evaluator::VariablySizedColumn;
+use powdr_number::ReadWrite;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{fs::File, io::BufReader, marker::PhantomData, path::Path};
 

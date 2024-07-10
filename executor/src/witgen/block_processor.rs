@@ -117,11 +117,11 @@ mod tests {
     use std::collections::BTreeMap;
 
     use powdr_ast::analyzed::{PolyID, PolynomialType};
-    use powdr_number::{get_only_size, FieldElement, GoldilocksField};
+    use powdr_number::{FieldElement, GoldilocksField};
     use powdr_pil_analyzer::analyze_string;
 
     use crate::{
-        constant_evaluator::generate,
+        constant_evaluator::{generate, get_only_size},
         witgen::{
             data_structures::finalizable_data::FinalizableData,
             identity_processor::Machines,

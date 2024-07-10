@@ -18,16 +18,13 @@ use powdr_ast::{
 };
 use powdr_backend::{BackendOptions, BackendType, Proof};
 use powdr_executor::{
-    constant_evaluator,
+    constant_evaluator::{self, get_only_size_cloned, VariablySizedColumn},
     witgen::{
         chain_callbacks, extract_publics, unused_query_callback, QueryCallback, WitgenCallback,
         WitnessGenerator,
     },
 };
-use powdr_number::{
-    get_only_size_cloned, write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite,
-    VariablySizedColumn,
-};
+use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite};
 use powdr_schemas::SerializedAnalyzed;
 
 use crate::{

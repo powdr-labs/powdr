@@ -6,8 +6,9 @@ use std::sync::Arc;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
+use powdr_executor::constant_evaluator::{get_only_size_cloned, VariablySizedColumn};
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{get_only_size_cloned, DegreeType, FieldElement, VariablySizedColumn};
+use powdr_number::{DegreeType, FieldElement};
 use prover::{generate_setup, Halo2Prover};
 
 use serde::de::{self, Deserializer};

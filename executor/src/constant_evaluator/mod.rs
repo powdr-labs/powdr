@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+pub use data_structures::{get_only_size, get_only_size_cloned, VariablySizedColumn};
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
@@ -11,9 +12,11 @@ use powdr_ast::{
         IndexAccess,
     },
 };
-use powdr_number::{BigInt, BigUint, DegreeType, FieldElement, VariablySizedColumn};
+use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+
+mod data_structures;
 
 /// Generates the fixed column values for all fixed columns that are defined
 /// (and not just declared).
@@ -169,7 +172,8 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use powdr_number::{get_only_size, GoldilocksField};
+    use data_structures::get_only_size;
+    use powdr_number::GoldilocksField;
     use powdr_pil_analyzer::analyze_string;
     use pretty_assertions::assert_eq;
     use test_log::test;
