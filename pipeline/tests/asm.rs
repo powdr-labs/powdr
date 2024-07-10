@@ -227,7 +227,7 @@ fn vm_to_block_different_length() {
     let f = "asm/vm_to_block_different_length.asm";
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
-    test_halo2_with_backend_variant(f, vec![], BackendVariant::Composite);
+    test_halo2_with_backend_variant(make_pipeline(f, vec![]), BackendVariant::Composite);
     gen_estark_proof_with_backend_variant(make_pipeline(f, vec![]), BackendVariant::Composite);
 }
 
