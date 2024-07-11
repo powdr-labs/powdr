@@ -17,6 +17,7 @@ pub struct SymbolicWitnessEvaluator<'a, T: FieldElement, WA: WitnessColumnEvalua
     fixed_data: &'a FixedData<'a, T>,
     row: DegreeType,
     witness_access: &'a WA,
+    size: DegreeType,
 }
 
 impl<'a, T: FieldElement, WA> SymbolicWitnessEvaluator<'a, T, WA>
@@ -26,11 +27,17 @@ where
     /// Constructs a new SymbolicWitnessEvaluator
     /// @param row the row on which to evaluate plain fixed
     ///            columns ("next columns" - f' - are evaluated on row + 1).
-    pub fn new(fixed_data: &'a FixedData<'a, T>, row: DegreeType, witness_access: &'a WA) -> Self {
+    pub fn new(
+        fixed_data: &'a FixedData<'a, T>,
+        row: DegreeType,
+        witness_access: &'a WA,
+        size: DegreeType,
+    ) -> Self {
         Self {
             fixed_data,
             row,
             witness_access,
+            size,
         }
     }
 }
@@ -45,7 +52,7 @@ where
             self.witness_access.value(poly)
         } else {
             // Constant polynomial (or something else)
-            let values = self.fixed_data.fixed_cols[&poly.poly_id].values();
+            let values = self.fixed_data.fixed_cols[&poly.poly_id].values(self.size);
             let row =
                 if poly.next { self.row + 1 } else { self.row } % (values.len() as DegreeType);
             Ok(values[row as usize].into())
