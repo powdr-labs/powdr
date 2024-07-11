@@ -771,7 +771,8 @@ impl<T: FieldElement> Pipeline<T> {
         let analyzed_pil = self.artifact.analyzed_pil.take().unwrap();
 
         self.log("Optimizing pil...");
-        let optimized = powdr_pilopt::optimize(analyzed_pil);
+        // let optimized = powdr_pilopt::optimize(analyzed_pil);
+        let optimized = analyzed_pil;
         self.maybe_write_pil(&optimized, "_opt")?;
         self.maybe_write_pil_object(&optimized, "_opt")?;
 
