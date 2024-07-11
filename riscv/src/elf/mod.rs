@@ -6,7 +6,6 @@ use std::{
     path::Path,
 };
 
-use gimli::EndianReader;
 use goblin::{
     elf::sym::STT_OBJECT,
     elf::{
@@ -14,7 +13,7 @@ use goblin::{
         program_header::PT_LOAD,
         reloc::{R_RISCV_32, R_RISCV_HI20, R_RISCV_RELATIVE},
         sym::STT_FUNC,
-        Elf, ProgramHeader, SectionHeader,
+        Elf, ProgramHeader,
     },
 };
 use itertools::{Either, Itertools};
@@ -28,8 +27,11 @@ use raki::{
 
 use crate::{
     code_gen::{self, InstructionArgs, MemEntry, Register, RiscVProgram, Statement},
+    elf::debug_info::DebugInfo,
     Runtime,
 };
+
+mod debug_info;
 
 /// Generates a Powdr Assembly program from a RISC-V 32 executable ELF file.
 pub fn translate<F: FieldElement>(
@@ -158,7 +160,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
         .flatten()
         .collect::<Vec<_>>();
 
-    let debug_info = DebugInfo::new(&elf, &file_buffer);
+    let debug_info = debug_info::DebugInfo::new(&elf, &file_buffer);
 
     let symbol_table = SymbolTable::new(&elf);
 
@@ -235,48 +237,6 @@ fn static_relocate_data_sections(
             // addresses, so we can generate the label.
             referenced_text_addrs.insert(original_addr);
         }
-    }
-}
-
-struct DebugInfo;
-
-impl DebugInfo {
-    /// Extracts debug information from the ELF file, if available.
-    fn new(elf: &Elf, file_buffer: &[u8]) -> Option<DebugInfo> {
-        // Index the sections by their names:
-        let debug_sections: HashMap<&str, &SectionHeader> = elf
-            .section_headers
-            .iter()
-            .filter_map(|shdr| {
-                elf.shdr_strtab
-                    .get_at(shdr.sh_name)
-                    .map(|name| (name, shdr))
-            })
-            .collect();
-
-        if debug_sections.is_empty() {
-            log::info!("No debug information found in the ELF file.");
-            return None;
-        }
-
-        let dwarf = gimli::Dwarf::load(move |section| {
-            Ok::<_, ()>(EndianReader::new(
-                debug_sections
-                    .get(section.name())
-                    .map(|shdr| {
-                        &file_buffer
-                            [shdr.sh_offset as usize..(shdr.sh_offset + shdr.sh_size) as usize]
-                    })
-                    .unwrap_or(&[]),
-                gimli::LittleEndian,
-            ))
-        })
-        .unwrap();
-
-        let aaa = addr2line::Context::from_dwarf(dwarf).unwrap();
-        aaa.find_location(0x1000).unwrap();
-
-        todo!()
     }
 }
 

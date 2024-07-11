@@ -24,7 +24,6 @@ powdr-pipeline.workspace = true
 powdr-riscv-executor.workspace = true
 powdr-riscv-syscalls.workspace = true
 
-addr2line = "0.23"
 gimli = "0.30"
 goblin = "0.8"
 lazy_static = "1.4.0"
@@ -36,12 +35,13 @@ num-traits = "0.2.15"
 # Use the patched version of raki until the fix is merged.
 # Fixes the name of "mulhsu" instruction.
 raki = { git = "https://github.com/powdr-labs/raki.git", branch = "patch-1" }
-serde_json = "1.0"
 # This is only here to work around https://github.com/lalrpop/lalrpop/issues/750
 # It should be removed once that workaround is no longer needed.
 regex-syntax = { version = "0.6", default_features = false, features = [
     "unicode",
 ] }
+serde_json = "1.0"
+thiserror = "1.0"
 
 [build-dependencies]
 lalrpop = "^0.19"
