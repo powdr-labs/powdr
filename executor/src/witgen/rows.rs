@@ -398,6 +398,7 @@ pub struct RowPair<'row, 'a, T: FieldElement> {
     pub current_row_index: RowIndex,
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
+    size: DegreeType,
 }
 impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// Creates a new row pair.
@@ -407,6 +408,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         current_row_index: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
+        size: DegreeType,
     ) -> Self {
         Self {
             current,
@@ -414,6 +416,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             current_row_index,
             fixed_data,
             unknown_strategy,
+            size,
         }
     }
 
@@ -423,6 +426,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         current_row_index: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
+        size: DegreeType,
     ) -> Self {
         Self {
             current,
@@ -430,6 +434,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             current_row_index,
             fixed_data,
             unknown_strategy,
+            size,
         }
     }
 
@@ -472,6 +477,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             self.fixed_data,
             self.current_row_index.into(),
             self,
+            self.size,
         ))
         .evaluate(expr)
     }

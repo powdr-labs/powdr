@@ -249,7 +249,7 @@ fn try_to_period<T: FieldElement>(
 
             let degree = fixed_data.common_degree(once(&poly.poly_id));
 
-            let values = fixed_data.fixed_cols[&poly.poly_id].values();
+            let values = fixed_data.fixed_cols[&poly.poly_id].values(degree);
 
             let offset = values.iter().position(|v| v.is_one())?;
             let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;
@@ -343,6 +343,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 &mut mutable_state,
                 self.fixed_data,
                 &self.witness_cols,
+                self.degree,
             );
 
             // Set all selectors to 0
@@ -558,6 +559,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             &self.identities,
             self.fixed_data,
             &self.witness_cols,
+            self.degree,
         )
         .with_outer_query(outer_query);
 
