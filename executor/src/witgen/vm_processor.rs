@@ -7,6 +7,7 @@ use std::cmp::max;
 use std::collections::HashSet;
 use std::time::Instant;
 
+use crate::constant_evaluator::MAX_DEGREE_LOG;
 use crate::witgen::identity_processor::{self};
 use crate::witgen::IncompleteCause;
 use crate::Identity;
@@ -71,7 +72,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
-        let degree = fixed_data.common_degree(witnesses);
+        let degree = fixed_data
+            .common_degree(witnesses)
+            .unwrap_or(1 << MAX_DEGREE_LOG);
 
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
