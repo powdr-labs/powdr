@@ -4,6 +4,7 @@ use std::utils::unchanged_until;
 
 // Binary for single bytes using an exhaustive table
 machine ByteBinary with
+    degree: 262144,
     latch: latch,
     operation_id: operation_id
 {
@@ -33,6 +34,7 @@ machine ByteBinary with
 }
 
 machine Binary with
+    degree: 1024,
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
@@ -69,7 +71,7 @@ machine Binary with
 }
 
 
-machine Main with degree: 262144 {
+machine Main with degree: 1024 {
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];
