@@ -249,7 +249,7 @@ fn try_to_period<T: FieldElement>(
 
             let degree = fixed_data.common_degree(once(&poly.poly_id));
 
-            let values = fixed_data.fixed_cols[&poly.poly_id].values;
+            let values = fixed_data.fixed_cols[&poly.poly_id].values();
 
             let offset = values.iter().position(|v| v.is_one())?;
             let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;

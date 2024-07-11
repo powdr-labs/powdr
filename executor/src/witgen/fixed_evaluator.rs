@@ -23,7 +23,7 @@ impl<'a, T: FieldElement> SymbolicVariables<T> for FixedEvaluator<'a, T> {
             poly.is_fixed(),
             "Can only access fixed columns in the fixed evaluator."
         );
-        let col_data = self.fixed_data.fixed_cols[&poly.poly_id].values;
+        let col_data = self.fixed_data.fixed_cols[&poly.poly_id].values();
         let degree = col_data.len();
         let row = if poly.next {
             (self.row + 1) % degree
