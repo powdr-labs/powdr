@@ -541,10 +541,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 // due to #1385 ("Witgen: Block machines "forget" that they already completed a block"):
                 // https://github.com/powdr-labs/powdr/issues/1385
                 // let updates = updates.report_side_effect();
-
-                // We solved the query, so report it to the cache.
-                self.processing_sequence_cache
-                    .report_processing_sequence(&outer_query.left, sequence_iterator);
                 Ok(updates)
             }
             ProcessResult::Incomplete(updates) => {

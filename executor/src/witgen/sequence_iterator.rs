@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use powdr_number::FieldElement;
 
@@ -169,8 +169,6 @@ where
 pub enum ProcessingSequenceIterator {
     /// The default strategy
     Default(DefaultSequenceIterator),
-    /// The machine has been run successfully before and the sequence is cached.
-    Cached(<Vec<SequenceStep> as IntoIterator>::IntoIter),
     /// The machine has been run before, but did not succeed. There is no point in trying again.
     Incomplete,
 }
@@ -179,14 +177,13 @@ impl ProcessingSequenceIterator {
     pub fn report_progress(&mut self, progress_in_last_step: bool) {
         match self {
             Self::Default(it) => it.report_progress(progress_in_last_step),
-            Self::Cached(_) => {} // Progress is ignored
             Self::Incomplete => unreachable!(),
         }
     }
 
     pub fn has_steps(&self) -> bool {
         match self {
-            Self::Default(_) | Self::Cached(_) => true,
+            Self::Default(_) => true,
             Self::Incomplete => false,
         }
     }
@@ -194,7 +191,7 @@ impl ProcessingSequenceIterator {
     pub fn is_cached(&self) -> bool {
         match self {
             Self::Default(_) => false,
-            Self::Cached(_) | Self::Incomplete => true,
+            Self::Incomplete => true,
         }
     }
 }
@@ -205,24 +202,16 @@ impl Iterator for ProcessingSequenceIterator {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Self::Default(it) => it.next(),
-            Self::Cached(it) => it.next(),
             Self::Incomplete => unreachable!(),
         }
     }
-}
-
-enum CacheEntry {
-    /// The machine has been run successfully before and the sequence is cached.
-    Complete(Vec<SequenceStep>),
-    /// The machine has been run before, but did not succeed. There is no point in trying again.
-    Incomplete,
 }
 
 pub struct ProcessingSequenceCache {
     block_size: usize,
     outer_query_row: usize,
     identities_count: usize,
-    cache: BTreeMap<SequenceCacheKey, CacheEntry>,
+    incomplete: BTreeSet<SequenceCacheKey>,
 }
 
 impl ProcessingSequenceCache {
@@ -231,7 +220,7 @@ impl ProcessingSequenceCache {
             block_size,
             outer_query_row,
             identities_count,
-            cache: Default::default(),
+            incomplete: Default::default(),
         }
     }
 
@@ -243,16 +232,9 @@ impl ProcessingSequenceCache {
         K: Copy + Ord,
         T: FieldElement,
     {
-        match self.cache.get(&left.into()) {
-            Some(CacheEntry::Complete(cached_sequence)) => {
-                log::trace!("Using cached sequence");
-                ProcessingSequenceIterator::Cached(cached_sequence.clone().into_iter())
-            }
-            Some(CacheEntry::Incomplete) => ProcessingSequenceIterator::Incomplete,
-            None => {
-                log::trace!("Using default sequence");
-                self.get_default_sequence_iterator()
-            }
+        match self.incomplete.contains(&left.into()) {
+            true => ProcessingSequenceIterator::Incomplete,
+            false => self.get_default_sequence_iterator(),
         }
     }
 
@@ -269,29 +251,6 @@ impl ProcessingSequenceCache {
         K: Copy + Ord,
         T: FieldElement,
     {
-        assert!(self
-            .cache
-            .insert(left.into(), CacheEntry::Incomplete)
-            .is_none());
-    }
-
-    pub fn report_processing_sequence<K, T>(
-        &mut self,
-        left: &[AffineExpression<K, T>],
-        sequence_iterator: ProcessingSequenceIterator,
-    ) where
-        K: Copy + Ord,
-        T: FieldElement,
-    {
-        match sequence_iterator {
-            ProcessingSequenceIterator::Default(it) => {
-                assert!(self
-                    .cache
-                    .insert(left.into(), CacheEntry::Complete(it.progress_steps))
-                    .is_none());
-            }
-            ProcessingSequenceIterator::Incomplete => unreachable!(),
-            ProcessingSequenceIterator::Cached(_) => {} // Already cached, do nothing
-        }
+        assert!(self.incomplete.insert(left.into()));
     }
 }
