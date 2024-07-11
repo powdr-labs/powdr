@@ -6,8 +6,8 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_proof, resolve_test_file, std_analyzed, test_halo2, verify_test_file,
-        BackendVariant,
+        gen_estark_proof_with_backend_variant, gen_halo2_proof, resolve_test_file, std_analyzed,
+        test_halo2, test_halo2_with_backend_variant, verify_test_file, BackendVariant,
     },
     Pipeline,
 };
@@ -166,6 +166,15 @@ fn binary_test() {
     let f = "std/binary_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();
     test_halo2(f, Default::default());
+}
+
+#[test]
+fn binary_test_dynamic() {
+    let f = "std/binary_test_dynamic.asm";
+    // Because machines have different lengths, this can only be proven
+    // with a composite proof.
+    test_halo2_with_backend_variant(f, vec![], BackendVariant::Composite);
+    gen_estark_proof_with_backend_variant(f, vec![], BackendVariant::Composite);
 }
 
 #[test]

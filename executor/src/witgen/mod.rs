@@ -10,7 +10,7 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::constant_evaluator::{get_uniquely_sized, VariablySizedColumn};
+use crate::constant_evaluator::{get_max_sized, VariablySizedColumn, MAX_DEGREE_LOG};
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -159,7 +159,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
         record_start(OUTER_CODE_NAME);
         // TODO: Handle multiple sizes
-        let fixed_col_values = get_uniquely_sized(self.fixed_col_values).unwrap();
+        let fixed_col_values = get_max_sized(self.fixed_col_values);
         let fixed = FixedData::new(
             self.analyzed,
             &fixed_col_values,
@@ -315,12 +315,9 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             })
             // get all array elements and their degrees
             .flat_map(|symbol| {
-                symbol.array_elements().map(|(_, id)| {
-                    (
-                        id,
-                        symbol.degree.expect("all polynomials should have a degree"),
-                    )
-                })
+                symbol
+                    .array_elements()
+                    .map(|(_, id)| (id, symbol.degree.unwrap_or(1 << MAX_DEGREE_LOG)))
             })
             // only keep the ones matching our set
             .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
