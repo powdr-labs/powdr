@@ -716,7 +716,6 @@ EnumPattern: Pattern = {
     <start:@L> <n:SymbolPath> <items:( "(" <PatternList> ")" )?> <end:@R> => Pattern::Enum(ctx.source_ref(start, end), n, items)
 }
 
-// Temporary using SymbolPath{} as an empty struct pattern to avoid ambiguity with EnumPattern
 StructPattern: Pattern = {
     <start:@L> <sp:SymbolPath> "{" <fields:StructPatternList?> "}" <end:@R> => Pattern::Struct(ctx.source_ref(start, end), sp, fields),
 }
