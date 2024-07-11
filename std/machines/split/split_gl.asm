@@ -1,5 +1,5 @@
-use std::utils::cross_product;
 use std::prover::Query;
+use super::ByteCompare;
 
 // Splits an arbitrary field element into two u32s, on the Goldilocks field.
 machine SplitGL with
@@ -7,6 +7,8 @@ machine SplitGL with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    ByteCompare byte_compare;
+
     operation split in_acc -> output_low, output_high;
 
     // Latch and operation ID
@@ -62,19 +64,10 @@ machine SplitGL with
     // Bytes of the maximum value, in little endian order, rotated by one
     col fixed BYTES_MAX = [0, 0, 0, 0xff, 0xff, 0xff, 0xff, 0]*;
 
-    // Byte comparison block machine
-    let inputs = cross_product([256, 256]);
-    let a: int -> int = inputs[0];
-    let b: int -> int = inputs[1];
-    let P_A: col = a;
-    let P_B: col = b;
-    col fixed P_LT(i) { if a(i) < b(i) { 1 } else { 0 } };
-    col fixed P_GT(i) { if a(i) > b(i) { 1 } else { 0 } };
-
     // Compare the current byte with the corresponding byte of the maximum value.
     col witness lt;
     col witness gt;
-    [ bytes, BYTES_MAX, lt, gt ] in [ P_A, P_B, P_LT, P_GT ];
+    link => (lt, gt) = byte_compare.run(bytes, BYTES_MAX);
 
     // Compute whether the current or any previous byte has been less than
     // the corresponding byte of the maximum value.

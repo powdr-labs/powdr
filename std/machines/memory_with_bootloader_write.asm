@@ -1,4 +1,5 @@
 use std::array;
+use std::machines::byte2::Byte2;
 
 /// This machine is a slightly extended version of std::machines::memory::Memory,
 /// where in addition to mstore, there is an mstore_bootloader operation. It behaves
@@ -10,6 +11,8 @@ machine MemoryWithBootloaderWrite with
     call_selectors: selectors,
 {
     // lower bound degree is 65536
+
+    Byte2 byte2;
 
     operation mload<0> m_addr, m_step -> m_value;
     operation mstore<1> m_addr, m_step, m_value ->;
@@ -61,10 +64,9 @@ machine MemoryWithBootloaderWrite with
     col fixed FIRST = [1] + [0]*;
     let LAST = FIRST';
     col fixed STEP(i) { i };
-    col fixed BIT16(i) { i & 0xffff };
 
-    [m_diff_lower] in [BIT16];
-    [m_diff_upper] in [BIT16];
+    link => byte2.check(m_diff_lower);
+    link => byte2.check(m_diff_upper);
 
     std::utils::force_bool(m_change);
 
