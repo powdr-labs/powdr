@@ -621,7 +621,7 @@ mod test {
                     b: int,
                 }
                 let s: S = S with { a: 1, b: 2 };
-                let x: col = |i| s->a + std::convert::fe(i) + s->b;
+                let x: col = |i| std::convert::fe(s->a) + std::convert::fe(i);
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);

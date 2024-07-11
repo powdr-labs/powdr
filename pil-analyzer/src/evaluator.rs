@@ -756,14 +756,9 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.op_stack.push(Operation::Expand(index));
                 self.expand(array)?;
             }
-            Expression::FieldAccess(
-                _,
-                FieldAccess {
-                    object: _,
-                    field: _,
-                },
-            ) => {
-                unimplemented!("TODO GZ: Field access not implemented yet.")
+            Expression::FieldAccess(_, FieldAccess { object, field: _ }) => {
+                self.op_stack.push(Operation::Combine(expr));
+                self.expand(object)?;
             }
             Expression::FunctionCall(
                 _,
@@ -814,13 +809,11 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::FreeInput(_, _) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
             ))?,
-            Expression::StructExpression(
-                _,
-                StructExpression {
-                    name: _, fields: _, ..
-                },
-            ) => {
-                panic!("Structs are not supported yet.");
+            Expression::StructExpression(_, StructExpression { name: _, fields }) => {
+                self.op_stack.push(Operation::Combine(expr));
+                for named_expr in fields {
+                    self.expand(named_expr.expr.as_ref())?;
+                }
             }
         };
         Ok(())

@@ -1,4 +1,7 @@
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    collections::{BTreeSet, HashMap},
+    str::FromStr,
+};
 
 use itertools::Itertools;
 use powdr_ast::{
@@ -613,8 +616,10 @@ impl TypeChecker {
                 let inferred_type = self.type_into_substituted(object_type.clone());
                 match inferred_type {
                     Type::NamedType(name, _) => {
-                        let access_name = format!("{name}.{field}");
-                        let field_type = self.declared_types[&access_name].1.clone();
+                        let access_name = name.join(SymbolPath::from_identifier(field.to_string()));
+                        let field_type = self.declared_types[&access_name.to_dotted_string()]
+                            .1
+                            .clone();
                         field_type.ty
                     }
                     _ => self.new_type_var(),
@@ -686,6 +691,7 @@ impl TypeChecker {
             Expression::StructExpression(_, struct_expr) => {
                 for named_expr in struct_expr.fields.iter_mut() {
                     let field_name = if struct_expr.name.contains('.') {
+                        // TODO GZ: Improve this
                         format!("{}::{}", struct_expr.name, named_expr.name).replace(".", "::")
                     } else {
                         format!("{}.{}", struct_expr.name, named_expr.name)
@@ -694,10 +700,10 @@ impl TypeChecker {
                     self.expect_type(&expr_ty, named_expr.expr.as_mut())?;
                 }
 
-                Type::NamedType(
-                    SymbolPath::from_identifier(struct_expr.name.replace(".", "::")),
-                    None,
-                )
+                match SymbolPath::from_str(&struct_expr.name.replace(".", "::")) {
+                    Ok(named_type) => Type::NamedType(named_type, None),
+                    Err(_) => panic!("Undefined struct: {}", struct_expr.name), //TODO GZ Better error reporting
+                }
             }
         })
     }
