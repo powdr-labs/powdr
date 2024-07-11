@@ -685,15 +685,19 @@ impl TypeChecker {
             }
             Expression::StructExpression(_, struct_expr) => {
                 for named_expr in struct_expr.fields.iter_mut() {
-                    let expr_ty = self.declared_types
-                        [&format!("{}.{}", struct_expr.name, named_expr.name)]
-                        .1
-                        .ty
-                        .clone();
+                    let field_name = if struct_expr.name.contains('.') {
+                        format!("{}::{}", struct_expr.name, named_expr.name).replace(".", "::")
+                    } else {
+                        format!("{}.{}", struct_expr.name, named_expr.name)
+                    };
+                    let expr_ty = self.declared_types[&field_name].1.ty.clone();
                     self.expect_type(&expr_ty, named_expr.expr.as_mut())?;
                 }
 
-                Type::NamedType(SymbolPath::from_identifier(struct_expr.name.clone()), None)
+                Type::NamedType(
+                    SymbolPath::from_identifier(struct_expr.name.replace(".", "::")),
+                    None,
+                )
             }
         })
     }

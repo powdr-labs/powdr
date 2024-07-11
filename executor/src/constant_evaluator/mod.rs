@@ -609,4 +609,26 @@ mod test {
             ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
         );
     }
+
+    #[test]
+    fn basic_struct() {
+        let src = r#"
+            namespace std::convert(4);
+                let fe = || fe();
+            namespace F(4);
+                struct S {
+                    a: int,
+                    b: int,
+                }
+                let s: S = S with { a: 1, b: 2 };
+                let x: col = |i| s->a + std::convert::fe(i) + s->b;
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants[0],
+            ("F.x".to_string(), convert([3, 4, 5, 6].to_vec()))
+        );
+    }
 }
