@@ -85,6 +85,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     inputs: Vec<(PolyID, T)>,
     previously_set_inputs: BTreeMap<PolyID, usize>,
     copy_constraints: CopyConstraints<(PolyID, RowIndex)>,
+    size: DegreeType,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
@@ -94,6 +95,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
+        size: DegreeType,
     ) -> Self {
         let is_relevant_witness = WitnessColumnMap::from(
             fixed_data
@@ -121,6 +123,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             previously_set_inputs: BTreeMap::new(),
             // TODO(#1333): Get copy constraints from PIL.
             copy_constraints: Default::default(),
+            size,
         }
     }
 
@@ -166,6 +169,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             self.row_offset + row_index as u64,
             self.fixed_data,
             UnknownStrategy::Unknown,
+            self.size,
         );
         self.outer_query
             .as_ref()
@@ -176,8 +180,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     }
 
     pub fn process_queries(&mut self, row_index: usize) -> Result<bool, EvalError<T>> {
-        let mut query_processor =
-            QueryProcessor::new(self.fixed_data, self.mutable_state.query_callback);
+        let mut query_processor = QueryProcessor::new(
+            self.fixed_data,
+            self.mutable_state.query_callback,
+            self.size,
+        );
         let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(
             &self.data[row_index],
@@ -185,6 +192,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             global_row_index,
             self.fixed_data,
             UnknownStrategy::Unknown,
+            self.size,
         );
         let mut updates = EvalValue::complete(vec![]);
         for poly_id in &self.prover_query_witnesses {
@@ -211,6 +219,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             global_row_index,
             self.fixed_data,
             unknown_strategy,
+            self.size,
         );
 
         // Compute updates
@@ -286,6 +295,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             self.row_offset + row_index as u64,
             self.fixed_data,
             UnknownStrategy::Unknown,
+            self.size,
         );
 
         let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
@@ -365,6 +375,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             self.row_offset + row_index as u64,
             self.fixed_data,
             UnknownStrategy::Unknown,
+            self.size,
         );
         let affine_expression = row_pair.evaluate(expression)?;
         let updates = (affine_expression - value.into())
@@ -503,6 +514,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                     self.row_offset + (row_index - 1) as DegreeType,
                     self.fixed_data,
                     UnknownStrategy::Zero,
+                    self.size,
                 )
             }
             // Check whether identities without a reference to the next row are satisfied
@@ -513,6 +525,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 self.row_offset + row_index as DegreeType,
                 self.fixed_data,
                 UnknownStrategy::Zero,
+                self.size,
             ),
         };
 

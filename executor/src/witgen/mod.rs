@@ -451,23 +451,22 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
 pub struct FixedColumn<'a, T> {
     name: String,
-    current_size: usize,
     values: &'a VariablySizedColumn<T>,
 }
 
 impl<'a, T> FixedColumn<'a, T> {
     pub fn new(name: &'a str, values: &'a VariablySizedColumn<T>) -> FixedColumn<'a, T> {
         let name = name.to_string();
-        let current_size = values.column_by_size.keys().max().cloned().unwrap();
-        FixedColumn {
-            name,
-            values,
-            current_size,
-        }
+        FixedColumn { name, values }
     }
 
-    pub fn values(&self) -> &[T] {
-        self.values.column_by_size.get(&self.current_size).unwrap()
+    pub fn values(&self, size: DegreeType) -> &[T] {
+        self.values.column_by_size.get(&(size as usize)).unwrap()
+    }
+
+    pub fn values_max_size(&self) -> &[T] {
+        let max_size = self.values.column_by_size.keys().max().unwrap().clone() as DegreeType;
+        self.values(max_size)
     }
 }
 
