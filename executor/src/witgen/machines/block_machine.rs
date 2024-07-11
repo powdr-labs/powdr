@@ -543,8 +543,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 // let updates = updates.report_side_effect();
 
                 // We solved the query, so report it to the cache.
-                self.processing_sequence_cache
-                    .report_processing_sequence(&outer_query.left, sequence_iterator);
+                // self.processing_sequence_cache
+                //     .report_processing_sequence(&outer_query.left, sequence_iterator);
                 Ok(updates)
             }
             ProcessResult::Incomplete(updates) => {

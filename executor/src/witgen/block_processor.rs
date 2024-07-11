@@ -98,6 +98,28 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
             sequence_iterator.report_progress(progress);
         }
 
+        println!("Complete matrix {}:", self.processor.finished_outer_query());
+        let mut all_complete = true;
+        for row in is_identity_complete[..is_identity_complete.len() - 2].iter() {
+            print!("  ");
+            for &complete in row.iter() {
+                let symbol = match complete {
+                    true => "X",
+                    false => "O",
+                };
+                all_complete &= complete;
+                print!("{}", symbol);
+            }
+            println!("");
+        }
+        for i in self.identities.iter() {
+            println!("         Identity: {}", i);
+        }
+
+        if self.processor.finished_outer_query() {
+            assert!(all_complete);
+        }
+
         match self.processor.finished_outer_query() {
             true => Ok(EvalValue::complete(outer_assignments)),
             false => Ok(EvalValue::incomplete_with_constraints(
