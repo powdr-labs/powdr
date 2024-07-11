@@ -10,7 +10,7 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::constant_evaluator::{get_max_sized, VariablySizedColumn, MAX_DEGREE_LOG};
+use crate::constant_evaluator::{VariablySizedColumn, MAX_DEGREE_LOG};
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -158,11 +158,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     /// @returns the values (in source order) and the degree of the polynomials.
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
         record_start(OUTER_CODE_NAME);
-        // TODO: Handle multiple sizes
-        let fixed_col_values = get_max_sized(self.fixed_col_values);
         let fixed = FixedData::new(
             self.analyzed,
-            &fixed_col_values,
+            self.fixed_col_values,
             self.external_witness_values,
             self.challenges,
             self.stage,
@@ -329,7 +327,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
     pub fn new(
         analyzed: &'a Analyzed<T>,
-        fixed_col_values: &'a [(String, &'a Vec<T>)],
+        fixed_col_values: &'a [(String, VariablySizedColumn<T>)],
         external_witness_values: &'a [(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
         stage: u8,
@@ -453,13 +451,23 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
 pub struct FixedColumn<'a, T> {
     name: String,
-    values: &'a Vec<T>,
+    current_size: usize,
+    values: &'a VariablySizedColumn<T>,
 }
 
 impl<'a, T> FixedColumn<'a, T> {
-    pub fn new(name: &'a str, values: &'a Vec<T>) -> FixedColumn<'a, T> {
+    pub fn new(name: &'a str, values: &'a VariablySizedColumn<T>) -> FixedColumn<'a, T> {
         let name = name.to_string();
-        FixedColumn { name, values }
+        let current_size = values.column_by_size.keys().max().cloned().unwrap();
+        FixedColumn {
+            name,
+            values,
+            current_size,
+        }
+    }
+
+    pub fn values(&self) -> &[T] {
+        self.values.column_by_size.get(&self.current_size).unwrap()
     }
 }
 

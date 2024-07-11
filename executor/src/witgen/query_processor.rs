@@ -144,7 +144,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
                 .get_value(poly_ref)
                 .ok_or(EvalError::DataNotAvailable)?,
             PolynomialType::Constant => {
-                let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values;
+                let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values();
                 let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
                 values[usize::from(row)]
             }
