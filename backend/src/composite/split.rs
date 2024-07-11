@@ -1,13 +1,14 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    iter,
     ops::ControlFlow,
     str::FromStr,
 };
 
-use powdr_ast::analyzed::SelectedExpressions;
+use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, Analyzed, Identity, IdentityKind, StatementIdentifier, Symbol,
+        AlgebraicExpression, Analyzed, IdentityKind, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
@@ -16,28 +17,61 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
+const DUMMY_COLUMN_NAME: &str = "__dummy";
+
 /// Splits a PIL into multiple PILs, one for each "machine".
 /// The rough algorithm is as follows:
 /// 1. The PIL is split into namespaces
-/// 2. Any lookups or permutations that reference multiple namespaces are removed.
+/// 2. Namespaces without any columns are duplicated and merged with the other namespaces
+/// 3. Any lookups or permutations that reference multiple namespaces are removed.
 pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
-    let statements_by_machine = split_by_namespace(&pil);
+    let statements_by_namespace = split_by_namespace(&pil);
+    let statements_by_machine = merge_empty_namespaces(statements_by_namespace, &pil);
 
     statements_by_machine
         .into_iter()
-        .filter_map(|(machine_name, statements)| {
-            build_machine_pil(pil.clone(), statements).map(|pil| (machine_name, pil))
+        .map(|(machine_name, statements)| {
+            (machine_name, build_machine_pil(pil.clone(), statements))
         })
         .collect()
 }
 
-/// Given a set of columns and a set of polynomial symbols, returns the columns that correspond to the symbols.
-pub(crate) fn select_machine_columns<'a, F: FieldElement>(
+/// Given a set of columns and a PIL describing the machine, returns the witness column that belong to the machine.
+/// Note that this also adds the dummy column.
+pub(crate) fn machine_witness_columns<F: FieldElement>(
+    all_witness_columns: &[(String, Vec<F>)],
+    machine_pil: &Analyzed<F>,
+    machine_name: &str,
+) -> Vec<(String, Vec<F>)> {
+    let dummy_column_name = format!("{machine_name}.{DUMMY_COLUMN_NAME}");
+    let dummy_column = vec![F::zero(); machine_pil.degree() as usize];
+    iter::once((dummy_column_name, dummy_column))
+        .chain(select_machine_columns(
+            all_witness_columns,
+            machine_pil.committed_polys_in_source_order(),
+        ))
+        .collect::<Vec<_>>()
+}
+
+/// Given a set of columns and a PIL describing the machine, returns the fixed column that belong to the machine.
+pub(crate) fn machine_fixed_columns<F: FieldElement>(
+    all_fixed_columns: &[(String, Vec<F>)],
+    machine_pil: &Analyzed<F>,
+) -> Vec<(String, Vec<F>)> {
+    select_machine_columns(
+        all_fixed_columns,
+        machine_pil.constant_polys_in_source_order(),
+    )
+}
+
+/// Filter the given columns to only include those that are referenced by the given symbols.
+fn select_machine_columns<F: FieldElement, T>(
     columns: &[(String, Vec<F>)],
-    symbols: impl Iterator<Item = &'a Symbol>,
+    symbols: Vec<&(Symbol, T)>,
 ) -> Vec<(String, Vec<F>)> {
     let names = symbols
-        .flat_map(|symbol| symbol.array_elements().map(|(name, _)| name))
+        .into_iter()
+        .flat_map(|(symbol, _)| symbol.array_elements().map(|(name, _)| name))
         .collect::<BTreeSet<_>>();
     columns
         .iter()
@@ -134,54 +168,79 @@ fn split_by_namespace<F: FieldElement>(
         })
 }
 
+/// Merges namespaces without any polynomials into the other namespaces.
+/// For example, a hint might reference a symbol in an std namespace, so we just make
+/// those available to all machines.
+fn merge_empty_namespaces<F>(
+    statements_by_namespace: BTreeMap<String, Vec<StatementIdentifier>>,
+    pil: &Analyzed<F>,
+) -> BTreeMap<String, Vec<StatementIdentifier>> {
+    // Separate out machines without any polynomials
+    let (proper_machines, empty_machines) = statements_by_namespace
+        .into_iter()
+        .partition::<BTreeMap<_, _>, _>(|(_, statements)| {
+            statements.iter().any(|statement| match statement {
+                StatementIdentifier::Definition(name) => {
+                    let symbol = pil
+                        .definitions
+                        .get(name)
+                        .map(|(symbol, _)| symbol)
+                        .or(pil.intermediate_columns.get(name).map(|(symbol, _)| symbol))
+                        .unwrap();
+                    matches!(symbol.kind, SymbolKind::Poly(_))
+                }
+                _ => false,
+            })
+        });
+    // Merge empty machines into the proper machines
+    proper_machines
+        .into_iter()
+        .map(|(namespace, mut statements)| {
+            statements.extend(
+                empty_machines
+                    .iter()
+                    .flat_map(|(_, statements)| statements.clone()),
+            );
+            (namespace, statements)
+        })
+        .collect::<BTreeMap<_, _>>()
+}
+
 /// Given a PIL and a list of statements, returns a new PIL that only contains the
 /// given subset of statements.
-/// Returns None if there are no identities in the subset of statements.
 fn build_machine_pil<F: FieldElement>(
     pil: Analyzed<F>,
     statements: Vec<StatementIdentifier>,
-) -> Option<Analyzed<F>> {
-    // TODO: After #1488 is fixed, we can implement this like so:
-    // let pil = Analyzed {
-    //     source_order: statements,
-    //     ..pil.clone()
-    // };
-    // let parsed_string = powdr_parser::parse(None, &pil.to_string()).unwrap();
-    // let pil = powdr_pil_analyzer::analyze_ast(parsed_string);
+) -> Analyzed<F> {
+    let pil = Analyzed {
+        source_order: statements,
+        ..pil
+    };
+    let pil_string = add_dummy_witness_column(&pil.to_string());
+    let parsed_string = powdr_parser::parse(None, &pil_string).unwrap();
+    powdr_pil_analyzer::analyze_ast(parsed_string)
+}
 
-    // HACK: Replace unreferenced identities with 0 = 0, to avoid having to re-assign IDs.
-    let identities = statements
-        .iter()
-        .filter_map(|statement| match statement {
-            StatementIdentifier::Identity(i) => Some(*i as u64),
-            _ => None,
-        })
-        .collect::<BTreeSet<_>>();
-    if identities.is_empty() {
-        // This can happen if a hint references some std module,
-        // but the module is empty.
-        return None;
-    }
-    let identities = pil
-        .identities
-        .iter()
-        .enumerate()
-        .map(|(identity_index, identity)| {
-            if identities.contains(&(identity_index as u64)) {
-                identity.clone()
+/// Insert a dummy witness column and identity into the PIL string, just after the namespace.
+/// This ensures that all machine PILs have at least one witness column and identity, which is
+/// assumed by most backends.
+/// In the future, this will always be the case, as interacting with the bus will require
+/// at least one witness column & identity, so this is only necessary for now.
+fn add_dummy_witness_column(pil_string: &str) -> String {
+    let dummy_column = format!("    col witness {DUMMY_COLUMN_NAME};");
+    let dummy_constraint = format!("    {DUMMY_COLUMN_NAME} = {DUMMY_COLUMN_NAME};");
+    let mut has_inserted_dummy_lines = false;
+
+    pil_string
+        .lines()
+        .flat_map(|line| {
+            if line.starts_with("namespace") && !has_inserted_dummy_lines {
+                // All namespaces except the first are empty and should stay empty
+                has_inserted_dummy_lines = true;
+                vec![line, &dummy_column, &dummy_constraint]
             } else {
-                Identity::<SelectedExpressions<AlgebraicExpression<F>>>::from_polynomial_identity(
-                    identity.id,
-                    identity.source.clone(),
-                    AlgebraicExpression::Number(F::zero()),
-                )
+                vec![line]
             }
         })
-        .collect();
-
-    Some(Analyzed {
-        source_order: statements,
-        identities,
-        ..pil
-    })
+        .join("\n")
 }

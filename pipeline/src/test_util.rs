@@ -78,12 +78,25 @@ pub fn verify_pipeline(
 }
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
+    gen_estark_proof_with_backend_variant(file_name, inputs.clone(), BackendVariant::Monolithic);
+    gen_estark_proof_with_backend_variant(file_name, inputs, BackendVariant::Composite);
+}
+
+pub fn gen_estark_proof_with_backend_variant(
+    file_name: &str,
+    inputs: Vec<GoldilocksField>,
+    backend_variant: BackendVariant,
+) {
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
+    let backend = match backend_variant {
+        BackendVariant::Monolithic => BackendType::EStarkStarky,
+        BackendVariant::Composite => BackendType::EStarkStarkyComposite,
+    };
     let mut pipeline = Pipeline::default()
         .with_tmp_output(&tmp_dir)
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(powdr_backend::BackendType::EStarkStarky, None);
+        .with_backend(backend, None);
 
     pipeline.clone().compute_proof().unwrap();
 
@@ -112,23 +125,35 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
     pipeline.verify(&proof, &[publics]).unwrap();
 }
 
-#[cfg(feature = "halo2")]
 pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
+    test_halo2_with_backend_variant(file_name, inputs.clone(), BackendVariant::Monolithic);
+    test_halo2_with_backend_variant(file_name, inputs, BackendVariant::Composite);
+}
+
+/// Whether to compute a monolithic or composite proof.
+pub enum BackendVariant {
+    Monolithic,
+    Composite,
+}
+
+#[cfg(feature = "halo2")]
+pub fn test_halo2_with_backend_variant(
+    file_name: &str,
+    inputs: Vec<Bn254Field>,
+    backend_variant: BackendVariant,
+) {
     use std::env;
+
+    let backend = match backend_variant {
+        BackendVariant::Monolithic => BackendType::Halo2Mock,
+        BackendVariant::Composite => BackendType::Halo2MockComposite,
+    };
 
     // Generate a mock proof (fast and has good error messages)
     Pipeline::default()
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs.clone())
-        .with_backend(powdr_backend::BackendType::Halo2Mock, None)
-        .compute_proof()
-        .unwrap();
-
-    // Also generate a proof with the composite backend
-    Pipeline::default()
-        .from_file(resolve_test_file(file_name))
-        .with_prover_inputs(inputs.clone())
-        .with_backend(powdr_backend::BackendType::Halo2MockComposite, None)
+        .with_backend(backend, None)
         .compute_proof()
         .unwrap();
 
@@ -138,22 +163,31 @@ pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
         .map(|v| v == "true")
         .unwrap_or(false);
     if is_nightly_test {
-        gen_halo2_proof(file_name, inputs.clone());
-        gen_halo2_composite_proof(file_name, inputs);
+        gen_halo2_proof(file_name, inputs, backend_variant);
     }
 }
 
 #[cfg(not(feature = "halo2"))]
-pub fn test_halo2(_file_name: &str, _inputs: Vec<Bn254Field>) {}
+pub fn test_halo2_with_backend_variant(
+    _file_name: &str,
+    _inputs: Vec<Bn254Field>,
+    backend_variant: BackendVariant,
+) {
+}
 
 #[cfg(feature = "halo2")]
-pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
+pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>, backend: BackendVariant) {
+    let backend = match backend {
+        BackendVariant::Monolithic => BackendType::Halo2,
+        BackendVariant::Composite => BackendType::Halo2Composite,
+    };
+
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
     let mut pipeline = Pipeline::default()
         .with_tmp_output(&tmp_dir)
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(powdr_backend::BackendType::Halo2, None);
+        .with_backend(backend, None);
 
     // Generate a proof with the setup and verification key generated on the fly
     pipeline.clone().compute_proof().unwrap();
@@ -196,22 +230,7 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 }
 
 #[cfg(not(feature = "halo2"))]
-pub fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
-
-#[cfg(feature = "halo2")]
-pub fn gen_halo2_composite_proof(file_name: &str, inputs: Vec<Bn254Field>) {
-    let tmp_dir = mktemp::Temp::new_dir().unwrap();
-    Pipeline::default()
-        .with_tmp_output(&tmp_dir)
-        .from_file(resolve_test_file(file_name))
-        .with_prover_inputs(inputs)
-        .with_backend(powdr_backend::BackendType::Halo2Composite, None)
-        .compute_proof()
-        .unwrap();
-}
-
-#[cfg(not(feature = "halo2"))]
-pub fn gen_halo2_composite_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
+pub fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>, _backend: BackendVariant) {}
 
 #[cfg(feature = "plonky3")]
 pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
@@ -233,7 +252,21 @@ pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
         .map(|(_name, v)| *v)
         .collect();
 
-    pipeline.verify(&proof, &[publics]).unwrap();
+    pipeline.verify(&proof, &[publics.clone()]).unwrap();
+
+    if pipeline.optimized_pil().unwrap().constant_count() > 0 {
+        // Export verification Key
+        let vkey_file_path = tmp_dir.as_path().join("verification_key.bin");
+        buffered_write_file(&vkey_file_path, |writer| {
+            pipeline.export_verification_key(writer).unwrap()
+        })
+        .unwrap();
+
+        let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
+
+        // Verify the proof again
+        pipeline.verify(&proof, &[publics]).unwrap();
+    }
 }
 
 #[cfg(not(feature = "plonky3"))]

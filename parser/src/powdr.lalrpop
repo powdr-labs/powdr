@@ -33,6 +33,10 @@ ModuleStatement: ModuleStatement = {
             name: <>.name.clone(),
             value: SymbolValue::TypeDeclaration(<>),
         }),
+    <TraitDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
+            name: <>.name.clone(),
+            value: SymbolValue::TraitDeclaration(<>),
+        }),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
@@ -114,6 +118,7 @@ pub PilStatement = {
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
     PlookupIdentityStatement,
     PermutationIdentityStatement,
     ConnectIdentityStatement,
@@ -155,7 +160,13 @@ PolynomialConstantDefinition: PilStatement = {
 }
 
 FunctionDefinition: FunctionDefinition = {
-    <start:@L> "(" <params:ParameterList> ")" <body:BlockExpression> <end:@R> => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{kind: FunctionKind::Pure, params, body})),
+    <start:@L> "(" <params:ParameterList> ")" <body:BlockExpression> <end:@R>
+        => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{
+            kind: FunctionKind::Pure,
+            params,
+            body,
+            outer_var_references: Default::default()
+        })),
     <start:@L> "=" <array:ArrayLiteralExpression> <end:@R> => FunctionDefinition::Array(array),
 }
 
@@ -180,7 +191,12 @@ PolynomialCommitDeclaration: PilStatement = {
         ctx.source_ref(start, end),
         stage,
         vec![name],
-        Some(FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{kind: FunctionKind::Query, params, body})))
+        Some(FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{
+            kind: FunctionKind::Query,
+            params,
+            body,
+            outer_var_references: Default::default()
+        })))
     )
 }
 
@@ -443,8 +459,10 @@ BoxedExpression: Box<Expression> = {
 }
 
 LambdaExpression: Box<Expression> = {
-    <start:@L> <kind:FunctionKind> "||" <body:BoxedExpression> <end:@R> => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body}, start, end),
-    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:BoxedExpression> <end:@R> => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body}, start, end),
+    <start:@L> <kind:FunctionKind> "||" <body:BoxedExpression> <end:@R>
+        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body, outer_var_references: Default::default()}, start, end),
+    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:BoxedExpression> <end:@R>
+        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body, outer_var_references: Default::default()}, start, end),
     LogicalOr
 }
 
@@ -673,6 +691,26 @@ PatternList: Vec<Pattern> = {
     <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
     => vec![]
 }
+
+// ---------------------------- Trait/Impl Declaration -----------------------------
+
+TraitDeclaration: TraitDeclaration<Expression> = {
+    "trait" <name:Identifier> <type_vars:("<" <TraitVars> ">")> "{" <functions:TraitFunctions> "}" => TraitDeclaration { name, type_vars, functions }
+}
+
+TraitVars: Vec<String> = {
+    <mut list:( <TypeVar> "," )*> <end:TypeVar> ","?  => { list.push(end); list }
+}
+
+TraitFunctions: Vec<TraitFunction<Expression>> = {
+    => vec![],
+    <mut list:( <TraitFunction> "," )*> <end:TraitFunction> ","  => { list.push(end); list }
+}
+
+TraitFunction: TraitFunction<Expression> = {
+    <name:Identifier> ":" <params:TypeTermList> "->" <value:TypeTermBox> => TraitFunction { name, ty: Type::Function(FunctionType{params, value}) }
+}
+
 
 // ---------------------------- Type Declarations -----------------------------
 
