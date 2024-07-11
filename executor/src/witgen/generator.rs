@@ -2,6 +2,7 @@ use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference,
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use crate::constant_evaluator::MAX_DEGREE_LOG;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
@@ -119,7 +120,9 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let data = FinalizableData::new(&witnesses);
 
         Self {
-            degree: fixed_data.common_degree(&witnesses),
+            degree: fixed_data
+                .common_degree(&witnesses)
+                .unwrap_or(1 << MAX_DEGREE_LOG),
             connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,

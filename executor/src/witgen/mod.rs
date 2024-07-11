@@ -10,7 +10,7 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::constant_evaluator::{VariablySizedColumn, MAX_DEGREE_LOG};
+use crate::constant_evaluator::VariablySizedColumn;
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -300,7 +300,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     /// - the degree is not unique
     /// - the set of polynomials is empty
     /// - a declared polynomial does not have an explicit degree
-    pub fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
+    pub fn common_degree<'b>(
+        &self,
+        ids: impl IntoIterator<Item = &'b PolyID>,
+    ) -> Option<DegreeType> {
         let ids: HashSet<_> = ids.into_iter().collect();
 
         self.analyzed
@@ -312,11 +315,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 matches!(symbol.kind, SymbolKind::Poly(_)).then_some(symbol)
             })
             // get all array elements and their degrees
-            .flat_map(|symbol| {
-                symbol
-                    .array_elements()
-                    .map(|(_, id)| (id, symbol.degree.unwrap_or(1 << MAX_DEGREE_LOG)))
-            })
+            .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
             // only keep the ones matching our set
             .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
             // get the common degree
