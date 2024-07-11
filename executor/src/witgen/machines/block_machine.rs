@@ -322,6 +322,19 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
         }
 
+        let is_variable_size = self.fixed_data.common_degree(&self.witness_cols).is_none();
+        if is_variable_size {
+            let new_degree = self.data.len().next_power_of_two() as DegreeType;
+            log::info!(
+                "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
+                self.name,
+                self.degree,
+                new_degree,
+                self.data.len()
+            );
+            self.degree = new_degree;
+        }
+
         if matches!(self.connection_type, ConnectionType::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,
             // because otherwise this block won't have a matching block on the LHS.
