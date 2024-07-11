@@ -170,7 +170,10 @@ pub enum ProcessingSequenceIterator {
     /// The default strategy
     Default(DefaultSequenceIterator),
     /// The machine has been run successfully before and the sequence is cached.
-    Cached(<Vec<SequenceStep> as IntoIterator>::IntoIter),
+    Cached(
+        <Vec<SequenceStep> as IntoIterator>::IntoIter,
+        DefaultSequenceIterator,
+    ),
     /// The machine has been run before, but did not succeed. There is no point in trying again.
     Incomplete,
 }
@@ -179,22 +182,15 @@ impl ProcessingSequenceIterator {
     pub fn report_progress(&mut self, progress_in_last_step: bool) {
         match self {
             Self::Default(it) => it.report_progress(progress_in_last_step),
-            Self::Cached(_) => {} // Progress is ignored
+            Self::Cached(_, _) => {} // Progress is ignored
             Self::Incomplete => unreachable!(),
         }
     }
 
     pub fn has_steps(&self) -> bool {
         match self {
-            Self::Default(_) | Self::Cached(_) => true,
+            Self::Default(_) | Self::Cached(_, _) => true,
             Self::Incomplete => false,
-        }
-    }
-
-    pub fn is_cached(&self) -> bool {
-        match self {
-            Self::Default(_) => false,
-            Self::Cached(_) | Self::Incomplete => true,
         }
     }
 }
@@ -205,7 +201,13 @@ impl Iterator for ProcessingSequenceIterator {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Self::Default(it) => it.next(),
-            Self::Cached(it) => it.next(),
+            // After the cached iterator is exhausted, run the default iterator again.
+            // This is because the order in which the identities should be processed *might*
+            // depend on the concrete input values.
+            // In the typical scenario, most identities will be completed at this point and
+            // the block processor will skip them. But if an identity was not completed before,
+            // it will try again.
+            Self::Cached(it, default_iterator) => it.next().or_else(|| default_iterator.next()),
             Self::Incomplete => unreachable!(),
         }
     }
@@ -246,7 +248,14 @@ impl ProcessingSequenceCache {
         match self.cache.get(&left.into()) {
             Some(CacheEntry::Complete(cached_sequence)) => {
                 log::trace!("Using cached sequence");
-                ProcessingSequenceIterator::Cached(cached_sequence.clone().into_iter())
+                ProcessingSequenceIterator::Cached(
+                    cached_sequence.clone().into_iter(),
+                    DefaultSequenceIterator::new(
+                        self.block_size,
+                        self.identities_count,
+                        Some(self.outer_query_row as i64),
+                    ),
+                )
             }
             Some(CacheEntry::Incomplete) => ProcessingSequenceIterator::Incomplete,
             None => {
@@ -291,7 +300,7 @@ impl ProcessingSequenceCache {
                     .is_none());
             }
             ProcessingSequenceIterator::Incomplete => unreachable!(),
-            ProcessingSequenceIterator::Cached(_) => {} // Already cached, do nothing
+            ProcessingSequenceIterator::Cached(_, _) => {} // Already cached, do nothing
         }
     }
 }

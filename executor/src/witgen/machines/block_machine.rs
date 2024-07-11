@@ -34,13 +34,6 @@ impl<'a, T: FieldElement> ProcessResult<'a, T> {
             false => ProcessResult::Incomplete(updates),
         }
     }
-
-    fn is_success(&self) -> bool {
-        match self {
-            ProcessResult::Success(_, _) => true,
-            ProcessResult::Incomplete(_) => false,
-        }
-    }
 }
 
 fn collect_fixed_cols<T: FieldElement>(
@@ -516,18 +509,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         let process_result =
             self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?;
-
-        let process_result = if sequence_iterator.is_cached() && !process_result.is_success() {
-            log::debug!("The cached sequence did not complete the block machine. \
-                         This can happen if the machine's execution steps depend on the input or constant values. \
-                         We'll try again with the default sequence.");
-            let mut sequence_iterator = self
-                .processing_sequence_cache
-                .get_default_sequence_iterator();
-            self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?
-        } else {
-            process_result
-        };
 
         match process_result {
             ProcessResult::Success(new_block, updates) => {
