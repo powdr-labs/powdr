@@ -795,8 +795,11 @@ impl<T: FieldElement> Pipeline<T> {
 
         let start = Instant::now();
         let fixed_cols = constant_evaluator::generate(&pil);
+        self.log(&format!(
+            "Fixed column generation took {}s",
+            start.elapsed().as_secs_f32()
+        ));
         self.maybe_write_constants(&fixed_cols)?;
-        self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
         self.artifact.fixed_cols = Some(Arc::new(fixed_cols));
 
@@ -830,7 +833,10 @@ impl<T: FieldElement> Pipeline<T> {
             .with_external_witness_values(&external_witness_values)
             .generate();
 
-        self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
+        self.log(&format!(
+            "Witness generation took {}s",
+            start.elapsed().as_secs_f32()
+        ));
 
         self.maybe_write_witness(&fixed_cols, &witness)?;
 
@@ -914,6 +920,7 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| fs::read(path).unwrap());
 
+        let start = Instant::now();
         let proof = match backend.prove(&witness, existing_proof, witgen_callback) {
             Ok(proof) => proof,
             Err(powdr_backend::Error::BackendError(e)) => {
@@ -921,6 +928,11 @@ impl<T: FieldElement> Pipeline<T> {
             }
             Err(e) => panic!("{}", e),
         };
+        self.log(&format!(
+            "Proof generation took {}s",
+            start.elapsed().as_secs_f32()
+        ));
+        self.log(&format!("Proof size: {} bytes", proof.len()));
 
         drop(backend);
 
@@ -1096,8 +1108,15 @@ impl<T: FieldElement> Pipeline<T> {
             )
             .unwrap();
 
+        let start = Instant::now();
         match backend.verify(proof, instances) {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                self.log(&format!(
+                    "Verification took {}s",
+                    start.elapsed().as_secs_f32()
+                ));
+                Ok(())
+            }
             Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
             _ => panic!(),
         }
