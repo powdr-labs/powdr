@@ -17,18 +17,14 @@ use std::math::fp2::constrain_eq_ext;
 use std::protocols::fingerprint::fingerprint;
 use std::utils::unwrap_or_else;
 
-let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |permutation_constraint| {
-    let (lhs_selector, lhs, rhs_selector, rhs) = match permutation_constraint {
-        Constr::Permutation((lhs_selector, rhs_selector), values) => (
-            unwrap_or_else(lhs_selector, || 1),
-            map(values, |(lhs, _)| lhs),
-            unwrap_or_else(rhs_selector, || 1),
-            map(values, |(_, rhs)| rhs)
-        ),
-        _ => panic("Expected permutation constraint")
-    };
-    let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
-    (lhs_selector, lhs, rhs_selector, rhs)
+let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |permutation_constraint| match permutation_constraint {
+    Constr::Permutation((lhs_selector, rhs_selector), values) => (
+        unwrap_or_else(lhs_selector, || 1),
+        map(values, |(lhs, _)| lhs),
+        unwrap_or_else(rhs_selector, || 1),
+        map(values, |(_, rhs)| rhs)
+    ),
+    _ => panic("Expected permutation constraint")
 };
 
 /// Takes a boolean selector (0/1) and a value, returns equivalent of `if selector { value } else { 1 }`

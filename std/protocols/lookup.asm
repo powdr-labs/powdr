@@ -18,18 +18,14 @@ use std::math::fp2::constrain_eq_ext;
 use std::protocols::fingerprint::fingerprint;
 use std::utils::unwrap_or_else;
 
-let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_constraint| {
-    let (lhs_selector, lhs, rhs_selector, rhs) = match lookup_constraint {
-        Constr::Lookup((lhs_selector, rhs_selector), values) => (
-            unwrap_or_else(lhs_selector, || 1),
-            map(values, |(lhs, _)| lhs),
-            unwrap_or_else(rhs_selector, || 1),
-            map(values, |(_, rhs)| rhs)
-        ),
-        _ => panic("Expected lookup constraint")
-    };
-    let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
-    (lhs_selector, lhs, rhs_selector, rhs)
+let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_constraint| match lookup_constraint {
+    Constr::Lookup((lhs_selector, rhs_selector), values) => (
+        unwrap_or_else(lhs_selector, || 1),
+        map(values, |(lhs, _)| lhs),
+        unwrap_or_else(rhs_selector, || 1),
+        map(values, |(_, rhs)| rhs)
+    ),
+    _ => panic("Expected lookup constraint")
 };
 
 // Compute z' = z + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector, using extension field arithmetic
