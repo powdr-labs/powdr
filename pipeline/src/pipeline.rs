@@ -116,6 +116,9 @@ pub struct Pipeline<T: FieldElement> {
     artifact: Artifacts<T>,
     /// Output directory for intermediate files. If None, no files are written.
     output_dir: Option<PathBuf>,
+    /// The temporary directory, owned by the pipeline (or any copies of it).
+    /// This object is not used directly, but keeping it here ensures that the directory
+    /// is not deleted until the pipeline is dropped.
     _tmp_dir: Option<Rc<Temp>>,
     /// The name of the pipeline. Used to name output files.
     name: Option<String>,
@@ -194,17 +197,9 @@ where
 /// let proof = pipeline.compute_proof().unwrap();
 /// ```
 impl<T: FieldElement> Pipeline<T> {
-    /// Initializes the output directory to a temporary directory.
-    /// Note that the user is responsible for keeping the temporary directory alive.
-    pub fn with_tmp_output(self, tmp_dir: &mktemp::Temp) -> Self {
-        Pipeline {
-            output_dir: Some(tmp_dir.to_path_buf()),
-            force_overwrite: true,
-            ..self
-        }
-    }
-
-    pub fn with_tmp_output_owned(self) -> Self {
+    /// Initializes the output directory to a temporary directory which lives as long
+    /// the pipeline does.
+    pub fn with_tmp_output(self) -> Self {
         let tmp_dir = Rc::new(mktemp::Temp::new_dir().unwrap());
         Pipeline {
             output_dir: Some(tmp_dir.to_path_buf()),

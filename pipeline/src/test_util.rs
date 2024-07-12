@@ -67,9 +67,8 @@ pub fn verify_pipeline(
     // TODO: Also test Composite variants
     let mut pipeline = pipeline.with_backend(backend, None);
 
-    let tmp_dir = mktemp::Temp::new_dir().unwrap();
     if pipeline.output_dir().is_none() {
-        pipeline = pipeline.with_tmp_output(&tmp_dir);
+        pipeline = pipeline.with_tmp_output();
     }
 
     pipeline.compute_proof().unwrap();
@@ -79,7 +78,7 @@ pub fn verify_pipeline(
 
 pub fn make_pipeline<T: FieldElement>(file_name: &str, inputs: Vec<T>) -> Pipeline<T> {
     let mut pipeline = Pipeline::default()
-        .with_tmp_output_owned()
+        .with_tmp_output()
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs);
     pipeline.compute_witness().unwrap();
@@ -233,9 +232,8 @@ pub fn gen_halo2_proof(_pipeline: Pipeline<Bn254Field>, _backend: BackendVariant
 
 #[cfg(feature = "plonky3")]
 pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
-    let tmp_dir = mktemp::Temp::new_dir().unwrap();
     let mut pipeline = Pipeline::default()
-        .with_tmp_output(&tmp_dir)
+        .with_tmp_output()
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
         .with_backend(powdr_backend::BackendType::Plonky3, None);
@@ -322,9 +320,8 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
 ) {
-    let tmp_dir = mktemp::Temp::new_dir().unwrap();
     let pipeline = Pipeline::<GoldilocksField>::default()
-        .with_tmp_output(&tmp_dir)
+        .with_tmp_output()
         .from_file(resolve_test_file(file_name))
         .set_witness(convert_witness(witness));
 
