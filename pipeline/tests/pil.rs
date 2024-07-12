@@ -4,8 +4,8 @@ use powdr_number::GoldilocksField;
 use powdr_pipeline::test_util::{
     assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
     assert_proofs_fail_for_invalid_witnesses_halo2,
-    assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
-    gen_halo2_composite_proof, test_halo2, test_plonky3, verify_test_file,
+    assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, gen_halo2_composite_proof,
+    test_halo2, test_plonky3, verify_test_file,
 };
 
 use test_log::test;

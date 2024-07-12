@@ -1,13 +1,13 @@
 use std::prover::degree;
 use std::check::assert;
 
-// A ArrayTerm in an `ArrayExpression`
+// A term in an array expression
 enum ArrayTerm {
     Repeat(int[]),
     Once(int[])
 }
 
-// returns the total size of the repeated array in this `ArrayExpression`
+// returns the total size of the repeated array in this array expression
 let solve: ArrayTerm[] -> int = |terms| {
     let (_, total_size_of_non_repeated) = std::array::fold(terms, (false, 0), |(found_repeated, len), term| {
         match term {
@@ -27,9 +27,9 @@ let solve: ArrayTerm[] -> int = |terms| {
     degree() - total_size_of_non_repeated
 };
 
-// expand an `ArrayExpression` into a single complete array
+// returns a function representing the array expression
 let expand: ArrayTerm[] -> (int -> int) = |terms| {
-    // get the total size of the repeated ArrayTerm
+    // get the total size of the repeated term
     let size_of_repeated = solve(terms);
     |i| {
         let (_, res) = std::array::fold(terms, (0, 0), |(offset, res), term| {
