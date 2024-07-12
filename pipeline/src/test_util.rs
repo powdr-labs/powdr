@@ -253,7 +253,8 @@ pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
 
     if pipeline.optimized_pil().unwrap().constant_count() > 0 {
         // Export verification Key
-        let vkey_file_path = tmp_dir.as_path().join("verification_key.bin");
+        let output_dir = pipeline.output_dir().as_ref().unwrap();
+        let vkey_file_path = output_dir.join("verification_key.bin");
         buffered_write_file(&vkey_file_path, |writer| {
             pipeline.export_verification_key(writer).unwrap()
         })
