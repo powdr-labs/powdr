@@ -76,7 +76,10 @@ pub fn verify_pipeline(
     verify(pipeline.output_dir().as_ref().unwrap())
 }
 
-pub fn make_pipeline<T: FieldElement>(file_name: &str, inputs: Vec<T>) -> Pipeline<T> {
+/// Makes a new pipeline for the given file and inputs. All steps until witness generation are
+/// already computed, so that the test can branch off from there, without having to re-compute
+/// these steps.
+pub fn make_prepared_pipeline<T: FieldElement>(file_name: &str, inputs: Vec<T>) -> Pipeline<T> {
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
@@ -86,7 +89,7 @@ pub fn make_pipeline<T: FieldElement>(file_name: &str, inputs: Vec<T>) -> Pipeli
 }
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
-    let pipeline = make_pipeline(file_name, inputs);
+    let pipeline = make_prepared_pipeline(file_name, inputs);
     gen_estark_proof_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
     gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
 }
@@ -130,7 +133,7 @@ pub fn gen_estark_proof_with_backend_variant(
 }
 
 pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
-    let pipeline = make_pipeline(file_name, inputs);
+    let pipeline = make_prepared_pipeline(file_name, inputs);
     test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
     test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
