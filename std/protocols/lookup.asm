@@ -1,11 +1,8 @@
 use std::array::fold;
-use std::utils::unwrap_or_else;
 use std::array::len;
 use std::array::map;
 use std::check::assert;
 use std::check::panic;
-use std::field::known_field;
-use std::field::KnownField;
 use std::math::fp2::Fp2;
 use std::math::fp2::add_ext;
 use std::math::fp2::sub_ext;
@@ -15,7 +12,12 @@ use std::math::fp2::next_ext;
 use std::math::fp2::inv_ext;
 use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
+use std::math::fp2::is_extension;
+use std::math::fp2::fp2_from_array;
+use std::math::fp2::needs_extension;
 use std::math::fp2::constrain_eq_ext;
+use std::protocols::fingerprint::fingerprint;
+use std::utils::unwrap_or_else;
 
 let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_constraint| match lookup_constraint {
     Constr::Lookup((lhs_selector, rhs_selector), values) => (
@@ -27,27 +29,12 @@ let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_c
     _ => panic("Expected lookup constraint")
 };
 
-/// Whether we need to operate on the F_{p^2} extension field (because the current field is too small).
-let needs_extension: -> bool = || match known_field() {
-    Option::Some(KnownField::Goldilocks) => true,
-    Option::Some(KnownField::BN254) => false,
-    None => panic("The lookup argument is not implemented for the current field!")
-};
-
-//* Generic for both permutation and lookup arguments
-/// Maps [x_1, x_2, ..., x_n] to alpha**(n - 1) * x_1 + alpha ** (n - 2) * x_2 + ... + x_n
-let<T: Add + Mul + FromLiteral> compress_expression_array: T[], Fp2<T> -> Fp2<T> = |expr_array, alpha| fold(
-    expr_array,
-    from_base(0),
-    |sum_acc, el| add_ext(mul_ext(alpha, sum_acc), from_base(el))
-);
-
 // Compute z' = z + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector, using extension field arithmetic
 let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = query |acc, alpha, beta, lookup_constraint, multiplicities| {
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
     
-    let lhs_denom = sub_ext(beta, compress_expression_array(lhs, alpha));
-    let rhs_denom = sub_ext(beta, compress_expression_array(rhs, alpha));
+    let lhs_denom = sub_ext(beta, fingerprint(lhs, alpha));
+    let rhs_denom = sub_ext(beta, fingerprint(rhs, alpha));
     let m_ext = from_base(multiplicities);
     
     // acc' = acc + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector
@@ -81,28 +68,20 @@ let lookup: expr, expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> Constr[] = |is_f
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
 
     let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
-
-    let with_extension = match len(acc) {
-        1 => false,
-        2 => true,
-        _ => panic("Expected 1 or 2 accumulator columns!")
-    };
-
-    let _ = if !with_extension {
+    let _ = if !is_extension(acc) {
         assert(!needs_extension(), || "The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!")
-    } else { () };
+    } else { };
 
     // On the extension field, we'll need two field elements to represent the challenge.
     // If we don't need an extension field, we can simply set the second component to 0,
     // in which case the operations below effectively only operate on the first component.
-    let fp2_from_array = |arr| if with_extension { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
     let acc_ext = fp2_from_array(acc);
 
-    let lhs_denom = sub_ext(beta, compress_expression_array(lhs, alpha));
-    let rhs_denom = sub_ext(beta, compress_expression_array(rhs, alpha));
+    let lhs_denom = sub_ext(beta, fingerprint(lhs, alpha));
+    let rhs_denom = sub_ext(beta, fingerprint(rhs, alpha));
     let m_ext = from_base(multiplicities);
 
-    let next_acc = if with_extension {
+    let next_acc = if is_extension(acc) {
         next_ext(acc_ext)
     } else {
         // The second component is 0, but the next operator is not defined on it...
