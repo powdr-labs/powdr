@@ -23,7 +23,7 @@ let solve: ArrayTerm[] -> int = |terms| {
             ArrayTerm::Once(a) => (found_repeated, len + std::array::len(a))
         }
     });
-    //std::check::assert(total_size_of_non_repeated <= degree(), || "non repeated array terms do not fit in degree");
+    std::check::assert(total_size_of_non_repeated <= degree(), || "non repeated array terms do not fit in degree");
     degree() - total_size_of_non_repeated
 };
 
