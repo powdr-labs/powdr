@@ -85,6 +85,8 @@ namespace Main(8);
     let solve: ArrayTerm[] -> int = |terms| {
         let (_, total_size_of_non_repeated) = std::array::fold(terms, (std::prelude::false, 0), |(found_repeated, len), ArrayTerm| {
             match ArrayTerm {
+                // we can have `[]*` as many times as we want
+                ArrayTerm::Repeat([]) => (found_repeated, len),
                 ArrayTerm::Repeat(a) => {
                     if found_repeated {
                         std::check::panic("unsolvable because two terms are repeated");
@@ -105,7 +107,7 @@ namespace Main(8);
     };
 
     /// repeat `repeated` until we reach a length of `total_len`, truncating
-    let repeat: int[], int -> int[] = |repeated, total_len|
+    let expand_to_len = |repeated, total_len|
         std::array::new(total_len, |j| repeated[j % std::array::len(repeated)]);
 
     // expand an `ArrayExpression` into a single complete array
@@ -115,7 +117,7 @@ namespace Main(8);
         let terms_expanded = std::array::map(terms, |ArrayTerm| {
             match ArrayTerm {
                 // expand the repeated ArrayTerm
-                ArrayTerm::Repeat(a) => repeat(a, size_of_repeated),
+                ArrayTerm::Repeat(a) => expand_to_len(a, size_of_repeated),
                 // return other terms
                 ArrayTerm::Once(a) => a,
             }
@@ -123,6 +125,10 @@ namespace Main(8);
         // concatenate all expanded terms
         std::array::fold(terms_expanded, [], |acc, ArrayTerm| acc + ArrayTerm)
     };
+
+    let repeat: int[] -> ArrayTerm = |a| ArrayTerm::Repeat(a);
+
+    let once: int[] -> ArrayTerm = |a| ArrayTerm::Once(a);
 
     // test utility
     let assert_eq: expr, expr -> () = constr |left, right| {
@@ -132,31 +138,35 @@ namespace Main(8);
     };
 
     // let F0 = [1, 2, 3]* + [1] + [1, 2, 3, 1];
-    let r0 = expand([ArrayTerm::Repeat([1, 2, 3]), ArrayTerm::Once([1]), ArrayTerm::Once([1, 2, 3, 1])]);
+    let r0 = expand([repeat([1, 2, 3]), once([1]), once([1, 2, 3, 1])]);
     col fixed res0(i) { r0[i] };
     col fixed expected0 = [1, 2, 3, 1, 1, 2, 3, 1];
     assert_eq(res0, expected0);
 
     // let F1 = [1, 2]*;
-    let r1 = expand([ArrayTerm::Repeat([1, 2])]);
+    let r1 = expand([repeat([1, 2])]);
     col fixed res1(i) { r1[i] };
     col fixed expected1 = [1, 2, 1, 2, 1, 2, 1, 2];
     assert_eq(res1, expected1);
 
     // let F2 = [1, 2] + [1, 2, 1, 2, 1, 2];
-    let r2 = expand([ArrayTerm::Once([1, 2]), ArrayTerm::Once([1, 2, 1, 2, 1, 2])]);
+    let r2 = expand([once([1, 2]), once([1, 2, 1, 2, 1, 2])]);
     col fixed res2(i) { r2[i] };
     col fixed expected2 = [1, 2, 1, 2, 1, 2, 1, 2];
     assert_eq(res2, expected2);
 
     // let F3 = []* + [1, 2, 1, 2, 1, 2, 3, 4];
-    let r3 = expand([ArrayTerm::Repeat([]), ArrayTerm::Once([1, 2, 1, 2, 1, 2, 3, 4])]);
+    let r3 = expand([repeat([]), once([1, 2, 1, 2, 1, 2, 3, 4])]);
     col fixed res3(i) { r3[i] };
     col fixed expected3 = [1, 2, 1, 2, 1, 2, 3, 4];
     assert_eq(res3, expected3);
 
-    // let F3 = []* + [1, 2, 1, 2, 1, 2, 3, 4];
-    let r4 = expand([ArrayTerm::Once([1, 2, 1, 2, 1, 2, 3, 4])]);
+    // let F4 = []* + [1, 2, 1, 2] + [1]*;
+    let r4 = expand([once([1, 2, 1, 2]), repeat([1])]);
     col fixed res4(i) { r4[i] };
-    col fixed expected4 = [1, 2, 1, 2, 1, 2, 3, 4];
+    col fixed expected4 = [1, 2, 1, 2, 1, 1, 1, 1];
     assert_eq(res4, expected4);
+
+    // let F5 = [1]* + [1]*; // should panic
+    let r5 = expand([repeat([1]), repeat([1])]);
+    // col fixed res5(i) { r5[i] }; // uncomment this line to panic
