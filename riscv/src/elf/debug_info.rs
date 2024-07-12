@@ -4,9 +4,8 @@ use std::{
 };
 
 use gimli::{
-    read::Attribute, read::AttributeValue, AttrsIter, CloneStableDeref, DebugLineOffset, DebugStr,
-    DebuggingInformationEntry, Dwarf, EndianSlice, EvaluationResult, LittleEndian,
-    LocationListsOffset, Operation, Unit, UnitRef,
+    read::AttributeValue, DebuggingInformationEntry, Dwarf, EndianSlice, LittleEndian, Operation,
+    Unit, UnitRef,
 };
 use goblin::elf::{Elf, SectionHeader};
 use itertools::Itertools;
@@ -42,6 +41,10 @@ impl DebugInfo {
 
         let mut file_list = Vec::new();
         let mut line_locations = BTreeMap::new();
+        let mut text_symbols = Vec::new();
+        // The code gen API allows for just one symbol per address, so we
+        // can use a map directly.
+        let mut data_symbols = BTreeMap::new();
 
         // Iterate over the compilation units:
         let mut units_iter = dwarf.units();
@@ -86,11 +89,6 @@ impl DebugInfo {
                 }
             }
 
-            let mut text_symbols = Vec::new();
-            // The code gen API allows for just one symbol per address, so we
-            // can use a map directly.
-            let mut data_symbols = BTreeMap::new();
-
             // Traverse the in which the information about the compilation unit is stored.
             // We need to start the stack with a placeholder value, because the update
             // algorithm replaces the top element.
@@ -128,7 +126,7 @@ impl DebugInfo {
                         };
 
                         if jump_targets.contains(&address) {
-                            text_symbols.push((linkage_name.to_string()?, address));
+                            text_symbols.push((Cow::Borrowed(linkage_name.to_string()?), address));
                         }
                     }
                     // This is the entry for a variable.
@@ -136,6 +134,10 @@ impl DebugInfo {
                         let Some(address) = parse_address(&unit, entry)? else {
                             continue;
                         };
+
+                        if !data_entries.contains_key(&address) {
+                            continue;
+                        }
 
                         let mut file_line = None;
                         if let Some(AttributeValue::FileIndex(file_idx)) =
@@ -158,79 +160,20 @@ impl DebugInfo {
                     }
                     _ => {}
                 };
-
-                /*
-                let level = full_name.len();
-                println!(
-                    "{:indent$}# {}",
-                    "",
-                    entry.tag().static_string().unwrap(),
-                    indent = level as usize * 2
-                );
-                let mut attrs = entry.attrs();
-
-                while let Some(attr) = attrs.next()? {
-                    let value_type = match attr.value() {
-                        AttributeValue::Addr(_) => "Addr",
-                        AttributeValue::Block(_) => "Block",
-                        AttributeValue::Data1(_) => "Data1",
-                        AttributeValue::Data2(_) => "Data2",
-                        AttributeValue::Data4(_) => "Data4",
-                        AttributeValue::Data8(_) => "Data8",
-                        AttributeValue::Sdata(_) => "Sdata",
-                        AttributeValue::Udata(_) => "Udata",
-                        AttributeValue::Exprloc(_) => "Exprloc",
-                        AttributeValue::Flag(_) => "Flag",
-                        AttributeValue::SecOffset(_) => "SecOffset",
-                        AttributeValue::DebugAddrBase(_) => "DebugAddrBase",
-                        AttributeValue::DebugAddrIndex(_) => "DebugAddrIndex",
-                        AttributeValue::UnitRef(_) => "UnitRef",
-                        AttributeValue::DebugInfoRef(_) => "DebugInfoRef",
-                        AttributeValue::DebugInfoRefSup(_) => "DebugInfoRefSup",
-                        AttributeValue::DebugLineRef(_) => "DebugLineRef",
-                        AttributeValue::LocationListsRef(_) => "LocationListsRef",
-                        AttributeValue::DebugLocListsBase(_) => "DebugLocListsBase",
-                        AttributeValue::DebugLocListsIndex(_) => "DebugLocListsIndex",
-                        AttributeValue::DebugMacinfoRef(_) => "DebugMacinfoRef",
-                        AttributeValue::DebugMacroRef(_) => "DebugMacroRef",
-                        AttributeValue::RangeListsRef(_) => "RangeListsRef",
-                        AttributeValue::DebugRngListsBase(_) => "DebugRngListsBase",
-                        AttributeValue::DebugRngListsIndex(_) => "DebugRngListsIndex",
-                        AttributeValue::DebugTypesRef(_) => "DebugTypesRef",
-                        AttributeValue::DebugStrRef(_) => "DebugStrRef",
-                        AttributeValue::DebugStrRefSup(_) => "DebugStrRefSup",
-                        AttributeValue::DebugStrOffsetsBase(_) => "DebugStrOffsetsBase",
-                        AttributeValue::DebugStrOffsetsIndex(_) => "DebugStrOffsetsIndex",
-                        AttributeValue::DebugLineStrRef(_) => "DebugLineStrRef",
-                        AttributeValue::String(_) => "String",
-                        AttributeValue::Encoding(_) => "Encoding",
-                        AttributeValue::DecimalSign(_) => "DecimalSign",
-                        AttributeValue::Endianity(_) => "Endianity",
-                        AttributeValue::Accessibility(_) => "Accessibility",
-                        AttributeValue::Visibility(_) => "Visibility",
-                        AttributeValue::Virtuality(_) => "Virtuality",
-                        AttributeValue::Language(_) => "Language",
-                        AttributeValue::AddressClass(_) => "AddressClass",
-                        AttributeValue::IdentifierCase(_) => "IdentifierCase",
-                        AttributeValue::CallingConvention(_) => "CallingConvention",
-                        AttributeValue::Inline(_) => "Inline",
-                        AttributeValue::Ordering(_) => "Ordering",
-                        AttributeValue::FileIndex(_) => "FileIndex",
-                        AttributeValue::DwoId(_) => "DwoId",
-                    };
-
-                    println!(
-                        "{:indent$}→ {}: {}({})",
-                        "",
-                        attr.name(),
-                        value_type,
-                        as_str(unit, attr.value()).unwrap_or("<not a string>"),
-                        indent = level as usize * 2 + 2
-                    );
-                }*/
             }
         }
-        todo!()
+
+        // Deduplicate the text symbols
+        while dedup_names(&mut text_symbols) {}
+        let text_symbols = text_symbols
+            .into_iter()
+            .map(|(name, address)| (address, name))
+            .sorted()
+            .collect::<Vec<_>>();
+
+        // TODO: assemble the DebugInfo struct and return it
+
+        Ok(DebugInfo)
     }
 
     fn load_dwarf_sections<'a>(
@@ -308,4 +251,36 @@ fn parse_address(
     };
 
     Ok(Some(address as u32))
+}
+
+/// Deduplicates the names of the symbols by appending the address to the name.
+///
+/// Returns `true` if the names were deduplicated.
+fn dedup_names(symbols: &mut Vec<(Cow<str>, u32)>) -> bool {
+    symbols.sort_unstable();
+    symbols.dedup();
+
+    // Append the address to the name to make it unique, if necessary.
+    let mut deduplicated = false;
+    let mut iter = symbols.iter_mut();
+    let mut current = iter.next().map(|(name, address)| (name, *address));
+    while let Some((group_name, group_address)) = current {
+        let mut group_deduplicated = false;
+        current = None;
+        while let Some((name, address)) = iter.next() {
+            if name == group_name {
+                group_deduplicated = true;
+                deduplicated = true;
+                *name = Cow::Owned(format!("{name}_{address:08x}"));
+            } else {
+                current = Some((name, *address));
+                break;
+            }
+        }
+        if group_deduplicated {
+            *group_name = Cow::Owned(format!("{group_name}_{group_address:08x}"));
+        }
+    }
+
+    deduplicated
 }
