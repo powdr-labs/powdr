@@ -27,7 +27,6 @@ use raki::{
 
 use crate::{
     code_gen::{self, InstructionArgs, MemEntry, Register, RiscVProgram, Statement},
-    elf::debug_info::DebugInfo,
     Runtime,
 };
 
@@ -160,7 +159,8 @@ fn load_elf(file_name: &Path) -> ElfProgram {
         .flatten()
         .collect::<Vec<_>>();
 
-    let debug_info = debug_info::DebugInfo::new(&elf, &file_buffer);
+    let debug_info =
+        debug_info::DebugInfo::new(&elf, &file_buffer, &data_map, &referenced_text_addrs);
 
     let symbol_table = SymbolTable::new(&elf);
 

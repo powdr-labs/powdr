@@ -1,9 +1,12 @@
-use std::collections::HashMap;
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet, HashMap},
+};
 
 use gimli::{
-    read::Attribute, AttributeValue, AttrsIter, CloneStableDeref, DebugLineOffset, DebugStr,
-    DebuggingInformationEntry, Dwarf, EndianSlice, LittleEndian, LocationListsOffset, Unit,
-    UnitRef,
+    read::Attribute, read::AttributeValue, AttrsIter, CloneStableDeref, DebugLineOffset, DebugStr,
+    DebuggingInformationEntry, Dwarf, EndianSlice, EvaluationResult, LittleEndian,
+    LocationListsOffset, Operation, Unit, UnitRef,
 };
 use goblin::elf::{Elf, SectionHeader};
 use itertools::Itertools;
@@ -22,10 +25,23 @@ pub enum Error {
 
 type Reader<'a> = EndianSlice<'a, LittleEndian>;
 
+struct DataInfo<'a> {
+    pub var_full_name: Vec<Cow<'a, str>>,
+    pub file_line: Option<(u64, u64)>,
+}
+
 impl DebugInfo {
     /// Extracts debug information from the ELF file, if available.
-    pub fn new(elf: &Elf, file_buffer: &[u8]) -> Result<DebugInfo, Error> {
+    pub fn new<D>(
+        elf: &Elf,
+        file_buffer: &[u8],
+        data_entries: &BTreeMap<u32, D>,
+        jump_targets: &BTreeSet<u32>,
+    ) -> Result<DebugInfo, Error> {
         let dwarf = Self::load_dwarf_sections(elf, file_buffer)?;
+
+        let mut file_list = Vec::new();
+        let mut line_locations = BTreeMap::new();
 
         // Iterate over the compilation units:
         let mut units_iter = dwarf.units();
@@ -35,44 +51,116 @@ impl DebugInfo {
             // convenient to work with a UnitRef.
             let unit = UnitRef::new(&dwarf, &unit);
 
-            let mut level = 0;
-            let mut tag_path = Vec::new();
+            // Traverse all the line locations for the compilation unit.
+            let file_idx_delta = file_list.len() as i64 - 1;
+            if let Some(line_program) = unit.line_program.clone() {
+                // Get the source file listing
+                for file_entry in line_program.header().file_names() {
+                    let directory = file_entry
+                        .directory(line_program.header())
+                        .map(|attr| as_str(unit, attr))
+                        .transpose()?
+                        .unwrap_or("");
+                    let path = as_str(unit, file_entry.path_name())?;
+
+                    file_list.push((directory, path));
+                }
+
+                // Get the locations indexed by address
+                let mut rows = line_program.rows();
+                while let Some((_, row)) = rows.next_row()? {
+                    line_locations.insert(
+                        row.address() as u32,
+                        (
+                            (row.file_index() as i64 + file_idx_delta) as u64,
+                            match row.line() {
+                                None => 0,
+                                Some(v) => v.get() as u32,
+                            },
+                            match row.column() {
+                                gimli::ColumnType::LeftEdge => 0,
+                                gimli::ColumnType::Column(v) => v.get() as u32,
+                            },
+                        ),
+                    );
+                }
+            }
+
+            let mut text_symbols = Vec::new();
+            // The code gen API allows for just one symbol per address, so we
+            // can use a map directly.
+            let mut data_symbols = BTreeMap::new();
 
             // Traverse the in which the information about the compilation unit is stored.
+            // We need to start the stack with a placeholder value, because the update
+            // algorithm replaces the top element.
+            let mut full_name = vec![Cow::default()];
             let mut entries = unit.entries();
             while let Some((level_delta, entry)) = entries.next_dfs()? {
-                level += level_delta;
+                // Get the entry name as a human readable string (this is used in a comment)
+                let name = find_attr(entry, gimli::DW_AT_name)
+                    .map(|name| unit.attr_string(name).map(|s| s.to_string_lossy()))
+                    .transpose()?
+                    .unwrap_or(Cow::Borrowed("?"));
 
                 match level_delta {
                     delta if delta > 1 => return Err(Error::UnexpectedOrganization),
-                    1 => tag_path.push(entry.tag()),
-                    _ => tag_path.truncate(level as usize),
+                    1 => (),
+                    _ => {
+                        full_name.truncate((full_name.len() as isize + level_delta - 1) as usize);
+                    }
                 }
+                full_name.push(name);
 
                 match entry.tag() {
                     // This is the entry for a function or method.
                     gimli::DW_TAG_subprogram => {
-                        let name = as_str(unit, find_attr(&entry, gimli::DW_AT_linkage_name)?)?;
-                        println!("{}\n  {}) ", tag_path.iter().format("/"), name);
+                        let Some(linkage_name) = find_attr(entry, gimli::DW_AT_linkage_name)
+                            .map(|ln| unit.attr_string(ln))
+                            .transpose()?
+                        else {
+                            log::warn!("No linkage name for function or method in debug symbols. Ignoring.");
+                            continue;
+                        };
+
+                        let Some(address) = parse_address(&unit, entry)? else {
+                            continue;
+                        };
+
+                        if jump_targets.contains(&address) {
+                            text_symbols.push((linkage_name.to_string()?, address));
+                        }
+                    }
+                    // This is the entry for a variable.
+                    gimli::DW_TAG_variable => {
+                        let Some(address) = parse_address(&unit, entry)? else {
+                            continue;
+                        };
+
+                        let mut file_line = None;
+                        if let Some(AttributeValue::FileIndex(file_idx)) =
+                            find_attr(entry, gimli::DW_AT_decl_file)
+                        {
+                            if let Some(AttributeValue::Udata(line)) =
+                                find_attr(entry, gimli::DW_AT_decl_line)
+                            {
+                                file_line = Some(((file_idx as i64 + file_idx_delta) as u64, line));
+                            }
+                        }
+
+                        data_symbols.insert(
+                            address,
+                            DataInfo {
+                                var_full_name: full_name.clone(),
+                                file_line,
+                            },
+                        );
                     }
                     _ => {}
                 };
 
-                // Traverse all the line locations for the compilation unit.
-                if let Some(line_program) = unit.line_program.clone() {
-                    let mut rows = line_program.rows();
-                    while let Some((header, row)) = rows.next_row()? {
-                        println!(
-                            "{:08x}: {} {:?} {:?}",
-                            row.address(),
-                            row.file_index(),
-                            row.line(),
-                            row.column()
-                        );
-                    }
-                }
-
                 /*
+                let level = full_name.len();
                 println!(
                     "{:indent$}# {}",
                     "",
@@ -184,19 +272,40 @@ impl DebugInfo {
 fn find_attr<'a>(
     entry: &DebuggingInformationEntry<Reader<'a>>,
     attr_type: gimli::DwAt,
-) -> Result<AttributeValue<Reader<'a>>, Error> {
+) -> Option<AttributeValue<Reader<'a>>> {
     let mut attrs = entry.attrs();
     while let Some(attr) = attrs.next().unwrap() {
         if attr.name() == attr_type {
-            return Ok(attr.value());
+            return Some(attr.value());
         }
     }
-    Err(Error::UnexpectedOrganization)
+    None
 }
 
 fn as_str<'a>(
     unit: UnitRef<Reader<'a>>,
     attr: AttributeValue<Reader<'a>>,
 ) -> Result<&'a str, gimli::Error> {
-    std::str::from_utf8(unit.attr_string(attr)?.slice()).map_err(|_| gimli::Error::BadUtf8)
+    unit.attr_string(attr)?.to_string()
+}
+
+fn parse_address(
+    unit: &Unit<Reader>,
+    entry: &DebuggingInformationEntry<Reader>,
+) -> Result<Option<u32>, gimli::Error> {
+    let Some(AttributeValue::Exprloc(address)) = find_attr(entry, gimli::DW_AT_location) else {
+        log::warn!("Address of a debug symbol in an unsupported format. Ignoring.");
+        return Ok(None);
+    };
+
+    // Do the magic to find the variable address
+    let mut ops = address.operations(unit.encoding());
+    let first_op = ops.next()?;
+    let second_op = ops.next()?;
+    let (Some(Operation::Address { address }), None) = (first_op, second_op) else {
+        log::warn!("Address of a debug symbol in an unsupported format. Ignoring.");
+        return Ok(None);
+    };
+
+    Ok(Some(address as u32))
 }
