@@ -58,44 +58,32 @@ let repeat: int[] -> ArrayTerm = |a| ArrayTerm::Repeat(a);
 let once: int[] -> ArrayTerm = |a| ArrayTerm::Once(a);
 
 // test utility
-let assert_eq: expr, expr -> () = constr |left, right| {
-    let diff;
-    diff = left - right;
-    diff = 0;
+let assert_eq: (int -> int), int[] -> () = |fun, expected| {
+    let _ = std::array::new(degree(), |i| assert(fun(i) == expected[i], || "test failed"));
 };
 
 machine Main with degree: 8 {
     // let F0 = [1, 2, 3]* + [1] + [1, 2, 3, 1];
     let r0 = expand([repeat([1, 2, 3]), once([1]), once([1, 2, 3, 1])]);
-    col fixed res0(i) { r0(i) };
-    col fixed expected0 = [1, 2, 3, 1, 1, 2, 3, 1];
-    assert_eq(res0, expected0);
+    assert_eq(r0, [1, 2, 3, 1, 1, 2, 3, 1]);
 
     // let F1 = [1, 2]*;
     let r1 = expand([repeat([1, 2])]);
-    col fixed res1(i) { r1(i) };
-    col fixed expected1 = [1, 2, 1, 2, 1, 2, 1, 2];
-    assert_eq(res1, expected1);
+    assert_eq(r1, [1, 2, 1, 2, 1, 2, 1, 2]);
 
     // // let F2 = [1, 2] + [1, 2, 1, 2, 1, 2];
     let r2 = expand([once([1, 2]), once([1, 2, 1, 2, 1, 2])]);
-    col fixed res2(i) { r2(i) };
-    col fixed expected2 = [1, 2, 1, 2, 1, 2, 1, 2];
-    assert_eq(res2, expected2);
+    assert_eq(r2, [1, 2, 1, 2, 1, 2, 1, 2]);
 
     // let F3 = []* + [1, 2, 1, 2, 1, 2, 3, 4];
     let r3 = expand([repeat([]), once([1, 2, 1, 2, 1, 2, 3, 4])]);
-    col fixed res3(i) { r3(i) };
-    col fixed expected3 = [1, 2, 1, 2, 1, 2, 3, 4];
-    assert_eq(res3, expected3);
+    assert_eq(r3, [1, 2, 1, 2, 1, 2, 3, 4]);
 
     // let F4 = []* + [1, 2, 1, 2] + [1]*;
     let r4 = expand([once([1, 2, 1, 2]), repeat([1])]);
-    col fixed res4(i) { r4(i) };
-    col fixed expected4 = [1, 2, 1, 2, 1, 1, 1, 1];
-    assert_eq(res4, expected4);
+    assert_eq(r4, [1, 2, 1, 2, 1, 1, 1, 1]);
 
     // let F5 = [1]* + [1]*; // should panic
     let r5 = expand([repeat([1]), repeat([1])]);
-    // col fixed res5(i) { r5(i) }; // uncomment this line to panic   
+    // TODO: how to test this?
 }
