@@ -48,6 +48,7 @@ let expand: ArrayTerm[] -> Result<(int -> int), string> = |terms| {
         Result::Ok(size_of_repeated) => Result::Ok(|i| {
             let (_, res) = std::array::fold(terms, (0, 0), |(offset, res), term| {
                 let (a, len) = match term {
+                    ArrayTerm::Repeat([]) => ([], 0),
                     ArrayTerm::Repeat(a) => (a, size_of_repeated),
                     ArrayTerm::Once(a) => (a, std::array::len(a))
                 };
@@ -102,7 +103,7 @@ machine Main with degree: 8 {
     assert_eq(r3, Result::Ok([1, 2, 1, 2, 1, 2, 3, 4]));
 
     // let F4 = []* + [1, 2, 1, 2] + [1]*;
-    let r4 = expand([once([1, 2, 1, 2]), repeat([1])]);
+    let r4 = expand([repeat([]), once([1, 2, 1, 2]), repeat([1])]);
     assert_eq(r4, Result::Ok([1, 2, 1, 2, 1, 1, 1, 1]));
 
     // let F5 = [1]* + [1]*; // should panic
