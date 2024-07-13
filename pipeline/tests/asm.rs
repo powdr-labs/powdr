@@ -2,7 +2,9 @@ use powdr_backend::BackendType;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
-        execute_test_file, gen_estark_proof, gen_estark_proof_with_backend_variant, make_prepared_pipeline, resolve_test_file, test_halo2, test_halo2_with_backend_variant, verify_test_file, BackendVariant
+        execute_test_file, gen_estark_proof, gen_estark_proof_with_backend_variant,
+        make_prepared_pipeline, resolve_test_file, test_halo2, test_halo2_with_backend_variant,
+        verify_test_file, BackendVariant,
     },
     util::{read_poly_set, FixedPolySet, WitnessPolySet},
     Pipeline,
