@@ -658,7 +658,10 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 }
                 Operation::AddConstraint => {
                     let result = self.value_stack.pop().unwrap();
-                    self.symbols.add_constraints(result, SourceRef::unknown())?;
+                    match result.as_ref() {
+                        Value::Tuple(t) if t.is_empty() => {}
+                        _ => self.symbols.add_constraints(result, SourceRef::unknown())?,
+                    }
                 }
             };
         }
