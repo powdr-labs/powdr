@@ -482,6 +482,65 @@ namespace N(2);
     }
 
     #[test]
+    fn parse_trait() {
+        let input = r#"
+    trait Add<T> {
+        add: T, T -> T,
+    }"#;
+
+        let expected = r#"
+    trait Add<T> {
+        add: T, T -> T,
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trait_multi_params() {
+        let input = r#"
+    trait Add<T, Q> {
+        add: T, T -> Q,
+    }"#;
+
+        let expected = r#"
+    trait Add<T, Q> {
+        add: T, T -> Q,
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    #[should_panic = "Parse error"]
+    fn parse_trait_no_type_vars() {
+        let input = r#"
+    trait Add {
+        add: int, int -> int,
+    }"#;
+
+        let _ = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+    }
+
+    #[test]
+    fn parse_trait_multi_params2() {
+        let input = r#"
+    trait Iterator<S, I> {
+        next: S -> (S, Option<I>),
+    }"#;
+
+        let expected = r#"
+    trait Iterator<S, I> {
+        next: S -> (S, Option<I>),
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
     fn empty_namespace() {
         let input = r#"
 namespace(2);

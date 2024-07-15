@@ -1,7 +1,11 @@
 use powdr_backend::BackendType;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
-    test_util::{gen_estark_proof, resolve_test_file, test_halo2, verify_test_file},
+    test_util::{
+        gen_estark_proof, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
+        resolve_test_file, test_halo2, test_halo2_with_backend_variant, verify_test_file,
+        BackendVariant,
+    },
     util::{read_poly_set, FixedPolySet, WitnessPolySet},
     Pipeline,
 };
@@ -217,6 +221,18 @@ fn vm_to_block_array() {
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
     gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+fn vm_to_block_different_length() {
+    let f = "asm/vm_to_block_different_length.asm";
+    // Because machines have different lengths, this can only be proven
+    // with a composite proof.
+    test_halo2_with_backend_variant(make_prepared_pipeline(f, vec![]), BackendVariant::Composite);
+    gen_estark_proof_with_backend_variant(
+        make_prepared_pipeline(f, vec![]),
+        BackendVariant::Composite,
+    );
 }
 
 #[test]
@@ -735,5 +751,12 @@ fn connect_no_witgen() {
 #[test]
 fn generics_preservation() {
     let f = "asm/generics_preservation.asm";
+    verify_asm(f, Default::default());
+}
+
+#[test]
+fn trait_parsing() {
+    // Should be expanded/renamed when traits functionality is fully implemented
+    let f = "asm/trait_parsing.asm";
     verify_asm(f, Default::default());
 }

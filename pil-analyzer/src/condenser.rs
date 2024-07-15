@@ -29,17 +29,17 @@ use crate::{
     statement_processor::Counters,
 };
 
+type ParsedIdentity = Identity<parsed::SelectedExpressions<Expression>>;
+type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>;
+
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
-    identities: &[Identity<parsed::SelectedExpressions<Expression>>],
+    identities: &[ParsedIdentity],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
     let mut condenser = Condenser::new(&definitions);
-
-    // Counter needed to re-assign identity IDs.
-    let mut counters = Counters::default();
 
     let mut condensed_identities = vec![];
     let mut intermediate_columns = HashMap::new();
@@ -114,8 +114,7 @@ pub fn condense<T: FieldElement>(
                 .into_iter()
                 .map(|identity| {
                     let index = condensed_identities.len();
-                    let id = counters.dispense_identity_id();
-                    condensed_identities.push(identity.into_identity(id));
+                    condensed_identities.push(identity);
                     StatementIdentifier::Identity(index)
                 })
                 .collect::<Vec<_>>();
@@ -162,77 +161,31 @@ pub struct Condenser<'a, T> {
     symbol_values: BTreeMap<SymbolCacheKey, Arc<Value<'a, T>>>,
     /// Current namespace (for names of generated witnesses).
     namespace: AbsoluteSymbolPath,
-    next_witness_id: u64,
+    /// ID dispensers.
+    counters: Counters,
     /// The generated witness columns since the last extraction.
     new_witnesses: Vec<Symbol>,
     /// The names of all new witness columns ever generated, to avoid duplicates.
     all_new_witness_names: HashSet<String>,
-    new_constraints: Vec<IdentityWithoutID<AlgebraicExpression<T>>>,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct IdentityWithoutID<Expr> {
-    pub kind: IdentityKind,
-    pub source: SourceRef,
-    /// For a simple polynomial identity, the selector contains
-    /// the actual expression (see expression_for_poly_id).
-    pub left: SelectedExpressions<Expr>,
-    pub right: SelectedExpressions<Expr>,
-}
-
-impl<Expr> IdentityWithoutID<Expr> {
-    /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
-    pub fn from_polynomial_identity(source: SourceRef, identity: Expr) -> Self {
-        Self {
-            kind: IdentityKind::Polynomial,
-            source,
-            left: SelectedExpressions {
-                selector: Some(identity),
-                expressions: vec![],
-            },
-            right: Default::default(),
-        }
-    }
-
-    pub fn into_identity(self, id: u64) -> Identity<SelectedExpressions<Expr>> {
-        Identity {
-            id,
-            kind: self.kind,
-            source: self.source,
-            left: self.left,
-            right: self.right,
-        }
-    }
+    new_constraints: Vec<AnalyzedIdentity<T>>,
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
     pub fn new(symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
-        let next_witness_id = symbols
-            .values()
-            .filter_map(|(sym, _)| match sym.kind {
-                SymbolKind::Poly(PolynomialType::Committed) => {
-                    Some(sym.id + sym.length.unwrap_or(1))
-                }
-                _ => None,
-            })
-            .max()
-            .unwrap_or_default();
+        let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
             symbols,
             degree: None,
             symbol_values: Default::default(),
             namespace: Default::default(),
-            next_witness_id,
+            counters,
             new_witnesses: vec![],
             all_new_witness_names: HashSet::new(),
             new_constraints: vec![],
         }
     }
 
-    pub fn condense_identity(
-        &mut self,
-        identity: &'a Identity<parsed::SelectedExpressions<Expression>>,
-    ) {
+    pub fn condense_identity(&mut self, identity: &'a ParsedIdentity) {
         if identity.kind == IdentityKind::Polynomial {
             let expr = identity.expression_for_poly_id();
             evaluator::evaluate(expr, self)
@@ -252,7 +205,8 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         } else {
             let left = self.condense_selected_expressions(&identity.left);
             let right = self.condense_selected_expressions(&identity.right);
-            self.new_constraints.push(IdentityWithoutID {
+            self.new_constraints.push(Identity {
+                id: self.counters.dispense_identity_id(),
                 kind: identity.kind,
                 source: identity.source.clone(),
                 left,
@@ -277,7 +231,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Returns the new constraints generated since the last call to this function.
-    pub fn extract_new_constraints(&mut self) -> Vec<IdentityWithoutID<AlgebraicExpression<T>>> {
+    pub fn extract_new_constraints(&mut self) -> Vec<AnalyzedIdentity<T>> {
         std::mem::take(&mut self.new_constraints)
     }
 
@@ -361,16 +315,16 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = self.find_unused_name(name);
+        let kind = SymbolKind::Poly(PolynomialType::Committed);
         let symbol = Symbol {
-            id: self.next_witness_id,
+            id: self.counters.dispense_symbol_id(kind, None),
             source,
             absolute_name: name.clone(),
             stage: None,
-            kind: SymbolKind::Poly(PolynomialType::Committed),
+            kind,
             length: None,
             degree: Some(self.degree.unwrap()),
         };
-        self.next_witness_id += 1;
         self.all_new_witness_names.insert(name.clone());
         self.new_witnesses.push(symbol.clone());
         Ok(
@@ -391,13 +345,16 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         match constraints.as_ref() {
             Value::Array(items) => {
                 for item in items {
-                    self.new_constraints
-                        .push(to_constraint(item, source.clone()))
+                    self.new_constraints.push(to_constraint(
+                        item,
+                        source.clone(),
+                        &mut self.counters,
+                    ))
                 }
             }
             _ => self
                 .new_constraints
-                .push(to_constraint(&constraints, source)),
+                .push(to_constraint(&constraints, source, &mut self.counters)),
         }
         Ok(())
     }
@@ -419,11 +376,13 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 fn to_constraint<T: FieldElement>(
     constraint: &Value<'_, T>,
     source: SourceRef,
-) -> IdentityWithoutID<AlgebraicExpression<T>> {
+    counters: &mut Counters,
+) -> AnalyzedIdentity<T> {
     match constraint {
         Value::Enum("Identity", Some(fields)) => {
             assert_eq!(fields.len(), 2);
-            IdentityWithoutID::from_polynomial_identity(
+            AnalyzedIdentity::from_polynomial_identity(
+                counters.dispense_identity_id(),
                 source,
                 to_expr(&fields[0]) - to_expr(&fields[1]),
             )
@@ -458,7 +417,8 @@ fn to_constraint<T: FieldElement>(
                 unreachable!()
             };
 
-            IdentityWithoutID {
+            Identity {
+                id: counters.dispense_identity_id(),
                 kind,
                 source,
                 left: to_selected_exprs(sel_from, from),
@@ -483,7 +443,8 @@ fn to_constraint<T: FieldElement>(
                 unreachable!()
             };
 
-            IdentityWithoutID {
+            Identity {
+                id: counters.dispense_identity_id(),
                 kind: IdentityKind::Connect,
                 source,
                 left: analyzed::SelectedExpressions {

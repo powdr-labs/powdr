@@ -19,7 +19,8 @@ use crate::parsed::{
         MachineParams, OperationId, OperationParams,
     },
     visitor::{ExpressionVisitable, VisitOrder},
-    EnumDeclaration, NamespacedPolynomialReference, PilStatement, TypedExpression,
+    EnumDeclaration, NamespacedPolynomialReference, PilStatement, TraitDeclaration,
+    TypedExpression,
 };
 
 pub use crate::parsed::Expression;
@@ -680,13 +681,14 @@ pub enum Item {
     Machine(Machine),
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration<Expression>),
+    TraitDeclaration(TraitDeclaration<Expression>),
 }
 
 impl Item {
     pub fn try_to_machine(&self) -> Option<&Machine> {
         match self {
             Item::Machine(m) => Some(m),
-            Item::Expression(_) | Item::TypeDeclaration(_) => None,
+            Item::Expression(_) | Item::TypeDeclaration(_) | Item::TraitDeclaration(_) => None,
         }
     }
 }
@@ -809,13 +811,13 @@ impl AnalysisASMFile {
     pub fn machines(&self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &Machine)> {
         self.items.iter().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
-            Item::Expression(_) | Item::TypeDeclaration(_) => None,
+            Item::Expression(_) | Item::TypeDeclaration(_) | Item::TraitDeclaration(_) => None,
         })
     }
     pub fn machines_mut(&mut self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &mut Machine)> {
         self.items.iter_mut().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
-            Item::Expression(_) | Item::TypeDeclaration(_) => None,
+            Item::Expression(_) | Item::TypeDeclaration(_) | Item::TraitDeclaration(_) => None,
         })
     }
 }

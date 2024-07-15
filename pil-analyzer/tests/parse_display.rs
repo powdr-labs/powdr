@@ -716,6 +716,51 @@ namespace T(8);
 }
 
 #[test]
+fn trait_def() {
+    let input = "trait Add<T, Q> {
+        add: T, T -> Q,
+    }
+";
+
+    let expected = "    trait Add<T, Q> {
+        add: T, T -> Q,
+    }
+";
+
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(expected, analyzed.to_string())
+}
+
+#[test]
+fn array_type_trait() {
+    let input = "trait ArraySum<T> {
+        array_sum: T[4 + 1] -> T,
+    }
+";
+
+    let expected = "    trait ArraySum<T> {
+        array_sum: T[5] -> T,
+    }
+";
+
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(expected, analyzed.to_string())
+}
+
+#[test]
+#[should_panic = "Duplicate symbol definition: Add"]
+fn trait_enum_collisions() {
+    let input = "trait Add<T, Q> {
+        add: T, T -> Q,
+    }
+    enum Add {
+        X
+    }";
+
+    let _ = analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
 fn reparse_generic_function_call() {
     let input = r#"namespace X(16);
     let<T: Add + FromLiteral> inc: T -> T = (|x| x + 1);

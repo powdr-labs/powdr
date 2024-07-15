@@ -5,7 +5,7 @@ use std::cmp::max;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use std::iter;
+use std::iter::{self, empty};
 use std::ops::{self, ControlFlow};
 use std::sync::Arc;
 
@@ -15,11 +15,13 @@ use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::parsed::types::{ArrayType, Type, TypeScheme};
+use crate::parsed::types::{ArrayType, Type, TypeBounds, TypeScheme};
 use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
-use crate::parsed::{self, ArrayLiteral, EnumDeclaration, EnumVariant};
+use crate::parsed::{
+    self, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration, TraitFunction,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub enum StatementIdentifier {
@@ -442,6 +444,24 @@ pub fn type_from_definition(
             FunctionValueDefinition::TypeConstructor(enum_decl, variant) => {
                 Some(variant.constructor_type(enum_decl))
             }
+            FunctionValueDefinition::TraitDeclaration(_) => {
+                panic!("Requested type of trait declaration.")
+            }
+            FunctionValueDefinition::TraitFunction(trait_decl, trait_func) => {
+                let vars = trait_decl
+                    .type_vars
+                    .iter()
+                    .map(|var| {
+                        let bounds = BTreeSet::new();
+                        (var.clone(), bounds)
+                    })
+                    .collect::<Vec<_>>();
+
+                Some(TypeScheme {
+                    vars: TypeBounds::new(vars.into_iter()),
+                    ty: trait_func.ty.clone(),
+                })
+            }
         }
     } else {
         assert!(
@@ -538,6 +558,8 @@ pub enum FunctionValueDefinition {
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
+    TraitDeclaration(TraitDeclaration),
+    TraitFunction(Arc<TraitDeclaration>, TraitFunction),
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -553,6 +575,8 @@ impl Children<Expression> for FunctionValueDefinition {
                 enum_declaration.children()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
+            FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
         }
     }
 
@@ -568,7 +592,27 @@ impl Children<Expression> for FunctionValueDefinition {
                 enum_declaration.children_mut()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
+            FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
         }
+    }
+}
+
+impl Children<Expression> for TraitDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(empty())
+    }
+}
+
+impl Children<Expression> for TraitFunction {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(empty())
     }
 }
 

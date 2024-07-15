@@ -6,8 +6,8 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_composite_proof, gen_halo2_proof, resolve_test_file, std_analyzed, test_halo2,
-        verify_test_file,
+        gen_halo2_proof, make_prepared_pipeline, resolve_test_file, std_analyzed, test_halo2,
+        verify_test_file, BackendVariant,
     },
     Pipeline,
 };
@@ -21,8 +21,11 @@ fn poseidon_bn254_test() {
     // `test_halo2` only does a mock proof in the PR tests.
     // This makes sure we test the whole proof generation for one example
     // file even in the PR tests.
-    gen_halo2_proof(f, Default::default());
-    gen_halo2_composite_proof(f, Default::default());
+    gen_halo2_proof(
+        make_prepared_pipeline(f, vec![]),
+        BackendVariant::Monolithic,
+    );
+    gen_halo2_proof(make_prepared_pipeline(f, vec![]), BackendVariant::Composite);
 }
 
 #[test]
@@ -101,7 +104,7 @@ fn permutation_via_challenges_bn() {
 }
 
 #[test]
-#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation(main.is_first, [main.z], main.alpha, main.beta, main.permutation_constraint)\nError: FailedAssertion(\"The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!\""]
+#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation(main.is_first, [main.z], main.alpha, main.beta, main.permutation_constraint)\nError: FailedAssertion(\"The field is too small and needs to move to the extension field. Pass two elements instead!\")"]
 fn permutation_via_challenges_gl() {
     let f = "std/permutation_via_challenges.asm";
     Pipeline::<GoldilocksField>::default()
