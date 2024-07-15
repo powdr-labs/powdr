@@ -49,7 +49,7 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
     let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
         // Can't use `verify_pipeline`, because the pipeline was renamed in the middle of after
         // computing the constants file.
-        let mut pipeline = pipeline.with_backend(BackendType::EStarkDump, None);
+        let mut pipeline = pipeline.with_backend(BackendType::EStarkDumpComposite, None);
         pipeline.compute_proof().unwrap();
         verify(pipeline.output_dir().as_ref().unwrap()).unwrap();
 
@@ -154,7 +154,7 @@ fn vec_median_estark_polygon() {
             .map(|x| x.into())
             .collect(),
         &Runtime::base(),
-        BackendType::EStarkPolygon,
+        BackendType::EStarkPolygonComposite,
     );
 }
 
@@ -425,7 +425,7 @@ fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
     runtime: &Runtime,
     data: Vec<(u32, S)>,
 ) {
-    verify_riscv_crate_from_both_paths(case, inputs, runtime, Some(data), BackendType::EStarkDump)
+    verify_riscv_crate_from_both_paths(case, inputs, runtime, Some(data), BackendType::EStarkDumpComposite)
 }
 
 fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'static>(
