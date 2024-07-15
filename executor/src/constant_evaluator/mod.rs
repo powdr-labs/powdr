@@ -631,7 +631,7 @@ mod test {
     }
 
     #[test]
-    fn basic_struct() {
+    fn basic_struct_with_field_access() {
         let input = r#"
             namespace std::convert(4);
                 let fe = || fe();
