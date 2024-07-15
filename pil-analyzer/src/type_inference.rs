@@ -692,7 +692,7 @@ impl TypeChecker {
                 for named_expr in struct_expr.fields.iter_mut() {
                     let field_name = if struct_expr.name.contains('.') {
                         // TODO GZ: Improve this
-                        format!("{}::{}", struct_expr.name, named_expr.name).replace(".", "::")
+                        format!("{}::{}", struct_expr.name, named_expr.name).replace('.', "::")
                     } else {
                         format!("{}.{}", struct_expr.name, named_expr.name)
                     };
@@ -700,7 +700,7 @@ impl TypeChecker {
                     self.expect_type(&expr_ty, named_expr.expr.as_mut())?;
                 }
 
-                match SymbolPath::from_str(&struct_expr.name.replace(".", "::")) {
+                match SymbolPath::from_str(&struct_expr.name.replace('.', "::")) {
                     Ok(named_type) => Type::NamedType(named_type, None),
                     Err(_) => panic!("Undefined struct: {}", struct_expr.name), //TODO GZ Better error reporting
                 }
