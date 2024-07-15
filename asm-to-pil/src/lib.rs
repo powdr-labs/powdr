@@ -21,12 +21,7 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
                             let (m, rom) = generate_machine_rom::<T>(m);
                             Item::Machine(vm_to_constrained::convert_machine::<T>(m, rom))
                         }
-                        Item::Expression(e) => Item::Expression(e),
-                        Item::TypeDeclaration(enum_decl) => Item::TypeDeclaration(enum_decl),
-                        Item::TraitImplementation(trait_impl) => {
-                            Item::TraitImplementation(trait_impl)
-                        }
-                        Item::TraitDeclaration(trait_decl) => Item::TraitDeclaration(trait_decl),
+                        item => item,
                     },
                 )
             })

@@ -634,13 +634,7 @@ impl<E: Display> Display for TraitImplementation<E> {
         let trait_vars = if self.type_scheme.types.is_empty() {
             Default::default()
         } else {
-            let formatted_elements: Vec<String> = self
-                .type_scheme
-                .types
-                .iter()
-                .map(|t| format!("{t}"))
-                .collect();
-            format!("<{}>", formatted_elements.join(", "))
+            format!("<{}>", self.type_scheme.types.iter().format(", "))
         };
 
         write!(
