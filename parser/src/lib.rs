@@ -484,12 +484,14 @@ namespace N(2);
     #[test]
     fn parse_trait() {
         let input = r#"
-    trait Add<T> {
-        add: T -> T,
+    trait Add<T, Q> {
+        const: Q,
+        add: (T -> T),
     }"#;
 
         let expected = r#"
-    trait Add<T> {
+    trait Add<T, Q> {
+        const: Q,
         add: T -> T,
     }"#;
 
