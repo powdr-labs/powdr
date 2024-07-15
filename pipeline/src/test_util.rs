@@ -61,35 +61,6 @@ pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     verify_pipeline(pipeline, BackendType::EStarkDump).unwrap();
 }
 
-fn is_composite(backend: BackendType) -> bool {
-    if matches!(
-        backend,
-        BackendType::EStarkDumpComposite | BackendType::EStarkStarkyComposite
-    ) {
-        return true;
-    }
-
-    #[cfg(feature = "halo2")]
-    if matches!(
-        backend,
-        BackendType::Halo2Composite | BackendType::Halo2MockComposite
-    ) {
-        return true;
-    }
-
-    #[cfg(feature = "estark-polygon")]
-    if matches!(backend, BackendType::EStarkPolygonComposite) {
-        return true;
-    }
-
-    #[cfg(feature = "plonky3")]
-    if matches!(backend, BackendType::Plonky3Composite) {
-        return true;
-    }
-
-    false
-}
-
 pub fn verify_pipeline(
     pipeline: Pipeline<GoldilocksField>,
     backend: BackendType,
@@ -104,7 +75,7 @@ pub fn verify_pipeline(
     pipeline.compute_proof().unwrap();
 
     let out_dir = pipeline.output_dir().as_ref().unwrap();
-    if is_composite(backend) {
+    if backend.is_composite() {
         // traverse all subdirs of the given output dir and verify each subproof
         for entry in fs::read_dir(out_dir).unwrap() {
             let entry = entry.unwrap();
