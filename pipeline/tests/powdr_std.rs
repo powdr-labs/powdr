@@ -157,6 +157,18 @@ fn lookup_via_challenges_ext_simple() {
 }
 
 #[test]
+fn bus_permutation_via_challenges_bn() {
+    let f = "std/bus_permutation_via_challenges.asm";
+    test_halo2(f, Default::default());
+}
+
+#[test]
+fn bus_permutation_via_challenges_ext_bn() {
+    let f = "std/bus_permutation_via_challenges_ext.asm";
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn write_once_memory_test() {
     let f = "std/write_once_memory_test.asm";
     verify_test_file(f, Default::default(), vec![]).unwrap();
