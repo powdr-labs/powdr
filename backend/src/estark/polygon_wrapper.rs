@@ -1,10 +1,7 @@
 use std::{fs, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::{
-    constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn},
-    witgen::WitgenCallback,
-};
+use powdr_executor::{constant_evaluator::VariablySizedColumns, witgen::WitgenCallback};
 use powdr_number::FieldElement;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
@@ -24,9 +21,9 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
-        let fixed = Arc::new(
-            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
-        );
+        let fixed = fixed
+            .to_uniquely_sized()
+            .map_err(|_| Error::NoVariableDegreeAvailable)?;
         Ok(Box::new(PolygonBackend(EStarkFilesCommon::create(
             &analyzed,
             fixed,
