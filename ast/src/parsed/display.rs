@@ -584,7 +584,7 @@ impl<E: Display> Display for TraitDeclaration<E> {
             name = self.name,
             type_vars = self.type_vars.iter().format(", "),
             functions = indent(
-                self.functions.iter().map(|m| format!("{m};\n")).format(""),
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
                 1
             )
         )

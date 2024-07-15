@@ -691,11 +691,11 @@ TraitVars: Vec<String> = {
 
 TraitFunctions: Vec<TraitFunction<Expression>> = {
     => vec![],
-    <mut list:( <TraitFunction> ";" )*> <end:TraitFunction> ";"  => { list.push(end); list }
+    <mut list:( <TraitFunction> "," )*> <end:TraitFunction> ","  => { list.push(end); list }
 }
 
 TraitFunction: TraitFunction<Expression> = {
-    <name:Identifier> ":" <ty:Type> => TraitFunction { name, ty }
+    <name:Identifier> ":" <ty:TypeTerm> => TraitFunction { name, ty }
 }
 
 

@@ -1289,7 +1289,7 @@ machine Main {
             }
 
             trait ArraySum<T> {
-                array_sum: T[4 + 1] -> DoubleOpt<T>;
+                array_sum: (T[4 + 1] -> DoubleOpt<T>),
             }
         }
 
