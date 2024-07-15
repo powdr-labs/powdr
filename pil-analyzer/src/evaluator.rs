@@ -1672,6 +1672,24 @@ mod test {
     }
 
     #[test]
+    pub fn match_struct() {
+        let src = r#"
+            struct S {
+                a: int,
+                b: int,
+                c: int,
+            }
+            let f = |s| match s {
+                S{ a: 1, b: 2, c: 3 } => 1,
+                S{ a: 1, b: 2, c } => 2 + c,
+                S{ a, b, c } => a + b + c,
+            };
+            let t = [f(S with { a: 1, b: 2, c: 3 }), f(S with { a: 1, b: 2, c: 4 }), f(S with { a: 1, b: 3, c: 5 })];
+        "#;
+        assert_eq!(parse_and_evaluate_symbol(src, "t"), "[1, 6, 9]".to_string());
+    }
+
+    #[test]
     pub fn gigantic_stack() {
         let src = r#"
             let arr_new: int, (int -> int) -> int[] = |n, f| if n == 0 { [] } else { arr_new(n - 1, f) + [f(n - 1)] };
