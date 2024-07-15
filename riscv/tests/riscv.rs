@@ -425,7 +425,13 @@ fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
     runtime: &Runtime,
     data: Vec<(u32, S)>,
 ) {
-    verify_riscv_crate_from_both_paths(case, inputs, runtime, Some(data), BackendType::EStarkDumpComposite)
+    verify_riscv_crate_from_both_paths(
+        case,
+        inputs,
+        runtime,
+        Some(data),
+        BackendType::EStarkDumpComposite,
+    )
 }
 
 fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'static>(
