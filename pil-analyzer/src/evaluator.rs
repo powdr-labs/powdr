@@ -19,8 +19,8 @@ use powdr_ast::{
         types::{Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FieldAccess, FunctionCall,
         IfExpression, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
-        MatchExpression, Number, Pattern, StatementInsideBlock, StructExpression, UnaryOperation,
-        UnaryOperator,
+        MatchExpression, NamedExpression, Number, Pattern, StatementInsideBlock, StructExpression,
+        UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -761,7 +761,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             }
             Expression::FieldAccess(_, FieldAccess { object, field: _ }) => {
                 self.op_stack.push(Operation::Combine(expr));
-                self.expand(object)?;
+                self.op_stack.push(Operation::Expand(object));
             }
             Expression::FunctionCall(
                 _,
@@ -812,11 +812,17 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::FreeInput(_, _) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
             ))?,
-            Expression::StructExpression(_, StructExpression { name: _, fields }) => {
-                self.op_stack.push(Operation::Combine(expr));
-                for named_expr in fields {
-                    self.expand(named_expr.expr.as_ref())?;
-                }
+            Expression::StructExpression(_, StructExpression { name, fields }) => {
+                let hashmap_fields = fields
+                    .iter()
+                    .map(|NamedExpression { name, expr }| {
+                        self.expand(expr)?;
+                        Ok((name.as_str(), self.value_stack.pop().unwrap()))
+                    })
+                    .collect::<Result<HashMap<_, _>, _>>()?;
+
+                self.value_stack
+                    .push(Value::Struct(name, hashmap_fields).into());
             }
         };
         Ok(())
@@ -919,6 +925,18 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     )))?,
                 }
             }
+            Expression::FieldAccess(_, FieldAccess { object: _, field }) => {
+                // TODO: Check this (expand/combine object?)
+                //self.op_stack.push(Operation::Combine(object));
+                let object = self.value_stack.pop().unwrap();
+                match object.as_ref() {
+                    Value::Struct(_, fields) => fields[field.as_str()].clone(),
+                    _ => Err(EvalError::TypeError(format!(
+                        "Expected struct for field access but got {object}: {}",
+                        object.type_formatted()
+                    )))?,
+                }
+            }
             Expression::FunctionCall(_, FunctionCall { arguments, .. }) => {
                 let arguments = self
                     .value_stack
@@ -957,7 +975,9 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 let body = if *condition { body } else { else_body };
                 return self.expand(body);
             }
-
+            Expression::StructExpression(_, StructExpression { name: _, fields: _ }) => {
+                return self.expand(expr);
+            }
             _ => unreachable!(),
         };
         self.value_stack.push(value);

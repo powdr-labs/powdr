@@ -648,7 +648,7 @@ mod test {
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
-            ("F.x".to_string(), convert([3, 4, 5, 6].to_vec()))
+            ("F.x".to_string(), convert([1, 2, 3, 4].to_vec()))
         );
     }
 }
