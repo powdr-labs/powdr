@@ -117,11 +117,11 @@ let is_extension = |arr| match len(arr) {
 
 /// Constructs an extension field element `a0 + a1 * X` from either `[a0, a1]` or `[a0]` (setting `a1`to zero in that case)
 let fp2_from_array = |arr| {
-    if !is_extension(arr) {
-        assert(!needs_extension(), || "The field is too small and needs to move to the extension field. Pass two elements instead!");
-        from_base(arr[0])
-    } else {
+    if is_extension(arr) {
         Fp2::Fp2(arr[0], arr[1])
+    } else {
+        let _ = assert(!needs_extension(), || "The field is too small and needs to move to the extension field. Pass two elements instead!");
+        from_base(arr[0])
     }
 };
 
