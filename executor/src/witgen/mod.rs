@@ -10,6 +10,8 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
+use crate::constant_evaluator::VariablySizedColumns;
+
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
@@ -50,14 +52,14 @@ impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String>
 #[derive(Clone)]
 pub struct WitgenCallback<T> {
     analyzed: Arc<Analyzed<T>>,
-    fixed_col_values: HashSet<Arc<Vec<(String, Vec<T>)>>>,
+    fixed_col_values: VariablySizedColumns<T>,
     query_callback: Arc<dyn QueryCallback<T>>,
 }
 
 impl<T: FieldElement> WitgenCallback<T> {
     pub fn new(
         analyzed: Arc<Analyzed<T>>,
-        fixed_col_values: HashSet<Arc<Vec<(String, Vec<T>)>>>,
+        fixed_col_values: VariablySizedColumns<T>,
         query_callback: Option<Arc<dyn QueryCallback<T>>>,
     ) -> Self {
         let query_callback = query_callback.unwrap_or_else(|| Arc::new(unused_query_callback()));
@@ -111,7 +113,7 @@ pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
 
 pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
-    fixed_col_values: &'b HashSet<Arc<Vec<(String, Vec<T>)>>>,
+    fixed_col_values: &'b VariablySizedColumns<T>,
     query_callback: &'b dyn QueryCallback<T>,
     external_witness_values: &'b [(String, Vec<T>)],
     stage: u8,
@@ -121,7 +123,7 @@ pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
 impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     pub fn new(
         analyzed: &'a Analyzed<T>,
-        fixed_col_values: &'b HashSet<Arc<Vec<(String, Vec<T>)>>>,
+        fixed_col_values: &'b VariablySizedColumns<T>,
         query_callback: &'b dyn QueryCallback<T>,
     ) -> Self {
         WitnessGenerator {
@@ -157,7 +159,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
         record_start(OUTER_CODE_NAME);
         // TODO: Handle multiple sizes
-        let fixed_col_values = self.fixed_col_values.iter().exactly_one().unwrap();
+        let fixed_col_values = self.fixed_col_values.to_uniquely_sized().unwrap();
         let fixed_col_values: Vec<_> = fixed_col_values
             .iter()
             .map(|(s, v)| (s.clone(), v))

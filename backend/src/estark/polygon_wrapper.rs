@@ -17,7 +17,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
         analyzed: Arc<Analyzed<F>>,
-        fixed: HashSet<Arc<Vec<(String, Vec<F>)>>>,
+        fixed: VariablySizedColumns<F>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,

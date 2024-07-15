@@ -1,10 +1,11 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
-use std::{collections::HashSet, path::PathBuf};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error};
-use itertools::Itertools;
+
 use powdr_ast::analyzed::Analyzed;
+use powdr_executor::constant_evaluator::VariablySizedColumns;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 
@@ -27,7 +28,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: &HashSet<Arc<Vec<(String, Vec<F>)>>>,
+        fixed: &VariablySizedColumns<F>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -51,10 +52,8 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         }
 
         let fixed = fixed
-            .iter()
-            .exactly_one()
-            .map_err(|_| Error::NoVariableDegreeAvailable)?
-            .clone();
+            .to_uniquely_sized()
+            .map_err(|_| Error::NoVariableDegreeAvailable)?;
 
         let proof_type: ProofType = ProofType::from(options);
 

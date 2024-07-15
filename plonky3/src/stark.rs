@@ -203,7 +203,6 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
 #[cfg(test)]
 mod tests {
-    
 
     use powdr_number::GoldilocksField;
     use powdr_pipeline::Pipeline;
@@ -223,7 +222,7 @@ mod tests {
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
         let fixed = pipeline.compute_fixed_cols().unwrap();
-        let fixed = fixed.into_iter().next().unwrap();
+        let fixed = fixed.to_uniquely_sized().unwrap();
 
         let mut prover = Plonky3Prover::new(pil, fixed);
         prover.setup();

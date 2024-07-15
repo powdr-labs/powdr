@@ -1,6 +1,5 @@
 use std::{
     borrow::Borrow,
-    collections::HashSet,
     fmt::Display,
     fs,
     io::{self, BufReader},
@@ -10,7 +9,6 @@ use std::{
     time::Instant,
 };
 
-use itertools::Itertools;
 use log::Level;
 use powdr_ast::{
     analyzed::Analyzed,
@@ -20,11 +18,12 @@ use powdr_ast::{
 };
 use powdr_backend::{BackendOptions, BackendType, Proof};
 use powdr_executor::{
-    constant_evaluator,
+    constant_evaluator::{self, VariablySizedColumns},
     witgen::{
         chain_callbacks, extract_publics, unused_query_callback, QueryCallback, WitgenCallback,
         WitnessGenerator,
     },
+    Columns,
 };
 use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite};
 use powdr_schemas::SerializedAnalyzed;
@@ -33,9 +32,6 @@ use crate::{
     handle_simple_queries_callback, inputs_to_query_callback, serde_data_to_query_callback,
     util::{FixedPolySet, PolySet, WitnessPolySet},
 };
-
-type Columns<T> = Vec<(String, Vec<T>)>;
-type VariablySizedColumns<T> = HashSet<Arc<Columns<T>>>;
 
 #[derive(Default, Clone)]
 pub struct Artifacts<T: FieldElement> {
@@ -387,8 +383,6 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn read_constants(self, directory: &Path) -> Self {
         let fixed = FixedPolySet::<T>::read(directory);
 
-        let fixed = fixed.into_iter().map(Arc::new).collect();
-
         Pipeline {
             artifact: Artifacts {
                 fixed_cols: Some(fixed),
@@ -511,7 +505,7 @@ impl<T: FieldElement> Pipeline<T> {
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
                 // TODO: Handle multiple sizes
-                let fixed = fixed.iter().exactly_one().unwrap();
+                let fixed = fixed.to_uniquely_sized().unwrap();
                 let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
@@ -830,7 +824,7 @@ impl<T: FieldElement> Pipeline<T> {
         let pil = self.compute_optimized_pil()?;
         let fixed_cols = self.compute_fixed_cols()?;
 
-        assert_eq!(pil.constant_count(), fixed_cols.len());
+        assert_eq!(pil.constant_count(), fixed_cols.width());
 
         let start = Instant::now();
         let external_witness_values = std::mem::take(&mut self.arguments.external_witness_values);

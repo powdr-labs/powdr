@@ -8,3 +8,4 @@ pub mod constant_evaluator;
 pub mod witgen;
 
 type Identity<T> = IdentityStruct<SelectedExpressions<AlgebraicExpression<T>>>;
+pub type Columns<T> = Vec<(String, Vec<T>)>;

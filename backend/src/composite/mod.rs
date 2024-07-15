@@ -1,7 +1,6 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     io::{self, Cursor, Read},
-    iter::once,
     marker::PhantomData,
     path::PathBuf,
     sync::Arc,
@@ -9,7 +8,7 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::witgen::WitgenCallback;
+use powdr_executor::{constant_evaluator::VariablySizedColumns, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 use serde::{Deserialize, Serialize};
 use split::{machine_fixed_columns, machine_witness_columns};
@@ -50,7 +49,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: &HashSet<Arc<Vec<(String, Vec<F>)>>>,
+        fixed: &VariablySizedColumns<F>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -63,10 +62,8 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
 
         // TODO: Handle multiple sizes.
         let fixed = fixed
-            .iter()
-            .exactly_one()
-            .map_err(|_| Error::NoVariableDegreeAvailable)?
-            .clone();
+            .to_uniquely_sized()
+            .map_err(|_| Error::NoVariableDegreeAvailable)?;
 
         let pils = split::split_pil((*pil).clone());
 
@@ -105,10 +102,10 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                 if let Some(ref output_dir) = output_dir {
                     std::fs::create_dir_all(output_dir)?;
                 }
-                let fixed = &once(Arc::new(machine_fixed_columns(&fixed, &pil))).collect();
+                let fixed = machine_fixed_columns(&fixed, &pil).into();
                 let backend = self.factory.create(
                     pil.clone(),
-                    fixed,
+                    &fixed,
                     output_dir,
                     setup,
                     verification_key,

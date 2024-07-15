@@ -153,7 +153,7 @@ mod tests {
     ) -> R {
         let analyzed = analyze_string(src);
         let constants = generate(&analyzed);
-        let constants = constants.into_iter().next().unwrap();
+        let constants = constants.to_uniquely_sized().unwrap();
         let constants: Vec<_> = constants.iter().map(|(n, v)| (n.clone(), v)).collect();
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 

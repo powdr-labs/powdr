@@ -390,7 +390,7 @@ fn read_poly_files() {
 
         // check fixed cols (may have no fixed cols)
         let fixed = FixedPolySet::<Bn254Field>::read(tmp_dir.as_path());
-        let fixed = fixed.into_iter().next().unwrap();
+        let fixed = fixed.to_uniquely_sized().unwrap();
         if !fixed.is_empty() {
             assert_eq!(pil.degree(), fixed[0].1.len() as u64);
         }

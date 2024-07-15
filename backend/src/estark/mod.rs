@@ -5,7 +5,6 @@ pub mod polygon_wrapper;
 pub mod starky_wrapper;
 
 use std::{
-    collections::HashSet,
     fs::File,
     io::{self, BufWriter, Write},
     iter::{once, repeat},
@@ -14,10 +13,9 @@ use std::{
 };
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
-use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
 
-use powdr_executor::witgen::WitgenCallback;
+use powdr_executor::{constant_evaluator::VariablySizedColumns, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 use serde::Serialize;
 use starky::types::{StarkStruct, Step, PIL};
@@ -224,7 +222,7 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
     fn create<'a>(
         &self,
         analyzed: Arc<Analyzed<F>>,
-        fixed: &HashSet<Arc<Vec<(String, Vec<F>)>>>,
+        fixed: &VariablySizedColumns<F>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -232,10 +230,8 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         let fixed = fixed
-            .iter()
-            .exactly_one()
-            .map_err(|_| Error::NoVariableDegreeAvailable)?
-            .clone();
+            .to_uniquely_sized()
+            .map_err(|_| Error::NoVariableDegreeAvailable)?;
         Ok(Box::new(DumpBackend(EStarkFilesCommon::create(
             &analyzed,
             fixed,

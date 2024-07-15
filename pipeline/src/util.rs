@@ -1,7 +1,8 @@
 use powdr_ast::analyzed::{Analyzed, FunctionValueDefinition, Symbol};
+use powdr_executor::constant_evaluator::VariablySizedColumns;
 use powdr_number::ReadWrite;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::HashSet, fs::File, io::BufReader, marker::PhantomData, path::Path};
+use std::{fs::File, io::BufReader, marker::PhantomData, path::Path};
 
 pub trait PolySet<C: ReadWrite, T> {
     const FILE_NAME: &'static str;
@@ -17,7 +18,7 @@ pub struct FixedPolySet<T> {
     _phantom: PhantomData<T>,
 }
 impl<T: Serialize + DeserializeOwned + PartialEq + Eq + std::hash::Hash>
-    PolySet<HashSet<Vec<(String, Vec<T>)>>, T> for FixedPolySet<T>
+    PolySet<VariablySizedColumns<T>, T> for FixedPolySet<T>
 {
     const FILE_NAME: &'static str = "constants.bin";
 
