@@ -1,7 +1,7 @@
 use std::{
     borrow::Cow,
     cmp::Ordering,
-    collections::{btree_map::Entry, BTreeMap, BTreeSet, HashMap},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
     fs,
     path::Path,
 };
@@ -241,39 +241,53 @@ fn static_relocate_data_sections(
 }
 
 /// Index the symbols by their addresses.
-struct SymbolTable(HashMap<u32, String>);
+struct SymbolTable(BTreeMap<(u32, u32), String>);
 
 impl SymbolTable {
     fn new(elf: &Elf) -> SymbolTable {
-        let mut deduplicator = HashMap::new();
-        for sym in elf.syms.iter() {
-            // We only care about global symbols that have string names, and are
-            // either functions or variables.
-            if sym.st_name == 0 || (sym.st_type() != STT_OBJECT && sym.st_type() != STT_FUNC) {
-                continue;
-            }
-            deduplicator.insert(elf.strtab[sym.st_name].to_string(), sym.st_value as u32);
-        }
+        let mut symbols = elf
+            .syms
+            .iter()
+            .filter_map(|sym| {
+                // We only care about global symbols that have string names, and are
+                // either functions or variables.
+                if sym.st_name != 0 && (sym.st_type() == STT_OBJECT || sym.st_type() == STT_FUNC) {
+                    Some((elf.strtab[sym.st_name].to_owned(), sym.st_value as u32))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-        Self(
-            deduplicator
+        dedup_names(&mut symbols);
+
+        let mut disambiguator = 0..;
+        SymbolTable(
+            symbols
                 .into_iter()
-                .map(|(name, addr)| (addr, name))
+                .map(|(name, addr)| ((addr, disambiguator.next().unwrap()), name.to_string()))
                 .collect(),
         )
     }
 
-    /// Get the symbol if the address had one.
-    fn try_get(&self, addr: u32) -> Option<&str> {
-        self.0.get(&addr).map(|name| name.as_str())
+    /// Returns an iterator over all symbols of a given address.
+    fn get_all(&self, addr: u32) -> impl Iterator<Item = &str> {
+        self.0
+            .range((addr, 0)..=(addr, u32::MAX))
+            .map(|(_, name)| name.as_ref())
     }
 
-    /// Get the symbol or a default label formed from the address value.
-    fn get(&self, addr: u32) -> Cow<str> {
-        self.0
-            .get(&addr)
-            .map(|name| Cow::Borrowed(name.as_str()))
-            .unwrap_or_else(|| Cow::Owned(format!("L{addr:08x}")))
+    /// Get a symbol, if the address has one.
+    fn try_get_one(&self, addr: u32) -> Option<&str> {
+        self.get_all(addr).next()
+    }
+
+    /// Get a symbol, or a default label formed from the address value.
+    fn get_one(&self, addr: u32) -> Cow<str> {
+        match self.try_get_one(addr) {
+            Some(s) => Cow::Borrowed(s),
+            None => Cow::Owned(format!("L{addr:08x}")),
+        }
     }
 }
 
@@ -287,13 +301,13 @@ impl RiscVProgram for ElfProgram {
         self.data_map.iter().map(|(addr, data)| {
             let value = match data {
                 Data::TextLabel(label) => {
-                    SingleDataValue::LabelReference(self.symbol_table.get(*label).into())
+                    SingleDataValue::LabelReference(self.symbol_table.get_one(*label).into())
                 }
                 Data::Value(value) => SingleDataValue::Value(*value),
             };
 
             MemEntry {
-                label: self.symbol_table.try_get(*addr).map(|s| s.to_string()),
+                label: self.symbol_table.try_get_one(*addr).map(|s| s.to_string()),
                 addr: *addr,
                 value,
             }
@@ -315,7 +329,7 @@ impl RiscVProgram for ElfProgram {
                 }
             })
             .map(|result| match result {
-                Either::Left(label) => Statement::Label(self.symbol_table.get(*label)),
+                Either::Left(label) => Statement::Label(self.symbol_table.get_one(*label)),
                 Either::Right(insn) => Statement::Instruction {
                     op: insn.op,
                     args: WrappedArgs {
@@ -327,7 +341,7 @@ impl RiscVProgram for ElfProgram {
     }
 
     fn start_function(&self) -> Cow<str> {
-        self.symbol_table.get(self.entry_point)
+        self.symbol_table.get_one(self.entry_point)
     }
 }
 
@@ -348,7 +362,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 rd: None,
                 rs1: None,
                 rs2: None,
-            } => Ok(self.symbol_table.get(*addr).into()),
+            } => Ok(self.symbol_table.get_one(*addr).into()),
             _ => Err(format!("Expected: label, got {:?}", self.args)),
         }
     }
@@ -447,7 +461,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
             } => Ok((
                 Register::new(*rs1 as u8),
                 Register::new(*rs2 as u8),
-                self.symbol_table.get(*addr).into(),
+                self.symbol_table.get_one(*addr).into(),
             )),
             _ => Err(format!("Expected: rs1, rs2, label, got {:?}", self.args)),
         }
@@ -462,7 +476,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 rs2: None,
             } => Ok((
                 Register::new(*rs1 as u8),
-                self.symbol_table.get(*addr).into(),
+                self.symbol_table.get_one(*addr).into(),
             )),
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
@@ -471,7 +485,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 rs2: None,
             } => Ok((
                 Register::new(*rd as u8),
-                self.symbol_table.get(*addr).into(),
+                self.symbol_table.get_one(*addr).into(),
             )),
             _ => Err(format!("Expected: {{rs1|rd}}, label, got {:?}", self.args)),
         }
@@ -1220,4 +1234,110 @@ fn try_map_two_by_two<E, R>(
     }
 
     result
+}
+
+/// Deduplicates by removing identical entries and appending the address to
+/// repeated names. The vector ends up sorted.
+fn dedup_names(symbols: &mut Vec<(String, u32)>) {
+    while dedup_names_pass(symbols) {}
+}
+
+/// Deduplicates the names of the symbols by appending one level of address to
+/// the name.
+///
+/// Returns `true` if the names were deduplicated.
+fn dedup_names_pass(symbols: &mut Vec<(String, u32)>) -> bool {
+    symbols.sort_unstable();
+    symbols.dedup();
+
+    let mut deduplicated = false;
+    let mut iter = symbols.iter_mut();
+
+    // The first unique name defines a group, which ends on the next unique name.
+    // The whole group is deduplicated if it contains more than one element.
+    let mut next_group = iter.next().map(|(name, address)| (name, *address));
+    while let Some((group_name, group_address)) = next_group {
+        let mut group_deduplicated = false;
+        next_group = None;
+
+        // Find duplicates and update names in the group
+        for (name, address) in &mut iter {
+            if name == group_name {
+                group_deduplicated = true;
+                deduplicated = true;
+                *name = format!("{name}_{address:08x}");
+            } else {
+                next_group = Some((name, *address));
+                break;
+            }
+        }
+
+        // If there were duplicates in the group, update the group leader, too.
+        if group_deduplicated {
+            *group_name = format!("{group_name}_{group_address:08x}");
+        }
+    }
+
+    deduplicated
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn single_pass_dedup_names() {
+        let mut symbols = vec![
+            ("baz".to_string(), 0x8000),
+            ("bar".to_string(), 0x3000),
+            ("foo".to_string(), 0x1000),
+            ("bar".to_string(), 0x5000),
+            ("foo".to_string(), 0x2000),
+            ("baz".to_string(), 0x7000),
+            ("baz".to_string(), 0x9000),
+            ("doo".to_string(), 0x0042),
+            ("baz".to_string(), 0xa000),
+            ("baz".to_string(), 0x6000),
+            ("bar".to_string(), 0x4000),
+        ];
+
+        super::dedup_names(&mut symbols);
+
+        let expected = vec![
+            ("bar_00003000".to_string(), 0x3000),
+            ("bar_00004000".to_string(), 0x4000),
+            ("bar_00005000".to_string(), 0x5000),
+            ("baz_00006000".to_string(), 0x6000),
+            ("baz_00007000".to_string(), 0x7000),
+            ("baz_00008000".to_string(), 0x8000),
+            ("baz_00009000".to_string(), 0x9000),
+            ("baz_0000a000".to_string(), 0xa000),
+            ("doo".to_string(), 0x0042),
+            ("foo_00001000".to_string(), 0x1000),
+            ("foo_00002000".to_string(), 0x2000),
+        ];
+        assert_eq!(symbols, expected);
+    }
+
+    #[test]
+    fn multi_pass_dedup_names() {
+        let mut symbols = vec![
+            ("john".to_string(), 0x42),
+            ("john".to_string(), 0x87),
+            ("john".to_string(), 0x1aa),
+            ("john_000001aa".to_string(), 0x1aa),
+            ("john_00000042".to_string(), 0x103),
+            ("john_00000087".to_string(), 0x103),
+        ];
+
+        super::dedup_names(&mut symbols);
+
+        let expected = vec![
+            ("john_00000042_00000042".to_string(), 0x42),
+            ("john_00000042_00000103".to_string(), 0x103),
+            ("john_00000087_00000087".to_string(), 0x87),
+            ("john_00000087_00000103".to_string(), 0x103),
+            ("john_000001aa".to_string(), 0x1aa),
+        ];
+
+        assert_eq!(symbols, expected);
+    }
 }

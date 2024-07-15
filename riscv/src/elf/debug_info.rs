@@ -8,9 +8,10 @@ use gimli::{
     Unit, UnitRef,
 };
 use goblin::elf::{Elf, SectionHeader};
-use itertools::Itertools;
 
-pub struct DebugInfo;
+use super::dedup_names;
+
+type Reader<'a> = EndianSlice<'a, LittleEndian>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -19,14 +20,19 @@ pub enum Error {
     #[error("unexpected organization of debug information")]
     UnexpectedOrganization,
     #[error("failed to parse debug information: {0}")]
-    ParseError(#[from] gimli::Error),
+    Parsing(#[from] gimli::Error),
 }
 
-type Reader<'a> = EndianSlice<'a, LittleEndian>;
-
-struct DataInfo<'a> {
-    pub var_full_name: Vec<Cow<'a, str>>,
-    pub file_line: Option<(u64, u64)>,
+/// Debug information extracted from the ELF file.
+pub struct DebugInfo {
+    /// List of source files: (directory, file name).
+    pub file_list: Vec<(String, String)>,
+    /// Maps addresses to line locations: (file index, line, column).
+    pub line_locations: BTreeMap<u32, (usize, u32, u32)>,
+    /// Maps (addresses, disambiguator) to symbol names. The disambiguator is
+    /// used to distinguish between multiple symbols at the same address. (i.e.
+    /// turns BTreeMap into a multimap.)
+    pub symbol_map: BTreeMap<(u32, u32), String>,
 }
 
 impl DebugInfo {
@@ -36,15 +42,15 @@ impl DebugInfo {
         file_buffer: &[u8],
         data_entries: &BTreeMap<u32, D>,
         jump_targets: &BTreeSet<u32>,
-    ) -> Result<DebugInfo, Error> {
-        let dwarf = Self::load_dwarf_sections(elf, file_buffer)?;
+    ) -> Result<Self, Error> {
+        let dwarf = load_dwarf_sections(elf, file_buffer)?;
 
         let mut file_list = Vec::new();
         let mut line_locations = BTreeMap::new();
         let mut text_symbols = Vec::new();
-        // The code gen API allows for just one symbol per address, so we
-        // can use a map directly.
-        let mut data_symbols = BTreeMap::new();
+        let mut symbol_map = BTreeMap::new();
+
+        let mut map_disambiguator = 0u32..;
 
         // Iterate over the compilation units:
         let mut units_iter = dwarf.units();
@@ -55,7 +61,7 @@ impl DebugInfo {
             let unit = UnitRef::new(&dwarf, &unit);
 
             // Traverse all the line locations for the compilation unit.
-            let file_idx_delta = file_list.len() as i64 - 1;
+            let file_idx_delta = file_list.len() as isize - 1;
             if let Some(line_program) = unit.line_program.clone() {
                 // Get the source file listing
                 for file_entry in line_program.header().file_names() {
@@ -66,7 +72,7 @@ impl DebugInfo {
                         .unwrap_or("");
                     let path = as_str(unit, file_entry.path_name())?;
 
-                    file_list.push((directory, path));
+                    file_list.push((directory.to_owned(), path.to_owned()));
                 }
 
                 // Get the locations indexed by address
@@ -75,7 +81,7 @@ impl DebugInfo {
                     line_locations.insert(
                         row.address() as u32,
                         (
-                            (row.file_index() as i64 + file_idx_delta) as u64,
+                            (row.file_index() as isize + file_idx_delta) as usize,
                             match row.line() {
                                 None => 0,
                                 Some(v) => v.get() as u32,
@@ -89,9 +95,9 @@ impl DebugInfo {
                 }
             }
 
-            // Traverse the in which the information about the compilation unit is stored.
-            // We need to start the stack with a placeholder value, because the update
-            // algorithm replaces the top element.
+            // Traverse the tree in which the information about the compilation
+            // unit is stored. To simplify the algorithm, we start the name
+            // stack with a placeholder value.
             let mut full_name = vec![Cow::default()];
             let mut entries = unit.entries();
             while let Some((level_delta, entry)) = entries.next_dfs()? {
@@ -126,7 +132,7 @@ impl DebugInfo {
                         };
 
                         if jump_targets.contains(&address) {
-                            text_symbols.push((Cow::Borrowed(linkage_name.to_string()?), address));
+                            text_symbols.push((linkage_name.to_string()?.to_owned(), address));
                         }
                     }
                     // This is the entry for a variable.
@@ -146,17 +152,22 @@ impl DebugInfo {
                             if let Some(AttributeValue::Udata(line)) =
                                 find_attr(entry, gimli::DW_AT_decl_line)
                             {
-                                file_line = Some(((file_idx as i64 + file_idx_delta) as u64, line));
+                                file_line =
+                                    Some(((file_idx as isize + file_idx_delta) as usize, line));
                             }
                         }
 
-                        data_symbols.insert(
-                            address,
-                            DataInfo {
-                                var_full_name: full_name.clone(),
-                                file_line,
-                            },
+                        let value = format!(
+                            "{}{}",
+                            full_name.join("::"),
+                            if let Some((file, line)) = file_line {
+                                format!(" at file {file} line {line}")
+                            } else {
+                                String::new()
+                            }
                         );
+
+                        symbol_map.insert((address, map_disambiguator.next().unwrap()), value);
                     }
                     _ => {}
                 };
@@ -165,51 +176,51 @@ impl DebugInfo {
 
         // Deduplicate the text symbols
         dedup_names(&mut text_symbols);
-        let text_symbols = text_symbols
-            .into_iter()
-            .map(|(name, address)| (address, name))
-            .sorted()
-            .collect::<Vec<_>>();
 
-        // TODO: assemble the DebugInfo struct and return it
+        symbol_map.extend(text_symbols.into_iter().map(|(name, address)| {
+            (
+                (address, map_disambiguator.next().unwrap()),
+                name.to_string(),
+            )
+        }));
 
-        Ok(DebugInfo)
-    }
-
-    fn load_dwarf_sections<'a>(
-        elf: &Elf,
-        file_buffer: &'a [u8],
-    ) -> Result<Dwarf<Reader<'a>>, Error> {
-        // Index the sections by their names:
-        let debug_sections: HashMap<&str, &SectionHeader> = elf
-            .section_headers
-            .iter()
-            .filter_map(|shdr| {
-                elf.shdr_strtab
-                    .get_at(shdr.sh_name)
-                    .map(|name| (name, shdr))
-            })
-            .collect();
-
-        if debug_sections.is_empty() {
-            return Err(Error::NoDebugInfo);
-        }
-
-        // Load the DWARF sections:
-        Ok(gimli::Dwarf::load(move |section| {
-            Ok::<_, ()>(Reader::new(
-                debug_sections
-                    .get(section.name())
-                    .map(|shdr| {
-                        &file_buffer
-                            [shdr.sh_offset as usize..(shdr.sh_offset + shdr.sh_size) as usize]
-                    })
-                    .unwrap_or(&[]),
-                Default::default(),
-            ))
+        Ok(DebugInfo {
+            file_list,
+            line_locations,
+            symbol_map,
         })
-        .unwrap())
     }
+}
+
+fn load_dwarf_sections<'a>(elf: &Elf, file_buffer: &'a [u8]) -> Result<Dwarf<Reader<'a>>, Error> {
+    // Index the sections by their names:
+    let debug_sections: HashMap<&str, &SectionHeader> = elf
+        .section_headers
+        .iter()
+        .filter_map(|shdr| {
+            elf.shdr_strtab
+                .get_at(shdr.sh_name)
+                .map(|name| (name, shdr))
+        })
+        .collect();
+
+    if debug_sections.is_empty() {
+        return Err(Error::NoDebugInfo);
+    }
+
+    // Load the DWARF sections:
+    Ok(gimli::Dwarf::load(move |section| {
+        Ok::<_, ()>(Reader::new(
+            debug_sections
+                .get(section.name())
+                .map(|shdr| {
+                    &file_buffer[shdr.sh_offset as usize..(shdr.sh_offset + shdr.sh_size) as usize]
+                })
+                .unwrap_or(&[]),
+            Default::default(),
+        ))
+    })
+    .unwrap())
 }
 
 fn find_attr<'a>(
@@ -251,112 +262,4 @@ fn parse_address(
     };
 
     Ok(Some(address as u32))
-}
-
-/// Deduplicates by removing identical entries and appending the address to
-/// repeated names. The vector ends up sorted.
-fn dedup_names(symbols: &mut Vec<(Cow<str>, u32)>) {
-    while dedup_names_pass(symbols) {}
-}
-
-/// Deduplicates the names of the symbols by appending one level of address to
-/// the name.
-///
-/// Returns `true` if the names were deduplicated.
-fn dedup_names_pass(symbols: &mut Vec<(Cow<str>, u32)>) -> bool {
-    symbols.sort_unstable();
-    symbols.dedup();
-
-    let mut deduplicated = false;
-    let mut iter = symbols.iter_mut();
-
-    // The first unique name defines a group, which ends on the next unique name.
-    // The whole group is deduplicated if it contains more than one element.
-    let mut next_group = iter.next().map(|(name, address)| (name, *address));
-    while let Some((group_name, group_address)) = next_group {
-        let mut group_deduplicated = false;
-        next_group = None;
-
-        // Find duplicates and update names in the group
-        for (name, address) in &mut iter {
-            if name == group_name {
-                group_deduplicated = true;
-                deduplicated = true;
-                *name = Cow::Owned(format!("{name}_{address:08x}"));
-            } else {
-                next_group = Some((name, *address));
-                break;
-            }
-        }
-
-        // If there were duplicates in the group, update the group leader, too.
-        if group_deduplicated {
-            *group_name = Cow::Owned(format!("{group_name}_{group_address:08x}"));
-        }
-    }
-
-    deduplicated
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn single_pass_dedup_names() {
-        let mut symbols = vec![
-            (Cow::Borrowed("baz"), 0x8000),
-            (Cow::Borrowed("bar"), 0x3000),
-            (Cow::Borrowed("foo"), 0x1000),
-            (Cow::Borrowed("bar"), 0x5000),
-            (Cow::Borrowed("foo"), 0x2000),
-            (Cow::Borrowed("baz"), 0x7000),
-            (Cow::Borrowed("baz"), 0x9000),
-            (Cow::Borrowed("doo"), 0x0042),
-            (Cow::Borrowed("baz"), 0xa000),
-            (Cow::Borrowed("baz"), 0x6000),
-            (Cow::Borrowed("bar"), 0x4000),
-        ];
-
-        super::dedup_names(&mut symbols);
-
-        let expected = vec![
-            (Cow::Borrowed("bar_00003000"), 0x3000),
-            (Cow::Borrowed("bar_00004000"), 0x4000),
-            (Cow::Borrowed("bar_00005000"), 0x5000),
-            (Cow::Borrowed("baz_00006000"), 0x6000),
-            (Cow::Borrowed("baz_00007000"), 0x7000),
-            (Cow::Borrowed("baz_00008000"), 0x8000),
-            (Cow::Borrowed("baz_00009000"), 0x9000),
-            (Cow::Borrowed("baz_0000a000"), 0xa000),
-            (Cow::Borrowed("doo"), 0x0042),
-            (Cow::Borrowed("foo_00001000"), 0x1000),
-            (Cow::Borrowed("foo_00002000"), 0x2000),
-        ];
-        assert_eq!(symbols, expected);
-    }
-
-    #[test]
-    fn multi_pass_dedup_names() {
-        let mut symbols = vec![
-            (Cow::Borrowed("john"), 0x42),
-            (Cow::Borrowed("john"), 0x87),
-            (Cow::Borrowed("john"), 0x1aa),
-            (Cow::Borrowed("john_000001aa"), 0x1aa),
-            (Cow::Borrowed("john_00000042"), 0x103),
-            (Cow::Borrowed("john_00000087"), 0x103),
-        ];
-
-        super::dedup_names(&mut symbols);
-
-        let expected = vec![
-            (Cow::Borrowed("john_00000042_00000042"), 0x42),
-            (Cow::Borrowed("john_00000042_00000103"), 0x103),
-            (Cow::Borrowed("john_00000087_00000087"), 0x87),
-            (Cow::Borrowed("john_00000087_00000103"), 0x103),
-            (Cow::Borrowed("john_000001aa"), 0x1aa),
-        ];
-
-        assert_eq!(symbols, expected);
-    }
 }
