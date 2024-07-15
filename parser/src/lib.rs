@@ -492,7 +492,7 @@ namespace N(2);
         let expected = r#"
     trait Add<T, Q> {
         const: Q,
-        add: T -> T,
+        add: (T -> T),
     }"#;
 
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
@@ -508,7 +508,7 @@ namespace N(2);
 
         let expected = r#"
     trait Add<T, Q> {
-        add: T, T -> Q,
+        add: (T, T -> Q),
     }"#;
 
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
@@ -535,7 +535,7 @@ namespace N(2);
 
         let expected = r#"
     trait Iterator<S, I> {
-        next: S -> (S, Option<I>),
+        next: (S -> (S, Option<I>)),
     }"#;
 
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());

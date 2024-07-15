@@ -725,7 +725,7 @@ fn trait_def() {
 
     let expected = "    trait X<T, Q> {
         some_const: Q,
-        some_fun: T -> T,
+        some_fun: (T -> T),
     }
 ";
 
@@ -741,7 +741,7 @@ fn array_type_trait() {
 ";
 
     let expected = "    trait ArraySum<T> {
-        array_sum: T[5] -> T,
+        array_sum: (T[5] -> T),
     }
 ";
 
