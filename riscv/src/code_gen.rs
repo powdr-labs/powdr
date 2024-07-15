@@ -375,38 +375,50 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         + &bootloader_preamble_if_included
         + &memory(with_bootloader)
         + r#"
-    // ============== iszero check for X =======================
-    let XIsZero = std::utils::is_zero(X);
-
     // =============== Register memory =======================
-    std::machines::memory::Memory regs;
+    std::machines::memory::Memory_22 regs;
+
+    // Get the value in register Y.
     instr get_reg Y -> X link ~> X = regs.mload(Y, STEP);
+
+    // Set the value in register X to the value in register Y.
     instr set_reg X, Y -> link ~> regs.mstore(X, STEP, Y);
+
+    // We still need val1 and val2 for prover inputs.
     reg val1;
     reg val2;
+
+    // Witness columns used in instuctions.
     col witness val1_col;
     col witness val2_col;
     col witness val3_col;
     col witness val4_col;
 
+    // We need to add these inline instead of using std::utils::is_zero
+    // because when XX is not constrained, witgen will try to set XX,
+    // XX_inv and XXIsZero to zero, which fails this constraint.
+    // Therefore, we have to activate constrained whenever XXIsZero is used.
+    // 1. XXIsZero = 1 - XX * XX_inv
+    // We could replace the uncommented lines below this block by constraints
+    // (2) and (3) below once witgen supports it.
+    // In that case we could remove all instances of constraint (1) above
+    // that are added to instructions.
+    // 2. col witness XX(i) query std::prover::Query::Hint(0);
+    // 3. let XXIsZero = std::utils::is_zero(XX);
     col witness XX, XX_inv, XXIsZero;
     std::utils::force_bool(XXIsZero);
     XXIsZero * XX = 0;
 
-    // HACK: This constraint cannot be active globally, because when
-    // XX is not constrained, witgen will try to set XX, XX_inv and XXIsZero
-    // to zero, which fails this constraint. Therefore, we have to activate
-    // constrained whenever XXIsZero is used.
-    // XXIsZero = 1 - XX * XX_inv
-
     // ============== control-flow instructions ==============
 
+    // Load the value of label `l` into register X.
     instr load_label X, l: label
         link ~> regs.mstore(X, STEP, val1_col)
     {
         val1_col = l
     }
 
+    // Jump to `l` and store the return program counter in register W.
     instr jump l: label, W
         link ~> regs.mstore(W, STEP, val3_col)
     {
@@ -414,6 +426,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         val3_col = pc + 1
     }
     
+    // Jump to the address in register X and store the return program counter in register W.
     instr jump_dyn X, W
         link ~> val1_col = regs.mload(X, STEP)
         link ~> regs.mstore(W, STEP, val3_col)
@@ -422,6 +435,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         val3_col = pc + 1
     }
 
+    // Jump to `l` if val(X) - val(Y) is nonzero, where X and Y are register ids.
     instr branch_if_nonzero X, Y, l: label
         link ~> val1_col = regs.mload(X, STEP)
         link ~> val2_col = regs.mload(Y, STEP + 1)
@@ -431,6 +445,8 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         pc' = (1 - XXIsZero) * l + XXIsZero * (pc + 1)
     }
 
+    // Jump to `l` if val(X) - (val(Y) + Z) is zero, where X and Y are register ids and Z is a
+    // constant offset.
     instr branch_if_zero X, Y, Z, l: label
         link ~> val1_col = regs.mload(X, STEP)
         link ~> val2_col = regs.mload(Y, STEP + 1)
@@ -440,8 +456,8 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         pc' = XXIsZero * l + (1 - XXIsZero) * (pc + 1)
     }
 
-    // Skips Y instructions if X is zero
-    //instr skip_if_zero X, Y { pc' = pc + 1 + (XIsZero * Y) }
+    // Skips W instructions if val(X) - val(Y) + Z is zero, where X and Y are register ids and Z is a
+    // constant offset.
     instr skip_if_zero X, Y, Z, W
         link ~> val1_col = regs.mload(X, STEP)
         link ~> val2_col = regs.mload(Y, STEP + 1)
@@ -451,8 +467,10 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         pc' = pc + 1 + (XXIsZero * W)
     }
 
-    // input X is required to be the difference of two 32-bit unsigend values.
-    // i.e. -2**32 < X < 2**32
+    // Branches to `l` if V = val(X) - val(Y) + Z is positive, where X and Y are register ids and Z is a
+    // constant offset.
+    // V is required to be the difference of two 32-bit unsigned values.
+    // i.e. -2**32 < V < 2**32.
     instr branch_if_positive X, Y, Z, l: label
         link ~> val1_col = regs.mload(X, STEP)
         link ~> val2_col = regs.mload(Y, STEP + 1)
@@ -460,18 +478,21 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         (val1_col - val2_col + Z) + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
         pc' = wrap_bit * l + (1 - wrap_bit) * (pc + 1)
     }
-    // input X is required to be the difference of two 32-bit unsigend values.
-    // i.e. -2**32 < X < 2**32
-    // reg1 - reg2 + offset
+
+    // Stores 1 in register W if V = val(X) - val(Y) + Z is positive, where X and Y are register ids and Z is a
+    // constant offset.
+    // V is required to be the difference of two 32-bit unsigend values.
+    // i.e. -2**32 < V < 2**32
     instr is_positive X, Y, Z, W
         link ~> val1_col = regs.mload(X, STEP)
         link ~> val2_col = regs.mload(Y, STEP + 1)
-        link ~> regs.mstore(W, STEP + 2, val3_col)
+        link ~> regs.mstore(W, STEP + 2, wrap_bit)
     {
-        (val1_col - val2_col + Z) + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
-        val3_col = wrap_bit
+        (val1_col - val2_col + Z) + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32
     }
 
+    // Copies the value of register X to register Y,
+    // applying a factor Z and an offset W.
     instr move_reg X, Y, Z, W
         link ~> val1_col = regs.mload(X, STEP)
         link ~> regs.mstore(Y, STEP + 1, val3_col)
@@ -479,41 +500,44 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         val3_col = val1_col * Z + W
     }
 
-    // ======aaaaaaaaaaaa=========
+    // ================= wrapping instructions =================
 
-    // Wraps a value in Y to 32 bits.
-    // Requires 0 <= Y < 2**33
-    // These are the old `wrap` instruction.
-    
-    instr add_new X, Y, Z, W
+    // Computes V = val(X) + val(Y) + Z, wraps it in 32 bits, and stores the result in register W.
+    // Requires 0 <= V < 2**33.
+    instr add_wrap X, Y, Z, W
         link ~> val1_col = regs.mload(X, STEP)
         link ~> val2_col = regs.mload(Y, STEP + 1)
         link ~> regs.mstore(W, STEP + 2, val3_col)
     {
-        val1_col + val2_col + Z = val3_col + wrap_bit * 2**32, val3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+        val1_col + val2_col + Z = val3_col + wrap_bit * 2**32,
+        val3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 
-    // Requires -2**32 <= Y < 2**32
-    // These are the old `wrap_signed` instruction.
-    instr add_new_signed X, Y, Z, W
+    // Computes V = val(X) - val(Y) + Z, wraps it in 32 bits, and stores the result in register W.
+    // Requires -2**32 <= V < 2**32.
+    instr add_wrap_signed X, Y, Z, W
         link ~> val1_col = regs.mload(X, STEP)
         link ~> val2_col = regs.mload(Y, STEP + 1)
         link ~> regs.mstore(W, STEP + 2, val3_col)
     {
-        (val1_col - val2_col + Z) + 2**32 = val3_col + wrap_bit * 2**32, val3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+        (val1_col - val2_col + Z) + 2**32 = val3_col + wrap_bit * 2**32,
+        val3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 
     // ================= logical instructions =================
 
+    // Stores 1 in register W if the value in register X is zero,
+    // otherwise stores 0.
     instr is_equal_zero X, W
         link ~> val1_col = regs.mload(X, STEP)
-        link ~> regs.mstore(W, STEP + 2, val3_col)
+        link ~> regs.mstore(W, STEP + 2, XXIsZero)
     {
         XXIsZero = 1 - XX * XX_inv,
-        XX = val1_col,
-        val3_col = XXIsZero
+        XX = val1_col
     }
 
+    // Stores 1 in register W if V = val(X) - val(Y) is not zero,
+    // otherwise stores 0.
     instr is_not_equal_zero X, Y, W
         link ~> val1_col = regs.mload(X, STEP)
         link ~> val2_col = regs.mload(Y, STEP + 1)
@@ -543,6 +567,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     col witness wrap_bit;
     wrap_bit * (1 - wrap_bit) = 0;
 
+    // Sign extends the value in register X and stores it in register Y.
     // Input is a 32 bit unsigned number. We check bit 7 and set all higher bits to that value.
     instr sign_extend_byte X, Y
         link ~> val1_col = regs.mload(X, STEP)
@@ -557,6 +582,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     col witness Y_7bit;
     [ Y_7bit ] in [ seven_bit ];
 
+    // Sign extends the value in register X and stores it in register Y.
     // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
     instr sign_extend_16_bits X, Y
         link ~> val1_col = regs.mload(X, STEP)
@@ -570,8 +596,9 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     }
     col witness Y_15bit;
 
-    // Input is a 32 but unsigned number (0 <= Y < 2**32) interpreted as a two's complement numbers.
-    // Returns a signed number (-2**31 <= X < 2**31).
+    // Converts the value in register X to a signed number and stores it in register Y.
+    // Input is a 32 bit unsigned number (0 <= val(X) < 2**32) interpreted as a two's complement numbers.
+    // Returns a signed number (-2**31 <= val(Y) < 2**31).
     instr to_signed X, Y
         link ~> val1_col = regs.mload(X, STEP)
         link ~> regs.mstore(Y, STEP + 1, val3_col)
@@ -585,6 +612,8 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 
     instr fail { 1 = 0 }
 
+    // Wraps V = val(X) * Y and stores it in register Z,
+    // where X is a register and Y is a constant factor.
     // Removes up to 16 bits beyond 32
     // TODO is this really safe?
     instr wrap16 X, Y, Z
@@ -613,7 +642,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     [ REM_b3 ] in [ bytes ];
     [ REM_b4 ] in [ bytes ];
 
-    // implements Z = Y / X and W = Y % X.
+    // Computes Q = val(Y) / val(X) and R = val(Y) % val(X) and stores them in registers Z and W.
     instr divremu Y, X, Z, W
         link ~> val1_col = regs.mload(Y, STEP)
         link ~> val2_col = regs.mload(X, STEP + 1)
@@ -623,18 +652,13 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         XXIsZero = 1 - XX * XX_inv,
         XX = val2_col,
 
-        // main division algorithm:
-        // Y=val2_col is the known dividend
-        // X=val1_col is the known divisor
-        // Z=val3_col is the unknown quotient
-        // W=val4_col is the unknown remainder
         // if X is zero, remainder is set to dividend, as per RISC-V specification:
         val2_col * val3_col + val4_col = val1_col,
 
         // remainder >= 0:
         val4_col = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
 
-        // remainder < divisor, conditioned to X not being 0:
+        // remainder < divisor, conditioned to val(X) not being 0:
         (1 - XXIsZero) * (val2_col - val4_col - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
 
         // in case X is zero, we set quotient according to RISC-V specification
@@ -652,10 +676,8 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
             // The BN254 field can fit any 64-bit number, so we can naively de-compose
             // Z * W into 8 bytes and put them together to get the upper and lower word.
             r#"
-    // Multiply two 32-bits unsigned, return the upper and lower unsigned 32-bit
-    // halves of the result.
-    // X is the lower half (least significant bits)
-    // Y is the higher half (most significant bits)
+    // Computes V = val(X) * val(Y) and
+    // stores the lower 32 bits in register Z and the upper 32 bits in register W.
     instr mul X, Y, Z, W
         link ~> val1_col = regs.mload(X, STEP)
         link ~> val2_col = regs.mload(Y, STEP + 1)
@@ -676,10 +698,8 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
             // The Goldilocks field cannot fit some 64-bit numbers, so we have to use
             // the split machine. Note that it can fit a product of two 32-bit numbers.
             r#"
-    // Multiply two 32-bits unsigned, return the upper and lower unsigned 32-bit
-    // halves of the result.
-    // X is the lower half (least significant bits)
-    // Y is the higher half (most significant bits)
+    // Computes V = val(X) * val(Y) and
+    // stores the lower 32 bits in register Z and the upper 32 bits in register W.
     instr mul X, Y, Z, W
         link ~> val1_col = regs.mload(X, STEP)
         link ~> val2_col = regs.mload(Y, STEP + 1)
@@ -695,6 +715,9 @@ fn memory(with_bootloader: bool) -> String {
     let memory_machine = if with_bootloader {
         r#"
     std::machines::memory_with_bootloader_write::MemoryWithBootloaderWrite memory;
+
+    // Stores val(W) at address (V = val(X) - val(Z) + Y) % 2**32.
+    // V can be between 0 and 2**33.
     instr mstore_bootloader X, Z, Y, W
         link ~> val1_col = regs.mload(X, STEP)
         link ~> val2_col = regs.mload(Z, STEP + 1)
@@ -719,9 +742,10 @@ fn memory(with_bootloader: bool) -> String {
 
     let up_to_three: col = |i| i % 4;
     let six_bits: col = |i| i % 2**6;
-    /// Loads one word from an address Y, where Y can be between 0 and 2**33 (sic!),
+    /// Loads one word from an address V = val(X) + Y, where V can be between 0 and 2**33 (sic!),
     /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
-    /// Returns the loaded word and the remainder of the division by 4.
+    /// Writes the loaded word and the remainder of the division by 4 to registers Z and W,
+    /// respectively.
     instr mload X, Y, Z, W
     link ~> val1_col = regs.mload(X, STEP)
     link ~> val3_col = memory.mload(X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4, STEP + 1)
@@ -733,8 +757,9 @@ fn memory(with_bootloader: bool) -> String {
         [ X_b1 ] in [ six_bits ]
     }
 
-    /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
-    /// Y should be a multiple of 4, but this instruction does not enforce it.
+    // Stores val(W) at address (V = val(X) - val(Z) + Y) % 2**32.
+    // V can be between 0 and 2**33.
+    // V should be a multiple of 4, but this instruction does not enforce it.
     instr mstore X, Z, Y, W
         link ~> val1_col = regs.mload(X, STEP)
         link ~> val2_col = regs.mload(Z, STEP + 1)
@@ -799,7 +824,7 @@ pub fn push_register(name: &str) -> Vec<String> {
     if let Some(reg) = name_to_register(name) {
         vec![
             // x2 + x0 - 4 => x2
-            format!("add_new 2, 0, -4, 2;",),
+            format!("add_wrap 2, 0, -4, 2;",),
             format!("mstore 2, 0, 0, {};", reg.addr()),
         ]
     } else {
@@ -817,7 +842,7 @@ pub fn pop_register(name: &str) -> Vec<String> {
                 reg.addr(),
                 Register::from("tmp1").addr()
             ),
-            "add_new 2, 0, 4, 2;".to_string(),
+            "add_wrap 2, 0, 4, 2;".to_string(),
         ]
     } else {
         panic!()
@@ -861,7 +886,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             only_if_no_write_to_zero(
                 rd,
                 format!(
-                    "add_new {}, {}, {}, {};",
+                    "add_wrap {}, {}, {}, {};",
                     r1.addr(),
                     r2.addr(),
                     0,
@@ -873,7 +898,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let (rd, rs, imm) = args.rri()?;
             only_if_no_write_to_zero(
                 rd,
-                format!("add_new {}, 0, {imm}, {};", rs.addr(), rd.addr()),
+                format!("add_wrap {}, 0, {imm}, {};", rs.addr(), rd.addr()),
             )
         }
         "sub" => {
@@ -881,7 +906,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             only_if_no_write_to_zero(
                 rd,
                 format!(
-                    "add_new_signed {}, {}, 0, {};",
+                    "add_wrap_signed {}, {}, 0, {};",
                     r1.addr(),
                     r2.addr(),
                     rd.addr()
@@ -892,7 +917,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let (rd, r1) = args.rr()?;
             only_if_no_write_to_zero(
                 rd,
-                format!("add_new_signed 0, {}, 0, {};", r1.addr(), rd.addr()),
+                format!("add_wrap_signed 0, {}, 0, {};", r1.addr(), rd.addr()),
             )
         }
         "mul" => {
@@ -960,7 +985,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                     format!("skip_if_zero {}, 0, 0, 2;", tmp3.addr()),
                     format!("is_equal_zero {}, {};", tmp1.addr(), tmp1.addr()),
                     format!(
-                        "add_new_signed {}, {}, -1, {};",
+                        "add_wrap_signed {}, {}, -1, {};",
                         tmp1.addr(),
                         rd.addr(),
                         rd.addr()
@@ -992,7 +1017,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                     // If the lower bits are zero, return the two's complement,
                     // otherwise return one's complement.
                     format!(
-                        "add_new_signed {}, {}, -1, {};",
+                        "add_wrap_signed {}, {}, -1, {};",
                         tmp1.addr(),
                         rd.addr(),
                         rd.addr()
@@ -1065,7 +1090,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let (rd, rs) = args.rr()?;
             only_if_no_write_to_zero(
                 rd,
-                format!("add_new_signed 0, {}, -1, {};", rs.addr(), rd.addr()),
+                format!("add_wrap_signed 0, {}, -1, {};", rs.addr(), rd.addr()),
             )
         }
 
@@ -1555,7 +1580,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                 vec![
                     format!("mload {}, 0, {}, {};", rs1.addr(), tmp1.addr(), tmp2.addr()),
                     format!(
-                        "add_new {}, {}, 0, {};",
+                        "add_wrap {}, {}, 0, {};",
                         tmp1.addr(),
                         rs2.addr(),
                         tmp2.addr()

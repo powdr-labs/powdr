@@ -852,7 +852,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "add_new" => {
+            "add_wrap" => {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
                 let offset = args[2].bin();
@@ -878,7 +878,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "add_new_signed" => {
+            "add_wrap_signed" => {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
                 let offset = args[2].bin();
