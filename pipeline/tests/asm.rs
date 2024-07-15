@@ -1,5 +1,4 @@
 use powdr_backend::BackendType;
-use powdr_executor::constant_evaluator::get_uniquely_sized;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
@@ -391,7 +390,7 @@ fn read_poly_files() {
 
         // check fixed cols (may have no fixed cols)
         let fixed = FixedPolySet::<Bn254Field>::read(tmp_dir.as_path());
-        let fixed = get_uniquely_sized(&fixed).unwrap();
+        let fixed = fixed.into_iter().next().unwrap();
         if !fixed.is_empty() {
             assert_eq!(pil.degree(), fixed[0].1.len() as u64);
         }

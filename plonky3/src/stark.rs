@@ -203,9 +203,8 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    
 
-    use powdr_executor::constant_evaluator::get_uniquely_sized_cloned;
     use powdr_number::GoldilocksField;
     use powdr_pipeline::Pipeline;
     use test_log::test;
@@ -224,7 +223,7 @@ mod tests {
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
         let fixed = pipeline.compute_fixed_cols().unwrap();
-        let fixed = Arc::new(get_uniquely_sized_cloned(&fixed).unwrap());
+        let fixed = fixed.into_iter().next().unwrap();
 
         let mut prover = Plonky3Prover::new(pil, fixed);
         prover.setup();

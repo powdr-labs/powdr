@@ -1,12 +1,13 @@
 #![deny(clippy::print_stdout)]
 
+use std::collections::HashSet;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
+use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn};
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
 use prover::{generate_setup, Halo2Prover};
@@ -77,7 +78,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+        fixed: &HashSet<Arc<Vec<(String, Vec<F>)>>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
@@ -88,9 +89,11 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
             return Err(Error::NoVariableDegreeAvailable);
         }
         let proof_type = ProofType::from(options);
-        let fixed = Arc::new(
-            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
-        );
+        let fixed = fixed
+            .iter()
+            .exactly_one()
+            .map_err(|_| Error::NoVariableDegreeAvailable)?
+            .clone();
         let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup, proof_type)?);
         if let Some(vk) = verification_key {
             halo2.add_verification_key(vk);
@@ -187,7 +190,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+        fixed: &HashSet<Arc<Vec<(String, Vec<F>)>>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
@@ -204,9 +207,11 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
             return Err(Error::NoAggregationAvailable);
         }
 
-        let fixed = Arc::new(
-            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
-        );
+        let fixed = fixed
+            .iter()
+            .exactly_one()
+            .map_err(|_| Error::NoVariableDegreeAvailable)?
+            .clone();
 
         Ok(Box::new(Halo2Mock { pil, fixed }))
     }

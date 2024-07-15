@@ -9,9 +9,9 @@ mod plonky3;
 mod composite;
 
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
+use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
-use std::{io, path::PathBuf, sync::Arc};
+use std::{collections::HashSet, io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
@@ -134,7 +134,7 @@ pub trait BackendFactory<F: FieldElement> {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+        fixed: &HashSet<Arc<Vec<(String, Vec<F>)>>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,

@@ -1,13 +1,11 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
+use std::{collections::HashSet, path::PathBuf};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error};
+use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::{
-    constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn},
-    witgen::WitgenCallback,
-};
+use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 
 use starky::{
@@ -29,7 +27,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+        fixed: &HashSet<Arc<Vec<(String, Vec<F>)>>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -52,9 +50,11 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
             return Err(Error::NoVariableDegreeAvailable);
         }
 
-        let fixed = Arc::new(
-            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
-        );
+        let fixed = fixed
+            .iter()
+            .exactly_one()
+            .map_err(|_| Error::NoVariableDegreeAvailable)?
+            .clone();
 
         let proof_type: ProofType = ProofType::from(options);
 

@@ -1,5 +1,6 @@
 use std::{
     borrow::Borrow,
+    collections::HashSet,
     fmt::Display,
     fs,
     io::{self, BufReader},
@@ -9,6 +10,7 @@ use std::{
     time::Instant,
 };
 
+use itertools::Itertools;
 use log::Level;
 use powdr_ast::{
     analyzed::Analyzed,
@@ -18,7 +20,7 @@ use powdr_ast::{
 };
 use powdr_backend::{BackendOptions, BackendType, Proof};
 use powdr_executor::{
-    constant_evaluator::{self, get_uniquely_sized_cloned, VariablySizedColumn},
+    constant_evaluator,
     witgen::{
         chain_callbacks, extract_publics, unused_query_callback, QueryCallback, WitgenCallback,
         WitnessGenerator,
@@ -33,7 +35,7 @@ use crate::{
 };
 
 type Columns<T> = Vec<(String, Vec<T>)>;
-type VariablySizedColumns<T> = Vec<(String, VariablySizedColumn<T>)>;
+type VariablySizedColumns<T> = HashSet<Arc<Columns<T>>>;
 
 #[derive(Default, Clone)]
 pub struct Artifacts<T: FieldElement> {
@@ -65,7 +67,7 @@ pub struct Artifacts<T: FieldElement> {
     /// An optimized .pil file.
     optimized_pil: Option<Arc<Analyzed<T>>>,
     /// Fully evaluated fixed columns.
-    fixed_cols: Option<Arc<VariablySizedColumns<T>>>,
+    fixed_cols: Option<VariablySizedColumns<T>>,
     /// Generated witnesses.
     witness: Option<Arc<Columns<T>>>,
     /// The proof (if successful).
@@ -385,9 +387,11 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn read_constants(self, directory: &Path) -> Self {
         let fixed = FixedPolySet::<T>::read(directory);
 
+        let fixed = fixed.into_iter().map(Arc::new).collect();
+
         Pipeline {
             artifact: Artifacts {
-                fixed_cols: Some(Arc::new(fixed)),
+                fixed_cols: Some(fixed),
                 ..self.artifact
             },
             ..self
@@ -507,7 +511,7 @@ impl<T: FieldElement> Pipeline<T> {
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
                 // TODO: Handle multiple sizes
-                let fixed = get_uniquely_sized_cloned(fixed).unwrap();
+                let fixed = fixed.iter().exactly_one().unwrap();
                 let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
@@ -790,7 +794,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.optimized_pil.as_ref().unwrap().clone())
     }
 
-    pub fn compute_fixed_cols(&mut self) -> Result<Arc<VariablySizedColumns<T>>, Vec<String>> {
+    pub fn compute_fixed_cols(&mut self) -> Result<VariablySizedColumns<T>, Vec<String>> {
         if let Some(ref fixed_cols) = self.artifact.fixed_cols {
             return Ok(fixed_cols.clone());
         }
@@ -807,12 +811,12 @@ impl<T: FieldElement> Pipeline<T> {
         ));
         self.maybe_write_constants(&fixed_cols)?;
 
-        self.artifact.fixed_cols = Some(Arc::new(fixed_cols));
+        self.artifact.fixed_cols = Some(fixed_cols);
 
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
     }
 
-    pub fn fixed_cols(&self) -> Result<Arc<VariablySizedColumns<T>>, Vec<String>> {
+    pub fn fixed_cols(&self) -> Result<VariablySizedColumns<T>, Vec<String>> {
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
     }
 
@@ -910,7 +914,7 @@ impl<T: FieldElement> Pipeline<T> {
         let backend = factory
             .create(
                 pil.clone(),
-                fixed_cols.clone(),
+                &fixed_cols,
                 self.output_dir.clone(),
                 setup.as_io_read(),
                 vkey.as_io_read(),
@@ -998,7 +1002,7 @@ impl<T: FieldElement> Pipeline<T> {
         let backend = factory
             .create(
                 pil.clone(),
-                fixed_cols.clone(),
+                &fixed_cols,
                 self.output_dir.clone(),
                 setup_file
                     .as_mut()
@@ -1052,7 +1056,7 @@ impl<T: FieldElement> Pipeline<T> {
         let backend = factory
             .create(
                 pil.clone(),
-                fixed_cols.clone(),
+                &fixed_cols,
                 self.output_dir.clone(),
                 setup_file
                     .as_mut()
@@ -1100,7 +1104,7 @@ impl<T: FieldElement> Pipeline<T> {
         let backend = factory
             .create(
                 pil.clone(),
-                fixed_cols.clone(),
+                &fixed_cols,
                 self.output_dir.clone(),
                 setup_file
                     .as_mut()
