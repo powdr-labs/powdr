@@ -2,12 +2,14 @@ use std::{collections::HashMap, iter::once, sync::Arc};
 
 use itertools::Itertools;
 
+use powdr_number::FieldElement;
+
 use serde::{Deserialize, Serialize};
 
 use crate::Columns;
 
 /// A collection of column values for different sizes. This is acceptable to clone.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct VariablySizedColumns<T> {
     inner: HashMap<u64, Arc<Columns<T>>>,
 }
@@ -26,6 +28,9 @@ impl<T> VariablySizedColumns<T> {
     }
 
     pub fn to_uniquely_sized(&self) -> Result<Arc<Columns<T>>, NotUniquelySizedError> {
+        if self.inner.is_empty() {
+            return Ok(Arc::new(vec![]));
+        }
         self.inner
             .iter()
             .exactly_one()
@@ -34,6 +39,9 @@ impl<T> VariablySizedColumns<T> {
     }
 
     pub fn width(&self) -> usize {
+        if self.inner.is_empty() {
+            return 0;
+        }
         self.inner
             .values()
             .map(|v| v.len())
@@ -44,8 +52,11 @@ impl<T> VariablySizedColumns<T> {
     }
 }
 
-impl<T> From<Vec<(String, Vec<T>)>> for VariablySizedColumns<T> {
+impl<T: FieldElement> From<Vec<(String, Vec<T>)>> for VariablySizedColumns<T> {
     fn from(value: Vec<(String, Vec<T>)>) -> Self {
+        if value.is_empty() {
+            return Self::default();
+        }
         let len = value
             .iter()
             .map(|(_, v)| v.len())
