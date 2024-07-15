@@ -152,9 +152,7 @@ mod tests {
         f: impl Fn(BlockProcessor<T, Q>, BTreeMap<String, PolyID>, u64, usize) -> R,
     ) -> R {
         let analyzed = analyze_string(src);
-        let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
-        let constants: Vec<_> = constants.iter().map(|(n, v)| (n.clone(), v)).collect();
+        let constants = generate(&analyzed).to_uniquely_sized().unwrap();
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 
         // No submachines

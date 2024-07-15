@@ -38,13 +38,12 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> VariablySizedColumns
         }
     }
 
-    VariablySizedColumns::from(
-        fixed_cols
-            .into_iter()
-            .sorted_by_key(|(_, (id, _))| *id)
-            .map(|(name, (_, values))| (name, values))
-            .collect::<Vec<_>>(),
-    )
+    fixed_cols
+        .into_iter()
+        .sorted_by_key(|(_, (id, _))| *id)
+        .map(|(name, (_, values))| (name, values))
+        .collect::<Vec<_>>()
+        .into()
 }
 
 fn generate_values<T: FieldElement>(
@@ -175,15 +174,20 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
 
 #[cfg(test)]
 mod test {
+    use powdr_ast::analyzed::Analyzed;
     use powdr_number::GoldilocksField;
     use powdr_pil_analyzer::analyze_string;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
-    use super::*;
+    use super::generate as generate_variable;
 
     fn convert(input: Vec<i32>) -> Vec<GoldilocksField> {
         input.into_iter().map(|x| x.into()).collect()
+    }
+
+    fn generate(analyzed: &Analyzed<GoldilocksField>) -> Vec<(String, Vec<GoldilocksField>)> {
+        (*generate_variable(analyzed).to_uniquely_sized().unwrap()).clone()
     }
 
     #[test]
@@ -196,9 +200,8 @@ mod test {
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(
-            *constants,
+            constants,
             vec![("F.LAST".to_string(), convert(vec![0, 0, 0, 0, 0, 0, 0, 1]))]
         );
     }
@@ -213,9 +216,8 @@ mod test {
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(
-            *constants,
+            constants,
             vec![(
                 "F.EVEN".to_string(),
                 convert(vec![2, 4, 6, 8, 10, 12, 14, 16])
@@ -233,9 +235,8 @@ mod test {
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(
-            *constants,
+            constants,
             vec![(
                 "F.X".to_string(),
                 convert((0..8).map(|i| i ^ (i + 17) | 3).collect())
@@ -258,9 +259,8 @@ mod test {
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(
-            *constants,
+            constants,
             vec![("F.X".to_string(), convert(vec![8, 5, 5, 10, 5, 3, 5, 5]))]
         );
     }
@@ -275,9 +275,8 @@ mod test {
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(
-            *constants,
+            constants,
             vec![("F.X".to_string(), convert(vec![7, 7, 7, 9, 9, 9, 9, 9]))]
         );
     }
@@ -293,9 +292,8 @@ mod test {
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(
-            *constants,
+            constants,
             vec![(
                 "F.EVEN".to_string(),
                 convert(vec![0, 2, 4, 6, 8, 10, 12, 14])
@@ -320,7 +318,6 @@ mod test {
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 10);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(constants.len(), 4);
         assert_eq!(
             constants[0],
@@ -363,7 +360,6 @@ mod test {
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 10);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(constants.len(), 3);
         assert_eq!(
             constants[0],
@@ -395,7 +391,6 @@ mod test {
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 10);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(constants.len(), 1);
         assert_eq!(
             constants[0],
@@ -431,7 +426,6 @@ mod test {
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 6);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(
             constants[0],
             ("F.or".to_string(), convert([0, 1, 1, 1, 1, 1].to_vec()))
@@ -533,7 +527,6 @@ mod test {
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(
             constants[0],
             ("F.X".to_string(), convert([21, 22, 23, 24].to_vec()))
@@ -557,7 +550,6 @@ mod test {
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(
             constants[0],
             ("F.x".to_string(), convert([1, 2, 4, 8].to_vec()))
@@ -578,7 +570,6 @@ mod test {
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         // Semantics of p % q involving negative numbers:
         // sgn(p) * |p| % |q|
         assert_eq!(
@@ -599,7 +590,6 @@ mod test {
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(
             constants[0],
             ("F.y[0]".to_string(), convert([0, 1, 2, 3].to_vec()))
@@ -624,7 +614,6 @@ mod test {
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
-        let constants = constants.to_uniquely_sized().unwrap();
         assert_eq!(
             constants[0],
             ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
