@@ -7,12 +7,11 @@ use std::math::fp2::add_ext;
 use std::math::fp2::sub_ext;
 use std::math::fp2::mul_ext;
 use std::math::fp2::unpack_ext;
+use std::math::fp2::unpack_ext_array;
 use std::math::fp2::next_ext;
 use std::math::fp2::inv_ext;
 use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
-use std::math::fp2::needs_extension;
-use std::math::fp2::is_extension;
 use std::math::fp2::fp2_from_array;
 use std::math::fp2::constrain_eq_ext;
 use std::protocols::fingerprint::fingerprint;
@@ -50,9 +49,7 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
         inv_ext(eval_ext(rhs_folded))
     );
 
-    match res {
-        Fp2::Fp2(a0_fe, a1_fe) => [a0_fe, a1_fe]
-    }
+    unpack_ext_array(res)
 };
 
 /// Returns constraints that enforce that lhs is a permutation of rhs
@@ -84,29 +81,13 @@ let permutation: expr, expr[], Fp2<expr>, Fp2<expr>, Constr -> Constr[] = |is_fi
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
-    let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
-    let _ = if !is_extension(acc) {
-        assert(!needs_extension(), || "The Goldilocks field is too small and needs to move to the extension field. Pass two accumulators instead!")
-    } else { };
-
-    // On the extension field, we'll need two field elements to represent the challenge.
-    // If we don't need an extension field, we can simply set the second component to 0,
-    // in which case the operations below effectively only operate on the first component.
-    let fp2_from_array = |arr| if is_extension(acc) { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
-    let acc_ext = fp2_from_array(acc);
-
     // If the selector is 1, contribute a factor of `beta - fingerprint(lhs)` to accumulator.
     // If the selector is 0, contribute a factor of 1 to the accumulator.
     // Implemented as: folded = selector * (beta - fingerprint(values) - 1) + 1;
     let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, fingerprint(lhs, alpha)));
     let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint(rhs, alpha)));
-
-    let next_acc = if is_extension(acc) {
-        next_ext(acc_ext)
-    } else {
-        // The second component is 0, but the next operator is not defined on it...
-        from_base(acc[0]')
-    };
+    let acc_ext = fp2_from_array(acc);
+    let next_acc = next_ext(acc_ext);
 
     // Update rule:
     // acc' = acc * lhs_folded / rhs_folded
@@ -119,12 +100,9 @@ let permutation: expr, expr[], Fp2<expr>, Fp2<expr>, Constr -> Constr[] = |is_fi
     let (acc_1, acc_2) = unpack_ext(acc_ext);
 
     [
-        // First and last z needs to be 1
-        // (because of wrapping, the z[0] and z[N] are the same)
+        // First and last acc needs to be 1
+        // (because of wrapping, the acc[0] and acc[N] are the same)
         is_first * (acc_1 - 1) = 0,
-
-        // Note that if with_extension is false, this generates 0 = 0 and is removed
-        // by the optimizer.
         is_first * acc_2 = 0
     ] + constrain_eq_ext(update_expr, from_base(0))
 };
