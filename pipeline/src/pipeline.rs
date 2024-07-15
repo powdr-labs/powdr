@@ -410,7 +410,7 @@ impl<T: FieldElement> Pipeline<T> {
         if self.output_dir.is_some() {
             // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
             let fixed_cols = self.compute_fixed_cols().unwrap();
-            self.maybe_write_witness(&fixed_cols, &witness).unwrap();
+            self.maybe_write_witness(fixed_cols, &witness).unwrap();
         }
         Pipeline {
             artifact: Artifacts {
@@ -495,7 +495,7 @@ impl<T: FieldElement> Pipeline<T> {
 
     fn maybe_write_witness(
         &self,
-        fixed: &VariablySizedColumns<T>,
+        fixed: VariablySizedColumns<T>,
         witness: &Columns<T>,
     ) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
@@ -842,7 +842,7 @@ impl<T: FieldElement> Pipeline<T> {
             start.elapsed().as_secs_f32()
         ));
 
-        self.maybe_write_witness(&fixed_cols, &witness)?;
+        self.maybe_write_witness(fixed_cols, &witness)?;
 
         self.artifact.witness = Some(Arc::new(witness));
 
@@ -908,7 +908,7 @@ impl<T: FieldElement> Pipeline<T> {
         let backend = factory
             .create(
                 pil.clone(),
-                &fixed_cols,
+                fixed_cols,
                 self.output_dir.clone(),
                 setup.as_io_read(),
                 vkey.as_io_read(),
@@ -996,7 +996,7 @@ impl<T: FieldElement> Pipeline<T> {
         let backend = factory
             .create(
                 pil.clone(),
-                &fixed_cols,
+                fixed_cols,
                 self.output_dir.clone(),
                 setup_file
                     .as_mut()
@@ -1050,7 +1050,7 @@ impl<T: FieldElement> Pipeline<T> {
         let backend = factory
             .create(
                 pil.clone(),
-                &fixed_cols,
+                fixed_cols,
                 self.output_dir.clone(),
                 setup_file
                     .as_mut()
@@ -1098,7 +1098,7 @@ impl<T: FieldElement> Pipeline<T> {
         let backend = factory
             .create(
                 pil.clone(),
-                &fixed_cols,
+                fixed_cols,
                 self.output_dir.clone(),
                 setup_file
                     .as_mut()

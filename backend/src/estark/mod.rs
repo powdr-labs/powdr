@@ -222,7 +222,7 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
     fn create<'a>(
         &self,
         analyzed: Arc<Analyzed<F>>,
-        fixed: &VariablySizedColumns<F>,
+        fixed: VariablySizedColumns<F>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,

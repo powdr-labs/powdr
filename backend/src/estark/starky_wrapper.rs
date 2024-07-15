@@ -28,7 +28,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: &VariablySizedColumns<F>,
+        fixed: VariablySizedColumns<F>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,

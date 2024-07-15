@@ -78,7 +78,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: &VariablySizedColumns<F>,
+        fixed: VariablySizedColumns<F>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
@@ -188,7 +188,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: &VariablySizedColumns<F>,
+        fixed: VariablySizedColumns<F>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,

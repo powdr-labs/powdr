@@ -134,7 +134,7 @@ pub trait BackendFactory<F: FieldElement> {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: &VariablySizedColumns<F>,
+        fixed: VariablySizedColumns<F>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,

@@ -49,7 +49,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: &VariablySizedColumns<F>,
+        fixed: VariablySizedColumns<F>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -102,10 +102,10 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                 if let Some(ref output_dir) = output_dir {
                     std::fs::create_dir_all(output_dir)?;
                 }
-                let fixed = machine_fixed_columns(&fixed, &pil).into();
+                let fixed = VariablySizedColumns::from(machine_fixed_columns(&fixed, &pil));
                 let backend = self.factory.create(
                     pil.clone(),
-                    &fixed,
+                    fixed,
                     output_dir,
                     setup,
                     verification_key,
