@@ -7,9 +7,11 @@ use gimli::{
     read::AttributeValue, DebuggingInformationEntry, Dwarf, EndianSlice, LittleEndian, Operation,
     Unit, UnitRef,
 };
-use goblin::elf::{Elf, SectionHeader};
-
-use super::dedup_names;
+use goblin::elf::{
+    sym::{STT_FUNC, STT_OBJECT},
+    Elf, SectionHeader,
+};
+use itertools::Itertools;
 
 type Reader<'a> = EndianSlice<'a, LittleEndian>;
 
@@ -24,6 +26,7 @@ pub enum Error {
 }
 
 /// Debug information extracted from the ELF file.
+#[derive(Default)]
 pub struct DebugInfo {
     /// List of source files: (directory, file name).
     pub file_list: Vec<(String, String)>,
@@ -32,7 +35,9 @@ pub struct DebugInfo {
     /// Maps (addresses, disambiguator) to symbol names. The disambiguator is
     /// used to distinguish between multiple symbols at the same address. (i.e.
     /// turns BTreeMap into a multimap.)
-    pub symbol_map: BTreeMap<(u32, u32), String>,
+    pub symbols: SymbolTable,
+    /// Human readable notes about an address
+    pub notes: HashMap<u32, String>,
 }
 
 impl DebugInfo {
@@ -49,6 +54,7 @@ impl DebugInfo {
         let mut line_locations = BTreeMap::new();
         let mut text_symbols = Vec::new();
         let mut symbol_map = BTreeMap::new();
+        let mut notes = HashMap::new();
 
         let mut map_disambiguator = 0u32..;
 
@@ -78,34 +84,35 @@ impl DebugInfo {
                 // Get the locations indexed by address
                 let mut rows = line_program.rows();
                 while let Some((_, row)) = rows.next_row()? {
-                    line_locations.insert(
-                        row.address() as u32,
-                        (
-                            (row.file_index() as isize + file_idx_delta) as usize,
-                            match row.line() {
-                                None => 0,
-                                Some(v) => v.get() as u32,
-                            },
-                            match row.column() {
-                                gimli::ColumnType::LeftEdge => 0,
-                                gimli::ColumnType::Column(v) => v.get() as u32,
-                            },
-                        ),
-                    );
+                    line_locations
+                        .insert(
+                            row.address() as u32,
+                            (
+                                (row.file_index() as isize + file_idx_delta) as usize,
+                                match row.line() {
+                                    None => 0,
+                                    Some(v) => v.get() as u32,
+                                },
+                                match row.column() {
+                                    gimli::ColumnType::LeftEdge => 0,
+                                    gimli::ColumnType::Column(v) => v.get() as u32,
+                                },
+                            ),
+                        )
+                        .ok_or(Error::UnexpectedOrganization)?;
                 }
             }
 
             // Traverse the tree in which the information about the compilation
             // unit is stored. To simplify the algorithm, we start the name
             // stack with a placeholder value.
-            let mut full_name = vec![Cow::default()];
+            let mut full_name = vec![None];
             let mut entries = unit.entries();
             while let Some((level_delta, entry)) = entries.next_dfs()? {
                 // Get the entry name as a human readable string (this is used in a comment)
                 let name = find_attr(entry, gimli::DW_AT_name)
                     .map(|name| unit.attr_string(name).map(|s| s.to_string_lossy()))
-                    .transpose()?
-                    .unwrap_or(Cow::Borrowed("?"));
+                    .transpose()?;
 
                 match level_delta {
                     delta if delta > 1 => return Err(Error::UnexpectedOrganization),
@@ -145,29 +152,51 @@ impl DebugInfo {
                             continue;
                         }
 
-                        let mut file_line = None;
-                        if let Some(AttributeValue::FileIndex(file_idx)) =
-                            find_attr(entry, gimli::DW_AT_decl_file)
-                        {
-                            if let Some(AttributeValue::Udata(line)) =
-                                find_attr(entry, gimli::DW_AT_decl_line)
+                        if full_name.last().is_some() {
+                            // The human readable name of the variable is available,
+                            // so we assemble a pretty note to go into the comment.
+                            let mut file_line = None;
+                            if let Some(AttributeValue::FileIndex(file_idx)) =
+                                find_attr(entry, gimli::DW_AT_decl_file)
                             {
-                                file_line =
-                                    Some(((file_idx as isize + file_idx_delta) as usize, line));
+                                if let Some(AttributeValue::Udata(line)) =
+                                    find_attr(entry, gimli::DW_AT_decl_line)
+                                {
+                                    file_line =
+                                        Some(((file_idx as isize + file_idx_delta) as usize, line));
+                                }
                             }
+
+                            let value = format!(
+                                "{}{}",
+                                full_name
+                                    .iter()
+                                    .map(|s| match s {
+                                        Some(s) => s,
+                                        None => &Cow::Borrowed("?"),
+                                    })
+                                    .join("::"),
+                                if let Some((file, line)) = file_line {
+                                    format!(" at file {file} line {line}")
+                                } else {
+                                    String::new()
+                                }
+                            );
+
+                            notes.insert(address, value);
                         }
 
-                        let value = format!(
-                            "{}{}",
-                            full_name.join("::"),
-                            if let Some((file, line)) = file_line {
-                                format!(" at file {file} line {line}")
-                            } else {
-                                String::new()
-                            }
-                        );
-
-                        symbol_map.insert((address, map_disambiguator.next().unwrap()), value);
+                        // The variable symbol name is only used as a fallback
+                        // in case there is no pretty note.
+                        if let Some(linkage_name) = find_attr(entry, gimli::DW_AT_linkage_name)
+                            .map(|ln| unit.attr_string(ln))
+                            .transpose()?
+                        {
+                            symbol_map.insert(
+                                (address, map_disambiguator.next().unwrap()),
+                                linkage_name.to_string()?.to_owned(),
+                            );
+                        }
                     }
                     _ => {}
                 };
@@ -187,7 +216,8 @@ impl DebugInfo {
         Ok(DebugInfo {
             file_list,
             line_locations,
-            symbol_map,
+            symbols: SymbolTable(symbol_map),
+            notes,
         })
     }
 }
@@ -262,4 +292,177 @@ fn parse_address(
     };
 
     Ok(Some(address as u32))
+}
+
+/// Index the symbols by their addresses.
+#[derive(Default)]
+pub struct SymbolTable(BTreeMap<(u32, u32), String>);
+
+impl SymbolTable {
+    pub fn new(elf: &Elf) -> SymbolTable {
+        let mut symbols = elf
+            .syms
+            .iter()
+            .filter_map(|sym| {
+                // We only care about global symbols that have string names, and are
+                // either functions or variables.
+                if sym.st_name != 0 && (sym.st_type() == STT_OBJECT || sym.st_type() == STT_FUNC) {
+                    Some((elf.strtab[sym.st_name].to_owned(), sym.st_value as u32))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        dedup_names(&mut symbols);
+
+        let mut disambiguator = 0..;
+        SymbolTable(
+            symbols
+                .into_iter()
+                .map(|(name, addr)| ((addr, disambiguator.next().unwrap()), name.to_string()))
+                .collect(),
+        )
+    }
+
+    /// Returns an iterator over all symbols of a given address.
+    fn all_iter(&self, addr: u32) -> impl Iterator<Item = &str> {
+        self.0
+            .range((addr, 0)..=(addr, u32::MAX))
+            .map(|(_, name)| name.as_ref())
+    }
+
+    fn default_label(addr: u32) -> Cow<'static, str> {
+        Cow::Owned(format!("L{addr:08x}"))
+    }
+
+    /// Get a symbol, if the address has one.
+    pub fn try_get_one(&self, addr: u32) -> Option<&str> {
+        self.all_iter(addr).next()
+    }
+
+    /// Get a symbol, or a default label formed from the address value.
+    pub fn get_one(&self, addr: u32) -> Cow<str> {
+        match self.try_get_one(addr) {
+            Some(s) => Cow::Borrowed(s),
+            None => Self::default_label(addr),
+        }
+    }
+
+    /// Get all symbol, or a default label formed from the address value.
+    pub fn get_all(&self, addr: u32) -> impl Iterator<Item = Cow<str>> {
+        let mut iter = self.all_iter(addr).peekable();
+        let default = if iter.peek().is_none() {
+            Some(Self::default_label(addr))
+        } else {
+            None
+        };
+        iter.map(Cow::Borrowed).chain(default)
+    }
+}
+
+/// Deduplicates by removing identical entries and appending the address to
+/// repeated names. The vector ends up sorted.
+fn dedup_names(symbols: &mut Vec<(String, u32)>) {
+    while dedup_names_pass(symbols) {}
+}
+
+/// Deduplicates the names of the symbols by appending one level of address to
+/// the name.
+///
+/// Returns `true` if the names were deduplicated.
+fn dedup_names_pass(symbols: &mut Vec<(String, u32)>) -> bool {
+    symbols.sort_unstable();
+    symbols.dedup();
+
+    let mut deduplicated = false;
+    let mut iter = symbols.iter_mut();
+
+    // The first unique name defines a group, which ends on the next unique name.
+    // The whole group is deduplicated if it contains more than one element.
+    let mut next_group = iter.next().map(|(name, address)| (name, *address));
+    while let Some((group_name, group_address)) = next_group {
+        let mut group_deduplicated = false;
+        next_group = None;
+
+        // Find duplicates and update names in the group
+        for (name, address) in &mut iter {
+            if name == group_name {
+                group_deduplicated = true;
+                deduplicated = true;
+                *name = format!("{name}_{address:08x}");
+            } else {
+                next_group = Some((name, *address));
+                break;
+            }
+        }
+
+        // If there were duplicates in the group, update the group leader, too.
+        if group_deduplicated {
+            *group_name = format!("{group_name}_{group_address:08x}");
+        }
+    }
+
+    deduplicated
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn single_pass_dedup_names() {
+        let mut symbols = vec![
+            ("baz".to_string(), 0x8000),
+            ("bar".to_string(), 0x3000),
+            ("foo".to_string(), 0x1000),
+            ("bar".to_string(), 0x5000),
+            ("foo".to_string(), 0x2000),
+            ("baz".to_string(), 0x7000),
+            ("baz".to_string(), 0x9000),
+            ("doo".to_string(), 0x0042),
+            ("baz".to_string(), 0xa000),
+            ("baz".to_string(), 0x6000),
+            ("bar".to_string(), 0x4000),
+        ];
+
+        super::dedup_names(&mut symbols);
+
+        let expected = vec![
+            ("bar_00003000".to_string(), 0x3000),
+            ("bar_00004000".to_string(), 0x4000),
+            ("bar_00005000".to_string(), 0x5000),
+            ("baz_00006000".to_string(), 0x6000),
+            ("baz_00007000".to_string(), 0x7000),
+            ("baz_00008000".to_string(), 0x8000),
+            ("baz_00009000".to_string(), 0x9000),
+            ("baz_0000a000".to_string(), 0xa000),
+            ("doo".to_string(), 0x0042),
+            ("foo_00001000".to_string(), 0x1000),
+            ("foo_00002000".to_string(), 0x2000),
+        ];
+        assert_eq!(symbols, expected);
+    }
+
+    #[test]
+    fn multi_pass_dedup_names() {
+        let mut symbols = vec![
+            ("john".to_string(), 0x42),
+            ("john".to_string(), 0x87),
+            ("john".to_string(), 0x1aa),
+            ("john_000001aa".to_string(), 0x1aa),
+            ("john_00000042".to_string(), 0x103),
+            ("john_00000087".to_string(), 0x103),
+        ];
+
+        super::dedup_names(&mut symbols);
+
+        let expected = vec![
+            ("john_00000042_00000042".to_string(), 0x42),
+            ("john_00000042_00000103".to_string(), 0x103),
+            ("john_00000087_00000087".to_string(), 0x87),
+            ("john_00000087_00000103".to_string(), 0x103),
+            ("john_000001aa".to_string(), 0x1aa),
+        ];
+
+        assert_eq!(symbols, expected);
+    }
 }
