@@ -164,7 +164,7 @@ impl DebugInfo {
         }
 
         // Deduplicate the text symbols
-        while dedup_names(&mut text_symbols) {}
+        dedup_names(&mut text_symbols);
         let text_symbols = text_symbols
             .into_iter()
             .map(|(name, address)| (address, name))
@@ -253,34 +253,110 @@ fn parse_address(
     Ok(Some(address as u32))
 }
 
-/// Deduplicates the names of the symbols by appending the address to the name.
+/// Deduplicates by removing identical entries and appending the address to
+/// repeated names. The vector ends up sorted.
+fn dedup_names(symbols: &mut Vec<(Cow<str>, u32)>) {
+    while dedup_names_pass(symbols) {}
+}
+
+/// Deduplicates the names of the symbols by appending one level of address to
+/// the name.
 ///
 /// Returns `true` if the names were deduplicated.
-fn dedup_names(symbols: &mut Vec<(Cow<str>, u32)>) -> bool {
+fn dedup_names_pass(symbols: &mut Vec<(Cow<str>, u32)>) -> bool {
     symbols.sort_unstable();
     symbols.dedup();
 
-    // Append the address to the name to make it unique, if necessary.
     let mut deduplicated = false;
     let mut iter = symbols.iter_mut();
-    let mut current = iter.next().map(|(name, address)| (name, *address));
-    while let Some((group_name, group_address)) = current {
+
+    // The first unique name defines a group, which ends on the next unique name.
+    // The whole group is deduplicated if it contains more than one element.
+    let mut next_group = iter.next().map(|(name, address)| (name, *address));
+    while let Some((group_name, group_address)) = next_group {
         let mut group_deduplicated = false;
-        current = None;
-        while let Some((name, address)) = iter.next() {
+        next_group = None;
+
+        // Find duplicates and update names in the group
+        for (name, address) in &mut iter {
             if name == group_name {
                 group_deduplicated = true;
                 deduplicated = true;
                 *name = Cow::Owned(format!("{name}_{address:08x}"));
             } else {
-                current = Some((name, *address));
+                next_group = Some((name, *address));
                 break;
             }
         }
+
+        // If there were duplicates in the group, update the group leader, too.
         if group_deduplicated {
             *group_name = Cow::Owned(format!("{group_name}_{group_address:08x}"));
         }
     }
 
     deduplicated
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn single_pass_dedup_names() {
+        let mut symbols = vec![
+            (Cow::Borrowed("baz"), 0x8000),
+            (Cow::Borrowed("bar"), 0x3000),
+            (Cow::Borrowed("foo"), 0x1000),
+            (Cow::Borrowed("bar"), 0x5000),
+            (Cow::Borrowed("foo"), 0x2000),
+            (Cow::Borrowed("baz"), 0x7000),
+            (Cow::Borrowed("baz"), 0x9000),
+            (Cow::Borrowed("doo"), 0x0042),
+            (Cow::Borrowed("baz"), 0xa000),
+            (Cow::Borrowed("baz"), 0x6000),
+            (Cow::Borrowed("bar"), 0x4000),
+        ];
+
+        super::dedup_names(&mut symbols);
+
+        let expected = vec![
+            (Cow::Borrowed("bar_00003000"), 0x3000),
+            (Cow::Borrowed("bar_00004000"), 0x4000),
+            (Cow::Borrowed("bar_00005000"), 0x5000),
+            (Cow::Borrowed("baz_00006000"), 0x6000),
+            (Cow::Borrowed("baz_00007000"), 0x7000),
+            (Cow::Borrowed("baz_00008000"), 0x8000),
+            (Cow::Borrowed("baz_00009000"), 0x9000),
+            (Cow::Borrowed("baz_0000a000"), 0xa000),
+            (Cow::Borrowed("doo"), 0x0042),
+            (Cow::Borrowed("foo_00001000"), 0x1000),
+            (Cow::Borrowed("foo_00002000"), 0x2000),
+        ];
+        assert_eq!(symbols, expected);
+    }
+
+    #[test]
+    fn multi_pass_dedup_names() {
+        let mut symbols = vec![
+            (Cow::Borrowed("john"), 0x42),
+            (Cow::Borrowed("john"), 0x87),
+            (Cow::Borrowed("john"), 0x1aa),
+            (Cow::Borrowed("john_000001aa"), 0x1aa),
+            (Cow::Borrowed("john_00000042"), 0x103),
+            (Cow::Borrowed("john_00000087"), 0x103),
+        ];
+
+        super::dedup_names(&mut symbols);
+
+        let expected = vec![
+            (Cow::Borrowed("john_00000042_00000042"), 0x42),
+            (Cow::Borrowed("john_00000042_00000103"), 0x103),
+            (Cow::Borrowed("john_00000087_00000087"), 0x87),
+            (Cow::Borrowed("john_00000087_00000103"), 0x103),
+            (Cow::Borrowed("john_000001aa"), 0x1aa),
+        ];
+
+        assert_eq!(symbols, expected);
+    }
 }
