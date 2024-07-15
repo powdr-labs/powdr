@@ -159,32 +159,34 @@ fn load_elf(file_name: &Path) -> ElfProgram {
         .collect::<Vec<_>>();
 
     // Try loading the debug information.
-    let debug_info =
-        match debug_info::DebugInfo::new(&elf, &file_buffer, &data_map, &referenced_text_addrs) {
-            Ok(debug_info) => {
-                log::info!("Debug information loaded successfully.");
-                debug_info
-            }
-            Err(err) => {
-                match err {
-                    debug_info::Error::NoDebugInfo => {
-                        log::info!("No DWARF debug information found.")
-                    }
-                    debug_info::Error::UnexpectedOrganization => {
-                        log::warn!("Unexpected organization of the DWARF debug information.")
-                    }
-                    debug_info::Error::Parsing(err) => {
-                        log::warn!("Error parsing DWARF debug information: {}", err)
-                    }
+    let debug_info = match debug_info::DebugInfo::new(
+        &elf,
+        &file_buffer,
+        &address_map,
+        &data_map,
+        &referenced_text_addrs,
+    ) {
+        Ok(debug_info) => {
+            log::info!("Debug information loaded successfully.");
+            debug_info
+        }
+        Err(err) => {
+            match err {
+                debug_info::Error::NoDebugInfo => {
+                    log::info!("No DWARF debug information found.")
                 }
-                log::info!("Falling back to using ELF symbol table.");
+                err => {
+                    log::warn!("Error reading DWARF debug information: {}", err)
+                }
+            }
+            log::info!("Falling back to using ELF symbol table.");
 
-                DebugInfo {
-                    symbols: SymbolTable::new(&elf),
-                    ..Default::default()
-                }
+            DebugInfo {
+                symbols: SymbolTable::new(&elf),
+                ..Default::default()
             }
-        };
+        }
+    };
 
     ElfProgram {
         dbg: debug_info,
@@ -304,20 +306,37 @@ impl RiscVProgram for ElfProgram {
         &mut self,
     ) -> impl Iterator<Item = crate::code_gen::Statement<impl AsRef<str>, WrappedArgs>> {
         let labels = self.text_labels.iter();
-        let instructions = self.instructions.iter();
+        let locs = self.dbg.source_locations.iter();
 
-        labels
-            .merge_join_by(instructions, |&&next_label, next_insn| {
-                match next_label.cmp(&next_insn.original_address) {
-                    Ordering::Less => panic!("Label {next_label:08x} doesn't match exact address!"),
+        let labels_and_locs = labels.merge_join_by(locs, |&&next_label, next_loc| {
+            next_label <= next_loc.address
+        });
+
+        let instructions = self.instructions.iter();
+        labels_and_locs
+            .merge_join_by(instructions, |next_label_or_loc, next_insn| {
+                let (s, left_addr) = match next_label_or_loc {
+                    Either::Left(label) => ("Label", **label),
+                    Either::Right(loc) => ("Debug location", loc.address),
+                };
+
+                match left_addr.cmp(&next_insn.original_address) {
+                    Ordering::Less => panic!("{s} {left_addr:08x} doesn't match exact address!"),
                     Ordering::Equal => true,
                     Ordering::Greater => false,
                 }
             })
             .flat_map(|result| -> Box<dyn Iterator<Item = _>> {
                 match result {
-                    Either::Left(label) => {
+                    Either::Left(Either::Left(label)) => {
                         Box::new(self.dbg.symbols.get_all(*label).map(Statement::Label))
+                    }
+                    Either::Left(Either::Right(loc)) => {
+                        Box::new(std::iter::once(Statement::DebugLoc {
+                            file: loc.file,
+                            line: loc.line,
+                            col: loc.col,
+                        }))
                     }
                     Either::Right(insn) => Box::new(std::iter::once(Statement::Instruction {
                         op: insn.op,

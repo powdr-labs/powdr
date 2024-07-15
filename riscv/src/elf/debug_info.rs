@@ -13,14 +13,16 @@ use goblin::elf::{
 };
 use itertools::Itertools;
 
+use super::AddressMap;
+
 type Reader<'a> = EndianSlice<'a, LittleEndian>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("no debug information available")]
     NoDebugInfo,
-    #[error("unexpected organization of debug information")]
-    UnexpectedOrganization,
+    #[error("DIE tree traversal skipped a level")]
+    UnexpectedLevel,
     #[error("failed to parse debug information: {0}")]
     Parsing(#[from] gimli::Error),
 }
@@ -30,8 +32,8 @@ pub enum Error {
 pub struct DebugInfo {
     /// List of source files: (directory, file name).
     pub file_list: Vec<(String, String)>,
-    /// Maps addresses to line locations: (file index, line, column).
-    pub line_locations: BTreeMap<u32, (usize, u32, u32)>,
+    /// Relates addresses to source locations.
+    pub source_locations: Vec<SourceLocationInfo>,
     /// Maps (addresses, disambiguator) to symbol names. The disambiguator is
     /// used to distinguish between multiple symbols at the same address. (i.e.
     /// turns BTreeMap into a multimap.)
@@ -40,18 +42,26 @@ pub struct DebugInfo {
     pub notes: HashMap<u32, String>,
 }
 
+pub struct SourceLocationInfo {
+    pub address: u32,
+    pub file: u64,
+    pub line: u64,
+    pub col: u64,
+}
+
 impl DebugInfo {
     /// Extracts debug information from the ELF file, if available.
     pub fn new<D>(
         elf: &Elf,
         file_buffer: &[u8],
+        address_map: &AddressMap,
         data_entries: &BTreeMap<u32, D>,
         jump_targets: &BTreeSet<u32>,
     ) -> Result<Self, Error> {
         let dwarf = load_dwarf_sections(elf, file_buffer)?;
 
         let mut file_list = Vec::new();
-        let mut line_locations = BTreeMap::new();
+        let mut source_locations = Vec::new();
         let mut text_symbols = Vec::new();
         let mut symbol_map = BTreeMap::new();
         let mut notes = HashMap::new();
@@ -84,22 +94,18 @@ impl DebugInfo {
                 // Get the locations indexed by address
                 let mut rows = line_program.rows();
                 while let Some((_, row)) = rows.next_row()? {
-                    line_locations
-                        .insert(
-                            row.address() as u32,
-                            (
-                                (row.file_index() as isize + file_idx_delta) as usize,
-                                match row.line() {
-                                    None => 0,
-                                    Some(v) => v.get() as u32,
-                                },
-                                match row.column() {
-                                    gimli::ColumnType::LeftEdge => 0,
-                                    gimli::ColumnType::Column(v) => v.get() as u32,
-                                },
-                            ),
-                        )
-                        .ok_or(Error::UnexpectedOrganization)?;
+                    source_locations.push(SourceLocationInfo {
+                        address: row.address() as u32,
+                        file: (row.file_index() as isize + file_idx_delta) as u64,
+                        line: match row.line() {
+                            None => 0,
+                            Some(v) => v.get(),
+                        },
+                        col: match row.column() {
+                            gimli::ColumnType::LeftEdge => 0,
+                            gimli::ColumnType::Column(v) => v.get(),
+                        },
+                    })
                 }
             }
 
@@ -115,7 +121,7 @@ impl DebugInfo {
                     .transpose()?;
 
                 match level_delta {
-                    delta if delta > 1 => return Err(Error::UnexpectedOrganization),
+                    delta if delta > 1 => return Err(Error::UnexpectedLevel),
                     1 => (),
                     _ => {
                         full_name.truncate((full_name.len() as isize + level_delta - 1) as usize);
@@ -203,19 +209,23 @@ impl DebugInfo {
             }
         }
 
+        // Filter out the source locations that are not in the text section
+        filter_locations_in_text(&mut source_locations, address_map);
+
+        println!("##### number of text symbols: {}", text_symbols.len());
         // Deduplicate the text symbols
         dedup_names(&mut text_symbols);
+        println!("##### number of text symbols: {}", text_symbols.len());
 
-        symbol_map.extend(text_symbols.into_iter().map(|(name, address)| {
-            (
-                (address, map_disambiguator.next().unwrap()),
-                name.to_string(),
-            )
-        }));
+        symbol_map.extend(
+            text_symbols
+                .into_iter()
+                .map(|(name, address)| ((address, map_disambiguator.next().unwrap()), name)),
+        );
 
         Ok(DebugInfo {
             file_list,
-            line_locations,
+            source_locations,
             symbols: SymbolTable(symbol_map),
             notes,
         })
@@ -292,6 +302,33 @@ fn parse_address(
     };
 
     Ok(Some(address as u32))
+}
+
+fn filter_locations_in_text(locations: &mut Vec<SourceLocationInfo>, address_map: &AddressMap) {
+    locations.sort_unstable_by_key(|loc| loc.address);
+
+    let mut done_idx = 0;
+    for (&start_addr, &header) in address_map.0.iter() {
+        // Remove all entries that are in between done and the start address.
+        let start_idx = find_first_idx(&locations[done_idx..], start_addr) + done_idx;
+        locations.drain(done_idx..start_idx);
+
+        // The end address is one past the last byte of the section.
+        let end_addr = start_addr + header.p_memsz as u32;
+        done_idx += find_first_idx(&locations[done_idx..], end_addr);
+    }
+}
+
+fn find_first_idx(slice: &[SourceLocationInfo], addr: u32) -> usize {
+    match slice.binary_search_by_key(&addr, |loc| loc.address) {
+        Ok(mut idx) => {
+            while idx > 0 && slice[idx - 1].address == addr {
+                idx -= 1;
+            }
+            idx
+        }
+        Err(idx) => idx,
+    }
 }
 
 /// Index the symbols by their addresses.
