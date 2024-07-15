@@ -594,7 +594,7 @@ impl<E: Display> Display for TraitDeclaration<E> {
 impl<E: Display> Display for TraitFunction<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let ty = match &self.ty {
-            Type::Function(fun) => format!("({})", fun),
+            Type::Function(fun) => format!("({fun})"),
             _ => format!("{}", self.ty),
         };
         write!(f, "{}: {}", self.name, ty)
