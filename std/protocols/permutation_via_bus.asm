@@ -7,13 +7,11 @@ use std::protocols::bus::compute_next_z_receive;
 use std::protocols::permutation::unpack_permutation_constraint;
 use std::math::fp2::Fp2;
 
-// Example usage: Implement a permutation constraint
+// Example usage of the bus: Implement a permutation constraint
 // To make this sound, the last values of `acc_lhs` and `acc_rhs` need to be
 // exposed as publics, and the verifier needs to assert that they sum to 0.
 let permutation: expr, expr, expr[], expr[], Fp2<expr>, Fp2<expr>, Constr -> Constr[] = |is_first, id, acc_lhs, acc_rhs, alpha, beta, permutation_constraint| {
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
-    let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
-
     bus_send(is_first, id, lhs, lhs_selector, acc_lhs, alpha, beta) + bus_receive(is_first, id, rhs, rhs_selector, acc_rhs, alpha, beta)
 };
 
