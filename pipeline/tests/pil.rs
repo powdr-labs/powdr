@@ -5,8 +5,8 @@ use powdr_pipeline::test_util::{
     assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
     assert_proofs_fail_for_invalid_witnesses_halo2,
     assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
-    gen_estark_proof_with_backend_variant, test_halo2, test_halo2_with_backend_variant,
-    test_plonky3, verify_test_file, BackendVariant,
+    gen_estark_proof_with_backend_variant, make_prepared_pipeline, test_halo2,
+    test_halo2_with_backend_variant, test_plonky3, verify_test_file, BackendVariant,
 };
 
 use test_log::test;
@@ -313,8 +313,11 @@ fn different_degrees() {
     let f = "pil/different_degrees.pil";
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
-    test_halo2_with_backend_variant(f, vec![], BackendVariant::Composite);
-    gen_estark_proof_with_backend_variant(f, vec![], BackendVariant::Composite);
+    test_halo2_with_backend_variant(make_prepared_pipeline(f, vec![]), BackendVariant::Composite);
+    gen_estark_proof_with_backend_variant(
+        make_prepared_pipeline(f, vec![]),
+        BackendVariant::Composite,
+    );
 }
 
 #[test]
