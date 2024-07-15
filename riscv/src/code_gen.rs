@@ -135,10 +135,11 @@ pub fn translate_program<F: FieldElement>(
     let (initial_mem, instructions, degree) =
         translate_program_impl(program, runtime, with_bootloader);
 
+    let degree_log = degree.ilog2();
     riscv_machine(
         runtime,
         degree,
-        &preamble::<F>(runtime, with_bootloader),
+        &preamble::<F>(runtime, degree_log.into(), with_bootloader),
         initial_mem,
         instructions,
     )
@@ -342,7 +343,7 @@ let initial_memory: (fe, fe)[] = [
     )
 }
 
-fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String {
+fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bool) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
         bootloader_preamble()
     } else {
@@ -376,8 +377,9 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         + &memory(with_bootloader)
         + r#"
     // =============== Register memory =======================
-    std::machines::memory::Memory_22 regs;
-
+"# + format!("std::machines::memory::Memory_{} regs;", degree + 2)
+        .as_str()
+        + r#"
     // Get the value in register Y.
     instr get_reg Y -> X link ~> X = regs.mload(Y, STEP);
 
