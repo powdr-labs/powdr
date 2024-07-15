@@ -64,14 +64,10 @@ let lookup: expr, expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> Constr[] = |is_f
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
 
-    // On the extension field, we'll need two field elements to represent the challenge.
-    // If we don't need an extension field, we can simply set the second component to 0,
-    // in which case the operations below effectively only operate on the first component.
-    let acc_ext = fp2_from_array(acc);
-
     let lhs_denom = sub_ext(beta, fingerprint(lhs, alpha));
     let rhs_denom = sub_ext(beta, fingerprint(rhs, alpha));
     let m_ext = from_base(multiplicities);
+    let acc_ext = fp2_from_array(acc);
     let next_acc = next_ext(acc_ext);
 
     // Update rule:

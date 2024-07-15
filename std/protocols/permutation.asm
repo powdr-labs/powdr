@@ -81,16 +81,12 @@ let permutation: expr, expr[], Fp2<expr>, Fp2<expr>, Constr -> Constr[] = |is_fi
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
-    // On the extension field, we'll need two field elements to represent the challenge.
-    // If we don't need an extension field, we can simply set the second component to 0,
-    // in which case the operations below effectively only operate on the first component.
-    let acc_ext = fp2_from_array(acc);
-
     // If the selector is 1, contribute a factor of `beta - fingerprint(lhs)` to accumulator.
     // If the selector is 0, contribute a factor of 1 to the accumulator.
     // Implemented as: folded = selector * (beta - fingerprint(values) - 1) + 1;
     let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, fingerprint(lhs, alpha)));
     let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint(rhs, alpha)));
+    let acc_ext = fp2_from_array(acc);
     let next_acc = next_ext(acc_ext);
 
     // Update rule:
