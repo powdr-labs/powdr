@@ -788,7 +788,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
                 let offset = args[2];
-                let val: Elem<F> = val1.sub(&val2).add(&offset);
+                let val: Elem<F> = val1.sub(&val2.add(&offset));
                 if val.is_zero() {
                     self.proc.set_pc(args[3]);
                 }

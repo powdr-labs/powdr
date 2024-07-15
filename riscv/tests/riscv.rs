@@ -407,7 +407,7 @@ fn many_chunks_memory() {
 }
 
 fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, runtime: &Runtime) {
-    verify_riscv_crate_with_backend(case, inputs, runtime, BackendType::EStarkDump)
+    verify_riscv_crate_with_backend(case, inputs, runtime, BackendType::EStarkDumpComposite)
 }
 
 fn verify_riscv_crate_with_backend(

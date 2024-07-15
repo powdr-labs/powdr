@@ -201,7 +201,7 @@ submachine_init:
 
 // Number of pages
 load_bootloader_input 0, 1, 1, {NUM_PAGES_INDEX};
-add_new 1, 0, 0, 1;
+add_wrap 1, 0, 0, 1;
 
 // Initialize memory hash
 load_bootloader_input 0, 18, 1, {MEMORY_HASH_START_INDEX};
@@ -475,7 +475,7 @@ shutdown_start:
         r#"
 // Number of pages
 load_bootloader_input 0, 1, 1, {NUM_PAGES_INDEX};
-add_new 1, 0, 0, 1;
+add_wrap 1, 0, 0, 1;
 
 // Current page index
 set_reg 2, 0;
