@@ -2,6 +2,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
 use powdr_number::{buffered_write_file, BigInt, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
+use std::fs;
 use std::path::PathBuf;
 
 use std::sync::Arc;
@@ -60,6 +61,35 @@ pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     verify_pipeline(pipeline, BackendType::EStarkDump).unwrap();
 }
 
+fn is_composite(backend: BackendType) -> bool {
+    if matches!(
+        backend,
+        BackendType::EStarkDumpComposite | BackendType::EStarkStarkyComposite
+    ) {
+        return true;
+    }
+
+    #[cfg(feature = "halo2")]
+    if matches!(
+        backend,
+        BackendType::Halo2Composite | BackendType::Halo2MockComposite
+    ) {
+        return true;
+    }
+
+    #[cfg(feature = "estark-polygon")]
+    if matches!(backend, BackendType::EStarkPolygonComposite) {
+        return true;
+    }
+
+    #[cfg(feature = "plonky3")]
+    if matches!(backend, BackendType::Plonky3Composite) {
+        return true;
+    }
+
+    false
+}
+
 pub fn verify_pipeline(
     pipeline: Pipeline<GoldilocksField>,
     backend: BackendType,
@@ -73,7 +103,20 @@ pub fn verify_pipeline(
 
     pipeline.compute_proof().unwrap();
 
-    verify(pipeline.output_dir().as_ref().unwrap())
+    let out_dir = pipeline.output_dir().as_ref().unwrap();
+    if is_composite(backend) {
+        // traverse all subdirs of the given output dir and verify each subproof
+        for entry in fs::read_dir(out_dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_dir() {
+                verify(&path)?;
+            }
+        }
+        Ok(())
+    } else {
+        verify(out_dir)
+    }
 }
 
 /// Makes a new pipeline for the given file and inputs. All steps until witness generation are
