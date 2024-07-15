@@ -518,7 +518,7 @@ namespace N(2);
     fn parse_trait_no_type_vars() {
         let input = r#"
     trait Add {
-        add: int, int -> int,
+        add: (int, int -> int),
     }"#;
 
         let _ = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
