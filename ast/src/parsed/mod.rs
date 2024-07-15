@@ -125,8 +125,6 @@ impl PilStatement {
     /// and their category.
     /// For an enum, returns the name of the enum and all the variants, where the first
     /// component is the name of the enum and the second the name of the variant.
-    /// Similarly, for a trait implementation, returns the name of the trait and all the functions,
-    /// where the first component is the name of the trait and the rest the name of the functions.
     pub fn symbol_definition_names_and_contained(
         &self,
     ) -> Box<dyn Iterator<Item = (&String, Option<&String>, SymbolCategory)> + '_> {
