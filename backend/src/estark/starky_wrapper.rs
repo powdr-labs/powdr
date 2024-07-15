@@ -1,4 +1,3 @@
-use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -212,13 +211,9 @@ impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
         }
     }
 
-    fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
-        match serde_json::to_writer(output, &self.setup) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(Error::BackendError(
-                "Could not export verification key".to_string(),
-            )),
-        }
+    fn verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
+        serde_json::to_vec(&self.setup)
+            .map_err(|_| Error::BackendError("Could not serialize verification key".to_string()))
     }
 }
 

@@ -1,2 +1,3 @@
-mod permutation;
+mod fingerprint;
 mod lookup;
+mod permutation;

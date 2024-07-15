@@ -1,4 +1,5 @@
 mod circuit_builder;
-mod prover;
+mod params;
+mod stark;
 
-pub use prover::Plonky3Prover;
+pub use stark::Plonky3Prover;

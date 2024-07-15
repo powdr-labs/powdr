@@ -3,7 +3,7 @@ use super::{
         ASMModule, ASMProgram, Import, Machine, Module, ModuleStatement, SymbolDefinition,
         SymbolValue,
     },
-    EnumDeclaration, Expression,
+    EnumDeclaration, Expression, TraitDeclaration,
 };
 
 pub trait Folder {
@@ -27,6 +27,9 @@ pub trait Folder {
                     SymbolValue::Expression(e) => Ok(SymbolValue::Expression(e)),
                     SymbolValue::TypeDeclaration(ty) => {
                         self.fold_type_declaration(ty).map(From::from)
+                    }
+                    SymbolValue::TraitDeclaration(trait_decl) => {
+                        self.fold_trait_declaration(trait_decl).map(From::from)
                     }
                 }
                 .map(|value| ModuleStatement::SymbolDefinition(SymbolDefinition { value, ..d })),
@@ -56,5 +59,12 @@ pub trait Folder {
         ty: EnumDeclaration<Expression>,
     ) -> Result<EnumDeclaration<Expression>, Self::Error> {
         Ok(ty)
+    }
+
+    fn fold_trait_declaration(
+        &mut self,
+        trait_decl: TraitDeclaration<Expression>,
+    ) -> Result<TraitDeclaration<Expression>, Self::Error> {
+        Ok(trait_decl)
     }
 }

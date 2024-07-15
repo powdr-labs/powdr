@@ -716,6 +716,51 @@ namespace T(8);
 }
 
 #[test]
+fn trait_def() {
+    let input = "trait Add<T, Q> {
+        add: T, T -> Q,
+    }
+";
+
+    let expected = "    trait Add<T, Q> {
+        add: T, T -> Q,
+    }
+";
+
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(expected, analyzed.to_string())
+}
+
+#[test]
+fn array_type_trait() {
+    let input = "trait ArraySum<T> {
+        array_sum: T[4 + 1] -> T,
+    }
+";
+
+    let expected = "    trait ArraySum<T> {
+        array_sum: T[5] -> T,
+    }
+";
+
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(expected, analyzed.to_string())
+}
+
+#[test]
+#[should_panic = "Duplicate symbol definition: Add"]
+fn trait_enum_collisions() {
+    let input = "trait Add<T, Q> {
+        add: T, T -> Q,
+    }
+    enum Add {
+        X
+    }";
+
+    let _ = analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
 fn reparse_generic_function_call() {
     let input = r#"namespace X(16);
     let<T: Add + FromLiteral> inc: T -> T = (|x| x + 1);
@@ -732,6 +777,43 @@ fn reparse_non_function_fixed_cols() {
     let input = r#"namespace X(16);
     let A: int -> int = (|i| i);
     let B: col = X.A;
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}
+
+#[test]
+fn reparse_array_typed_fixed_col() {
+    let input = r#"namespace std::array(16);
+    let<T> len: T[] -> int = 19;
+namespace Main(16);
+    let<T> make_array: int, (int -> T) -> T[] = (|n, f| if n == 0 { [] } else { Main::make_array::<T>(n - 1, f) + [f(n - 1)] });
+    let nth_clock: int -> (int -> int) = (|k| (|i| if i % std::array::len::<expr>(Main.clocks) == k { 1 } else { 0 }));
+    let clocks: col[4] = Main::make_array::<(int -> int)>(4, Main.nth_clock);
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}
+
+#[test]
+fn reparse_array_typed_intermediate_col() {
+    let input = r#"namespace Main(16);
+    col witness w;
+    let clocks: expr[4] = [Main.w, Main.w, Main.w, Main.w];
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, input);
+}
+
+#[test]
+fn reparse_type_args_generic_enum() {
+    let input = r#"namespace X(16);
+    enum Option<T> {
+        None,
+        Some(T),
+    }
+    let<T> consume: T -> () = (|_| { });
+    let p: int -> () = (|i| X::consume::<(X::Option<int>)>(X::Option::Some::<int>(i)));
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);

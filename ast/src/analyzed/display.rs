@@ -9,7 +9,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use parsed::LambdaExpression;
+use parsed::{display::format_type_args, LambdaExpression, TypedExpression};
 
 use crate::{parsed::FunctionKind, writeln_indented, writeln_indented_by};
 
@@ -55,8 +55,11 @@ impl<T: Display> Display for Analyzed<T> {
                         if matches!(
                             definition,
                             Some(FunctionValueDefinition::TypeConstructor(_, _))
+                        ) || matches!(
+                            definition,
+                            Some(FunctionValueDefinition::TraitFunction(_, _))
                         ) {
-                            // These are printed as part of the enum.
+                            // These are printed as part of the enum / trait.
                             continue;
                         }
                         let (name, _) = update_namespace(name, symbol.degree, f)?;
@@ -86,6 +89,11 @@ impl<T: Display> Display for Analyzed<T> {
                                             enum_declaration.to_string_with_name(&name),
                                         )?;
                                     }
+                                    Some(FunctionValueDefinition::TraitDeclaration(
+                                        trait_declaration,
+                                    )) => {
+                                        writeln_indented(f, trait_declaration)?;
+                                    }
                                     _ => {
                                         unreachable!("Invalid definition for symbol: {}", name)
                                     }
@@ -100,7 +108,7 @@ impl<T: Display> Display for Analyzed<T> {
                             writeln_indented(
                                 f,
                                 format!(
-                                    "col {name}[{length}] = [{}];",
+                                    "let {name}: expr[{length}] = [{}];",
                                     definition.iter().format(", ")
                                 ),
                             )?;
@@ -167,16 +175,21 @@ fn format_poly(
             }
         })
         .unwrap_or_default();
-    let value = definition
-        .as_ref()
-        .map(ToString::to_string)
-        .unwrap_or_default();
-    if should_be_formatted_as_column(poly_type, definition) {
-        format!("col {kind}{stage}{name}{length}{value};")
-    } else {
+    if let Some(TypedExpression { type_scheme, e }) =
+        try_to_simple_expression(poly_type, definition)
+    {
         assert!(symbol.stage.is_none());
         assert!(length.is_empty());
-        format!("let {name}: col{value};")
+        format!(
+            "let{} = {e};",
+            format_type_scheme_around_name(&name, type_scheme)
+        )
+    } else {
+        let value = definition
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        format!("col {kind}{stage}{name}{length}{value};",)
     }
 }
 
@@ -213,36 +226,37 @@ impl Display for FunctionValueDefinition {
                 write!(f, ": {} = {e}", ts.ty)
             }
             FunctionValueDefinition::TypeDeclaration(_)
-            | FunctionValueDefinition::TypeConstructor(_, _) => {
+            | FunctionValueDefinition::TypeConstructor(_, _)
+            | FunctionValueDefinition::TraitDeclaration(_)
+            | FunctionValueDefinition::TraitFunction(_, _) => {
                 panic!("Should not use this formatting function.")
             }
         }
     }
 }
 
-fn should_be_formatted_as_column(
+fn try_to_simple_expression(
     poly_type: PolynomialType,
     definition: &Option<FunctionValueDefinition>,
-) -> bool {
+) -> Option<&TypedExpression<Reference, u64>> {
     if !matches!(poly_type, PolynomialType::Constant) {
-        return true;
+        return None;
     }
-    let Some(definition) = definition else {
-        return true;
-    };
-    match definition {
-        FunctionValueDefinition::Array(_) => true,
+    match definition.as_ref()? {
+        FunctionValueDefinition::Array(_) => None,
         FunctionValueDefinition::Expression(TypedExpression {
             e: Expression::LambdaExpression(_, LambdaExpression { params, .. }),
             type_scheme,
-        }) => {
-            params.len() == 1
-                && type_scheme
-                    .as_ref()
-                    .map(|ts| *ts == Type::Col.into())
-                    .unwrap_or(true)
+        }) if params.len() == 1
+            && type_scheme
+                .as_ref()
+                .map(|ts| *ts == Type::Col.into())
+                .unwrap_or(true) =>
+        {
+            None
         }
-        _ => false,
+        FunctionValueDefinition::Expression(e) => Some(e),
+        _ => unreachable!(),
     }
 }
 
@@ -455,7 +469,7 @@ impl Display for PolynomialReference {
                 } else {
                     self.name.clone()
                 };
-                write!(f, "{name}::<{}>", type_args.iter().join(", "))?;
+                write!(f, "{name}::{}", format_type_args(type_args))?;
                 return Ok(());
             }
         }
