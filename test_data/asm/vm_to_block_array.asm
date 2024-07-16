@@ -28,7 +28,7 @@ machine Arith with
     operation mul<1> x[0], x[1] -> y;
 
     col fixed latch = [1]*;
-    col witness operation_id;
+    let operation_id;
     col witness x[2];
     col witness y;
 

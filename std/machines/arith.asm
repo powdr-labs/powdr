@@ -11,6 +11,9 @@ use std::prover::eval;
 use std::prover::Query;
 use std::machines::range::Byte2;
 
+let create_wit_array: int -> expr[] = constr |length|
+    std::array::new(length, || { let x; });
+
 // Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 // Currently only supports "Equation 0", i.e., 256-Bit addition and multiplication.
 machine Arith with
@@ -22,7 +25,7 @@ machine Arith with
     Byte2 byte2;
     
     // The operation ID will be bit-decomposed to yield selEq[], controlling which equations are activated.
-    col witness operation_id;
+    let operation_id;
 
     // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 32-Bit limbs in little-endian order).
     // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3
@@ -50,7 +53,12 @@ machine Arith with
     let mul = |x, y| ff::mul(x, y, secp_modulus);
     let div = |x, y| ff::div(x, y, secp_modulus);
 
-    pol commit x1[16], y2[16], x3[16], y3[16];
+
+    // TODO this might create intermediate columns...
+    let x1 = create_wit_array(16);
+    let y2 = create_wit_array(16);
+    let x3 = create_wit_array(16);
+    let y3 = create_wit_array(16);
 
     // Selects the ith limb of x (little endian)
     // Note that the most significant limb can be up to 32 bits; all others are 16 bits.
@@ -155,117 +163,118 @@ machine Arith with
         _ => Query::None
     };
 
-    col witness y1_0(i) query hint_if_eq0(quotient_hint, 0);
-    col witness y1_1(i) query hint_if_eq0(quotient_hint, 1);
-    col witness y1_2(i) query hint_if_eq0(quotient_hint, 2);
-    col witness y1_3(i) query hint_if_eq0(quotient_hint, 3);
-    col witness y1_4(i) query hint_if_eq0(quotient_hint, 4);
-    col witness y1_5(i) query hint_if_eq0(quotient_hint, 5);
-    col witness y1_6(i) query hint_if_eq0(quotient_hint, 6);
-    col witness y1_7(i) query hint_if_eq0(quotient_hint, 7);
-    col witness y1_8(i) query hint_if_eq0(quotient_hint, 8);
-    col witness y1_9(i) query hint_if_eq0(quotient_hint, 9);
-    col witness y1_10(i) query hint_if_eq0(quotient_hint, 10);
-    col witness y1_11(i) query hint_if_eq0(quotient_hint, 11);
-    col witness y1_12(i) query hint_if_eq0(quotient_hint, 12);
-    col witness y1_13(i) query hint_if_eq0(quotient_hint, 13);
-    col witness y1_14(i) query hint_if_eq0(quotient_hint, 14);
-    col witness y1_15(i) query hint_if_eq0(quotient_hint, 15);
+    // TODO add a way to provide the hint.
+    let y1_0: col; //(i) query hint_if_eq0(quotient_hint, 0);
+    let y1_1: col; //(i) query hint_if_eq0(quotient_hint, 1);
+    let y1_2: col; //(i) query hint_if_eq0(quotient_hint, 2);
+    let y1_3: col; //(i) query hint_if_eq0(quotient_hint, 3);
+    let y1_4: col; //(i) query hint_if_eq0(quotient_hint, 4);
+    let y1_5: col; //(i) query hint_if_eq0(quotient_hint, 5);
+    let y1_6: col; //(i) query hint_if_eq0(quotient_hint, 6);
+    let y1_7: col; //(i) query hint_if_eq0(quotient_hint, 7);
+    let y1_8: col; //(i) query hint_if_eq0(quotient_hint, 8);
+    let y1_9: col; //(i) query hint_if_eq0(quotient_hint, 9);
+    let y1_10: col; //(i) query hint_if_eq0(quotient_hint, 10);
+    let y1_11: col; //(i) query hint_if_eq0(quotient_hint, 11);
+    let y1_12: col; //(i) query hint_if_eq0(quotient_hint, 12);
+    let y1_13: col; //(i) query hint_if_eq0(quotient_hint, 13);
+    let y1_14: col; //(i) query hint_if_eq0(quotient_hint, 14);
+    let y1_15: col; //(i) query hint_if_eq0(quotient_hint, 15);
 
     let y1: expr[16] = [y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, y1_8, y1_9, y1_10, y1_11, y1_12, y1_13, y1_14, y1_15];
 
-    col witness x2_0(i) query hint_if_eq0(remainder_hint, 0);
-    col witness x2_1(i) query hint_if_eq0(remainder_hint, 1);
-    col witness x2_2(i) query hint_if_eq0(remainder_hint, 2);
-    col witness x2_3(i) query hint_if_eq0(remainder_hint, 3);
-    col witness x2_4(i) query hint_if_eq0(remainder_hint, 4);
-    col witness x2_5(i) query hint_if_eq0(remainder_hint, 5);
-    col witness x2_6(i) query hint_if_eq0(remainder_hint, 6);
-    col witness x2_7(i) query hint_if_eq0(remainder_hint, 7);
-    col witness x2_8(i) query hint_if_eq0(remainder_hint, 8);
-    col witness x2_9(i) query hint_if_eq0(remainder_hint, 9);
-    col witness x2_10(i) query hint_if_eq0(remainder_hint, 10);
-    col witness x2_11(i) query hint_if_eq0(remainder_hint, 11);
-    col witness x2_12(i) query hint_if_eq0(remainder_hint, 12);
-    col witness x2_13(i) query hint_if_eq0(remainder_hint, 13);
-    col witness x2_14(i) query hint_if_eq0(remainder_hint, 14);
-    col witness x2_15(i) query hint_if_eq0(remainder_hint, 15);
+    let x2_0: col; //(i) query hint_if_eq0(remainder_hint, 0);
+    let x2_1: col; //(i) query hint_if_eq0(remainder_hint, 1);
+    let x2_2: col; //(i) query hint_if_eq0(remainder_hint, 2);
+    let x2_3: col; //(i) query hint_if_eq0(remainder_hint, 3);
+    let x2_4: col; //(i) query hint_if_eq0(remainder_hint, 4);
+    let x2_5: col; //(i) query hint_if_eq0(remainder_hint, 5);
+    let x2_6: col; //(i) query hint_if_eq0(remainder_hint, 6);
+    let x2_7: col; //(i) query hint_if_eq0(remainder_hint, 7);
+    let x2_8: col; //(i) query hint_if_eq0(remainder_hint, 8);
+    let x2_9: col; //(i) query hint_if_eq0(remainder_hint, 9);
+    let x2_10: col; //(i) query hint_if_eq0(remainder_hint, 10);
+    let x2_11: col; //(i) query hint_if_eq0(remainder_hint, 11);
+    let x2_12: col; //(i) query hint_if_eq0(remainder_hint, 12);
+    let x2_13: col; //(i) query hint_if_eq0(remainder_hint, 13);
+    let x2_14: col; //(i) query hint_if_eq0(remainder_hint, 14);
+    let x2_15: col; //(i) query hint_if_eq0(remainder_hint, 15);
 
     let x2: expr[16] = [x2_0, x2_1, x2_2, x2_3, x2_4, x2_5, x2_6, x2_7, x2_8, x2_9, x2_10, x2_11, x2_12, x2_13, x2_14, x2_15];
 
-    col witness s_0(i) query Query::Hint(fe(select_limb(s_hint(), 0)));
-    col witness s_1(i) query Query::Hint(fe(select_limb(s_hint(), 1)));
-    col witness s_2(i) query Query::Hint(fe(select_limb(s_hint(), 2)));
-    col witness s_3(i) query Query::Hint(fe(select_limb(s_hint(), 3)));
-    col witness s_4(i) query Query::Hint(fe(select_limb(s_hint(), 4)));
-    col witness s_5(i) query Query::Hint(fe(select_limb(s_hint(), 5)));
-    col witness s_6(i) query Query::Hint(fe(select_limb(s_hint(), 6)));
-    col witness s_7(i) query Query::Hint(fe(select_limb(s_hint(), 7)));
-    col witness s_8(i) query Query::Hint(fe(select_limb(s_hint(), 8)));
-    col witness s_9(i) query Query::Hint(fe(select_limb(s_hint(), 9)));
-    col witness s_10(i) query Query::Hint(fe(select_limb(s_hint(), 10)));
-    col witness s_11(i) query Query::Hint(fe(select_limb(s_hint(), 11)));
-    col witness s_12(i) query Query::Hint(fe(select_limb(s_hint(), 12)));
-    col witness s_13(i) query Query::Hint(fe(select_limb(s_hint(), 13)));
-    col witness s_14(i) query Query::Hint(fe(select_limb(s_hint(), 14)));
-    col witness s_15(i) query Query::Hint(fe(select_limb(s_hint(), 15)));
+    let s_0: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 0)));
+    let s_1: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 1)));
+    let s_2: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 2)));
+    let s_3: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 3)));
+    let s_4: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 4)));
+    let s_5: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 5)));
+    let s_6: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 6)));
+    let s_7: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 7)));
+    let s_8: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 8)));
+    let s_9: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 9)));
+    let s_10: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 10)));
+    let s_11: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 11)));
+    let s_12: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 12)));
+    let s_13: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 13)));
+    let s_14: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 14)));
+    let s_15: col; //(i) query Query::Hint(fe(select_limb(s_hint(), 15)));
 
     let s: expr[16] = [s_0, s_1, s_2, s_3, s_4, s_5, s_6, s_7, s_8, s_9, s_10, s_11, s_12, s_13, s_14, s_15];
 
-    col witness q0_0(i) query Query::Hint(fe(select_limb(q0_hint(), 0)));
-    col witness q0_1(i) query Query::Hint(fe(select_limb(q0_hint(), 1)));
-    col witness q0_2(i) query Query::Hint(fe(select_limb(q0_hint(), 2)));
-    col witness q0_3(i) query Query::Hint(fe(select_limb(q0_hint(), 3)));
-    col witness q0_4(i) query Query::Hint(fe(select_limb(q0_hint(), 4)));
-    col witness q0_5(i) query Query::Hint(fe(select_limb(q0_hint(), 5)));
-    col witness q0_6(i) query Query::Hint(fe(select_limb(q0_hint(), 6)));
-    col witness q0_7(i) query Query::Hint(fe(select_limb(q0_hint(), 7)));
-    col witness q0_8(i) query Query::Hint(fe(select_limb(q0_hint(), 8)));
-    col witness q0_9(i) query Query::Hint(fe(select_limb(q0_hint(), 9)));
-    col witness q0_10(i) query Query::Hint(fe(select_limb(q0_hint(), 10)));
-    col witness q0_11(i) query Query::Hint(fe(select_limb(q0_hint(), 11)));
-    col witness q0_12(i) query Query::Hint(fe(select_limb(q0_hint(), 12)));
-    col witness q0_13(i) query Query::Hint(fe(select_limb(q0_hint(), 13)));
-    col witness q0_14(i) query Query::Hint(fe(select_limb(q0_hint(), 14)));
-    col witness q0_15(i) query Query::Hint(fe(select_limb(q0_hint(), 15)));
+    let q0_0: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 0)));
+    let q0_1: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 1)));
+    let q0_2: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 2)));
+    let q0_3: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 3)));
+    let q0_4: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 4)));
+    let q0_5: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 5)));
+    let q0_6: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 6)));
+    let q0_7: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 7)));
+    let q0_8: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 8)));
+    let q0_9: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 9)));
+    let q0_10: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 10)));
+    let q0_11: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 11)));
+    let q0_12: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 12)));
+    let q0_13: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 13)));
+    let q0_14: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 14)));
+    let q0_15: col; //(i) query Query::Hint(fe(select_limb(q0_hint(), 15)));
 
     let q0: expr[16] = [q0_0, q0_1, q0_2, q0_3, q0_4, q0_5, q0_6, q0_7, q0_8, q0_9, q0_10, q0_11, q0_12, q0_13, q0_14, q0_15];
 
-    col witness q1_0(i) query Query::Hint(fe(select_limb(q1_hint(), 0)));
-    col witness q1_1(i) query Query::Hint(fe(select_limb(q1_hint(), 1)));
-    col witness q1_2(i) query Query::Hint(fe(select_limb(q1_hint(), 2)));
-    col witness q1_3(i) query Query::Hint(fe(select_limb(q1_hint(), 3)));
-    col witness q1_4(i) query Query::Hint(fe(select_limb(q1_hint(), 4)));
-    col witness q1_5(i) query Query::Hint(fe(select_limb(q1_hint(), 5)));
-    col witness q1_6(i) query Query::Hint(fe(select_limb(q1_hint(), 6)));
-    col witness q1_7(i) query Query::Hint(fe(select_limb(q1_hint(), 7)));
-    col witness q1_8(i) query Query::Hint(fe(select_limb(q1_hint(), 8)));
-    col witness q1_9(i) query Query::Hint(fe(select_limb(q1_hint(), 9)));
-    col witness q1_10(i) query Query::Hint(fe(select_limb(q1_hint(), 10)));
-    col witness q1_11(i) query Query::Hint(fe(select_limb(q1_hint(), 11)));
-    col witness q1_12(i) query Query::Hint(fe(select_limb(q1_hint(), 12)));
-    col witness q1_13(i) query Query::Hint(fe(select_limb(q1_hint(), 13)));
-    col witness q1_14(i) query Query::Hint(fe(select_limb(q1_hint(), 14)));
-    col witness q1_15(i) query Query::Hint(fe(select_limb(q1_hint(), 15)));
+    let q1_0: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 0)));
+    let q1_1: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 1)));
+    let q1_2: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 2)));
+    let q1_3: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 3)));
+    let q1_4: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 4)));
+    let q1_5: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 5)));
+    let q1_6: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 6)));
+    let q1_7: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 7)));
+    let q1_8: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 8)));
+    let q1_9: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 9)));
+    let q1_10: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 10)));
+    let q1_11: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 11)));
+    let q1_12: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 12)));
+    let q1_13: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 13)));
+    let q1_14: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 14)));
+    let q1_15: col; //(i) query Query::Hint(fe(select_limb(q1_hint(), 15)));
 
     let q1: expr[16] = [q1_0, q1_1, q1_2, q1_3, q1_4, q1_5, q1_6, q1_7, q1_8, q1_9, q1_10, q1_11, q1_12, q1_13, q1_14, q1_15];
 
-    col witness q2_0(i) query Query::Hint(fe(select_limb(q2_hint(), 0)));
-    col witness q2_1(i) query Query::Hint(fe(select_limb(q2_hint(), 1)));
-    col witness q2_2(i) query Query::Hint(fe(select_limb(q2_hint(), 2)));
-    col witness q2_3(i) query Query::Hint(fe(select_limb(q2_hint(), 3)));
-    col witness q2_4(i) query Query::Hint(fe(select_limb(q2_hint(), 4)));
-    col witness q2_5(i) query Query::Hint(fe(select_limb(q2_hint(), 5)));
-    col witness q2_6(i) query Query::Hint(fe(select_limb(q2_hint(), 6)));
-    col witness q2_7(i) query Query::Hint(fe(select_limb(q2_hint(), 7)));
-    col witness q2_8(i) query Query::Hint(fe(select_limb(q2_hint(), 8)));
-    col witness q2_9(i) query Query::Hint(fe(select_limb(q2_hint(), 9)));
-    col witness q2_10(i) query Query::Hint(fe(select_limb(q2_hint(), 10)));
-    col witness q2_11(i) query Query::Hint(fe(select_limb(q2_hint(), 11)));
-    col witness q2_12(i) query Query::Hint(fe(select_limb(q2_hint(), 12)));
-    col witness q2_13(i) query Query::Hint(fe(select_limb(q2_hint(), 13)));
-    col witness q2_14(i) query Query::Hint(fe(select_limb(q2_hint(), 14)));
-    col witness q2_15(i) query Query::Hint(fe(select_limb(q2_hint(), 15)));
+    let q2_0: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 0)));
+    let q2_1: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 1)));
+    let q2_2: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 2)));
+    let q2_3: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 3)));
+    let q2_4: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 4)));
+    let q2_5: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 5)));
+    let q2_6: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 6)));
+    let q2_7: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 7)));
+    let q2_8: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 8)));
+    let q2_9: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 9)));
+    let q2_10: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 10)));
+    let q2_11: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 11)));
+    let q2_12: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 12)));
+    let q2_13: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 13)));
+    let q2_14: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 14)));
+    let q2_15: col; //(i) query Query::Hint(fe(select_limb(q2_hint(), 15)));
 
     let q2: expr[16] = [q2_0, q2_1, q2_2, q2_3, q2_4, q2_5, q2_6, q2_7, q2_8, q2_9, q2_10, q2_11, q2_12, q2_13, q2_14, q2_15];
 
@@ -322,7 +331,13 @@ machine Arith with
     // Having a larger range-constraint is fine, because we're only multiplying it with 16-bit
     // limbs of the prime, so the result is within 48 bits, still far from overflowing the
     // Goldilocks field.
-    pol witness q0_15_high, q0_15_low, q1_15_high, q1_15_low, q2_15_high, q2_15_low;
+    let q0_15_high;
+    let q0_15_low;
+    let q1_15_high;
+    let q1_15_low;
+    let q2_15_high;
+    let q2_15_low;
+
     link => byte2.check(q0_15_high * CLK32[0] + q0_15_low * CLK32[1] + q1_15_high * CLK32[2] + q1_15_low * CLK32[3] + q2_15_high * CLK32[4] + q2_15_low * CLK32[5]);
 
     fixed_inside_32_block(q0_15_high);
@@ -425,7 +440,7 @@ machine Arith with
     // Binary selectors for the equations that are activated. Determined from the operation ID via bit-decomposition.
     // Note that there are only 4 selectors because equation 4 is activated iff. equation 3 is activated, so we can
     // re-use the same selector.
-    pol commit selEq[4];
+    let selEq: col[4];
     // Note that this implies that the selEq[] columns are also constant within the block.
     fixed_inside_32_block(operation_id);
     array::map(selEq, |c| force_bool(c));
@@ -440,7 +455,8 @@ machine Arith with
     // Note that Polygon uses a single 22-Bit column. However, this approach allows for a lower degree (2**16)
     // while still preventing overflows: The 32-bit carry gets added to 32 48-Bit values, which can't overflow
     // the Goldilocks field.
-    pol witness carry_low[3], carry_high[3];
+    let carry_low: col[3];
+    let carry_high: col[3];
     link => byte2.check(carry_low[0]);
     link => byte2.check(carry_low[1]);
     link => byte2.check(carry_low[2]);
@@ -459,11 +475,11 @@ machine Arith with
     *
     *******/
     
-    col eq0_sum = sum(32, |i| eq0(i) * CLK32[i]);
-    col eq1_sum = sum(32, |i| eq1(i) * CLK32[i]);
-    col eq2_sum = sum(32, |i| eq2(i) * CLK32[i]);
-    col eq3_sum = sum(32, |i| eq3(i) * CLK32[i]);
-    col eq4_sum = sum(32, |i| eq4(i) * CLK32[i]);
+    let eq0_sum = sum(32, |i| eq0(i) * CLK32[i]);
+    let eq1_sum = sum(32, |i| eq1(i) * CLK32[i]);
+    let eq2_sum = sum(32, |i| eq2(i) * CLK32[i]);
+    let eq3_sum = sum(32, |i| eq3(i) * CLK32[i]);
+    let eq4_sum = sum(32, |i| eq4(i) * CLK32[i]);
 
     selEq[0] * (eq0_sum + carry[0]) = selEq[0] * carry[0]' * 2**16;
     selEq[1] * (eq1_sum + carry[0]) = selEq[1] * carry[0]' * 2**16;
