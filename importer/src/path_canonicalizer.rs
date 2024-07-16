@@ -16,8 +16,9 @@ use powdr_ast::parsed::{
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
     FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
-    MatchExpression, Pattern, PilStatement, StatementInsideBlock, StructDeclaration,
-    TraitDeclaration, TraitFunction, TypedExpression, UnaryOperation,
+    MatchExpression, NamedExpression, Pattern, PilStatement, StatementInsideBlock,
+    StructDeclaration, StructExpression, TraitDeclaration, TraitFunction, TypedExpression,
+    UnaryOperation,
 };
 use powdr_parser_util::{Error, SourceRef};
 
