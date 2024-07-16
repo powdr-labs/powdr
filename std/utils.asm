@@ -1,4 +1,3 @@
-
 /// Evaluates to folder(...folder(folder(initial, f(0)), f(1)) ..., f(length - 1)),
 /// i.e. calls f(0), f(1), ..., f(length - 1) and combines the results
 /// using the function `folder`, starting with the value `initial`.

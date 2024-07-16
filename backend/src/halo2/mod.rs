@@ -159,11 +159,9 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<T> {
         Ok(self.write_setup(&mut output)?)
     }
 
-    fn export_verification_key(&self, mut output: &mut dyn io::Write) -> Result<(), Error> {
+    fn verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
         let vk = self.verification_key()?;
-        vk.write(&mut output, SerdeFormat::Processed)?;
-
-        Ok(())
+        Ok(vk.to_bytes(SerdeFormat::Processed))
     }
 
     fn export_ethereum_verifier(&self, output: &mut dyn io::Write) -> Result<(), Error> {
