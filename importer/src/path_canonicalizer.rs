@@ -817,7 +817,7 @@ fn check_expression(
             //check_path on name?
             fields
                 .iter()
-                .try_for_each(|NamedExpression { name, expr }| {
+                .try_for_each(|NamedExpression { name: _, expr }| {
                     check_expression(location, expr, state, local_variables)
                 })
         }
