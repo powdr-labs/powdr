@@ -29,7 +29,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     let non_std_non_rom_machines = input
         .machines()
         .filter(|(k, _)| k.parts().next() != Some("std"))
-        .filter(|(k, _)| !k.parts().last().unwrap().contains("ROM"))
+        .filter(|(k, _)| !k.parts().last().unwrap().ends_with("ROM"))
         .collect::<BTreeMap<_, _>>();
 
     // we start from the main machine
