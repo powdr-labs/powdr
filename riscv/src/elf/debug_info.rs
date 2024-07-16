@@ -170,7 +170,7 @@ impl DebugInfo {
                     }
                     // This is the entry for a variable.
                     gimli::DW_TAG_variable => {
-                        let Some(address) = get_location_address(&unit, entry)? else {
+                        let Some(address) = get_static_var_address(&unit, entry)? else {
                             continue;
                         };
 
@@ -309,7 +309,7 @@ fn as_str<'a>(
     unit.attr_string(attr)?.to_string()
 }
 
-fn get_location_address(
+fn get_static_var_address(
     unit: &Unit<Reader>,
     entry: &DebuggingInformationEntry<Reader>,
 ) -> Result<Option<u32>, gimli::Error> {
@@ -319,7 +319,7 @@ fn get_location_address(
     };
 
     let AttributeValue::Exprloc(address) = attr else {
-        log::warn!("Unexpected value for address of a debug symbol. Ignoring.");
+        // Not an static variable
         return Ok(None);
     };
 
@@ -328,7 +328,7 @@ fn get_location_address(
     let first_op = ops.next()?;
     let second_op = ops.next()?;
     let (Some(Operation::Address { address }), None) = (first_op, second_op) else {
-        log::warn!("Unexpected expression for address of a debug symbol. Ignoring.");
+        // The address is not a constant
         return Ok(None);
     };
 
