@@ -2,6 +2,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
 use powdr_number::{buffered_write_file, BigInt, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
+use std::fs;
 use std::path::PathBuf;
 
 use std::sync::Arc;
@@ -73,7 +74,20 @@ pub fn verify_pipeline(
 
     pipeline.compute_proof().unwrap();
 
-    verify(pipeline.output_dir().as_ref().unwrap())
+    let out_dir = pipeline.output_dir().as_ref().unwrap();
+    if backend.is_composite() {
+        // traverse all subdirs of the given output dir and verify each subproof
+        for entry in fs::read_dir(out_dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_dir() {
+                verify(&path)?;
+            }
+        }
+        Ok(())
+    } else {
+        verify(out_dir)
+    }
 }
 
 /// Makes a new pipeline for the given file and inputs. All steps until witness generation are
@@ -198,10 +212,11 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
     // Setup
     let output_dir = pipeline.output_dir().clone().unwrap();
     let setup_file_path = output_dir.join("params.bin");
+    let max_degree = pil.degrees().into_iter().max().unwrap();
     buffered_write_file(&setup_file_path, |writer| {
         powdr_backend::BackendType::Halo2
             .factory::<Bn254Field>()
-            .generate_setup(pil.degree(), writer)
+            .generate_setup(max_degree, writer)
             .unwrap()
     })
     .unwrap();
