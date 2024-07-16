@@ -661,11 +661,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "set_reg" => {
                 let addr = args[0].u();
                 self.proc.set_reg_mem(addr, args[1]);
+
                 Vec::new()
             }
             "get_reg" => {
                 let addr = args[0].u();
                 let val = self.proc.get_reg_mem(addr);
+
                 vec![val]
             }
             "move_reg" => {
@@ -674,11 +676,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let factor = args[2];
                 let offset = args[3];
 
-                //log::trace!("move_reg: val = {val}, factor = {factor}, offset = {offset}");
-
                 let val = val.mul(&factor).add(&offset);
 
                 self.proc.set_reg_mem(write_reg, val);
+
                 Vec::new()
             }
 
@@ -718,10 +719,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let offset = args[3].bin();
 
                 let addr = addr.bin() * factor + offset;
-                //log::trace!("addr = {:?}", addr);
                 let val = self.bootloader_inputs[addr as usize];
 
-                //log::trace!("bootloader input at {addr} = {val}");
                 self.proc.set_reg_mem(write_addr, val);
 
                 Vec::new()
@@ -765,8 +764,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-
-            // TODO
             "jump_to_bootloader_input" => {
                 let bootloader_input_idx = args[0].bin() as usize;
                 let addr = self.bootloader_inputs[bootloader_input_idx];
@@ -855,9 +852,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "add_wrap" => {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
-                let offset = args[2].bin();
+                let offset = args[2];
                 let write_reg = args[3].u();
-                let val: Elem<F> = (val1.bin() + val2.bin() + offset).into();
+                let val = val1.add(&val2).add(&offset);
                 // don't use .u() here: we are deliberately discarding the
                 // higher bits
                 let r = val.bin() as u32;
@@ -881,9 +878,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "add_wrap_signed" => {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
-                let offset = args[2].bin();
+                let offset = args[2];
                 let write_reg = args[3].u();
-                let val: Elem<F> = (val1.bin() - val2.bin() + offset).into();
+                let val = val1.sub(&val2).add(&offset);
 
                 let r = (val.bin() + 0x100000000) as u32;
                 self.proc.set_reg_mem(write_reg, r.into());
@@ -1013,18 +1010,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
             "poseidon_gl" => {
-                //log::trace!("poseidon_gl");
                 assert!(args.is_empty());
                 let inputs = (0..12)
                     .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
                     .collect::<Vec<_>>();
-                //log::trace!("inputs = {:?}", inputs);
                 let result = poseidon_gl::poseidon_gl(&inputs);
-                //log::trace!("result = {:?}", result);
                 (0..4).for_each(|i| {
                     self.proc
                         .set_reg(&register_by_idx(i), Elem::Field(result[i]))
                 });
+
                 vec![]
             }
             "affine_256" => {
@@ -1049,6 +1044,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc
                         .set_reg(&register_by_idx(i + 8), Elem::Field(result.1[i]))
                 });
+
                 vec![]
             }
             "mod_256" => {
@@ -1096,6 +1092,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc
                         .set_reg(&register_by_idx(i + 8), Elem::Field(result.1[i]))
                 });
+
                 vec![]
             }
             "ec_double" => {
@@ -1117,6 +1114,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc
                         .set_reg(&register_by_idx(i + 8), Elem::Field(result.1[i]))
                 });
+
                 vec![]
             }
             instr => {
@@ -1303,7 +1301,6 @@ pub fn execute_ast<T: FieldElement>(
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
 ) -> (ExecutionTrace<T>, MemoryState, RegisterMemoryState<T>) {
-    //log::trace!("bootloader inputs = {:?}", bootloader_inputs);
     let main_machine = get_main_machine(program);
     let PreprocessedMain {
         statements,
