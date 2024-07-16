@@ -810,9 +810,7 @@ fn check_expression(
             }
         }
         Expression::StructExpression(_, StructExpression { name: _, fields }) => {
-            //check_path_try_prelude(location.clone(), name.into(), state)
-            //    .map_err(|e| sr.with_error(e))?;
-            // Name to symbolpath?
+            //check_path on name?
             fields
                 .iter()
                 .try_for_each(|NamedExpression { name, expr }| {
