@@ -93,11 +93,11 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                 .collect::<BTreeMap<_, _>>();
 
             log::info!("* {}:", machine_name);
-            log::info!("  - Number of witness columns: {}", num_witness_columns);
-            log::info!("  - Number of fixed columns: {}", num_fixed_columns);
-            log::info!("  - Number of identities:");
+            log::info!("  * Number of witness columns: {}", num_witness_columns);
+            log::info!("  * Number of fixed columns: {}", num_fixed_columns);
+            log::info!("  * Number of identities:");
             for (kind, count) in num_identities_by_kind {
-                log::info!("    - {:?}: {}", kind, count);
+                log::info!("    * {:?}: {}", kind, count);
             }
         }
 
