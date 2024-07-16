@@ -70,10 +70,17 @@ where
     let num_chunks = bootloader_inputs.len();
 
     log::info!("Computing fixed columns...");
-    pipeline.compute_fixed_cols().unwrap();
+    let fixed_cols = pipeline.compute_fixed_cols().unwrap();
 
-    // we can assume optimized_pil has been computed
-    let length = pipeline.compute_optimized_pil().unwrap().degree();
+    pipeline.compute_optimized_pil().unwrap();
+
+    // TODO hacky way to find the degree of the main machine, fix.
+    let length = fixed_cols
+        .iter()
+        .find(|(col, _)| col == "main.STEP")
+        .unwrap()
+        .1
+        .len() as u64;
 
     bootloader_inputs
         .into_iter()
