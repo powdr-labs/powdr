@@ -73,22 +73,22 @@ pub fn bootloader_preamble() -> String {
     for (i, reg) in REGISTER_NAMES.iter().enumerate() {
         let reg = reg.strip_prefix("main.").unwrap();
         preamble.push_str(&format!(
-            "    public initial_{reg} = main_bootloader_inputs.value({i});\n"
+            "    //public initial_{reg} = main_bootloader_inputs.value({i});\n"
         ));
     }
     for (i, reg) in REGISTER_NAMES.iter().enumerate() {
         let reg = reg.strip_prefix("main.").unwrap();
         preamble.push_str(&format!(
-            "    public final_{reg} = main_bootloader_inputs.value({});\n",
+            "    //public final_{reg} = main_bootloader_inputs.value({});\n",
             i + REGISTER_NAMES.len()
         ));
     }
     preamble.push_str(&format!(
         r#"
-    public initial_memory_hash_1 = main_bootloader_inputs.value({});
-    public initial_memory_hash_2 = main_bootloader_inputs.value({});
-    public initial_memory_hash_3 = main_bootloader_inputs.value({});
-    public initial_memory_hash_4 = main_bootloader_inputs.value({});
+    //public initial_memory_hash_1 = main_bootloader_inputs.value({});
+    //public initial_memory_hash_2 = main_bootloader_inputs.value({});
+    //public initial_memory_hash_3 = main_bootloader_inputs.value({});
+    //public initial_memory_hash_4 = main_bootloader_inputs.value({});
 "#,
         MEMORY_HASH_START_INDEX,
         MEMORY_HASH_START_INDEX + 1,
@@ -97,10 +97,10 @@ pub fn bootloader_preamble() -> String {
     ));
     preamble.push_str(&format!(
         r#"
-    public final_memory_hash_1 = main_bootloader_inputs.value({});
-    public final_memory_hash_2 = main_bootloader_inputs.value({});
-    public final_memory_hash_3 = main_bootloader_inputs.value({});
-    public final_memory_hash_4 = main_bootloader_inputs.value({});
+    //public final_memory_hash_1 = main_bootloader_inputs.value({});
+    //public final_memory_hash_2 = main_bootloader_inputs.value({});
+    //public final_memory_hash_3 = main_bootloader_inputs.value({});
+    //public final_memory_hash_4 = main_bootloader_inputs.value({});
 "#,
         MEMORY_HASH_START_INDEX + 4,
         MEMORY_HASH_START_INDEX + 5,

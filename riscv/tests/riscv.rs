@@ -4,7 +4,7 @@ use common::{verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
 use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
-use powdr_pipeline::{verify::verify, Pipeline};
+use powdr_pipeline::{test_util::verify_pipeline, Pipeline};
 use std::path::{Path, PathBuf};
 use test_log::test;
 
@@ -47,11 +47,7 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
         .with_prover_inputs(Default::default())
         .with_output(tmp_dir.to_path_buf(), false);
     let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
-        // Can't use `verify_pipeline`, because the pipeline was renamed in the middle of after
-        // computing the constants file.
-        let mut pipeline = pipeline.with_backend(BackendType::EStarkDump, None);
-        pipeline.compute_proof().unwrap();
-        verify(pipeline.output_dir().as_ref().unwrap()).unwrap();
+        verify_pipeline(pipeline, BackendType::EStarkDumpComposite).unwrap();
 
         Ok(())
     };
@@ -154,7 +150,7 @@ fn vec_median_estark_polygon() {
             .map(|x| x.into())
             .collect(),
         &Runtime::base(),
-        BackendType::EStarkPolygon,
+        BackendType::EStarkPolygonComposite,
     );
 }
 
@@ -387,7 +383,13 @@ fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
     runtime: &Runtime,
     data: Vec<(u32, S)>,
 ) {
-    verify_riscv_crate_from_both_paths(case, inputs, runtime, Some(data), BackendType::EStarkDump)
+    verify_riscv_crate_from_both_paths(
+        case,
+        inputs,
+        runtime,
+        Some(data),
+        BackendType::EStarkDumpComposite,
+    )
 }
 
 fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'static>(
