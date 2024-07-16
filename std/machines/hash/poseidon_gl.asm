@@ -16,7 +16,7 @@ machine PoseidonGL with
     // hash functions.
     operation poseidon_permutation<0> state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7], state[8], state[9], state[10], state[11] -> output[0], output[1], output[2], output[3];
 
-    col witness operation_id;
+    let operation_id;
 
     // Ported from:
     // - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil

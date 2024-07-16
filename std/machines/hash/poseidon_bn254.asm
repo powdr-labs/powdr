@@ -16,7 +16,7 @@ machine PoseidonBN254 with
     // hash functions.
     operation poseidon_permutation<0> state[0], state[1], state[2] -> output[0];
 
-    col witness operation_id;
+    let operation_id;
 
     // Using parameters from https://eprint.iacr.org/2019/458.pdf
     // See https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/poseidonperm_x5_254_3.sage
@@ -34,9 +34,9 @@ machine PoseidonBN254 with
     let PARTIAL_ROUNDS = 57;
     let ROWS_PER_HASH = FULL_ROUNDS + PARTIAL_ROUNDS + 1;
 
-    pol constant L0 = [1] + [0]*;
-    pol constant FIRSTBLOCK(i) { if i % ROWS_PER_HASH == 0 { 1 } else { 0 } };
-    pol constant LASTBLOCK(i) { if i % ROWS_PER_HASH == ROWS_PER_HASH - 1 { 1 } else { 0 } };
+    let L0: col = |i| if i == 0 { 1 } else { 0 };
+    let FIRSTBLOCK: col = |i| { if i % ROWS_PER_HASH == 0 { 1 } else { 0 } };
+    let LASTBLOCK: col = |i| { if i % ROWS_PER_HASH == ROWS_PER_HASH - 1 { 1 } else { 0 } };
     // Like LASTBLOCK, but also 1 in the last row of the table
     // Specified this way because we can't access the degree in the match statement
     pol constant LAST = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]* + [1];

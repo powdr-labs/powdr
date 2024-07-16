@@ -9,7 +9,7 @@ machine Arith with
 
     operation sub<1> z, x -> y;
 
-    col witness operation_id;
+    let operation_id;
     col fixed latch = [1]*;
     col witness x;
     col witness y;

@@ -638,7 +638,7 @@ machine NegativeForUnsigned {
 machine SubVM with latch: latch, operation_id: operation_id, min_degree: 64, max_degree: 128 {
     operation add5<0> x -> y;
 
-    col witness operation_id;
+    let operation_id;
     col fixed latch = [1]*;
 
     col witness x;

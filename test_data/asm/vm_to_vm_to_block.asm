@@ -59,7 +59,7 @@ machine Arith with
     operation mul<1> x1, x2 -> y;
 
     col fixed latch = [1]*;
-    col witness operation_id;
+    let operation_id;
     col witness x1;
     col witness x2;
     col witness y;

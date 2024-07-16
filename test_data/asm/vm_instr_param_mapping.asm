@@ -23,7 +23,7 @@ machine AddVM with
 {
     operation add<0> x,y -> z;
 
-    col witness operation_id;
+    let operation_id;
     col fixed latch = [1]*;
 
     col witness x;

@@ -42,7 +42,7 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // Reads happen at the provided time step; writes happen at the next time step.
     operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
 
-    col witness operation_id;
+    let operation_id;
 
     // Ported from:
     // - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil

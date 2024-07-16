@@ -3,7 +3,7 @@ machine SubMachine with
     latch: latch,
     operation_id: operation_id
 {
-    col witness operation_id;
+    let operation_id;
     col fixed latch = [1]*;
 
     operation add<0> x, y -> z;

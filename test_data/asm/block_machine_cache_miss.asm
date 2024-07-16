@@ -6,7 +6,7 @@ machine Arith with
     operation double<0> x -> y;
     operation square<1> x -> y;
 
-    col witness operation_id;
+    let operation_id;
     col fixed latch = [1]*;
     col fixed X(i) {i};
     col fixed DOUBLE(i) {2*i};
