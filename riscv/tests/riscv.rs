@@ -4,7 +4,7 @@ use common::{verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
 use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
-use powdr_pipeline::{verify::verify, Pipeline};
+use powdr_pipeline::{test_util::verify_pipeline, Pipeline};
 use std::path::{Path, PathBuf};
 use test_log::test;
 
@@ -47,11 +47,7 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
         .with_prover_inputs(Default::default())
         .with_output(tmp_dir.to_path_buf(), false);
     let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
-        // Can't use `verify_pipeline`, because the pipeline was renamed in the middle of after
-        // computing the constants file.
-        let mut pipeline = pipeline.with_backend(BackendType::EStarkDumpComposite, None);
-        pipeline.compute_proof().unwrap();
-        verify(pipeline.output_dir().as_ref().unwrap()).unwrap();
+        verify_pipeline(pipeline, BackendType::EStarkDumpComposite).unwrap();
 
         Ok(())
     };
