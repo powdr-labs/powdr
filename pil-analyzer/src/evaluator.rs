@@ -298,9 +298,10 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     return None;
                 }
                 if let Some(fields) = fields_pattern {
-                    let patterns = data.iter().map(|(_, p)| p.clone()).collect();
+                    let patterns: Vec<Arc<Value<T>>> =
+                        data.iter().map(|(_, p)| p.clone()).collect();
                     let field_patterns: Vec<_> = fields.iter().map(|(_, p)| p.clone()).collect();
-                    Value::try_match_pattern_list(&patterns, &field_patterns)
+                    Value::try_match_pattern_list(&patterns.as_slice(), &field_patterns)
                 } else {
                     Some(vec![])
                 }
@@ -309,7 +310,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 
     fn try_match_pattern_list<'b>(
-        values: &Vec<Arc<Value<'b, T>>>,
+        values: &[Arc<Value<'b, T>>],
         patterns: &[Pattern],
     ) -> Option<Vec<Arc<Value<'b, T>>>> {
         assert_eq!(values.len(), patterns.len());
@@ -816,10 +817,9 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 for NamedExpression { name, expr } in fields.iter() {
                     self.expand(expr)?;
 
-                    let value = self
-                        .value_stack
-                        .pop()
-                        .ok_or_else(|| EvalError::DataNotAvailable)?;
+                    let value = self.value_stack.pop().ok_or(EvalError::SymbolNotFound(
+                        "Symbol {name} not found".to_string(),
+                    ))?;
 
                     exp_fields.push((name.as_str(), value));
                 }
@@ -1701,6 +1701,7 @@ mod test {
                 S3{ a: 1, b: 4, c } => 2 + c,
                 S3{ a, b, c } => a + b + c,
             };
+
             let t = [f(S3 with { a: 1, b: 2, c: 3 }), f(S3 with { a: 1, b: 4, c: 4 }), f(S3 with { a: 1, b: 3, c: 5 })];
         "#;
         assert_eq!(parse_and_evaluate_symbol(src, "t"), "[1, 6, 9]".to_string());
