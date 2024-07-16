@@ -875,37 +875,6 @@ impl TypeChecker {
                     }
                 }
             }
-            Pattern::Struct(_source_ref, name, fields) => {
-                match fields {
-                    Some(fields) => {
-                        for f in fields {
-                            if let Pattern::Ellipsis(_) = f.1 {
-                                break;
-                            }
-
-                            match &f.0 {
-                                Some(field_name) => {
-                                    let fname = format!("{name}.{field_name}");
-
-                                    let (ty, _generic_args) = self
-                                        .instantiate_scheme(self.declared_types[&fname].1.clone());
-                                    let ty = type_for_reference(&ty);
-
-                                    self.expect_type_of_pattern(&ty, &f.1)?;
-                                }
-                                None => {
-                                    let ty = self.new_type_var();
-                                    self.expect_type_of_pattern(&ty, &f.1)?;
-                                    self.local_var_types.push(ty.clone());
-                                }
-                            }
-                        }
-                    }
-                    None => {}
-                }
-
-                Type::NamedType(SymbolPath::from_identifier(name.to_string()), None)
-            }
         })
     }
 

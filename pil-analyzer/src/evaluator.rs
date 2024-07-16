@@ -290,22 +290,6 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     Some(vec![])
                 }
             }
-            Pattern::Struct(_, name, fields_pattern) => {
-                let Value::Struct(n, data) = v.as_ref() else {
-                    panic!()
-                };
-                if name.name() != n {
-                    return None;
-                }
-                if let Some(fields) = fields_pattern {
-                    let patterns: Vec<Arc<Value<T>>> =
-                        data.iter().map(|(_, p)| p.clone()).collect();
-                    let field_patterns: Vec<_> = fields.iter().map(|(_, p)| p.clone()).collect();
-                    Value::try_match_pattern_list(patterns.as_slice(), &field_patterns)
-                } else {
-                    Some(vec![])
-                }
-            }
         }
     }
 
@@ -1686,25 +1670,6 @@ mod test {
             parse_and_evaluate_symbol(src, "t"),
             "[1, 2, 7, 10001, 2, 109]".to_string()
         );
-    }
-
-    #[test]
-    pub fn match_struct() {
-        let src = r#"
-            struct S3 {
-                a: int,
-                b: int,
-                c: int,
-            }
-            let f: S3 -> int = |s| match s {
-                S3{ a: 1, b: 2, c } => 1,
-                S3{ a: 1, b: 4, c } => 2 + c,
-                S3{ a, b, c } => a + b + c,
-            };
-
-            let t = [f(S3 with { a: 1, b: 2, c: 3 }), f(S3 with { a: 1, b: 4, c: 4 }), f(S3 with { a: 1, b: 3, c: 5 })];
-        "#;
-        assert_eq!(parse_and_evaluate_symbol(src, "t"), "[1, 6, 9]".to_string());
     }
 
     #[test]

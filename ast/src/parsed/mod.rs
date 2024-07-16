@@ -1374,11 +1374,6 @@ pub enum Pattern {
     // an enum variant.
     Variable(SourceRef, String),
     Enum(SourceRef, SymbolPath, Option<Vec<Pattern>>),
-    Struct(
-        SourceRef,
-        SymbolPath,
-        Option<Vec<(Option<String>, Pattern)>>,
-    ),
 }
 
 impl Pattern {
@@ -1395,10 +1390,7 @@ impl Pattern {
         match self {
             Pattern::Ellipsis(_) => unreachable!(),
             Pattern::CatchAll(_) | Pattern::Variable(_, _) => true,
-            Pattern::Number(_, _)
-            | Pattern::String(_, _)
-            | Pattern::Enum(_, _, _)
-            | Pattern::Struct(_, _, _) => false,
+            Pattern::Number(_, _) | Pattern::String(_, _) | Pattern::Enum(_, _, _) => false,
             Pattern::Array(_, items) => {
                 // Only "[..]"" is irrefutable
                 matches!(&items[..], [Pattern::Ellipsis(_)])
@@ -1418,9 +1410,6 @@ impl Children<Pattern> for Pattern {
             | Pattern::Variable(_, _) => Box::new(empty()),
             Pattern::Tuple(_, p) | Pattern::Array(_, p) => Box::new(p.iter()),
             Pattern::Enum(_, _, fields) => Box::new(fields.iter().flatten()),
-            Pattern::Struct(_, _, fields) => {
-                Box::new(fields.iter().flatten().map(|(_, pattern)| pattern))
-            }
         }
     }
 
@@ -1433,9 +1422,6 @@ impl Children<Pattern> for Pattern {
             | Pattern::Variable(_, _) => Box::new(empty()),
             Pattern::Tuple(_, p) | Pattern::Array(_, p) => Box::new(p.iter_mut()),
             Pattern::Enum(_, _, fields) => Box::new(fields.iter_mut().flatten()),
-            Pattern::Struct(_, _, fields) => {
-                Box::new(fields.iter_mut().flatten().map(|(_, pattern)| pattern))
-            }
         }
     }
 }
@@ -1450,8 +1436,7 @@ impl SourceReference for Pattern {
             | Pattern::Variable(s, _)
             | Pattern::Tuple(s, _)
             | Pattern::Array(s, _)
-            | Pattern::Enum(s, _, _)
-            | Pattern::Struct(s, _, _) => s,
+            | Pattern::Enum(s, _, _) => s,
         }
     }
     fn source_reference_mut(&mut self) -> &mut SourceRef {
@@ -1463,8 +1448,7 @@ impl SourceReference for Pattern {
             | Pattern::Variable(s, _)
             | Pattern::Tuple(s, _)
             | Pattern::Array(s, _)
-            | Pattern::Enum(s, _, _)
-            | Pattern::Struct(s, _, _) => s,
+            | Pattern::Enum(s, _, _) => s,
         }
     }
 }

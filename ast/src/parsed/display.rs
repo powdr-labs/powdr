@@ -412,29 +412,6 @@ impl Display for Pattern {
                     .map(|fields| format!("({})", fields.iter().format(", ")))
                     .unwrap_or_default()
             ),
-            Pattern::Struct(_, name, fields) => write!(
-                f,
-                "{name}{}",
-                fields
-                    .as_ref()
-                    .map(|fields| {
-                        format!(
-                            "{{ {} }}",
-                            fields
-                                .iter()
-                                .map(|(opt_str, pattern)| {
-                                    if let Some(s) = opt_str {
-                                        format!("{s}: {pattern}")
-                                    } else {
-                                        format!("{pattern}")
-                                    }
-                                })
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        )
-                    })
-                    .unwrap_or_default()
-            ),
         }
     }
 }

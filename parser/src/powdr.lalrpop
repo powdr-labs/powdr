@@ -694,7 +694,6 @@ Pattern: Pattern = {
     // to allow `match x { (y, None) => ... }` to bind the first component
     // to `y` and match the enum variant `None` at the same time.
     EnumPattern,
-    StructPattern,
 }
 
 PatternIncludingEllipsis: Pattern = {
@@ -714,25 +713,6 @@ ArrayPattern: Pattern = {
 
 EnumPattern: Pattern = {
     <start:@L> <n:SymbolPath> <items:( "(" <PatternList> ")" )?> <end:@R> => Pattern::Enum(ctx.source_ref(start, end), n, items)
-}
-
-StructPattern: Pattern = {
-    <start:@L> <sp:SymbolPath> "{" <fields:StructPatternList?> "}" <end:@R> => Pattern::Struct(ctx.source_ref(start, end), sp, fields),
-}
-
-StructPatternList: Vec<(Option<String>, Pattern)> = {
-    <mut list:(<NamedPattern> ",")*> <start:@L> ".." <end:@R> => {
-        list.push((None, Pattern::Ellipsis(ctx.source_ref(start, end))));
-        list
-    },
-    <mut list:(<NamedPattern> ",")*> <last:NamedPattern> => {
-        list.push(last);
-        list
-    },
-}
-
-NamedPattern: (Option<String>, Pattern) = {
-    <name:( <Identifier> ":")?> <pattern:Pattern> => (name, pattern)
 }
 
 PatternList: Vec<Pattern> = {

@@ -626,19 +626,3 @@ fn struct_field_in_expr() {
 
     type_check(input, &[])
 }
-
-#[test]
-fn struct_as_pattern() {
-    let input = "
-    struct X {x: int, y: int}
-    let v: X -> int = |x| match x {
-        X{x: 1, y: 0} => 1,
-        X{x: 2, y: 2} => 2,
-        _ => 0,
-    };
-
-    let x: int = v(X with {x: 1, y: 0});
-    ";
-
-    type_check(input, &[])
-}

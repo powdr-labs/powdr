@@ -275,13 +275,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             Pattern::Enum(source_ref, name, fields) => {
                 self.process_enum_pattern(source_ref, self.driver.resolve_value_ref(&name), fields)
             }
-            Pattern::Struct(source_ref, name, fields) => {
-                if let Some((resolved_name, ..)) = self.driver.try_resolve_ref(&name) {
-                    self.process_struct_pattern(source_ref, resolved_name, fields)
-                } else {
-                    panic!("Symbol not found: {name}");
-                }
-            }
         }
     }
 
@@ -314,24 +307,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 fields
                     .into_iter()
                     .map(|p| self.process_pattern(p))
-                    .collect()
-            }),
-        )
-    }
-
-    fn process_struct_pattern(
-        &mut self,
-        source_ref: SourceRef,
-        name: String,
-        fields: Option<Vec<(Option<String>, Pattern)>>,
-    ) -> Pattern {
-        Pattern::Struct(
-            source_ref,
-            SymbolPath::from_str(&name).unwrap(),
-            fields.map(|fields| {
-                fields
-                    .into_iter()
-                    .map(|(name, pattern)| (name, self.process_pattern(pattern)))
                     .collect()
             }),
         )
