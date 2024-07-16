@@ -688,7 +688,7 @@ impl TypeChecker {
                 self.local_var_types.truncate(original_var_count);
                 result?
             }
-            Expression::StructExpression(_, struct_expr) => {
+            Expression::StructExpression(sr, struct_expr) => {
                 for named_expr in struct_expr.fields.iter_mut() {
                     let field_name = if struct_expr.name.contains('.') {
                         format!("{}::{}", struct_expr.name, named_expr.name).replace('.', "::")
