@@ -24,7 +24,7 @@ powdr-pipeline.workspace = true
 powdr-riscv-executor.workspace = true
 powdr-riscv-syscalls.workspace = true
 
-gimli = "0.30"
+gimli = "0.31"
 goblin = "0.8"
 lazy_static = "1.4.0"
 itertools = "0.13"

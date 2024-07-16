@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     collections::{BTreeMap, BTreeSet, HashMap},
+    path::Path,
 };
 
 use gimli::{
@@ -62,11 +63,10 @@ impl DebugInfo {
 
         let mut file_list = Vec::new();
         let mut source_locations = Vec::new();
-        let mut text_symbols = Vec::new();
-        let mut symbol_map = BTreeMap::new();
         let mut notes = HashMap::new();
 
-        let mut map_disambiguator = 0u32..;
+        // Read the ELF symbol table, to be joined with symbols from the DWARF.
+        let mut symbols = read_symbol_table(elf);
 
         // Iterate over the compilation units:
         let mut units_iter = dwarf.units();
@@ -77,6 +77,12 @@ impl DebugInfo {
             let unit = UnitRef::new(&dwarf, &unit);
 
             // Traverse all the line locations for the compilation unit.
+            let base_dir = Path::new(
+                unit.comp_dir
+                    .map(|s| s.to_string())
+                    .transpose()?
+                    .unwrap_or(""),
+            );
             let file_idx_delta = file_list.len() as isize - 1;
             if let Some(line_program) = unit.line_program.clone() {
                 // Get the source file listing
@@ -86,14 +92,28 @@ impl DebugInfo {
                         .map(|attr| as_str(unit, attr))
                         .transpose()?
                         .unwrap_or("");
+
+                    // This unwrap can not panic because both base_dir and
+                    // directory have been validated as UTF-8 strings.
+                    let directory = base_dir
+                        .join(directory)
+                        .into_os_string()
+                        .into_string()
+                        .unwrap();
+
                     let path = as_str(unit, file_entry.path_name())?;
 
-                    file_list.push((directory.to_owned(), path.to_owned()));
+                    file_list.push((directory, path.to_owned()));
                 }
 
                 // Get the locations indexed by address
                 let mut rows = line_program.rows();
                 while let Some((_, row)) = rows.next_row()? {
+                    // End markers point to the address after the end, so we skip them.
+                    if row.prologue_end() || row.end_sequence() {
+                        continue;
+                    }
+
                     source_locations.push(SourceLocationInfo {
                         address: row.address() as u32,
                         file: (row.file_index() as isize + file_idx_delta) as u64,
@@ -132,25 +152,25 @@ impl DebugInfo {
                 match entry.tag() {
                     // This is the entry for a function or method.
                     gimli::DW_TAG_subprogram => {
-                        let Some(linkage_name) = find_attr(entry, gimli::DW_AT_linkage_name)
-                            .map(|ln| unit.attr_string(ln))
-                            .transpose()?
-                        else {
-                            log::warn!("No linkage name for function or method in debug symbols. Ignoring.");
-                            continue;
+                        let attr = find_attr(entry, gimli::DW_AT_linkage_name);
+                        let linkage_name = if let Some(linkage_name) =
+                            attr.map(|ln| unit.attr_string(ln)).transpose()?
+                        {
+                            linkage_name.to_string()?
+                        } else {
+                            "__unknown_function"
                         };
 
-                        let Some(address) = parse_address(&unit, entry)? else {
-                            continue;
-                        };
-
-                        if jump_targets.contains(&address) {
-                            text_symbols.push((linkage_name.to_string()?.to_owned(), address));
+                        let start_addresses = get_function_start(&dwarf, &unit, entry)?;
+                        for address in start_addresses {
+                            if jump_targets.contains(&address) {
+                                symbols.push((linkage_name.to_owned(), address));
+                            }
                         }
                     }
                     // This is the entry for a variable.
                     gimli::DW_TAG_variable => {
-                        let Some(address) = parse_address(&unit, entry)? else {
+                        let Some(address) = get_location_address(&unit, entry)? else {
                             continue;
                         };
 
@@ -198,10 +218,7 @@ impl DebugInfo {
                             .map(|ln| unit.attr_string(ln))
                             .transpose()?
                         {
-                            symbol_map.insert(
-                                (address, map_disambiguator.next().unwrap()),
-                                linkage_name.to_string()?.to_owned(),
-                            );
+                            symbols.push((linkage_name.to_string()?.to_owned(), address));
                         }
                     }
                     _ => {}
@@ -212,21 +229,22 @@ impl DebugInfo {
         // Filter out the source locations that are not in the text section
         filter_locations_in_text(&mut source_locations, address_map);
 
-        println!("##### number of text symbols: {}", text_symbols.len());
-        // Deduplicate the text symbols
-        dedup_names(&mut text_symbols);
-        println!("##### number of text symbols: {}", text_symbols.len());
+        // Deduplicate the symbols
+        dedup_names(&mut symbols);
 
-        symbol_map.extend(
-            text_symbols
+        // Index by address, not by name.
+        let mut map_disambiguator = 0u32..;
+        let symbols = SymbolTable(
+            symbols
                 .into_iter()
-                .map(|(name, address)| ((address, map_disambiguator.next().unwrap()), name)),
+                .map(|(name, address)| ((address, map_disambiguator.next().unwrap()), name))
+                .collect(),
         );
 
         Ok(DebugInfo {
             file_list,
             source_locations,
-            symbols: SymbolTable(symbol_map),
+            symbols,
             notes,
         })
     }
@@ -263,6 +281,14 @@ fn load_dwarf_sections<'a>(elf: &Elf, file_buffer: &'a [u8]) -> Result<Dwarf<Rea
     .unwrap())
 }
 
+/// This function linear searches for an attribute of an entry.
+///
+/// My first idea was to iterate over the attribute list once, matching for all
+/// attributes I was interested in. But then I figured out this operation is
+/// N*M, where N is the number of attributes in the list and M is the number of
+/// attributes I am interested in. So doing the inverse is easier and has the
+/// same complexity. Since it is hard to tell in practice which one is faster, I
+/// went with the easier approach.
 fn find_attr<'a>(
     entry: &DebuggingInformationEntry<Reader<'a>>,
     attr_type: gimli::DwAt,
@@ -283,12 +309,17 @@ fn as_str<'a>(
     unit.attr_string(attr)?.to_string()
 }
 
-fn parse_address(
+fn get_location_address(
     unit: &Unit<Reader>,
     entry: &DebuggingInformationEntry<Reader>,
 ) -> Result<Option<u32>, gimli::Error> {
-    let Some(AttributeValue::Exprloc(address)) = find_attr(entry, gimli::DW_AT_location) else {
-        log::warn!("Address of a debug symbol in an unsupported format. Ignoring.");
+    let Some(attr) = find_attr(entry, gimli::DW_AT_location) else {
+        // No location available
+        return Ok(None);
+    };
+
+    let AttributeValue::Exprloc(address) = attr else {
+        log::warn!("Unexpected value for address of a debug symbol. Ignoring.");
         return Ok(None);
     };
 
@@ -297,11 +328,40 @@ fn parse_address(
     let first_op = ops.next()?;
     let second_op = ops.next()?;
     let (Some(Operation::Address { address }), None) = (first_op, second_op) else {
-        log::warn!("Address of a debug symbol in an unsupported format. Ignoring.");
+        log::warn!("Unexpected expression for address of a debug symbol. Ignoring.");
         return Ok(None);
     };
 
     Ok(Some(address as u32))
+}
+
+fn get_function_start(
+    dwarf: &Dwarf<Reader>,
+    unit: &Unit<Reader>,
+    entry: &DebuggingInformationEntry<Reader>,
+) -> Result<Vec<u32>, gimli::Error> {
+    let mut ret = Vec::new();
+
+    if let Some(low_pc) = find_attr(entry, gimli::DW_AT_low_pc)
+        .map(|val| dwarf.attr_address(unit, val))
+        .transpose()?
+        .flatten()
+    {
+        ret.push(low_pc as u32);
+    }
+
+    if let Some(ranges) = find_attr(entry, gimli::DW_AT_ranges)
+        .map(|val| dwarf.attr_ranges_offset(unit, val))
+        .transpose()?
+        .flatten()
+    {
+        let mut iter = dwarf.ranges(unit, ranges)?;
+        while let Some(range) = iter.next()? {
+            ret.push(range.begin as u32);
+        }
+    }
+
+    Ok(ret)
 }
 
 fn filter_locations_in_text(locations: &mut Vec<SourceLocationInfo>, address_map: &AddressMap) {
@@ -337,19 +397,7 @@ pub struct SymbolTable(BTreeMap<(u32, u32), String>);
 
 impl SymbolTable {
     pub fn new(elf: &Elf) -> SymbolTable {
-        let mut symbols = elf
-            .syms
-            .iter()
-            .filter_map(|sym| {
-                // We only care about global symbols that have string names, and are
-                // either functions or variables.
-                if sym.st_name != 0 && (sym.st_type() == STT_OBJECT || sym.st_type() == STT_FUNC) {
-                    Some((elf.strtab[sym.st_name].to_owned(), sym.st_value as u32))
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let mut symbols = read_symbol_table(elf);
 
         dedup_names(&mut symbols);
 
@@ -370,7 +418,7 @@ impl SymbolTable {
     }
 
     fn default_label(addr: u32) -> Cow<'static, str> {
-        Cow::Owned(format!("L{addr:08x}"))
+        Cow::Owned(format!("__.L{addr:08x}"))
     }
 
     /// Get a symbol, if the address has one.
@@ -396,6 +444,21 @@ impl SymbolTable {
         };
         iter.map(Cow::Borrowed).chain(default)
     }
+}
+
+fn read_symbol_table(elf: &Elf) -> Vec<(String, u32)> {
+    elf.syms
+        .iter()
+        .filter_map(|sym| {
+            // We only care about global symbols that have string names, and are
+            // either functions or variables.
+            if sym.st_name != 0 && (sym.st_type() == STT_OBJECT || sym.st_type() == STT_FUNC) {
+                Some((elf.strtab[sym.st_name].to_owned(), sym.st_value as u32))
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// Deduplicates by removing identical entries and appending the address to
@@ -477,10 +540,7 @@ mod tests {
             ("foo_00002000".to_string(), 0x2000),
         ];
         assert_eq!(symbols, expected);
-    }
 
-    #[test]
-    fn multi_pass_dedup_names() {
         let mut symbols = vec![
             ("john".to_string(), 0x42),
             ("john".to_string(), 0x87),
