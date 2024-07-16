@@ -813,7 +813,14 @@ fn check_expression(
                 None => Ok(()),
             }
         }
-        Expression::StructExpression(_, _) => todo!(), // TODO GZ
+        Expression::StructExpression(_, StructExpression { name: _, fields }) => {
+            //check_path on name?
+            fields
+                .iter()
+                .try_for_each(|NamedExpression { name, expr }| {
+                    check_expression(location, expr, state, local_variables)
+                })
+        }
     }
 }
 
