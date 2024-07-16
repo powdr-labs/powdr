@@ -226,7 +226,7 @@ fn free_inputs_in_expression<'a>(
         Expression::MatchExpression(_, _) => todo!(),
         Expression::IfExpression(_, _) => todo!(),
         Expression::BlockExpression(_, _) => todo!(),
-        Expression::StructExpression(_, _) => todo!(), // TODO GZ
+        Expression::StructExpression(_, _) => todo!(),
     }
 }
 
@@ -268,7 +268,7 @@ fn free_inputs_in_expression_mut<'a>(
         Expression::MatchExpression(_, _) => todo!(),
         Expression::IfExpression(_, _) => todo!(),
         Expression::BlockExpression(_, _) => todo!(),
-        Expression::StructExpression(_, _) => todo!(), // TODO GZ
+        Expression::StructExpression(_, _) => todo!(),
     }
 }
 
