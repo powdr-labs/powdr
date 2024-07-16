@@ -573,18 +573,6 @@ fn simple_struct() {
 }
 
 #[test]
-fn def_struct_and_field() {
-    let input = "
-    struct Dot { x: int, y: int }
-    let dot = Dot with { x: 3, y: 4 };
-    let f: Dot -> int = |d| d->y;
-
-    let res: int = f(dot);
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
 fn struct_constr_var_typed() {
     let input = "
     struct X {x: int, y: int}
@@ -595,49 +583,6 @@ fn struct_constr_var_typed() {
     };
 
     let x: X = v(1);
-    ";
-
-    type_check(input, &[])
-}
-
-#[test]
-fn struct_field_direct_access() {
-    let input = "
-    struct X {x: fe, y: int}
-    let v = X with {x: 1, y: 0};
-    let x: int = v->y;
-    ";
-
-    type_check(input, &[])
-}
-
-#[test]
-fn struct_field_in_expr() {
-    let input = "
-    struct X {x: int, y: int}
-    let v: int -> X = |i| match i {
-        1 => X with {x: 1, y: 0},
-        2 => X with {x: 2, y: 2},
-        _ => X with {x: 0, y: 1},
-    };
-
-    let x: int = v(1)->y;
-    ";
-
-    type_check(input, &[])
-}
-
-#[test]
-fn struct_as_pattern() {
-    let input = "
-    struct X {x: int, y: int}
-    let v: X -> int = |x| match x {
-        X{x: 1, y: 0} => 1,
-        X{x: 2, y: 2} => 2,
-        _ => 0,
-    };
-
-    let x: int = v(X with {x: 1, y: 0});
     ";
 
     type_check(input, &[])

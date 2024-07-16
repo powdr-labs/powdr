@@ -11,9 +11,9 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
-        ArrayLiteral, BinaryOperation, BlockExpression, FieldAccess, FunctionCall, FunctionKind,
-        IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, SourceReference, StatementInsideBlock, UnaryOperation,
+        ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
+        LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number, Pattern,
+        SourceReference, StatementInsideBlock, UnaryOperation,
     },
 };
 use powdr_parser_util::{Error, SourceRef};
@@ -611,20 +611,6 @@ impl TypeChecker {
                 self.expect_type(&Type::Int, index)?;
                 result
             }
-            Expression::FieldAccess(_, FieldAccess { object, field }) => {
-                let object_type = self.infer_type_of_expression(object)?;
-                let inferred_type = self.type_into_substituted(object_type.clone());
-                match inferred_type {
-                    Type::NamedType(name, _) => {
-                        let access_name = name.join(SymbolPath::from_identifier(field.to_string()));
-                        let field_type = self.declared_types[&access_name.to_dotted_string()]
-                            .1
-                            .clone();
-                        field_type.ty
-                    }
-                    _ => self.new_type_var(),
-                }
-            }
             Expression::FunctionCall(
                 source_ref,
                 FunctionCall {
@@ -874,37 +860,6 @@ impl TypeChecker {
                         }
                     }
                 }
-            }
-            Pattern::Struct(_source_ref, name, fields) => {
-                match fields {
-                    Some(fields) => {
-                        for f in fields {
-                            if let Pattern::Ellipsis(_) = f.1 {
-                                break;
-                            }
-
-                            match &f.0 {
-                                Some(field_name) => {
-                                    let fname = format!("{name}.{field_name}");
-
-                                    let (ty, _generic_args) = self
-                                        .instantiate_scheme(self.declared_types[&fname].1.clone());
-                                    let ty = type_for_reference(&ty);
-
-                                    self.expect_type_of_pattern(&ty, &f.1)?;
-                                }
-                                None => {
-                                    let ty = self.new_type_var();
-                                    self.expect_type_of_pattern(&ty, &f.1)?;
-                                    self.local_var_types.push(ty.clone());
-                                }
-                            }
-                        }
-                    }
-                    None => {}
-                }
-
-                Type::NamedType(SymbolPath::from_identifier(name.to_string()), None)
             }
         })
     }

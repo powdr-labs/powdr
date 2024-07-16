@@ -16,10 +16,10 @@ use powdr_ast::{
     parsed::{
         display::quote,
         types::{Type, TypeScheme},
-        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FieldAccess, FunctionCall,
-        IfExpression, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
-        MatchExpression, NamedExpression, Number, Pattern, StatementInsideBlock, StructExpression,
-        UnaryOperation, UnaryOperator,
+        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
+        IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
+        NamedExpression, Number, Pattern, StatementInsideBlock, StructExpression, UnaryOperation,
+        UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -286,22 +286,6 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 }
                 if let Some(fields) = fields_pattern {
                     Value::try_match_pattern_list(data.as_ref().unwrap(), fields)
-                } else {
-                    Some(vec![])
-                }
-            }
-            Pattern::Struct(_, name, fields_pattern) => {
-                let Value::Struct(n, data) = v.as_ref() else {
-                    panic!()
-                };
-                if name.name() != n {
-                    return None;
-                }
-                if let Some(fields) = fields_pattern {
-                    let patterns: Vec<Arc<Value<T>>> =
-                        data.iter().map(|(_, p)| p.clone()).collect();
-                    let field_patterns: Vec<_> = fields.iter().map(|(_, p)| p.clone()).collect();
-                    Value::try_match_pattern_list(patterns.as_slice(), &field_patterns)
                 } else {
                     Some(vec![])
                 }
@@ -759,10 +743,6 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.op_stack.push(Operation::Expand(index));
                 self.expand(array)?;
             }
-            Expression::FieldAccess(_, FieldAccess { object, field: _ }) => {
-                self.op_stack.push(Operation::Combine(expr));
-                self.op_stack.push(Operation::Expand(object));
-            }
             Expression::FunctionCall(
                 _,
                 FunctionCall {
@@ -925,31 +905,6 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     index => Err(EvalError::TypeError(format!(
                             "Expected integer for array index access but got {index}: {}",
                             index.type_formatted()
-                    )))?,
-                }
-            }
-            Expression::FieldAccess(_, FieldAccess { object: _, field }) => {
-                // TODO: Check this (expand/combine object?)
-                //self.op_stack.push(Operation::Combine(object));
-                let object = self.value_stack.pop().unwrap();
-                match object.as_ref() {
-                    Value::Struct(_, fields) => fields
-                        .iter()
-                        .find_map(|(name, value)| {
-                            if name == field {
-                                Some(value.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .ok_or_else(|| {
-                            EvalError::SymbolNotFound(format!(
-                                "Field {field} not found in {object}"
-                            ))
-                        })?,
-                    _ => Err(EvalError::TypeError(format!(
-                        "Expected struct for field access but got {object}: {}",
-                        object.type_formatted()
                     )))?,
                 }
             }
@@ -1686,25 +1641,6 @@ mod test {
             parse_and_evaluate_symbol(src, "t"),
             "[1, 2, 7, 10001, 2, 109]".to_string()
         );
-    }
-
-    #[test]
-    pub fn match_struct() {
-        let src = r#"
-            struct S3 {
-                a: int,
-                b: int,
-                c: int,
-            }
-            let f: S3 -> int = |s| match s {
-                S3{ a: 1, b: 2, c } => 1,
-                S3{ a: 1, b: 4, c } => 2 + c,
-                S3{ a, b, c } => a + b + c,
-            };
-
-            let t = [f(S3 with { a: 1, b: 2, c: 3 }), f(S3 with { a: 1, b: 4, c: 4 }), f(S3 with { a: 1, b: 3, c: 5 })];
-        "#;
-        assert_eq!(parse_and_evaluate_symbol(src, "t"), "[1, 6, 9]".to_string());
     }
 
     #[test]

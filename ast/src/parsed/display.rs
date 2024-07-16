@@ -368,16 +368,6 @@ impl<E: Display> Display for IndexAccess<Expression<E>> {
     }
 }
 
-impl<E: Display> Display for FieldAccess<Expression<E>> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.object.precedence().is_none() {
-            write!(f, "{}->{}", self.object, self.field)
-        } else {
-            write!(f, "({})->{}", self.object, self.field)
-        }
-    }
-}
-
 impl<E: Display> Display for FunctionCall<Expression<E>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.function.precedence().is_none() {
@@ -410,29 +400,6 @@ impl Display for Pattern {
                 fields
                     .as_ref()
                     .map(|fields| format!("({})", fields.iter().format(", ")))
-                    .unwrap_or_default()
-            ),
-            Pattern::Struct(_, name, fields) => write!(
-                f,
-                "{name}{}",
-                fields
-                    .as_ref()
-                    .map(|fields| {
-                        format!(
-                            "{{ {} }}",
-                            fields
-                                .iter()
-                                .map(|(opt_str, pattern)| {
-                                    if let Some(s) = opt_str {
-                                        format!("{s}: {pattern}")
-                                    } else {
-                                        format!("{pattern}")
-                                    }
-                                })
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        )
-                    })
                     .unwrap_or_default()
             ),
         }
@@ -761,7 +728,6 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::UnaryOperation(_, unaryop) => {
                 write!(f, "{unaryop}")
             }
-            Expression::FieldAccess(_, field_access) => write!(f, "{field_access}"),
             Expression::IndexAccess(_, index_access) => write!(f, "{index_access}"),
             Expression::FunctionCall(_, fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(_, input) => write!(f, "${{ {input} }}"),
