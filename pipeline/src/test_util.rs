@@ -212,10 +212,11 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
     // Setup
     let output_dir = pipeline.output_dir().clone().unwrap();
     let setup_file_path = output_dir.join("params.bin");
+    let max_degree = pil.degrees().into_iter().max().unwrap();
     buffered_write_file(&setup_file_path, |writer| {
         powdr_backend::BackendType::Halo2
             .factory::<Bn254Field>()
-            .generate_setup(pil.degree(), writer)
+            .generate_setup(max_degree, writer)
             .unwrap()
     })
     .unwrap();
