@@ -153,18 +153,18 @@ impl DebugInfo {
                     // This is the entry for a function or method.
                     gimli::DW_TAG_subprogram => {
                         let attr = find_attr(entry, gimli::DW_AT_linkage_name);
-                        let linkage_name = if let Some(linkage_name) =
-                            attr.map(|ln| unit.attr_string(ln)).transpose()?
-                        {
-                            linkage_name.to_string()?
-                        } else {
-                            "__unknown_function"
+                        let Some(linkage_name) = attr.map(|ln| unit.attr_string(ln)).transpose()?
+                        else {
+                            // This function has no linkage name in DWARF, so it
+                            // must be in ELFs symbol table.
+                            continue;
                         };
 
                         let start_addresses = get_function_start(&dwarf, &unit, entry)?;
+                        let name = linkage_name.to_string()?;
                         for address in start_addresses {
                             if jump_targets.contains(&address) {
-                                symbols.push((linkage_name.to_owned(), address));
+                                symbols.push((name.to_owned(), address));
                             }
                         }
                     }
