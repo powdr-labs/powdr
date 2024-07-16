@@ -15,7 +15,7 @@ use powdr_ast::parsed::{
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
-    FieldAccess, FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
+    FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
     MatchExpression, Pattern, PilStatement, StatementInsideBlock, StructDeclaration,
     TraitDeclaration, TraitFunction, TypedExpression, UnaryOperation,
 };
@@ -222,7 +222,6 @@ fn free_inputs_in_expression<'a>(
         Expression::LambdaExpression(_, _) => todo!(),
         Expression::ArrayLiteral(_, _) => todo!(),
         Expression::IndexAccess(_, _) => todo!(),
-        Expression::FieldAccess(_, _) => todo!(),
         Expression::MatchExpression(_, _) => todo!(),
         Expression::IfExpression(_, _) => todo!(),
         Expression::BlockExpression(_, _) => todo!(),
@@ -264,7 +263,6 @@ fn free_inputs_in_expression_mut<'a>(
         Expression::LambdaExpression(_, _) => todo!(),
         Expression::ArrayLiteral(_, _) => todo!(),
         Expression::IndexAccess(_, _) => todo!(),
-        Expression::FieldAccess(_, _) => todo!(),
         Expression::MatchExpression(_, _) => todo!(),
         Expression::IfExpression(_, _) => todo!(),
         Expression::BlockExpression(_, _) => todo!(),
@@ -752,9 +750,6 @@ fn check_expression(
         | Expression::IndexAccess(_, IndexAccess { array: a, index: b }) => {
             check_expression(location, a.as_ref(), state, local_variables)?;
             check_expression(location, b.as_ref(), state, local_variables)
-        }
-        Expression::FieldAccess(_, FieldAccess { object, .. }) => {
-            check_expression(location, object, state, local_variables)
         }
         Expression::UnaryOperation(_, UnaryOperation { expr, .. })
         | Expression::FreeInput(_, expr) => {

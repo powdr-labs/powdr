@@ -590,7 +590,6 @@ PostfixUnaryOp: UnaryOperator = {
 
 Term: Box<Expression> = {
     <start:@L> <i:IndexAccess> <end:@R> => ctx.to_expr_with_source_ref(i, start, end),
-    <start:@L> <fa:FieldAccess> <end:@R> => ctx.to_expr_with_source_ref(fa, start, end),
     <start:@L> <f:FunctionCall> <end:@R> => ctx.to_expr_with_source_ref(f, start, end),
     <start:@L> <i:ConstantIdentifier> <end:@R> => ctx.to_expr_with_source_ref(NamespacedPolynomialReference::from_identifier(i), start, end),
     <start:@L> <g:GenericReference> <end:@R> => ctx.to_expr_with_source_ref(g, start, end),
@@ -610,10 +609,6 @@ Term: Box<Expression> = {
 
 IndexAccess: IndexAccess = {
     <array:Term> "[" <index:BoxedExpression> "]" => IndexAccess{<>},
-}
-
-FieldAccess: FieldAccess = {
-    <object:Term> "->" <field:Identifier> => FieldAccess{object, field},
 }
 
 FunctionCall: FunctionCall = {

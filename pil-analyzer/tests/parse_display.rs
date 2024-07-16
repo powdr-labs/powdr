@@ -834,21 +834,6 @@ fn simple_struct() {
 }
 
 #[test]
-fn def_struct_and_field() {
-    let input = "    struct Point {
-        x: int,
-        y: int,
-    }
-    let p: Point = Point with { x: 3, y: 4 };
-    let f: Point -> int = (|d| d->y);
-    let res: int = f(p);
-";
-
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
-    assert_eq!(formatted, input);
-}
-
-#[test]
 fn struct_constr_var_typed() {
     let input = "    struct X {
         x: int,
@@ -860,24 +845,6 @@ fn struct_constr_var_typed() {
         _ => X with { x: 0, y: 1 },
     });
     let x: X = v(1);
-";
-
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
-    assert_eq!(formatted, input);
-}
-
-#[test]
-fn struct_field_in_expr() {
-    let input = "    struct X {
-        x: int,
-        y: int,
-    }
-    let v: int -> X = (|i| match i {
-        1 => X with { x: 1, y: 0 },
-        2 => X with { x: 2, y: 2 },
-        _ => X with { x: 0, y: 1 },
-    });
-    let x: int = v(1)->y;
 ";
 
     let formatted = analyze_string::<GoldilocksField>(input).to_string();

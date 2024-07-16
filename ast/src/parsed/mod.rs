@@ -451,7 +451,6 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     UnaryOperation(SourceRef, UnaryOperation<Self>),
     BinaryOperation(SourceRef, BinaryOperation<Self>),
     IndexAccess(SourceRef, IndexAccess<Self>),
-    FieldAccess(SourceRef, FieldAccess<Self>),
     FunctionCall(SourceRef, FunctionCall<Self>),
     FreeInput(SourceRef, Box<Self>),
     MatchExpression(SourceRef, MatchExpression<Self>),
@@ -490,7 +489,6 @@ impl_partial_eq_for_expression!(
     BinaryOperation,
     UnaryOperation,
     IndexAccess,
-    FieldAccess,
     FunctionCall,
     FreeInput,
     MatchExpression,
@@ -534,7 +532,6 @@ impl_source_reference!(
     BinaryOperation,
     UnaryOperation,
     IndexAccess,
-    FieldAccess,
     FunctionCall,
     FreeInput,
     MatchExpression,
@@ -763,7 +760,6 @@ impl<R> Expression<R> {
             Expression::BinaryOperation(_, binary_op) => binary_op.children(),
             Expression::UnaryOperation(_, unary_op) => unary_op.children(),
             Expression::IndexAccess(_, index_access) => index_access.children(),
-            Expression::FieldAccess(_, field_access) => field_access.children(),
             Expression::FunctionCall(_, function_call) => function_call.children(),
             Expression::FreeInput(_, e) => once(e.as_ref()),
             Expression::MatchExpression(_, match_expr) => match_expr.children(),
@@ -790,7 +786,6 @@ impl<R> Expression<R> {
             Expression::BinaryOperation(_, binary_op) => binary_op.children_mut(),
             Expression::UnaryOperation(_, unary_op) => unary_op.children_mut(),
             Expression::IndexAccess(_, index_access) => index_access.children_mut(),
-            Expression::FieldAccess(_, field_access) => field_access.children_mut(),
             Expression::FunctionCall(_, function_call) => function_call.children_mut(),
             Expression::FreeInput(_, e) => once(e.as_mut()),
             Expression::MatchExpression(_, match_expr) => match_expr.children_mut(),
@@ -1062,28 +1057,6 @@ impl<E> Children<E> for IndexAccess<E> {
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
         Box::new(once(self.array.as_mut()).chain(once(self.index.as_mut())))
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct FieldAccess<E = Expression<NamespacedPolynomialReference>> {
-    pub object: Box<E>,
-    pub field: String,
-}
-
-impl<Ref> From<FieldAccess<Expression<Ref>>> for Expression<Ref> {
-    fn from(fa: FieldAccess<Expression<Ref>>) -> Self {
-        Expression::FieldAccess(SourceRef::unknown(), fa)
-    }
-}
-
-impl<E> Children<E> for FieldAccess<E> {
-    fn children(&self) -> Box<dyn Iterator<Item = &E> + '_> {
-        Box::new(once(self.object.as_ref()))
-    }
-
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
-        Box::new(once(self.object.as_mut()))
     }
 }
 

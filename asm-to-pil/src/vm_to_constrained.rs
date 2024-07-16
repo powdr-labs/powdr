@@ -701,7 +701,6 @@ impl<T: FieldElement> VMConverter<T> {
         match value {
             Expression::PublicReference(_, _) => panic!(),
             Expression::IndexAccess(_, _) => panic!(),
-            Expression::FieldAccess(_, _) => panic!(),
             Expression::FunctionCall(_, _) => panic!(),
             Expression::Reference(_, reference) => {
                 // TODO check it actually is a register

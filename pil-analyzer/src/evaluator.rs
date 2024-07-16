@@ -16,10 +16,10 @@ use powdr_ast::{
     parsed::{
         display::quote,
         types::{Type, TypeScheme},
-        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FieldAccess, FunctionCall,
-        IfExpression, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
-        MatchExpression, NamedExpression, Number, Pattern, StatementInsideBlock, StructExpression,
-        UnaryOperation, UnaryOperator,
+        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
+        IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
+        NamedExpression, Number, Pattern, StatementInsideBlock, StructExpression, UnaryOperation,
+        UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -759,10 +759,6 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.op_stack.push(Operation::Expand(index));
                 self.expand(array)?;
             }
-            Expression::FieldAccess(_, FieldAccess { object, field: _ }) => {
-                self.op_stack.push(Operation::Combine(expr));
-                self.op_stack.push(Operation::Expand(object));
-            }
             Expression::FunctionCall(
                 _,
                 FunctionCall {
@@ -925,31 +921,6 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     index => Err(EvalError::TypeError(format!(
                             "Expected integer for array index access but got {index}: {}",
                             index.type_formatted()
-                    )))?,
-                }
-            }
-            Expression::FieldAccess(_, FieldAccess { object: _, field }) => {
-                // TODO: Check this (expand/combine object?)
-                //self.op_stack.push(Operation::Combine(object));
-                let object = self.value_stack.pop().unwrap();
-                match object.as_ref() {
-                    Value::Struct(_, fields) => fields
-                        .iter()
-                        .find_map(|(name, value)| {
-                            if name == field {
-                                Some(value.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .ok_or_else(|| {
-                            EvalError::SymbolNotFound(format!(
-                                "Field {field} not found in {object}"
-                            ))
-                        })?,
-                    _ => Err(EvalError::TypeError(format!(
-                        "Expected struct for field access but got {object}: {}",
-                        object.type_formatted()
                     )))?,
                 }
             }

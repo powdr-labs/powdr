@@ -157,13 +157,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     index: Box::new(self.process_expression(*index_access.index)),
                 },
             ),
-            PExpression::FieldAccess(src, field_access) => Expression::FieldAccess(
-                src,
-                parsed::FieldAccess {
-                    object: Box::new(self.process_expression(*field_access.object)),
-                    field: field_access.field,
-                },
-            ),
             PExpression::FunctionCall(src, c) => Expression::FunctionCall(
                 src,
                 parsed::FunctionCall {

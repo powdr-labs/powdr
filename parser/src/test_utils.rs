@@ -129,7 +129,6 @@ impl<R> ClearSourceRefs for Expression<R> {
             | Expression::UnaryOperation(_, _)
             | Expression::BinaryOperation(_, _)
             | Expression::IndexAccess(_, _)
-            | Expression::FieldAccess(_, _)
             | Expression::FunctionCall(_, _)
             | Expression::FreeInput(_, _)
             | Expression::IfExpression(_, _)
