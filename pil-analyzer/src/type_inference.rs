@@ -876,12 +876,11 @@ impl TypeChecker {
                 }
             }
             Pattern::Struct(_source_ref, name, fields) => {
-                // TODO GZ: Review this
                 match fields {
                     Some(fields) => {
                         for f in fields {
                             if let Pattern::Ellipsis(_) = f.1 {
-                                continue;
+                                break;
                             }
 
                             match &f.0 {
@@ -894,7 +893,11 @@ impl TypeChecker {
 
                                     self.expect_type_of_pattern(&ty, &f.1)?;
                                 }
-                                None => {}
+                                None => {
+                                    let ty = self.new_type_var();
+                                    self.expect_type_of_pattern(&ty, &f.1)?;
+                                    self.local_var_types.push(ty.clone());
+                                }
                             }
                         }
                     }

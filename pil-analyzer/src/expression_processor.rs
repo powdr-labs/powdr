@@ -276,22 +276,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 self.process_enum_pattern(source_ref, self.driver.resolve_value_ref(&name), fields)
             }
             Pattern::Struct(source_ref, name, fields) => {
-                // if let Some((resolved_name, category)) = self.driver.try_resolve_ref(&name) {
-                //     if category.compatible_with_request(SymbolCategory::TypeConstructor) {
-                //         self.process_struct_pattern(source_ref, resolved_name, fields)
-                //     } else if let Some(identifier) = name.try_to_identifier() {
-                //         // It's a single identifier that does not resolve to an enum variant.
-                //         self.process_variable_pattern(source_ref, identifier.clone())
-                //     } else {
-                //         panic!("Expected struct variant but got {category}: {resolved_name}");
-                //     }
-                // } else if let Some(identifier) = name.try_to_identifier() {
-                //     // It's a single identifier that does not resolve to an enum variant.
-                //     self.process_variable_pattern(source_ref, identifier.clone())
-                // } else {
-                //     panic!("Symbol not found: {name}");
-                // }
-
                 if let Some((resolved_name, ..)) = self.driver.try_resolve_ref(&name) {
                     self.process_struct_pattern(source_ref, resolved_name, fields)
                 } else {

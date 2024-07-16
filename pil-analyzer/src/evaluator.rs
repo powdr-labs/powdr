@@ -137,7 +137,7 @@ pub enum Value<'a, T> {
     Closure(Closure<'a, T>),
     TypeConstructor(&'a str),
     Enum(&'a str, Option<Vec<Arc<Self>>>),
-    Struct(&'a str, HashMap<&'a str, Arc<Self>>),
+    Struct(&'a str, Vec<(&'a str, Arc<Self>)>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
 }
@@ -298,7 +298,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     return None;
                 }
                 if let Some(fields) = fields_pattern {
-                    let patterns = data.values().cloned().collect::<Vec<_>>();
+                    let patterns = data.iter().map(|(_, p)| p.clone()).collect();
                     let field_patterns: Vec<_> = fields.iter().map(|(_, p)| p.clone()).collect();
                     Value::try_match_pattern_list(&patterns, &field_patterns)
                 } else {
@@ -309,7 +309,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 
     fn try_match_pattern_list<'b>(
-        values: &[Arc<Value<'b, T>>],
+        values: &Vec<Arc<Value<'b, T>>>,
         patterns: &[Pattern],
     ) -> Option<Vec<Arc<Value<'b, T>>>> {
         assert_eq!(values.len(), patterns.len());
@@ -812,16 +812,20 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 "Cannot evaluate free input.".to_string(),
             ))?,
             Expression::StructExpression(_, StructExpression { name, fields }) => {
-                let hashmap_fields = fields
-                    .iter()
-                    .map(|NamedExpression { name, expr }| {
-                        self.expand(expr)?;
-                        Ok((name.as_str(), self.value_stack.pop().unwrap()))
-                    })
-                    .collect::<Result<HashMap<_, _>, _>>()?;
+                let mut exp_fields = Vec::new();
+                for NamedExpression { name, expr } in fields.iter() {
+                    self.expand(expr)?;
+
+                    let value = self
+                        .value_stack
+                        .pop()
+                        .ok_or_else(|| EvalError::DataNotAvailable)?;
+
+                    exp_fields.push((name.as_str(), value));
+                }
 
                 self.value_stack
-                    .push(Value::Struct(name, hashmap_fields).into());
+                    .push(Value::Struct(name, exp_fields).into());
             }
         };
         Ok(())
@@ -929,7 +933,20 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 //self.op_stack.push(Operation::Combine(object));
                 let object = self.value_stack.pop().unwrap();
                 match object.as_ref() {
-                    Value::Struct(_, fields) => fields[field.as_str()].clone(),
+                    Value::Struct(_, fields) => fields
+                        .iter()
+                        .find_map(|(name, value)| {
+                            if name == field {
+                                Some(value.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .ok_or_else(|| {
+                            EvalError::SymbolNotFound(format!(
+                                "Field {field} not found in {object}"
+                            ))
+                        })?,
                     _ => Err(EvalError::TypeError(format!(
                         "Expected struct for field access but got {object}: {}",
                         object.type_formatted()
@@ -1674,17 +1691,17 @@ mod test {
     #[test]
     pub fn match_struct() {
         let src = r#"
-            struct S {
+            struct S3 {
                 a: int,
                 b: int,
                 c: int,
             }
-            let f = |s| match s {
-                S{ a: 1, b: 2, c: 3 } => 1,
-                S{ a: 1, b: 2, c } => 2 + c,
-                S{ a, b, c } => a + b + c,
+            let f: S3 -> int = |s| match s {
+                S3{ a: 1, b: 2, c } => 1,
+                S3{ a: 1, b: 4, c } => 2 + c,
+                S3{ a, b, c } => a + b + c,
             };
-            let t = [f(S with { a: 1, b: 2, c: 3 }), f(S with { a: 1, b: 2, c: 4 }), f(S with { a: 1, b: 3, c: 5 })];
+            let t = [f(S3 with { a: 1, b: 2, c: 3 }), f(S3 with { a: 1, b: 4, c: 4 }), f(S3 with { a: 1, b: 3, c: 5 })];
         "#;
         assert_eq!(parse_and_evaluate_symbol(src, "t"), "[1, 6, 9]".to_string());
     }
