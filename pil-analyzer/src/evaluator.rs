@@ -301,7 +301,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     let patterns: Vec<Arc<Value<T>>> =
                         data.iter().map(|(_, p)| p.clone()).collect();
                     let field_patterns: Vec<_> = fields.iter().map(|(_, p)| p.clone()).collect();
-                    Value::try_match_pattern_list(&patterns.as_slice(), &field_patterns)
+                    Value::try_match_pattern_list(patterns.as_slice(), &field_patterns)
                 } else {
                     Some(vec![])
                 }
