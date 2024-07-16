@@ -270,13 +270,17 @@ pub fn extract_publics<T: FieldElement>(
         .collect::<BTreeMap<_, _>>();
     pil.public_declarations_in_source_order()
         .iter()
-        .map(|(name, public_declaration)| {
+        .filter_map(|(name, public_declaration)| {
             let poly_name = &public_declaration.referenced_poly_name();
             let poly_index = public_declaration.index;
-            let value = witness[poly_name][poly_index as usize];
-            ((*name).clone(), value)
+            if witness.contains_key(poly_name) {
+                let value = witness[poly_name][poly_index as usize];
+                Some(((*name).clone(), value))
+            } else {
+                None
+            }
         })
-        .collect()
+        .collect::<Vec<(String, T)>>()
 }
 
 /// Data that is fixed for witness generation.

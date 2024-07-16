@@ -97,6 +97,8 @@ fn get_publics<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, usize)> 
 
     // Sort, so that the order is deterministic
     publics.sort();
+    log::debug!("Publics get: {:?}", &publics);
+
     publics
 }
 
@@ -148,7 +150,13 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
         self.publics
             .iter()
-            .map(|(col_name, i)| convert_field(witness.get(col_name).unwrap()[*i]))
+            .filter_map(|(col_name, i)| 
+            if witness.contains_key(col_name){
+                Some(convert_field(witness.get(col_name).unwrap()[*i]))
+            } else {
+                None
+            } 
+            )
             .collect()
     }
 }
@@ -209,6 +217,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
 
         let enable = meta.fixed_column();
         let instance = meta.instance_column();
+        log::debug!("Instances are ...: {:?}", &instance);
 
         // Collect challenges referenced in any identity.
         let mut challenges = BTreeMap::new();

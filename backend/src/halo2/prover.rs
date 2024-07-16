@@ -134,6 +134,7 @@ impl<F: FieldElement> Halo2Prover<F> {
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
         let publics = vec![circuit.instance_column()];
+        log::debug!("instances publics: {:?}", &publics);
 
         log::info!("Generating PK for snark...");
         let vk = match self.vkey {
@@ -145,6 +146,7 @@ impl<F: FieldElement> Halo2Prover<F> {
         log::info!("Generating proof...");
         let start = Instant::now();
 
+        log::debug!("instances publics: {:?}", &publics);
         let proof = gen_proof::<_, _, TW>(&self.params, &pk, circuit, &publics)?;
 
         let duration = start.elapsed();
