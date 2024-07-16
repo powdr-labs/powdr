@@ -65,7 +65,6 @@ pub fn verify_pipeline(
     pipeline: Pipeline<GoldilocksField>,
     backend: BackendType,
 ) -> Result<(), String> {
-    // TODO: Also test Composite variants
     let mut pipeline = pipeline.with_backend(backend, None);
 
     if pipeline.output_dir().is_none() {
