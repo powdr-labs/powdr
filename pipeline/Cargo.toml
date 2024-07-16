@@ -17,7 +17,6 @@ estark-polygon = ["powdr-backend/estark-polygon"]
 powdr-airgen.workspace = true
 powdr-analysis.workspace = true
 powdr-asm-to-pil.workspace = true
-powdr-asm-utils.workspace = true
 powdr-ast.workspace = true
 powdr-backend.workspace = true
 powdr-executor.workspace = true
