@@ -5,11 +5,13 @@ use std::{
     io::{self, BufReader},
     marker::Send,
     path::{Path, PathBuf},
+    rc::Rc,
     sync::Arc,
     time::Instant,
 };
 
 use log::Level;
+use mktemp::Temp;
 use powdr_ast::{
     analyzed::Analyzed,
     asm_analysis::AnalysisASMFile,
@@ -114,6 +116,10 @@ pub struct Pipeline<T: FieldElement> {
     artifact: Artifacts<T>,
     /// Output directory for intermediate files. If None, no files are written.
     output_dir: Option<PathBuf>,
+    /// The temporary directory, owned by the pipeline (or any copies of it).
+    /// This object is not used directly, but keeping it here ensures that the directory
+    /// is not deleted until the pipeline is dropped.
+    _tmp_dir: Option<Rc<Temp>>,
     /// The name of the pipeline. Used to name output files.
     name: Option<String>,
     /// Whether to overwrite existing files. If false, an error is returned if a file
@@ -140,6 +146,7 @@ where
         Pipeline {
             artifact: Default::default(),
             output_dir: None,
+            _tmp_dir: None,
             log_level: Level::Info,
             name: None,
             force_overwrite: false,
@@ -190,12 +197,14 @@ where
 /// let proof = pipeline.compute_proof().unwrap();
 /// ```
 impl<T: FieldElement> Pipeline<T> {
-    /// Initializes the output directory to a temporary directory.
-    /// Note that the user is responsible for keeping the temporary directory alive.
-    pub fn with_tmp_output(self, tmp_dir: &mktemp::Temp) -> Self {
+    /// Initializes the output directory to a temporary directory which lives as long
+    /// the pipeline does.
+    pub fn with_tmp_output(self) -> Self {
+        let tmp_dir = Rc::new(mktemp::Temp::new_dir().unwrap());
         Pipeline {
             output_dir: Some(tmp_dir.to_path_buf()),
             force_overwrite: true,
+            _tmp_dir: Some(tmp_dir),
             ..self
         }
     }
@@ -795,8 +804,11 @@ impl<T: FieldElement> Pipeline<T> {
 
         let start = Instant::now();
         let fixed_cols = constant_evaluator::generate(&pil);
+        self.log(&format!(
+            "Fixed column generation took {}s",
+            start.elapsed().as_secs_f32()
+        ));
         self.maybe_write_constants(&fixed_cols)?;
-        self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
 
         self.artifact.fixed_cols = Some(Arc::new(fixed_cols));
 
@@ -830,7 +842,10 @@ impl<T: FieldElement> Pipeline<T> {
             .with_external_witness_values(&external_witness_values)
             .generate();
 
-        self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
+        self.log(&format!(
+            "Witness generation took {}s",
+            start.elapsed().as_secs_f32()
+        ));
 
         self.maybe_write_witness(&fixed_cols, &witness)?;
 
@@ -914,6 +929,7 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| fs::read(path).unwrap());
 
+        let start = Instant::now();
         let proof = match backend.prove(&witness, existing_proof, witgen_callback) {
             Ok(proof) => proof,
             Err(powdr_backend::Error::BackendError(e)) => {
@@ -921,6 +937,11 @@ impl<T: FieldElement> Pipeline<T> {
             }
             Err(e) => panic!("{}", e),
         };
+        self.log(&format!(
+            "Proof generation took {}s",
+            start.elapsed().as_secs_f32()
+        ));
+        self.log(&format!("Proof size: {} bytes", proof.len()));
 
         drop(backend);
 
@@ -1096,8 +1117,15 @@ impl<T: FieldElement> Pipeline<T> {
             )
             .unwrap();
 
+        let start = Instant::now();
         match backend.verify(proof, instances) {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                self.log(&format!(
+                    "Verification took {}s",
+                    start.elapsed().as_secs_f32()
+                ));
+                Ok(())
+            }
             Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
             _ => panic!(),
         }

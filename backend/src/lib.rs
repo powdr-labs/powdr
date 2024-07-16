@@ -92,6 +92,34 @@ impl BackendType {
             }
         }
     }
+
+    pub fn is_composite(&self) -> bool {
+        match self {
+            #[cfg(feature = "halo2")]
+            BackendType::Halo2 => false,
+            #[cfg(feature = "halo2")]
+            BackendType::Halo2Composite => true,
+            #[cfg(feature = "halo2")]
+            BackendType::Halo2Mock => false,
+            #[cfg(feature = "halo2")]
+            BackendType::Halo2MockComposite => true,
+            #[cfg(feature = "estark-polygon")]
+            BackendType::EStarkPolygon => false,
+            #[cfg(feature = "estark-polygon")]
+            BackendType::EStarkPolygonComposite => true,
+            BackendType::EStarkStarky => false,
+            BackendType::EStarkStarkyComposite => true,
+            BackendType::EStarkDump => false,
+            BackendType::EStarkDumpComposite => true,
+            #[cfg(feature = "plonky3")]
+            BackendType::Plonky3 => false,
+            #[cfg(feature = "plonky3")]
+            BackendType::Plonky3Composite => true,
+            // We explicitly do not use a wildcard here
+            // so that a new composite backend needs to be
+            // added here too.
+        }
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -176,7 +204,16 @@ pub trait Backend<'a, F: FieldElement> {
 
     /// Exports the verification key in a backend specific format. Can be used
     /// to create a new backend object of the same kind.
-    fn export_verification_key(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
+    fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
+        let v = self.verification_key_bytes()?;
+        log::info!("Verification key size: {} bytes", v.len());
+        output
+            .write_all(&v)
+            .map_err(|_| Error::BackendError("Could not write verification key".to_string()))?;
+        Ok(())
+    }
+
+    fn verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
         Err(Error::NoVerificationAvailable)
     }
 
