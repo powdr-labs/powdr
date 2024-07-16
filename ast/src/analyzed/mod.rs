@@ -609,7 +609,7 @@ impl Children<Expression> for TypeConstructor {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
             TypeConstructor::Enum(_, variant) => variant.children(),
-            TypeConstructor::Struct(_, _) => Box::new(empty()), //TODO GZ: Check types if needed
+            TypeConstructor::Struct(_, _) => Box::new(empty()),
         }
     }
 

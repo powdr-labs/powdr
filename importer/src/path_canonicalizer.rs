@@ -16,8 +16,9 @@ use powdr_ast::parsed::{
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
     FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
-    MatchExpression, Pattern, PilStatement, StatementInsideBlock, StructDeclaration,
-    TraitDeclaration, TraitFunction, TypedExpression, UnaryOperation,
+    MatchExpression, NamedExpression, Pattern, PilStatement, StatementInsideBlock,
+    StructDeclaration, StructExpression, TraitDeclaration, TraitFunction, TypedExpression,
+    UnaryOperation,
 };
 use powdr_parser_util::{Error, SourceRef};
 
@@ -225,7 +226,7 @@ fn free_inputs_in_expression<'a>(
         Expression::MatchExpression(_, _) => todo!(),
         Expression::IfExpression(_, _) => todo!(),
         Expression::BlockExpression(_, _) => todo!(),
-        Expression::StructExpression(_, _) => todo!(), // TODO GZ
+        Expression::StructExpression(_, _) => todo!(),
     }
 }
 
@@ -808,7 +809,16 @@ fn check_expression(
                 None => Ok(()),
             }
         }
-        Expression::StructExpression(_, _) => todo!(), // TODO GZ
+        Expression::StructExpression(_, StructExpression { name: _, fields }) => {
+            //check_path_try_prelude(location.clone(), name.into(), state)
+            //    .map_err(|e| sr.with_error(e))?;
+            // Name to symbolpath?
+            fields
+                .iter()
+                .try_for_each(|NamedExpression { name, expr }| {
+                    check_expression(location, expr, state, local_variables)
+                })
+        }
     }
 }
 
