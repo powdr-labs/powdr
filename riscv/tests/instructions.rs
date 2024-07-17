@@ -3,7 +3,7 @@ mod common;
 mod instruction_tests {
     use std::path::Path;
 
-    use crate::common::{run_pilcom_riscv_asm_string, verify_riscv_asm_file};
+    use crate::common::{verify_riscv_asm_file, verify_riscv_asm_string};
     use powdr_number::GoldilocksField;
     use powdr_riscv::asm::compile;
     use powdr_riscv::Runtime;
@@ -27,12 +27,7 @@ mod instruction_tests {
             false,
         );
 
-        run_pilcom_riscv_asm_string::<()>(
-            &format!("{name}.asm"),
-            &powdr_asm,
-            Default::default(),
-            None,
-        );
+        verify_riscv_asm_string::<()>(&format!("{name}.asm"), &powdr_asm, Default::default(), None);
     }
 
     include!(concat!(env!("OUT_DIR"), "/instruction_tests.rs"));
