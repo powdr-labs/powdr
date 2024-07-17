@@ -84,6 +84,12 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         for (machine_name, pil) in pils.iter() {
             let num_witness_columns = pil.committed_polys_in_source_order().len();
             let num_fixed_columns = pil.constant_polys_in_source_order().len();
+            let max_identity_degree = pil
+                .identities_with_inlined_intermediate_polynomials()
+                .iter()
+                .map(|i| i.degree())
+                .max()
+                .unwrap_or(0);
             let num_identities_by_kind = pil
                 .identities
                 .iter()
@@ -95,6 +101,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             log::info!("* {}:", machine_name);
             log::info!("  * Number of witness columns: {}", num_witness_columns);
             log::info!("  * Number of fixed columns: {}", num_fixed_columns);
+            log::info!("  * Maximum identity degree: {}", max_identity_degree);
             log::info!("  * Number of identities:");
             for (kind, count) in num_identities_by_kind {
                 log::info!("    * {:?}: {}", kind, count);
