@@ -33,7 +33,7 @@ mod instruction_tests {
             &powdr_asm,
             Default::default(),
             None,
-            BackendType::EStarkDump,
+            BackendType::EStarkDumpComposite,
         );
     }
 

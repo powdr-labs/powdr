@@ -93,6 +93,6 @@ pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) 
         &powdr_asm,
         &[],
         None,
-        BackendType::EStarkDump,
+        BackendType::EStarkDumpComposite,
     );
 }
