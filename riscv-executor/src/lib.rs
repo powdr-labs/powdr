@@ -1382,8 +1382,6 @@ pub fn execute_ast<T: FieldElement>(
                     let pc_return = e.proc.get_pc().u() + 1;
                     let pc_before = e.proc.get_reg("pc").u();
 
-                    //let results = e.eval_expression(a.rhs.as_ref());
-                    //assert_eq!(a.lhs_with_reg.len(), results.len());
                     e.exec_instruction(&i.instruction, &i.inputs);
 
                     let pc_after = e.proc.get_reg("pc").u();
@@ -1392,8 +1390,6 @@ pub fn execute_ast<T: FieldElement>(
                     assert_eq!(target_reg.len(), 1);
                     let target_reg = target_reg[0].u();
 
-                    //let pc_return = results[0].u() as usize;
-                    //assert_eq!(a.lhs_with_reg.len(), 1);
                     if let Some(p) = &mut profiler {
                         // in the generated powdr asm, not writing to `x1` means the returning pc is ignored
                         if target_reg != 1 {
