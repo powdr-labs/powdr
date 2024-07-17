@@ -83,7 +83,7 @@ impl DebugInfo {
                     .transpose()?
                     .unwrap_or(""),
             );
-            let file_idx_delta = file_list.len() as isize - 1;
+            let file_idx_delta = file_list.len() as u64;
             if let Some(line_program) = unit.line_program.clone() {
                 // Get the source file listing
                 for file_entry in line_program.header().file_names() {
@@ -116,7 +116,7 @@ impl DebugInfo {
 
                     source_locations.push(SourceLocationInfo {
                         address: row.address() as u32,
-                        file: (row.file_index() as isize + file_idx_delta) as u64,
+                        file: row.file_index() + file_idx_delta,
                         line: match row.line() {
                             None => 0,
                             Some(v) => v.get(),
@@ -188,8 +188,7 @@ impl DebugInfo {
                                 if let Some(AttributeValue::Udata(line)) =
                                     find_attr(entry, gimli::DW_AT_decl_line)
                                 {
-                                    file_line =
-                                        Some(((file_idx as isize + file_idx_delta) as usize, line));
+                                    file_line = Some((file_idx + file_idx_delta, line));
                                 }
                             }
 

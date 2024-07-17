@@ -271,7 +271,8 @@ impl RiscVProgram for ElfProgram {
             .iter()
             .enumerate()
             .map(|(id, (dir, file))| crate::code_gen::SourceFileInfo {
-                id: id as u32,
+                // +1 because files are indexed from 1
+                id: id as u32 + 1,
                 file,
                 dir,
             })
