@@ -5,6 +5,8 @@ use powdr_number::{BigInt, BigUint};
 use crate::{ParserContext, unescape_string};
 use powdr_parser_util::Error;
 
+
+
 grammar(ctx: &ParserContext);
 
 extern {
@@ -626,7 +628,7 @@ GenericReference: NamespacedPolynomialReference = {
 }
 
 MatchExpression: Box<Expression> = {
-    <start:@L> "match" <scrutinee:BoxedExpression> "{" <arms:MatchArms> "}" <end:@R> => ctx.to_expr_with_source_ref(MatchExpression{scrutinee, arms}, start, end),
+    <start:@L> "match" <scrutinee:BoxedExpressionWithoutStruct> "{" <arms:MatchArms> "}" <end:@R> => ctx.to_expr_with_source_ref(MatchExpression{scrutinee, arms}, start, end),
 }
 
 MatchArms: Vec<MatchArm> = {
@@ -649,8 +651,6 @@ IfExpression: Box<Expression> = {
 StructExpression: Box<Expression> = {
     <start:@L> <name:Identifier> "with" "{" <fields:StructExpressionList> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
 }
-
-
 
 StructExpressionList: Vec<NamedExpression<Expression>> = {
     => Vec::new(),
@@ -874,4 +874,115 @@ Number: BigUint = {
 UnsignedInteger: BigUint = {
     r"[0-9][0-9_]*" => BigUint::from_str(&<>.replace('_', "")).unwrap(),
     r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => BigUint::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap(),
+}
+
+
+
+
+// ---------------------------- Expressions without Structs -----------------------------
+
+ExpressionListWithoutStruct: Vec<Expression> = {
+    => vec![],
+    <mut list:( <ExpressionWithoutStruct> "," )*> <end:ExpressionWithoutStruct>  => { list.push(end); list }
+}
+
+ExpressionWithoutStruct: Expression = {
+    BoxedExpressionWithoutStruct => *<>,
+}
+
+BoxedExpressionWithoutStruct: Box<Expression> = {
+    LambdaExpressionWithoutStruct,
+}
+
+LambdaExpressionWithoutStruct: Box<Expression> = {
+    <start:@L> <kind:FunctionKind> "||" <body:BoxedExpressionWithoutStruct> <end:@R>
+        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body, outer_var_references: Default::default()}, start, end),
+    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:BoxedExpressionWithoutStruct> <end:@R>
+        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body, outer_var_references: Default::default()}, start, end),
+    LogicalOrWithoutStruct
+}
+
+LogicalOrWithoutStruct: Box<Expression> = {
+    <start:@L> <left:LogicalOrWithoutStruct> "||" <right:LogicalAndWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op: BinaryOperator::LogicalOr, right }, start, end),
+    LogicalAndWithoutStruct,
+}
+
+LogicalAndWithoutStruct: Box<Expression> = {
+    <start:@L> <left:LogicalAndWithoutStruct> "&&" <right:ComparisonWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op: BinaryOperator::LogicalAnd, right }, start, end),
+    ComparisonWithoutStruct,
+}
+
+ComparisonWithoutStruct: Box<Expression> = {
+    <start:@L> <left:BinaryOrWithoutStruct> <op:ComparisonOp> <right:BinaryOrWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op: op, right }, start, end),
+    BinaryOrWithoutStruct
+}
+
+BinaryOrWithoutStruct: Box<Expression> = {
+    <start:@L> <left:BinaryOrWithoutStruct> <op:BinaryOrOp> <right:BinaryXorWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
+    BinaryXorWithoutStruct,
+}
+
+BinaryXorWithoutStruct: Box<Expression> = {
+    <start:@L> <left:BinaryXorWithoutStruct> <op:BinaryXorOp> <right:BinaryAndWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
+    BinaryAndWithoutStruct,
+}
+
+BinaryAndWithoutStruct: Box<Expression> = {
+    <start:@L> <left:BinaryAndWithoutStruct> <op:BinaryAndOp> <right:BitShiftWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
+    BitShiftWithoutStruct,
+}
+
+BitShiftWithoutStruct: Box<Expression> = {
+    <start:@L> <left:BitShiftWithoutStruct> <op:BitShiftOp> <right:SumWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
+    SumWithoutStruct,
+}
+
+SumWithoutStruct: Box<Expression> = {
+    <start:@L> <left:SumWithoutStruct> <op:SumOp> <right:ProductWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
+    ProductWithoutStruct,
+}
+
+ProductWithoutStruct: Box<Expression> = {
+    <start:@L> <left:ProductWithoutStruct> <op:ProductOp> <right:PowerWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
+    PowerWithoutStruct,
+}
+PowerWithoutStruct: Box<Expression> = {
+    <start:@L> <left:TermWithoutStruct> <op:PowOp> <right:PowerWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation { left, op, right }, start, end),
+    UnaryWithoutStruct,
+}
+
+UnaryWithoutStruct: Box<Expression> = {
+    <start:@L> <op:PrefixUnaryOp> <expr:PostfixUnaryWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(UnaryOperation{op, expr}, start, end),
+    PostfixUnaryWithoutStruct,
+}
+
+PostfixUnaryWithoutStruct: Box<Expression> = {
+    <start:@L> <t:TermWithoutStruct> <op:PostfixUnaryOp> <end:@R> => ctx.to_expr_with_source_ref(UnaryOperation{op, expr: t}, start, end),
+    TermWithoutStruct,
+}
+
+TermWithoutStruct: Box<Expression> = {
+    <start:@L> <i:IndexAccessWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(i, start, end),
+    <start:@L> <f:FunctionCallWithoutStruct> <end:@R> => ctx.to_expr_with_source_ref(f, start, end),
+    <start:@L> <i:ConstantIdentifier> <end:@R> => ctx.to_expr_with_source_ref(NamespacedPolynomialReference::from_identifier(i), start, end),
+    <start:@L> <g:GenericReference> <end:@R> => ctx.to_expr_with_source_ref(g, start, end),
+    <start:@L> <p:PublicIdentifier> <end:@R> => Box::new(Expression::PublicReference(ctx.source_ref(start, end), p)),
+    <start:@L> <value:Number> <end:@R> => ctx.to_expr_with_source_ref(Number {value: value.into(), type_: None}, start, end),
+    <start:@L> <s:StringLiteral> <end:@R> => Box::new(Expression::String(ctx.source_ref(start, end), s)),
+    MatchExpression,
+    IfExpression,
+    BlockExpression,
+    <start:@L> "[" <items:ExpressionListWithoutStruct> "]" <end:@R> => ctx.to_expr_with_source_ref(ArrayLiteral{items}, start, end),
+    <start:@L> "(" <head:ExpressionWithoutStruct> "," <tail:ExpressionListWithoutStruct> ")" <end:@R> => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start, end), list)) },
+    <start:@L> "(" ")" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
+    "(" <BoxedExpressionWithoutStruct> ")",
+    <start:@L> "${" <b:BoxedExpressionWithoutStruct> "}" <end:@R> => Box::new(Expression::FreeInput(ctx.source_ref(start, end), b))
+}
+
+IndexAccessWithoutStruct: IndexAccess = {
+    <array:TermWithoutStruct> "[" <index:BoxedExpressionWithoutStruct> "]" => IndexAccess{<>},
+}
+
+FunctionCallWithoutStruct: FunctionCall = {
+    <function:TermWithoutStruct> "(" <arguments:ExpressionListWithoutStruct> ")" => FunctionCall {<>},
 }
