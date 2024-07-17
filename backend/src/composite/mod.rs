@@ -138,7 +138,7 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
         .unwrap_or(0);
     let uses_next_operator = pil.identities.iter().any(|i| i.contains_next_ref());
     // This assumes that we'll always at least once reference the current row
-    let number_of_shifts = 1 + if uses_next_operator { 1 } else { 0 };
+    let number_of_rotations = 1 + if uses_next_operator { 1 } else { 0 };
     let num_identities_by_kind = pil
         .identities
         .iter()
@@ -151,7 +151,7 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
     log::info!("  * Number of witness columns: {}", num_witness_columns);
     log::info!("  * Number of fixed columns: {}", num_fixed_columns);
     log::info!("  * Maximum identity degree: {}", max_identity_degree);
-    log::info!("  * Number of shifts: {}", number_of_shifts);
+    log::info!("  * Number of rotations: {}", number_of_rotations);
     log::info!("  * Number of identities:");
     for (kind, count) in num_identities_by_kind {
         log::info!("    * {:?}: {}", kind, count);
