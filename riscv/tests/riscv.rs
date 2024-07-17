@@ -61,28 +61,28 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
 #[ignore = "Too slow"]
 fn trivial() {
     let case = "trivial";
-    verify_riscv_crate(case, Default::default(), &Runtime::base())
+    run_pilcom_riscv_crate(case, Default::default(), &Runtime::base())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn zero_with_values() {
     let case = "zero_with_values";
-    verify_riscv_crate(case, Default::default(), &Runtime::base())
+    run_pilcom_riscv_crate(case, Default::default(), &Runtime::base())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn runtime_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor";
-    verify_riscv_crate(case, Default::default(), &Runtime::base().with_poseidon());
+    run_pilcom_riscv_crate(case, Default::default(), &Runtime::base().with_poseidon());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn sum() {
     let case = "sum";
-    verify_riscv_crate(
+    run_pilcom_riscv_crate(
         case,
         [16, 4, 1, 2, 8, 5].iter().map(|&x| x.into()).collect(),
         &Runtime::base(),
@@ -93,7 +93,7 @@ fn sum() {
 #[ignore = "Too slow"]
 fn byte_access() {
     let case = "byte_access";
-    verify_riscv_crate(
+    run_pilcom_riscv_crate(
         case,
         [0, 104, 707].iter().map(|&x| x.into()).collect(),
         &Runtime::base(),
@@ -109,7 +109,7 @@ fn double_word() {
     let b0 = 0xf100b00fu32;
     let b1 = 0x0100f0f0u32;
     let c = ((a0 as u64) | ((a1 as u64) << 32)).wrapping_mul((b0 as u64) | ((b1 as u64) << 32));
-    verify_riscv_crate(
+    run_pilcom_riscv_crate(
         case,
         [
             a0,
@@ -130,14 +130,14 @@ fn double_word() {
 #[ignore = "Too slow"]
 fn memfuncs() {
     let case = "memfuncs";
-    verify_riscv_crate(case, Default::default(), &Runtime::base());
+    run_pilcom_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn keccak() {
     let case = "keccak";
-    verify_riscv_crate(case, Default::default(), &Runtime::base());
+    run_pilcom_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
 #[cfg(feature = "estark-polygon")]
@@ -145,14 +145,13 @@ fn keccak() {
 #[ignore = "Too slow"]
 fn vec_median_estark_polygon() {
     let case = "vec_median";
-    verify_riscv_crate_with_backend(
+    run_pilcom_riscv_crate(
         case,
         [5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]
             .into_iter()
             .map(|x| x.into())
             .collect(),
         &Runtime::base(),
-        BackendType::EStarkPolygonComposite,
     );
 }
 
@@ -160,7 +159,7 @@ fn vec_median_estark_polygon() {
 #[ignore = "Too slow"]
 fn vec_median() {
     let case = "vec_median";
-    verify_riscv_crate(
+    run_pilcom_riscv_crate(
         case,
         [5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]
             .into_iter()
@@ -174,14 +173,14 @@ fn vec_median() {
 #[ignore = "Too slow"]
 fn password() {
     let case = "password_checker";
-    verify_riscv_crate(case, Default::default(), &Runtime::base());
+    run_pilcom_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn function_pointer() {
     let case = "function_pointer";
-    verify_riscv_crate(
+    run_pilcom_riscv_crate(
         case,
         [2734, 735, 1999].into_iter().map(|x| x.into()).collect(),
         &Runtime::base(),
@@ -192,28 +191,28 @@ fn function_pointer() {
 #[ignore = "Too slow"]
 fn runtime_ec_double() {
     let case = "ec_double";
-    verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
+    run_pilcom_riscv_crate(case, vec![], &Runtime::base().with_arith());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn runtime_ec_add() {
     let case = "ec_add";
-    verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
+    run_pilcom_riscv_crate(case, vec![], &Runtime::base().with_arith());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn runtime_affine_256() {
     let case = "affine_256";
-    verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
+    run_pilcom_riscv_crate(case, vec![], &Runtime::base().with_arith());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn runtime_modmul_256() {
     let case = "modmul_256";
-    verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
+    run_pilcom_riscv_crate(case, vec![], &Runtime::base().with_arith());
 }
 
 /*
@@ -230,7 +229,7 @@ fn evm() {
     let case = "evm";
     let bytes = hex::decode(BYTECODE).unwrap();
 
-    verify_riscv_crate_with_data(case, vec![], &Runtime::base(), vec![(666, bytes)]);
+    run_pilcom_riscv_crate_with_data(case, vec![], &Runtime::base(), vec![(666, bytes)]);
 }
 
 #[ignore = "Too slow"]
@@ -241,7 +240,7 @@ fn sum_serde() {
     let data: Vec<u32> = vec![1, 2, 8, 5];
     let answer = data.iter().sum::<u32>();
 
-    verify_riscv_crate_with_data(
+    run_pilcom_riscv_crate_with_data(
         case,
         vec![answer.into()],
         &Runtime::base(),
@@ -257,7 +256,7 @@ fn two_sums_serde() {
     let data1: Vec<u32> = vec![1, 2, 8, 5];
     let data2 = data1.clone();
 
-    verify_riscv_crate_with_data(
+    run_pilcom_riscv_crate_with_data(
         case,
         vec![],
         &Runtime::base(),
@@ -288,7 +287,7 @@ fn dispatch_table_static_relocation() {
 )]
 fn print() {
     let case = "print";
-    verify_riscv_crate(case, Default::default(), &Runtime::base());
+    run_pilcom_riscv_crate(case, Default::default(), &Runtime::base());
 }
 
 #[test]
@@ -365,20 +364,20 @@ fn many_chunks_memory() {
     test_continuations("many_chunks_memory")
 }
 
-fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, runtime: &Runtime) {
-    verify_riscv_crate_from_both_paths::<()>(case, inputs, runtime, None)
+fn run_pilcom_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, runtime: &Runtime) {
+    run_pilcom_riscv_crate_from_both_paths::<()>(case, inputs, runtime, None)
 }
 
-fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
+fn run_pilcom_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
     case: &str,
     inputs: Vec<GoldilocksField>,
     runtime: &Runtime,
     data: Vec<(u32, S)>,
 ) {
-    verify_riscv_crate_from_both_paths(case, inputs, runtime, Some(data))
+    run_pilcom_riscv_crate_from_both_paths(case, inputs, runtime, Some(data))
 }
 
-fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'static>(
+fn run_pilcom_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'static>(
     case: &str,
     inputs: Vec<GoldilocksField>,
     runtime: &Runtime,
