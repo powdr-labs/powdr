@@ -55,4 +55,7 @@ machine Main with degree: 8 {
 
     u1' = u1_next;
     u2' = u2_next;
+
+    is_first' * (z1 + u1) = 0;
+    is_first' * (z2 + u2) = 0;
 }

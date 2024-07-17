@@ -29,4 +29,6 @@ machine Main with degree: 8 {
 
     let is_first: col = std::well_known::is_first;
     permutation(is_first, 1, [z], [u], alpha, beta, permutation_constraint);
+
+    is_first' * (z + u) = 0;
 }

@@ -25,8 +25,8 @@ use std::prover::eval;
 /// # Arguments:
 ///
 /// - is_first: A column that is 1 for the first row and 0 for the rest
-/// - id: Id for machines to be able to access the same challenge
-/// - tuple: An array of columns which will be sending by bus
+/// - id: Interaction Id
+/// - tuple: An array of columns to be sent to the bus
 /// - multiplicity: The multiplicity which shows how many times a column will be sent
 /// - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
 ///        are done on the F_{p^2} extension field.
@@ -39,7 +39,6 @@ use std::prover::eval;
 let bus_interaction: expr, expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> Constr[] = |is_first, id, tuple, multiplicity, acc, alpha, beta| {
 
     // Implemented as: folded = (beta - fingerprint(id, tuple...));
-    // `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
     let folded = sub_ext(beta, fingerprint_with_id(id, tuple, alpha));
     let folded_next = next_ext(folded);
 
@@ -52,7 +51,9 @@ let bus_interaction: expr, expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> C
     let is_first_next = from_base(is_first');
 
     // Update rule:
-    // fingerprint_with_id(id, (a1', a2', ...), alpha) * (acc' - acc * (1 - is_first')) - multiplicity' = 0
+    // acc' =  acc * (1 - is_first') + multiplicity' / folded'
+    // or equivalently:
+    // folded' * (acc' - acc * (1 - is_first')) - multiplicity' = 0
     let update_expr = sub_ext(
         mul_ext(folded_next, sub_ext(next_acc, mul_ext(acc_ext, sub_ext(from_base(1), is_first_next)))), m_ext_next
     );
@@ -60,7 +61,7 @@ let bus_interaction: expr, expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> C
     constrain_eq_ext(update_expr, from_base(0))
 };
 
-/// Compute acc' = acc * (1 - is_first') + multiplicity / fingerprint_with_id(id, (a1', a2')),
+/// Compute acc' = acc * (1 - is_first') + multiplicity' / fingerprint_with_id(id, (a1', a2')),
 /// using extension field arithmetic.
 /// This is intended to be used as a hint in the extension field case; for the base case
 /// automatic witgen is smart enough to figure out the value of the accumulator.
@@ -85,7 +86,7 @@ let compute_next_z_send: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<exp
     unpack_ext_array(res)
 };
 
-/// Compute acc' = acc * (1 - is_first') - multiplicity / fingerprint_with_id(id, (a1', a2')),
+/// Compute acc' = acc * (1 - is_first') - multiplicity' / fingerprint_with_id(id, (a1', a2')),
 /// using extension field arithmetic.
 /// This is intended to be used as a hint in the extension field case; for the base case
 /// automatic witgen is smart enough to figure out the value of the accumulator.
