@@ -3,8 +3,8 @@ use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         gen_estark_proof, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
-        resolve_test_file, test_halo2, test_halo2_with_backend_variant, verify_test_file,
-        BackendVariant,
+        resolve_test_file, run_pilcom_test_file, run_pilcom_with_backend_variant, test_halo2,
+        test_halo2_with_backend_variant, BackendVariant,
     },
     util::{read_poly_set, FixedPolySet, WitnessPolySet},
     Pipeline,
@@ -12,7 +12,7 @@ use powdr_pipeline::{
 use test_log::test;
 
 fn verify_asm(file_name: &str, inputs: Vec<GoldilocksField>) {
-    verify_test_file(file_name, inputs, vec![]).unwrap();
+    run_pilcom_test_file(file_name, inputs, vec![]).unwrap();
 }
 
 fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
@@ -82,7 +82,7 @@ fn mem_write_once_external_write() {
     mem[17] = GoldilocksField::from(42);
     mem[62] = GoldilocksField::from(123);
     mem[255] = GoldilocksField::from(-1);
-    verify_test_file(
+    run_pilcom_test_file(
         f,
         Default::default(),
         vec![("main_memory.value".to_string(), mem)],
@@ -228,9 +228,17 @@ fn vm_to_block_different_length() {
     let f = "asm/vm_to_block_different_length.asm";
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
-    test_halo2_with_backend_variant(make_prepared_pipeline(f, vec![]), BackendVariant::Composite);
+    run_pilcom_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    )
+    .unwrap();
+    test_halo2_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
     gen_estark_proof_with_backend_variant(
-        make_prepared_pipeline(f, vec![]),
+        make_prepared_pipeline(f, vec![], vec![]),
         BackendVariant::Composite,
     );
 }

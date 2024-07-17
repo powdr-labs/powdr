@@ -6,8 +6,8 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_proof, make_prepared_pipeline, resolve_test_file, std_analyzed, test_halo2,
-        verify_test_file, BackendVariant,
+        gen_halo2_proof, make_prepared_pipeline, resolve_test_file, run_pilcom_test_file,
+        std_analyzed, test_halo2, BackendVariant,
     },
     Pipeline,
 };
@@ -22,23 +22,26 @@ fn poseidon_bn254_test() {
     // This makes sure we test the whole proof generation for one example
     // file even in the PR tests.
     gen_halo2_proof(
-        make_prepared_pipeline(f, vec![]),
+        make_prepared_pipeline(f, vec![], vec![]),
         BackendVariant::Monolithic,
     );
-    gen_halo2_proof(make_prepared_pipeline(f, vec![]), BackendVariant::Composite);
+    gen_halo2_proof(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
 }
 
 #[test]
 fn poseidon_gl_test() {
     let f = "std/poseidon_gl_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
 }
 
 #[test]
 fn poseidon_gl_memory_test() {
     let f = "std/poseidon_gl_memory_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
 }
 
@@ -51,7 +54,7 @@ fn split_bn254_test() {
 #[test]
 fn split_gl_test() {
     let f = "std/split_gl_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
 }
 
@@ -59,7 +62,7 @@ fn split_gl_test() {
 #[ignore = "Too slow"]
 fn arith_test() {
     let f = "std/arith_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
 
     // Running gen_estark_proof(f, Default::default())
     // is too slow for the PR tests. This will only create a single
@@ -76,7 +79,7 @@ fn arith_test() {
 #[test]
 fn memory_test() {
     let f = "std/memory_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
     test_halo2(f, Default::default());
 }
@@ -84,7 +87,7 @@ fn memory_test() {
 #[test]
 fn memory_with_bootloader_write_test() {
     let f = "std/memory_with_bootloader_write_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
     test_halo2(f, Default::default());
 }
@@ -92,7 +95,7 @@ fn memory_with_bootloader_write_test() {
 #[test]
 fn memory_test_parallel_accesses() {
     let f = "std/memory_test_parallel_accesses.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
     test_halo2(f, Default::default());
 }
@@ -171,7 +174,7 @@ fn bus_permutation_via_challenges_ext_bn() {
 #[test]
 fn write_once_memory_test() {
     let f = "std/write_once_memory_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
     gen_estark_proof(f, Default::default());
     test_halo2(f, Default::default());
 }
@@ -179,14 +182,14 @@ fn write_once_memory_test() {
 #[test]
 fn binary_test() {
     let f = "std/binary_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
     test_halo2(f, Default::default());
 }
 
 #[test]
 fn shift_test() {
     let f = "std/shift_test.asm";
-    verify_test_file(f, Default::default(), vec![]).unwrap();
+    run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
     test_halo2(f, Default::default());
 }
 
