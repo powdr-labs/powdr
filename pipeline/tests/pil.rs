@@ -313,6 +313,11 @@ fn different_degrees() {
     let f = "pil/different_degrees.pil";
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
+    run_pilcom_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    )
+    .unwrap();
     test_halo2_with_backend_variant(
         make_prepared_pipeline(f, vec![], vec![]),
         BackendVariant::Composite,

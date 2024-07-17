@@ -3,8 +3,8 @@ use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         gen_estark_proof, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
-        resolve_test_file, run_pilcom_test_file, test_halo2, test_halo2_with_backend_variant,
-        BackendVariant,
+        resolve_test_file, run_pilcom_test_file, run_pilcom_with_backend_variant, test_halo2,
+        test_halo2_with_backend_variant, BackendVariant,
     },
     util::{read_poly_set, FixedPolySet, WitnessPolySet},
     Pipeline,
@@ -228,6 +228,11 @@ fn vm_to_block_different_length() {
     let f = "asm/vm_to_block_different_length.asm";
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
+    run_pilcom_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    )
+    .unwrap();
     test_halo2_with_backend_variant(
         make_prepared_pipeline(f, vec![], vec![]),
         BackendVariant::Composite,
