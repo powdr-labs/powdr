@@ -192,7 +192,10 @@ fn translate_program_impl(
         statements.push("x1 <== jump(__data_init);".to_string());
     }
     statements.extend([
-        format!("x1 <== jump({});", program.start_function().as_ref()),
+        format!(
+            "x1 <== jump({});",
+            escape_label(program.start_function().as_ref())
+        ),
         "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
     ]);
     for s in program.take_executable_statements() {
