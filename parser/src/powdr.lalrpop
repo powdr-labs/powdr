@@ -621,11 +621,6 @@ TermCommon<StructOption>: Box<Expression> = {
     <start:@L> "${" <b:BoxedExpression<StructOption>> "}" <end:@R> => Box::new(Expression::FreeInput(ctx.source_ref(start, end), b))
 }
 
-ExpressionWithStruct = Expression<TermWithStruct>;
-ExpressionWithoutStruct = Expression<TermWithoutStruct>;
-BoxedExpressionWithStruct = BoxedExpression<TermWithStruct>;
-BoxedExpressionWithoutStruct = BoxedExpression<TermWithoutStruct>;
-
 IndexAccess<StructOption>: IndexAccess = {
     <array:Term<StructOption>> "[" <index:BoxedExpression<StructOption>> "]" => IndexAccess{<>},
 }
