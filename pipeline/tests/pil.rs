@@ -350,25 +350,8 @@ fn serialize_deserialize_optimized_pil() {
 }
 
 mod reparse {
-
-    use powdr_number::GoldilocksField;
-    use powdr_pipeline::test_util::resolve_test_file;
-    use powdr_pipeline::Pipeline;
+    use powdr_pipeline::test_util::run_reparse_test;
     use test_log::test;
-
-    fn run_reparse_test(file: &str) {
-        // Compute the optimized PIL
-        let optimized_pil = Pipeline::<GoldilocksField>::default()
-            .from_pil_file(resolve_test_file(file))
-            .compute_optimized_pil()
-            .unwrap();
-        // Run the pipeline using the string serialization of the optimized PIL.
-        // This panics if the re-parsing fails.
-        Pipeline::<GoldilocksField>::default()
-            .from_pil_string(optimized_pil.to_string())
-            .compute_optimized_pil()
-            .unwrap();
-    }
     include!(concat!(env!("OUT_DIR"), "/pil_reparse_tests.rs"));
 }
 
