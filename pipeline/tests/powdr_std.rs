@@ -388,8 +388,16 @@ mod reparse {
     use test_log::test;
 
     /// For convenience, all re-parsing tests run with the Goldilocks field,
-    /// but this test panics on small fields.
-    const BLACKLIST: [&str; 1] = ["std/bus_permutation_via_challenges.asm"];
+    /// but these tests panic if the field is too small. This is *probably*
+    /// fine, because all of these tests have a similar variant that does
+    /// run on Goldilocks.
+    const BLACKLIST: [&str; 5] = [
+        "std/bus_permutation_via_challenges.asm",
+        "std/permutation_via_challenges.asm",
+        "std/lookup_via_challenges.asm",
+        "std/poseidon_bn254_test.asm",
+        "std/split_bn254_test.asm",
+    ];
 
     fn run_reparse_test(file: &str) {
         run_reparse_test_with_blacklist(file, &BLACKLIST);
