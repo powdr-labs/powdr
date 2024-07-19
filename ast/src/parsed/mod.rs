@@ -830,6 +830,11 @@ pub struct LambdaExpression<E = Expression<NamespacedPolynomialReference>> {
     pub kind: FunctionKind,
     pub params: Vec<Pattern>,
     pub body: Box<E>,
+    /// The IDs of the variables outside the functions that are referenced,
+    /// i.e. the environment that is captured by the closure.
+    /// This is filled in by the expression processor.
+    #[schemars(skip)]
+    pub outer_var_references: BTreeSet<u64>,
 }
 
 impl<Ref> From<LambdaExpression<Expression<Ref>>> for Expression<Ref> {

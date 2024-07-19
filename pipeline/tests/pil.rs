@@ -4,14 +4,16 @@ use powdr_number::GoldilocksField;
 use powdr_pipeline::test_util::{
     assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
     assert_proofs_fail_for_invalid_witnesses_halo2,
-    assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof, test_halo2, test_plonky3,
-    verify_test_file,
+    assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
+    gen_estark_proof_with_backend_variant, make_prepared_pipeline, run_pilcom_test_file,
+    run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant, test_plonky3,
+    BackendVariant,
 };
 
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
-    verify_test_file(file_name, inputs, vec![]).unwrap();
+    run_pilcom_test_file(file_name, inputs, vec![]).unwrap();
 }
 
 #[test]
@@ -144,14 +146,14 @@ fn external_witgen_fails_if_none_provided() {
 fn external_witgen_a_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.a".to_string(), vec![GoldilocksField::from(3); 16])];
-    verify_test_file(f, Default::default(), external_witness).unwrap();
+    run_pilcom_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
 fn external_witgen_b_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.b".to_string(), vec![GoldilocksField::from(4); 16])];
-    verify_test_file(f, Default::default(), external_witness).unwrap();
+    run_pilcom_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
@@ -161,7 +163,7 @@ fn external_witgen_both_provided() {
         ("main.a".to_string(), vec![GoldilocksField::from(3); 16]),
         ("main.b".to_string(), vec![GoldilocksField::from(4); 16]),
     ];
-    verify_test_file(f, Default::default(), external_witness).unwrap();
+    run_pilcom_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
@@ -173,7 +175,7 @@ fn external_witgen_fails_on_conflicting_external_witness() {
         // Does not satisfy b = a + 1
         ("main.b".to_string(), vec![GoldilocksField::from(3); 16]),
     ];
-    verify_test_file(f, Default::default(), external_witness).unwrap();
+    run_pilcom_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
@@ -308,10 +310,23 @@ fn naive_byte_decomposition_gl() {
 }
 
 #[test]
-#[should_panic = "NoVariableDegreeAvailable"]
 fn different_degrees() {
     let f = "pil/different_degrees.pil";
-    verify_pil(f, Default::default());
+    // Because machines have different lengths, this can only be proven
+    // with a composite proof.
+    run_pilcom_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    )
+    .unwrap();
+    test_halo2_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
+    gen_estark_proof_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
 }
 
 #[test]
@@ -332,6 +347,12 @@ fn serialize_deserialize_optimized_pil() {
     let output_pil_file = format!("{optimized_deserialized}");
 
     assert_eq!(input_pil_file, output_pil_file);
+}
+
+mod reparse {
+    use powdr_pipeline::test_util::run_reparse_test;
+    use test_log::test;
+    include!(concat!(env!("OUT_DIR"), "/pil_reparse_tests.rs"));
 }
 
 mod book {

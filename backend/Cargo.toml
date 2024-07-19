@@ -16,6 +16,7 @@ plonky3 = ["dep:powdr-plonky3"]
 [dependencies]
 powdr-ast.workspace = true
 powdr-number.workspace = true
+powdr-parser.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-executor.workspace = true
 powdr-parser-util.workspace = true
@@ -38,6 +39,7 @@ strum = { version = "0.24.1", features = ["derive"] }
 log = "0.4.17"
 serde = "1.0"
 serde_json = "1.0"
+bincode = "1.3.3"
 hex = "0.4"
 thiserror = "1.0.43"
 mktemp = "0.5.0"
