@@ -1,5 +1,6 @@
 use std::{
     borrow::Cow,
+    cell::Cell,
     cmp::Ordering,
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
     fs,
@@ -152,7 +153,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
     }
 
     // Sort text sections by address and flatten them.
-    lifted_text_sections.sort_by_key(|insns| insns[0].original_address);
+    lifted_text_sections.sort_by_key(|insns| insns[0].loc.address);
     let lifted_text_sections = lifted_text_sections
         .into_iter()
         .flatten()
@@ -306,46 +307,65 @@ impl RiscVProgram for ElfProgram {
     fn take_executable_statements(
         &mut self,
     ) -> impl Iterator<Item = crate::code_gen::Statement<impl AsRef<str>, WrappedArgs>> {
-        let labels = self.text_labels.iter();
+        // In the output, the precedence is labels, locations, and then instructions.
+        // We merge the 3 iterators with this operations: merge(labels, merge(locs, instructions)), where each is sorted by address.
+
+        // First the inner merge: locs and instructions.
         let locs = self.dbg.source_locations.iter();
-
-        let labels_and_locs = labels.merge_join_by(locs, |&&next_label, next_loc| {
-            next_label <= next_loc.address
-        });
-
         let instructions = self.instructions.iter();
-        labels_and_locs
-            .merge_join_by(instructions, |next_label_or_loc, next_insn| {
-                let (s, left_addr) = match next_label_or_loc {
-                    Either::Left(label) => ("Label", **label),
-                    Either::Right(loc) => ("Debug location", loc.address),
-                };
-
-                match left_addr.cmp(&next_insn.original_address) {
-                    Ordering::Less => panic!("{s} {left_addr:08x} doesn't match exact address!"),
-                    Ordering::Equal => true,
-                    Ordering::Greater => false,
+        let locs_and_instructions = locs
+            .map(|loc| (Cell::new(0), loc))
+            .merge_join_by(instructions, |next_loc, next_insn| {
+                assert!(
+                    next_loc.1.address >= next_insn.loc.address,
+                    "Debug location {:08x} doesn't match instruction address!",
+                    next_loc.1.address
+                );
+                if next_loc.1.address < next_insn.loc.address + next_insn.loc.size {
+                    next_loc.0.set(next_insn.loc.address);
+                    true
+                } else {
+                    false
                 }
             })
+            .map(|result| match result {
+                // Extract the address from the Either, for easier comparison in the next step.
+                Either::Left((address, loc)) => (address.get(), Either::Left(loc)),
+                Either::Right(insn) => (insn.loc.address, Either::Right(insn)),
+            });
+
+        // Now the outer merge: labels and locs_and_instructions.
+        let labels = self.text_labels.iter();
+        labels
+            .merge_join_by(
+                locs_and_instructions,
+                |&label_addr, (right_addr, _)| match label_addr.cmp(right_addr) {
+                    Ordering::Less => panic!("Label {label_addr:08x} doesn't match exact address!"),
+                    Ordering::Equal => true,
+                    Ordering::Greater => false,
+                },
+            )
             .flat_map(|result| -> Box<dyn Iterator<Item = _>> {
                 match result {
-                    Either::Left(Either::Left(label)) => {
+                    Either::Left(label) => {
                         Box::new(self.dbg.symbols.get_all(*label).map(Statement::Label))
                     }
-                    Either::Left(Either::Right(loc)) => {
+                    Either::Right((_, Either::Left(loc))) => {
                         Box::new(std::iter::once(Statement::DebugLoc {
                             file: loc.file,
                             line: loc.line,
                             col: loc.col,
                         }))
                     }
-                    Either::Right(insn) => Box::new(std::iter::once(Statement::Instruction {
-                        op: insn.op,
-                        args: WrappedArgs {
-                            args: &insn.args,
-                            symbol_table: &self.dbg.symbols,
-                        },
-                    })),
+                    Either::Right((_, Either::Right(insn))) => {
+                        Box::new(std::iter::once(Statement::Instruction {
+                            op: insn.op,
+                            args: WrappedArgs {
+                                args: &insn.args,
+                                symbol_table: &self.dbg.symbols,
+                            },
+                        }))
+                    }
                 }
             })
     }
@@ -598,9 +618,29 @@ fn load_data_section(mut addr: u32, data: &[u8], data_map: &mut BTreeMap<u32, Da
     }
 }
 
+enum UnimpOrInstruction {
+    Unimp16,
+    /// I left an Unimp32 here just in case we need it in the future.
+    _Unimp32,
+    Instruction(Ins),
+}
+
+impl UnimpOrInstruction {
+    fn len(&self) -> u32 {
+        match self {
+            UnimpOrInstruction::Unimp16 => 2,
+            UnimpOrInstruction::_Unimp32 => 4,
+            UnimpOrInstruction::Instruction(ins) => match ins.extension {
+                Extensions::C => 2,
+                _ => 4,
+            },
+        }
+    }
+}
+
 struct MaybeInstruction {
     address: u32,
-    insn: Option<Ins>,
+    insn: UnimpOrInstruction,
 }
 
 #[derive(Debug)]
@@ -630,8 +670,13 @@ impl Default for HighLevelArgs {
     }
 }
 
+struct Location {
+    address: u32,
+    size: u32,
+}
+
 struct HighLevelInsn {
-    original_address: u32,
+    loc: Location,
     op: &'static str,
     args: HighLevelArgs,
 }
@@ -703,9 +748,14 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         insn1: &MaybeInstruction,
         insn2: &MaybeInstruction,
     ) -> Option<HighLevelInsn> {
-        let original_address = insn1.address;
+        use UnimpOrInstruction::Instruction as I;
+
+        let loc = Location {
+            address: insn1.address,
+            size: insn1.insn.len() + insn2.insn.len(),
+        };
         let insn2_addr = insn2.address;
-        let (Some(insn1), Some(insn2)) = (&insn1.insn, &insn2.insn) else {
+        let (I(insn1), I(insn2)) = (&insn1.insn, &insn2.insn) else {
             return None;
         };
 
@@ -730,15 +780,11 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 // to load an address into a register. We must check if this is
                 // the case, and if the address points to a text section, we
                 // must load it from a label.
-                let is_address = self.rellocs_set.contains(&original_address);
+                let is_address = self.rellocs_set.contains(&loc.address);
                 let (op, args) =
                     self.composed_immediate(*hi, *lo, *rd_lui, *rd_addi, insn2_addr, is_address)?;
 
-                HighLevelInsn {
-                    op,
-                    args,
-                    original_address,
-                }
+                HighLevelInsn { op, args, loc }
             }
             (
                 // All other double instructions we can lift start with auipc.
@@ -750,7 +796,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 },
                 insn2,
             ) => {
-                let hi = hi.wrapping_add(original_address as i32);
+                let hi = hi.wrapping_add(loc.address as i32);
                 match insn2 {
                     // la rd, symbol
                     Ins {
@@ -766,11 +812,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                             hi, *lo, *rd_auipc, *rd_addi, insn2_addr, IS_ADDRESS,
                         )?;
 
-                        HighLevelInsn {
-                            op,
-                            args,
-                            original_address,
-                        }
+                        HighLevelInsn { op, args, loc }
                     }
                     // l{b|h|w} rd, symbol
                     Ins {
@@ -797,7 +839,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                                 imm: HighLevelImmediate::Value(addr),
                                 ..Default::default()
                             },
-                            original_address,
+                            loc,
                         }
                     }
                     // s{b|h|w} rd, symbol, rt
@@ -833,7 +875,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                             imm: HighLevelImmediate::CodeLabel(hi.wrapping_add(*lo) as u32),
                             ..Default::default()
                         },
-                        original_address,
+                        loc,
                     },
                     // tail offset
                     Ins {
@@ -849,11 +891,12 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                             imm: HighLevelImmediate::CodeLabel(hi.wrapping_add(*lo) as u32),
                             ..Default::default()
                         },
-                        original_address,
+                        loc,
                     },
                     _ => {
                         panic!(
-                            "Unexpected instruction after AUIPC: {insn2:?} at {original_address:08x}"
+                            "Unexpected instruction after AUIPC: {insn2:?} at {:08x}",
+                            loc.address
                         );
                     }
                 }
@@ -873,19 +916,22 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
     }
 
     fn map_one(&mut self, insn: MaybeInstruction) -> HighLevelInsn {
-        let original_address = insn.address;
-        let Some(insn) = insn.insn else {
+        let loc = Location {
+            address: insn.address,
+            size: insn.insn.len(),
+        };
+        let UnimpOrInstruction::Instruction(insn) = insn.insn else {
             return HighLevelInsn {
                 op: "unimp",
                 args: Default::default(),
-                original_address,
+                loc,
             };
         };
 
         let mut imm = match insn.opc {
             // All jump instructions that have an address as immediate
             Op::JAL | Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
-                let addr = (insn.imm.unwrap() + original_address as i32) as u32;
+                let addr = (insn.imm.unwrap() + loc.address as i32) as u32;
                 if let ReadOrWrite::Write(refs) = &mut self.referenced_text_addrs {
                     refs.insert(addr);
                 }
@@ -913,11 +959,11 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     args: HighLevelArgs {
                         rd: insn.rd.map(|x| x as u32),
                         imm: HighLevelImmediate::Value(
-                            insn.imm.unwrap().wrapping_add(original_address as i32),
+                            insn.imm.unwrap().wrapping_add(loc.address as i32),
                         ),
                         ..Default::default()
                     },
-                    original_address,
+                    loc,
                 };
             }
             // All other instructions, which have the immediate as a value
@@ -947,7 +993,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 rs2: insn.rs2.map(|x| x as u32),
                 imm,
             },
-            original_address,
+            loc,
         }
     }
 }
@@ -1039,7 +1085,7 @@ impl Iterator for RiscVInstructionIterator<'_> {
 
             maybe_insn = MaybeInstruction {
                 address: self.curr_address,
-                insn: Some(insn),
+                insn: UnimpOrInstruction::Instruction(insn),
             };
         } else {
             // 16 bits
@@ -1052,7 +1098,7 @@ impl Iterator for RiscVInstructionIterator<'_> {
             maybe_insn = MaybeInstruction {
                 address: self.curr_address,
                 insn: match bin_instruction.decode(Isa::Rv32) {
-                    Ok(c_insn) => Some(to_32bit_equivalent(c_insn)),
+                    Ok(c_insn) => UnimpOrInstruction::Instruction(to_32bit_equivalent(c_insn)),
                     Err(raki::decode::DecodingError::IllegalInstruction) => {
                         // Although not a real RISC-V instruction, sometimes 0x0000
                         // is used on purpose as an illegal instruction (it even has
@@ -1066,7 +1112,7 @@ impl Iterator for RiscVInstructionIterator<'_> {
                             "Failed to decode 16-bit instruction at {:08x}",
                             self.curr_address
                         );
-                        None
+                        UnimpOrInstruction::Unimp16
                     }
                     Err(err) => panic!(
                         "Unexpected decoding error at {:08x}: {err:?}",

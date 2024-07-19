@@ -43,6 +43,7 @@ pub struct DebugInfo {
     pub notes: HashMap<u32, String>,
 }
 
+#[derive(Debug)]
 pub struct SourceLocationInfo {
     pub address: u32,
     pub file: u64,
