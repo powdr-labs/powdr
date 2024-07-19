@@ -409,3 +409,31 @@ pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(Str
     #[cfg(feature = "halo2")]
     assert_proofs_fail_for_invalid_witnesses_halo2(file_name, witness);
 }
+
+pub fn run_reparse_test(file: &str) {
+    run_reparse_test_with_blacklist(file, &[]);
+}
+
+pub fn run_reparse_test_with_blacklist(file: &str, blacklist: &[&str]) {
+    if blacklist.contains(&file) {
+        return;
+    }
+
+    // Load file
+    let pipeline = Pipeline::<GoldilocksField>::default();
+    let mut pipeline = if file.ends_with(".asm") {
+        pipeline.from_asm_file(resolve_test_file(file))
+    } else {
+        pipeline.from_pil_file(resolve_test_file(file))
+    };
+
+    // Compute the optimized PIL
+    let optimized_pil = pipeline.compute_optimized_pil().unwrap();
+
+    // Run the pipeline using the string serialization of the optimized PIL.
+    // This panics if the re-parsing fails.
+    Pipeline::<GoldilocksField>::default()
+        .from_pil_string(optimized_pil.to_string())
+        .compute_optimized_pil()
+        .unwrap();
+}

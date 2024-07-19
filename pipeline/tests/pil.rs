@@ -349,6 +349,12 @@ fn serialize_deserialize_optimized_pil() {
     assert_eq!(input_pil_file, output_pil_file);
 }
 
+mod reparse {
+    use powdr_pipeline::test_util::run_reparse_test;
+    use test_log::test;
+    include!(concat!(env!("OUT_DIR"), "/pil_reparse_tests.rs"));
+}
+
 mod book {
     use super::*;
     use test_log::test;

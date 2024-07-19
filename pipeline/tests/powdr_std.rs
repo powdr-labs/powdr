@@ -381,3 +381,26 @@ fn btree() {
     let f = "std/btree_test.asm";
     execute_test_file(f, Default::default(), vec![]).unwrap();
 }
+
+mod reparse {
+
+    use powdr_pipeline::test_util::run_reparse_test_with_blacklist;
+    use test_log::test;
+
+    /// For convenience, all re-parsing tests run with the Goldilocks field,
+    /// but these tests panic if the field is too small. This is *probably*
+    /// fine, because all of these tests have a similar variant that does
+    /// run on Goldilocks.
+    const BLACKLIST: [&str; 5] = [
+        "std/bus_permutation_via_challenges.asm",
+        "std/permutation_via_challenges.asm",
+        "std/lookup_via_challenges.asm",
+        "std/poseidon_bn254_test.asm",
+        "std/split_bn254_test.asm",
+    ];
+
+    fn run_reparse_test(file: &str) {
+        run_reparse_test_with_blacklist(file, &BLACKLIST);
+    }
+    include!(concat!(env!("OUT_DIR"), "/std_reparse_tests.rs"));
+}
