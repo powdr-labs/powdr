@@ -200,6 +200,7 @@ where
                 None,
                 Some(FunctionDefinition::TraitDeclaration(trait_decl.clone())),
             ),
+            PilStatement::TraitImplementation(_, _) => vec![],
             _ => self.handle_identity_statement(statement),
         }
     }
@@ -367,7 +368,7 @@ where
             ),
             // TODO at some point, these should all be caught by the type checker.
             _ => {
-                panic!("Only identities allowed at this point.")
+                panic!("Only identities allowed at this point. {statement:?}")
             }
         };
 

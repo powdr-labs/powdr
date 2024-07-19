@@ -560,3 +560,34 @@ fn empty_conditional() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+fn defined_trait() {
+    let input = "
+    trait Add<T> {
+        add: T, T -> T,
+    }
+    impl<T> Add<int> {
+        add: |a, b| a + b,
+    }
+    let r: int = Add::add(3, 4);
+    ";
+    type_check(input, &[("r", "", "int")]);
+}
+
+#[test]
+#[should_panic = "Impls for Add with types (int) and (int) overlap"]
+fn duplicated_trait() {
+    let input = "
+    trait Add<T> {
+        add: T, T -> T,
+    }
+    impl<T> Add<int> {
+        add: |a, b| a + b,
+    }
+    impl<T> Add<int> {
+        add: |a, b| b + a,
+    }
+    ";
+    type_check(input, &[]);
+}

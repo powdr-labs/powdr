@@ -57,6 +57,13 @@ impl std::fmt::Display for Error {
 }
 
 impl Error {
+    pub fn new(source_ref: SourceRef, message: String) -> Self {
+        Self {
+            source_ref,
+            message,
+        }
+    }
+
     pub fn output_to_stderr(&self) {
         use codespan_reporting::diagnostic::{Diagnostic, Label};
         use codespan_reporting::files::SimpleFiles;

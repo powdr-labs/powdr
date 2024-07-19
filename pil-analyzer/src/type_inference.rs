@@ -35,6 +35,11 @@ pub fn infer_types(
     TypeChecker::new().infer_types(definitions, expressions)
 }
 
+/// TODO GZ
+pub fn unify_traits_types(ty1: Type, ty2: Type) -> Result<(), String> {
+    TypeChecker::new().unify_traits_types(ty1, ty2)
+}
+
 /// A type to expect and a flag that says if arrays of that type are also fine.
 #[derive(Clone)]
 pub struct ExpectedType {
@@ -190,6 +195,11 @@ impl TypeChecker {
         // This also computes and returns a mapping from the internal names of the type vars
         // in the type scheme to the type vars of the declarations.
         self.verify_type_schemes(inferred_types)
+    }
+
+    /// TODO GZ
+    pub fn unify_traits_types(&mut self, ty1: Type, ty2: Type) -> Result<(), String> {
+        self.unifier.unify_types(ty1, ty2)
     }
 
     /// Fills self.declared_types and checks that declared builtins have the correct type.

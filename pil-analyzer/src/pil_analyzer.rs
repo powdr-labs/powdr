@@ -8,11 +8,11 @@ use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::{ArrayType, Type};
+use powdr_ast::parsed::types::{ArrayType, TupleType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
-    SymbolCategory,
+    SymbolCategory, TraitImplementation,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
@@ -23,7 +23,7 @@ use powdr_ast::analyzed::{
 use powdr_parser::{parse, parse_module, parse_type};
 
 use crate::type_builtins::constr_function_statement_type;
-use crate::type_inference::infer_types;
+use crate::type_inference::{infer_types, unify_traits_types};
 use crate::{side_effect_checker, AnalysisDriver};
 
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
@@ -51,6 +51,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     analyzer.side_effect_check();
+    analyzer.check_traits_overlap();
     analyzer.type_check();
     analyzer.condense()
 }
@@ -71,6 +72,7 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
+    trait_implementations: HashMap<String, Vec<PilStatement>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -145,6 +147,13 @@ impl PILAnalyzer {
         for PILFile(file) in files {
             self.current_namespace = Default::default();
             for statement in file {
+                if let PilStatement::TraitImplementation(_, ref trait_impl) = statement {
+                    let name = trait_impl.name.to_string();
+                    self.trait_implementations
+                        .entry(name)
+                        .or_default()
+                        .push(statement.clone());
+                }
                 self.handle_statement(statement);
             }
         }
@@ -432,6 +441,51 @@ impl PILAnalyzer {
 
     fn driver(&self) -> Driver {
         Driver(self)
+    }
+
+    fn check_traits_overlap(&self) {
+        for implementations in self.trait_implementations.values() {
+            for (i, stmt1) in implementations.iter().enumerate() {
+                for stmt2 in implementations.iter().skip(i + 1) {
+                    match (stmt1, stmt2) {
+                        (
+                            PilStatement::TraitImplementation(sr1, impl1),
+                            PilStatement::TraitImplementation(_, impl2),
+                        ) => {
+                            self.check_traits_pairs(impl1, impl2)
+                                .map_err(|err| sr1.with_error(err))
+                                .unwrap();
+                        }
+                        _ => {
+                            panic!("Mismatched statement types in trait implementations");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn check_traits_pairs(
+        &self,
+        impl1: &TraitImplementation<parsed::Expression>,
+        impl2: &TraitImplementation<parsed::Expression>,
+    ) -> Result<(), String> {
+        let types1: Type = TupleType {
+            items: impl1.type_scheme.types.clone(),
+        }
+        .into();
+        let types2: Type = TupleType {
+            items: impl2.type_scheme.types.clone(),
+        }
+        .into();
+
+        match unify_traits_types(types1.clone(), types2.clone()) {
+            Ok(_) => Err(format!(
+                "Impls for {} with types {types1} and {types2} overlap",
+                impl1.name
+            )),
+            Err(_) => Ok(()),
+        }
     }
 }
 
