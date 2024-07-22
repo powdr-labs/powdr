@@ -247,11 +247,6 @@ impl TypeChecker {
                     "Machine {ctx} should not have call_selectors as it has a pc"
                 ));
             }
-            for _ in &links {
-                errors.push(format!(
-                    "Machine {ctx} has a pc, links cannot be used outside of instructions."
-                ));
-            }
             for o in callable.operation_definitions() {
                 errors.push(format!(
                     "Machine {ctx} should not have operations as it has a pc, found `{}`",

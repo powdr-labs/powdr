@@ -119,6 +119,14 @@ impl Runtime {
             ["x10, x11 <== split_gl(x10);", "x10 <=X= 0;", "x11 <=X= 0;"],
         );
 
+        r.add_submachine::<&str, _, _>("std::machines::range::Bit2", None, "bit2", [], 0, []);
+
+        r.add_submachine::<&str, _, _>("std::machines::range::Bit6", None, "bit6", [], 0, []);
+
+        r.add_submachine::<&str, _, _>("std::machines::range::Bit7", None, "bit7", [], 0, []);
+
+        r.add_submachine::<&str, _, _>("std::machines::range::Byte", None, "byte", [], 0, []);
+
         // Base syscalls
         r.add_syscall(
             Syscall::Input,
