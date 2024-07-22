@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Serialize, Deserialize)]
 pub struct VariablySizedColumn<F> {
-    pub column_by_size: BTreeMap<usize, Vec<F>>,
+    column_by_size: BTreeMap<usize, Vec<F>>,
 }
 
 #[derive(Debug)]
@@ -17,8 +17,22 @@ impl<F> VariablySizedColumn<F> {
         }
         Ok(self.column_by_size.values().next().unwrap())
     }
+
+    /// Returns the set of available sizes.
+    pub fn available_sizes(&self) -> BTreeSet<usize> {
+        self.column_by_size.keys().cloned().collect()
+    }
+
+    /// Clones and returns the column with the given size.
+    pub fn get_by_size_cloned(&self, size: usize) -> Option<Vec<F>>
+    where
+        F: Clone,
+    {
+        self.column_by_size.get(&size).cloned()
+    }
 }
 
+/// Returns all columns with their unique sizes. Fails if any column has multiple sizes.
 pub fn get_uniquely_sized<F>(
     column: &[(String, VariablySizedColumn<F>)],
 ) -> Result<Vec<(String, &Vec<F>)>, HasMultipleSizesError> {
@@ -28,6 +42,7 @@ pub fn get_uniquely_sized<F>(
         .collect()
 }
 
+/// Returns all columns with their maximum sizes.
 pub fn get_max_sized<F>(column: &[(String, VariablySizedColumn<F>)]) -> Vec<(String, &Vec<F>)> {
     column
         .iter()

@@ -47,10 +47,7 @@ pub(crate) fn machine_witness_columns<F: FieldElement>(
     let machine_columns = select_machine_columns(
         all_witness_columns,
         machine_pil.committed_polys_in_source_order(),
-    )
-    .into_iter()
-    .cloned()
-    .collect::<Vec<_>>();
+    );
     let size = machine_columns
         .iter()
         .map(|(_, column)| column.len())
@@ -59,6 +56,8 @@ pub(crate) fn machine_witness_columns<F: FieldElement>(
         .unwrap_or_else(|err| {
             if err.try_len().unwrap() == 0 {
                 // No witness column, use degree of provided PIL
+                // In practice, we'd at least expect a bus accumulator here, so this should not happen
+                // in any sound setup (after #1498)
                 machine_pil.degree() as usize
             } else {
                 panic!("Machine {machine_name} has witness columns of different sizes")
@@ -67,7 +66,7 @@ pub(crate) fn machine_witness_columns<F: FieldElement>(
     let dummy_column_name = format!("{machine_name}.{DUMMY_COLUMN_NAME}");
     let dummy_column = vec![F::zero(); size];
     iter::once((dummy_column_name, dummy_column))
-        .chain(machine_columns)
+        .chain(machine_columns.into_iter().cloned())
         .collect::<Vec<_>>()
 }
 
@@ -82,13 +81,7 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
     );
     let sizes = machine_columns
         .iter()
-        .map(|(_, column)| {
-            column
-                .column_by_size
-                .keys()
-                .cloned()
-                .collect::<BTreeSet<_>>()
-        })
+        .map(|(_, column)| column.available_sizes())
         .collect::<BTreeSet<_>>();
 
     assert!(
@@ -108,7 +101,10 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
                         machine_columns
                             .iter()
                             .map(|(name, column)| {
-                                (name.clone(), column.column_by_size[&size].clone().into())
+                                (
+                                    name.clone(),
+                                    column.get_by_size_cloned(size).unwrap().into(),
+                                )
                             })
                             .collect::<Vec<_>>(),
                     )
@@ -116,6 +112,8 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
                 .collect()
         })
         .unwrap_or_else(|| {
+            // There is no fixed column with a set size. So either the PIL has a degree, or we
+            // assume all possible degrees.
             let machine_degrees = machine_pil.degrees();
             assert!(
                 machine_degrees.len() <= 1,

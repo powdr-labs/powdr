@@ -27,9 +27,12 @@ struct CompositeVerificationKey {
     verification_keys: Vec<Option<VerificationKeyBySize>>,
 }
 
+/// A proof for a single machine.
 #[derive(Serialize, Deserialize)]
 struct MachineProof {
+    /// The (dynamic) size of the machine.
     size: usize,
+    /// The proof for the machine.
     proof: Vec<u8>,
 }
 
@@ -205,6 +208,7 @@ fn set_size<F: Clone>(pil: Arc<Analyzed<F>>, degree: DegreeType) -> Arc<Analyzed
 
     match current_degrees.iter().next() {
         None => {
+            // Clone the PIL and set the degree for all definitions
             let pil = (*pil).clone();
             let definitions = pil
                 .definitions
@@ -217,6 +221,7 @@ fn set_size<F: Clone>(pil: Arc<Analyzed<F>>, degree: DegreeType) -> Arc<Analyzed
             Arc::new(Analyzed { definitions, ..pil })
         }
         Some(existing_degree) => {
+            // Keep the the PIL as is
             assert_eq!(
                 existing_degree, &degree,
                 "Expected all definitions within a machine to have the same degree"
@@ -247,6 +252,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
             .iter()
             .map(|(machine, machine_data)| {
                 let start = std::time::Instant::now();
+                // Pick any available PIL; they all contain the same witness columns
                 let any_pil = &machine_data.values().next().unwrap().pil;
                 let witness = machine_witness_columns(witness, any_pil, machine);
                 let size = witness
@@ -263,24 +269,25 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                 log::info!("== Proving machine: {} (size {})", machine, size);
                 log::debug!("PIL:\n{}", machine_data.pil);
 
-                let proof = machine_data
-                    .backend
-                    .prove(&witness, None, witgen_callback)
-                    .map(|proof| MachineProof { size, proof });
+                let proof = machine_data.backend.prove(&witness, None, witgen_callback);
 
-                match &proof {
-                    Ok(proof) => {
+                match proof {
+                    Ok(inner_proof) => {
                         log::info!(
-                            "==> Machine proof of {} bytes computed in {:?}",
-                            proof.proof.len(),
+                            "==> Machine proof of {size} rows ({} bytes) computed in {:?}",
+                            inner_proof.len(),
                             start.elapsed()
                         );
+                        Ok(MachineProof {
+                            size,
+                            proof: inner_proof,
+                        })
                     }
                     Err(e) => {
                         log::error!("==> Machine proof failed: {:?}", e);
+                        Err(e)
                     }
-                };
-                proof
+                }
             })
             .collect::<Result<_, _>>()?;
 
