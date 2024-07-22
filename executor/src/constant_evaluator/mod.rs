@@ -21,7 +21,7 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 mod data_structures;
 
 pub const MIN_DEGREE_LOG: usize = 5;
-pub const MAX_DEGREE_LOG: usize = 18;
+pub const MAX_DEGREE_LOG: usize = 10;
 
 /// Generates the fixed column values for all fixed columns that are defined
 /// (and not just declared).
