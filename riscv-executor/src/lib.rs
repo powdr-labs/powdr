@@ -112,7 +112,7 @@ impl<F: FieldElement> Elem<F> {
 
     fn add(&self, other: &Self) -> Self {
         match (self, other) {
-            (Self::Binary(a), Self::Binary(b)) => Self::Binary(a + b),
+            (Self::Binary(a), Self::Binary(b)) => Self::Binary(a.checked_add(*b).unwrap()),
             (Self::Field(a), Self::Field(b)) => Self::Field(*a + *b),
             (Self::Binary(a), Self::Field(b)) => Self::Field(F::from(*a) + *b),
             (Self::Field(a), Self::Binary(b)) => Self::Field(*a + F::from(*b)),
@@ -121,7 +121,7 @@ impl<F: FieldElement> Elem<F> {
 
     fn sub(&self, other: &Self) -> Self {
         match (self, other) {
-            (Self::Binary(a), Self::Binary(b)) => Self::Binary(a - b),
+            (Self::Binary(a), Self::Binary(b)) => Self::Binary(a.checked_sub(*b).unwrap()),
             (Self::Field(a), Self::Field(b)) => Self::Field(*a - *b),
             (Self::Binary(a), Self::Field(b)) => Self::Field(F::from(*a) - *b),
             (Self::Field(a), Self::Binary(b)) => Self::Field(*a - F::from(*b)),

@@ -4,7 +4,7 @@ use std::{
 };
 
 use powdr_ast::{
-    asm_analysis::{AnalysisASMFile, RegisterTy},
+    asm_analysis::AnalysisASMFile,
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
 use powdr_number::FieldElement;
@@ -150,25 +150,6 @@ fn sanity_check(program: &AnalysisASMFile) {
             panic!();
         }
     }
-
-    // Check that the registers of the machine are as expected.
-    let _machine_registers = main_machine
-        .registers
-        .iter()
-        .filter_map(|r| {
-            ((r.ty == RegisterTy::Pc || r.ty == RegisterTy::Write) && r.name != "x0")
-                .then_some(format!("main.{}", r.name))
-        })
-        .collect::<BTreeSet<_>>();
-    let _expected_registers = REGISTER_NAMES
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<BTreeSet<_>>();
-    // FIXME: Currently, continuations don't support a Runtime with extra
-    // registers. This has not been fixed because extra registers will not be
-    // needed once we support accessing the memory machine from multiple
-    // machines. This comment can be removed then.
-    //assert_eq!(machine_registers, expected_registers);
 }
 
 pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
