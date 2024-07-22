@@ -1,6 +1,5 @@
 /// A machine to check that a field element represents two bytes. It uses an exhaustive lookup table.
 machine Byte2 with
-    degree: 65536,
     latch: latch,
     operation_id: operation_id
 {

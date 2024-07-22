@@ -3,8 +3,9 @@ use powdr_executor::constant_evaluator::get_uniquely_sized;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
-        gen_estark_proof, gen_estark_proof_with_backend_variant, resolve_test_file, test_halo2,
-        test_halo2_with_backend_variant, verify_test_file, BackendVariant,
+        gen_estark_proof, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
+        resolve_test_file, run_pilcom_test_file, run_pilcom_with_backend_variant, test_halo2,
+        test_halo2_with_backend_variant, BackendVariant,
     },
     util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
@@ -12,7 +13,7 @@ use powdr_pipeline::{
 use test_log::test;
 
 fn verify_asm(file_name: &str, inputs: Vec<GoldilocksField>) {
-    verify_test_file(file_name, inputs, vec![]).unwrap();
+    run_pilcom_test_file(file_name, inputs, vec![]).unwrap();
 }
 
 fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
@@ -82,7 +83,7 @@ fn mem_write_once_external_write() {
     mem[17] = GoldilocksField::from(42);
     mem[62] = GoldilocksField::from(123);
     mem[255] = GoldilocksField::from(-1);
-    verify_test_file(
+    run_pilcom_test_file(
         f,
         Default::default(),
         vec![("main_memory.value".to_string(), mem)],
@@ -228,8 +229,19 @@ fn vm_to_block_different_length() {
     let f = "asm/vm_to_block_different_length.asm";
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
-    test_halo2_with_backend_variant(f, vec![], BackendVariant::Composite);
-    gen_estark_proof_with_backend_variant(f, vec![], BackendVariant::Composite);
+    run_pilcom_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    )
+    .unwrap();
+    test_halo2_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
+    gen_estark_proof_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
 }
 
 #[test]
@@ -515,6 +527,25 @@ fn vm_args_two_levels() {
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
+}
+
+mod reparse {
+
+    use powdr_pipeline::test_util::run_reparse_test_with_blacklist;
+    use test_log::test;
+
+    /// Files that we don't expect to parse, analyze, and optimize without error.
+    const BLACKLIST: [&str; 4] = [
+        "asm/failing_assertion.asm",
+        "asm/multi_return_wrong_assignment_register_length.asm",
+        "asm/multi_return_wrong_assignment_registers.asm",
+        "asm/permutations/incoming_needs_selector.asm",
+    ];
+
+    fn run_reparse_test(file: &str) {
+        run_reparse_test_with_blacklist(file, &BLACKLIST)
+    }
+    include!(concat!(env!("OUT_DIR"), "/asm_reparse_tests.rs"));
 }
 
 mod book {

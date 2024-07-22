@@ -5,11 +5,14 @@ use std::{
     io::{self, BufReader},
     marker::Send,
     path::{Path, PathBuf},
+    rc::Rc,
     sync::Arc,
     time::Instant,
 };
 
+use crate::util::PolySet;
 use log::Level;
+use mktemp::Temp;
 use powdr_ast::{
     analyzed::Analyzed,
     asm_analysis::AnalysisASMFile,
@@ -28,9 +31,11 @@ use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite}
 use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
-    handle_simple_queries_callback, inputs_to_query_callback, serde_data_to_query_callback,
-    util::{FixedPolySet, PolySet, WitnessPolySet},
+    dict_data_to_query_callback, handle_simple_queries_callback, inputs_to_query_callback,
+    serde_data_to_query_callback,
+    util::{FixedPolySet, WitnessPolySet},
 };
+use std::collections::BTreeMap;
 
 type Columns<T> = Vec<(String, Vec<T>)>;
 type VariablySizedColumns<T> = Vec<(String, VariablySizedColumn<T>)>;
@@ -115,6 +120,10 @@ pub struct Pipeline<T: FieldElement> {
     artifact: Artifacts<T>,
     /// Output directory for intermediate files. If None, no files are written.
     output_dir: Option<PathBuf>,
+    /// The temporary directory, owned by the pipeline (or any copies of it).
+    /// This object is not used directly, but keeping it here ensures that the directory
+    /// is not deleted until the pipeline is dropped.
+    _tmp_dir: Option<Rc<Temp>>,
     /// The name of the pipeline. Used to name output files.
     name: Option<String>,
     /// Whether to overwrite existing files. If false, an error is returned if a file
@@ -141,6 +150,7 @@ where
         Pipeline {
             artifact: Default::default(),
             output_dir: None,
+            _tmp_dir: None,
             log_level: Level::Info,
             name: None,
             force_overwrite: false,
@@ -191,12 +201,14 @@ where
 /// let proof = pipeline.compute_proof().unwrap();
 /// ```
 impl<T: FieldElement> Pipeline<T> {
-    /// Initializes the output directory to a temporary directory.
-    /// Note that the user is responsible for keeping the temporary directory alive.
-    pub fn with_tmp_output(self, tmp_dir: &mktemp::Temp) -> Self {
+    /// Initializes the output directory to a temporary directory which lives as long
+    /// the pipeline does.
+    pub fn with_tmp_output(self) -> Self {
+        let tmp_dir = Rc::new(mktemp::Temp::new_dir().unwrap());
         Pipeline {
             output_dir: Some(tmp_dir.to_path_buf()),
             force_overwrite: true,
+            _tmp_dir: Some(tmp_dir),
             ..self
         }
     }
@@ -266,6 +278,10 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn with_prover_inputs(self, inputs: Vec<T>) -> Self {
         self.add_query_callback(Arc::new(inputs_to_query_callback(inputs)))
+    }
+
+    pub fn with_prover_dict_inputs(self, inputs: BTreeMap<u32, Vec<T>>) -> Self {
+        self.add_query_callback(Arc::new(dict_data_to_query_callback(inputs)))
     }
 
     pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {

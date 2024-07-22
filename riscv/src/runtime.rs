@@ -1,13 +1,13 @@
 use std::{collections::BTreeMap, convert::TryFrom};
 
-use powdr_riscv_syscalls::{Syscall, SYSCALL_REGISTERS};
+use powdr_riscv_syscalls::Syscall;
 
 use powdr_ast::parsed::asm::{FunctionStatement, MachineStatement, SymbolPath};
 
 use itertools::Itertools;
 use powdr_parser::ParserContext;
 
-use crate::code_gen::{pop_register, push_register};
+use crate::code_gen::Register;
 
 static EXTRA_REG_PREFIX: &str = "xtra";
 
@@ -41,8 +41,7 @@ struct SubMachine {
     instance_name: String,
     /// Instruction declarations
     instructions: Vec<MachineStatement>,
-    /// Number of extra registers needed by this machine's instruction declarations.
-    /// 26 of the RISC-V registers are available for use, these are added to that number.
+    /// Number of registers needed by this machine's instruction declarations if > 4.
     extra_registers: u8,
     /// TODO: only needed because of witgen requiring that each machine be called at least once
     init_call: Vec<FunctionStatement>,
@@ -90,12 +89,24 @@ impl Runtime {
             None,
             "binary",
             [
-                "instr and Y, Z -> X link ~> X = binary.and(Y, Z);",
-                "instr or Y, Z -> X link ~> X = binary.or(Y, Z);",
-                "instr xor Y, Z -> X link ~> X = binary.xor(Y, Z);",
+                r#"instr and X, Y, Z, W
+                    link ~> val1_col = regs.mload(X, STEP)
+                    link ~> val2_col = regs.mload(Y, STEP + 1)
+                    link ~> val3_col = binary.and(val1_col, val2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                r#"instr or X, Y, Z, W
+                    link ~> val1_col = regs.mload(X, STEP)
+                    link ~> val2_col = regs.mload(Y, STEP + 1)
+                    link ~> val3_col = binary.or(val1_col, val2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                r#"instr xor X, Y, Z, W
+                    link ~> val1_col = regs.mload(X, STEP)
+                    link ~> val2_col = regs.mload(Y, STEP + 1)
+                    link ~> val3_col = binary.xor(val1_col, val2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
             ],
             0,
-            ["x10 <== and(x10, x10);"],
+            ["and 0, 0, 0, 0;"],
         );
 
         r.add_submachine(
@@ -103,38 +114,63 @@ impl Runtime {
             None,
             "shift",
             [
-                "instr shl Y, Z -> X link ~> X = shift.shl(Y, Z);",
-                "instr shr Y, Z -> X link ~> X = shift.shr(Y, Z);",
+                r#"instr shl X, Y, Z, W
+                    link ~> val1_col = regs.mload(X, STEP)
+                    link ~> val2_col = regs.mload(Y, STEP + 1)
+                    link ~> val3_col = shift.shl(val1_col, val2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                r#"instr shr X, Y, Z, W
+                    link ~> val1_col = regs.mload(X, STEP)
+                    link ~> val2_col = regs.mload(Y, STEP + 1)
+                    link ~> val3_col = shift.shr(val1_col, val2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
             ],
             0,
-            ["x10 <== shl(x10, x10);"],
+            ["shl 0, 0, 0, 0;"],
         );
 
         r.add_submachine(
             "std::machines::split::split_gl::SplitGL",
             None,
             "split_gl",
-            ["instr split_gl Z -> X, Y link ~> (X, Y) = split_gl.split(Z);"],
+            [r#"instr split_gl X, Z, W
+                    link ~> val1_col = regs.mload(X, STEP)
+                    link ~> (val3_col, val4_col) = split_gl.split(val1_col)
+                    link ~> regs.mstore(Z, STEP + 2, val3_col)
+                    link ~> regs.mstore(W, STEP + 3, val4_col);"#],
             0,
-            ["x10, x11 <== split_gl(x10);", "x10 <=X= 0;", "x11 <=X= 0;"],
+            ["split_gl 0, 0, 0;"],
         );
 
         // Base syscalls
         r.add_syscall(
             Syscall::Input,
-            ["x10 <=X= ${ std::prover::Query::Input(std::convert::int(std::prover::eval(x10))) };"],
+            [
+                // TODO this is a quite inefficient way of getting prover inputs.
+                // We need to be able to access the register memory within PIL functions.
+                "query_arg_1 <== get_reg(10);",
+                "set_reg 10, ${ std::prover::Query::Input(std::convert::int(std::prover::eval(query_arg_1))) };",
+            ],
         );
 
         r.add_syscall(
             Syscall::DataIdentifier,
-            ["x10 <=X= ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(x11)), std::convert::int(std::prover::eval(x10))) };"]
+            [
+                "query_arg_1 <== get_reg(10);",
+                "query_arg_2 <== get_reg(11);",
+                "set_reg 10, ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(query_arg_2)), std::convert::int(std::prover::eval(query_arg_1))) };",
+            ]
         );
 
         r.add_syscall(
             Syscall::Output,
             // This is using x0 on purpose, because we do not want to introduce
             // nondeterminism with this.
-            ["x0 <=X= ${ std::prover::Query::Output(std::convert::int(std::prover::eval(x10)), std::convert::int(std::prover::eval(x11))) };"]
+            [
+                "query_arg_1 <== get_reg(10);",
+                "query_arg_2 <== get_reg(11);",
+                "set_reg 0, ${ std::prover::Query::Output(std::convert::int(std::prover::eval(query_arg_1)), std::convert::int(std::prover::eval(query_arg_2))) };"
+            ]
         );
 
         r
@@ -155,13 +191,13 @@ impl Runtime {
             "poseidon_gl",
             [format!(
                 "instr poseidon_gl link ~> {};",
-                instr_link("poseidon_gl.poseidon_permutation", 0, 12, 4)
+                instr_link("poseidon_gl.poseidon_permutation", 12, 4)
             )],
-            0,
+            12,
             // init call
             std::iter::once("poseidon_gl;".to_string())
                 // zero out output registers
-                .chain((0..4).map(|i| format!("{} <=X= 0;", reg(i)))),
+                .chain((0..4).map(|i| format!("{} <== get_reg(0);", reg(i)))),
         );
 
         // The poseidon syscall has a single argument passed on x10, the
@@ -170,20 +206,11 @@ impl Runtime {
         let implementation =
             // The poseidon syscall uses x10 for input, we store it in tmp3 and
             // reuse x10 as input to the poseidon machine instruction.
-            std::iter::once("tmp3 <=X= x10;".to_string())
             // The poseidon instruction uses registers 0..12 as input/output.
             // The memory field elements are loaded into these registers before calling the instruction.
-            // They might be in use by the riscv machine, so we save the registers on the stack.
-            .chain((0..12).flat_map(|i| push_register(&reg(i))))
-            .chain((0..12).flat_map(|i| load_gl_fe("tmp3", i as u32 * 8, &reg(i))))
+            (0..12).flat_map(|i| load_gl_fe(10, i as u32 * 8, &reg(i)))
             .chain(std::iter::once("poseidon_gl;".to_string()))
-            .chain((0..4).flat_map(|i| store_gl_fe("tmp3", i as u32 * 8, &reg(i))))
-            // After copying the result back into memory, we restore the original register values.
-            .chain(
-                (0..12)
-                    .rev()
-                    .flat_map(|i| pop_register(SYSCALL_REGISTERS[i])),
-            );
+            .chain((0..4).flat_map(|i| store_gl_fe(10, i as u32 * 8, &reg(i))));
 
         self.add_syscall(Syscall::PoseidonGL, implementation);
         self
@@ -197,25 +224,24 @@ impl Runtime {
             [
                 format!(
                     "instr affine_256 link ~> {};",
-                    instr_link("arith.affine_256", 3, 24, 16) // will use registers 3..27
+                    instr_link("arith.affine_256", 24, 16)
                 ),
                 format!(
                     "instr ec_add link ~> {};",
-                    instr_link("arith.ec_add", 4, 32, 16) // will use registers 4..36
+                    instr_link("arith.ec_add", 32, 16)
                 ),
                 format!(
                     "instr ec_double link ~> {};",
-                    instr_link("arith.ec_double", 2, 16, 16) // will use registers 2..18
+                    instr_link("arith.ec_double", 16, 16)
                 ),
                 format!(
                     "instr mod_256 link ~> {};",
-                    instr_link("arith.mod_256", 3, 24, 8) // will use registers 3..27
+                    instr_link("arith.mod_256", 24, 8)
                 ),
             ],
-            // machine uses the 26 registers from risc-v plus 10 extra registers
-            10,
+            32,
             // calling ec_double for machine initialization.
-            // store x in registers 2..10
+            // store x in registers 0..8
             [
                 0x60297556u32,
                 0x2f057a14,
@@ -228,8 +254,8 @@ impl Runtime {
             ]
             .into_iter()
             .enumerate()
-            .map(|(i, fe)| format!("{} <=X= {fe};", reg(i + 2)))
-            // store y in registers 10..18
+            .map(|(i, fe)| format!("{} <=X= {fe};", reg(i)))
+            // store y in registers 8..16
             .chain(
                 [
                     0xb075f297u32,
@@ -243,108 +269,82 @@ impl Runtime {
                 ]
                 .into_iter()
                 .enumerate()
-                .map(|(i, fe)| format!("{} <=X= {fe};", reg(i + 10))),
+                .map(|(i, fe)| format!("{} <=X= {fe};", reg(i + 8))),
             )
             // call machine instruction
             .chain(std::iter::once("ec_double;".to_string()))
             // set output registers to zero
-            .chain((2..18).map(|i| format!("{} <=X= 0;", reg(i)))),
+            .chain((0..16).map(|i| format!("{} <=X= 0;", reg(i)))),
         );
-
-        // TODO: we're also saving the "extra registers", but those don't have to be saved
 
         // The affine_256 syscall takes as input the addresses of x1, y1 and x2.
         let affine256 =
-            // Save instruction registers
-            (3..27).flat_map(|i| push_register(&reg(i)))
-            // Load x1 in 3..11
-            .chain((0..8).flat_map(|i| load_word(&reg(0), i as u32 *4 , &reg(i + 3))))
-            // Load y1 in 11..19
-            .chain((0..8).flat_map(|i| load_word(&reg(1), i as u32 *4 , &reg(i + 11))))
-            // Load x2 in 19..27
-            .chain((0..8).flat_map(|i| load_word(&reg(2), i as u32 *4 , &reg(i + 19))))
+            // Load x1 in 0..8
+            (0..8).flat_map(|i| load_word(10, i as u32 *4 , &reg(i)))
+            // Load y1 in 8..16
+            .chain((0..8).flat_map(|i| load_word(11, i as u32 *4 , &reg(i + 8))))
+            // Load x2 in 16..24
+            .chain((0..8).flat_map(|i| load_word(12, i as u32 *4 , &reg(i + 16))))
             // Call instruction
             .chain(std::iter::once("affine_256;".to_string()))
             // Store result y2 in x1's memory
-            .chain((0..8).flat_map(|i| store_word(&reg(0), i as u32 *4 , &reg(i + 3))))
+            .chain((0..8).flat_map(|i| store_word(10, i as u32 *4 , &reg(i))))
             // Store result y3 in y1's memory
-            .chain((0..8).flat_map(|i| store_word(&reg(1), i as u32 *4 , &reg(i + 11))))
-            // Restore instruction registers
-            .chain(
-                (3..27)
-                    .rev()
-                    .flat_map(|i| pop_register(&reg(i))));
+            .chain((0..8).flat_map(|i| store_word(11, i as u32 *4 , &reg(i + 8))));
+
         self.add_syscall(Syscall::Affine256, affine256);
 
         // The mod_256 syscall takes as input the addresses of y2, y3, and x1.
         let mod256 =
-            // Save instruction registers
-            (3..27).flat_map(|i| push_register(&reg(i)))
-            // Load y2 in 3..11
-            .chain((0..8).flat_map(|i| load_word(&reg(0), i as u32 *4 , &reg(i + 3))))
-            // Load y3 in 11..19
-            .chain((0..8).flat_map(|i| load_word(&reg(1), i as u32 *4 , &reg(i + 11))))
-            // Load x1 in 19..27
-            .chain((0..8).flat_map(|i| load_word(&reg(2), i as u32 *4 , &reg(i + 19))))
+            // Load y2 in 0..8
+            (0..8).flat_map(|i| load_word(10, i as u32 *4 , &reg(i)))
+            // Load y3 in 8..16
+            .chain((0..8).flat_map(|i| load_word(11, i as u32 *4 , &reg(i + 8))))
+            // Load x1 in 16..24
+            .chain((0..8).flat_map(|i| load_word(12, i as u32 *4 , &reg(i + 16))))
             // Call instruction
             .chain(std::iter::once("mod_256;".to_string()))
             // Store result x2 in y2's memory
-            .chain((0..8).flat_map(|i| store_word(&reg(0), i as u32 *4 , &reg(i + 3))))
-            // Restore instruction registers
-            .chain(
-                (3..27)
-                    .rev()
-                    .flat_map(|i| pop_register(&reg(i))));
+            .chain((0..8).flat_map(|i| store_word(10, i as u32 *4 , &reg(i))));
+
         self.add_syscall(Syscall::Mod256, mod256);
 
         // The ec_add syscall takes as input the four addresses of x1, y1, x2, y2.
         let ec_add =
-            // Save instruction registers.
-            (4..36).flat_map(|i| push_register(&reg(i)))
-            // Load x1 in 4..12
-            .chain((0..8).flat_map(|i| load_word(&reg(0), i as u32 * 4, &reg(i + 4))))
-            // Load y1 in 12..20
-            .chain((0..8).flat_map(|i| load_word(&reg(1), i as u32 * 4, &reg(i + 12))))
-            // Load x2 in 20..28
-            .chain((0..8).flat_map(|i| load_word(&reg(2), i as u32 * 4, &reg(i + 20))))
-            // Load y2 in 28..36
-            .chain((0..8).flat_map(|i| load_word(&reg(3), i as u32 * 4, &reg(i + 28))))
+            // Load x1 in 0..8
+            (0..8).flat_map(|i| load_word(10, i as u32 * 4, &reg(i)))
+            // Load y1 in 8..16
+            .chain((0..8).flat_map(|i| load_word(11, i as u32 * 4, &reg(i + 8))))
+            // Load x2 in 16..24
+            .chain((0..8).flat_map(|i| load_word(12, i as u32 * 4, &reg(i + 16))))
+            // Load y2 in 24..32
+            .chain((0..8).flat_map(|i| load_word(13, i as u32 * 4, &reg(i + 24))))
             // Call instruction
             .chain(std::iter::once("ec_add;".to_string()))
             // Save result x3 in x1
-            .chain((0..8).flat_map(|i| store_word(&reg(0), i as u32 * 4, &reg(i + 4))))
+            .chain((0..8).flat_map(|i| store_word(10, i as u32 * 4, &reg(i))))
             // Save result y3 in y1
-            .chain((0..8).flat_map(|i| store_word(&reg(1), i as u32 * 4, &reg(i + 12))))
-            // Restore instruction registers.
-            .chain(
-                (4..36)
-                    .rev()
-                    .flat_map(|i| pop_register(&reg(i))));
+            .chain((0..8).flat_map(|i| store_word(11, i as u32 * 4, &reg(i + 8))));
+
         self.add_syscall(Syscall::EcAdd, ec_add);
 
         // The ec_double syscall takes as input the addresses of x and y in x10 and x11 respectively.
-        // We load x and y from memory into registers 2..10 and registers 10..18 respectively.
+        // We load x and y from memory into registers 0..8 and registers 8..16 respectively.
         // We then store the result from those registers into the same addresses (x10 and x11).
         let ec_double =
-            // Save instruction registers.
-            (2..18).flat_map(|i| push_register(&reg(i)))
-            // Load x in 2..10
-            .chain((0..8).flat_map(|i| load_word(&reg(0), i as u32 * 4, &reg(i + 2))))
-            // Load y in 10..18
-            .chain((0..8).flat_map(|i| load_word(&reg(1), i as u32 * 4, &reg(i + 10))))
+            // Load x in 0..8
+            (0..8).flat_map(|i| load_word(10, i as u32 * 4, &reg(i)))
+            // Load y in 8..16
+            .chain((0..8).flat_map(|i| load_word(11, i as u32 * 4, &reg(i + 8))))
             // Call instruction
             .chain(std::iter::once("ec_double;".to_string()))
             // Store result in x
-            .chain((0..8).flat_map(|i| store_word(&reg(0), i as u32 * 4, &reg(i + 2))))
+            .chain((0..8).flat_map(|i| store_word(10, i as u32 * 4, &reg(i))))
             // Store result in y
-            .chain((0..8).flat_map(|i| store_word(&reg(1), i as u32 * 4, &reg(i + 10))))
-            // Restore instruction registers.
-            .chain(
-                (2..18)
-                    .rev()
-                    .flat_map(|i| pop_register(&reg(i))));
+            .chain((0..8).flat_map(|i| store_word(11, i as u32 * 4, &reg(i + 8))));
 
         self.add_syscall(Syscall::EcDouble, ec_double);
+
         self
     }
 
@@ -446,14 +446,14 @@ impl Runtime {
         let jump_table = self
             .syscalls
             .keys()
-            .map(|s| format!("branch_if_zero x5 - {}, __ecall_handler_{};", *s as u32, s));
+            .map(|s| format!("branch_if_zero 5, 0, {}, __ecall_handler_{};", *s as u32, s));
 
         let invalid_handler = ["__invalid_syscall:".to_string(), "fail;".to_string()].into_iter();
 
         let handlers = self.syscalls.iter().flat_map(|(syscall, implementation)| {
             std::iter::once(format!("__ecall_handler_{syscall}:"))
                 .chain(implementation.0.iter().map(|i| i.to_string()))
-                .chain(std::iter::once("tmp1 <== jump_dyn(x1);".to_string()))
+                .chain([format!("jump_dyn 1, {};", Register::from("tmp1").addr())])
         });
 
         ecall
@@ -489,77 +489,98 @@ impl TryFrom<&[&str]> for Runtime {
 }
 
 /// Helper function for register names used in instruction params
-fn reg(mut idx: usize) -> String {
-    // s0..11 callee saved registers
-    static SAVED_REGS: [&str; 12] = [
-        "x8", "x9", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
-    ];
-
-    // first, use syscall_registers
-    if idx < SYSCALL_REGISTERS.len() {
-        return SYSCALL_REGISTERS[idx].to_string();
-    }
-    idx -= SYSCALL_REGISTERS.len();
-    // second, callee saved registers
-    if idx < SAVED_REGS.len() {
-        return SAVED_REGS[idx].to_string();
-    }
-    idx -= SAVED_REGS.len();
-    // lastly, use extra submachine registers
+fn reg(idx: usize) -> String {
     format!("{EXTRA_REG_PREFIX}{idx}")
 }
 
 /// Helper function to generate instr link for large number input/output registers
-fn instr_link(call: &str, start_idx: usize, inputs: usize, outputs: usize) -> String {
+fn instr_link(call: &str, inputs: usize, outputs: usize) -> String {
     format!(
         "{}{}({})",
         if outputs > 0 {
             format!(
                 "({}) = ",
-                (start_idx..start_idx + outputs)
-                    .map(|i| format!("{}'", reg(i)))
-                    .join(", ")
+                (0..outputs).map(|i| format!("{}'", reg(i))).join(", ")
             )
         } else {
             "".to_string()
         },
         call,
-        (start_idx..start_idx + inputs).map(reg).join(", ")
+        (0..inputs).map(reg).join(", ")
     )
 }
 
 /// Load gl field element from addr+offset into register
-fn load_gl_fe(addr: &str, offset: u32, reg: &str) -> [String; 3] {
+fn load_gl_fe(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 5] {
     let lo = offset;
     let hi = offset + 4;
+    let tmp1 = Register::from("tmp1");
+    let tmp2 = Register::from("tmp2");
+    let tmp3 = Register::from("tmp3");
+    let tmp4 = Register::from("tmp4");
     [
-        format!("{reg}, tmp2 <== mload({lo} + {addr});"),
-        format!("tmp1, tmp2 <== mload({hi} + {addr});"),
-        format!("{reg} <=X= {reg} + tmp1 * 2**32;"),
+        format!(
+            "mload {addr_reg_id}, {lo}, {}, {};",
+            tmp1.addr(),
+            tmp2.addr()
+        ),
+        format!(
+            "mload {addr_reg_id}, {hi}, {}, {};",
+            tmp3.addr(),
+            tmp4.addr()
+        ),
+        format!("query_arg_1 <== get_reg({});", tmp1.addr()),
+        format!("query_arg_2 <== get_reg({});", tmp3.addr()),
+        format!("{reg} <=X= query_arg_1 + query_arg_2 * 2**32;"),
     ]
 }
 
 /// Store gl field element from register into addr+offset
-fn store_gl_fe(addr: &str, offset: u32, reg: &str) -> [String; 3] {
+fn store_gl_fe(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 4] {
     let lo = offset;
     let hi = offset + 4;
+    let tmp1 = Register::from("tmp1");
+    let tmp2 = Register::from("tmp2");
     [
-        format!("tmp1, tmp2 <== split_gl({reg});"),
-        format!("mstore {lo} + {addr}, tmp1;"),
-        format!("mstore {hi} + {addr}, tmp2;"),
+        format!("set_reg {}, {reg};", tmp1.addr()),
+        format!(
+            "split_gl {}, {}, {};",
+            tmp1.addr(),
+            tmp1.addr(),
+            tmp2.addr()
+        ),
+        format!("mstore {addr_reg_id}, 0, {lo}, {};", tmp1.addr()),
+        format!("mstore {addr_reg_id}, 0, {hi}, {};", tmp2.addr()),
     ]
 }
 
 /// Load word from addr+offset into register
-fn load_word(addr: &str, offset: u32, reg: &str) -> [String; 1] {
-    [format!("{reg}, tmp2 <== mload({offset} + {addr});")]
+fn load_word(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 2] {
+    let tmp1 = Register::from("tmp1");
+    let tmp2 = Register::from("tmp2");
+    [
+        format!(
+            "mload {addr_reg_id}, {offset}, {}, {};",
+            tmp1.addr(),
+            tmp2.addr()
+        ),
+        format!("{reg} <=X= get_reg({});", tmp1.addr()),
+    ]
 }
 
 /// Store word from register into addr+offset
-fn store_word(addr: &str, offset: u32, reg: &str) -> [String; 2] {
+fn store_word(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 3] {
+    let tmp1 = Register::from("tmp1");
+    let tmp2 = Register::from("tmp2");
     [
         // split_gl ensures we store a 32-bit value
-        format!("tmp1, tmp2 <== split_gl({reg});"),
-        format!("mstore {offset} + {addr}, tmp1;"),
+        format!("set_reg {}, {reg};", tmp1.addr()),
+        format!(
+            "split_gl {}, {}, {};",
+            tmp1.addr(),
+            tmp1.addr(),
+            tmp2.addr()
+        ),
+        format!("mstore {addr_reg_id}, 0, {offset}, {};", tmp1.addr()),
     ]
 }

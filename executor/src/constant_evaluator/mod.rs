@@ -623,4 +623,24 @@ mod test {
             ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
         );
     }
+
+    #[test]
+    fn do_not_add_constraint_for_empty_tuple() {
+        let input = r#"namespace N(4);
+            let f: -> () = || ();
+            let g: col = |i| {
+                // This returns an empty tuple, we check that this does not lead to
+                // a call to add_constraints()
+                f();
+                i
+            };
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(input);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants[0],
+            ("N.g".to_string(), convert([0, 1, 2, 3].to_vec()))
+        );
+    }
 }

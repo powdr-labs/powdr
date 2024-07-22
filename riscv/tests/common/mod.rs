@@ -1,20 +1,21 @@
 use mktemp::Temp;
-use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
-use powdr_pipeline::{test_util::verify_pipeline, Pipeline};
+use powdr_pipeline::{
+    test_util::{run_pilcom_with_backend_variant, BackendVariant},
+    Pipeline,
+};
 use powdr_riscv::Runtime;
 use std::{
     path::{Path, PathBuf},
     process::Command,
 };
 
-/// Like compiler::test_util::verify_asm_string, but also runs RISCV executor.
+/// Like compiler::test_util::run_pilcom_asm_string, but also runs RISCV executor.
 pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     file_name: &str,
     contents: &str,
     inputs: &[GoldilocksField],
     data: Option<&[(u32, S)]>,
-    backend: BackendType,
 ) {
     let temp_dir = mktemp::Temp::new_dir().unwrap().release();
 
@@ -38,7 +39,7 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
         powdr_riscv_executor::ExecMode::Fast,
         Default::default(),
     );
-    verify_pipeline(pipeline, backend).unwrap();
+    run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
 }
 
 fn find_assembler() -> &'static str {
@@ -88,11 +89,5 @@ pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) 
     let case_name = asm_file.file_stem().unwrap().to_str().unwrap();
 
     let powdr_asm = powdr_riscv::elf::translate::<GoldilocksField>(&executable, runtime, false);
-    verify_riscv_asm_string::<()>(
-        &format!("{case_name}.asm"),
-        &powdr_asm,
-        &[],
-        None,
-        BackendType::EStarkDump,
-    );
+    verify_riscv_asm_string::<()>(&format!("{case_name}.asm"), &powdr_asm, &[], None);
 }
