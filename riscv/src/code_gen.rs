@@ -744,7 +744,7 @@ fn memory(with_bootloader: bool) -> String {
         link => bit2.check(val4_col)
         link => bit6.check(X_b1)
     {
-        val1_col + Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + val4_col,
+        val1_col + Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + val4_col
     }
 
     // Stores val(W) at address (V = val(X) - val(Y) + Z) % 2**32.
