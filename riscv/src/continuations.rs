@@ -438,26 +438,27 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             (length - start - shutdown_routine_rows) * 100 / length
         );
         for i in 0..(chunk_trace["main.pc"].len() - start) {
-            let &reg = &"main.pc";
-            let chunk_i = i + start;
-            let full_i = i + proven_trace;
-            if chunk_trace[reg][chunk_i] != full_trace[reg][full_i] {
-                log::error!("The Chunk trace differs from the full trace!");
-                log::error!(
+            for &reg in ["main.pc", "main.query_arg_1", "main.query_arg_1"].iter() {
+                let chunk_i = i + start;
+                let full_i = i + proven_trace;
+                if chunk_trace[reg][chunk_i] != full_trace[reg][full_i] {
+                    log::error!("The Chunk trace differs from the full trace!");
+                    log::error!(
                         "Started comparing from row {start} in the chunk to row {proven_trace} in the full trace; the difference is at offset {i}."
                     );
-                log::error!(
-                    "The PCs are {} and {}.",
-                    chunk_trace["main.pc"][chunk_i],
-                    full_trace["main.pc"][full_i]
-                );
-                log::error!(
-                    "The first difference is in register {}: {} != {} ",
-                    reg,
-                    chunk_trace[reg][chunk_i],
-                    full_trace[reg][full_i],
-                );
-                panic!();
+                    log::error!(
+                        "The PCs are {} and {}.",
+                        chunk_trace["main.pc"][chunk_i],
+                        full_trace["main.pc"][full_i]
+                    );
+                    log::error!(
+                        "The first difference is in register {}: {} != {} ",
+                        reg,
+                        chunk_trace[reg][chunk_i],
+                        full_trace[reg][full_i],
+                    );
+                    panic!();
+                }
             }
         }
 

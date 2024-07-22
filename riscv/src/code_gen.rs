@@ -400,13 +400,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bo
     // because when XX is not constrained, witgen will try to set XX,
     // XX_inv and XXIsZero to zero, which fails this constraint.
     // Therefore, we have to activate constrained whenever XXIsZero is used.
-    // 1. XXIsZero = 1 - XX * XX_inv
-    // We could replace the uncommented lines below this block by constraints
-    // (2) and (3) below once witgen supports it.
-    // In that case we could remove all instances of constraint (1) above
-    // that are added to instructions.
-    // 2. col witness XX(i) query std::prover::Query::Hint(0);
-    // 3. let XXIsZero = std::utils::is_zero(XX);
+    // XXIsZero = 1 - XX * XX_inv
     col witness XX, XX_inv, XXIsZero;
     std::utils::force_bool(XXIsZero);
     XXIsZero * XX = 0;
