@@ -441,7 +441,7 @@ machine Main with latch: latch, operation_id: id {
     }
 
     #[test]
-    fn virtual_machine_has_no_links() {
+    fn virtual_machine_with_links() {
         let src = r#"
 machine Main {
    reg pc[@pc];
@@ -451,12 +451,7 @@ machine Main {
    link => B = submachine.foo(A);
 }
 "#;
-        expect_check_str(
-            src,
-            Err(vec![
-                "Machine ::Main has a pc, links cannot be used outside of instructions.",
-            ]),
-        );
+        expect_check_str(src, Ok(()));
     }
 
     #[test]
