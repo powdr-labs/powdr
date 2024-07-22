@@ -435,7 +435,7 @@ fn execute<F: FieldElement>(
         (false, false) => {
             let mut pipeline = pipeline.with_prover_inputs(inputs);
             let program = pipeline.compute_asm_string().unwrap().clone();
-            let (trace, _mem) = powdr_riscv_executor::execute::<F>(
+            let (trace, _mem, _reg_mem) = powdr_riscv_executor::execute::<F>(
                 &program.1,
                 powdr_riscv_executor::MemoryState::new(),
                 pipeline.data_callback().unwrap(),

@@ -30,9 +30,11 @@ use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldE
 use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
-    handle_simple_queries_callback, inputs_to_query_callback, serde_data_to_query_callback,
+    dict_data_to_query_callback, handle_simple_queries_callback, inputs_to_query_callback,
+    serde_data_to_query_callback,
     util::{read_poly_set, FixedPolySet, WitnessPolySet},
 };
+use std::collections::BTreeMap;
 
 type Columns<T> = Vec<(String, Vec<T>)>;
 
@@ -274,6 +276,10 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn with_prover_inputs(self, inputs: Vec<T>) -> Self {
         self.add_query_callback(Arc::new(inputs_to_query_callback(inputs)))
+    }
+
+    pub fn with_prover_dict_inputs(self, inputs: BTreeMap<u32, Vec<T>>) -> Self {
+        self.add_query_callback(Arc::new(dict_data_to_query_callback(inputs)))
     }
 
     pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
