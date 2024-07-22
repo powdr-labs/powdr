@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
@@ -15,12 +16,14 @@ use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
+mod data_structures;
+
 /// Generates the fixed column values for all fixed columns that are defined
 /// (and not just declared).
 /// @returns the names (in source order) and the values for the columns.
 /// Arrays of columns are flattened, the name of the `i`th array element
 /// is `name[i]`.
-pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Vec<T>)> {
+pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, VariablySizedColumn<T>)> {
     let mut fixed_cols = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
@@ -37,8 +40,8 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Vec<T>)
     fixed_cols
         .into_iter()
         .sorted_by_key(|(_, (id, _))| *id)
-        .map(|(name, (_, values))| (name, values))
-        .collect::<Vec<_>>()
+        .map(|(name, (_, values))| (name, values.into()))
+        .collect()
 }
 
 fn generate_values<T: FieldElement>(
@@ -169,15 +172,26 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
 
 #[cfg(test)]
 mod test {
+    use powdr_ast::analyzed::Analyzed;
     use powdr_number::GoldilocksField;
     use powdr_pil_analyzer::analyze_string;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
-    use super::*;
+    use crate::constant_evaluator::{
+        data_structures::get_uniquely_sized, generate as generate_variably_sized,
+    };
 
     fn convert(input: Vec<i32>) -> Vec<GoldilocksField> {
         input.into_iter().map(|x| x.into()).collect()
+    }
+
+    fn generate(analyzed: &Analyzed<GoldilocksField>) -> Vec<(String, Vec<GoldilocksField>)> {
+        get_uniquely_sized(&generate_variably_sized(analyzed))
+            .unwrap()
+            .into_iter()
+            .map(|(name, values)| (name, values.clone()))
+            .collect()
     }
 
     #[test]

@@ -7,6 +7,7 @@ use powdr_ast::{
     asm_analysis::AnalysisASMFile,
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
+use powdr_executor::constant_evaluator::get_uniquely_sized;
 use powdr_number::FieldElement;
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState, ProfilerOptions};
@@ -77,7 +78,8 @@ where
     pipeline.compute_optimized_pil().unwrap();
 
     // TODO hacky way to find the degree of the main machine, fix.
-    let length = fixed_cols
+    let length = get_uniquely_sized(&fixed_cols)
+        .unwrap()
         .iter()
         .find(|(col, _)| col == "main.STEP")
         .unwrap()

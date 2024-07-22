@@ -6,6 +6,7 @@ use std::{
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate};
 use csv::{Reader, Writer};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_with::{DeserializeAs, SerializeAs};
 
 use crate::FieldElement;
@@ -102,24 +103,19 @@ pub fn buffered_write_file<R>(
     Ok(result)
 }
 
-pub fn write_polys_file<F: FieldElement>(
-    path: &Path,
-    polys: &[(String, Vec<F>)],
-) -> Result<(), serde_cbor::Error> {
-    buffered_write_file(path, |writer| write_polys_stream(writer, polys))??;
-
-    Ok(())
+pub trait ReadWrite {
+    fn read(file: &mut impl Read) -> Self;
+    fn write(&self, path: &Path) -> Result<(), serde_cbor::Error>;
 }
 
-fn write_polys_stream<T: FieldElement>(
-    file: &mut impl Write,
-    polys: &[(String, Vec<T>)],
-) -> Result<(), serde_cbor::Error> {
-    serde_cbor::to_writer(file, &polys)
-}
-
-pub fn read_polys_file<T: FieldElement>(file: &mut impl Read) -> Vec<(String, Vec<T>)> {
-    serde_cbor::from_reader(file).unwrap()
+impl<T: DeserializeOwned + Serialize> ReadWrite for T {
+    fn read(file: &mut impl Read) -> Self {
+        serde_cbor::from_reader(file).unwrap()
+    }
+    fn write(&self, path: &Path) -> Result<(), serde_cbor::Error> {
+        buffered_write_file(path, |writer| serde_cbor::to_writer(writer, &self))??;
+        Ok(())
+    }
 }
 
 // Serde wrappers for serialize/deserialize
@@ -164,8 +160,8 @@ mod tests {
 
         let polys = test_polys();
 
-        write_polys_stream(&mut buf, &polys).unwrap();
-        let read_polys = read_polys_file::<Bn254Field>(&mut Cursor::new(buf));
+        serde_cbor::to_writer(&mut buf, &polys).unwrap();
+        let read_polys: Vec<(String, Vec<Bn254Field>)> = ReadWrite::read(&mut Cursor::new(buf));
 
         assert_eq!(read_polys, polys);
     }

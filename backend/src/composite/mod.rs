@@ -8,7 +8,10 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::witgen::WitgenCallback;
+use powdr_executor::{
+    constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn},
+    witgen::WitgenCallback,
+};
 use powdr_number::{DegreeType, FieldElement};
 use serde::{Deserialize, Serialize};
 use split::{machine_fixed_columns, machine_witness_columns};
@@ -49,7 +52,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, Vec<F>)>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -59,6 +62,11 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         if verification_app_key.is_some() {
             unimplemented!();
         }
+
+        // TODO: Handle multiple sizes.
+        let fixed = Arc::new(
+            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
 
         let pils = split::split_pil((*pil).clone());
 
@@ -105,7 +113,12 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                 if let Some(ref output_dir) = output_dir {
                     std::fs::create_dir_all(output_dir)?;
                 }
-                let fixed = Arc::new(machine_fixed_columns(&fixed, &pil));
+                let fixed = Arc::new(
+                    machine_fixed_columns(&fixed, &pil)
+                        .into_iter()
+                        .map(|(column_name, values)| (column_name, values.into()))
+                        .collect(),
+                );
                 let backend = self.factory.create(
                     pil.clone(),
                     fixed,
