@@ -77,6 +77,14 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             })
             .verification_keys;
 
+        log::info!(
+            "Instantiating a composite backend with {} machines:",
+            pils.len()
+        );
+        for (machine_name, pil) in pils.iter() {
+            log_machine_stats(machine_name, pil)
+        }
+
         let machine_data = pils
             .into_iter()
             .zip_eq(verification_keys.into_iter())
@@ -119,6 +127,37 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
     }
 }
 
+fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
+    let num_witness_columns = pil.committed_polys_in_source_order().len();
+    let num_fixed_columns = pil.constant_polys_in_source_order().len();
+    let max_identity_degree = pil
+        .identities_with_inlined_intermediate_polynomials()
+        .iter()
+        .map(|i| i.degree())
+        .max()
+        .unwrap_or(0);
+    let uses_next_operator = pil.identities.iter().any(|i| i.contains_next_ref());
+    // This assumes that we'll always at least once reference the current row
+    let number_of_rotations = 1 + if uses_next_operator { 1 } else { 0 };
+    let num_identities_by_kind = pil
+        .identities
+        .iter()
+        .map(|i| i.kind)
+        .counts()
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
+
+    log::info!("* {}:", machine_name);
+    log::info!("  * Number of witness columns: {}", num_witness_columns);
+    log::info!("  * Number of fixed columns: {}", num_fixed_columns);
+    log::info!("  * Maximum identity degree: {}", max_identity_degree);
+    log::info!("  * Number of rotations: {}", number_of_rotations);
+    log::info!("  * Number of identities:");
+    for (kind, count) in num_identities_by_kind {
+        log::info!("    * {:?}: {}", kind, count);
+    }
+}
+
 struct MachineData<'a, F> {
     pil: Arc<Analyzed<F>>,
     backend: Box<dyn Backend<'a, F> + 'a>,
@@ -157,9 +196,25 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                     log::info!("== Proving machine: {} (size {})", machine, pil.degree());
                     log::debug!("PIL:\n{}", pil);
 
+                    let start = std::time::Instant::now();
+
                     let witness = machine_witness_columns(witness, pil, machine);
 
-                    backend.prove(&witness, None, witgen_callback)
+                    let proof = backend.prove(&witness, None, witgen_callback);
+
+                    match &proof {
+                        Ok(proof) => {
+                            log::info!(
+                                "==> Machine proof of {} bytes computed in {:?}",
+                                proof.len(),
+                                start.elapsed()
+                            );
+                        }
+                        Err(e) => {
+                            log::error!("==> Machine proof failed: {:?}", e);
+                        }
+                    };
+                    proof
                 })
                 .collect::<Result<_, _>>()?,
         };

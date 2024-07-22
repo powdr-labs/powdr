@@ -2,6 +2,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
 use powdr_number::{buffered_write_file, BigInt, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
+use std::fs;
 use std::path::PathBuf;
 
 use std::sync::Arc;
@@ -29,19 +30,35 @@ pub fn execute_test_file(
         .map(|_| ())
 }
 
-pub fn verify_test_file(
+/// Makes a new pipeline for the given file and inputs. All steps until witness generation are
+/// already computed, so that the test can branch off from there, without having to re-compute
+/// these steps.
+pub fn make_prepared_pipeline<T: FieldElement>(
+    file_name: &str,
+    inputs: Vec<T>,
+    external_witness_values: Vec<(String, Vec<T>)>,
+) -> Pipeline<T> {
+    let mut pipeline = Pipeline::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs)
+        .add_external_witness_values(external_witness_values);
+    pipeline.compute_witness().unwrap();
+    pipeline
+}
+
+pub fn run_pilcom_test_file(
     file_name: &str,
     inputs: Vec<GoldilocksField>,
     external_witness_values: Vec<(String, Vec<GoldilocksField>)>,
 ) -> Result<(), String> {
-    let pipeline = Pipeline::default()
-        .from_file(resolve_test_file(file_name))
-        .with_prover_inputs(inputs)
-        .add_external_witness_values(external_witness_values);
-    verify_pipeline(pipeline, BackendType::EStarkDump)
+    let pipeline = make_prepared_pipeline(file_name, inputs, external_witness_values);
+    run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic)?;
+    run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite)?;
+    Ok(())
 }
 
-pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
+pub fn run_pilcom_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     file_name: &str,
     contents: &str,
     inputs: Vec<GoldilocksField>,
@@ -56,15 +73,20 @@ pub fn verify_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     if let Some(data) = data {
         pipeline = pipeline.add_data_vec(&data);
     }
+    pipeline.compute_witness().unwrap();
 
-    verify_pipeline(pipeline, BackendType::EStarkDump).unwrap();
+    run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic).unwrap();
+    run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
 }
 
-pub fn verify_pipeline(
+pub fn run_pilcom_with_backend_variant(
     pipeline: Pipeline<GoldilocksField>,
-    backend: BackendType,
+    backend_variant: BackendVariant,
 ) -> Result<(), String> {
-    // TODO: Also test Composite variants
+    let backend = match backend_variant {
+        BackendVariant::Monolithic => BackendType::EStarkDump,
+        BackendVariant::Composite => BackendType::EStarkDumpComposite,
+    };
     let mut pipeline = pipeline.with_backend(backend, None);
 
     if pipeline.output_dir().is_none() {
@@ -73,23 +95,25 @@ pub fn verify_pipeline(
 
     pipeline.compute_proof().unwrap();
 
-    verify(pipeline.output_dir().as_ref().unwrap())
-}
-
-/// Makes a new pipeline for the given file and inputs. All steps until witness generation are
-/// already computed, so that the test can branch off from there, without having to re-compute
-/// these steps.
-pub fn make_prepared_pipeline<T: FieldElement>(file_name: &str, inputs: Vec<T>) -> Pipeline<T> {
-    let mut pipeline = Pipeline::default()
-        .with_tmp_output()
-        .from_file(resolve_test_file(file_name))
-        .with_prover_inputs(inputs);
-    pipeline.compute_witness().unwrap();
-    pipeline
+    let out_dir = pipeline.output_dir().as_ref().unwrap();
+    match backend_variant {
+        BackendVariant::Composite => {
+            // traverse all subdirs of the given output dir and verify each subproof
+            for entry in fs::read_dir(out_dir).unwrap() {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                if path.is_dir() {
+                    verify(&path)?;
+                }
+            }
+            Ok(())
+        }
+        BackendVariant::Monolithic => verify(out_dir),
+    }
 }
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
-    let pipeline = make_prepared_pipeline(file_name, inputs);
+    let pipeline = make_prepared_pipeline(file_name, inputs, Vec::new());
     gen_estark_proof_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
     gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
 }
@@ -133,7 +157,7 @@ pub fn gen_estark_proof_with_backend_variant(
 }
 
 pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
-    let pipeline = make_prepared_pipeline(file_name, inputs);
+    let pipeline = make_prepared_pipeline(file_name, inputs, Vec::new());
     test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
     test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
@@ -198,10 +222,11 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
     // Setup
     let output_dir = pipeline.output_dir().clone().unwrap();
     let setup_file_path = output_dir.join("params.bin");
+    let max_degree = pil.degrees().into_iter().max().unwrap();
     buffered_write_file(&setup_file_path, |writer| {
         powdr_backend::BackendType::Halo2
             .factory::<Bn254Field>()
-            .generate_setup(pil.degree(), writer)
+            .generate_setup(max_degree, writer)
             .unwrap()
     })
     .unwrap();
@@ -324,12 +349,14 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
 ) {
-    let pipeline = Pipeline::<GoldilocksField>::default()
+    let mut pipeline = Pipeline::<GoldilocksField>::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
         .set_witness(convert_witness(witness));
+    pipeline.compute_witness().unwrap();
 
-    assert!(verify_pipeline(pipeline.clone(), BackendType::EStarkDump).is_err());
+    assert!(run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic).is_err());
+    assert!(run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).is_err());
 }
 
 pub fn assert_proofs_fail_for_invalid_witnesses_estark(
@@ -381,4 +408,32 @@ pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(Str
     assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
     #[cfg(feature = "halo2")]
     assert_proofs_fail_for_invalid_witnesses_halo2(file_name, witness);
+}
+
+pub fn run_reparse_test(file: &str) {
+    run_reparse_test_with_blacklist(file, &[]);
+}
+
+pub fn run_reparse_test_with_blacklist(file: &str, blacklist: &[&str]) {
+    if blacklist.contains(&file) {
+        return;
+    }
+
+    // Load file
+    let pipeline = Pipeline::<GoldilocksField>::default();
+    let mut pipeline = if file.ends_with(".asm") {
+        pipeline.from_asm_file(resolve_test_file(file))
+    } else {
+        pipeline.from_pil_file(resolve_test_file(file))
+    };
+
+    // Compute the optimized PIL
+    let optimized_pil = pipeline.compute_optimized_pil().unwrap();
+
+    // Run the pipeline using the string serialization of the optimized PIL.
+    // This panics if the re-parsing fails.
+    Pipeline::<GoldilocksField>::default()
+        .from_pil_string(optimized_pil.to_string())
+        .compute_optimized_pil()
+        .unwrap();
 }

@@ -973,11 +973,10 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
             },
         };
 
-        // For some reason, atomic instructions come with the immediate set to
-        // zero instead of None (maybe to mimic assembly syntax? Who knows). We
-        // must fix this:
+        // The acquire and release bits of an atomic instructions are decoded as
+        // the immediate value, but we don't need the bits and an immediate is
+        // not expected, so we must remove it.
         if let Extensions::A = insn.extension {
-            assert!(matches!(imm, HighLevelImmediate::Value(0)));
             imm = HighLevelImmediate::None;
         }
 
