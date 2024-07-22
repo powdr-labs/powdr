@@ -301,7 +301,7 @@ bootloader_merkle_proof_validation_loop:
             r#"
 and 3, 0, {mask}, 4;
 
-branch_if_nonzero 4, 0, bootloader_level_{i}_is_right;
+branch_if_diff_nonzero 4, 0, bootloader_level_{i}_is_right;
 
 load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0;
 {P4} <== get_reg(90);
@@ -342,24 +342,24 @@ bootloader_level_{i}_end:
 
     bootloader.push_str(&format!(
         r#"
-branch_if_nonzero 9, 0, bootloader_update_memory_hash;
+branch_if_diff_nonzero 9, 0, bootloader_update_memory_hash;
 
 // Assert Correct Merkle Root
 move_reg 18, 90, -1, 0;
 move_reg 90, 90, 1, {P0};
-branch_if_nonzero 90, 0, bootloader_memory_hash_mismatch;
+branch_if_diff_nonzero 90, 0, bootloader_memory_hash_mismatch;
 
 move_reg 19, 90, -1, 0;
 move_reg 90, 90, 1, {P1};
-branch_if_nonzero 90, 0, bootloader_memory_hash_mismatch;
+branch_if_diff_nonzero 90, 0, bootloader_memory_hash_mismatch;
 
 move_reg 20, 90, -1, 0;
 move_reg 90, 90, 1, {P2};
-branch_if_nonzero 90, 0, bootloader_memory_hash_mismatch;
+branch_if_diff_nonzero 90, 0, bootloader_memory_hash_mismatch;
 
 move_reg 21, 90, -1, 0;
 move_reg 90, 90, 1, {P3};
-branch_if_nonzero 90, 0, bootloader_memory_hash_mismatch;
+branch_if_diff_nonzero 90, 0, bootloader_memory_hash_mismatch;
 
 jump bootloader_memory_hash_ok, 90;
 bootloader_memory_hash_mismatch:
@@ -395,7 +395,7 @@ set_reg 21, {P3};
 // Increment page index
 move_reg 2, 2, 1, 1;
 
-branch_if_nonzero 2, 1, bootloader_start_page_loop;
+branch_if_diff_nonzero 2, 1, bootloader_start_page_loop;
 
 bootloader_end_page_loop:
 
@@ -545,7 +545,7 @@ assert_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET
 // Increment page index
 move_reg 2, 2, 1, 1;
 
-branch_if_nonzero 2, 1, shutdown_start_page_loop;
+branch_if_diff_nonzero 2, 1, shutdown_start_page_loop;
 
 shutdown_end_page_loop:
 

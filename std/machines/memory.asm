@@ -70,6 +70,7 @@ machine Memory with
     (1 - LAST) * (diff - 1 - m_diff_upper * 2**16 - m_diff_lower) = 0;
 }
 
+// TODO Remove when https://github.com/powdr-labs/powdr/issues/1572 is done
 machine Memory_20 with
 	degree: 2**20,
     latch: LATCH,
@@ -137,6 +138,7 @@ machine Memory_20 with
     (1 - LAST) * (diff - 1 - m_diff_upper * 2**16 - m_diff_lower) = 0;
 }
 
+// TODO Remove when https://github.com/powdr-labs/powdr/issues/1572 is done
 machine Memory_21 with
 	degree: 2**21,
     latch: LATCH,
@@ -204,6 +206,7 @@ machine Memory_21 with
     (1 - LAST) * (diff - 1 - m_diff_upper * 2**16 - m_diff_lower) = 0;
 }
 
+// TODO Remove when https://github.com/powdr-labs/powdr/issues/1572 is done
 machine Memory_22 with
 	degree: 2**22,
     latch: LATCH,

@@ -771,7 +771,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "branch_if_nonzero" => {
+            "branch_if_diff_nonzero" => {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
                 let val: Elem<F> = val1.sub(&val2);
@@ -838,7 +838,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "is_not_equal_zero" => {
+            "is_not_equal" => {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
                 let write_reg = args[2].u();
@@ -875,7 +875,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "add_wrap_signed" => {
+            "sub_wrap_with_offset" => {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
                 let offset = args[2];

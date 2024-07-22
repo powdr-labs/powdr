@@ -146,19 +146,19 @@ impl Runtime {
         r.add_syscall(
             Syscall::Input,
             [
-                "val1 <== get_reg(10);",
-                "val1 <=X= ${ std::prover::Query::Input(std::convert::int(std::prover::eval(val1))) };",
-                "set_reg 10, val1;"
+                // TODO this is a quite inefficient way of getting prover inputs.
+                // We need to be able to access the register memory within PIL functions.
+                "query_arg_1 <== get_reg(10);",
+                "set_reg 10, ${ std::prover::Query::Input(std::convert::int(std::prover::eval(query_arg_1))) };",
             ],
         );
 
         r.add_syscall(
             Syscall::DataIdentifier,
             [
-                "val1 <== get_reg(10);",
-                "val2 <== get_reg(11);",
-                "val1 <=X= ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(val2)), std::convert::int(std::prover::eval(val1))) };",
-                "set_reg 10, val1;"
+                "query_arg_1 <== get_reg(10);",
+                "query_arg_2 <== get_reg(11);",
+                "set_reg 10, ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(query_arg_2)), std::convert::int(std::prover::eval(query_arg_1))) };",
             ]
         );
 
@@ -167,9 +167,9 @@ impl Runtime {
             // This is using x0 on purpose, because we do not want to introduce
             // nondeterminism with this.
             [
-                "val1 <== get_reg(10);",
-                "val2 <== get_reg(11);",
-                "set_reg 0, ${ std::prover::Query::Output(std::convert::int(std::prover::eval(val1)), std::convert::int(std::prover::eval(val2))) };"
+                "query_arg_1 <== get_reg(10);",
+                "query_arg_2 <== get_reg(11);",
+                "set_reg 0, ${ std::prover::Query::Output(std::convert::int(std::prover::eval(query_arg_1)), std::convert::int(std::prover::eval(query_arg_2))) };"
             ]
         );
 
@@ -191,7 +191,7 @@ impl Runtime {
             "poseidon_gl",
             [format!(
                 "instr poseidon_gl link ~> {};",
-                instr_link("poseidon_gl.poseidon_permutation", 0, 12, 4)
+                instr_link("poseidon_gl.poseidon_permutation", 12, 4)
             )],
             12,
             // init call
@@ -208,7 +208,6 @@ impl Runtime {
             // reuse x10 as input to the poseidon machine instruction.
             // The poseidon instruction uses registers 0..12 as input/output.
             // The memory field elements are loaded into these registers before calling the instruction.
-            // They might be in use by the riscv machine, so we save the registers on the stack.
             (0..12).flat_map(|i| load_gl_fe(10, i as u32 * 8, &reg(i)))
             .chain(std::iter::once("poseidon_gl;".to_string()))
             .chain((0..4).flat_map(|i| store_gl_fe(10, i as u32 * 8, &reg(i))));
@@ -225,22 +224,21 @@ impl Runtime {
             [
                 format!(
                     "instr affine_256 link ~> {};",
-                    instr_link("arith.affine_256", 0, 24, 16) // will use registers 3..27
+                    instr_link("arith.affine_256", 24, 16)
                 ),
                 format!(
                     "instr ec_add link ~> {};",
-                    instr_link("arith.ec_add", 0, 32, 16) // will use registers 4..36
+                    instr_link("arith.ec_add", 32, 16)
                 ),
                 format!(
                     "instr ec_double link ~> {};",
-                    instr_link("arith.ec_double", 0, 16, 16) // will use registers 2..18
+                    instr_link("arith.ec_double", 16, 16)
                 ),
                 format!(
                     "instr mod_256 link ~> {};",
-                    instr_link("arith.mod_256", 0, 24, 8) // will use registers 3..27
+                    instr_link("arith.mod_256", 24, 8)
                 ),
             ],
-            // machine needs 32 registers
             32,
             // calling ec_double for machine initialization.
             // store x in registers 0..8
@@ -496,21 +494,19 @@ fn reg(idx: usize) -> String {
 }
 
 /// Helper function to generate instr link for large number input/output registers
-fn instr_link(call: &str, start_idx: usize, inputs: usize, outputs: usize) -> String {
+fn instr_link(call: &str, inputs: usize, outputs: usize) -> String {
     format!(
         "{}{}({})",
         if outputs > 0 {
             format!(
                 "({}) = ",
-                (start_idx..start_idx + outputs)
-                    .map(|i| format!("{}'", reg(i)))
-                    .join(", ")
+                (0..outputs).map(|i| format!("{}'", reg(i))).join(", ")
             )
         } else {
             "".to_string()
         },
         call,
-        (start_idx..start_idx + inputs).map(reg).join(", ")
+        (0..inputs).map(reg).join(", ")
     )
 }
 
