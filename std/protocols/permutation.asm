@@ -55,8 +55,11 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
 /// Returns constraints that enforce that lhs is a permutation of rhs
 ///
 /// # Arguments:
+/// - is_first: A column that is 1 for the first row and 0 for the rest
 /// - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
 ///        are done on the F_{p^2} extension field.
+/// - alpha: A challenge used to compress the LHS and RHS values
+/// - beta: A challenge used to update the accumulator
 /// - permutation_constraint: The permutation constraint
 ///
 /// # Returns:
