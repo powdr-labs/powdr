@@ -63,7 +63,6 @@ machine MemoryWithBootloaderWrite with
 
     col fixed FIRST = [1] + [0]*;
     let LAST = FIRST';
-    col fixed STEP(i) { i };
 
     link => byte2.check(m_diff_lower);
     link => byte2.check(m_diff_upper);

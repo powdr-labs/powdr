@@ -4,7 +4,7 @@ use std::{
 };
 
 use powdr_ast::{
-    asm_analysis::{AnalysisASMFile, RegisterTy},
+    asm_analysis::AnalysisASMFile,
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
 use powdr_number::FieldElement;
@@ -22,6 +22,8 @@ use crate::continuations::bootloader::{
     BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES, DEFAULT_PC, MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET,
     WORDS_PER_PAGE,
 };
+
+use crate::code_gen::Register;
 
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<String, Vec<Elem<F>>> {
     let mut reg_values: HashMap<&str, Vec<Elem<F>>> = HashMap::with_capacity(trace.reg_map.len());
@@ -68,10 +70,19 @@ where
     let num_chunks = bootloader_inputs.len();
 
     log::info!("Computing fixed columns...");
-    pipeline.compute_fixed_cols().unwrap();
+    let fixed_cols = pipeline.compute_fixed_cols().unwrap();
 
-    // we can assume optimized_pil has been computed
-    let length = pipeline.compute_optimized_pil().unwrap().degree();
+    // Advance the pipeline to the optimized PIL stage, so that it doesn't need to be computed
+    // in every chunk.
+    pipeline.compute_optimized_pil().unwrap();
+
+    // TODO hacky way to find the degree of the main machine, fix.
+    let length = fixed_cols
+        .iter()
+        .find(|(col, _)| col == "main.STEP")
+        .unwrap()
+        .1
+        .len() as u64;
 
     bootloader_inputs
         .into_iter()
@@ -139,25 +150,6 @@ fn sanity_check(program: &AnalysisASMFile) {
             panic!();
         }
     }
-
-    // Check that the registers of the machine are as expected.
-    let machine_registers = main_machine
-        .registers
-        .iter()
-        .filter_map(|r| {
-            ((r.ty == RegisterTy::Pc || r.ty == RegisterTy::Write) && r.name != "x0")
-                .then_some(format!("main.{}", r.name))
-        })
-        .collect::<BTreeSet<_>>();
-    let expected_registers = REGISTER_NAMES
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<BTreeSet<_>>();
-    // FIXME: Currently, continuations don't support a Runtime with extra
-    // registers. This has not been fixed because extra registers will not be
-    // needed once we support accessing the memory machine from multiple
-    // machines. This comment can be removed then.
-    assert_eq!(machine_registers, expected_registers);
 }
 
 pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
@@ -336,18 +328,23 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         log::info!("Bootloader inputs length: {}", bootloader_inputs.len());
 
         log::info!("Simulating chunk execution...");
-        let (chunk_trace, memory_snapshot_update) = {
-            let (trace, memory_snapshot_update) = powdr_riscv_executor::execute_ast::<F>(
-                &program,
-                MemoryState::new(),
-                pipeline.data_callback().unwrap(),
-                &bootloader_inputs,
-                num_rows,
-                powdr_riscv_executor::ExecMode::Trace,
-                // profiling was done when full trace was generated
-                None,
-            );
-            (transposed_trace(&trace), memory_snapshot_update)
+        let (chunk_trace, memory_snapshot_update, register_memory_snapshot) = {
+            let (trace, memory_snapshot_update, register_memory_snapshot) =
+                powdr_riscv_executor::execute_ast::<F>(
+                    &program,
+                    MemoryState::new(),
+                    pipeline.data_callback().unwrap(),
+                    &bootloader_inputs,
+                    num_rows,
+                    powdr_riscv_executor::ExecMode::Trace,
+                    // profiling was done when full trace was generated
+                    None,
+                );
+            (
+                transposed_trace(&trace),
+                memory_snapshot_update,
+                register_memory_snapshot,
+            )
         };
         let mut memory_updates_by_page =
             merkle_tree.organize_updates_by_page(memory_snapshot_update.into_iter());
@@ -388,11 +385,17 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 .copy_from_slice(&page_hash.map(Elem::Field));
         }
 
-        // Update initial register values for the next chunk.
-        register_values = REGISTER_NAMES
-            .iter()
-            .map(|&r| *chunk_trace[r].last().unwrap())
-            .collect();
+        // Go over all registers except the PC
+        let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
+        register_values = register_iter
+            .map(|reg| {
+                let reg = reg.strip_prefix("main.").unwrap();
+                let id = Register::from(reg).addr();
+                *register_memory_snapshot.get(&(id as u32)).unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        register_values.push(*chunk_trace["main.pc"].last().unwrap());
 
         // Replace final register values of the current chunk
         bootloader_inputs[REGISTER_NAMES.len()..2 * REGISTER_NAMES.len()]
@@ -435,7 +438,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             (length - start - shutdown_routine_rows) * 100 / length
         );
         for i in 0..(chunk_trace["main.pc"].len() - start) {
-            for &reg in REGISTER_NAMES.iter() {
+            for &reg in ["main.pc", "main.query_arg_1", "main.query_arg_1"].iter() {
                 let chunk_i = i + start;
                 let full_i = i + proven_trace;
                 if chunk_trace[reg][chunk_i] != full_trace[reg][full_i] {
