@@ -529,9 +529,9 @@ fn load_gl_fe(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 5] {
             tmp3.addr(),
             tmp4.addr()
         ),
-        format!("val1 <== get_reg({});", tmp1.addr()),
-        format!("val2 <== get_reg({});", tmp3.addr()),
-        format!("{reg} <=X= val1 + val2 * 2**32;"),
+        format!("query_arg_1 <== get_reg({});", tmp1.addr()),
+        format!("query_arg_2 <== get_reg({});", tmp3.addr()),
+        format!("{reg} <=X= query_arg_1 + query_arg_2 * 2**32;"),
     ]
 }
 
