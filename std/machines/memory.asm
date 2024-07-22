@@ -80,6 +80,8 @@ machine Memory_20 with
     operation_id: m_is_write,
     call_selectors: selectors,
 {
+    Byte2 byte2;
+
     operation mload<0> m_addr, m_step -> m_value;
     operation mstore<1> m_addr, m_step, m_value ->;
 
@@ -124,8 +126,8 @@ machine Memory_20 with
     col fixed STEP(i) { i };
     col fixed BIT16(i) { i & 0xffff };
 
-    [m_diff_lower] in [BIT16];
-    [m_diff_upper] in [BIT16];
+    link => byte2.check(m_diff_lower);
+    link => byte2.check(m_diff_upper);
 
     std::utils::force_bool(m_change);
 
@@ -148,6 +150,8 @@ machine Memory_21 with
     operation_id: m_is_write,
     call_selectors: selectors,
 {
+    Byte2 byte2;
+
     operation mload<0> m_addr, m_step -> m_value;
     operation mstore<1> m_addr, m_step, m_value ->;
 
@@ -192,8 +196,8 @@ machine Memory_21 with
     col fixed STEP(i) { i };
     col fixed BIT16(i) { i & 0xffff };
 
-    [m_diff_lower] in [BIT16];
-    [m_diff_upper] in [BIT16];
+    link => byte2.check(m_diff_lower);
+    link => byte2.check(m_diff_upper);
 
     std::utils::force_bool(m_change);
 
@@ -216,6 +220,8 @@ machine Memory_22 with
     operation_id: m_is_write,
     call_selectors: selectors,
 {
+    Byte2 byte2;
+
     operation mload<0> m_addr, m_step -> m_value;
     operation mstore<1> m_addr, m_step, m_value ->;
 
@@ -260,8 +266,8 @@ machine Memory_22 with
     col fixed STEP(i) { i };
     col fixed BIT16(i) { i & 0xffff };
 
-    [m_diff_lower] in [BIT16];
-    [m_diff_upper] in [BIT16];
+    link => byte2.check(m_diff_lower);
+    link => byte2.check(m_diff_upper);
 
     std::utils::force_bool(m_change);
 
