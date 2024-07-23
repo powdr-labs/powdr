@@ -10,6 +10,8 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
+use crate::constant_evaluator::{get_uniquely_sized, VariablySizedColumn};
+
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
@@ -50,14 +52,14 @@ impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String>
 #[derive(Clone)]
 pub struct WitgenCallback<T> {
     analyzed: Arc<Analyzed<T>>,
-    fixed_col_values: Arc<Vec<(String, Vec<T>)>>,
+    fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     query_callback: Arc<dyn QueryCallback<T>>,
 }
 
 impl<T: FieldElement> WitgenCallback<T> {
     pub fn new(
         analyzed: Arc<Analyzed<T>>,
-        fixed_col_values: Arc<Vec<(String, Vec<T>)>>,
+        fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
         query_callback: Option<Arc<dyn QueryCallback<T>>>,
     ) -> Self {
         let query_callback = query_callback.unwrap_or_else(|| Arc::new(unused_query_callback()));
@@ -111,7 +113,7 @@ pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
 
 pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
-    fixed_col_values: &'b [(String, Vec<T>)],
+    fixed_col_values: &'b Vec<(String, VariablySizedColumn<T>)>,
     query_callback: &'b dyn QueryCallback<T>,
     external_witness_values: &'b [(String, Vec<T>)],
     stage: u8,
@@ -121,7 +123,7 @@ pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
 impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     pub fn new(
         analyzed: &'a Analyzed<T>,
-        fixed_col_values: &'b [(String, Vec<T>)],
+        fixed_col_values: &'b Vec<(String, VariablySizedColumn<T>)>,
         query_callback: &'b dyn QueryCallback<T>,
     ) -> Self {
         WitnessGenerator {
@@ -156,9 +158,11 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     /// @returns the values (in source order) and the degree of the polynomials.
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
         record_start(OUTER_CODE_NAME);
+        // TODO: Handle multiple sizes
+        let fixed_col_values = get_uniquely_sized(self.fixed_col_values).unwrap();
         let fixed = FixedData::new(
             self.analyzed,
-            self.fixed_col_values,
+            &fixed_col_values,
             self.external_witness_values,
             self.challenges,
             self.stage,
@@ -328,7 +332,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
     pub fn new(
         analyzed: &'a Analyzed<T>,
-        fixed_col_values: &'a [(String, Vec<T>)],
+        fixed_col_values: &'a [(String, &'a Vec<T>)],
         external_witness_values: &'a [(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
         stage: u8,

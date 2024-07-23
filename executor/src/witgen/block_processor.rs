@@ -121,7 +121,7 @@ mod tests {
     use powdr_pil_analyzer::analyze_string;
 
     use crate::{
-        constant_evaluator::generate,
+        constant_evaluator::{generate, get_uniquely_sized},
         witgen::{
             data_structures::finalizable_data::FinalizableData,
             identity_processor::Machines,
@@ -152,10 +152,8 @@ mod tests {
         f: impl Fn(BlockProcessor<T, Q>, BTreeMap<String, PolyID>, u64, usize) -> R,
     ) -> R {
         let analyzed = analyze_string(src);
-        let constants = generate(&analyzed)
-            .into_iter()
-            .map(|(n, c)| (n.to_string(), c))
-            .collect::<Vec<_>>();
+        let constants = generate(&analyzed);
+        let constants = get_uniquely_sized(&constants).unwrap();
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 
         // No submachines

@@ -365,6 +365,8 @@ mod test {
     use pretty_assertions::assert_eq;
     use test_log::test;
 
+    use crate::constant_evaluator::get_uniquely_sized;
+
     use super::*;
 
     #[test]
@@ -437,6 +439,7 @@ namespace Global(2**20);
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
         let constants = crate::constant_evaluator::generate(&analyzed);
+        let constants = get_uniquely_sized(&constants).unwrap();
         let fixed_polys = (0..constants.len())
             .map(|i| constant_poly_id(i as u64))
             .collect::<Vec<_>>();
