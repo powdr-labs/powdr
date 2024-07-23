@@ -3,9 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-pub use data_structures::{
-    get_max_sized, get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn,
-};
+pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
