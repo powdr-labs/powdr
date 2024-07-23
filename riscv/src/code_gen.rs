@@ -350,7 +350,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bo
         "".to_string()
     };
 
-    for machine in ["binary", "shift"] {
+    for machine in ["binary", "shift", "bit2", "bit6", "bit7", "byte"] {
         assert!(
             runtime.has_submachine(machine),
             "RISC-V machine requires the `{machine}` submachine"
@@ -549,15 +549,14 @@ fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bo
         .map(|s| format!("    {s}"))
         .join("\n")
         + r#"
-    col fixed bytes(i) { i & 0xff };
     col witness X_b1;
     col witness X_b2;
     col witness X_b3;
     col witness X_b4;
-    [ X_b1 ] in [ bytes ];
-    [ X_b2 ] in [ bytes ];
-    [ X_b3 ] in [ bytes ];
-    [ X_b4 ] in [ bytes ];
+    link => byte.check(X_b1);
+    link => byte.check(X_b2);
+    link => byte.check(X_b3);
+    link => byte.check(X_b4);
     col witness wrap_bit;
     wrap_bit * (1 - wrap_bit) = 0;
 
@@ -571,10 +570,8 @@ fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bo
         val1_col = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
         val3_col = Y_7bit + wrap_bit * 0xffffff80
     }
-
-    col fixed seven_bit(i) { i & 0x7f };
     col witness Y_7bit;
-    [ Y_7bit ] in [ seven_bit ];
+    link => bit7.check(Y_7bit);
 
     // Sign extends the value in register X and stores it in register Y.
     // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
@@ -622,19 +619,19 @@ fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bo
     col witness Y_b6;
     col witness Y_b7;
     col witness Y_b8;
-    [ Y_b5 ] in [ bytes ];
-    [ Y_b6 ] in [ bytes ];
-    [ Y_b7 ] in [ bytes ];
-    [ Y_b8 ] in [ bytes ];
+    link => byte.check(Y_b5);
+    link => byte.check(Y_b6);
+    link => byte.check(Y_b7);
+    link => byte.check(Y_b8);
 
     col witness REM_b1;
     col witness REM_b2;
     col witness REM_b3;
     col witness REM_b4;
-    [ REM_b1 ] in [ bytes ];
-    [ REM_b2 ] in [ bytes ];
-    [ REM_b3 ] in [ bytes ];
-    [ REM_b4 ] in [ bytes ];
+    link => byte.check(REM_b1);
+    link => byte.check(REM_b2);
+    link => byte.check(REM_b3);
+    link => byte.check(REM_b4);
 
     // Computes Q = val(Y) / val(X) and R = val(Y) % val(X) and stores them in registers Z and W.
     instr divremu Y, X, Z, W
@@ -735,8 +732,6 @@ fn memory(with_bootloader: bool) -> String {
 
     // ============== memory instructions ==============
 
-    let up_to_three: col = |i| i % 4;
-    let six_bits: col = |i| i % 2**6;
     /// Loads one word from an address V = val(X) + Y, where V can be between 0 and 2**33 (sic!),
     /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
     /// Writes the loaded word and the remainder of the division by 4 to registers Z and W,
@@ -746,10 +741,10 @@ fn memory(with_bootloader: bool) -> String {
         link ~> val3_col = memory.mload(X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4, STEP + 1)
         link ~> regs.mstore(Z, STEP + 2, val3_col)
         link ~> regs.mstore(W, STEP + 3, val4_col)
+        link => bit2.check(val4_col)
+        link => bit6.check(X_b1)
     {
-        [ val4_col ] in [ up_to_three ],
-        val1_col + Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + val4_col,
-        [ X_b1 ] in [ six_bits ]
+        val1_col + Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + val4_col
     }
 
     // Stores val(W) at address (V = val(X) - val(Y) + Z) % 2**32.

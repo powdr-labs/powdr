@@ -1,5 +1,5 @@
 use std::array;
-use std::machines::byte2::Byte2;
+use std::machines::range::Byte2;
 
 // A read/write memory, similar to that of Polygon:
 // https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/mem.pil
