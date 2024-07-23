@@ -89,43 +89,39 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
         "All fixed columns of a machine must have the same sizes"
     );
 
+    let sizes = sizes.into_iter().next().unwrap_or_else(|| {
+        // There is no fixed column with a set size. So either the PIL has a degree, or we
+        // assume all possible degrees.
+        let machine_degrees = machine_pil.degrees();
+        assert!(
+            machine_degrees.len() <= 1,
+            "All fixed columns of a machine must have the same sizes"
+        );
+        match machine_degrees.iter().next() {
+            Some(&degree) => iter::once(degree as usize).collect(),
+            None => (MIN_DEGREE_LOG..=MAX_DEGREE_LOG)
+                .map(|log_size| 1 << log_size)
+                .collect(),
+        }
+    });
+
     sizes
         .into_iter()
-        .next()
-        .map(|sizes| {
-            sizes
-                .into_iter()
-                .map(|size| {
-                    (
-                        size,
-                        machine_columns
-                            .iter()
-                            .map(|(name, column)| {
-                                (
-                                    name.clone(),
-                                    column.get_by_size_cloned(size).unwrap().into(),
-                                )
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                })
-                .collect()
+        .map(|size| {
+            (
+                size,
+                machine_columns
+                    .iter()
+                    .map(|(name, column)| {
+                        (
+                            name.clone(),
+                            column.get_by_size_cloned(size).unwrap().into(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )
         })
-        .unwrap_or_else(|| {
-            // There is no fixed column with a set size. So either the PIL has a degree, or we
-            // assume all possible degrees.
-            let machine_degrees = machine_pil.degrees();
-            assert!(
-                machine_degrees.len() <= 1,
-                "All fixed columns of a machine must have the same sizes"
-            );
-            match machine_degrees.iter().next() {
-                Some(&degree) => iter::once((degree as usize, Vec::new())).collect(),
-                None => (MIN_DEGREE_LOG..=MAX_DEGREE_LOG)
-                    .map(|log_size| (1 << log_size, vec![]))
-                    .collect(),
-            }
-        })
+        .collect()
 }
 
 /// Filter the given columns to only include those that are referenced by the given symbols.
