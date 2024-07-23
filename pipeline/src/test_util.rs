@@ -259,12 +259,20 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
 pub fn gen_halo2_proof(_pipeline: Pipeline<Bn254Field>, _backend: BackendVariant) {}
 
 #[cfg(feature = "plonky3")]
-pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
+pub fn test_plonky3_with_backend_variant(
+    file_name: &str,
+    inputs: Vec<GoldilocksField>,
+    backend: BackendVariant,
+) {
+    let backend = match backend {
+        BackendVariant::Monolithic => powdr_backend::BackendType::Plonky3,
+        BackendVariant::Composite => powdr_backend::BackendType::Plonky3Composite,
+    };
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(powdr_backend::BackendType::Plonky3, None);
+        .with_backend(backend, None);
 
     // Generate a proof
     let proof = pipeline.compute_proof().cloned().unwrap();
@@ -296,7 +304,7 @@ pub fn test_plonky3(file_name: &str, inputs: Vec<GoldilocksField>) {
 }
 
 #[cfg(not(feature = "plonky3"))]
-pub fn test_plonky3(_: &str, _: Vec<GoldilocksField>) {}
+pub fn test_plonky3_with_backend_variant(_: &str, _: Vec<GoldilocksField>, _: BackendVariant) {}
 
 #[cfg(not(feature = "plonky3"))]
 pub fn gen_plonky3_proof(_: &str, _: Vec<GoldilocksField>) {}

@@ -201,12 +201,18 @@ impl<T: FieldElement> VMConverter<T> {
                                 // introduce an intermediate witness polynomial to keep the degree of polynomial identities at 2
                                 // this may not be optimal for backends which support higher degree constraints
                                 let pc_update_name = format!("{name}_update");
-
                                 vec![
-                                    PilStatement::PolynomialDefinition(
+                                    witness_column(
                                         SourceRef::unknown(),
-                                        pc_update_name.to_string(),
-                                        rhs,
+                                        pc_update_name.clone(),
+                                        None,
+                                    ),
+                                    PilStatement::Expression(
+                                        SourceRef::unknown(),
+                                        build::identity(
+                                            direct_reference(pc_update_name.clone()),
+                                            rhs,
+                                        ),
                                     ),
                                     PilStatement::Expression(
                                         SourceRef::unknown(),

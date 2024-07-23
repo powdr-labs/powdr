@@ -5,7 +5,7 @@ use powdr_pipeline::{
     test_util::{
         gen_estark_proof, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
         resolve_test_file, run_pilcom_test_file, run_pilcom_with_backend_variant, test_halo2,
-        test_halo2_with_backend_variant, BackendVariant,
+        test_halo2_with_backend_variant, test_plonky3_with_backend_variant, BackendVariant,
     },
     util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
@@ -42,6 +42,7 @@ fn simple_sum_asm() {
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
     gen_estark_proof(f, slice_to_vec(&i));
+    test_plonky3_with_backend_variant(f, slice_to_vec(&i), BackendVariant::Composite);
 }
 
 #[test]
