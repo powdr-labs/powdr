@@ -327,8 +327,8 @@ fn compile_rust<F: FieldElement>(
         None => powdr_riscv::Runtime::base(),
     };
 
-    if continuations && !runtime.has_submachine("poseidon_gl") {
-        runtime = runtime.with_poseidon();
+    if continuations {
+        runtime = runtime.with_poseidon_for_continuations();
     }
 
     powdr_riscv::compile_rust::<F>(

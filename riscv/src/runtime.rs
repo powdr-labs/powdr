@@ -276,39 +276,76 @@ impl Runtime {
         self.syscalls.contains_key(&s)
     }
 
-    pub fn with_poseidon(mut self) -> Self {
+    pub fn with_poseidon(mut self, continuations: bool) -> Self {
+        let init_call = if continuations {
+            vec![
+                "mstore_bootloader 0, 0, 0, 0;",
+                "mstore_bootloader 0, 0, 4, 0;",
+                "mstore_bootloader 0, 0, 8, 0;",
+                "mstore_bootloader 0, 0, 12, 0;",
+                "mstore_bootloader 0, 0, 16, 0;",
+                "mstore_bootloader 0, 0, 20, 0;",
+                "mstore_bootloader 0, 0, 24, 0;",
+                "mstore_bootloader 0, 0, 28, 0;",
+                "mstore_bootloader 0, 0, 32, 0;",
+                "mstore_bootloader 0, 0, 36, 0;",
+                "mstore_bootloader 0, 0, 40, 0;",
+                "mstore_bootloader 0, 0, 44, 0;",
+                "mstore_bootloader 0, 0, 48, 0;",
+                "mstore_bootloader 0, 0, 52, 0;",
+                "mstore_bootloader 0, 0, 56, 0;",
+                "mstore_bootloader 0, 0, 60, 0;",
+                "mstore_bootloader 0, 0, 64, 0;",
+                "mstore_bootloader 0, 0, 68, 0;",
+                "mstore_bootloader 0, 0, 72, 0;",
+                "mstore_bootloader 0, 0, 76, 0;",
+                "mstore_bootloader 0, 0, 80, 0;",
+                "mstore_bootloader 0, 0, 84, 0;",
+                "mstore_bootloader 0, 0, 88, 0;",
+                "mstore_bootloader 0, 0, 92, 0;",
+                "poseidon_gl 0, 0;",
+            ]
+        } else {
+            vec!["poseidon_gl 0, 0;"]
+        };
         self.add_submachine(
-            "std::machines::hash::poseidon_gl::PoseidonGL",
+            "std::machines::hash::poseidon_gl_memory::PoseidonGLMemory",
             None,
             "poseidon_gl",
-            vec![],
-            [format!(
-                "instr poseidon_gl link ~> {};",
-                instr_link("poseidon_gl.poseidon_permutation", 12, 4)
-            )],
-            12,
-            // init call
-            std::iter::once("poseidon_gl;".to_string())
-                // zero out output registers
-                .chain((0..4).map(|i| format!("{} <== get_reg(0);", reg(i)))),
+            vec!["memory", "split_gl"],
+            [r#"instr poseidon_gl X, Y
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> poseidon_gl.poseidon_permutation(tmp1_col, tmp2_col, STEP)
+                {
+                    // make sure tmp1_col and tmp2_col are aligned memory addresses
+                    tmp3_col * 4 = tmp1_col,
+                    tmp4_col * 4 = tmp2_col,
+                    // make sure the factors fit in 32 bits
+                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+                    tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+                }
+            "#],
+            0,
+            init_call,
         );
 
         // The poseidon syscall has a single argument passed on x10, the
         // memory address of the 12 field element input array. Since the memory
         // offset is chosen by LLVM, we assume it's properly aligned.
-        let implementation =
-            // The poseidon syscall uses x10 for input, we store it in tmp3 and
-            // reuse x10 as input to the poseidon machine instruction.
-            // The poseidon instruction uses registers 0..12 as input/output.
-            // The memory field elements are loaded into these registers before calling the instruction.
-            (0..12).flat_map(|i| load_gl_fe(10, i as u32 * 8, &reg(i)))
-            .chain(std::iter::once("poseidon_gl;".to_string()))
-            .chain((0..4).flat_map(|i| store_gl_fe(10, i as u32 * 8, &reg(i))));
+        let implementation = std::iter::once("poseidon_gl 10, 10;".to_string());
 
         self.add_syscall(Syscall::PoseidonGL, implementation);
         self
     }
 
+    pub fn with_poseidon_no_continuations(self) -> Self {
+        self.with_poseidon(false)
+    }
+
+    pub fn with_poseidon_for_continuations(self) -> Self {
+        self.with_poseidon(true)
+    }
     pub fn with_arith(mut self) -> Self {
         self.add_submachine(
             "std::machines::arith::Arith",
@@ -578,7 +615,7 @@ impl TryFrom<&[&str]> for Runtime {
                 continue;
             }
             match *name {
-                "poseidon_gl" => runtime = runtime.with_poseidon(),
+                "poseidon_gl" => runtime = runtime.with_poseidon_no_continuations(),
                 "arith" => runtime = runtime.with_arith(),
                 _ => return Err(format!("Invalid co-processor specified: {name}")),
             }
@@ -607,50 +644,6 @@ fn instr_link(call: &str, inputs: usize, outputs: usize) -> String {
         call,
         (0..inputs).map(reg).join(", ")
     )
-}
-
-/// Load gl field element from addr+offset into register
-fn load_gl_fe(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 5] {
-    let lo = offset;
-    let hi = offset + 4;
-    let tmp1 = Register::from("tmp1");
-    let tmp2 = Register::from("tmp2");
-    let tmp3 = Register::from("tmp3");
-    let tmp4 = Register::from("tmp4");
-    [
-        format!(
-            "mload {addr_reg_id}, {lo}, {}, {};",
-            tmp1.addr(),
-            tmp2.addr()
-        ),
-        format!(
-            "mload {addr_reg_id}, {hi}, {}, {};",
-            tmp3.addr(),
-            tmp4.addr()
-        ),
-        format!("query_arg_1 <== get_reg({});", tmp1.addr()),
-        format!("query_arg_2 <== get_reg({});", tmp3.addr()),
-        format!("{reg} <=X= query_arg_1 + query_arg_2 * 2**32;"),
-    ]
-}
-
-/// Store gl field element from register into addr+offset
-fn store_gl_fe(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 4] {
-    let lo = offset;
-    let hi = offset + 4;
-    let tmp1 = Register::from("tmp1");
-    let tmp2 = Register::from("tmp2");
-    [
-        format!("set_reg {}, {reg};", tmp1.addr()),
-        format!(
-            "split_gl {}, {}, {};",
-            tmp1.addr(),
-            tmp1.addr(),
-            tmp2.addr()
-        ),
-        format!("mstore {addr_reg_id}, 0, {lo}, {};", tmp1.addr()),
-        format!("mstore {addr_reg_id}, 0, {hi}, {};", tmp2.addr()),
-    ]
 }
 
 /// Load word from addr+offset into register
