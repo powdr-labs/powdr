@@ -6,8 +6,8 @@ use powdr_pipeline::test_util::{
     assert_proofs_fail_for_invalid_witnesses_halo2,
     assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
     gen_estark_proof_with_backend_variant, make_prepared_pipeline, run_pilcom_test_file,
-    run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant, test_plonky3_with_backend_variant,
-    BackendVariant,
+    run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant,
+    test_plonky3_with_backend_variant, BackendVariant,
 };
 
 use test_log::test;

@@ -202,12 +202,16 @@ impl<T: FieldElement> VMConverter<T> {
                                 // this may not be optimal for backends which support higher degree constraints
                                 let pc_update_name = format!("{name}_update");
                                 vec![
-                                    witness_column(SourceRef::unknown(), pc_update_name.clone(), None),
+                                    witness_column(
+                                        SourceRef::unknown(),
+                                        pc_update_name.clone(),
+                                        None,
+                                    ),
                                     PilStatement::Expression(
                                         SourceRef::unknown(),
                                         build::identity(
                                             direct_reference(pc_update_name.clone()),
-                                            rhs
+                                            rhs,
                                         ),
                                     ),
                                     PilStatement::Expression(

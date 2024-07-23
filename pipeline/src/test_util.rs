@@ -259,7 +259,11 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
 pub fn gen_halo2_proof(_pipeline: Pipeline<Bn254Field>, _backend: BackendVariant) {}
 
 #[cfg(feature = "plonky3")]
-pub fn test_plonky3_with_backend_variant(file_name: &str, inputs: Vec<GoldilocksField>, backend: BackendVariant) {
+pub fn test_plonky3_with_backend_variant(
+    file_name: &str,
+    inputs: Vec<GoldilocksField>,
+    backend: BackendVariant,
+) {
     let backend = match backend {
         BackendVariant::Monolithic => powdr_backend::BackendType::Plonky3,
         BackendVariant::Composite => powdr_backend::BackendType::Plonky3Composite,
