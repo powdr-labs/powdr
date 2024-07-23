@@ -330,6 +330,26 @@ fn different_degrees() {
 }
 
 #[test]
+fn vm_to_block_dynamic_length() {
+    let f = "pil/vm_to_block_dynamic_length.pil";
+    // Because machines have different lengths, this can only be proven
+    // with a composite proof.
+    run_pilcom_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    )
+    .unwrap();
+    test_halo2_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
+    gen_estark_proof_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
+}
+
+#[test]
 fn serialize_deserialize_optimized_pil() {
     let f = "pil/fibonacci.pil";
     let path = powdr_pipeline::test_util::resolve_test_file(f);
