@@ -115,7 +115,7 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
                     .map(|(name, column)| {
                         (
                             name.clone(),
-                            column.get_by_size_cloned(size).unwrap().into(),
+                            column.get_by_size(size).unwrap().to_vec().into(),
                         )
                     })
                     .collect::<Vec<_>>(),

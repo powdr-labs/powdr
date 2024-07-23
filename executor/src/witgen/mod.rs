@@ -460,11 +460,11 @@ impl<'a, T> FixedColumn<'a, T> {
     }
 
     pub fn values(&self, size: DegreeType) -> &[T] {
-        self.values.column_by_size.get(&(size as usize)).unwrap()
+        self.values.get_by_size(size as usize).unwrap()
     }
 
     pub fn values_max_size(&self) -> &[T] {
-        let max_size = self.values.column_by_size.keys().max().unwrap().clone() as DegreeType;
+        let max_size = self.values.available_sizes().into_iter().max().unwrap() as DegreeType;
         self.values(max_size)
     }
 }
