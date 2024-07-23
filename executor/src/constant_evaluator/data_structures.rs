@@ -24,11 +24,10 @@ impl<F> VariablySizedColumn<F> {
     }
 
     /// Clones and returns the column with the given size.
-    pub fn get_by_size_cloned(&self, size: usize) -> Option<Vec<F>>
-    where
-        F: Clone,
-    {
-        self.column_by_size.get(&size).cloned()
+    pub fn get_by_size(&self, size: usize) -> Option<&[F]> {
+        self.column_by_size
+            .get(&size)
+            .map(|column| column.as_slice())
     }
 }
 
