@@ -6,7 +6,6 @@ use powdr_ast::analyzed::{IdentityKind, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::{
-    constant_evaluator::MAX_DEGREE_LOG,
     witgen::{
         rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
         IncompleteCause, MutableState, QueryCallback,
@@ -101,9 +100,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         });
 
-        let degree = fixed_data
-            .common_degree(key_polys.iter().chain(value_polys.iter()))
-            .unwrap_or(1 << MAX_DEGREE_LOG);
+        let degree = fixed_data.common_degree(key_polys.iter().chain(value_polys.iter()));
 
         let mut key_to_index = BTreeMap::new();
         for row in 0..degree {

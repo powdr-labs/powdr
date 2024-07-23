@@ -5,7 +5,6 @@ use itertools::Itertools;
 use super::super::affine_expression::AffineExpression;
 use super::{EvalResult, FixedData};
 use super::{FixedLookup, Machine};
-use crate::constant_evaluator::MAX_DEGREE_LOG;
 use crate::witgen::rows::RowPair;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
@@ -45,9 +44,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         identities: &[&Identity<T>],
         witnesses: &HashSet<PolyID>,
     ) -> Option<Self> {
-        let degree = fixed_data
-            .common_degree(witnesses)
-            .unwrap_or(1 << MAX_DEGREE_LOG);
+        let degree = fixed_data.common_degree(witnesses);
 
         if identities.len() != 1 {
             return None;
