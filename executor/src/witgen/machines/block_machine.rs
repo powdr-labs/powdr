@@ -4,7 +4,7 @@ use std::iter::{self, once};
 
 use super::{EvalResult, FixedData, FixedLookup};
 
-use crate::constant_evaluator::{MAX_DEGREE_LOG, MIN_DEGREE_LOG};
+use crate::constant_evaluator::MIN_DEGREE_LOG;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::processor::{OuterQuery, Processor};
@@ -125,9 +125,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identities: &[&'a Identity<T>],
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
-        let degree = fixed_data
-            .common_degree(witness_cols)
-            .unwrap_or(1 << MAX_DEGREE_LOG);
+        let degree = fixed_data.common_degree(witness_cols);
 
         let (is_permutation, block_size, latch_row) =
             detect_connection_type_and_block_size(fixed_data, connecting_identities)?;
@@ -250,9 +248,7 @@ fn try_to_period<T: FieldElement>(
                 return None;
             }
 
-            let degree = fixed_data
-                .common_degree(once(&poly.poly_id))
-                .unwrap_or(1 << MAX_DEGREE_LOG);
+            let degree = fixed_data.common_degree(once(&poly.poly_id));
 
             let values = fixed_data.fixed_cols[&poly.poly_id].values(degree);
 
@@ -322,8 +318,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
         }
 
-        let is_variable_size = self.fixed_data.common_degree(&self.witness_cols).is_none();
-        if is_variable_size {
+        if self.fixed_data.is_variable_size(&self.witness_cols) {
             let new_degree = self.data.len().next_power_of_two() as DegreeType;
             let new_degree = new_degree.max(1 << MIN_DEGREE_LOG);
             log::info!(

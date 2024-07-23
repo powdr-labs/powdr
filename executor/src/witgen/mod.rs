@@ -10,7 +10,7 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::constant_evaluator::VariablySizedColumn;
+use crate::constant_evaluator::{VariablySizedColumn, MAX_DEGREE_LOG};
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -300,7 +300,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     /// - the degree is not unique
     /// - the set of polynomials is empty
     /// - a declared polynomial does not have an explicit degree
-    pub fn common_degree<'b>(
+    fn common_set_degree<'b>(
         &self,
         ids: impl IntoIterator<Item = &'b PolyID>,
     ) -> Option<DegreeType> {
@@ -322,6 +322,14 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .unique()
             .exactly_one()
             .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
+    }
+
+    fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
+        self.common_set_degree(ids).unwrap_or(1 << MAX_DEGREE_LOG)
+    }
+
+    fn is_variable_size<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> bool {
+        self.common_set_degree(ids).is_none()
     }
 
     pub fn new(
