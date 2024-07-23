@@ -41,17 +41,6 @@ pub fn get_uniquely_sized<F>(
         .collect()
 }
 
-/// Returns all columns with their maximum sizes.
-pub fn get_max_sized<F>(column: &[(String, VariablySizedColumn<F>)]) -> Vec<(String, &Vec<F>)> {
-    column
-        .iter()
-        .map(|(name, column)| {
-            let max_size = column.column_by_size.keys().max().unwrap();
-            (name.clone(), &column.column_by_size[max_size])
-        })
-        .collect()
-}
-
 pub fn get_uniquely_sized_cloned<F: Clone>(
     column: &[(String, VariablySizedColumn<F>)],
 ) -> Result<Vec<(String, Vec<F>)>, HasMultipleSizesError> {
