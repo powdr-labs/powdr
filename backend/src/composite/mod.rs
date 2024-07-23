@@ -261,8 +261,6 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                     .unique()
                     .exactly_one()
                     .expect("All witness columns of a machine must have the same size");
-                println!("size: {}", size);
-                println!("Machine: {}", machine);
                 let machine_data = machine_data
                     .get(&size)
                     .expect("Machine does not support the given size");
