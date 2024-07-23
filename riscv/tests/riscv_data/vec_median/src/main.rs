@@ -21,33 +21,22 @@ use alloc::vec::Vec;
 use powdr_riscv_runtime::io::read_u32;
 use powdr_riscv_runtime::print;
 
-static mut EXPECTED: u32 = 7234;
-static mut LEN: u32 = 0xdeadbeef;
-
 /// entry point called by the runtime
 #[no_mangle]
 fn main() {
-    unsafe {
-        EXPECTED = read_u32(0);
-        LEN = read_u32(1);
-    }
-    do_the_sorting();
-}
+    let expected = read_u32(0);
+    let len = read_u32(1);
 
-#[inline(never)]
-fn do_the_sorting() {
-    unsafe {
-        let mut vec: Vec<_> = (2..(LEN + 2)).map(|idx| read_u32(idx)).collect();
-        vec.sort();
+    let mut vec: Vec<_> = (2..(len + 2)).map(|idx| read_u32(idx)).collect();
+    vec.sort();
 
-        let half = (LEN / 2) as usize;
-        let median = if LEN & 1 == 1 {
-            vec[half]
-        } else {
-            (vec[half - 1] + vec[half]) / 2
-        };
+    let half = (len / 2) as usize;
+    let median = if len & 1 == 1 {
+        vec[half]
+    } else {
+        (vec[half - 1] + vec[half]) / 2
+    };
 
-        print!("Found median of {median}\n");
-        assert_eq!(median, EXPECTED);
-    }
+    print!("Found median of {median}\n");
+    assert_eq!(median, expected);
 }
