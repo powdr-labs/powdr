@@ -13,6 +13,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt::{self, Display, Formatter},
     io,
+    sync::Arc,
 };
 
 use builder::TraceBuilder;
@@ -23,15 +24,21 @@ use powdr_ast::{
         AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
     },
     parsed::{
-        asm::DebugDirective, BinaryOperation, Expression, FunctionCall, Number, UnaryOperation,
+        asm::AssignmentRegister, asm::DebugDirective, BinaryOperation, Expression, FunctionCall,
+        Number, UnaryOperation,
     },
 };
+use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_number::{FieldElement, LargeInt};
 pub use profiler::ProfilerOptions;
 
 pub mod arith;
 pub mod poseidon_gl;
 mod profiler;
+mod submachines;
+use submachines::*;
+mod memory;
+use memory::*;
 
 use crate::profiler::Profiler;
 
@@ -66,11 +73,43 @@ impl<F: FieldElement> Elem<F> {
         }
     }
 
+    pub fn from_u32_as_fe(value: u32) -> Self {
+        Self::Field(F::from(value))
+    }
+
+    pub fn from_i64_as_fe(value: i64) -> Self {
+        Self::Field(F::from(value))
+    }
+
+    pub fn from_u64_as_fe(value: u64) -> Self {
+        Self::Field(F::from(value))
+    }
+
+    pub fn from_bool_as_fe(value: bool) -> Self {
+        if value {
+            Self::Field(F::one())
+        } else {
+            Self::Field(F::zero())
+        }
+    }
+
     /// Interprets the value of self as a field element.
     pub fn into_fe(&self) -> F {
         match *self {
             Self::Field(f) => f,
             Self::Binary(b) => b.into(),
+        }
+    }
+
+    /// Interprets the value of self as an i64, ignoring higher bytes if a field element
+    pub fn into_i64_from_lower_bytes(&self) -> i64 {
+        match self {
+            Self::Binary(b) => *b,
+            Self::Field(f) => {
+                let mut bytes = f.to_bytes_le();
+                bytes.truncate(8);
+                i64::from_le_bytes(bytes.try_into().unwrap())
+            }
         }
     }
 
@@ -143,6 +182,24 @@ impl<F: FieldElement> Elem<F> {
             (Self::Field(a), Self::Binary(b)) => Self::Field(*a * F::from(*b)),
         }
     }
+
+    fn div(&self, other: &Self) -> Self {
+        match (self, other) {
+            (Self::Binary(a), Self::Binary(b)) => Self::Binary(a / b),
+            (Self::Field(a), Self::Field(b)) => Self::Field(*a / *b),
+            (Self::Binary(a), Self::Field(b)) => Self::Field(F::from(*a) / *b),
+            (Self::Field(a), Self::Binary(b)) => Self::Field(*a / F::from(*b)),
+        }
+    }
+}
+
+fn decompose_lower32(x: i64) -> (u8, u8, u8, u8, u8) {
+    let b1 = (x & 0xff) as u8;
+    let b2 = ((x >> 8) & 0xff) as u8;
+    let b3 = ((x >> 16) & 0xff) as u8;
+    let b4 = ((x >> 24) & 0xff) as u8;
+    let sign = ((x >> 31) & 1) as u8;
+    (b1, b2, b3, b4, sign)
 }
 
 impl<F: FieldElement> From<i64> for Elem<F> {
@@ -219,9 +276,108 @@ pub struct ExecutionTrace<F: FieldElement> {
 
     /// The length of the trace, after applying the reg_writes.
     pub len: usize,
+
+    pub cols: HashMap<String, Vec<Elem<F>>>,
 }
 
 impl<F: FieldElement> ExecutionTrace<F> {
+    pub fn new(reg_map: HashMap<String, u16>, reg_writes: Vec<RegWrite<F>>, pc: usize) -> Self {
+        let f0 = Elem::Field(F::zero());
+        let cols: HashMap<String, _> = vec![
+            "main.reg_write_X_query_arg_1",
+            "main.reg_write_X_query_arg_2",
+            "main.read_Y_query_arg_1",
+            "main.X_b1",
+            "main.X_b2",
+            "main.X_b3",
+            "main.X_b4",
+            "main.wrap_bit",
+            "main.X",
+            "main.X_const",
+            "main.X_read_free",
+            "main.X_free_value",
+            "main.Y_b5",
+            "main.Y_b6",
+            "main.Y_b7",
+            "main.Y_b8",
+            "main.Y_7bit",
+            "main.Y",
+            "main.Y_const",
+            "main.Y_read_free",
+            "main.Y_free_value",
+            "main.Z",
+            "main.Z_const",
+            "main.W",
+            "main.W_const",
+            "main.val1_col",
+            "main.val2_col",
+            "main.val3_col",
+            "main.val4_col",
+            "main.XX",
+            "main.XXIsZero",
+            "main.XX_inv",
+            "main.REM_b1",
+            "main.REM_b2",
+            "main.REM_b3",
+            "main.REM_b4",
+            "main._operation_id",
+            "main.instr_set_reg",
+            "main.instr_get_reg",
+            "main.instr_move_reg",
+            "main.instr_mload",
+            "main.instr_mstore",
+            "main.instr_load_label",
+            "main.instr_load_label_param_l",
+            "main.instr_jump",
+            "main.instr_jump_param_l",
+            "main.instr_jump_dyn",
+            "main.instr_branch_if_diff_nonzero",
+            "main.instr_branch_if_diff_nonzero_param_l",
+            "main.instr_branch_if_zero",
+            "main.instr_branch_if_zero_param_l",
+            "main.instr_branch_if_positive",
+            "main.instr_branch_if_positive_param_l",
+            "main.instr_skip_if_zero",
+            "main.instr_is_positive",
+            "main.instr_is_equal_zero",
+            "main.instr_is_not_equal_zero",
+            "main.instr_and",
+            "main.instr_or",
+            "main.instr_xor",
+            "main.instr_shl",
+            "main.instr_shr",
+            "main.instr_split_gl",
+            "main.instr_wrap16",
+            "main.instr_divremu",
+            "main.instr_add_wrap",
+            "main.instr_sub_wrap_with_offset",
+            "main.instr_sign_extend_byte",
+            "main.instr_sign_extend_16_bits",
+            "main.instr_to_signed",
+            "main.instr_mul",
+            "main.instr__jump_to_operation",
+            "main.instr__reset",
+            "main.instr__loop",
+            "main.instr_return",
+            "main.instr_fail",
+        ]
+        .iter()
+        .map(|n| (n.to_string(), vec![f0, f0]))
+        .collect();
+
+        ExecutionTrace {
+            reg_map,
+            reg_writes,
+            mem_ops: Vec::new(),
+            len: pc,
+            cols,
+        }
+    }
+
+    pub fn into_cols(self) -> Vec<(String, Vec<Elem<F>>)> {
+        self.cols.into_iter().collect()
+    }
+
     /// Replay the execution and get the register values per trace row.
     pub fn replay(&self) -> TraceReplay<F> {
         TraceReplay {
@@ -276,13 +432,15 @@ mod builder {
     use powdr_number::FieldElement;
 
     use crate::{
-        Elem, ExecMode, ExecutionTrace, MemOperation, MemOperationKind, MemoryState, RegWrite,
-        RegisterMemoryState, PC_INITIAL_VAL,
+        BinaryMachine, Elem, ExecMode, ExecutionTrace, MemOperation, MemOperationKind,
+        MemoryMachine, MemoryState, RegWrite, RegisterMemoryState, ShiftMachine, SplitGlMachine,
+        Submachine, SubmachineBoxed, PC_INITIAL_VAL,
     };
 
     fn register_names(main: &Machine) -> Vec<&str> {
         main.registers
             .iter()
+            //.map(|statement| &statement.name[..])
             .filter_map(|statement| {
                 if statement.ty != RegisterTy::Assignment {
                     Some(&statement.name[..])
@@ -295,6 +453,9 @@ mod builder {
 
     pub struct TraceBuilder<'b, F: FieldElement> {
         trace: ExecutionTrace<F>,
+        pub submachines: HashMap<String, Box<dyn Submachine<F>>>,
+        pub regs_machine: MemoryMachine,
+        pub memory_machine: MemoryMachine,
 
         /// Maximum rows we can run before we stop the execution.
         max_rows: usize,
@@ -341,6 +502,7 @@ mod builder {
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
             mode: ExecMode,
+            fixed_len: u32,
         ) -> Result<Self, Box<(ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>)>> {
             let reg_map = register_names(main)
                 .into_iter()
@@ -366,15 +528,31 @@ mod builder {
             let mut regs = vec![0.into(); reg_len];
             regs[pc_idx as usize] = PC_INITIAL_VAL.into();
 
+            let submachines: HashMap<String, Box<dyn Submachine<F>>> = [
+                ("binary", BinaryMachine::new_boxed("main_binary")),
+                ("shift", ShiftMachine::new_boxed("main_shift")),
+                ("split_gl", SplitGlMachine::new_boxed("main_split_gl")),
+            ]
+            .into_iter()
+            .map(|(name, m)| (name.to_string(), m))
+            .collect();
+
             let mut ret = Self {
                 pc_idx,
                 curr_pc: PC_INITIAL_VAL.into(),
+                /*
                 trace: ExecutionTrace {
                     reg_map,
                     reg_writes,
                     mem_ops: Vec::new(),
                     len: PC_INITIAL_VAL + 1,
+                    cols: HashMap::new(),
                 },
+                */
+                trace: ExecutionTrace::new(reg_map, reg_writes, PC_INITIAL_VAL + 1),
+                submachines,
+                regs_machine: MemoryMachine::new("main_regs"),
+                memory_machine: MemoryMachine::new("main_memory"),
                 next_statement_line: 1,
                 batch_to_line_map,
                 max_rows: max_rows_len,
@@ -385,10 +563,24 @@ mod builder {
             };
 
             if ret.has_enough_rows() || ret.set_next_pc().is_none() {
-                Err(Box::new(ret.finish()))
+                Err(Box::new(ret.finish(fixed_len)))
             } else {
                 Ok(ret)
             }
+        }
+
+        pub(crate) fn len(&self) -> u32 {
+            // TODO: update self.trace.len inside push_row_* ?.
+            // Right now only advance does it, maybe advance should call push_row itself
+            let cols_len = self
+                .trace
+                .cols
+                .values()
+                .next()
+                .map(|v| v.len())
+                .unwrap_or(0) as u32;
+
+            std::cmp::max(self.trace.len as u32, cols_len)
         }
 
         /// get current value of PC
@@ -420,7 +612,8 @@ mod builder {
         ///
         /// to set the PC, use set_pc() instead of this
         pub(crate) fn set_reg(&mut self, idx: &str, value: impl Into<Elem<F>>) {
-            self.set_reg_impl(idx, value.into())
+            let v = value.into();
+            self.set_reg_impl(idx, v)
         }
 
         fn set_reg_impl(&mut self, idx: &str, value: Elem<F>) {
@@ -432,6 +625,7 @@ mod builder {
         /// raw set next value of register by register index instead of name
         fn set_reg_idx(&mut self, idx: u16, value: Elem<F>) {
             // Record register write in trace.
+            // TODO do not record if asgn reg
             if let ExecMode::Trace = self.mode {
                 self.trace.reg_writes.push(RegWrite {
                     row: self.trace.len,
@@ -442,6 +636,38 @@ mod builder {
 
             self.regs[idx as usize] = value;
         }
+
+        pub fn set_col_idx(&mut self, name: &str, idx: usize, value: Elem<F>) {
+            *self.trace.cols.get_mut(name).unwrap().get_mut(idx).unwrap() = value;
+        }
+
+        pub fn set_col(&mut self, name: &str, value: Elem<F>) {
+            *self.trace.cols.get_mut(name).unwrap().last_mut().unwrap() = value;
+        }
+
+        pub fn get_col(&self, name: &str) -> Elem<F> {
+            *self.trace.cols.get(name).unwrap().last().unwrap()
+        }
+
+        pub fn push_row(&mut self) {
+            self.trace
+                .cols
+                .values_mut()
+                .for_each(|v| v.push(Elem::Field(0.into())));
+        }
+
+        pub fn extend_rows(&mut self, len: u32) {
+            self.trace.cols.values_mut().for_each(|v| {
+                let last = v.last().unwrap().clone();
+                v.resize(len as usize, last);
+            });
+        }
+
+        // pub fn push_row_copy(&mut self) {
+        //     self.trace.cols.values_mut().for_each(|v| {
+        //         v.push(v.last().unwrap().clone());
+        //     });
+        // }
 
         /// advance to next row, returns the index to the statement that must be
         /// executed now, or None if the execution is finished
@@ -504,7 +730,55 @@ mod builder {
             }
         }
 
-        pub fn finish(self) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
+        pub fn finish(
+            mut self,
+            fixed_len: u32,
+        ) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
+            // TODO: with VADCOP we don't need to extend main/submachines, most
+            // of the following code can be removed
+            let mut max_degree = self
+                .submachines
+                .values()
+                .map(|m| m.len())
+                .chain(Some(fixed_len))
+                .chain(Some(self.len()))
+                .chain(Some(self.regs_machine.len()))
+                .chain(Some(self.memory_machine.len()))
+                .max()
+                .unwrap();
+
+            max_degree = max_degree.next_power_of_two();
+
+            // fill up main trace to degree
+            self.extend_rows(max_degree);
+
+            // add submachine traces to main trace
+            for (name, mut machine) in self.submachines {
+                if name.len() == 0 {
+                    // ignore empty machines
+                    continue;
+                }
+                // push enough blocks to fill degree rows in submachines
+                machine.final_row_override();
+                println!("adding dummy rows for {name}...");
+                while machine.len() < max_degree {
+                    machine.push_dummy_block();
+                }
+                for (col_name, col) in machine.take_cols() {
+                    assert!(self.trace.cols.insert(col_name, col).is_none());
+                }
+            }
+
+            // add regs memory trace
+            for (col_name, col) in self.regs_machine.take_cols(max_degree) {
+                assert!(self.trace.cols.insert(col_name, col).is_none());
+            }
+
+            // add main memory trace
+            for (col_name, col) in self.memory_machine.take_cols(max_degree) {
+                assert!(self.trace.cols.insert(col_name, col).is_none());
+            }
+
             (self.trace, self.mem, self.reg_mem)
         }
 
@@ -529,6 +803,10 @@ mod builder {
                     self.regs[self.pc_idx as usize] = (pc + 1).into();
                 }
                 cmp::Ordering::Greater => {
+                    if pc < 2 {
+                        // end of program, no real batch to execute
+                        return None;
+                    }
                     panic!(
                         "next_statement_line: {} > line_of_next_batch: {}",
                         self.next_statement_line, line_of_next_batch
@@ -647,57 +925,361 @@ struct Executor<'a, 'b, F: FieldElement> {
     label_map: HashMap<&'a str, Elem<F>>,
     inputs: &'b Callback<'b, F>,
     bootloader_inputs: &'b [Elem<F>],
+    fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+    step: u32,
     _stdout: io::Stdout,
 }
 
 impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
+    fn init(&mut self) {
+        self.step = 4;
+        for i in 0..2 {
+            let jump_to_op = Elem::Field(
+                *self
+                    .get_fixed("main__rom.p_instr__jump_to_operation")
+                    .unwrap_or(&Vec::new())
+                    .get(i)
+                    .unwrap_or(&F::zero()),
+            );
+            self.proc
+                .set_col_idx("main.instr__jump_to_operation", i, jump_to_op);
+
+            let reset = Elem::Field(
+                *self
+                    .get_fixed("main__rom.p_instr__reset")
+                    .unwrap_or(&Vec::new())
+                    .get(i)
+                    .unwrap_or(&F::zero()),
+            );
+            self.proc.set_col_idx("main.instr__reset", i, reset);
+
+            let end_loop = Elem::Field(
+                *self
+                    .get_fixed("main__rom.p_instr__loop")
+                    .unwrap_or(&Vec::new())
+                    .get(i)
+                    .unwrap_or(&F::zero()),
+            );
+            self.proc.set_col_idx("main.instr__loop", i, end_loop);
+
+            let ret = Elem::Field(
+                *self
+                    .get_fixed("main__rom.p_instr_return")
+                    .unwrap_or(&Vec::new())
+                    .get(i)
+                    .unwrap_or(&F::zero()),
+            );
+            self.proc.set_col_idx("main.instr_return", i, ret);
+
+            self.proc.set_col_idx("main._operation_id", i, 2.into());
+        }
+    }
+
+    fn get_fixed(&self, name: &str) -> Option<&Vec<F>> {
+        self.fixed
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.get_uniquely_sized().expect("not uniquely sized!"))
+    }
+
+    fn sink_id(&self) -> u32 {
+        // get the sink_id by looking at the p_instr__loop column
+        for (i, &val) in self
+            .get_fixed("main__rom.p_instr__loop")
+            .unwrap()
+            .iter()
+            .enumerate()
+        {
+            if val.is_one() {
+                return i as u32;
+            }
+        }
+        panic!("could not find sink_id by looking at the p_instr__loop column");
+    }
+
+    fn set_program_columns(&mut self, pc: u32) {
+        let x_const = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_X_const")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+        let y_const = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_Y_const")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+        let z_const = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_Z_const")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+        let w_const = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_W_const")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+
+        let jump_to_op = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_instr__jump_to_operation")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+        let reset = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_instr__reset")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+        let end_loop = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_instr__loop")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+        let ret = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_instr_return")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+
+        let read_y_val1 = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_read_Y_query_arg_1")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+
+        let reg_write_x_val1 = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_reg_write_X_query_arg_1")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+
+        let reg_write_x_val2 = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_reg_write_X_query_arg_2")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+
+        let y_read_free = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_Y_read_free")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+
+        // TODO I think we can actually remove X_read_free and X_free_value from here and only do
+        // it in Assignment handling.
+        let x_read_free = Elem::Field(
+            *self
+                .get_fixed("main__rom.p_X_read_free")
+                .unwrap_or(&Vec::new())
+                .get(pc as usize)
+                .unwrap_or(&F::zero()),
+        );
+
+        self.proc.set_col("main.X_const", x_const);
+        self.proc.set_col("main.Y_const", y_const);
+        self.proc.set_col("main.Z_const", z_const);
+        self.proc.set_col("main.W_const", w_const);
+        self.proc
+            .set_col("main.reg_write_X_query_arg_1", reg_write_x_val1);
+        self.proc
+            .set_col("main.reg_write_X_query_arg_2", reg_write_x_val2);
+        self.proc.set_col("main.read_Y_query_arg_1", read_y_val1);
+        self.proc.set_col("main.Y_read_free", y_read_free);
+        self.proc
+            .set_col("main.instr__jump_to_operation", jump_to_op);
+        self.proc.set_col("main.instr__reset", reset);
+        self.proc.set_col("main.instr__loop", end_loop);
+        self.proc.set_col("main.instr_return", ret);
+        self.proc.set_col("main.X_read_free", x_read_free);
+
+        // always 2 because we only have constrainted submachines
+        self.proc.set_col("main._operation_id", 2.into());
+    }
+
     fn exec_instruction(&mut self, name: &str, args: &[Expression]) -> Vec<Elem<F>> {
         let args = args
             .iter()
             .map(|expr| self.eval_expression(expr)[0])
             .collect::<Vec<_>>();
 
-        match name {
+        self.proc.push_row();
+        let pc = self.proc.get_pc().u();
+        self.set_program_columns(pc);
+
+        let mut tmp_val1_col = Elem::Field(F::zero());
+        let mut tmp_val2_col = Elem::Field(F::zero());
+        let mut tmp_val3_col = Elem::Field(F::zero());
+        let mut tmp_val4_col = Elem::Field(F::zero());
+
+        let mut tmp_xx = Elem::Field(F::zero());
+        // see comments in .asm: XXISZero constraint is not always active
+        let mut tmp_xx_iszero = Elem::Field(F::zero());
+        let mut tmp_xx_inv = Elem::from_u32_as_fe(0);
+
+        let mut tmp_x_b1 = Elem::Field(F::zero());
+        let mut tmp_x_b2 = Elem::Field(F::zero());
+        let mut tmp_x_b3 = Elem::Field(F::zero());
+        let mut tmp_x_b4 = Elem::Field(F::zero());
+        let mut tmp_wrap_bit = Elem::Field(F::zero());
+
+        let mut tmp_y_7bit = Elem::Field(F::zero());
+
+        let mut tmp_rem_b1 = Elem::Field(F::zero());
+        let mut tmp_rem_b2 = Elem::Field(F::zero());
+        let mut tmp_rem_b3 = Elem::Field(F::zero());
+        let mut tmp_rem_b4 = Elem::Field(F::zero());
+
+        let mut tmp_y_b5 = Elem::Field(F::zero());
+        let mut tmp_y_b6 = Elem::Field(F::zero());
+        let mut tmp_y_b7 = Elem::Field(F::zero());
+        let mut tmp_y_b8 = Elem::Field(F::zero());
+
+        let mut tmp_y = self.proc.get_col("main.Y_const");
+
+        // macros to read and write to self.proc.regs_machine
+        macro_rules! reg_read {
+            ($i:expr, $reg:expr, $val:expr, $sel:expr) => {
+                self.proc
+                    .regs_machine
+                    .read(self.step + $i, $reg, $val, $sel);
+            };
+        }
+        macro_rules! reg_write {
+            ($i:expr, $reg:expr, $val:expr, $sel:expr) => {
+                self.proc
+                    .regs_machine
+                    .write(self.step + $i, $reg, $val, $sel);
+            };
+        }
+
+        let r = match name {
             "set_reg" => {
                 let addr = args[0].u();
-                self.proc.set_reg_mem(addr, args[1]);
+                let val = args[1];
+                self.proc.set_reg_mem(addr, val);
+                reg_write!(0, addr, val.u(), 3);
+
+                tmp_y = val;
+
+                //self.proc.set_reg("X", addr);
+                //self.proc.set_reg("Y", val);
+                //self.proc.set_reg("Z", 0);
+                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
             "get_reg" => {
                 let addr = args[0].u();
                 let val = self.proc.get_reg_mem(addr);
+                reg_read!(0, addr, val.u(), 0);
+
+                //self.proc.set_reg("Y", addr);
+                //self.proc.set_reg("X", val);
+                //self.proc.set_reg("Z", 0);
+                //self.proc.set_reg("W", 0);
 
                 vec![val]
             }
             "move_reg" => {
-                let val = self.proc.get_reg_mem(args[0].u());
+                let read_reg = args[0].u();
+                let val1 = self.proc.get_reg_mem(read_reg);
+                reg_read!(0, read_reg, val1.u(), 0);
                 let write_reg = args[1].u();
                 let factor = args[2];
                 let offset = args[3];
 
-                let val = val.mul(&factor).add(&offset);
+                let val3 = val1.mul(&factor).add(&offset);
 
-                self.proc.set_reg_mem(write_reg, val);
+                self.proc.set_reg_mem(write_reg, val3);
+                reg_write!(1, write_reg, val3.u(), 3);
+
+                tmp_val1_col = val1;
+                tmp_val3_col = val3;
+
+                //self.proc.set_reg("X", read_reg);
+                //self.proc.set_reg("Y", write_reg);
+                //self.proc.set_reg("Z", factor);
+                //self.proc.set_reg("W", offset);
 
                 Vec::new()
             }
 
             "mstore" | "mstore_bootloader" => {
-                let addr1 = self.proc.get_reg_mem(args[0].u());
-                let addr2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                let addr1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, addr1.u(), 0);
+                let addr2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, addr2.u(), 1);
                 let offset = args[2].bin();
-                let value = self.proc.get_reg_mem(args[3].u());
+                let read_reg3 = args[3].u();
+                let value = self.proc.get_reg_mem(read_reg3);
+                reg_read!(2, read_reg3, value.u(), 2);
 
                 let addr = addr1.bin() - addr2.bin() + offset;
                 let addr = addr as u32;
                 assert_eq!(addr % 4, 0);
                 self.proc.set_mem(addr, value.u());
 
+                // Calculate the address with wrapping
+                let addr_full = addr1.bin() - addr2.bin() + offset;
+                // let addr_wrapped = (addr_full % (2_u64.pow(32) as i64)) as u32;
+                tmp_wrap_bit = if addr_full >= 2_i64.pow(32) || addr_full < 0 {
+                    Elem::Field(F::one())
+                } else {
+                    Elem::Field(F::zero())
+                };
+
+                // println!("0x{:x} - 0x{addr:x} = 0x{:x}", self.step + 3, value.u());
+                self.proc
+                    .memory_machine
+                    .write(self.step + 3, addr, value.u(), 1);
+
+                tmp_val1_col = addr1;
+                tmp_val2_col = addr2;
+                tmp_val3_col = value;
+
+                let (b1, b2, b3, b4, _sign) = decompose_lower32(addr.into());
+                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
+                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
+                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
+                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                //tmp_wrap_bit = Elem::from_u32_as_fe(sign.into());
+
+                //self.proc.set_reg("X", read_reg1);
+                //self.proc.set_reg("Z", read_reg2);
+                //self.proc.set_reg("Y", offset);
+                //self.proc.set_reg("W", read_reg3);
+
                 Vec::new()
             }
             "mload" => {
-                let addr1 = self.proc.get_reg_mem(args[0].u());
+                let read_reg = args[0].u();
+                let addr1 = self.proc.get_reg_mem(read_reg);
+                reg_read!(0, read_reg, addr1.u(), 0);
                 let offset = args[1].bin();
                 let write_addr1 = args[2].u();
                 let write_addr2 = args[3].u();
@@ -708,12 +1290,43 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let rem = addr % 4;
 
                 self.proc.set_reg_mem(write_addr1, val.into());
+                reg_write!(2, write_addr1, val, 3);
                 self.proc.set_reg_mem(write_addr2, rem.into());
+                reg_write!(3, write_addr2, rem as u32, 4);
+
+                tmp_val1_col = addr1;
+                tmp_val3_col = Elem::from_u32_as_fe(val);
+                tmp_val4_col = Elem::from_i64_as_fe(rem);
+
+                let v = tmp_val1_col.add(&args[1]).into_i64_from_lower_bytes();
+                let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
+                tmp_x_b1 = Elem::from_u32_as_fe((b1 / 4).into());
+                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
+                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
+                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                tmp_wrap_bit = Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32);
+
+                // println!(
+                //     "0x{:x} - 0x{:x} = 0x{:x}",
+                //     self.step + 1,
+                //     addr as u32 & 0xfffffffc,
+                //     val
+                // );
+                self.proc
+                    .memory_machine
+                    .read(self.step + 1, addr as u32 & 0xfffffffc, val, 0);
+
+                //self.proc.set_reg("X", read_reg);
+                //self.proc.set_reg("Y", offset);
+                //self.proc.set_reg("Z", write_addr1);
+                //self.proc.set_reg("W", write_addr2);
 
                 Vec::new()
             }
+            // TODO
             "load_bootloader_input" => {
                 let addr = self.proc.get_reg_mem(args[0].u());
+                reg_read!(0, args[0].u(), addr.u(), 0);
                 let write_addr = args[1].u();
                 let factor = args[2].bin();
                 let offset = args[3].bin();
@@ -722,12 +1335,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val = self.bootloader_inputs[addr as usize];
 
                 self.proc.set_reg_mem(write_addr, val);
+                reg_write!(2, write_addr, val.u(), 3);
 
                 Vec::new()
             }
+            // TODO
             "assert_bootloader_input" => {
                 let addr = self.proc.get_reg_mem(args[0].u());
+                reg_read!(0, args[0].u(), addr.u(), 0);
                 let val = self.proc.get_reg_mem(args[1].u());
+                reg_read!(1, args[1].u(), val.u(), 1);
                 let factor = args[2].bin();
                 let offset = args[3].bin();
 
@@ -739,28 +1356,60 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             "load_label" => {
                 let write_reg = args[0].u();
-                self.proc.set_reg_mem(write_reg, args[1]);
+                let label = args[1];
+                self.proc.set_reg_mem(write_reg, label);
+                reg_write!(0, write_reg, label.u(), 3);
+
+                tmp_val1_col = label;
+
+                self.proc.set_col("main.instr_load_label_param_l", label);
+
+                //self.proc.set_reg("X", write_reg);
+                //self.proc.set_reg("Y", 0);
+                //self.proc.set_reg("Z", 0);
+                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
             "jump" => {
+                let label = args[0];
                 let next_pc = self.proc.get_pc().u() + 1;
                 let write_reg = args[1].u();
 
                 self.proc.set_reg_mem(write_reg, next_pc.into());
+                reg_write!(0, write_reg, next_pc, 3);
 
-                self.proc.set_pc(args[0]);
+                self.proc.set_pc(label);
+
+                tmp_val3_col = Elem::from_u32_as_fe(next_pc);
+
+                self.proc.set_col("main.instr_jump_param_l", label);
+                //self.proc.set_reg("X", 0);
+                //self.proc.set_reg("Y", 0);
+                //self.proc.set_reg("Z", 0);
+                //self.proc.set_reg("W", write_reg);
 
                 Vec::new()
             }
             "jump_dyn" => {
-                let addr = self.proc.get_reg_mem(args[0].u());
+                let read_reg = args[0].u();
+                let addr = self.proc.get_reg_mem(read_reg);
+                reg_read!(0, read_reg, addr.u(), 0);
                 let next_pc = self.proc.get_pc().u() + 1;
                 let write_reg = args[1].u();
 
                 self.proc.set_reg_mem(write_reg, next_pc.into());
+                // TODO: change instruction step?
+                reg_write!(0, write_reg, next_pc, 3);
 
                 self.proc.set_pc(addr);
+
+                tmp_val1_col = addr;
+                tmp_val3_col = Elem::from_u32_as_fe(next_pc);
+                //self.proc.set_reg("X", read_reg);
+                //self.proc.set_reg("W", write_reg);
+                //self.proc.set_reg("Y", 0);
+                //self.proc.set_reg("Z", 0);
 
                 Vec::new()
             }
@@ -772,53 +1421,148 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
             "branch_if_diff_nonzero" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                let val1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, val1.u(), 0);
+                let val2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, val2.u(), 1);
                 let val: Elem<F> = val1.sub(&val2);
+                let label = args[2];
                 if !val.is_zero() {
-                    self.proc.set_pc(args[2]);
+                    self.proc.set_pc(label);
                 }
+
+                tmp_val1_col = val1;
+                tmp_val2_col = val2;
+                tmp_xx = val;
+                tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
+                if !tmp_xx.is_zero() {
+                    tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
+                }
+
+                self.proc
+                    .set_col("main.instr_branch_if_diff_nonzero_param_l", label);
+                //self.proc.set_reg("X", read_reg1);
+                //self.proc.set_reg("Y", read_reg2);
+                //self.proc.set_reg("Z", 0);
+                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
             "branch_if_zero" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                let val1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, val1.u(), 0);
+                let val2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, val2.u(), 1);
                 let offset = args[2];
                 let val: Elem<F> = val1.sub(&val2.add(&offset));
+                let label = args[3];
                 if val.is_zero() {
-                    self.proc.set_pc(args[3]);
+                    self.proc.set_pc(label);
                 }
+
+                tmp_val1_col = val1;
+                tmp_val2_col = val2;
+                tmp_xx = val;
+                tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
+                if !tmp_xx.is_zero() {
+                    tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
+                }
+
+                self.proc
+                    .set_col("main.instr_branch_if_zero_param_l", label);
+
+                //self.proc.set_reg("X", read_reg1);
+                //self.proc.set_reg("Y", read_reg2);
+                //self.proc.set_reg("Z", offset);
+                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
             "skip_if_zero" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                let val1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, val1.u(), 0);
+                let val2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, val2.u(), 1);
                 let offset = args[2];
+                let cond = args[3];
                 let val: Elem<F> = val1.sub(&val2).add(&offset);
 
                 if val.is_zero() {
                     let pc = self.proc.get_pc().s();
-                    self.proc.set_pc((pc + args[3].s() + 1).into());
+                    self.proc.set_pc((pc + cond.s() + 1).into());
                 }
+
+                tmp_val1_col = val1;
+                tmp_val2_col = val2;
+                tmp_xx = val;
+                tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
+                if !tmp_xx.is_zero() {
+                    tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
+                }
+                //self.proc.set_reg("X", read_reg1);
+                //self.proc.set_reg("Y", read_reg2);
+                //self.proc.set_reg("Z", offset);
+                //self.proc.set_reg("W", cond);
 
                 Vec::new()
             }
             "branch_if_positive" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                // We can't call u() because input registers may have come from
+                // a call to `to_signed`, which stores a signed integer.
+                let val1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, val1.bin() as u32, 0);
+                let val2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, val2.bin() as u32, 1);
                 let offset = args[2];
                 let val: Elem<F> = val1.sub(&val2).add(&offset);
+                let label = args[3];
                 if val.bin() > 0 {
-                    self.proc.set_pc(args[3]);
+                    self.proc.set_pc(label);
                 }
+
+                tmp_val1_col = val1;
+                tmp_val2_col = val2;
+
+                self.proc
+                    .set_col("main.instr_branch_if_positive_param_l", label);
+
+                let p = Elem::from_i64_as_fe((2 << 32) - 1);
+                let val_p = val.add(&p);
+
+                let v = val_p.into_i64_from_lower_bytes();
+                let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
+                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
+                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
+                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
+                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                tmp_wrap_bit = if val.bin() > 0 {
+                    Elem::Field(F::one())
+                } else {
+                    Elem::Field(F::zero())
+                };
+
+                //self.proc.set_reg("X", read_reg1);
+                //self.proc.set_reg("Y", read_reg2);
+                //self.proc.set_reg("Z", offset);
+                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
             "is_positive" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                let val1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, val1.u(), 0);
+                let val2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, val2.u(), 1);
 
                 let offset = args[2];
                 let write_reg = args[3].u();
@@ -826,32 +1570,89 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let r = if val.bin() > 0 { 1 } else { 0 };
                 self.proc.set_reg_mem(write_reg, r.into());
+                reg_write!(2, write_reg, r, 3);
+
+                tmp_val1_col = val1;
+                tmp_val2_col = val2;
+                tmp_val3_col = Elem::from_u32_as_fe(r);
+
+                let p = Elem::from_i64_as_fe((2 << 32) - 1);
+                let val = val.add(&p);
+                let v = val.into_i64_from_lower_bytes();
+                let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
+                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
+                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
+                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
+                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                tmp_wrap_bit = tmp_val3_col;
+
+                //self.proc.set_reg("X", read_reg1);
+                //self.proc.set_reg("Y", read_reg2);
+                //self.proc.set_reg("Z", write_reg);
+                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
             "is_equal_zero" => {
-                let val = self.proc.get_reg_mem(args[0].u());
+                let read_reg = args[0].u();
+                let val = self.proc.get_reg_mem(read_reg);
+                reg_read!(0, read_reg, val.u(), 0);
                 let write_reg = args[1].u();
 
                 let r = if val.is_zero() { 1 } else { 0 };
                 self.proc.set_reg_mem(write_reg, r.into());
+                reg_write!(2, write_reg, r, 3);
+
+                tmp_val1_col = val;
+                tmp_val3_col = Elem::from_u32_as_fe(r);
+                tmp_xx = val;
+                tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
+                if !tmp_xx.is_zero() {
+                    tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
+                }
+                //self.proc.set_reg("X", read_reg);
+                //self.proc.set_reg("W", write_reg);
+                //self.proc.set_reg("Y", 0);
+                //self.proc.set_reg("Z", 0);
 
                 Vec::new()
             }
             "is_not_equal" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                let val1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, val1.u(), 0);
+                let val2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, val2.u(), 1);
                 let write_reg = args[2].u();
                 let val: Elem<F> = (val1.bin() - val2.bin()).into();
 
                 let r = if !val.is_zero() { 1 } else { 0 };
                 self.proc.set_reg_mem(write_reg, r.into());
+                reg_write!(2, write_reg, r, 3);
+
+                tmp_val1_col = val1;
+                tmp_val2_col = val2;
+                tmp_val3_col = Elem::from_u32_as_fe(r);
+                tmp_xx = val;
+                tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
+                if !tmp_xx.is_zero() {
+                    tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
+                }
+                //self.proc.set_reg("X", read_reg1);
+                //self.proc.set_reg("Y", read_reg2);
+                //self.proc.set_reg("W", write_reg);
+                //self.proc.set_reg("Z", 0);
 
                 Vec::new()
             }
             "add_wrap" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                let val1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, val1.u(), 0);
+                let val2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, val2.u(), 1);
                 let offset = args[2];
                 let write_reg = args[3].u();
                 let val = val1.add(&val2).add(&offset);
@@ -859,59 +1660,220 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // higher bits
                 let r = val.bin() as u32;
                 self.proc.set_reg_mem(write_reg, r.into());
+                reg_write!(2, write_reg, r, 3);
+
+                tmp_val1_col = val1;
+                tmp_val2_col = val2;
+                tmp_val3_col = Elem::from_u32_as_fe(r);
+
+                let v = val.into_i64_from_lower_bytes();
+                let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
+                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
+                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
+                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
+                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                tmp_wrap_bit = if v > 0xffffffff {
+                    Elem::Field(F::one())
+                } else {
+                    Elem::Field(F::zero())
+                };
+
+                //self.proc.set_reg("X", read_reg1);
+                //self.proc.set_reg("Y", read_reg2);
+                //self.proc.set_reg("Z", offset);
+                //self.proc.set_reg("W", write_reg);
 
                 Vec::new()
             }
             "wrap16" => {
-                let val = self.proc.get_reg_mem(args[0].u());
+                let read_reg = args[0].u();
+                let val = self.proc.get_reg_mem(read_reg);
+                reg_read!(0, read_reg, val.u(), 0);
                 let factor = args[1].bin();
                 let write_reg = args[2].u();
-                let val: Elem<F> = (val.bin() * factor).into();
+                let val_offset: Elem<F> = (val.bin() * factor).into();
 
                 // don't use .u() here: we are deliberately discarding the
                 // higher bits
-                let r = val.bin() as u32;
+                let r = val_offset.bin() as u32;
                 self.proc.set_reg_mem(write_reg, r.into());
+                // todo: change instruction step?
+                reg_write!(3, write_reg, r, 3);
+
+                tmp_val1_col = val;
+                tmp_val3_col = Elem::from_u32_as_fe(r);
+
+                let v = tmp_val3_col.into_i64_from_lower_bytes();
+                let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
+                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
+                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
+                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
+                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+
+                let (b5, b6, _b7, _b8, _sign) = decompose_lower32(val_offset.bin() >> 32);
+                tmp_y_b5 = Elem::from_u32_as_fe(b5.into());
+                tmp_y_b6 = Elem::from_u32_as_fe(b6.into());
+
+                //self.proc.set_reg("X", read_reg);
+                //self.proc.set_reg("Y", factor);
+                //self.proc.set_reg("Z", write_reg);
+                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
             "sub_wrap_with_offset" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                let val1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, val1.u(), 0);
+                let val2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, val2.u(), 1);
                 let offset = args[2];
                 let write_reg = args[3].u();
                 let val = val1.sub(&val2).add(&offset);
 
-                let r = (val.bin() + 0x100000000) as u32;
+                let r_i64: i64 = val.bin() + 0x100000000;
+                let r = r_i64 as u32;
                 self.proc.set_reg_mem(write_reg, r.into());
+                reg_write!(2, write_reg, r, 3);
+
+                tmp_val1_col = val1;
+                tmp_val2_col = val2;
+                tmp_val3_col = Elem::from_u32_as_fe(r);
+
+                let (b1, b2, b3, b4, _sign) = decompose_lower32(r_i64);
+                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
+                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
+                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
+                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                tmp_wrap_bit = if r_i64 > 0xffffffff {
+                    Elem::Field(F::one())
+                } else {
+                    Elem::Field(F::zero())
+                };
+
+                //self.proc.set_reg("X", read_reg1);
+                //self.proc.set_reg("Y", read_reg2);
+                //self.proc.set_reg("Z", offset);
+                //self.proc.set_reg("W", write_reg);
 
                 Vec::new()
             }
             "sign_extend_byte" => {
-                let val = self.proc.get_reg_mem(args[0].u());
+                let read_reg = args[0].u();
+                let val = self.proc.get_reg_mem(read_reg);
+                reg_read!(0, read_reg, val.u(), 0);
                 let write_reg = args[1].u();
 
-                let r = val.u() as i8 as u32;
-                self.proc.set_reg_mem(write_reg, r.into());
+                //let r = val.u() as i8 as u32;
+                //self.proc.set_reg_mem(write_reg, r.into());
+
+                // Sign extend the byte
+                let byte_val = (val.u() as u8) as i8;
+                let extended_val = byte_val as i32 as u32;
+                self.proc.set_reg_mem(write_reg, extended_val.into());
+                // todo:change instruction step?
+                reg_write!(3, write_reg, extended_val, 3);
+
+                tmp_val1_col = val;
+                //tmp_val3_col = Elem::from_u32_as_fe(r);
+                tmp_val3_col = Elem::from_u32_as_fe(extended_val);
+
+                let v = tmp_val1_col.into_i64_from_lower_bytes();
+                let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
+                // first 7bits
+                tmp_y_7bit = Elem::from_u32_as_fe((b1 & 0x7f).into());
+                // no X_b1 needed here
+                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
+                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
+                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                //tmp_wrap_bit = Elem::from_u32_as_fe((b2 & 0x80).into());
+                tmp_wrap_bit = if byte_val < 0 {
+                    Elem::Field(F::one())
+                } else {
+                    Elem::Field(F::zero())
+                };
+
+                //self.proc.set_reg("X", read_reg);
+                //self.proc.set_reg("Y", write_reg);
+                //self.proc.set_reg("Z", 0);
+                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
             "sign_extend_16_bits" => {
-                let val = self.proc.get_reg_mem(args[0].u());
+                let read_reg = args[0].u();
+                let val = self.proc.get_reg_mem(read_reg);
+                reg_read!(0, read_reg, val.u(), 0);
                 let write_reg = args[1].u();
 
-                let r = val.u() as i16 as u32;
+                //let r = val.u() as i16 as u32;
+                //self.proc.set_reg_mem(write_reg, r.into());
 
-                self.proc.set_reg_mem(write_reg, r.into());
+                // Perform sign extension on the 16-bit value
+                let sign_bit = (val.u() & 0x8000) != 0;
+                let extended_val = if sign_bit {
+                    val.u() | 0xFFFF0000
+                } else {
+                    val.u() & 0x0000FFFF
+                };
+                self.proc.set_reg_mem(write_reg, extended_val.into());
+                // todo: change instruction step
+                reg_write!(3, write_reg, extended_val, 3);
+
+                tmp_val1_col = val;
+                //tmp_val3_col = Elem::from_u32_as_fe(r);
+                tmp_val3_col = Elem::from_u32_as_fe(extended_val);
+
+                let v = tmp_val1_col.into_i64_from_lower_bytes();
+                let (b1, b2, b3, b4, _) = decompose_lower32(v);
+                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
+                // no x_b2 here
+                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
+                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                tmp_y_7bit = Elem::from_u32_as_fe((b2 & 0x7f).into());
+                tmp_wrap_bit = if sign_bit {
+                    Elem::Field(F::one())
+                } else {
+                    Elem::Field(F::zero())
+                };
+
+                //self.proc.set_reg("X", read_reg);
+                //self.proc.set_reg("Y", write_reg);
+                //self.proc.set_reg("Z", 0);
+                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
             "to_signed" => {
-                let val = self.proc.get_reg_mem(args[0].u());
+                let read_reg = args[0].u();
+                let val = self.proc.get_reg_mem(read_reg);
+                reg_read!(0, read_reg, val.u(), 0);
                 let write_reg = args[1].u();
                 let r = val.u() as i32;
 
                 self.proc.set_reg_mem(write_reg, r.into());
+                reg_write!(1, write_reg, val.u(), 3);
+
+                tmp_val1_col = val;
+                tmp_val3_col = Elem::from_i64_as_fe(r.into());
+
+                let (b1, b2, b3, b4, _sign) = decompose_lower32(val.u().into());
+                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
+                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
+                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
+                if b4 & 0x80 != 0 {
+                    tmp_wrap_bit = Elem::Field(F::one());
+                } else {
+                    tmp_wrap_bit = Elem::Field(F::zero());
+                }
+
+                tmp_y_7bit = Elem::from_u32_as_fe(b4 as u32 & 0x7f);
+
+                //self.proc.set_reg("X", read_reg);
+                //self.proc.set_reg("Y", write_reg);
+                //self.proc.set_reg("Z", 0);
+                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
@@ -920,8 +1882,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 panic!("reached a fail instruction")
             }
             "divremu" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                let val1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, val1.u(), 0);
+                let val2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, val2.u(), 1);
                 let write_reg1 = args[2].u();
                 let write_reg2 = args[3].u();
 
@@ -938,13 +1904,56 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
 
                 self.proc.set_reg_mem(write_reg1, div.into());
+                reg_write!(2, write_reg1, div, 3);
                 self.proc.set_reg_mem(write_reg2, rem.into());
+                reg_write!(3, write_reg2, rem, 4);
+
+                tmp_val1_col = val1;
+                tmp_val2_col = val2;
+                tmp_val3_col = Elem::from_u32_as_fe(div);
+                tmp_val4_col = Elem::from_u32_as_fe(rem);
+                tmp_xx = val2;
+                tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
+                if !tmp_xx.is_zero() {
+                    tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
+                }
+
+                let v = tmp_val3_col.into_i64_from_lower_bytes();
+                let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
+                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
+                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
+                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
+                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+
+                let (rem_b1, rem_b2, rem_b3, rem_b4, _sign) = decompose_lower32(rem.into());
+                tmp_rem_b1 = Elem::from_u32_as_fe(rem_b1.into());
+                tmp_rem_b2 = Elem::from_u32_as_fe(rem_b2.into());
+                tmp_rem_b3 = Elem::from_u32_as_fe(rem_b3.into());
+                tmp_rem_b4 = Elem::from_u32_as_fe(rem_b4.into());
+
+                if x > 0 {
+                    let diff = x - rem - 1;
+                    let (b5, b6, b7, b8, _sign) = decompose_lower32(diff.into());
+                    tmp_y_b5 = Elem::from_u32_as_fe(b5.into());
+                    tmp_y_b6 = Elem::from_u32_as_fe(b6.into());
+                    tmp_y_b7 = Elem::from_u32_as_fe(b7.into());
+                    tmp_y_b8 = Elem::from_u32_as_fe(b8.into());
+                }
+
+                //self.proc.set_reg("Y", read_reg1);
+                //self.proc.set_reg("X", read_reg2);
+                //self.proc.set_reg("Z", write_reg1);
+                //self.proc.set_reg("W", write_reg2);
 
                 Vec::new()
             }
             "mul" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                let val1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, val1.u(), 0);
+                let val2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, val2.u(), 1);
                 let write_reg1 = args[2].u();
                 let write_reg2 = args[3].u();
 
@@ -953,47 +1962,111 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let hi = (r >> 32) as u32;
 
                 self.proc.set_reg_mem(write_reg1, lo.into());
+                reg_write!(2, write_reg1, lo, 3);
                 self.proc.set_reg_mem(write_reg2, hi.into());
+                reg_write!(3, write_reg2, hi, 4);
+
+                tmp_val1_col = val1;
+                tmp_val2_col = val2;
+                tmp_val3_col = Elem::from_u32_as_fe(lo);
+                tmp_val4_col = Elem::from_u32_as_fe(hi);
+
+                self.proc
+                    .submachines
+                    .get_mut("split_gl")
+                    .unwrap()
+                    .add_operation(
+                        "split_gl",
+                        &[("output_low", lo.into()), ("output_high", hi.into())],
+                    );
+
+                //self.proc.set_reg("X", read_reg1);
+                //self.proc.set_reg("Y", read_reg2);
+                //self.proc.set_reg("Z", write_reg1);
+                //self.proc.set_reg("W", write_reg2);
 
                 Vec::new()
             }
             "and" | "or" | "xor" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                let val1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, val1.u(), 0);
+                let val2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, val2.u(), 1);
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
-                let val2: Elem<F> = (val2.bin() + offset).into();
+                let val2_offset: Elem<F> = (val2.bin() + offset).into();
 
                 let r = match name {
-                    "and" => val1.u() & val2.u(),
-                    "or" => val1.u() | val2.u(),
-                    "xor" => val1.u() ^ val2.u(),
+                    "and" => val1.u() & val2_offset.u(),
+                    "or" => val1.u() | val2_offset.u(),
+                    "xor" => val1.u() ^ val2_offset.u(),
                     _ => unreachable!(),
                 };
 
+                self.proc
+                    .submachines
+                    .get_mut("binary")
+                    .unwrap()
+                    .add_operation(name, &[("A", val1), ("B", val2_offset), ("C", r.into())]);
+
                 self.proc.set_reg_mem(write_reg, r.into());
+                // TODO: change instruction STEP?
+                reg_write!(3, write_reg, r, 3);
+
+                tmp_val1_col = val1;
+                tmp_val2_col = val2;
+                tmp_val3_col = Elem::from_u32_as_fe(r);
+                //self.proc.set_reg("X", read_reg1);
+                //self.proc.set_reg("Y", read_reg2);
+                //self.proc.set_reg("Z", offset);
+                //self.proc.set_reg("W", write_reg);
 
                 Vec::new()
             }
             "shl" | "shr" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+                let read_reg1 = args[0].u();
+                let read_reg2 = args[1].u();
+                let val1 = self.proc.get_reg_mem(read_reg1);
+                reg_read!(0, read_reg1, val1.u(), 0);
+                let val2 = self.proc.get_reg_mem(read_reg2);
+                reg_read!(1, read_reg2, val2.u(), 1);
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
-                let val2: Elem<F> = (val2.bin() + offset).into();
+                let val2_offset: Elem<F> = (val2.bin() + offset).into();
 
                 let r = match name {
-                    "shl" => val1.u() << val2.u(),
-                    "shr" => val1.u() >> val2.u(),
+                    "shl" => val1.u() << val2_offset.u(),
+                    "shr" => val1.u() >> val2_offset.u(),
                     _ => unreachable!(),
                 };
 
                 self.proc.set_reg_mem(write_reg, r.into());
+                // TODO: change instruction STEP?
+                reg_write!(3, write_reg, r, 3);
+
+                tmp_val1_col = val1;
+                tmp_val2_col = val2;
+                tmp_val3_col = Elem::from_u32_as_fe(r);
+
+                self.proc
+                    .submachines
+                    .get_mut("shift")
+                    .unwrap()
+                    .add_operation(name, &[("A", val1), ("B", val2_offset), ("C", r.into())]);
+
+                //self.proc.set_reg("X", read_reg1);
+                //self.proc.set_reg("Y", read_reg2);
+                //self.proc.set_reg("Z", offset);
+                //self.proc.set_reg("W", write_reg);
 
                 Vec::new()
             }
             "split_gl" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
+                let read_reg = args[0].u();
+                let val1 = self.proc.get_reg_mem(read_reg);
+                reg_read!(0, read_reg, val1.u(), 0);
                 let write_reg1 = args[1].u();
                 let write_reg2 = args[2].u();
 
@@ -1005,7 +2078,26 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let hi = (value >> 32) as u32;
 
                 self.proc.set_reg_mem(write_reg1, lo.into());
+                reg_write!(2, write_reg1, lo, 3);
                 self.proc.set_reg_mem(write_reg2, hi.into());
+                reg_write!(3, write_reg2, hi, 4);
+
+                tmp_val1_col = val1;
+                tmp_val3_col = Elem::from_u32_as_fe(lo);
+                tmp_val4_col = Elem::from_u32_as_fe(hi);
+                //self.proc.set_reg("X", read_reg);
+                //self.proc.set_reg("Z", write_reg1);
+                //self.proc.set_reg("W", write_reg2);
+                //self.proc.set_reg("Y", 0);
+
+                self.proc
+                    .submachines
+                    .get_mut("split_gl")
+                    .unwrap()
+                    .add_operation(
+                        "split_gl",
+                        &[("output_low", lo.into()), ("output_high", hi.into())],
+                    );
 
                 Vec::new()
             }
@@ -1120,7 +2212,47 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             instr => {
                 panic!("unknown instruction: {instr}");
             }
-        }
+        };
+
+        self.proc.set_col("main.X_b1", tmp_x_b1);
+        self.proc.set_col("main.X_b2", tmp_x_b2);
+        self.proc.set_col("main.X_b3", tmp_x_b3);
+        self.proc.set_col("main.X_b4", tmp_x_b4);
+        self.proc.set_col("main.Y_b5", tmp_y_b5);
+        self.proc.set_col("main.Y_b6", tmp_y_b6);
+        self.proc.set_col("main.Y_b7", tmp_y_b7);
+        self.proc.set_col("main.Y_b8", tmp_y_b8);
+        self.proc.set_col("main.wrap_bit", tmp_wrap_bit);
+
+        self.proc.set_col("main.Y_7bit", tmp_y_7bit);
+
+        self.proc
+            .set_col("main.X", self.proc.get_col("main.X_const"));
+
+        self.proc.set_col("main.Y", tmp_y);
+        self.proc
+            .set_col("main.Z", self.proc.get_col("main.Z_const"));
+        self.proc
+            .set_col("main.W", self.proc.get_col("main.W_const"));
+
+        self.proc.set_col("main.REM_b1", tmp_rem_b1);
+        self.proc.set_col("main.REM_b2", tmp_rem_b2);
+        self.proc.set_col("main.REM_b3", tmp_rem_b3);
+        self.proc.set_col("main.REM_b4", tmp_rem_b4);
+
+        self.proc.set_col("main.val1_col", tmp_val1_col);
+        self.proc.set_col("main.val2_col", tmp_val2_col);
+        self.proc.set_col("main.val3_col", tmp_val3_col);
+        self.proc.set_col("main.val4_col", tmp_val4_col);
+
+        self.proc.set_col("main.XX", tmp_xx);
+        self.proc.set_col("main.XXIsZero", tmp_xx_iszero);
+        self.proc.set_col("main.XX_inv", tmp_xx_inv);
+
+        let instr_col = format!("main.instr_{name}");
+        self.proc.set_col(&instr_col, Elem::from_u32_as_fe(1));
+
+        r
     }
 
     fn eval_expression(&mut self, expression: &Expression) -> Vec<Elem<F>> {
@@ -1268,7 +2400,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .collect::<Vec<_>>();
                 let query = format!("{variant}({})", values.join(","));
                 match (self.inputs)(&query).unwrap() {
-                    Some(val) => vec![Elem::new_from_fe_as_bin(&val)],
+                    Some(val) => {
+                        vec![Elem::new_from_fe_as_bin(&val)]
+                    }
                     None => {
                         panic!("unknown query command: {query}");
                     }
@@ -1292,8 +2426,10 @@ fn is_jump(e: &Expression) -> bool {
     false
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn execute_ast<T: FieldElement>(
     program: &AnalysisASMFile,
+    fixed: Option<Arc<Vec<(String, VariablySizedColumn<T>)>>>,
     initial_memory: MemoryState,
     inputs: &Callback<T>,
     bootloader_inputs: &[Elem<T>],
@@ -1302,6 +2438,7 @@ pub fn execute_ast<T: FieldElement>(
     profiling: Option<ProfilerOptions>,
 ) -> (ExecutionTrace<T>, MemoryState, RegisterMemoryState<T>) {
     let main_machine = get_main_machine(program);
+
     let PreprocessedMain {
         statements,
         label_map,
@@ -1311,24 +2448,51 @@ pub fn execute_ast<T: FieldElement>(
         location_starts,
     } = preprocess_main_function(main_machine);
 
+    let fixed_len = fixed
+        .as_ref()
+        .and_then(|f| {
+            f.as_ref()
+                .iter()
+                .map(|(_n, c)| {
+                    c.get_uniquely_sized()
+                        .expect("multiple fixed column sizes")
+                        .len()
+                })
+                .max()
+        })
+        .unwrap_or(0) as u32;
+
     let proc = match TraceBuilder::<'_, T>::new(
         main_machine,
         initial_memory,
         &batch_to_line_map,
         max_steps_to_execute,
         mode,
+        fixed_len,
     ) {
         Ok(proc) => proc,
         Err(ret) => return *ret,
     };
+
+    // // print fixed columns
+    // for (name, var_col) in fixed.clone().unwrap_or_default().iter() {
+    //     println!(
+    //         "Fixed column {name} with sizes {}",
+    //         var_col.available_sizes().iter().join(", ")
+    //     );
+    // }
 
     let mut e = Executor {
         proc,
         label_map,
         inputs,
         bootloader_inputs,
+        fixed: fixed.unwrap_or_default(),
         _stdout: io::stdout(),
+        step: 0,
     };
+
+    e.init();
 
     let mut profiler =
         profiling.map(|opt| Profiler::new(opt, &debug_files[..], function_starts, location_starts));
@@ -1338,6 +2502,8 @@ pub fn execute_ast<T: FieldElement>(
         let stm = statements[curr_pc as usize];
 
         log::trace!("l {curr_pc}: {stm}",);
+
+        e.step += 4;
 
         match stm {
             FunctionStatement::Assignment(a) => {
@@ -1350,12 +2516,68 @@ pub fn execute_ast<T: FieldElement>(
                 let results = e.eval_expression(a.rhs.as_ref());
                 assert_eq!(a.lhs_with_reg.len(), results.len());
 
+                // TODO very hacky, fix
+                let asgn_reg = a.lhs_with_reg[0].1.clone();
+                if let AssignmentRegister::Register(x) = asgn_reg {
+                    assert_eq!(x, "X");
+
+                    let x_const = e.proc.get_col("main.X_const");
+                    assert!(x_const.is_zero());
+
+                    match a.rhs.as_ref() {
+                        Expression::FreeInput(_, _expr) => {
+                            // The free input case is a bit annoying here because it's in a
+                            // different code path:
+                            // - Only X is used to move free inputs to assignments.
+                            // - exec_instruction is not called if this is the case, so we need to
+                            // call push_row here.
+                            // - X gets the result of the prover input.
+                            // - X_free_value gets the same.
+                            // - X_read_free flag gets whatever is in the fixed column.
+                            e.proc.push_row();
+                            e.set_program_columns(pc_before as u32);
+                            // TODO assert X_const = 0
+                            e.proc.set_col("main.X", results[0]);
+                            e.proc.set_col("main.X_free_value", results[0]);
+                        }
+                        _ => {
+                            // If it's not a free input it's an instruction that returns through X.
+                            // - We need to use the result of the instruction to set X.
+                            // - Currently the only instruction that does this is `get_reg`.
+                            // - exec_instruction already called push_row.
+                            // - After `exec_instruction`, main.X has main.X_const.
+                            // - We need to:
+                            // - Set main.X to the result of the instruction.
+                            // - Set X_read_free to whatever is in the fixed column.
+                            // - Solve for X_free_value.
+                            let x = results[0];
+                            e.proc.set_col("main.X", x);
+
+                            let x_read_free = e.proc.get_col("main.X_read_free");
+
+                            // We need to solve for X_free_value:
+                            // X = X_const + X_read_free * X_free_value
+                            // X - X_const = X_read_free * X_free_value
+                            // X_free_value = (X - X_const) / X_read_free
+                            let x_free_value = if x_read_free.is_zero() {
+                                Elem::Field(T::zero())
+                            } else {
+                                x.sub(&x_const).div(&x_read_free)
+                            };
+                            e.proc.set_col("main.X_free_value", x_free_value);
+                        }
+                    }
+                } else {
+                    panic!("should be an assignment register");
+                }
+
                 let pc_after = e.proc.get_reg("pc").u() as usize;
 
                 if is_jump(a.rhs.as_ref()) {
                     let pc_return = results[0].u() as usize;
                     assert_eq!(a.lhs_with_reg.len(), 1);
                     if let Some(p) = &mut profiler {
+                        // TODO this needs to be changed to the new semantics
                         // in the generated powdr asm, writing to `tmp1` means the returning pc is ignored
                         if a.lhs_with_reg[0].0 == "tmp1" {
                             p.jump(pc_after);
@@ -1406,8 +2628,14 @@ pub fn execute_ast<T: FieldElement>(
                     e.exec_instruction(&i.instruction, &i.inputs);
                 }
             }
-            FunctionStatement::Return(_) => break,
+            FunctionStatement::Return(_) => {
+                e.proc.push_row();
+                let pc = e.proc.get_pc().u();
+                e.set_program_columns(pc);
+                break;
+            }
             FunctionStatement::DebugDirective(dd) => {
+                e.step -= 4;
                 match &dd.directive {
                     DebugDirective::Loc(file, line, column) => {
                         let (dir, file) = debug_files[file - 1];
@@ -1433,7 +2661,33 @@ pub fn execute_ast<T: FieldElement>(
     if let Some(mut p) = profiler {
         p.finish();
     }
-    e.proc.finish()
+
+    let sink_id = e.sink_id();
+
+    // reset
+    e.proc.set_pc(0.into());
+    assert!(e.proc.advance().is_none());
+    e.proc.push_row();
+    e.set_program_columns(0);
+    e.proc.set_col("main._operation_id", sink_id.into());
+
+    // jump_to_operation
+    e.proc.set_pc(1.into());
+    e.proc.set_reg("query_arg_1", 0);
+    e.proc.set_reg("query_arg_2", 0);
+    assert!(e.proc.advance().is_none());
+    e.proc.push_row();
+    e.set_program_columns(1);
+    e.proc.set_col("main._operation_id", sink_id.into());
+
+    // loop
+    e.proc.set_pc(sink_id.into());
+    assert!(e.proc.advance().is_none());
+    e.proc.push_row();
+    e.set_program_columns(sink_id);
+    e.proc.set_col("main._operation_id", sink_id.into());
+
+    e.proc.finish(fixed_len)
 }
 
 pub enum ExecMode {
@@ -1447,6 +2701,7 @@ pub enum ExecMode {
 /// converted to i64, so it is important to the execution itself.
 pub fn execute<F: FieldElement>(
     asm_source: &str,
+    fixed: Option<Arc<Vec<(String, VariablySizedColumn<F>)>>>,
     initial_memory: MemoryState,
     inputs: &Callback<F>,
     bootloader_inputs: &[Elem<F>],
@@ -1463,6 +2718,7 @@ pub fn execute<F: FieldElement>(
     log::info!("Executing...");
     execute_ast(
         &analyzed,
+        fixed,
         initial_memory,
         inputs,
         bootloader_inputs,

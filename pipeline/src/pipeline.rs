@@ -428,7 +428,8 @@ impl<T: FieldElement> Pipeline<T> {
         if self.output_dir.is_some() {
             // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
             let fixed_cols = self.compute_fixed_cols().unwrap();
-            self.maybe_write_witness(&fixed_cols, &witness).unwrap();
+            // TODO uncomment this to test the executor in isolation
+            //self.maybe_write_witness(&fixed_cols, &witness).unwrap();
         }
         Pipeline {
             artifact: Artifacts {
@@ -516,9 +517,11 @@ impl<T: FieldElement> Pipeline<T> {
         fixed: &VariablySizedColumns<T>,
         witness: &Columns<T>,
     ) -> Result<(), Vec<String>> {
+        /*
         if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
             witness.write(&path).map_err(|e| vec![format!("{}", e)])?;
         }
+        */
 
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
@@ -844,25 +847,45 @@ impl<T: FieldElement> Pipeline<T> {
 
         assert_eq!(pil.constant_count(), fixed_cols.len());
 
-        let start = Instant::now();
-        let external_witness_values = std::mem::take(&mut self.arguments.external_witness_values);
-        let query_callback = self
-            .arguments
-            .query_callback
-            .clone()
-            .unwrap_or_else(|| Arc::new(unused_query_callback()));
-        let witness = WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
-            .with_external_witness_values(&external_witness_values)
-            .generate();
+        let mut external_witness_values =
+            std::mem::take(&mut self.arguments.external_witness_values);
 
-        self.log(&format!(
-            "Witness generation took {}s",
-            start.elapsed().as_secs_f32()
-        ));
+        let witness_cols: Vec<_> = pil
+            .committed_polys_in_source_order()
+            .iter()
+            .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
+            .collect();
 
-        self.maybe_write_witness(&fixed_cols, &witness)?;
+        if witness_cols
+            .iter()
+            .all(|name| external_witness_values.iter().any(|(e, _)| e == name))
+        {
+            self.log("All witness columns externally provided, skipping witness generation.");
+            // sort columns in pil source order
+            external_witness_values
+                .sort_by_key(|(name, _)| witness_cols.iter().position(|n| n == name).unwrap());
+            self.artifact.witness = Some(Arc::new(external_witness_values));
+        } else {
+            let start = Instant::now();
+            let query_callback = self
+                .arguments
+                .query_callback
+                .clone()
+                .unwrap_or_else(|| Arc::new(unused_query_callback()));
+            let witness = WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
+                .with_external_witness_values(&external_witness_values)
+                .generate();
 
-        self.artifact.witness = Some(Arc::new(witness));
+            self.log(&format!(
+                "Witness generation took {}s",
+                start.elapsed().as_secs_f32()
+            ));
+
+            // TODO uncomment this to test the executor in isolation
+            self.maybe_write_witness(&fixed_cols, &witness)?;
+
+            self.artifact.witness = Some(Arc::new(witness));
+        }
 
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }

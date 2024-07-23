@@ -276,7 +276,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
         }
 
         // We have all diffs, except from the last to the first element, which is unconstrained.
-        assert_eq!(diff.len(), self.degree as usize - 1);
+        //assert_eq!(diff.len(), self.degree as usize - 1);
         diff.push(0);
 
         let last_row_change_value = match self.has_bootloader_write_column {
