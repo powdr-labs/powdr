@@ -4,7 +4,7 @@ use std::iter::{self, once};
 
 use super::{EvalResult, FixedData, FixedLookup};
 
-use crate::constant_evaluator::MAX_DEGREE_LOG;
+use crate::constant_evaluator::{MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::processor::{OuterQuery, Processor};
@@ -325,6 +325,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         let is_variable_size = self.fixed_data.common_degree(&self.witness_cols).is_none();
         if is_variable_size {
             let new_degree = self.data.len().next_power_of_two() as DegreeType;
+            let new_degree = new_degree.max(1 << MIN_DEGREE_LOG);
             log::info!(
                 "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
                 self.name,
