@@ -16,20 +16,12 @@ use powdr_parser_util::SourceRef;
 
 use itertools::Itertools;
 
-const DEFAULT_DEGREE: u32 = 1024;
 const MAIN_OPERATION_NAME: &str = "main";
 
 /// a monolithic linker which outputs a single AIR
 /// It sets the degree of submachines to the degree of the main machine, and errors out if a submachine has an explicit degree which doesn't match the main one
 pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
     let main_machine = graph.main;
-    let main_degree = graph
-        .objects
-        .get(&main_machine.location)
-        .unwrap()
-        .degree
-        .clone()
-        .unwrap_or_else(|| DEFAULT_DEGREE.into());
 
     let mut pil = process_definitions(graph.definitions);
 
@@ -38,7 +30,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
-            Some(object.degree.unwrap_or(main_degree.clone())),
+            object.degree.clone(),
         ));
 
         pil.extend(object.pil);
