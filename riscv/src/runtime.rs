@@ -90,20 +90,20 @@ impl Runtime {
             "binary",
             [
                 r#"instr and X, Y, Z, W
-                    link ~> val1_col = regs.mload(X, STEP)
-                    link ~> val2_col = regs.mload(Y, STEP + 1)
-                    link ~> val3_col = binary.and(val1_col, val2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = binary.and(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
                 r#"instr or X, Y, Z, W
-                    link ~> val1_col = regs.mload(X, STEP)
-                    link ~> val2_col = regs.mload(Y, STEP + 1)
-                    link ~> val3_col = binary.or(val1_col, val2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = binary.or(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
                 r#"instr xor X, Y, Z, W
-                    link ~> val1_col = regs.mload(X, STEP)
-                    link ~> val2_col = regs.mload(Y, STEP + 1)
-                    link ~> val3_col = binary.xor(val1_col, val2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = binary.xor(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
             ],
             0,
             ["and 0, 0, 0, 0;"],
@@ -115,15 +115,15 @@ impl Runtime {
             "shift",
             [
                 r#"instr shl X, Y, Z, W
-                    link ~> val1_col = regs.mload(X, STEP)
-                    link ~> val2_col = regs.mload(Y, STEP + 1)
-                    link ~> val3_col = shift.shl(val1_col, val2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = shift.shl(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
                 r#"instr shr X, Y, Z, W
-                    link ~> val1_col = regs.mload(X, STEP)
-                    link ~> val2_col = regs.mload(Y, STEP + 1)
-                    link ~> val3_col = shift.shr(val1_col, val2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = shift.shr(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
             ],
             0,
             ["shl 0, 0, 0, 0;"],
@@ -134,10 +134,10 @@ impl Runtime {
             None,
             "split_gl",
             [r#"instr split_gl X, Z, W
-                    link ~> val1_col = regs.mload(X, STEP)
-                    link ~> (val3_col, val4_col) = split_gl.split(val1_col)
-                    link ~> regs.mstore(Z, STEP + 2, val3_col)
-                    link ~> regs.mstore(W, STEP + 3, val4_col);"#],
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col)
+                    link ~> regs.mstore(Z, STEP + 2, tmp3_col)
+                    link ~> regs.mstore(W, STEP + 3, tmp4_col);"#],
             0,
             ["split_gl 0, 0, 0;"],
         );
@@ -451,10 +451,12 @@ impl Runtime {
         ]
         .into_iter();
 
-        let jump_table = self
-            .syscalls
-            .keys()
-            .map(|s| format!("branch_if_zero 5, 0, {}, __ecall_handler_{};", *s as u32, s));
+        let jump_table = self.syscalls.keys().map(|s| {
+            format!(
+                "branch_if_diff_equal 5, 0, {}, __ecall_handler_{};",
+                *s as u32, s
+            )
+        });
 
         let invalid_handler = ["__invalid_syscall:".to_string(), "fail;".to_string()].into_iter();
 
