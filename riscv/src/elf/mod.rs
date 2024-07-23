@@ -164,7 +164,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
         &elf,
         &file_buffer,
         &address_map,
-        &data_map,
+        &|key| data_map.contains_key(&key),
         &referenced_text_addrs,
     ) {
         Ok(debug_info) => {

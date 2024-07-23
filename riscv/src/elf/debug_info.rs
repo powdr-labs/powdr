@@ -53,11 +53,11 @@ pub struct SourceLocationInfo {
 
 impl DebugInfo {
     /// Extracts debug information from the ELF file, if available.
-    pub fn new<D>(
+    pub fn new(
         elf: &Elf,
         file_buffer: &[u8],
         address_map: &AddressMap,
-        data_entries: &BTreeMap<u32, D>,
+        is_data_addr: &dyn Fn(u32) -> bool,
         jump_targets: &BTreeSet<u32>,
     ) -> Result<Self, Error> {
         let dwarf = load_dwarf_sections(elf, file_buffer)?;
@@ -77,153 +77,19 @@ impl DebugInfo {
             // convenient to work with a UnitRef.
             let unit = UnitRef::new(&dwarf, &unit);
 
-            // Traverse all the line locations for the compilation unit.
-            let base_dir = Path::new(
-                unit.comp_dir
-                    .map(|s| s.to_string())
-                    .transpose()?
-                    .unwrap_or(""),
-            );
-            let file_idx_delta = file_list.len() as u64;
-            if let Some(line_program) = unit.line_program.clone() {
-                // Get the source file listing
-                for file_entry in line_program.header().file_names() {
-                    let directory = file_entry
-                        .directory(line_program.header())
-                        .map(|attr| as_str(unit, attr))
-                        .transpose()?
-                        .unwrap_or("");
+            // Read the source locations for this compilation unit.
+            let file_index_delta =
+                read_source_locations(unit, &mut file_list, &mut source_locations)?;
 
-                    // This unwrap can not panic because both base_dir and
-                    // directory have been validated as UTF-8 strings.
-                    let directory = base_dir
-                        .join(directory)
-                        .into_os_string()
-                        .into_string()
-                        .unwrap();
-
-                    let path = as_str(unit, file_entry.path_name())?;
-
-                    file_list.push((directory, path.to_owned()));
-                }
-
-                // Get the locations indexed by address
-                let mut rows = line_program.rows();
-                while let Some((_, row)) = rows.next_row()? {
-                    // End markers point to the address after the end, so we skip them.
-                    if row.prologue_end() || row.end_sequence() {
-                        continue;
-                    }
-
-                    source_locations.push(SourceLocationInfo {
-                        address: row.address() as u32,
-                        file: row.file_index() + file_idx_delta,
-                        line: match row.line() {
-                            None => 0,
-                            Some(v) => v.get(),
-                        },
-                        col: match row.column() {
-                            gimli::ColumnType::LeftEdge => 0,
-                            gimli::ColumnType::Column(v) => v.get(),
-                        },
-                    })
-                }
-            }
-
-            // Traverse the tree in which the information about the compilation
-            // unit is stored. To simplify the algorithm, we start the name
-            // stack with a placeholder value.
-            let mut full_name = vec![None];
-            let mut entries = unit.entries();
-            while let Some((level_delta, entry)) = entries.next_dfs()? {
-                // Get the entry name as a human readable string (this is used in a comment)
-                let name = find_attr(entry, gimli::DW_AT_name)
-                    .map(|name| unit.attr_string(name).map(|s| s.to_string_lossy()))
-                    .transpose()?;
-
-                match level_delta {
-                    delta if delta > 1 => return Err(Error::UnexpectedLevel),
-                    1 => (),
-                    _ => {
-                        full_name.truncate((full_name.len() as isize + level_delta - 1) as usize);
-                    }
-                }
-                full_name.push(name);
-
-                match entry.tag() {
-                    // This is the entry for a function or method.
-                    gimli::DW_TAG_subprogram => {
-                        let attr = find_attr(entry, gimli::DW_AT_linkage_name);
-                        let Some(linkage_name) = attr.map(|ln| unit.attr_string(ln)).transpose()?
-                        else {
-                            // This function has no linkage name in DWARF, so it
-                            // must be in ELFs symbol table.
-                            continue;
-                        };
-
-                        let start_addresses = get_function_start(&dwarf, &unit, entry)?;
-                        let name = linkage_name.to_string()?;
-                        for address in start_addresses {
-                            if jump_targets.contains(&address) {
-                                symbols.push((name.to_owned(), address));
-                            }
-                        }
-                    }
-                    // This is the entry for a variable.
-                    gimli::DW_TAG_variable => {
-                        let Some(address) = get_static_var_address(&unit, entry)? else {
-                            continue;
-                        };
-
-                        if !data_entries.contains_key(&address) {
-                            continue;
-                        }
-
-                        if full_name.last().is_some() {
-                            // The human readable name of the variable is available,
-                            // so we assemble a pretty note to go into the comment.
-                            let mut file_line = None;
-                            if let Some(AttributeValue::FileIndex(file_idx)) =
-                                find_attr(entry, gimli::DW_AT_decl_file)
-                            {
-                                if let Some(AttributeValue::Udata(line)) =
-                                    find_attr(entry, gimli::DW_AT_decl_line)
-                                {
-                                    file_line = Some((file_idx + file_idx_delta, line));
-                                }
-                            }
-
-                            let value = format!(
-                                "{}{}",
-                                full_name
-                                    .iter()
-                                    .map(|s| match s {
-                                        Some(s) => s,
-                                        None => &Cow::Borrowed("?"),
-                                    })
-                                    .join("::"),
-                                if let Some((file, line)) = file_line {
-                                    format!(" at file {file} line {line}")
-                                } else {
-                                    String::new()
-                                }
-                            );
-
-                            notes.insert(address, value);
-                        }
-
-                        // The variable symbol name is only used as a fallback
-                        // in case there is no pretty note.
-                        if let Some(linkage_name) = find_attr(entry, gimli::DW_AT_linkage_name)
-                            .map(|ln| unit.attr_string(ln))
-                            .transpose()?
-                        {
-                            symbols.push((linkage_name.to_string()?.to_owned(), address));
-                        }
-                    }
-                    _ => {}
-                };
-            }
+            read_unit_symbols(
+                &dwarf,
+                unit,
+                file_index_delta,
+                is_data_addr,
+                jump_targets,
+                &mut symbols,
+                &mut notes,
+            )?;
         }
 
         // Filter out the source locations that are not in the text section
@@ -248,6 +114,174 @@ impl DebugInfo {
             notes,
         })
     }
+}
+
+/// Reads the source locations for a compilation unit.
+fn read_source_locations(
+    unit: UnitRef<Reader>,
+    file_list: &mut Vec<(String, String)>,
+    source_locations: &mut Vec<SourceLocationInfo>,
+) -> Result<u64, gimli::Error> {
+    // Traverse all the line locations for the compilation unit.
+    let base_dir = Path::new(
+        unit.comp_dir
+            .map(|s| s.to_string())
+            .transpose()?
+            .unwrap_or(""),
+    );
+    let file_idx_delta = file_list.len() as u64;
+    if let Some(line_program) = unit.line_program.clone() {
+        // Get the source file listing
+        for file_entry in line_program.header().file_names() {
+            let directory = file_entry
+                .directory(line_program.header())
+                .map(|attr| as_str(unit, attr))
+                .transpose()?
+                .unwrap_or("");
+
+            // This unwrap can not panic because both base_dir and
+            // directory have been validated as UTF-8 strings.
+            let directory = base_dir
+                .join(directory)
+                .into_os_string()
+                .into_string()
+                .unwrap();
+
+            let path = as_str(unit, file_entry.path_name())?;
+
+            file_list.push((directory, path.to_owned()));
+        }
+
+        // Get the locations indexed by address
+        let mut rows = line_program.rows();
+        while let Some((_, row)) = rows.next_row()? {
+            // End markers point to the address after the end, so we skip them.
+            if row.prologue_end() || row.end_sequence() {
+                continue;
+            }
+
+            source_locations.push(SourceLocationInfo {
+                address: row.address() as u32,
+                file: row.file_index() + file_idx_delta,
+                line: match row.line() {
+                    None => 0,
+                    Some(v) => v.get(),
+                },
+                col: match row.column() {
+                    gimli::ColumnType::LeftEdge => 0,
+                    gimli::ColumnType::Column(v) => v.get(),
+                },
+            })
+        }
+    }
+
+    Ok(file_idx_delta)
+}
+
+/// Traverse the tree in which the information about the compilation
+/// unit is stored and extract function and variable names.
+fn read_unit_symbols(
+    dwarf: &Dwarf<Reader>,
+    unit: UnitRef<Reader>,
+    file_idx_delta: u64,
+    is_data_addr: &dyn Fn(u32) -> bool,
+    jump_targets: &BTreeSet<u32>,
+    symbols: &mut Vec<(String, u32)>,
+    notes: &mut HashMap<u32, String>,
+) -> Result<(), Error> {
+    // To simplify the algorithm, we start the name stack with a placeholder value.
+    let mut full_name = vec![None];
+    let mut entries = unit.entries();
+    while let Some((level_delta, entry)) = entries.next_dfs()? {
+        // Get the entry name as a human readable string (this is used in a comment)
+        let name = find_attr(entry, gimli::DW_AT_name)
+            .map(|name| unit.attr_string(name).map(|s| s.to_string_lossy()))
+            .transpose()?;
+
+        match level_delta {
+            delta if delta > 1 => return Err(Error::UnexpectedLevel),
+            1 => (),
+            _ => {
+                full_name.truncate((full_name.len() as isize + level_delta - 1) as usize);
+            }
+        }
+        full_name.push(name);
+
+        match entry.tag() {
+            // This is the entry for a function or method.
+            gimli::DW_TAG_subprogram => {
+                let attr = find_attr(entry, gimli::DW_AT_linkage_name);
+                let Some(linkage_name) = attr.map(|ln| unit.attr_string(ln)).transpose()? else {
+                    // This function has no linkage name in DWARF, so it
+                    // must be in ELFs symbol table.
+                    continue;
+                };
+
+                let start_addresses = get_function_start(dwarf, &unit, entry)?;
+                let name = linkage_name.to_string()?;
+                for address in start_addresses {
+                    if jump_targets.contains(&address) {
+                        symbols.push((name.to_owned(), address));
+                    }
+                }
+            }
+            // This is the entry for a variable.
+            gimli::DW_TAG_variable => {
+                let Some(address) = get_static_var_address(&unit, entry)? else {
+                    continue;
+                };
+
+                if !is_data_addr(address) {
+                    continue;
+                }
+
+                if full_name.last().is_some() {
+                    // The human readable name of the variable is available,
+                    // so we assemble a pretty note to go into the comment.
+                    let mut file_line = None;
+                    if let Some(AttributeValue::FileIndex(file_idx)) =
+                        find_attr(entry, gimli::DW_AT_decl_file)
+                    {
+                        if let Some(AttributeValue::Udata(line)) =
+                            find_attr(entry, gimli::DW_AT_decl_line)
+                        {
+                            file_line = Some((file_idx + file_idx_delta, line));
+                        }
+                    }
+
+                    let value = format!(
+                        "{}{}",
+                        full_name
+                            .iter()
+                            .map(|s| match s {
+                                Some(s) => s,
+                                None => &Cow::Borrowed("?"),
+                            })
+                            .join("::"),
+                        if let Some((file, line)) = file_line {
+                            format!(" at file {file} line {line}")
+                        } else {
+                            String::new()
+                        }
+                    );
+
+                    notes.insert(address, value);
+                }
+
+                // The variable symbol name is only used as a fallback
+                // in case there is no pretty note.
+                if let Some(linkage_name) = find_attr(entry, gimli::DW_AT_linkage_name)
+                    .map(|ln| unit.attr_string(ln))
+                    .transpose()?
+                {
+                    symbols.push((linkage_name.to_string()?.to_owned(), address));
+                }
+            }
+            _ => {}
+        };
+    }
+
+    Ok(())
 }
 
 fn load_dwarf_sections<'a>(elf: &Elf, file_buffer: &'a [u8]) -> Result<Dwarf<Reader<'a>>, Error> {
@@ -364,6 +398,7 @@ fn get_function_start(
     Ok(ret)
 }
 
+/// Filter out source locations that are not in a text section.
 fn filter_locations_in_text(locations: &mut Vec<SourceLocationInfo>, address_map: &AddressMap) {
     locations.sort_unstable_by_key(|loc| loc.address);
 
@@ -478,8 +513,9 @@ fn dedup_names_pass(symbols: &mut Vec<(String, u32)>) -> bool {
     let mut deduplicated = false;
     let mut iter = symbols.iter_mut();
 
-    // The first unique name defines a group, which ends on the next unique name.
-    // The whole group is deduplicated if it contains more than one element.
+    // The first different name defines a group, which ends on the next
+    // different name. The whole group is deduplicated if it contains more than
+    // one element.
     let mut next_group = iter.next().map(|(name, address)| (name, *address));
     while let Some((group_name, group_address)) = next_group {
         let mut group_deduplicated = false;
@@ -509,7 +545,7 @@ fn dedup_names_pass(symbols: &mut Vec<(String, u32)>) -> bool {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn single_pass_dedup_names() {
+    fn dedup_names() {
         let mut symbols = vec![
             ("baz".to_string(), 0x8000),
             ("bar".to_string(), 0x3000),
