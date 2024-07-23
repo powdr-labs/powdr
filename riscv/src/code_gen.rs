@@ -732,7 +732,7 @@ fn memory(with_bootloader: bool) -> String {
 
     // ============== memory instructions ==============
 
-    /// Loads one word from an address Y, where Y can be between 0 and 2**33 (sic!),
+    /// Loads one word from an address V = val(X) + Y, where V can be between 0 and 2**33 (sic!),
     /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
     /// Writes the loaded word and the remainder of the division by 4 to registers Z and W,
     /// respectively.
