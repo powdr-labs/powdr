@@ -9,7 +9,7 @@ use std::convert::fe;
 use std::convert::expr;
 use std::prover::eval;
 use std::prover::Query;
-use std::machines::byte2::Byte2;
+use std::machines::range::Byte2;
 
 // Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 // Currently only supports "Equation 0", i.e., 256-Bit addition and multiplication.

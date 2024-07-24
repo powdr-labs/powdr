@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use powdr_ast::analyzed::{AlgebraicReference, PolyID};
-use powdr_number::FieldElement;
+use powdr_number::{DegreeType, FieldElement};
 
 use crate::Identity;
 
@@ -33,8 +33,16 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         identities: &'c [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
+        size: DegreeType,
     ) -> Self {
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witness_cols);
+        let processor = Processor::new(
+            row_offset,
+            data,
+            mutable_state,
+            fixed_data,
+            witness_cols,
+            size,
+        );
         Self {
             processor,
             identities,
@@ -152,10 +160,7 @@ mod tests {
         f: impl Fn(BlockProcessor<T, Q>, BTreeMap<String, PolyID>, u64, usize) -> R,
     ) -> R {
         let analyzed = analyze_string(src);
-        let constants = generate(&analyzed)
-            .into_iter()
-            .map(|(n, c)| (n.to_string(), c))
-            .collect::<Vec<_>>();
+        let constants = generate(&analyzed);
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 
         // No submachines
@@ -191,6 +196,7 @@ mod tests {
             &identities,
             &fixed_data,
             &witness_cols,
+            degree,
         );
 
         f(

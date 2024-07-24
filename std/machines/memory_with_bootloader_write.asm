@@ -1,5 +1,5 @@
 use std::array;
-use std::machines::byte2::Byte2;
+use std::machines::range::Byte2;
 
 /// This machine is a slightly extended version of std::machines::memory::Memory,
 /// where in addition to mstore, there is an mstore_bootloader operation. It behaves
@@ -63,7 +63,6 @@ machine MemoryWithBootloaderWrite with
 
     col fixed FIRST = [1] + [0]*;
     let LAST = FIRST';
-    col fixed STEP(i) { i };
 
     link => byte2.check(m_diff_lower);
     link => byte2.check(m_diff_upper);

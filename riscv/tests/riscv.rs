@@ -248,6 +248,45 @@ fn sum_serde() {
     );
 }
 
+#[test]
+fn read_slice() {
+    let case = "read_slice";
+    let runtime = Runtime::base();
+    let temp_dir = Temp::new_dir().unwrap();
+    let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+    );
+    let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, false);
+
+    let data: Vec<u32> = vec![];
+    let answer = data.iter().sum::<u32>();
+
+    use std::collections::BTreeMap;
+    let d: BTreeMap<u32, Vec<GoldilocksField>> = vec![(
+        42,
+        vec![
+            0u32.into(),
+            1u32.into(),
+            2u32.into(),
+            3u32.into(),
+            4u32.into(),
+            5u32.into(),
+            6u32.into(),
+            7u32.into(),
+        ],
+    )]
+    .into_iter()
+    .collect();
+
+    let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
+        .with_prover_inputs(vec![answer.into()])
+        .with_prover_dict_inputs(d);
+
+    pipeline.compute_witness().unwrap();
+}
+
 #[ignore = "Too slow"]
 #[test]
 fn two_sums_serde() {

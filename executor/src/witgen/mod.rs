@@ -10,6 +10,8 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
+use crate::constant_evaluator::{VariablySizedColumn, MAX_DEGREE_LOG};
+
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
@@ -50,14 +52,14 @@ impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String>
 #[derive(Clone)]
 pub struct WitgenCallback<T> {
     analyzed: Arc<Analyzed<T>>,
-    fixed_col_values: Arc<Vec<(String, Vec<T>)>>,
+    fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     query_callback: Arc<dyn QueryCallback<T>>,
 }
 
 impl<T: FieldElement> WitgenCallback<T> {
     pub fn new(
         analyzed: Arc<Analyzed<T>>,
-        fixed_col_values: Arc<Vec<(String, Vec<T>)>>,
+        fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
         query_callback: Option<Arc<dyn QueryCallback<T>>>,
     ) -> Self {
         let query_callback = query_callback.unwrap_or_else(|| Arc::new(unused_query_callback()));
@@ -111,7 +113,7 @@ pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
 
 pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
-    fixed_col_values: &'b [(String, Vec<T>)],
+    fixed_col_values: &'b Vec<(String, VariablySizedColumn<T>)>,
     query_callback: &'b dyn QueryCallback<T>,
     external_witness_values: &'b [(String, Vec<T>)],
     stage: u8,
@@ -121,7 +123,7 @@ pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
 impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     pub fn new(
         analyzed: &'a Analyzed<T>,
-        fixed_col_values: &'b [(String, Vec<T>)],
+        fixed_col_values: &'b Vec<(String, VariablySizedColumn<T>)>,
         query_callback: &'b dyn QueryCallback<T>,
     ) -> Self {
         WitnessGenerator {
@@ -298,7 +300,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     /// - the degree is not unique
     /// - the set of polynomials is empty
     /// - a declared polynomial does not have an explicit degree
-    pub fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
+    fn common_set_degree<'b>(
+        &self,
+        ids: impl IntoIterator<Item = &'b PolyID>,
+    ) -> Option<DegreeType> {
         let ids: HashSet<_> = ids.into_iter().collect();
 
         self.analyzed
@@ -310,14 +315,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 matches!(symbol.kind, SymbolKind::Poly(_)).then_some(symbol)
             })
             // get all array elements and their degrees
-            .flat_map(|symbol| {
-                symbol.array_elements().map(|(_, id)| {
-                    (
-                        id,
-                        symbol.degree.expect("all polynomials should have a degree"),
-                    )
-                })
-            })
+            .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
             // only keep the ones matching our set
             .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
             // get the common degree
@@ -326,9 +324,17 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
     }
 
+    fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
+        self.common_set_degree(ids).unwrap_or(1 << MAX_DEGREE_LOG)
+    }
+
+    fn is_variable_size<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> bool {
+        self.common_set_degree(ids).is_none()
+    }
+
     pub fn new(
         analyzed: &'a Analyzed<T>,
-        fixed_col_values: &'a [(String, Vec<T>)],
+        fixed_col_values: &'a [(String, VariablySizedColumn<T>)],
         external_witness_values: &'a [(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
         stage: u8,
@@ -452,13 +458,22 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
 pub struct FixedColumn<'a, T> {
     name: String,
-    values: &'a Vec<T>,
+    values: &'a VariablySizedColumn<T>,
 }
 
 impl<'a, T> FixedColumn<'a, T> {
-    pub fn new(name: &'a str, values: &'a Vec<T>) -> FixedColumn<'a, T> {
+    pub fn new(name: &'a str, values: &'a VariablySizedColumn<T>) -> FixedColumn<'a, T> {
         let name = name.to_string();
         FixedColumn { name, values }
+    }
+
+    pub fn values(&self, size: DegreeType) -> &[T] {
+        self.values.get_by_size(size as usize).unwrap()
+    }
+
+    pub fn values_max_size(&self) -> &[T] {
+        let max_size = self.values.available_sizes().into_iter().max().unwrap() as DegreeType;
+        self.values(max_size)
     }
 }
 
