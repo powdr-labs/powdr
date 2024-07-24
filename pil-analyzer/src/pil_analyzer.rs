@@ -12,7 +12,7 @@ use powdr_ast::parsed::types::{ArrayType, TupleType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
-    SymbolCategory, TraitImplementation,
+    SymbolCategory,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
@@ -446,44 +446,52 @@ impl PILAnalyzer {
     fn check_traits_overlap(&self) {
         for implementations in self.trait_implementations.values() {
             for (i, stmt1) in implementations.iter().enumerate() {
+                let (sr1, impl1) = match stmt1 {
+                    PilStatement::TraitImplementation(sr1, impl_) => (sr1, impl_),
+                    _ => unreachable!("Mismatched statement types in trait implementations"),
+                };
+
+                if impl1
+                    .type_scheme
+                    .types
+                    .iter()
+                    .any(|t| matches!(t, Type::NamedType(_, None)))
+                {
+                    panic!("Named variables are not supported in impls: {impl1}")
+                }
+
                 for stmt2 in implementations.iter().skip(i + 1) {
-                    match (stmt1, stmt2) {
-                        (
-                            PilStatement::TraitImplementation(sr1, impl1),
-                            PilStatement::TraitImplementation(_, impl2),
-                        ) => {
-                            self.check_traits_pairs(impl1, impl2)
-                                .map_err(|err| sr1.with_error(err))
-                                .unwrap();
-                        }
+                    let impl2 = match stmt2 {
+                        PilStatement::TraitImplementation(_, impl_) => impl_,
                         _ => {
-                            panic!("Mismatched statement types in trait implementations");
+                            unreachable!("Mismatched statement types in trait implementations")
                         }
-                    }
+                    };
+
+                    self.check_traits_pairs(&impl1.type_scheme.types, &impl2.type_scheme.types)
+                        .map_err(|err| sr1.with_error(format!("Impls for {}: {err}", impl1.name)))
+                        .unwrap()
                 }
             }
         }
     }
 
-    fn check_traits_pairs(
-        &self,
-        impl1: &TraitImplementation<parsed::Expression>,
-        impl2: &TraitImplementation<parsed::Expression>,
-    ) -> Result<(), String> {
-        let types1: Type = TupleType {
-            items: impl1.type_scheme.types.clone(),
+    fn check_traits_pairs(&self, types1: &[Type], types2: &[Type]) -> Result<(), String> {
+        if types1.len() != types2.len() {
+            return Err(format!("Impl types have different lengths"));
+        }
+
+        let tuple1: Type = TupleType {
+            items: types1.to_owned(),
         }
         .into();
-        let types2: Type = TupleType {
-            items: impl2.type_scheme.types.clone(),
+        let tuple2: Type = TupleType {
+            items: types2.to_owned(),
         }
         .into();
 
-        match unify_traits_types(types1.clone(), types2.clone()) {
-            Ok(_) => Err(format!(
-                "Impls for {} with types {types1} and {types2} overlap",
-                impl1.name
-            )),
+        match unify_traits_types(tuple1.clone(), tuple2.clone()) {
+            Ok(_) => Err(format!("Types {tuple1} and {tuple2} overlap")),
             Err(_) => Ok(()),
         }
     }
