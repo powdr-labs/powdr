@@ -576,16 +576,16 @@ fn defined_trait() {
 }
 
 #[test]
-#[should_panic = "Impls for Add with types (int) and (int) overlap"]
+#[should_panic = "Impls for Add: Types (int, fe) and (int, fe) overlap"]
 fn duplicated_trait() {
     let input = "
-    trait Add<T> {
-        add: T, T -> T,
+    trait Add<T, Q> {
+        add: T, T -> Q,
     }
-    impl<T> Add<int> {
+    impl<T, Q> Add<int, fe> {
         add: |a, b| a + b,
     }
-    impl<T> Add<int> {
+    impl<T, Q> Add<int, fe> {
         add: |a, b| b + a,
     }
     ";
