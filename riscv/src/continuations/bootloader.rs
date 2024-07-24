@@ -54,14 +54,14 @@ pub fn bootloader_preamble() -> String {
     std::machines::write_once_memory::WriteOnceMemory bootloader_inputs;
 
     instr load_bootloader_input X, Y, Z, W
-        link ~> val1_col = regs.mload(X, STEP)
-        link => bootloader_inputs.access(val1_col * Z + W, val3_col)
-        link ~> regs.mstore(Y, STEP + 2, val3_col);
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link => bootloader_inputs.access(tmp1_col * Z + W, tmp3_col)
+        link ~> regs.mstore(Y, STEP + 2, tmp3_col);
 
     instr assert_bootloader_input X, Y, Z, W
-        link ~> val1_col = regs.mload(X, STEP)
-        link ~> val2_col = regs.mload(Y, STEP + 1)
-        link => bootloader_inputs.access(val1_col * Z + W, val2_col);
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+        link => bootloader_inputs.access(tmp1_col * Z + W, tmp2_col);
 
     // Sets the PC to the bootloader input at the provided index
     instr jump_to_bootloader_input X link => bootloader_inputs.access(X, pc');
@@ -212,7 +212,7 @@ load_bootloader_input 0, 21, 1, {MEMORY_HASH_START_INDEX} + 3;
 // Current page index
 set_reg 2, 0;
 
-branch_if_zero 1, 0, 0, bootloader_end_page_loop;
+branch_if_diff_equal 1, 0, 0, bootloader_end_page_loop;
 
 bootloader_start_page_loop:
 
@@ -240,7 +240,7 @@ and 3, 0, {PAGE_NUMBER_MASK}, 3;
 "#,
     ));
 
-    bootloader.push_str(&format!("move_reg 3, 90, {PAGE_SIZE_BYTES}, 0;\n"));
+    bootloader.push_str(&format!("affine 3, 90, {PAGE_SIZE_BYTES}, 0;\n"));
     for i in 0..WORDS_PER_PAGE {
         let reg = EXTRA_REGISTERS[(i % 4) + 4];
         bootloader.push_str(&format!(
@@ -248,7 +248,7 @@ and 3, 0, {PAGE_NUMBER_MASK}, 3;
 load_bootloader_input 2, 91, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {i};
 {reg} <== get_reg(91);
 
-move_reg 3, 90, {PAGE_SIZE_BYTES}, {i} * {BYTES_PER_WORD};
+affine 3, 90, {PAGE_SIZE_BYTES}, {i} * {BYTES_PER_WORD};
 mstore_bootloader 90, 0, 0, 91;"#
         ));
 
@@ -345,20 +345,20 @@ bootloader_level_{i}_end:
 branch_if_diff_nonzero 9, 0, bootloader_update_memory_hash;
 
 // Assert Correct Merkle Root
-move_reg 18, 90, -1, 0;
-move_reg 90, 90, 1, {P0};
+affine 18, 90, -1, 0;
+affine 90, 90, 1, {P0};
 branch_if_diff_nonzero 90, 0, bootloader_memory_hash_mismatch;
 
-move_reg 19, 90, -1, 0;
-move_reg 90, 90, 1, {P1};
+affine 19, 90, -1, 0;
+affine 90, 90, 1, {P1};
 branch_if_diff_nonzero 90, 0, bootloader_memory_hash_mismatch;
 
-move_reg 20, 90, -1, 0;
-move_reg 90, 90, 1, {P2};
+affine 20, 90, -1, 0;
+affine 90, 90, 1, {P2};
 branch_if_diff_nonzero 90, 0, bootloader_memory_hash_mismatch;
 
-move_reg 21, 90, -1, 0;
-move_reg 90, 90, 1, {P3};
+affine 21, 90, -1, 0;
+affine 90, 90, 1, {P3};
 branch_if_diff_nonzero 90, 0, bootloader_memory_hash_mismatch;
 
 jump bootloader_memory_hash_ok, 90;
@@ -393,7 +393,7 @@ set_reg 20, {P2};
 set_reg 21, {P3};
 
 // Increment page index
-move_reg 2, 2, 1, 1;
+affine 2, 2, 1, 1;
 
 branch_if_diff_nonzero 2, 1, bootloader_start_page_loop;
 
@@ -480,7 +480,7 @@ add_wrap 1, 0, 0, 1;
 // Current page index
 set_reg 2, 0;
 
-branch_if_zero 1, 0, 0, shutdown_end_page_loop;
+branch_if_diff_equal 1, 0, 0, shutdown_end_page_loop;
 
 shutdown_start_page_loop:
 
@@ -512,7 +512,7 @@ and 3, 0, {PAGE_NUMBER_MASK}, 3;
 "#,
     ));
 
-    bootloader.push_str(&format!("move_reg 90, 3, {PAGE_SIZE_BYTES}, 0;\n"));
+    bootloader.push_str(&format!("affine 90, 3, {PAGE_SIZE_BYTES}, 0;\n"));
     for i in 0..WORDS_PER_PAGE {
         let reg = EXTRA_REGISTERS[(i % 4) + 4];
         bootloader.push_str(&format!("mload 90, {i} * {BYTES_PER_WORD}, 90, 91;\n"));
@@ -543,7 +543,7 @@ set_reg 90, {P3};
 assert_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + {WORDS_PER_PAGE} + 1 + 3;
 
 // Increment page index
-move_reg 2, 2, 1, 1;
+affine 2, 2, 1, 1;
 
 branch_if_diff_nonzero 2, 1, shutdown_start_page_loop;
 
