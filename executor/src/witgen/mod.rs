@@ -49,20 +49,41 @@ static OUTER_CODE_NAME: &str = "witgen (outer code)";
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
+type WitgenCallbackFn<T> =
+    Arc<dyn Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)> + Send + Sync>;
+
 #[derive(Clone)]
-pub struct WitgenCallback<T> {
-    analyzed: Arc<Analyzed<T>>,
-    fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
-    query_callback: Arc<dyn QueryCallback<T>>,
-}
+pub struct WitgenCallback<T>(WitgenCallbackFn<T>);
 
 impl<T: FieldElement> WitgenCallback<T> {
+    pub fn new(f: WitgenCallbackFn<T>) -> Self {
+        WitgenCallback(f)
+    }
+
+    /// Computes the next-stage witness, given the current witness and challenges.
+    pub fn next_stage_witness(
+        &self,
+        current_witness: &[(String, Vec<T>)],
+        challenges: BTreeMap<u64, T>,
+        stage: u8,
+    ) -> Vec<(String, Vec<T>)> {
+        (self.0)(current_witness, challenges, stage)
+    }
+}
+
+pub struct WitgenCallbackContext<T> {
+    analyzed: Box<Analyzed<T>>,
+    fixed_col_values: Vec<(String, VariablySizedColumn<T>)>,
+    query_callback: Box<dyn QueryCallback<T>>,
+}
+
+impl<T: FieldElement> WitgenCallbackContext<T> {
     pub fn new(
-        analyzed: Arc<Analyzed<T>>,
-        fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
-        query_callback: Option<Arc<dyn QueryCallback<T>>>,
+        analyzed: Box<Analyzed<T>>,
+        fixed_col_values: Vec<(String, VariablySizedColumn<T>)>,
+        query_callback: Option<Box<dyn QueryCallback<T>>>,
     ) -> Self {
-        let query_callback = query_callback.unwrap_or_else(|| Arc::new(unused_query_callback()));
+        let query_callback = query_callback.unwrap_or_else(|| Box::new(unused_query_callback()));
         Self {
             analyzed,
             fixed_col_values,
@@ -70,7 +91,7 @@ impl<T: FieldElement> WitgenCallback<T> {
         }
     }
 
-    pub fn with_pil(self, analyzed: Arc<Analyzed<T>>) -> Self {
+    pub fn with_pil(self, analyzed: Box<Analyzed<T>>) -> Self {
         Self { analyzed, ..self }
     }
 

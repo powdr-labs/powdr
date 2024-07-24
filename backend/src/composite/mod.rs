@@ -1,9 +1,11 @@
 use std::{
-    collections::BTreeMap,
+    borrow::Cow,
+    collections::{btree_map::Entry, BTreeMap},
     io::{self, Cursor, Read},
     marker::PhantomData,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, Mutex},
+    thread,
 };
 
 use itertools::Itertools;
@@ -134,7 +136,15 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                             None,
                             backend_options.clone(),
                         );
-                        backend.map(|backend| (size, MachineData { pil, backend }))
+                        backend.map(|backend| {
+                            (
+                                size,
+                                MachineData {
+                                    pil,
+                                    backend: Mutex::new(backend),
+                                },
+                            )
+                        })
                     })
                     .collect::<Result<BTreeMap<_, _>, _>>()
                     .map(|backends| (machine_name, backends))
@@ -182,7 +192,10 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
 
 struct MachineData<'a, F> {
     pil: Arc<Analyzed<F>>,
-    backend: Box<dyn Backend<'a, F> + 'a>,
+    // Mutex is needed because Backend is not Sync, so during proof we need to
+    // ensure the type system that each backend is only used by one thread at a
+    // time.
+    backend: Mutex<Box<dyn Backend<'a, F> + 'a>>,
 }
 
 pub(crate) struct CompositeBackend<'a, F> {
@@ -231,6 +244,99 @@ fn set_size<F: Clone>(pil: Arc<Analyzed<F>>, degree: DegreeType) -> Arc<Analyzed
     }
 }
 
+mod sub_prover {
+    use std::{
+        collections::BTreeMap,
+        sync::{
+            mpsc::{Receiver, SyncSender},
+            Arc, Mutex,
+        },
+        thread::{Scope, ScopedJoinHandle},
+    };
+
+    use crate::{Backend, Error};
+    use powdr_executor::witgen::WitgenCallback;
+    use powdr_number::FieldElement;
+
+    /// Runs a prover until it either completes or challenges the caller, in which case the
+    pub fn run<'s, 'env, F: FieldElement>(
+        scope: &'s Scope<'s, 'env>,
+        prover: &'env Mutex<Box<dyn Backend<F>>>,
+        witness: Vec<(String, Vec<F>)>,
+    ) -> RunStatus<'s, F> {
+        let (challenge_sender, challenge_receiver) = std::sync::mpsc::sync_channel(0);
+        let (response_sender, response_receiver) = std::sync::mpsc::sync_channel(0);
+
+        let thread = scope.spawn(move || {
+            // We must ensure the backend can call the callback from
+            // multiple threads (needed by Plonky3, as it requires
+            // WitgenCallback to be Sync). So we wrap its Receiver in Mutex.
+            let response_receiver = Mutex::new(response_receiver);
+
+            let callback = WitgenCallback::<F>::new(Arc::new(move |_, challenge, _| {
+                // Lock first, to tie one challenge to one response.
+                let receiver_guard = response_receiver.lock().unwrap();
+                challenge_sender.send(challenge).unwrap();
+                receiver_guard.recv().unwrap()
+            }));
+
+            // TODO: this witness will be held in memory until the end of the
+            // proof, even if it's not needed anymore. We should probably change
+            // this API so the Vec is moved into the prover, and returned in the
+            // callback and result.
+            prover.lock().unwrap().prove(&witness, None, callback)
+        });
+
+        SubProver {
+            thread,
+            challenge_receiver,
+            response_sender,
+        }
+        .wait()
+    }
+
+    pub enum RunStatus<'s, F: FieldElement> {
+        Completed(Result<Vec<u8>, Error>),
+        Challenged(SubProver<'s, F>, BTreeMap<u64, F>),
+    }
+
+    /// Runs a prover in its own thread, storing the state in between
+    /// challenges.
+    pub struct SubProver<'s, F: FieldElement> {
+        pub thread: ScopedJoinHandle<'s, Result<Vec<u8>, Error>>,
+        pub challenge_receiver: Receiver<BTreeMap<u64, F>>,
+        pub response_sender: SyncSender<Vec<(String, Vec<F>)>>,
+    }
+
+    impl<'s, F: FieldElement> SubProver<'s, F> {
+        pub fn resume(self, response: Vec<(String, Vec<F>)>) -> RunStatus<'s, F> {
+            self.response_sender.send(response).unwrap();
+            self.wait()
+        }
+
+        pub fn wait(self) -> RunStatus<'s, F> {
+            match self.challenge_receiver.recv() {
+                Ok(challenge) => RunStatus::Challenged(self, challenge),
+                Err(_) => match self.thread.join() {
+                    Ok(proof) => RunStatus::Completed(proof),
+                    Err(err) => std::panic::resume_unwind(err),
+                },
+            }
+        }
+    }
+}
+
+fn accumulate_challenges<F: FieldElement>(into: &mut BTreeMap<u64, F>, from: BTreeMap<u64, F>) {
+    for (k, v) in from {
+        match into.entry(k) {
+            Entry::Vacant(e) => {
+                e.insert(v);
+            }
+            Entry::Occupied(e) => *e.into_mut() += v,
+        }
+    }
+}
+
 // TODO: This just forwards to the backend for now. In the future this should:
 // - Compute a verification key for each machine separately
 // - Compute a proof for each machine separately
@@ -247,39 +353,121 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
             unimplemented!();
         }
 
-        let proofs = self
-            .machine_data
-            .iter()
-            .map(|(machine, machine_data)| {
-                let start = std::time::Instant::now();
-                // Pick any available PIL; they all contain the same witness columns
-                let any_pil = &machine_data.values().next().unwrap().pil;
-                let witness = machine_witness_columns(witness, any_pil, machine);
-                let size = witness
-                    .iter()
-                    .map(|(_, witness)| witness.len())
-                    .unique()
-                    .exactly_one()
-                    .expect("All witness columns of a machine must have the same size");
-                let machine_data = machine_data
-                    .get(&size)
-                    .expect("Machine does not support the given size");
-                let witgen_callback = witgen_callback.clone().with_pil(machine_data.pil.clone());
+        // We use scoped threads to be able to share non 'static references.
+        thread::scope(|scope| {
+            let mut proofs_status = self
+                .machine_data
+                .iter()
+                .map(|(machine, machine_data)| {
+                    // Pick any available PIL; they all contain the same witness columns
+                    let any_pil = &machine_data.values().next().unwrap().pil;
+                    let witness = machine_witness_columns(witness, any_pil, machine);
+                    let size = witness
+                        .iter()
+                        .map(|(_, witness)| witness.len())
+                        .unique()
+                        .exactly_one()
+                        .expect("All witness columns of a machine must have the same size");
+                    let machine_data = machine_data
+                        .get(&size)
+                        .expect("Machine does not support the given size");
 
-                log::info!("== Proving machine: {} (size {})", machine, size);
-                log::debug!("PIL:\n{}", machine_data.pil);
+                    log::info!("== Proving machine: {} (size {})", machine, size);
+                    log::debug!("PIL:\n{}", machine_data.pil);
 
-                let proof = machine_data.backend.prove(&witness, None, witgen_callback);
+                    // This function call fails to compile with with error E0521...
+                    //sub_prover::run(scope, &machine_data.backend,witness)
+                    // ... but pasting the contents of the function, as below, it compiles.
+                    {
+                        let (challenge_sender, challenge_receiver) =
+                            std::sync::mpsc::sync_channel(0);
+                        let (response_sender, response_receiver) = std::sync::mpsc::sync_channel(0);
 
-                match proof {
+                        let thread = scope.spawn(move || {
+                            // We must ensure the backend can call the callback from
+                            // multiple threads (needed by Plonky3, as it requires
+                            // WitgenCallback to be Sync). So we wrap its Receiver in Mutex.
+                            let response_receiver = Mutex::new(response_receiver);
+
+                            let callback =
+                                WitgenCallback::<F>::new(Arc::new(move |_, challenge, _| {
+                                    // Lock first, to tie one challenge to one response.
+                                    let receiver_guard = response_receiver.lock().unwrap();
+                                    challenge_sender.send(challenge).unwrap();
+                                    receiver_guard.recv().unwrap()
+                                }));
+
+                            // TODO: this witness will be held in memory until the end of the
+                            // proof, even if it's not needed anymore. We should probably change
+                            // this API so the Vec is moved into the prover, and returned in the
+                            // callback and result.
+                            machine_data
+                                .backend
+                                .lock()
+                                .unwrap()
+                                .prove(&witness, None, callback)
+                        });
+
+                        sub_prover::SubProver {
+                            thread,
+                            challenge_receiver,
+                            response_sender,
+                        }
+                        .wait()
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let mut proof_results = Vec::new();
+            let mut witness = Cow::Borrowed(witness);
+            for stage in 0.. {
+                if proofs_status.is_empty() {
+                    break;
+                }
+
+                // Filter out proofs that have completed and accumulate the
+                // challenges.
+                let mut challenges = BTreeMap::new();
+                let waiting_provers = std::mem::take(&mut proofs_status)
+                    .into_iter()
+                    .filter_map(|status| match status {
+                        sub_prover::RunStatus::Completed(result) => {
+                            proof_results.push(result);
+                            None
+                        }
+                        sub_prover::RunStatus::Challenged(sub_prover, c) => {
+                            // Accumulate the challenges
+                            accumulate_challenges(&mut challenges, c);
+                            Some(sub_prover)
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                witness = witgen_callback
+                    // @georg: do I pass this full witness here?
+                    .next_stage_witness(&witness, challenges, stage)
+                    .into();
+
+                // Resume the waiting provers with the new witness
+                proofs_status = waiting_provers
+                    .into_iter()
+                    // @georg: do I have to filter again?
+                    .map(|prover| prover.resume(witness.to_vec()))
+                    .collect();
+            }
+
+            let proofs = proof_results
+                .into_iter()
+                .map(|proof| match proof {
                     Ok(inner_proof) => {
-                        log::info!(
+                        /*log::info!(
                             "==> Machine proof of {size} rows ({} bytes) computed in {:?}",
                             inner_proof.len(),
                             start.elapsed()
-                        );
+                        );*/
                         Ok(MachineProof {
-                            size,
+                            // TODO: have to save this data somehow
+                            size: 42,
                             proof: inner_proof,
                         })
                     }
@@ -287,12 +475,12 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                         log::error!("==> Machine proof failed: {:?}", e);
                         Err(e)
                     }
-                }
-            })
-            .collect::<Result<_, _>>()?;
+                })
+                .collect::<Result<Vec<_>, _>>()?;
 
-        let proof = CompositeProof { proofs };
-        Ok(bincode::serialize(&proof).unwrap())
+            let proof = CompositeProof { proofs };
+            Ok(bincode::serialize(&proof).unwrap())
+        })
     }
 
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
@@ -304,6 +492,8 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                 .get(&machine_proof.size)
                 .unwrap()
                 .backend
+                .lock()
+                .unwrap()
                 .verify(&machine_proof.proof, instances)?;
         }
         Ok(())
@@ -319,6 +509,8 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
             .next()
             .unwrap()
             .backend
+            .lock()
+            .unwrap()
             .export_setup(output)
     }
 
@@ -333,6 +525,8 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                         .map(|(size, machine_data)| {
                             machine_data
                                 .backend
+                                .lock()
+                                .unwrap()
                                 .verification_key_bytes()
                                 .map(|vk_bytes| (*size, vk_bytes))
                         })
