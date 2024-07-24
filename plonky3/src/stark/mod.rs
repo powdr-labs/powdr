@@ -60,9 +60,18 @@ impl<T: FieldElement> Plonky3Prover<T> {
         // get fixed columns
         let fixed = &self.fixed;
 
-        if fixed.is_empty() {
-            return;
-        }
+        // get selector columns for public values
+        let publics = self
+            .analyzed
+            .get_publics()
+            .into_iter()
+            .map(|(name, _, row_id)| {
+                let selector = (0..self.analyzed.degree())
+                    .map(move |i| T::from(i == row_id as u64))
+                    .collect::<Vec<T>>();
+                (name, selector)
+            })
+            .collect::<Vec<(String, Vec<T>)>>();
 
         // get the config
         let config = get_config(self.analyzed.degree());
@@ -80,9 +89,14 @@ impl<T: FieldElement> Plonky3Prover<T> {
                     fixed
                         .iter()
                         .map(move |(_, values)| cast_to_goldilocks(values[i as usize]))
+                        .chain(
+                            publics
+                                .iter()
+                                .map(move |(_, values)| cast_to_goldilocks(values[i as usize])),
+                        )
                 })
                 .collect(),
-            self.fixed.len(),
+            self.fixed.len() + publics.len(),
         );
 
         let evaluations = vec![(domain, matrix)];
