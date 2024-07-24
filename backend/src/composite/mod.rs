@@ -259,11 +259,14 @@ mod sub_prover {
     use powdr_number::FieldElement;
 
     /// Runs a prover until it either completes or challenges the caller, in which case the
-    pub fn run<'s, 'env, F: FieldElement>(
+    pub fn run<'s, 'env, 'outer, F: FieldElement>(
         scope: &'s Scope<'s, 'env>,
-        prover: &'env Mutex<Box<dyn Backend<F>>>,
+        prover: &'env Mutex<Box<dyn Backend<'outer, F> + 'outer>>,
         witness: Vec<(String, Vec<F>)>,
-    ) -> RunStatus<'s, F> {
+    ) -> RunStatus<'s, F>
+    where
+        'outer: 'env,
+    {
         let (challenge_sender, challenge_receiver) = std::sync::mpsc::sync_channel(0);
         let (response_sender, response_receiver) = std::sync::mpsc::sync_channel(0);
 
@@ -337,6 +340,24 @@ fn accumulate_challenges<F: FieldElement>(into: &mut BTreeMap<u64, F>, from: BTr
     }
 }
 
+fn process_witness_for_machine<F: FieldElement>(
+    machine: &str,
+    machine_data: &BTreeMap<usize, MachineData<F>>,
+    witness: &[(String, Vec<F>)],
+) -> (Vec<(String, Vec<F>)>, usize) {
+    // Pick any available PIL; they all contain the same witness columns
+    let any_pil = &machine_data.values().next().unwrap().pil;
+    let witness = machine_witness_columns(witness, any_pil, machine);
+    let size = witness
+        .iter()
+        .map(|(_, witness)| witness.len())
+        .unique()
+        .exactly_one()
+        .expect("All witness columns of a machine must have the same size");
+
+    (witness, size)
+}
+
 // TODO: This just forwards to the backend for now. In the future this should:
 // - Compute a verification key for each machine separately
 // - Compute a proof for each machine separately
@@ -359,62 +380,21 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                 .machine_data
                 .iter()
                 .map(|(machine, machine_data)| {
-                    // Pick any available PIL; they all contain the same witness columns
-                    let any_pil = &machine_data.values().next().unwrap().pil;
-                    let witness = machine_witness_columns(witness, any_pil, machine);
-                    let size = witness
-                        .iter()
-                        .map(|(_, witness)| witness.len())
-                        .unique()
-                        .exactly_one()
-                        .expect("All witness columns of a machine must have the same size");
-                    let machine_data = machine_data
+                    let (witness, size) =
+                        process_witness_for_machine(machine, machine_data, witness);
+
+                    let inner_machine_data = machine_data
                         .get(&size)
                         .expect("Machine does not support the given size");
 
                     log::info!("== Proving machine: {} (size {})", machine, size);
-                    log::debug!("PIL:\n{}", machine_data.pil);
+                    log::debug!("PIL:\n{}", inner_machine_data.pil);
 
-                    // This function call fails to compile with with error E0521...
-                    //sub_prover::run(scope, &machine_data.backend,witness)
-                    // ... but pasting the contents of the function, as below, it compiles.
-                    {
-                        let (challenge_sender, challenge_receiver) =
-                            std::sync::mpsc::sync_channel(0);
-                        let (response_sender, response_receiver) = std::sync::mpsc::sync_channel(0);
-
-                        let thread = scope.spawn(move || {
-                            // We must ensure the backend can call the callback from
-                            // multiple threads (needed by Plonky3, as it requires
-                            // WitgenCallback to be Sync). So we wrap its Receiver in Mutex.
-                            let response_receiver = Mutex::new(response_receiver);
-
-                            let callback =
-                                WitgenCallback::<F>::new(Arc::new(move |_, challenge, _| {
-                                    // Lock first, to tie one challenge to one response.
-                                    let receiver_guard = response_receiver.lock().unwrap();
-                                    challenge_sender.send(challenge).unwrap();
-                                    receiver_guard.recv().unwrap()
-                                }));
-
-                            // TODO: this witness will be held in memory until the end of the
-                            // proof, even if it's not needed anymore. We should probably change
-                            // this API so the Vec is moved into the prover, and returned in the
-                            // callback and result.
-                            machine_data
-                                .backend
-                                .lock()
-                                .unwrap()
-                                .prove(&witness, None, callback)
-                        });
-
-                        sub_prover::SubProver {
-                            thread,
-                            challenge_receiver,
-                            response_sender,
-                        }
-                        .wait()
-                    }
+                    (
+                        sub_prover::run(scope, &inner_machine_data.backend, witness),
+                        machine_data,
+                        size,
+                    )
                 })
                 .collect::<Vec<_>>();
 
@@ -430,15 +410,15 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                 let mut challenges = BTreeMap::new();
                 let waiting_provers = std::mem::take(&mut proofs_status)
                     .into_iter()
-                    .filter_map(|status| match status {
+                    .filter_map(|(status, machine_data, size)| match status {
                         sub_prover::RunStatus::Completed(result) => {
-                            proof_results.push(result);
+                            proof_results.push((result, size));
                             None
                         }
                         sub_prover::RunStatus::Challenged(sub_prover, c) => {
                             // Accumulate the challenges
                             accumulate_challenges(&mut challenges, c);
-                            Some(sub_prover)
+                            Some((sub_prover, machine_data))
                         }
                     })
                     .collect::<Vec<_>>();
@@ -452,24 +432,27 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                 proofs_status = waiting_provers
                     .into_iter()
                     // @georg: do I have to filter again?
-                    .map(|prover| prover.resume(witness.to_vec()))
+                    .map(|(prover, machine_data)| {
+                        let (witness, size) = process_witness_for_machine(
+                            prover.thread.thread().name().unwrap(),
+                            machine_data,
+                            &witness,
+                        );
+                        (prover.resume(witness.to_vec()), machine_data, size)
+                    })
                     .collect();
             }
 
             let proofs = proof_results
                 .into_iter()
-                .map(|proof| match proof {
-                    Ok(inner_proof) => {
+                .map(|(proof, size)| match proof {
+                    Ok(proof) => {
                         /*log::info!(
                             "==> Machine proof of {size} rows ({} bytes) computed in {:?}",
                             inner_proof.len(),
                             start.elapsed()
                         );*/
-                        Ok(MachineProof {
-                            // TODO: have to save this data somehow
-                            size: 42,
-                            proof: inner_proof,
-                        })
+                        Ok(MachineProof { size, proof })
                     }
                     Err(e) => {
                         log::error!("==> Machine proof failed: {:?}", e);

@@ -72,27 +72,25 @@ impl<T: FieldElement> WitgenCallback<T> {
 }
 
 pub struct WitgenCallbackContext<T> {
-    analyzed: Box<Analyzed<T>>,
-    fixed_col_values: Vec<(String, VariablySizedColumn<T>)>,
-    query_callback: Box<dyn QueryCallback<T>>,
+    /// TODO: all these fields probably don't need to be Arc anymore, since the
+    /// Arc was moved one level up... but I have to investigate this further.
+    analyzed: Arc<Analyzed<T>>,
+    fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
+    query_callback: Arc<dyn QueryCallback<T>>,
 }
 
 impl<T: FieldElement> WitgenCallbackContext<T> {
     pub fn new(
-        analyzed: Box<Analyzed<T>>,
-        fixed_col_values: Vec<(String, VariablySizedColumn<T>)>,
-        query_callback: Option<Box<dyn QueryCallback<T>>>,
+        analyzed: Arc<Analyzed<T>>,
+        fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
+        query_callback: Option<Arc<dyn QueryCallback<T>>>,
     ) -> Self {
-        let query_callback = query_callback.unwrap_or_else(|| Box::new(unused_query_callback()));
+        let query_callback = query_callback.unwrap_or_else(|| Arc::new(unused_query_callback()));
         Self {
             analyzed,
             fixed_col_values,
             query_callback,
         }
-    }
-
-    pub fn with_pil(self, analyzed: Box<Analyzed<T>>) -> Self {
-        Self { analyzed, ..self }
     }
 
     /// Computes the next-stage witness, given the current witness and challenges.

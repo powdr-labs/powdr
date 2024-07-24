@@ -24,7 +24,7 @@ use powdr_executor::{
     constant_evaluator::{self, get_uniquely_sized_cloned, VariablySizedColumn},
     witgen::{
         chain_callbacks, extract_publics, unused_query_callback, QueryCallback, WitgenCallback,
-        WitnessGenerator,
+        WitgenCallbackContext, WitnessGenerator,
     },
 };
 use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite};
@@ -878,11 +878,16 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn witgen_callback(&mut self) -> Result<WitgenCallback<T>, Vec<String>> {
-        Ok(WitgenCallback::new(
+        let ctx = WitgenCallbackContext::new(
             self.compute_optimized_pil()?,
             self.compute_fixed_cols()?,
             self.arguments.query_callback.as_ref().cloned(),
-        ))
+        );
+        Ok(WitgenCallback::new(Arc::new(
+            move |current_witness, challenges, stage| {
+                ctx.next_stage_witness(current_witness, challenges, stage)
+            },
+        )))
     }
 
     pub fn compute_proof(&mut self) -> Result<&Proof, Vec<String>> {
