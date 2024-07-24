@@ -734,23 +734,24 @@ mod builder {
             mut self,
             fixed_len: u32,
         ) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
-            // TODO: with VADCOP we don't need to extend main/submachines, most
-            // of the following code can be removed
-            let mut max_degree = self
-                .submachines
-                .values()
-                .map(|m| m.len())
-                .chain(Some(fixed_len))
-                .chain(Some(self.len()))
-                .chain(Some(self.regs_machine.len()))
-                .chain(Some(self.memory_machine.len()))
-                .max()
-                .unwrap();
+            // TODO: remove when VADCOP
+            // let mut max_degree = self
+            //     .submachines
+            //     .values()
+            //     .map(|m| m.len())
+            //     .chain(Some(fixed_len))
+            //     .chain(Some(self.len()))
+            //     .chain(Some(self.regs_machine.len()))
+            //     .chain(Some(self.memory_machine.len()))
+            //     .max()
+            //     .unwrap();
+            // max_degree = max_degree.next_power_of_two();
 
-            max_degree = max_degree.next_power_of_two();
+            // fill machine rows up to the next power of two
+            let main_degree = self.len().next_power_of_two();
 
             // fill up main trace to degree
-            self.extend_rows(max_degree);
+            self.extend_rows(main_degree);
 
             // add submachine traces to main trace
             for (name, mut machine) in self.submachines {
@@ -761,7 +762,8 @@ mod builder {
                 // push enough blocks to fill degree rows in submachines
                 machine.final_row_override();
                 println!("adding dummy rows for {name}...");
-                while machine.len() < max_degree {
+                let machine_degree = machine.len().next_power_of_two();
+                while machine.len() < machine_degree {
                     machine.push_dummy_block();
                 }
                 for (col_name, col) in machine.take_cols() {
@@ -770,12 +772,14 @@ mod builder {
             }
 
             // add regs memory trace
-            for (col_name, col) in self.regs_machine.take_cols(max_degree) {
+            let regs_degree = self.regs_machine.len().next_power_of_two();
+            for (col_name, col) in self.regs_machine.take_cols(regs_degree) {
                 assert!(self.trace.cols.insert(col_name, col).is_none());
             }
 
             // add main memory trace
-            for (col_name, col) in self.memory_machine.take_cols(max_degree) {
+            let mem_degree = self.memory_machine.len().next_power_of_two();
+            for (col_name, col) in self.memory_machine.take_cols(mem_degree) {
                 assert!(self.trace.cols.insert(col_name, col).is_none());
             }
 
