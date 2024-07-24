@@ -605,3 +605,17 @@ fn impl_with_typevar() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+#[should_panic = "Trait Add has 2 type vars, but implementation has 1"]
+fn impl_with_diff_length() {
+    let input = "
+    trait Add<T, Q> {
+        add: T, T -> Q,
+    }
+    impl<T> Add<int> {
+        add: |a, b| a + b,
+    }
+    ";
+    type_check(input, &[]);
+}

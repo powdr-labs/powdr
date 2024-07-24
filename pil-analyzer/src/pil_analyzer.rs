@@ -451,24 +451,62 @@ impl PILAnalyzer {
                     _ => unreachable!("Mismatched statement types in trait implementations"),
                 };
 
-                if impl1
-                    .type_scheme
-                    .types
-                    .iter()
-                    .any(|t| matches!(t, Type::NamedType(_, None)))
-                {
+                let types1 = impl1.type_scheme.types.clone();
+                if types1.iter().any(|t| matches!(t, Type::NamedType(_, None))) {
                     panic!("Named variables are not supported in impls: {impl1}")
                 }
 
-                for stmt2 in implementations.iter().skip(i + 1) {
-                    let impl2 = match stmt2 {
-                        PilStatement::TraitImplementation(_, impl_) => impl_,
-                        _ => {
-                            unreachable!("Mismatched statement types in trait implementations")
-                        }
-                    };
+                let trait_decl = self
+                    .definitions
+                    .get(impl1.name.name())
+                    .unwrap_or_else(|| panic!("Trait {} not found", impl1.name.name()))
+                    .1
+                    .as_ref()
+                    .unwrap_or_else(|| {
+                        panic!("Trait definition for {} not found", impl1.name.name())
+                    });
 
-                    self.check_traits_pairs(&impl1.type_scheme.types, &impl2.type_scheme.types)
+                let trait_decl = match trait_decl {
+                    FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl,
+                    _ => unreachable!("Invalid trait declaration"),
+                };
+
+                if types1.len() != trait_decl.type_vars.len() {
+                    panic!(
+                        "{}",
+                        sr1.with_error(format!(
+                            "Trait {} has {} parameters, but implementation has {}",
+                            impl1.name,
+                            trait_decl.type_vars.len(),
+                            types1.len(),
+                        ))
+                    );
+                }
+
+                for impl2 in implementations
+                    .iter()
+                    .skip(i + 1)
+                    .filter_map(|stmt2| match stmt2 {
+                        PilStatement::TraitImplementation(_, impl_) if impl_.name == impl1.name => {
+                            Some(impl_)
+                        }
+                        _ => None,
+                    })
+                {
+                    let types2 = impl2.type_scheme.types.clone();
+                    if types2.len() != trait_decl.type_vars.len() {
+                        panic!(
+                            "{}",
+                            sr1.with_error(format!(
+                                // TODO sr2.with_error(...))
+                                "Trait {} has {} type vars, but implementation has {}",
+                                impl2.name,
+                                trait_decl.type_vars.len(),
+                                types2.len(),
+                            ))
+                        );
+                    }
+                    self.check_traits_pairs(&types1, &types2)
                         .map_err(|err| sr1.with_error(format!("Impls for {}: {err}", impl1.name)))
                         .unwrap()
                 }
