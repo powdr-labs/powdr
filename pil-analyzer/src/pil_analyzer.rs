@@ -478,7 +478,7 @@ impl PILAnalyzer {
 
     fn check_traits_pairs(&self, types1: &[Type], types2: &[Type]) -> Result<(), String> {
         if types1.len() != types2.len() {
-            return Err(format!("Impl types have different lengths"));
+            return Err("Impl types have different lengths".to_string());
         }
 
         let tuple1: Type = TupleType {
