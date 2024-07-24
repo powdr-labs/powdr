@@ -475,7 +475,7 @@ impl PILAnalyzer {
                     panic!(
                         "{}",
                         sr1.with_error(format!(
-                            "Trait {} has {} parameters, but implementation has {}",
+                            "Trait {} has {} type vars, but implementation has {}",
                             impl1.name,
                             trait_decl.type_vars.len(),
                             types1.len(),
