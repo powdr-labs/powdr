@@ -29,7 +29,7 @@ machine Main {
 
     // these are merged into 1 link
     instr add X, Y -> Z link => Z = submachine.add(X, Y);
-    instr sub_with_add X, Y -> Z link => X = submachine.add(Y, Z); ///???
+    instr sub_with_add X, Y -> Z link => X = submachine.add(Y, Z);
     instr addAB -> X link => X = submachine.add(A, B);
 
     // one of these will be merged into the previous link, the other will be separate
