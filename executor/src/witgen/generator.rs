@@ -197,6 +197,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             &identities_with_next_reference,
             self.fixed_data,
             &self.witnesses,
+            self.degree,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
             DefaultSequenceIterator::new(0, identities_with_next_reference.len(), None),

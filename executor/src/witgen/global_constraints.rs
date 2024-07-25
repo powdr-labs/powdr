@@ -118,7 +118,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
     // It allows us to completely remove some lookups.
     let mut full_span = BTreeSet::new();
     for (poly_id, col) in fixed_data.fixed_cols.iter() {
-        if let Some((cons, full)) = process_fixed_column(col.values) {
+        if let Some((cons, full)) = process_fixed_column(col.values_max_size()) {
             assert!(known_constraints.insert(poly_id, cons).is_none());
             if full {
                 full_span.insert(poly_id);
@@ -365,6 +365,8 @@ mod test {
     use pretty_assertions::assert_eq;
     use test_log::test;
 
+    use crate::constant_evaluator::get_uniquely_sized;
+
     use super::*;
 
     #[test]
@@ -437,6 +439,7 @@ namespace Global(2**20);
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
         let constants = crate::constant_evaluator::generate(&analyzed);
+        let constants = get_uniquely_sized(&constants).unwrap();
         let fixed_polys = (0..constants.len())
             .map(|i| constant_poly_id(i as u64))
             .collect::<Vec<_>>();
