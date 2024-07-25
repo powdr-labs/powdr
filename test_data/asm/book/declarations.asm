@@ -15,7 +15,7 @@ mod utils {
     let constrain_incremented_by = |x, inc| x' = x + inc;
 }
 
-machine Main {
+machine Main with degree: 4 {
     // Machines create local scopes in the way functions create local scopes:
     // - all symbols in the machine's module are available without prefix,
     // - new symbols can be defined but are only available inside the machine.
