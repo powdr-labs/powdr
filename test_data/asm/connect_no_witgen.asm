@@ -7,7 +7,7 @@ let root_of_unity_for_log_degree: int -> fe = |n| root_of_unity ** (2**(32 - n))
 let omega = root_of_unity_for_log_degree(10);
 let power_of_omega: int -> fe = |k| omega ** k;
 
-machine Empty {
+machine Empty with degree: 4 {
     // The permutation (0 1) (2 3) (4 5) ...
     let r: col = |i| match i % 2 {
         0 => power_of_omega(i + 1),

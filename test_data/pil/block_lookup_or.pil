@@ -1,4 +1,4 @@
-let N: int = 65536;
+let N: int = 256;
 
 namespace std::convert(N);
 	// Due to its name, the semantics of this function will be overridden.

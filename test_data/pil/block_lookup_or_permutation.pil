@@ -1,4 +1,4 @@
-let N: int = 65536;
+let N: int = 256;
 
 // Like block_lookup_or.pil, but using a permutation to connect the Main and Or machine
 
