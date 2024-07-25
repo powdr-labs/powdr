@@ -1,7 +1,7 @@
 mod binary4;
 use binary4::Binary4;
 
-machine Main with degree: 64 {
+machine Main with degree: 128 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
