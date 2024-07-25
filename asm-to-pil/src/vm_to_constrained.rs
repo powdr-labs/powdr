@@ -12,13 +12,15 @@ use powdr_ast::{
         self,
         asm::{CallableRef, InstructionBody, InstructionParams, LinkDeclaration},
         build::{self, absolute_reference, direct_reference, next_reference},
+        sugar::ArrayExpression,
         visitor::ExpressionVisitable,
-        ArrayExpression, ArrayLiteral, BinaryOperation, BinaryOperator, Expression, FunctionCall,
+        ArrayLiteral, BinaryOperation, BinaryOperator, Expression, FunctionCall,
         FunctionDefinition, FunctionKind, LambdaExpression, MatchArm, MatchExpression, Number,
         Pattern, PilStatement, PolynomialName, SelectedExpressions, UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigUint, FieldElement, LargeInt};
+use powdr_parser::sugar::desugar_array_litteral_expression;
 use powdr_parser_util::SourceRef;
 
 use crate::common::{instruction_flag, return_instruction, RETURN_NAME};
@@ -115,7 +117,10 @@ impl<T: FieldElement> VMConverter<T> {
         self.pil.push(PilStatement::PolynomialConstantDefinition(
             SourceRef::unknown(),
             "first_step".to_string(),
-            FunctionDefinition::Array(ArrayExpression::value(vec![1u32.into()]).pad_with_zeroes()),
+            FunctionDefinition::Expression(desugar_array_litteral_expression(
+                SourceRef::unknown(),
+                ArrayExpression::value(vec![1u32.into()]).pad_with_zeroes(),
+            )),
         ));
 
         self.pil.extend(
@@ -846,7 +851,8 @@ impl<T: FieldElement> VMConverter<T> {
         self.pil.push(PilStatement::PolynomialConstantDefinition(
             SourceRef::unknown(),
             "p_line".to_string(),
-            FunctionDefinition::Array(
+            FunctionDefinition::Expression(desugar_array_litteral_expression(
+                SourceRef::unknown(),
                 ArrayExpression::Value(
                     (0..self.code_lines.len())
                         .map(|i| BigUint::from(i as u64).into())
@@ -854,7 +860,7 @@ impl<T: FieldElement> VMConverter<T> {
                 )
                 .pad_with_last()
                 .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()])),
-            ),
+            )),
         ));
         // TODO check that all of them are matched against execution trace witnesses.
         let mut rom_constants = self
@@ -997,7 +1003,10 @@ impl<T: FieldElement> VMConverter<T> {
             self.pil.push(PilStatement::PolynomialConstantDefinition(
                 SourceRef::unknown(),
                 name.clone(),
-                FunctionDefinition::Array(array_expression),
+                FunctionDefinition::Expression(desugar_array_litteral_expression(
+                    SourceRef::unknown(),
+                    array_expression,
+                )),
             ));
         }
     }

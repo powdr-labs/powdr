@@ -1,4 +1,5 @@
 use std::result::Result;
+use std::check::panic;
 
 // A term in an array expression
 enum ArrayTerm {
@@ -61,6 +62,13 @@ let expand: ArrayTerm[], int -> Result<(int -> int), string> = |terms, degree| {
             res
         }),
         Result::Err(e) => Result::Err(e)
+    }
+};
+
+let expand_unwrapped: ArrayTerm[], int -> (int -> int) = |terms, degree| {
+    match expand(terms, degree) {
+        Result::Ok(r) => r,
+        Result::Err(e) => panic(e)
     }
 };
 
