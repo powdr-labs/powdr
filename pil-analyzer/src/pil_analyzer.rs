@@ -446,12 +446,7 @@ impl PILAnalyzer {
 
     fn check_traits_overlap(&self) {
         for implementations in self.trait_implementations.values() {
-            for (i, stmt1) in implementations.iter().enumerate() {
-                let (sr1, impl1) = match stmt1 {
-                    PilStatement::TraitImplementation(sr1, impl_) => (sr1, impl_),
-                    _ => unreachable!("Mismatched statement types in trait implementations"),
-                };
-
+            for (i, (sr1, impl1)) in implementations.iter().enumerate() {
                 let types1 = impl1.type_scheme.types.clone();
                 let absolute_name = self.driver().resolve_decl(impl1.name.name());
 
@@ -480,21 +475,20 @@ impl PILAnalyzer {
                     );
                 }
 
-                for impl2 in implementations
-                    .iter()
-                    .skip(i + 1)
-                    .filter_map(|stmt2| match stmt2 {
-                        PilStatement::TraitImplementation(_, impl_) if impl_.name == impl1.name => {
-                            Some(impl_)
-                        }
-                        _ => None,
-                    })
+                for (sr2, impl2) in
+                    implementations
+                        .iter()
+                        .skip(i + 1)
+                        .filter_map(|stmt2| match stmt2 {
+                            (sr2, impl_) if impl_.name == impl1.name => Some((sr2, impl_)),
+                            _ => None,
+                        })
                 {
                     let types2 = impl2.type_scheme.types.clone();
                     if types2.len() != trait_decl.type_vars.len() {
                         panic!(
                             "{}",
-                            sr1.with_error(format!(
+                            sr2.with_error(format!(
                                 // TODO sr2.with_error(...))
                                 "Trait {} has {} type vars, but implementation has {}",
                                 self.driver().resolve_decl(impl2.name.name()),
