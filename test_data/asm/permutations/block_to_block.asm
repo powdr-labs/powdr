@@ -30,7 +30,7 @@ machine Binary4x with
     col witness Y;
 }
 
-machine Main with degree: 256 {
+machine Main with degree: 32 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
