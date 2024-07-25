@@ -710,7 +710,7 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
 fn memory(with_bootloader: bool) -> String {
     let memory_machine = if with_bootloader {
         r#"
-    std::machines::memory_with_bootloader_write::MemoryWithBootloaderWrite memory;
+    std::machines::memory_with_bootloader_write::MemoryWithBootloaderWrite memory(byte2);
 
     // Stores val(W) at address (V = val(X) - val(Z) + Y) % 2**32.
     // V can be between 0 and 2**33.
