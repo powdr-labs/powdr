@@ -28,8 +28,6 @@ pub(crate) struct PowdrCircuit<'a, T> {
     witness: Option<&'a [(String, Vec<T>)]>,
     /// Callback to augment the witness in the later stages
     _witgen_callback: Option<WitgenCallback<T>>,
-    /// Identity of all public cells
-    publics: Vec<(String, usize, usize)>,
     /// The matrix of preprocessed values, used in debug mode to check the constraints before proving
     #[cfg(debug_assertions)]
     preprocessed: Option<RowMajorMatrix<Goldilocks>>,
@@ -84,7 +82,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             witness: None,
             _witgen_callback: None,
             #[cfg(debug_assertions)]
-            publics: analyzed.get_publics(),
             preprocessed: None,
         }
     }
@@ -103,15 +100,14 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             .map(|(name, values)| (name, values))
             .collect::<BTreeMap<_, _>>();
 
-        let public_values = self
-            .publics
+        self.analyzed
+            .get_publics()
             .iter()
-            .map(move |(col_name, _, idx)| {
+            .map(|(col_name, _, idx)| {
                 let vals = *witness.get(&col_name).unwrap();
                 cast_to_goldilocks(vals[*idx])
             })
-            .collect();
-        public_values
+            .collect()
     }
 
     pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
@@ -174,11 +170,15 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             }
             AlgebraicExpression::PublicReference(id) => {
                 assert!(
-                    self.publics.iter().any(|(name, _, _)| name == id),
+                    self.analyzed
+                        .get_publics()
+                        .iter()
+                        .any(|(name, _, _)| name == id),
                     "Referenced public value does not exist."
                 );
                 let idx = self
-                    .publics
+                    .analyzed
+                    .get_publics()
                     .iter()
                     .position(|(name, _, _)| name == id)
                     .unwrap();
@@ -216,18 +216,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 }
 
 /// An extension of [Air] allowing access to the number of fixed columns
-pub trait PowdrAir<AB: AirBuilder>: Air<AB> {
-    /// Returns the number of fixed columns
-    fn fixed_width(&self) -> usize;
-}
-
-impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder> PowdrAir<AB>
-    for PowdrCircuit<'a, T>
-{
-    fn fixed_width(&self) -> usize {
-        self.analyzed.constant_count() + self.analyzed.publics_count()
-    }
-}
 
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
@@ -255,7 +243,8 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
         let main = builder.main();
         let fixed = builder.preprocessed();
         let pi = builder.public_values();
-        assert_eq!(self.publics.len(), pi.len());
+        let publics = self.analyzed.get_publics();
+        assert_eq!(publics.len(), pi.len());
 
         let local = main.row_slice(0);
 
@@ -265,10 +254,9 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
         let fixed_local = fixed.row_slice(0);
         let public_offset = self.analyzed.constant_count();
 
-        self.publics.iter().zip(pi_moved).enumerate().for_each(
+        publics.iter().zip(pi_moved).enumerate().for_each(
             |(index, ((_, col_id, _), public_value))| {
                 let selector = fixed_local[public_offset + index];
-                builder.assert_bool(selector);
                 let witness_col = local[*col_id];
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
