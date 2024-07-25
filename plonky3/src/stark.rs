@@ -69,7 +69,19 @@ impl<T: FieldElement> Plonky3Prover<T> {
     /// Returns preprocessed matrix based on the fixed inputs [`Plonky3Prover<T>`].
     /// This is used when running the setup phase
     pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<Goldilocks> {
-        match self.fixed.len() {
+        let publics = self
+            .analyzed
+            .get_publics()
+            .into_iter()
+            .map(|(name, _, row_id)| {
+                let selector = (0..self.analyzed.degree())
+                    .map(move |i| T::from(i == row_id as u64))
+                    .collect::<Vec<T>>();
+                (name, selector)
+            })
+            .collect::<Vec<(String, Vec<T>)>>();
+
+        match self.fixed.len() + publics.len() {
             0 => RowMajorMatrix::new(Vec::<Goldilocks>::new(), 0),
             _ => RowMajorMatrix::new(
                 // write fixed row by row
@@ -78,9 +90,14 @@ impl<T: FieldElement> Plonky3Prover<T> {
                         self.fixed
                             .iter()
                             .map(move |(_, values)| cast_to_goldilocks(values[i as usize]))
+                            .chain(
+                                publics
+                                    .iter()
+                                    .map(move |(_, values)| cast_to_goldilocks(values[i as usize])),
+                            )
                     })
                     .collect(),
-                self.fixed.len(),
+                self.fixed.len() + publics.len(),
             ),
         }
     }
@@ -103,6 +120,10 @@ impl<T: FieldElement> Plonky3Prover<T> {
                 (name, selector)
             })
             .collect::<Vec<(String, Vec<T>)>>();
+
+        if fixed.is_empty() && publics.is_empty() {
+            return;
+        }
 
         // get the config
         let config = get_config();
