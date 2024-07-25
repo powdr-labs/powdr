@@ -1,3 +1,5 @@
+/// Binary machine that works on chunks of 4 bits,
+/// to be used with permutation lookups.
 machine Binary4 with
     latch: latch,
     operation_id: operation_id,
@@ -32,30 +34,4 @@ machine Binary4 with
     C' = C * (1 - latch) + C_byte * FACTOR;
 
     [A_byte, B_byte, C_byte] in [P_A, P_B, P_C];
-}
-
-machine Main with degree: 256 {
-    reg pc[@pc];
-    reg X[<=];
-    reg Y[<=];
-    reg Z[<=];
-    reg A;
-
-    Binary4 bin;
-
-    // lookup to machine bin
-    instr or X, Y -> Z link => Z = bin.or(X, Y);
-
-    instr assert_eq X, Y { X = Y }
-
-    function main {
-        A <== or(2,3);
-        assert_eq A, 3;
-        A <== or(1,2);
-        assert_eq A, 3;
-        A <== or(3,4);
-        assert_eq A, 7;
-
-        return;
-    }
 }
