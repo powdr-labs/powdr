@@ -234,6 +234,10 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
         self.analyzed.commitment_count()
     }
 
+    fn preprocessed_width(&self) -> usize {
+        self.analyzed.constant_count() + self.analyzed.publics_count()
+    }
+
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
         #[cfg(debug_assertions)]
         {
