@@ -1,4 +1,4 @@
-machine BitAccess {
+machine BitAccess with degree: 1024 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
