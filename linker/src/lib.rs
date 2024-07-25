@@ -230,7 +230,7 @@ fn process_link(link: Link) -> PilStatement {
 
 #[cfg(test)]
 mod test {
-    use std::fs;
+    use std::{fs, path::PathBuf};
 
     use powdr_ast::object::PILGraph;
     use powdr_number::{FieldElement, GoldilocksField};
@@ -241,6 +241,18 @@ mod test {
     use pretty_assertions::assert_eq;
 
     use crate::link;
+
+    fn parse_analyze_and_compile_file<T: FieldElement>(file: &str) -> PILGraph {
+        let contents = fs::read_to_string(file).unwrap();
+        let parsed = parse_asm(Some(file), &contents).unwrap_or_else(|e| {
+            e.output_to_stderr();
+            panic!();
+        });
+        let resolved =
+            powdr_importer::load_dependencies_and_resolve(Some(PathBuf::from(file)), parsed)
+                .unwrap();
+        powdr_airgen::compile(convert_asm_to_pil::<T>(resolved).unwrap())
+    }
 
     fn parse_analyze_and_compile<T: FieldElement>(input: &str) -> PILGraph {
         let parsed = parse_asm(None, input).unwrap_or_else(|e| {
@@ -287,8 +299,7 @@ namespace main__rom(4 + 4);
             "{}/../test_data/asm/empty_vm.asm",
             env!("CARGO_MANIFEST_DIR")
         );
-        let contents = fs::read_to_string(file_name).unwrap();
-        let graph = parse_analyze_and_compile::<GoldilocksField>(&contents);
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -416,8 +427,7 @@ namespace main_sub__rom(16);
             "{}/../test_data/asm/different_signatures.asm",
             env!("CARGO_MANIFEST_DIR")
         );
-        let contents = fs::read_to_string(file_name).unwrap();
-        let graph = parse_analyze_and_compile::<GoldilocksField>(&contents);
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -500,8 +510,7 @@ namespace main__rom(1024);
             "{}/../test_data/asm/simple_sum.asm",
             env!("CARGO_MANIFEST_DIR")
         );
-        let contents = fs::read_to_string(file_name).unwrap();
-        let graph = parse_analyze_and_compile::<GoldilocksField>(&contents);
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -671,7 +680,7 @@ namespace main_vm(1024);
 
     #[test]
     fn permutation_instructions() {
-        let expected = r#"namespace main(65536);
+        let expected = r#"namespace main(256);
     pol commit _operation_id(i) query std::prover::Query::Hint(13);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
@@ -728,7 +737,7 @@ namespace main_vm(1024);
     instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[1] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
-namespace main__rom(65536);
+namespace main__rom(256);
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] + [13]*;
     pol constant p_X_const = [0, 0, 2, 0, 1, 0, 3, 0, 2, 0, 1, 0, 0, 0] + [0]*;
     pol constant p_X_read_free = [0]*;
@@ -760,15 +769,16 @@ namespace main__rom(65536);
     pol constant p_reg_write_Z_B = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-namespace main_bin(65536);
+namespace main_bin(256);
     pol commit operation_id;
-    pol constant latch(i) { if i % 4 == 3 { 1 } else { 0 } };
-    pol constant FACTOR(i) { 1 << (i + 1) % 4 * 8 };
-    let a = (|i| i % 256);
+    pol constant latch(i) { if i % 8 == 7 { 1 } else { 0 } };
+    let sum_sel = std::array::sum(sel);
+    pol constant FACTOR(i) { 1 << (i + 1) % 8 * 4 };
+    let a = (|i| i % 16);
     pol constant P_A(i) { a(i) };
-    let b = (|i| (i >> 8) % 256);
+    let b = (|i| (i >> 4) % 16);
     pol constant P_B(i) { b(i) };
-    pol constant P_C(i) { (a(i) | b(i)) & 255 };
+    pol constant P_C(i) { (a(i) | b(i)) & 15 };
     pol commit A_byte;
     pol commit B_byte;
     pol commit C_byte;
@@ -786,8 +796,7 @@ namespace main_bin(65536);
             "{}/../test_data/asm/permutations/vm_to_block.asm",
             env!("CARGO_MANIFEST_DIR")
         );
-        let contents = fs::read_to_string(file_name).unwrap();
-        let graph = parse_analyze_and_compile::<GoldilocksField>(&contents);
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
@@ -946,8 +955,7 @@ namespace main_submachine(1024);
             "{}/../test_data/asm/permutations/link_merging.asm",
             env!("CARGO_MANIFEST_DIR")
         );
-        let contents = fs::read_to_string(file_name).unwrap();
-        let graph = parse_analyze_and_compile::<GoldilocksField>(&contents);
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
