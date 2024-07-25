@@ -6,8 +6,8 @@ use powdr_pipeline::test_util::{
     assert_proofs_fail_for_invalid_witnesses_halo2,
     assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
     gen_estark_proof_with_backend_variant, make_prepared_pipeline, run_pilcom_test_file,
-    run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant, test_plonky3,
-    BackendVariant,
+    run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant,
+    test_plonky3_with_backend_variant, BackendVariant,
 };
 
 use test_log::test;
@@ -93,7 +93,7 @@ fn fibonacci() {
     verify_pil(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
-    test_plonky3(f, Default::default());
+    test_plonky3_with_backend_variant(f, Default::default(), BackendVariant::Monolithic);
 }
 
 #[test]
@@ -245,7 +245,7 @@ fn halo_without_lookup() {
 #[test]
 fn add() {
     let f = "pil/add.pil";
-    test_plonky3(f, Default::default());
+    test_plonky3_with_backend_variant(f, Default::default(), BackendVariant::Monolithic);
 }
 
 #[test]
@@ -312,6 +312,26 @@ fn naive_byte_decomposition_gl() {
 #[test]
 fn different_degrees() {
     let f = "pil/different_degrees.pil";
+    // Because machines have different lengths, this can only be proven
+    // with a composite proof.
+    run_pilcom_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    )
+    .unwrap();
+    test_halo2_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
+    gen_estark_proof_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
+}
+
+#[test]
+fn vm_to_block_dynamic_length() {
+    let f = "pil/vm_to_block_dynamic_length.pil";
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
     run_pilcom_with_backend_variant(
