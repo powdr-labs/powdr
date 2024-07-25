@@ -680,7 +680,7 @@ namespace main_vm(1024);
 
     #[test]
     fn permutation_instructions() {
-        let expected = r#"namespace main(32);
+        let expected = r#"namespace main(128);
     pol commit _operation_id(i) query std::prover::Query::Hint(13);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
@@ -737,7 +737,7 @@ namespace main_vm(1024);
     instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[1] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
-namespace main__rom(32);
+namespace main__rom(128);
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] + [13]*;
     pol constant p_X_const = [0, 0, 2, 0, 1, 0, 3, 0, 2, 0, 1, 0, 0, 0] + [0]*;
     pol constant p_X_read_free = [0]*;
@@ -769,7 +769,7 @@ namespace main__rom(32);
     pol constant p_reg_write_Z_B = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-namespace main_bin(32);
+namespace main_bin(128);
     pol commit operation_id;
     pol constant latch(i) { if i % 8 == 7 { 1 } else { 0 } };
     let sum_sel = std::array::sum(sel);
