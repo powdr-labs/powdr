@@ -169,21 +169,15 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::PublicReference(id) => {
-                assert!(
-                    self.analyzed
-                        .get_publics()
-                        .iter()
-                        .any(|(name, _, _)| name == id),
-                    "Referenced public value does not exist."
-                );
-                let idx = self
-                    .analyzed
-                    .get_publics()
+                let pub_ids = self.analyzed.get_publics();
+                match publics
                     .iter()
-                    .position(|(name, _, _)| name == id)
-                    .unwrap();
-                let elt = publics[idx];
-                elt.into()
+                    .enumerate()
+                    .find(|&(idx, _)| id == &pub_ids[idx].0)
+                {
+                    Some((_, &elt)) => return elt.into(),
+                    _ => panic!("Referenced public value does not exist"),
+                }
             }
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {

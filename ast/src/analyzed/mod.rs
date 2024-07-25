@@ -329,16 +329,16 @@ impl<T> Analyzed<T> {
             .public_declarations
             .values()
             .map(|public_declaration| {
-                let witness_name = public_declaration.referenced_poly_name();
-                let witness_column = {
+                let public_name = public_declaration.referenced_poly_name();
+                let public_col = {
                     let base = public_declaration.polynomial.poly_id.unwrap().id as usize;
                     match public_declaration.array_index {
                         Some(array_idx) => base + array_idx,
                         None => base,
                     }
                 };
-                let witness_offset = public_declaration.index as usize;
-                (witness_name, witness_column, witness_offset)
+                let row_offset = public_declaration.index as usize;
+                (public_name, public_col, row_offset)
             })
             .collect::<Vec<_>>();
 
