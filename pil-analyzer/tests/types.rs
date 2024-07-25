@@ -661,3 +661,17 @@ fn impl_type_resolution() {
     ";
     type_check(input, &[("F.r", "", "int")]);
 }
+
+#[test]
+fn trait_multi_generics() {
+    let input = "
+    trait ToTuple<S, I> {
+        get: S -> (S, I),
+    }
+    impl<S,I> ToTuple<int, (int, int)> {
+        get: |n| (n, (1, n+2)),
+    }
+    let r: (int, (int, int)) = ToTuple::get(3);
+    ";
+    type_check(input, &[("r", "", "(int, (int, int))")]);
+}
