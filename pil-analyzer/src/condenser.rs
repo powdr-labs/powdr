@@ -19,6 +19,7 @@ use powdr_ast::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
+        TraitImplementation,
     },
 };
 use powdr_number::{DegreeType, FieldElement};
@@ -34,12 +35,13 @@ type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    mut implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[ParsedIdentity],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
-    let mut condenser = Condenser::new(&definitions);
+    let mut condenser = Condenser::new(&definitions, &implementations);
 
     let mut condensed_identities = vec![];
     let mut intermediate_columns = HashMap::new();
@@ -143,6 +145,7 @@ pub fn condense<T: FieldElement>(
     }
     Analyzed {
         definitions,
+        implementations,
         public_declarations,
         intermediate_columns,
         identities: condensed_identities,
@@ -168,10 +171,14 @@ pub struct Condenser<'a, T> {
     /// The names of all new witness columns ever generated, to avoid duplicates.
     all_new_witness_names: HashSet<String>,
     new_constraints: Vec<AnalyzedIdentity<T>>,
+    implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
-    pub fn new(symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
+    pub fn new(
+        symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+        implementations: &'a HashMap<String, Vec<TraitImplementation<T>>>,
+    ) -> Self {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
             symbols,
@@ -182,6 +189,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             new_witnesses: vec![],
             all_new_witness_names: HashSet::new(),
             new_constraints: vec![],
+            implementations,
         }
     }
 
@@ -293,7 +301,13 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         if let Some(v) = self.symbol_values.get(&cache_key) {
             return Ok(v.clone());
         }
-        let value = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
+        let value = Definitions::lookup_with_symbols(
+            self.symbols,
+            self.implementations,
+            name,
+            type_args,
+            self,
+        )?;
         self.symbol_values
             .entry(cache_key)
             .or_insert_with(|| value.clone());
@@ -301,7 +315,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Definitions(self.symbols).lookup_public_reference(name)
+        Definitions(self.symbols, self.implementations).lookup_public_reference(name)
     }
 
     fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {

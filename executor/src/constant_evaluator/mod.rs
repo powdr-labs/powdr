@@ -9,7 +9,7 @@ use powdr_ast::{
     analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
-        IndexAccess,
+        IndexAccess, TraitImplementation,
     },
 };
 use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
@@ -66,6 +66,7 @@ fn generate_values<T: FieldElement>(
 ) -> Vec<T> {
     let symbols = CachedSymbols {
         symbols: &analyzed.definitions,
+        implementations: &analyzed.implementations,
         cache: Arc::new(RwLock::new(Default::default())),
         degree,
     };
@@ -155,6 +156,7 @@ type SymbolCache<'a, T> = BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     cache: Arc<RwLock<SymbolCache<'a, T>>>,
     degree: DegreeType,
 }
@@ -169,7 +171,13 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         if let Some(v) = self.cache.read().unwrap().get(&cache_key) {
             return Ok(v.clone());
         }
-        let result = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
+        let result = Definitions::lookup_with_symbols(
+            self.symbols,
+            self.implementations,
+            name,
+            type_args,
+            self,
+        )?;
         self.cache
             .write()
             .unwrap()

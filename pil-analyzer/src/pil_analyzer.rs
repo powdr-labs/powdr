@@ -73,7 +73,7 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
-    trait_implementations: HashMap<String, Vec<(SourceRef, TraitImplementation<Expression>)>>,
+    implementations: HashMap<String, Vec<(SourceRef, TraitImplementation<Expression>)>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -150,7 +150,7 @@ impl PILAnalyzer {
             for statement in file {
                 if let PilStatement::TraitImplementation(sr, ref trait_impl) = statement {
                     let name = trait_impl.name.to_string();
-                    self.trait_implementations
+                    self.implementations
                         .entry(name)
                         .or_default()
                         .push((sr, trait_impl.clone()));
@@ -335,6 +335,7 @@ impl PILAnalyzer {
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
         condenser::condense(
             self.definitions,
+            self.implementations.iter().map(|(_, t)| t),
             self.public_declarations,
             &self.identities,
             self.source_order,
@@ -430,10 +431,14 @@ impl PILAnalyzer {
             // and is field-independent (only uses integers)?
             .map(|degree| {
                 u64::try_from(
-                    evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
-                        .unwrap()
-                        .try_to_integer()
-                        .unwrap(),
+                    evaluator::evaluate_expression::<GoldilocksField>(
+                        &degree,
+                        &self.definitions,
+                        &self.implementations,
+                    )
+                    .unwrap()
+                    .try_to_integer()
+                    .unwrap(),
                 )
                 .unwrap()
             });
@@ -445,7 +450,7 @@ impl PILAnalyzer {
     }
 
     fn check_traits_overlap(&self) {
-        for implementations in self.trait_implementations.values() {
+        for implementations in self.implementations.values() {
             for (i, stmt1) in implementations.iter().enumerate() {
                 let (sr1, impl1) = match stmt1 {
                     PilStatement::TraitImplementation(sr1, impl_) => (sr1, impl_),
