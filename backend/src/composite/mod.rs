@@ -277,7 +277,7 @@ mod sub_prover {
             // We must ensure the backend can call the callback from multiple
             // threads (needed by Plonky3, as it requires WitgenCallback to be
             // Sync). So we wrap the data in a Mutex.
-            let callback_data = Mutex::new((challenge_sender, response_receiver, 0u8));
+            let callback_data = Mutex::new((challenge_sender, response_receiver, 1u8));
             let callback = WitgenCallback::<F>::new(Arc::new(move |_, challenge, stage| {
                 // Locking guarantees the sequencing of the stages:
                 let mut receiver_guard = callback_data.lock().unwrap();
@@ -420,7 +420,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
 
             let mut proof_results = Vec::new();
             let mut witness = Cow::Borrowed(witness);
-            for stage in 0.. {
+            for stage in 1.. {
                 // Filter out proofs that have completed and accumulate the
                 // challenges.
                 let mut challenges = BTreeMap::new();
