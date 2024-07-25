@@ -576,6 +576,17 @@ fn defined_trait() {
 }
 
 #[test]
+#[should_panic = "Trait Add not found."]
+fn undefined_trait() {
+    let input = "
+    impl<T> Add<int, int> {
+        add: |a, b| a + b,
+    }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
 #[should_panic = "Impls for Add: Types (int, fe) and (int, fe) overlap"]
 fn duplicated_trait() {
     let input = "
@@ -621,7 +632,7 @@ fn impl_combined_test() {
         v => v,
     };
 
-    let res = x(5);
+    let res: fe = x(5);
     ";
 
     type_check(input, &[("res", "", "fe")]);
