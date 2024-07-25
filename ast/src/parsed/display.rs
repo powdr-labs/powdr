@@ -631,21 +631,25 @@ impl<E: Display> Display for TraitImplementation<E> {
             format!("<{}>", self.type_scheme.vars)
         };
 
-        let trait_vars = if self.type_scheme.types.is_empty() {
-            Default::default()
-        } else {
-            format!("<{}>", self.type_scheme.types.iter().format(", "))
-        };
+        if let Type::Tuple(TupleType { items }) = &self.type_scheme.ty {
+            let trait_vars = if items.is_empty() {
+                Default::default()
+            } else {
+                format!("<{}>", items.iter().format(", "))
+            };
 
-        write!(
-            f,
-            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
-            trait_name = self.name,
-            methods = indent(
-                self.functions.iter().map(|m| format!("{m},\n")).format(""),
-                1
+            write!(
+                f,
+                "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+                trait_name = self.name,
+                methods = indent(
+                    self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                    1
+                )
             )
-        )
+        } else {
+            panic!("Type from trait scheme is not a tuple.")
+        }
     }
 }
 
