@@ -46,6 +46,11 @@ machine Main with
 
     link if instr_add => z = arith.add(x, y);
 
+    // Can't have a challenge without a witness column, so add one here
+    col witness dummy;
+    // Need a constraint so that it's not optimized away
+    dummy = dummy';
+
     // ==== Begin bus: Send tuple (0, x, y, z) with ARITH_INTERACTION_ID ====
 
     // Non-extension case, can be useful for debugging

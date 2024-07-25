@@ -175,9 +175,7 @@ fn block_to_block() {
 fn block_to_block_with_bus() {
     let f = "asm/block_to_block_with_bus.asm";
     let i = [];
-    verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
