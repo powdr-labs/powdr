@@ -28,6 +28,8 @@ pub(crate) struct PowdrCircuit<'a, T> {
     witness: Option<&'a [(String, Vec<T>)]>,
     /// Callback to augment the witness in the later stages
     _witgen_callback: Option<WitgenCallback<T>>,
+    /// Identity of all public cells
+    publics: Vec<(String, usize, usize)>,
     /// The matrix of preprocessed values, used in debug mode to check the constraints before proving
     #[cfg(debug_assertions)]
     preprocessed: Option<RowMajorMatrix<Goldilocks>>,
@@ -82,6 +84,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             witness: None,
             _witgen_callback: None,
             #[cfg(debug_assertions)]
+            publics: analyzed.get_publics(),
             preprocessed: None,
         }
     }
@@ -92,8 +95,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
     /// Calculates public values from generated witness values.
     pub(crate) fn get_public_values(&self) -> Vec<Goldilocks> {
-        let publics = self.analyzed.get_publics();
-
         let witness = self
             .witness
             .as_ref()
@@ -102,13 +103,15 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             .map(|(name, values)| (name, values))
             .collect::<BTreeMap<_, _>>();
 
-        publics
-            .into_iter()
-            .map(|(col_name, _, idx)| {
+        let public_values = self
+            .publics
+            .iter()
+            .map(move |(col_name, _, idx)| {
                 let vals = *witness.get(&col_name).unwrap();
-                cast_to_goldilocks(vals[idx])
+                cast_to_goldilocks(vals[*idx])
             })
-            .collect()
+            .collect();
+        public_values
     }
 
     pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
@@ -136,11 +139,12 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 
     /// Conversion to plonky3 expression
-    fn to_plonky3_expr<AB: AirBuilder<F = Val>>(
+    fn to_plonky3_expr<AB: AirBuilder<F = Val> + AirBuilderWithPublicValues>(
         &self,
         e: &AlgebraicExpression<T>,
         main: &AB::M,
         fixed: &AB::M,
+        publics: &Vec<<AB as AirBuilderWithPublicValues>::PublicVar>,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -168,13 +172,23 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     }
                 }
             }
-            AlgebraicExpression::PublicReference(_) => unimplemented!(
-                "public references are not supported inside algebraic expressions in plonky3"
-            ),
+            AlgebraicExpression::PublicReference(id) => {
+                assert!(
+                    self.publics.iter().any(|(name, _, _)| name == id),
+                    "Referenced public value does not exist."
+                );
+                let idx = self
+                    .publics
+                    .iter()
+                    .position(|(name, _, _)| name == id)
+                    .unwrap();
+                let elt = publics[idx];
+                elt.into()
+            }
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let left = self.to_plonky3_expr::<AB>(left, main, fixed);
-                let right = self.to_plonky3_expr::<AB>(right, main, fixed);
+                let left = self.to_plonky3_expr::<AB>(left, main, fixed, publics);
+                let right = self.to_plonky3_expr::<AB>(right, main, fixed, publics);
 
                 match op {
                     AlgebraicBinaryOperator::Add => left + right,
@@ -186,7 +200,8 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(expr, main, fixed);
+                let expr: <AB as AirBuilder>::Expr =
+                    self.to_plonky3_expr::<AB>(expr, main, fixed, publics);
 
                 match op {
                     AlgebraicUnaryOperator::Minus => -expr,
@@ -236,17 +251,17 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
         let main = builder.main();
         let fixed = builder.preprocessed();
         let pi = builder.public_values();
-        let publics = self.analyzed.get_publics();
-        assert_eq!(publics.len(), pi.len());
+        assert_eq!(self.publics.len(), pi.len());
 
         let local = main.row_slice(0);
 
         // public constraints
         let pi_moved = pi.to_vec();
+        let pi_deref = pi_moved.clone();
         let fixed_local = fixed.row_slice(0);
         let public_offset = self.analyzed.constant_count();
 
-        publics.iter().zip(pi_moved).enumerate().for_each(
+        self.publics.iter().zip(pi_moved).enumerate().for_each(
             |(index, ((_, col_id, _), public_value))| {
                 let selector = fixed_local[public_offset + index];
                 builder.assert_bool(selector);
@@ -272,6 +287,7 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
                         identity.left.selector.as_ref().unwrap(),
                         &main,
                         &fixed,
+                        &pi_deref,
                     );
 
                     builder.assert_zero(left);
