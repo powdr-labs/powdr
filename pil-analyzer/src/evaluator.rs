@@ -551,6 +551,39 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         )))
     }
 
+    fn add_hint(
+        &mut self,
+        colmexpr: &AlgebraicExpression<T>,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Ok(match expr {
+            AlgebraicExpression::Reference(reference) => self.eval_reference(reference)?,
+            AlgebraicExpression::PublicReference(_) => unimplemented!(),
+            AlgebraicExpression::Challenge(challenge) => self.eval_challenge(challenge)?,
+            AlgebraicExpression::Number(n) => Value::FieldElement(*n).into(),
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                let left = self.eval_expr(left)?;
+                let right = self.eval_expr(right)?;
+                match (left.as_ref(), right.as_ref()) {
+                    (Value::FieldElement(left), Value::FieldElement(right)) => {
+                        evaluate_binary_operation_field(*left, (*op).into(), *right)?
+                    }
+                    _ => panic!("Expected field elements"),
+                }
+            }
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr: operand }) => {
+                match op {
+                    AlgebraicUnaryOperator::Minus => {
+                        let operand = self.eval_expr(operand)?;
+                        match operand.as_ref() {
+                            Value::FieldElement(fe) => Value::FieldElement(-*fe).into(),
+                            _ => panic!("Expected field element"),
+                        }
+                    }
+                }
+            }
+        })
+    }
+
     fn add_constraints(
         &mut self,
         _constraints: Arc<Value<'a, T>>,

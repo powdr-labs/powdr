@@ -243,3 +243,17 @@ fn new_fixed_column_as_closure() {
     "#;
     analyze_string::<GoldilocksField>(input);
 }
+
+#[test]
+fn set_hint() {
+    let input = r#"namespace N(16);
+    let x;
+    let y;
+    std::prover::add_hint(x, || 1);
+    std::prover::add_hint(y, |i| std::prover::eval(x));
+    "#;
+    let expected = r#"namespace N(16);
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
+}
