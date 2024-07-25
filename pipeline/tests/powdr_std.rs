@@ -366,3 +366,9 @@ fn btree() {
     let f = "std/btree_test.asm";
     execute_test_file(f, Default::default(), vec![]).unwrap();
 }
+
+#[test]
+fn expand_fixed() {
+    let f = "std/expand_fixed.asm";
+    execute_test_file(f, Default::default(), vec![]).unwrap();
+}

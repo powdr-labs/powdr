@@ -2,9 +2,9 @@ use powdr_backend::BackendType;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
-        execute_test_file, gen_estark_proof, gen_estark_proof_with_backend_variant,
-        make_prepared_pipeline, resolve_test_file, test_halo2, test_halo2_with_backend_variant,
-        verify_test_file, BackendVariant,
+        gen_estark_proof, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
+        resolve_test_file, test_halo2, test_halo2_with_backend_variant, verify_test_file,
+        BackendVariant,
     },
     util::{read_poly_set, FixedPolySet, WitnessPolySet},
     Pipeline,
@@ -759,10 +759,4 @@ fn trait_parsing() {
     // Should be expanded/renamed when traits functionality is fully implemented
     let f = "asm/trait_parsing.asm";
     verify_asm(f, Default::default());
-}
-
-#[test]
-fn expand_fixed() {
-    let f = "asm/expand_fixed.asm";
-    execute_test_file(f, Default::default(), vec![]).unwrap();
 }
