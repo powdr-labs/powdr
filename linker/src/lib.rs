@@ -803,7 +803,7 @@ namespace main_bin(32);
 
     #[test]
     fn link_merging() {
-        let expected = r#"namespace main(1024);
+        let expected = r#"namespace main(32);
     pol commit tmp;
     pol commit _operation_id(i) query std::prover::Query::Hint(18);
     pol constant _block_enforcer_last_step = [0]* + [1];
@@ -890,7 +890,7 @@ namespace main_bin(32);
     instr_add_with_sub + instr_sub $ [1, X * instr_add_with_sub + X * instr_sub, Y * instr_add_with_sub + Y * instr_sub, Z * instr_add_with_sub + Z * instr_sub] in main_submachine.latch $ [main_submachine.operation_id, main_submachine.x, main_submachine.z, main_submachine.y];
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
-namespace main__rom(1024);
+namespace main__rom(32);
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] + [18]*;
     pol constant p_W_const = [0]*;
     pol constant p_W_read_free = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0] + [0]*;
@@ -943,7 +943,7 @@ namespace main__rom(1024);
     pol constant p_reg_write_Z_C = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-namespace main_submachine(1024);
+namespace main_submachine(32);
     pol commit operation_id;
     pol constant latch = [1]*;
     pol commit x;
