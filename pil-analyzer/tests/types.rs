@@ -593,20 +593,6 @@ fn duplicated_trait() {
 }
 
 #[test]
-#[should_panic = "Named variables are not supported in impls: impl<T, Q> Add<int, Q>"]
-fn impl_with_typevar() {
-    let input = "
-    trait Add<T, Q> {
-        add: T, T -> Q,
-    }
-    impl<T, Q> Add<int, Q> {
-        add: |a, b| a + b,
-    }
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
 #[should_panic = "Trait Add has 2 type vars, but implementation has 1"]
 fn impl_with_diff_length() {
     let input = "
