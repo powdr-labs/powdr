@@ -12,7 +12,7 @@ use powdr_ast::parsed::types::{ArrayType, TupleType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
-    SymbolCategory,
+    SymbolCategory, TraitImplementation,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
@@ -21,6 +21,7 @@ use powdr_ast::analyzed::{
     PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
+use powdr_parser_util::SourceRef;
 
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::{infer_types, unify_traits_types};
@@ -72,7 +73,7 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
-    trait_implementations: HashMap<String, Vec<PilStatement>>,
+    trait_implementations: HashMap<String, Vec<(SourceRef, TraitImplementation<Expression>)>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -147,12 +148,12 @@ impl PILAnalyzer {
         for PILFile(file) in files {
             self.current_namespace = Default::default();
             for statement in file {
-                if let PilStatement::TraitImplementation(_, ref trait_impl) = statement {
+                if let PilStatement::TraitImplementation(sr, ref trait_impl) = statement {
                     let name = trait_impl.name.to_string();
                     self.trait_implementations
                         .entry(name)
                         .or_default()
-                        .push(statement.clone());
+                        .push((sr, trait_impl.clone()));
                 }
                 self.handle_statement(statement);
             }

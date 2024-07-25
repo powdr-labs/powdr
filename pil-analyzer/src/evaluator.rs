@@ -18,7 +18,7 @@ use powdr_ast::{
         types::{Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
+        Pattern, StatementInsideBlock, TraitDeclaration, UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -138,6 +138,7 @@ pub enum Value<'a, T> {
     Enum(&'a str, Option<Vec<Arc<Self>>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
+    TraitFunction(TraitDeclaration, TraitFunction),
 }
 
 impl<'a, T: FieldElement> From<T> for Value<'a, T> {
@@ -399,6 +400,11 @@ impl<'a, T> Closure<'a, T> {
 
 pub struct Definitions<'a>(pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>);
 
+// pub struct Definitions<'a>(
+//     pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+//     pub &'a HashMap<String, Vec<(SourceRef, TraitImplementation<Expression>)>>,
+// );
+
 impl<'a> Definitions<'a> {
     /// Implementation of `lookup` that allows to provide a different implementation
     /// of SymbolLookup for the recursive call.
@@ -451,6 +457,13 @@ impl<'a> Definitions<'a> {
                     } else {
                         Value::TypeConstructor(&variant.name).into()
                     }
+                }
+                Some(FunctionValueDefinition::TraitFunction(trait_decl, function)) => {
+                    let fname = format!("{}::{}", trait_decl.name, function.name);
+                    let (symbol, def) = definitions.get(&fname).ok_or_else(|| {
+                        EvalError::SymbolNotFound(format!("Symbol {} not found.", &name))
+                    })?;
+                    Value::TraitFunction(trait_decl, function).into()
                 }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
@@ -963,6 +976,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.type_args = type_args.clone();
                 self.expand(&lambda.body)?;
             }
+            Value::TraitFunction(decl_name, function) => {}
             e => panic!("Expected function but got {e}"),
         };
         Ok(())
@@ -1676,5 +1690,20 @@ mod test {
     ";
 
         assert_eq!(parse_and_evaluate_symbol(input, "g"), "7".to_string());
+    }
+
+    #[test]
+    fn basic_trait_impl_eval() {
+        let input = "
+        trait Add<T> {
+            add: T, T -> T,
+        }
+        impl<T> Add<int> {
+            add: |a, b| a + b,
+        }
+        let r: int = Add::add(3, 4);  
+        ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "r"), "7".to_string());
     }
 }
