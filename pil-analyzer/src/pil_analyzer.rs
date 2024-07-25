@@ -503,9 +503,7 @@ impl PILAnalyzer {
                         );
                     }
                     self.check_traits_pairs(&types1, &types2)
-                        .map_err(|err| {
-                            sr1.with_error(format!("Impls for {}: {err}", absolute_name))
-                        })
+                        .map_err(|err| sr1.with_error(format!("Impls for {absolute_name}: {err}")))
                         .unwrap()
                 }
             }
