@@ -619,3 +619,27 @@ fn impl_with_diff_length() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+fn impl_type_resolution() {
+    let input = "
+    namespace std::convert(4);
+        let fe = || fe();
+    namespace F(4);
+    
+        trait Add<T> {
+            add: T, T -> T,
+        }
+
+        impl<T> Add<fe> {
+            add: |a, b| a + b,
+        }
+
+        impl<T> Add<int> {
+            add: |a, b| a + b,
+        }
+
+        let r: int = Add::add(3, 4);
+    ";
+    type_check(input, &[("F.r", "", "int")]);
+}

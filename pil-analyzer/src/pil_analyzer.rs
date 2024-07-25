@@ -452,19 +452,18 @@ impl PILAnalyzer {
                 };
 
                 let types1 = impl1.type_scheme.types.clone();
+                let absolute_name = self.driver().resolve_decl(impl1.name.name());
                 if types1.iter().any(|t| matches!(t, Type::NamedType(_, None))) {
                     panic!("Named variables are not supported in impls: {impl1}")
                 }
 
                 let trait_decl = self
                     .definitions
-                    .get(impl1.name.name())
-                    .unwrap_or_else(|| panic!("Trait {} not found", impl1.name.name()))
+                    .get(&absolute_name)
+                    .unwrap_or_else(|| panic!("Trait {} not found", absolute_name))
                     .1
                     .as_ref()
-                    .unwrap_or_else(|| {
-                        panic!("Trait definition for {} not found", impl1.name.name())
-                    });
+                    .unwrap_or_else(|| panic!("Trait definition for {} not found", absolute_name));
 
                 let trait_decl = match trait_decl {
                     FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl,
@@ -476,7 +475,7 @@ impl PILAnalyzer {
                         "{}",
                         sr1.with_error(format!(
                             "Trait {} has {} type vars, but implementation has {}",
-                            impl1.name,
+                            absolute_name,
                             trait_decl.type_vars.len(),
                             types1.len(),
                         ))
@@ -500,14 +499,16 @@ impl PILAnalyzer {
                             sr1.with_error(format!(
                                 // TODO sr2.with_error(...))
                                 "Trait {} has {} type vars, but implementation has {}",
-                                impl2.name,
+                                self.driver().resolve_decl(impl2.name.name()),
                                 trait_decl.type_vars.len(),
                                 types2.len(),
                             ))
                         );
                     }
                     self.check_traits_pairs(&types1, &types2)
-                        .map_err(|err| sr1.with_error(format!("Impls for {}: {err}", impl1.name)))
+                        .map_err(|err| {
+                            sr1.with_error(format!("Impls for {}: {err}", absolute_name))
+                        })
                         .unwrap()
                 }
             }
