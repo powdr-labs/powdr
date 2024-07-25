@@ -12,7 +12,7 @@ machine Binary with
     C = A + B;
 }
 
-machine Main with degree: 65536 {
+machine Main with degree: 256 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

@@ -172,6 +172,13 @@ fn block_to_block() {
 }
 
 #[test]
+fn block_to_block_with_bus() {
+    let f = "asm/block_to_block_with_bus.asm";
+    let i = [];
+    test_halo2(f, slice_to_vec(&i));
+}
+
+#[test]
 fn vm_instr_param_mapping() {
     let f = "asm/vm_instr_param_mapping.asm";
     let i = [];
