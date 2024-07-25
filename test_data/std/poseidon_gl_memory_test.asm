@@ -6,16 +6,6 @@ machine Main with degree: 65536 {
     reg pc[@pc];
     reg X1[<=];
     reg X2[<=];
-    reg X3[<=];
-    reg X4[<=];
-    reg X5[<=];
-    reg X6[<=];
-    reg X7[<=];
-    reg X8[<=];
-    reg X9[<=];
-    reg X10[<=];
-    reg X11[<=];
-    reg X12[<=];
     reg ADDR1[<=];
     reg ADDR2[<=];
 

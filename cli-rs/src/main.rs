@@ -62,10 +62,10 @@ enum Commands {
         #[arg(long)]
         coprocessors: Option<String>,
 
-        /// Convert from the executable ELF file instead of the assembly.
+        /// Convert from the assembly files instead of the ELF executable.
         #[arg(short, long)]
         #[arg(default_value_t = false)]
-        elf: bool,
+        asm: bool,
 
         /// Run a long execution in chunks (Experimental and not sound!)
         #[arg(short, long)]
@@ -224,14 +224,14 @@ fn run_command(command: Commands) {
             field,
             output_directory,
             coprocessors,
-            elf,
+            asm,
             continuations,
         } => {
             call_with_field!(compile_rust::<field>(
                 &file,
                 Path::new(&output_directory),
                 coprocessors,
-                elf,
+                !asm,
                 continuations
             ))
         }
@@ -435,7 +435,7 @@ fn execute<F: FieldElement>(
         (false, false) => {
             let mut pipeline = pipeline.with_prover_inputs(inputs);
             let program = pipeline.compute_asm_string().unwrap().clone();
-            let (trace, _mem) = powdr_riscv_executor::execute::<F>(
+            let (trace, _mem, _reg_mem) = powdr_riscv_executor::execute::<F>(
                 &program.1,
                 powdr_riscv_executor::MemoryState::new(),
                 pipeline.data_callback().unwrap(),

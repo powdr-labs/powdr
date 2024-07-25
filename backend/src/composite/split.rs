@@ -15,6 +15,7 @@ use powdr_ast::{
         visitor::{ExpressionVisitable, VisitOrder},
     },
 };
+use powdr_executor::constant_evaluator::{VariablySizedColumn, MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 use powdr_number::FieldElement;
 
 const DUMMY_COLUMN_NAME: &str = "__dummy";
@@ -43,32 +44,91 @@ pub(crate) fn machine_witness_columns<F: FieldElement>(
     machine_pil: &Analyzed<F>,
     machine_name: &str,
 ) -> Vec<(String, Vec<F>)> {
+    let machine_columns = select_machine_columns(
+        all_witness_columns,
+        machine_pil.committed_polys_in_source_order(),
+    );
+    let size = machine_columns
+        .iter()
+        .map(|(_, column)| column.len())
+        .unique()
+        .exactly_one()
+        .unwrap_or_else(|err| {
+            if err.try_len().unwrap() == 0 {
+                // No witness column, use degree of provided PIL
+                // In practice, we'd at least expect a bus accumulator here, so this should not happen
+                // in any sound setup (after #1498)
+                machine_pil.degree() as usize
+            } else {
+                panic!("Machine {machine_name} has witness columns of different sizes")
+            }
+        });
     let dummy_column_name = format!("{machine_name}.{DUMMY_COLUMN_NAME}");
-    let dummy_column = vec![F::zero(); machine_pil.degree() as usize];
+    let dummy_column = vec![F::zero(); size];
     iter::once((dummy_column_name, dummy_column))
-        .chain(select_machine_columns(
-            all_witness_columns,
-            machine_pil.committed_polys_in_source_order(),
-        ))
+        .chain(machine_columns.into_iter().cloned())
         .collect::<Vec<_>>()
 }
 
 /// Given a set of columns and a PIL describing the machine, returns the fixed column that belong to the machine.
 pub(crate) fn machine_fixed_columns<F: FieldElement>(
-    all_fixed_columns: &[(String, Vec<F>)],
+    all_fixed_columns: &[(String, VariablySizedColumn<F>)],
     machine_pil: &Analyzed<F>,
-) -> Vec<(String, Vec<F>)> {
-    select_machine_columns(
+) -> BTreeMap<usize, Vec<(String, VariablySizedColumn<F>)>> {
+    let machine_columns = select_machine_columns(
         all_fixed_columns,
         machine_pil.constant_polys_in_source_order(),
-    )
+    );
+    let sizes = machine_columns
+        .iter()
+        .map(|(_, column)| column.available_sizes())
+        .collect::<BTreeSet<_>>();
+
+    assert!(
+        sizes.len() <= 1,
+        "All fixed columns of a machine must have the same sizes"
+    );
+
+    let sizes = sizes.into_iter().next().unwrap_or_else(|| {
+        // There is no fixed column with a set size. So either the PIL has a degree, or we
+        // assume all possible degrees.
+        let machine_degrees = machine_pil.degrees();
+        assert!(
+            machine_degrees.len() <= 1,
+            "All fixed columns of a machine must have the same sizes"
+        );
+        match machine_degrees.iter().next() {
+            Some(&degree) => iter::once(degree as usize).collect(),
+            None => (MIN_DEGREE_LOG..=MAX_DEGREE_LOG)
+                .map(|log_size| 1 << log_size)
+                .collect(),
+        }
+    });
+
+    sizes
+        .into_iter()
+        .map(|size| {
+            (
+                size,
+                machine_columns
+                    .iter()
+                    .map(|(name, column)| {
+                        (
+                            name.clone(),
+                            column.get_by_size(size).unwrap().to_vec().into(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect()
 }
 
 /// Filter the given columns to only include those that are referenced by the given symbols.
-fn select_machine_columns<F: FieldElement, T>(
-    columns: &[(String, Vec<F>)],
+fn select_machine_columns<'a, T, C>(
+    columns: &'a [(String, C)],
     symbols: Vec<&(Symbol, T)>,
-) -> Vec<(String, Vec<F>)> {
+) -> Vec<&'a (String, C)> {
     let names = symbols
         .into_iter()
         .flat_map(|(symbol, _)| symbol.array_elements().map(|(name, _)| name))
@@ -76,7 +136,6 @@ fn select_machine_columns<F: FieldElement, T>(
     columns
         .iter()
         .filter(|(name, _)| names.contains(name))
-        .cloned()
         .collect::<Vec<_>>()
 }
 

@@ -28,7 +28,7 @@ let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_c
     _ => panic("Expected lookup constraint")
 };
 
-// Compute z' = z + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector, using extension field arithmetic
+/// Compute z' = z + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector, using extension field arithmetic
 let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = query |acc, alpha, beta, lookup_constraint, multiplicities| {
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
     
@@ -51,15 +51,15 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = quer
     unpack_ext_array(res)
 };
     
-// Adds constraints that enforce that rhs is the lookup for lhs
-// Arguments:
-// - is_first: A column that is 1 for the first row and 0 for the rest
-// - alpha: A challenge used to compress the LHS and RHS values
-// - beta: A challenge used to update the accumulator
-// - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
-//        are done on the F_{p^2} extension field.
-// - lookup_constraint: The lookup constraint
-// - multiplicities: The multiplicities which shows how many times each RHS value appears in the LHS                  
+/// Adds constraints that enforce that rhs is the lookup for lhs
+/// Arguments:
+/// - is_first: A column that is 1 for the first row and 0 for the rest
+/// - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
+///        are done on the F_{p^2} extension field.
+/// - alpha: A challenge used to compress the LHS and RHS values
+/// - beta: A challenge used to update the accumulator
+/// - lookup_constraint: The lookup constraint
+/// - multiplicities: The multiplicities which shows how many times each RHS value appears in the LHS                  
 let lookup: expr, expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> Constr[] = |is_first, acc, alpha, beta, lookup_constraint, multiplicities| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);

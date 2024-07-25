@@ -846,6 +846,10 @@ impl<T> Identity<SelectedExpressions<AlgebraicExpression<T>>> {
             a => (a, None),
         }
     }
+
+    pub fn degree(&self) -> usize {
+        self.children().map(|e| e.degree()).max().unwrap_or(0)
+    }
 }
 
 impl<R> Identity<parsed::SelectedExpressions<parsed::Expression<R>>> {
@@ -1183,6 +1187,22 @@ impl<T> AlgebraicExpression<T> {
             }
         }
     }
+
+    /// Returns the degree of the expressions
+    pub fn degree(&self) -> usize {
+        match self {
+            // One for each column
+            AlgebraicExpression::Reference(_) => 1,
+            // Multiplying two expressions adds their degrees
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                op: AlgebraicBinaryOperator::Mul,
+                left,
+                right,
+            }) => left.degree() + right.degree(),
+            // In all other cases, we take the maximum of the degrees of the children
+            _ => self.children().map(|e| e.degree()).max().unwrap_or(0),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
@@ -1400,6 +1420,8 @@ impl Display for PolynomialType {
 mod tests {
     use powdr_parser_util::SourceRef;
 
+    use crate::analyzed::{AlgebraicReference, PolyID, PolynomialType};
+
     use super::{AlgebraicExpression, Analyzed};
 
     #[test]
@@ -1438,5 +1460,36 @@ mod tests {
         pil_result.identities[1].id = 6;
         assert_eq!(pil.identities, pil_result.identities);
         assert_eq!(pil.source_order, pil_result.source_order);
+    }
+
+    #[test]
+    fn test_degree() {
+        let column = AlgebraicExpression::<i32>::Reference(AlgebraicReference {
+            name: "column".to_string(),
+            poly_id: PolyID {
+                id: 0,
+                ptype: PolynomialType::Committed,
+            },
+            next: false,
+        });
+        let one = AlgebraicExpression::Number(1);
+
+        let expr = one.clone() + one.clone() * one.clone();
+        assert_eq!(expr.degree(), 0);
+
+        let expr = column.clone() + one.clone() * one.clone();
+        assert_eq!(expr.degree(), 1);
+
+        let expr = column.clone() + one.clone() * column.clone();
+        assert_eq!(expr.degree(), 1);
+
+        let expr = column.clone() + column.clone() * column.clone();
+        assert_eq!(expr.degree(), 2);
+
+        let expr = column.clone() + column.clone() * (column.clone() + one.clone());
+        assert_eq!(expr.degree(), 2);
+
+        let expr = column.clone() * column.clone() * column.clone();
+        assert_eq!(expr.degree(), 3);
     }
 }

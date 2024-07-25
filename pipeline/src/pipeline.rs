@@ -10,6 +10,7 @@ use std::{
     time::Instant,
 };
 
+use crate::util::PolySet;
 use log::Level;
 use mktemp::Temp;
 use powdr_ast::{
@@ -20,21 +21,24 @@ use powdr_ast::{
 };
 use powdr_backend::{BackendOptions, BackendType, Proof};
 use powdr_executor::{
-    constant_evaluator,
+    constant_evaluator::{self, get_uniquely_sized_cloned, VariablySizedColumn},
     witgen::{
         chain_callbacks, extract_publics, unused_query_callback, QueryCallback, WitgenCallback,
         WitnessGenerator,
     },
 };
-use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
+use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite};
 use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
-    handle_simple_queries_callback, inputs_to_query_callback, serde_data_to_query_callback,
-    util::{read_poly_set, FixedPolySet, WitnessPolySet},
+    dict_data_to_query_callback, handle_simple_queries_callback, inputs_to_query_callback,
+    serde_data_to_query_callback,
+    util::{FixedPolySet, WitnessPolySet},
 };
+use std::collections::BTreeMap;
 
 type Columns<T> = Vec<(String, Vec<T>)>;
+type VariablySizedColumns<T> = Vec<(String, VariablySizedColumn<T>)>;
 
 #[derive(Default, Clone)]
 pub struct Artifacts<T: FieldElement> {
@@ -66,7 +70,7 @@ pub struct Artifacts<T: FieldElement> {
     /// An optimized .pil file.
     optimized_pil: Option<Arc<Analyzed<T>>>,
     /// Fully evaluated fixed columns.
-    fixed_cols: Option<Arc<Columns<T>>>,
+    fixed_cols: Option<Arc<VariablySizedColumns<T>>>,
     /// Generated witnesses.
     witness: Option<Arc<Columns<T>>>,
     /// The proof (if successful).
@@ -276,6 +280,10 @@ impl<T: FieldElement> Pipeline<T> {
         self.add_query_callback(Arc::new(inputs_to_query_callback(inputs)))
     }
 
+    pub fn with_prover_dict_inputs(self, inputs: BTreeMap<u32, Vec<T>>) -> Self {
+        self.add_query_callback(Arc::new(dict_data_to_query_callback(inputs)))
+    }
+
     pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
         self.arguments.backend = Some(backend);
         self.arguments.backend_options = options.unwrap_or_default();
@@ -391,7 +399,7 @@ impl<T: FieldElement> Pipeline<T> {
 
     /// Reads previously generated fixed columns from the provided directory.
     pub fn read_constants(self, directory: &Path) -> Self {
-        let fixed = read_poly_set::<FixedPolySet, T>(directory);
+        let fixed = FixedPolySet::<T>::read(directory);
 
         Pipeline {
             artifact: Artifacts {
@@ -404,7 +412,7 @@ impl<T: FieldElement> Pipeline<T> {
 
     /// Reads a previously generated witness from the provided directory.
     pub fn read_witness(self, directory: &Path) -> Self {
-        let witness = read_poly_set::<WitnessPolySet, T>(directory);
+        let witness = WitnessPolySet::<T>::read(directory);
 
         Pipeline {
             artifact: Artifacts {
@@ -493,24 +501,29 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
-    fn maybe_write_constants(&self, constants: &[(String, Vec<T>)]) -> Result<(), Vec<String>> {
+    fn maybe_write_constants(
+        &self,
+        constants: &VariablySizedColumns<T>,
+    ) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|_| "constants.bin".to_string())? {
-            write_polys_file(&path, constants).map_err(|e| vec![format!("{}", e)])?;
+            constants.write(&path).map_err(|e| vec![format!("{}", e)])?;
         }
         Ok(())
     }
 
     fn maybe_write_witness(
         &self,
-        fixed: &[(String, Vec<T>)],
-        witness: &[(String, Vec<T>)],
+        fixed: &VariablySizedColumns<T>,
+        witness: &Columns<T>,
     ) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
-            write_polys_file(&path, witness).map_err(|e| vec![format!("{}", e)])?;
+            witness.write(&path).map_err(|e| vec![format!("{}", e)])?;
         }
 
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
+                // TODO: Handle multiple sizes
+                let fixed = get_uniquely_sized_cloned(fixed).unwrap();
                 let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
@@ -793,7 +806,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.optimized_pil.as_ref().unwrap().clone())
     }
 
-    pub fn compute_fixed_cols(&mut self) -> Result<Arc<Columns<T>>, Vec<String>> {
+    pub fn compute_fixed_cols(&mut self) -> Result<Arc<VariablySizedColumns<T>>, Vec<String>> {
         if let Some(ref fixed_cols) = self.artifact.fixed_cols {
             return Ok(fixed_cols.clone());
         }
@@ -815,7 +828,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
     }
 
-    pub fn fixed_cols(&self) -> Result<Arc<Columns<T>>, Vec<String>> {
+    pub fn fixed_cols(&self) -> Result<Arc<VariablySizedColumns<T>>, Vec<String>> {
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
     }
 
