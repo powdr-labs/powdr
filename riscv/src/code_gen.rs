@@ -253,7 +253,10 @@ fn translate_program_impl(
     }
     statements.extend([
         "set_reg 0, 0;".to_string(),
-        format!("jump {}, 1;", program.start_function().as_ref()),
+        format!(
+            "jump {}, 1;",
+            escape_label(program.start_function().as_ref())
+        ),
         "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
     ]);
     for s in program.take_executable_statements() {

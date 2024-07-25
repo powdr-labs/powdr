@@ -24,7 +24,8 @@ powdr-pipeline.workspace = true
 powdr-riscv-executor.workspace = true
 powdr-riscv-syscalls.workspace = true
 
-goblin = { version = "0.8" }
+gimli = "0.31"
+goblin = "0.8"
 lazy_static = "1.4.0"
 itertools = "0.13"
 lalrpop-util = { version = "^0.19", features = ["lexer"] }
@@ -32,12 +33,13 @@ log = "0.4.17"
 mktemp = "0.5.0"
 num-traits = "0.2.15"
 raki = "0.1.4"
-serde_json = "1.0"
 # This is only here to work around https://github.com/lalrpop/lalrpop/issues/750
 # It should be removed once that workaround is no longer needed.
 regex-syntax = { version = "0.6", default_features = false, features = [
     "unicode",
 ] }
+serde_json = "1.0"
+thiserror = "1.0"
 
 [build-dependencies]
 lalrpop = "^0.19"
