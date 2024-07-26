@@ -655,10 +655,10 @@ where
             .functions
             .iter()
             .map(|named| NamedExpression {
-                name: named.name,
+                name: named.name.clone(),
                 body: Box::new(
                     self.expression_processor(&type_vars)
-                        .process_expression(*named.body),
+                        .process_expression(named.body.as_ref().clone()),
                 ),
             })
             .collect();

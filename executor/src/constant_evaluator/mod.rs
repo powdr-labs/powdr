@@ -6,7 +6,7 @@ use std::{
 pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
+    analyzed::{Analyzed, Expression, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
         IndexAccess, TraitImplementation,

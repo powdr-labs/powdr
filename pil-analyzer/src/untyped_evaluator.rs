@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use powdr_ast::parsed;
 use powdr_number::{BigInt, GoldilocksField};
 
@@ -19,6 +21,7 @@ pub fn evaluate_expression_to_int(
     evaluator::evaluate_expression::<GoldilocksField>(
         &ExpressionProcessor::new(driver, &Default::default()).process_expression(expr),
         driver.definitions(),
+        &HashMap::default(),
     )?
     .try_to_integer()
 }

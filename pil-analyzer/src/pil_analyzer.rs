@@ -147,19 +147,20 @@ impl PILAnalyzer {
 
         for PILFile(file) in files {
             self.current_namespace = Default::default();
-            for statement in file {
+            for ref statement in file {
                 if let PilStatement::TraitImplementation(sr, trait_impl) = statement {
-                    let mut counters = self.symbol_counters.unwrap();
+                    //let mut counters = self.symbol_counters.as_mut().unwrap();
+                    let mut counters = Counters::default();
                     let ti = StatementProcessor::new(
                         self.driver(),
                         &mut counters,
                         self.polynomial_degree,
                     )
-                    .process_trait_implementation(trait_impl);
+                    .process_trait_implementation(trait_impl.clone());
                     self.implementations
-                        .insert(ti.name.name().clone(), vec![(sr, ti)]);
+                        .insert(ti.name.name().clone(), vec![(sr.clone(), ti)]);
                 }
-                self.handle_statement(statement);
+                self.handle_statement(statement.clone());
             }
         }
     }
@@ -432,6 +433,18 @@ impl PILAnalyzer {
     }
 
     fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::Expression>) {
+        let implementations: HashMap<_, Vec<TraitImplementation<Expression>>> = self
+            .implementations
+            .iter()
+            .map(|(key, vec)| {
+                let processed_vec = vec
+                    .iter()
+                    .map(|(_, trait_impl)| trait_impl.clone())
+                    .collect();
+                (key.clone(), processed_vec)
+            })
+            .collect();
+
         self.polynomial_degree = degree
             .map(|degree| {
                 ExpressionProcessor::new(self.driver(), &Default::default())
@@ -444,15 +457,7 @@ impl PILAnalyzer {
                     evaluator::evaluate_expression::<GoldilocksField>(
                         &degree,
                         &self.definitions,
-                        &self
-                            .implementations
-                            .into_iter()
-                            .map(|(key, vec)| {
-                                let processed_vec =
-                                    vec.into_iter().map(|(_, trait_impl)| trait_impl).collect();
-                                (key, processed_vec)
-                            })
-                            .collect(),
+                        &implementations,
                     )
                     .unwrap()
                     .try_to_integer()

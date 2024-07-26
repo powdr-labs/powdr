@@ -222,6 +222,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::Enum(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
+            Value::TraitFunction(name, _, _) => format!("{name}_trait_function"),
         }
     }
 
@@ -374,6 +375,7 @@ impl<'a, T: Display> Display for Value<'a, T> {
             }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
+            Value::TraitFunction(_, t, _) => write!(f, "{t}"),
         }
     }
 }
@@ -468,7 +470,7 @@ impl<'a> Definitions<'a> {
                     let impls = implementations.get(&fname).ok_or_else(|| {
                         EvalError::SymbolNotFound(format!("Symbol {} not found.", &name))
                     })?;
-                    Value::TraitFunction(trait_decl.name.as_str(), *function, impls).into()
+                    Value::TraitFunction(trait_decl.name.as_str(), function.clone(), impls).into()
                 }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
