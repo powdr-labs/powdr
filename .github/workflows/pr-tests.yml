@@ -210,7 +210,7 @@ jobs:
       # Number threads is set to 1 because the runner does not have enough memory for more.
       run: |
         NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
-        cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --no-capture --partition count:"${{ matrix.test }}"/8
+        cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --no-capture --partition hash:"${{ matrix.test }}"/8
       shell: bash
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
