@@ -1,10 +1,13 @@
 use powdr_backend::BackendType;
 use powdr_executor::constant_evaluator::get_uniquely_sized;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
+
+// TODO where was gen_estark_proof used in this file?
+
 use powdr_pipeline::{
     test_util::{
-        asm_string_to_pil, gen_estark_proof, gen_estark_proof_with_backend_variant,
-        make_prepared_pipeline, resolve_test_file, run_pilcom_test_file,
+        asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
+        make_simple_prepared_pipeline, regular_test, resolve_test_file, run_pilcom_test_file,
         run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant,
         test_plonky3_with_backend_variant, BackendVariant,
     },
@@ -13,8 +16,8 @@ use powdr_pipeline::{
 };
 use test_log::test;
 
-fn verify_asm(file_name: &str, inputs: Vec<GoldilocksField>) {
-    run_pilcom_test_file(file_name, inputs, vec![]).unwrap();
+fn test_pilcom(pipeline: Pipeline<GoldilocksField>) {
+    run_pilcom_test_file(pipeline).unwrap();
 }
 
 fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
@@ -25,24 +28,21 @@ fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
 fn sqrt_asm() {
     let f = "asm/sqrt.asm";
     let i = [3];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &i);
 }
 
 #[test]
 fn challenges_asm() {
     let f = "asm/challenges.asm";
-    test_halo2(f, Default::default());
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_halo2(pipeline);
 }
 
 #[test]
 fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &i);
     test_plonky3_with_backend_variant(f, slice_to_vec(&i), BackendVariant::Composite);
 }
 
@@ -51,31 +51,26 @@ fn simple_sum_asm() {
 fn secondary_machine_plonk() {
     // Currently fails because no copy constraints are expressed in PIL yet.
     let f = "asm/secondary_machine_plonk.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn secondary_block_machine_add2() {
     let f = "asm/secondary_block_machine_add2.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn second_phase_hint() {
     let f = "asm/second_phase_hint.asm";
-    test_halo2(f, Default::default());
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_halo2(pipeline);
 }
 
 #[test]
 fn mem_write_once() {
     let f = "asm/mem_write_once.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
@@ -85,152 +80,111 @@ fn mem_write_once_external_write() {
     mem[17] = GoldilocksField::from(42);
     mem[62] = GoldilocksField::from(123);
     mem[255] = GoldilocksField::from(-1);
-    run_pilcom_test_file(
+    let pipeline = make_prepared_pipeline(
         f,
         Default::default(),
         vec![("main_memory.value".to_string(), mem)],
-    )
-    .unwrap();
+    );
+    run_pilcom_test_file(pipeline).unwrap();
 }
 
 #[test]
 fn block_machine_cache_miss() {
     let f = "asm/block_machine_cache_miss.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn palindrome() {
     let f = "asm/palindrome.asm";
     let i = [7, 1, 7, 3, 9, 3, 7, 1];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &i);
 }
 
 #[test]
 fn single_function_vm() {
     let f = "asm/single_function_vm.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn empty() {
     let f = "asm/empty.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn single_operation() {
     let f = "asm/single_operation.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn empty_vm() {
     let f = "asm/empty_vm.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn vm_to_block_unique_interface() {
     let f = "asm/vm_to_block_unique_interface.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn vm_to_block_to_block() {
     let f = "asm/vm_to_block_to_block.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
+    test_pilcom(make_simple_prepared_pipeline(f));
+    test_halo2(make_simple_prepared_pipeline(f));
 }
 
 #[test]
 fn block_to_block() {
     let f = "asm/block_to_block.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn block_to_block_with_bus() {
     let f = "asm/block_to_block_with_bus.asm";
-    let i = [];
-    test_halo2(f, slice_to_vec(&i));
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_halo2(pipeline);
 }
 
 #[test]
 fn vm_instr_param_mapping() {
     let f = "asm/vm_instr_param_mapping.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn vm_to_block_multiple_interfaces() {
     let f = "asm/vm_to_block_multiple_interfaces.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn vm_to_vm() {
     let f = "asm/vm_to_vm.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn vm_to_vm_dynamic_trace_length() {
     let f = "asm/vm_to_vm_dynamic_trace_length.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn vm_to_vm_to_block() {
     let f = "asm/vm_to_vm_to_block.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn vm_to_block_array() {
     let f = "asm/vm_to_block_array.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
@@ -238,17 +192,11 @@ fn vm_to_block_different_length() {
     let f = "asm/vm_to_block_different_length.asm";
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
-    run_pilcom_with_backend_variant(
-        make_prepared_pipeline(f, vec![], vec![]),
-        BackendVariant::Composite,
-    )
-    .unwrap();
-    test_halo2_with_backend_variant(
-        make_prepared_pipeline(f, vec![], vec![]),
-        BackendVariant::Composite,
-    );
+    run_pilcom_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite)
+        .unwrap();
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
     gen_estark_proof_with_backend_variant(
-        make_prepared_pipeline(f, vec![], vec![]),
+        make_simple_prepared_pipeline(f),
         BackendVariant::Composite,
     );
 }
@@ -256,143 +204,108 @@ fn vm_to_block_different_length() {
 #[test]
 fn vm_to_vm_to_vm() {
     let f = "asm/vm_to_vm_to_vm.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn vm_to_block_multiple_links() {
     let f = "asm/permutations/vm_to_block_multiple_links.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &[]);
 }
 
 #[test]
 fn mem_read_write() {
     let f = "asm/mem_read_write.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn mem_read_write_no_memory_accesses() {
     let f = "asm/mem_read_write_no_memory_accesses.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn mem_read_write_with_bootloader() {
     let f = "asm/mem_read_write_with_bootloader.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn mem_read_write_large_diffs() {
     let f = "asm/mem_read_write_large_diffs.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn multi_assign() {
     let f = "asm/multi_assign.asm";
     let i = [7];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &i);
 }
 
 #[test]
 fn multi_return() {
     let f = "asm/multi_return.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 #[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Assignment register `Z` is incompatible with `square_and_double(3)`. Try using `<==` with no explicit assignment registers.\", \"Assignment register `Y` is incompatible with `square_and_double(3)`. Try using `<==` with no explicit assignment registers.\"]"]
 fn multi_return_wrong_assignment_registers() {
     let f = "asm/multi_return_wrong_assignment_registers.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
+    regular_test(f, Default::default());
 }
 
 #[test]
 #[should_panic = "Result::unwrap()` on an `Err` value: [\"Mismatched number of registers for assignment A, B <=Y= square_and_double(3);\"]"]
 fn multi_return_wrong_assignment_register_length() {
     let f = "asm/multi_return_wrong_assignment_register_length.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn bit_access() {
     let f = "asm/bit_access.asm";
     let i = [20];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &i);
 }
 
 #[test]
 fn sqrt() {
     let f = "asm/sqrt.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn functional_instructions() {
     let f = "asm/functional_instructions.asm";
     let i = [20];
-    verify_asm(f, slice_to_vec(&i));
-    test_halo2(f, slice_to_vec(&i));
-    gen_estark_proof(f, slice_to_vec(&i));
+    regular_test(f, &i);
 }
 
 #[test]
 fn full_pil_constant() {
     let f = "asm/full_pil_constant.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn intermediate() {
     let f = "asm/intermediate.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn intermediate_nested() {
     let f = "asm/intermediate_nested.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn pil_at_module_level() {
     let f = "asm/pil_at_module_level.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
@@ -426,49 +339,37 @@ fn read_poly_files() {
 #[test]
 fn enum_in_asm() {
     let f = "asm/enum_in_asm.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn pass_range_constraints() {
     let f = "asm/pass_range_constraints.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn side_effects() {
     let f = "asm/side_effects.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn multiple_signatures() {
     let f = "asm/multiple_signatures.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn permutation_simple() {
     let f = "asm/permutations/simple.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn permutation_to_block() {
     let f = "asm/permutations/vm_to_block.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
@@ -476,66 +377,50 @@ fn permutation_to_block() {
 fn permutation_to_vm() {
     // TODO: witgen issue: Machine incorrectly detected as block machine.
     let f = "asm/permutations/vm_to_vm.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn permutation_to_block_to_block() {
     let f = "asm/permutations/block_to_block.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 #[should_panic = "has incoming permutations but doesn't declare call_selectors"]
 fn permutation_incoming_needs_selector() {
     let f = "asm/permutations/incoming_needs_selector.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn call_selectors_with_no_permutation() {
     let f = "asm/permutations/call_selectors_with_no_permutation.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn vm_args() {
     let f = "asm/vm_args.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn vm_args_memory() {
     let f = "asm/vm_args_memory.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn vm_args_relative_path() {
     let f = "asm/vm_args_relative_path.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 #[test]
 fn vm_args_two_levels() {
     let f = "asm/vm_args_two_levels.asm";
-    verify_asm(f, Default::default());
-    test_halo2(f, Default::default());
-    gen_estark_proof(f, Default::default());
+    regular_test(f, Default::default());
 }
 
 mod reparse {
@@ -563,11 +448,7 @@ mod book {
 
     fn run_book_test(file: &str) {
         // passing 0 to all tests currently works as they either take no prover input or 0 works
-        let i = [0];
-
-        verify_asm(file, slice_to_vec(&i));
-        test_halo2(file, slice_to_vec(&i));
-        gen_estark_proof(file, slice_to_vec(&i));
+        regular_test(file, &[0]);
     }
 
     include!(concat!(env!("OUT_DIR"), "/asm_book_tests.rs"));
@@ -578,15 +459,16 @@ mod book {
 fn hello_world_asm_fail() {
     let f = "asm/book/hello_world.asm";
     let i = [1];
-    verify_asm(f, slice_to_vec(&i));
+    let pipeline = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    test_pilcom(pipeline);
 }
 
 #[test]
 #[should_panic = "FailedAssertion(\"This should fail.\")"]
 fn failing_assertion() {
     let f = "asm/failing_assertion.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_pilcom(pipeline);
 }
 
 #[test]
@@ -783,34 +665,37 @@ fn keccak() {
 fn connect_no_witgen() {
     let f = "asm/connect_no_witgen.asm";
     let i = [];
-    verify_asm(f, slice_to_vec(&i));
+    let pipeline = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    test_pilcom(pipeline);
 }
 
 #[test]
 fn generics_preservation() {
     let f = "asm/generics_preservation.asm";
-    verify_asm(f, Default::default());
+    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    // No need to generate a proof here.
 }
 
 #[test]
 fn trait_parsing() {
     // Should be expanded/renamed when traits functionality is fully implemented
     let f = "asm/trait_parsing.asm";
-    verify_asm(f, Default::default());
+    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    // No need to generate a proof here.
 }
 
 #[test]
 fn dynamic_fixed_cols() {
     let f = "asm/dynamic_fixed_cols.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_pilcom(pipeline);
 }
 
 #[test]
 fn type_vars_in_local_decl() {
     let f = "asm/type_vars_in_local_decl.asm";
-    let i = [];
-    verify_asm(f, slice_to_vec(&i));
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_pilcom(pipeline);
 }
 
 #[test]
