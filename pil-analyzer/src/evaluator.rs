@@ -985,8 +985,8 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             }
             Value::TraitFunction(function_name, trait_decl, impls) => {
                 for trait_impl in impls.iter() {
-                    let func_decl = trait_decl.function_by_name(&function_name).unwrap();
-                    let func_impl = trait_impl.function_by_name(&function_name).unwrap();
+                    let func_decl = trait_decl.function_by_name(function_name).unwrap();
+                    let func_impl = trait_impl.function_by_name(function_name).unwrap();
 
                     let type_args = trait_type_args(trait_decl, trait_impl);
 
