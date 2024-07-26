@@ -434,7 +434,7 @@ namespace main_sub__rom(16);
 
     #[test]
     fn compile_simple_sum() {
-        let expectation = r#"namespace main(1024);
+        let expectation = r#"namespace main(16);
     pol commit XInv;
     pol commit XIsZero;
     XIsZero = 1 - X * XInv;
@@ -484,7 +484,7 @@ namespace main_sub__rom(16);
     1 $ [0, pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc] in main__rom.latch $ [main__rom.operation_id, main__rom.p_line, main__rom.p_reg_write_X_A, main__rom.p_reg_write_X_CNT, main__rom.p_instr_jmpz, main__rom.p_instr_jmpz_param_l, main__rom.p_instr_jmp, main__rom.p_instr_jmp_param_l, main__rom.p_instr_dec_CNT, main__rom.p_instr_assert_zero, main__rom.p_instr__jump_to_operation, main__rom.p_instr__reset, main__rom.p_instr__loop, main__rom.p_instr_return, main__rom.p_X_const, main__rom.p_X_read_free, main__rom.p_read_X_A, main__rom.p_read_X_CNT, main__rom.p_read_X_pc];
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
-namespace main__rom(1024);
+namespace main__rom(16);
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] + [10]*;
     pol constant p_X_const = [0]*;
     pol constant p_X_read_free = [0, 0, 1, 0, 1, 0, 0, 18446744069414584320, 0, 0, 0] + [0]*;
@@ -680,7 +680,7 @@ namespace main_vm(1024);
 
     #[test]
     fn permutation_instructions() {
-        let expected = r#"namespace main(256);
+        let expected = r#"namespace main(128);
     pol commit _operation_id(i) query std::prover::Query::Hint(13);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
@@ -737,7 +737,7 @@ namespace main_vm(1024);
     instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[1] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
-namespace main__rom(256);
+namespace main__rom(128);
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] + [13]*;
     pol constant p_X_const = [0, 0, 2, 0, 1, 0, 3, 0, 2, 0, 1, 0, 0, 0] + [0]*;
     pol constant p_X_read_free = [0]*;
@@ -769,7 +769,7 @@ namespace main__rom(256);
     pol constant p_reg_write_Z_B = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-namespace main_bin(256);
+namespace main_bin(128);
     pol commit operation_id;
     pol constant latch(i) { if i % 8 == 7 { 1 } else { 0 } };
     let sum_sel = std::array::sum(sel);
@@ -803,7 +803,7 @@ namespace main_bin(256);
 
     #[test]
     fn link_merging() {
-        let expected = r#"namespace main(1024);
+        let expected = r#"namespace main(32);
     pol commit tmp;
     pol commit _operation_id(i) query std::prover::Query::Hint(18);
     pol constant _block_enforcer_last_step = [0]* + [1];
@@ -890,7 +890,7 @@ namespace main_bin(256);
     instr_add_with_sub + instr_sub $ [1, X * instr_add_with_sub + X * instr_sub, Y * instr_add_with_sub + Y * instr_sub, Z * instr_add_with_sub + Z * instr_sub] in main_submachine.latch $ [main_submachine.operation_id, main_submachine.x, main_submachine.z, main_submachine.y];
     pol constant _linker_first_step = [1] + [0]*;
     _linker_first_step * (_operation_id - 2) = 0;
-namespace main__rom(1024);
+namespace main__rom(32);
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] + [18]*;
     pol constant p_W_const = [0]*;
     pol constant p_W_read_free = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0] + [0]*;
@@ -943,7 +943,7 @@ namespace main__rom(1024);
     pol constant p_reg_write_Z_C = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-namespace main_submachine(1024);
+namespace main_submachine(32);
     pol commit operation_id;
     pol constant latch = [1]*;
     pol commit x;

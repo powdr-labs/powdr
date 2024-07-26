@@ -1,6 +1,6 @@
 use std::utils::force_bool;
 
-machine MemReadWrite {
+machine MemReadWrite with degree: 256 {
     reg pc[@pc];
     reg X[<=];
     reg A;
