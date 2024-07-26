@@ -1,7 +1,7 @@
 use std::machines::memory::Memory;
 use std::machines::range::Byte2;
 
-machine Main with degree: 1024 {
+machine Main with degree: 256 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

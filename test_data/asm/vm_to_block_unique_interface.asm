@@ -36,7 +36,7 @@ machine Arith with
     z = (1 - operation_id) * (x + y) + operation_id * (x - y);
 }
 
-machine Main with degree: 32{
+machine Main with degree: 32 {
     Arith arith;
     Binary binary;
 
