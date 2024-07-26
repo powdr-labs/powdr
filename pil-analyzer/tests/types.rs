@@ -586,4 +586,33 @@ fn type_vars_in_block_let() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+#[should_panic = "Expected type: int -> T, T\\nInferred type: int\\n"]
+fn new_fixed_column_wrong_value_type() {
+    let input = r#"namespace N(16);
+        let f = constr |j| {
+            let k: int = 2;
+            let fi: col = k;
+            fi
+        };
+        let ev = f(2);
+        let x;
+        x = ev;
+    "#;
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Let-declared variables without value must have type 'col'"]
+fn new_fixed_column_wrong_type() {
+    let input = r#"namespace N(16);
+        let f = constr || {
+            let fi: int;
+        };
+        f();
+    "#;
+    type_check(input, &[]);
+}
+
 // TODO also check type vars used in types and also check this all for asm code.
