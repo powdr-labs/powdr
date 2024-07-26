@@ -207,7 +207,7 @@ pub fn test_halo2_with_backend_variant(
 #[cfg(not(feature = "halo2"))]
 pub fn test_halo2_with_backend_variant(
     _pipeline: Pipeline<Bn254Field>,
-    backend_variant: BackendVariant,
+    _backend_variant: BackendVariant,
 ) {
 }
 

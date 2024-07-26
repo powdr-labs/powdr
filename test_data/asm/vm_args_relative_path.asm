@@ -1,4 +1,4 @@
-machine Main with degree: 1024 {
+machine Main with degree: 16 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

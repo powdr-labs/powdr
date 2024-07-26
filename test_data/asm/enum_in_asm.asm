@@ -16,7 +16,7 @@ mod utils {
     let o: OptionInt = OptionInt::Some(42, x::Other::A(2));
 }
 
-machine Empty {
+machine Empty with degree: 4 {
     col witness w;
     w = w * w;
 }
