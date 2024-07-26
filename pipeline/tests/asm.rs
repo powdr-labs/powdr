@@ -800,6 +800,13 @@ fn dynamic_fixed_cols() {
 }
 
 #[test]
+fn type_vars_in_local_decl() {
+    let f = "asm/type_vars_in_local_decl.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
+}
+
+#[test]
 fn types_in_expressions() {
     let input = r#"
         enum O<X> {

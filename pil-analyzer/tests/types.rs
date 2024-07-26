@@ -614,5 +614,3 @@ fn new_fixed_column_wrong_type() {
     "#;
     type_check(input, &[]);
 }
-
-// TODO also check type vars used in types and also check this all for asm code.
