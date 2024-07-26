@@ -79,6 +79,13 @@ pub fn run_pilcom_asm_string<S: serde::Serialize + Send + Sync + 'static>(
     run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
 }
 
+pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Arc<Analyzed<T>> {
+    Pipeline::default()
+        .from_asm_string(contents.to_string(), None)
+        .compute_optimized_pil()
+        .unwrap()
+}
+
 pub fn run_pilcom_with_backend_variant(
     pipeline: Pipeline<GoldilocksField>,
     backend_variant: BackendVariant,

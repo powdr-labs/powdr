@@ -203,3 +203,43 @@ fn double_next() {
     "#;
     analyze_string::<GoldilocksField>(input).to_string();
 }
+
+#[test]
+fn new_fixed_column() {
+    let input = r#"namespace N(16);
+        let f = constr || {
+            let even: col = |i| i * 2;
+            even
+        };
+        let ev = f();
+        let x;
+        x = ev;
+    "#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace N(16);
+    let f: -> expr = (constr || {
+        let even: col = (|i| i * 2);
+        even
+    });
+    let ev: expr = N.f();
+    col witness x;
+    col fixed even(i) { i * 2 };
+    N.x = N.even;
+"#;
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+#[should_panic = "Lambda expression for fixed column N.fi must not reference outer variables."]
+fn new_fixed_column_as_closure() {
+    let input = r#"namespace N(16);
+        let f = constr |j| {
+            let fi: col = |i| (i + j) * 2;
+            fi
+        };
+        let ev = f(2);
+        let x;
+        x = ev;
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}

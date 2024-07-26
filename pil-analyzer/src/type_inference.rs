@@ -641,21 +641,33 @@ impl TypeChecker {
                 self.expect_type(&result, &mut if_expr.else_body)?;
                 result
             }
-            Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
+            Expression::BlockExpression(source_ref, BlockExpression { statements, expr }) => {
                 let original_var_count = self.local_var_types.len();
 
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
                             pattern,
+                            ty,
                             value,
                         }) => {
-                            let value_type = if let Some(value) = value {
-                                self.infer_type_of_expression(value)?
-                            } else {
-                                Type::Expr
+                            let value_type = match (ty, value) {
+                                (Some(ty), Some(value)) => {
+                                    self.process_concrete_symbol(ty.clone(), value)?;
+                                    ty.clone()
+                                }
+                                (None, Some(value)) => self.infer_type_of_expression(value)?,
+                                (Some(ty), None) => {
+                                    if *ty != Type::Col {
+                                        // TODO better source ref
+                                        return Err(source_ref.with_error("Let-declared variables without value must have type 'col'.".to_string()));
+                                    }
+                                    ty.clone()
+                                }
+                                (None, None) => Type::Col,
                             };
-                            self.expect_type_of_pattern(&value_type, pattern)?;
+                            let var_type = type_for_reference(&value_type);
+                            self.expect_type_of_pattern(&var_type, pattern)?;
                         }
                         StatementInsideBlock::Expression(expr) => {
                             self.expect_type_with_flexibility(&self.statement_type(), expr)?;
