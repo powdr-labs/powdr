@@ -1,6 +1,6 @@
 use std::machines::memory::Memory;
 
-machine Main with degree: 1024 {
+machine Main with degree: 256 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

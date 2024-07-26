@@ -648,7 +648,7 @@ BlockExpression: Box<Expression> = {
 }
 
 StatementInsideBlock: StatementInsideBlock = {
-    "let" <pattern:Pattern> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
+    "let" <pattern:Pattern> <ty:(":" <Type<ArrayLengthNumber>>)?> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
     <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
 

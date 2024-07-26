@@ -26,7 +26,7 @@ machine MemoryProxy with
     link if used ~> mem.mstore(addr, step, value);
 }
 
-machine Main with degree: 1024 {
+machine Main with degree: 8 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

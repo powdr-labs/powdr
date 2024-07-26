@@ -73,7 +73,8 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
-    trait_implementations: HashMap<String, Vec<(SourceRef, TraitImplementation<Expression>)>>,
+    trait_implementations:
+        HashMap<String, Vec<(SourceRef, TraitImplementation<parsed::Expression>)>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -148,12 +149,12 @@ impl PILAnalyzer {
         for PILFile(file) in files {
             self.current_namespace = Default::default();
             for statement in file {
-                if let PilStatement::TraitImplementation(sr, ref trait_impl) = statement {
+                if let PilStatement::TraitImplementation(ref sr, ref trait_impl) = statement {
                     let name = trait_impl.name.to_string();
                     self.trait_implementations
                         .entry(name)
                         .or_default()
-                        .push((sr, trait_impl.clone()));
+                        .push((sr.clone(), trait_impl.clone()));
                 }
                 self.handle_statement(statement);
             }
