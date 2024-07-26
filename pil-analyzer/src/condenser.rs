@@ -363,6 +363,39 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         )
     }
 
+    fn add_hint(
+        &mut self,
+        col: Arc<Value<'a, T>>,
+        expr: Arc<Value<'a, T>>,
+    ) -> Result<(), EvalError> {
+        let col = match col.as_ref() {
+            Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
+                name,
+                poly_id,
+                next: false,
+            })) => {
+                if poly_id.ptype != PolynomialType::Committed {
+                    return Err(EvalError::TypeError(format!(
+                        "Expected reference to witness column as first argument for std::prover::add_hint, but got {} column {name}.",
+                        poly_id.ptype
+                    )));
+                }
+                poly_id.clone()
+            }
+            col => {
+                return Err(EvalError::TypeError(format!(
+                    "Expected reference to witness column as first argument for std::prover::add_hint, but got {col}: {}",
+                    col.type_formatted()
+                )));
+            }
+        };
+
+        // TODO handle (and test) add_hint executed on an existing column
+        // TODO improved search?
+        self.new_columns.iter().find(|(sym, _)| sym.
+
+    }
+
     fn add_constraints(
         &mut self,
         constraints: Arc<Value<'a, T>>,
