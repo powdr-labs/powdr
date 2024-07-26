@@ -5,14 +5,15 @@ use powdr_pipeline::test_util::{
     assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
     assert_proofs_fail_for_invalid_witnesses_halo2,
     assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
-    gen_estark_proof_with_backend_variant, make_prepared_pipeline, test_halo2,
-    test_halo2_with_backend_variant, test_plonky3, verify_test_file, BackendVariant,
+    gen_estark_proof_with_backend_variant, make_prepared_pipeline, run_pilcom_test_file,
+    run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant,
+    test_plonky3_with_backend_variant, BackendVariant,
 };
 
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
-    verify_test_file(file_name, inputs, vec![]).unwrap();
+    run_pilcom_test_file(file_name, inputs, vec![]).unwrap();
 }
 
 #[test]
@@ -92,7 +93,7 @@ fn fibonacci() {
     verify_pil(f, Default::default());
     test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
-    test_plonky3(f, Default::default());
+    test_plonky3_with_backend_variant(f, Default::default(), BackendVariant::Monolithic);
 }
 
 #[test]
@@ -145,14 +146,14 @@ fn external_witgen_fails_if_none_provided() {
 fn external_witgen_a_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.a".to_string(), vec![GoldilocksField::from(3); 16])];
-    verify_test_file(f, Default::default(), external_witness).unwrap();
+    run_pilcom_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
 fn external_witgen_b_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.b".to_string(), vec![GoldilocksField::from(4); 16])];
-    verify_test_file(f, Default::default(), external_witness).unwrap();
+    run_pilcom_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
@@ -162,7 +163,7 @@ fn external_witgen_both_provided() {
         ("main.a".to_string(), vec![GoldilocksField::from(3); 16]),
         ("main.b".to_string(), vec![GoldilocksField::from(4); 16]),
     ];
-    verify_test_file(f, Default::default(), external_witness).unwrap();
+    run_pilcom_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
@@ -174,7 +175,7 @@ fn external_witgen_fails_on_conflicting_external_witness() {
         // Does not satisfy b = a + 1
         ("main.b".to_string(), vec![GoldilocksField::from(3); 16]),
     ];
-    verify_test_file(f, Default::default(), external_witness).unwrap();
+    run_pilcom_test_file(f, Default::default(), external_witness).unwrap();
 }
 
 #[test]
@@ -244,7 +245,7 @@ fn halo_without_lookup() {
 #[test]
 fn add() {
     let f = "pil/add.pil";
-    test_plonky3(f, Default::default());
+    test_plonky3_with_backend_variant(f, Default::default(), BackendVariant::Monolithic);
 }
 
 #[test]
@@ -313,9 +314,37 @@ fn different_degrees() {
     let f = "pil/different_degrees.pil";
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
-    test_halo2_with_backend_variant(make_prepared_pipeline(f, vec![]), BackendVariant::Composite);
+    run_pilcom_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    )
+    .unwrap();
+    test_halo2_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
     gen_estark_proof_with_backend_variant(
-        make_prepared_pipeline(f, vec![]),
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
+}
+
+#[test]
+fn vm_to_block_dynamic_length() {
+    let f = "pil/vm_to_block_dynamic_length.pil";
+    // Because machines have different lengths, this can only be proven
+    // with a composite proof.
+    run_pilcom_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    )
+    .unwrap();
+    test_halo2_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
+        BackendVariant::Composite,
+    );
+    gen_estark_proof_with_backend_variant(
+        make_prepared_pipeline(f, vec![], vec![]),
         BackendVariant::Composite,
     );
 }
@@ -338,6 +367,12 @@ fn serialize_deserialize_optimized_pil() {
     let output_pil_file = format!("{optimized_deserialized}");
 
     assert_eq!(input_pil_file, output_pil_file);
+}
+
+mod reparse {
+    use powdr_pipeline::test_util::run_reparse_test;
+    use test_log::test;
+    include!(concat!(env!("OUT_DIR"), "/pil_reparse_tests.rs"));
 }
 
 mod book {

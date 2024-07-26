@@ -2,9 +2,11 @@ mod common;
 
 use common::{verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
-use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
-use powdr_pipeline::{verify::verify, Pipeline};
+use powdr_pipeline::{
+    test_util::{run_pilcom_with_backend_variant, BackendVariant},
+    Pipeline,
+};
 use std::path::{Path, PathBuf};
 use test_log::test;
 
@@ -47,11 +49,7 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
         .with_prover_inputs(Default::default())
         .with_output(tmp_dir.to_path_buf(), false);
     let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
-        // Can't use `verify_pipeline`, because the pipeline was renamed in the middle of after
-        // computing the constants file.
-        let mut pipeline = pipeline.with_backend(BackendType::EStarkDump, None);
-        pipeline.compute_proof().unwrap();
-        verify(pipeline.output_dir().as_ref().unwrap()).unwrap();
+        run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
 
         Ok(())
     };
@@ -147,14 +145,13 @@ fn keccak() {
 #[ignore = "Too slow"]
 fn vec_median_estark_polygon() {
     let case = "vec_median";
-    verify_riscv_crate_with_backend(
+    verify_riscv_crate(
         case,
         [5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]
             .into_iter()
             .map(|x| x.into())
             .collect(),
         &Runtime::base(),
-        BackendType::EStarkPolygon,
     );
 }
 
@@ -249,6 +246,45 @@ fn sum_serde() {
         &Runtime::base(),
         vec![(42, data)],
     );
+}
+
+#[test]
+fn read_slice() {
+    let case = "read_slice";
+    let runtime = Runtime::base();
+    let temp_dir = Temp::new_dir().unwrap();
+    let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+    );
+    let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, false);
+
+    let data: Vec<u32> = vec![];
+    let answer = data.iter().sum::<u32>();
+
+    use std::collections::BTreeMap;
+    let d: BTreeMap<u32, Vec<GoldilocksField>> = vec![(
+        42,
+        vec![
+            0u32.into(),
+            1u32.into(),
+            2u32.into(),
+            3u32.into(),
+            4u32.into(),
+            5u32.into(),
+            6u32.into(),
+            7u32.into(),
+        ],
+    )]
+    .into_iter()
+    .collect();
+
+    let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
+        .with_prover_inputs(vec![answer.into()])
+        .with_prover_dict_inputs(d);
+
+    pipeline.compute_witness().unwrap();
 }
 
 #[ignore = "Too slow"]
@@ -368,16 +404,7 @@ fn many_chunks_memory() {
 }
 
 fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, runtime: &Runtime) {
-    verify_riscv_crate_with_backend(case, inputs, runtime, BackendType::EStarkDump)
-}
-
-fn verify_riscv_crate_with_backend(
-    case: &str,
-    inputs: Vec<GoldilocksField>,
-    runtime: &Runtime,
-    backend: BackendType,
-) {
-    verify_riscv_crate_from_both_paths::<()>(case, inputs, runtime, None, backend)
+    verify_riscv_crate_from_both_paths::<()>(case, inputs, runtime, None)
 }
 
 fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
@@ -386,7 +413,7 @@ fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
     runtime: &Runtime,
     data: Vec<(u32, S)>,
 ) {
-    verify_riscv_crate_from_both_paths(case, inputs, runtime, Some(data), BackendType::EStarkDump)
+    verify_riscv_crate_from_both_paths(case, inputs, runtime, Some(data))
 }
 
 fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'static>(
@@ -394,7 +421,6 @@ fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'stati
     inputs: Vec<GoldilocksField>,
     runtime: &Runtime,
     data: Option<Vec<(u32, S)>>,
-    backend: BackendType,
 ) {
     let temp_dir = Temp::new_dir().unwrap();
     let compiled = powdr_riscv::compile_rust_crate_to_riscv(
@@ -413,7 +439,6 @@ fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'stati
         &from_elf,
         &inputs,
         data.as_deref(),
-        backend,
     );
 
     log::info!("Verifying {case} converted from assembly files");
@@ -424,6 +449,5 @@ fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'stati
         &from_asm,
         &inputs,
         data.as_deref(),
-        backend,
     );
 }

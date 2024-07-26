@@ -30,7 +30,7 @@ machine AddVM with
     z = y + x;
 }
 
-machine Main with degree: 256 {
+machine Main with degree: 64 {
     SubVM subvm;
     AddVM addvm;
 

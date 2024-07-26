@@ -91,9 +91,14 @@ let next_ext: Fp2<expr> -> Fp2<expr> = |a| match a {
     Fp2::Fp2(a0, a1) => Fp2::Fp2(a0', a1')
 };
 
-/// Returns the two components of the extension field element
+/// Returns the two components of the extension field element as a tuple
 let<T> unpack_ext: Fp2<T> -> (T, T) = |a| match a {
     Fp2::Fp2(a0, a1) => (a0, a1)
+};
+
+/// Returns the two components of the extension field element as an array
+let<T> unpack_ext_array: Fp2<T> -> T[] = |a| match a {
+    Fp2::Fp2(a0, a1) => [a0, a1]
 };
 
 /// Whether we need to operate on the F_{p^2} extension field (because the current field is too small).
@@ -111,7 +116,14 @@ let is_extension = |arr| match len(arr) {
 };
 
 /// Constructs an extension field element `a0 + a1 * X` from either `[a0, a1]` or `[a0]` (setting `a1`to zero in that case)
-let fp2_from_array = |arr| if is_extension(arr) { Fp2::Fp2(arr[0], arr[1]) } else { from_base(arr[0]) };
+let fp2_from_array = |arr| {
+    if is_extension(arr) {
+        Fp2::Fp2(arr[0], arr[1])
+    } else {
+        let _ = assert(!needs_extension(), || "The field is too small and needs to move to the extension field. Pass two elements instead!");
+        from_base(arr[0])
+    }
+};
 
 mod test {
     use super::Fp2;

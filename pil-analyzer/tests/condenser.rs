@@ -21,11 +21,11 @@ fn new_witness_column() {
     let expected = r#"namespace N(16);
     col fixed even(i) { i * 2 };
     let new_wit: -> expr = (constr || {
-        let x;
+        let x: col;
         x
     });
     let new_wit_arr: -> expr[] = (constr || {
-        let x;
+        let x: col;
         [x, x]
     });
     col witness x;
@@ -50,7 +50,7 @@ fn new_witness_column_name_clash() {
     "#;
     let expected = r#"namespace N(16);
     let new_wit: -> expr = (constr || {
-        let x;
+        let x: col;
         x
     });
     col witness x;
@@ -83,14 +83,14 @@ fn create_constraints() {
     let expected = r#"namespace N(16);
     let force_bool: expr -> std::prelude::Constr = (|c| c * (1 - c) = 0);
     let new_bool: -> expr = (constr || {
-        let x;
+        let x: col;
         N.force_bool(x);
         x
     });
     let is_zero: expr -> expr = (constr |x| {
-        let x_is_zero;
+        let x_is_zero: col;
         N.force_bool(x_is_zero);
-        let x_inv;
+        let x_inv: col;
         x_is_zero = 1 - x * x_inv;
         x_is_zero * x = 0;
         x_is_zero
@@ -202,4 +202,44 @@ fn double_next() {
         x * y = (1 + x')';
     "#;
     analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+fn new_fixed_column() {
+    let input = r#"namespace N(16);
+        let f = constr || {
+            let even: col = |i| i * 2;
+            even
+        };
+        let ev = f();
+        let x;
+        x = ev;
+    "#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace N(16);
+    let f: -> expr = (constr || {
+        let even: col = (|i| i * 2);
+        even
+    });
+    let ev: expr = N.f();
+    col witness x;
+    col fixed even(i) { i * 2 };
+    N.x = N.even;
+"#;
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+#[should_panic = "Lambda expression for fixed column N.fi must not reference outer variables."]
+fn new_fixed_column_as_closure() {
+    let input = r#"namespace N(16);
+        let f = constr |j| {
+            let fi: col = |i| (i + j) * 2;
+            fi
+        };
+        let ev = f(2);
+        let x;
+        x = ev;
+    "#;
+    analyze_string::<GoldilocksField>(input);
 }

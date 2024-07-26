@@ -1,9 +1,9 @@
-namespace Main(2**16);
+namespace Main(16);
 // ANCHOR: declarations
     // This defines a integer constant. We can omit the type when it is used
     // somewhere that constrains its type. Since it is not used below,
     // we have to specify `: int` (another option would be `fe`, field element).
-    let rows: int = 2**16;
+    let rows: int = 16;
     // This defines a fixed column that contains the row number in each row.
     // Only symbols whose type is "col" are considered fixed columns.
     let step: col = |i| i;
