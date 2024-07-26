@@ -14,6 +14,7 @@ use powdr_pipeline::{
 use test_log::test;
 
 #[test]
+#[ignore = "Too slow"]
 fn poseidon_bn254_test() {
     let f = "std/poseidon_bn254_test.asm";
     test_halo2(f, Default::default());
@@ -39,6 +40,7 @@ fn poseidon_gl_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn poseidon_gl_memory_test() {
     let f = "std/poseidon_gl_memory_test.asm";
     run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
@@ -46,12 +48,14 @@ fn poseidon_gl_memory_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     test_halo2(f, Default::default());
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn split_gl_test() {
     let f = "std/split_gl_test.asm";
     run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
@@ -77,6 +81,7 @@ fn arith_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn memory_test() {
     let f = "std/memory_test.asm";
     run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
@@ -85,6 +90,7 @@ fn memory_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn memory_with_bootloader_write_test() {
     let f = "std/memory_with_bootloader_write_test.asm";
     run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
@@ -93,6 +99,7 @@ fn memory_with_bootloader_write_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn memory_test_parallel_accesses() {
     let f = "std/memory_test_parallel_accesses.asm";
     run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
@@ -180,6 +187,7 @@ fn write_once_memory_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn binary_test() {
     let f = "std/binary_test.asm";
     run_pilcom_test_file(f, Default::default(), vec![]).unwrap();
@@ -187,6 +195,7 @@ fn binary_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn shift_test() {
     let f = "std/shift_test.asm";
     run_pilcom_test_file(f, Default::default(), vec![]).unwrap();

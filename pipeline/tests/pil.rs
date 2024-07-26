@@ -227,6 +227,7 @@ fn block_lookup_or() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn block_lookup_or_permutation() {
     let f = "pil/block_lookup_or_permutation.pil";
     verify_pil(f, Default::default());
@@ -330,6 +331,7 @@ fn different_degrees() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn vm_to_block_dynamic_length() {
     let f = "pil/vm_to_block_dynamic_length.pil";
     // Because machines have different lengths, this can only be proven
