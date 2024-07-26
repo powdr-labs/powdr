@@ -1125,6 +1125,12 @@ pub enum FunctionDefinition {
     TraitDeclaration(TraitDeclaration<Expression>),
 }
 
+impl From<Expression> for FunctionDefinition {
+    fn from(value: Expression) -> Self {
+        Self::Expression(value)
+    }
+}
+
 impl Children<Expression> for FunctionDefinition {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {

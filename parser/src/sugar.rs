@@ -12,7 +12,11 @@ const EXPAND: &str = "std::expand_fixed::expand_unwrapped";
 const DEGREE: &str = "std::prover::degree";
 const ARGUMENT_NAME: &str = "i";
 
-pub fn desugar_array_litteral_expression(
+pub fn desugar_array_literal_expression(array_expression: ArrayExpression) -> Expression {
+    desugar_array_literal_expression_with_sourceref(SourceRef::unknown(), array_expression)
+}
+
+pub fn desugar_array_literal_expression_with_sourceref(
     source_ref: SourceRef,
     array_expression: ArrayExpression,
 ) -> Expression {
@@ -121,7 +125,7 @@ mod tests {
             .parse(&context, "[1, 2]* + [1] + [1, 2, 3]")
             .unwrap();
         assert_eq!(
-            desugar_array_litteral_expression(SourceRef::unknown(), array_expression).to_string(),
+            desugar_array_literal_expression(array_expression).to_string(),
             "(|i| { std::expand_fixed::expand([std::expand_fixed::repeat([1, 2]), std::expand_fixed::once([1]), std::expand_fixed::once([1, 2, 3])], std::prover::degree())(i) })"
         );
     }

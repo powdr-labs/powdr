@@ -27,7 +27,7 @@ use powdr_ast::{
     },
 };
 use powdr_number::{BigUint, FieldElement, LargeInt};
-use powdr_parser::sugar::desugar_array_litteral_expression;
+use powdr_parser::sugar::desugar_array_literal_expression;
 use powdr_parser_util::SourceRef;
 
 use crate::{
@@ -187,10 +187,10 @@ impl<T: FieldElement> VMConverter<T> {
         self.pil.push(PilStatement::PolynomialConstantDefinition(
             SourceRef::unknown(),
             "first_step".to_string(),
-            FunctionDefinition::Expression(desugar_array_litteral_expression(
-                SourceRef::unknown(),
+            desugar_array_literal_expression(
                 ArrayExpression::value(vec![1u32.into()]).pad_with_zeroes(),
-            )),
+            )
+            .into(),
         ));
 
         self.pil.extend(
@@ -925,8 +925,7 @@ impl<T: FieldElement> VMConverter<T> {
             .push(PilStatement::PolynomialConstantDefinition(
                 SourceRef::unknown(),
                 "p_line".to_string(),
-                FunctionDefinition::Expression(desugar_array_litteral_expression(
-                    SourceRef::unknown(),
+                desugar_array_literal_expression(
                     ArrayExpression::Value(
                         (0..self.code_lines.len())
                             .map(|i| BigUint::from(i as u64).into())
@@ -934,7 +933,8 @@ impl<T: FieldElement> VMConverter<T> {
                     )
                     .pad_with_last()
                     .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()])),
-                )),
+                )
+                .into(),
             ));
         // TODO check that all of them are matched against execution trace witnesses.
         let mut rom_constants = self
@@ -1078,10 +1078,7 @@ impl<T: FieldElement> VMConverter<T> {
                 .push(PilStatement::PolynomialConstantDefinition(
                     SourceRef::unknown(),
                     name.clone(),
-                    FunctionDefinition::Expression(desugar_array_litteral_expression(
-                        SourceRef::unknown(),
-                        array_expression,
-                    )),
+                    desugar_array_literal_expression(array_expression).into(),
                 ));
         }
     }
