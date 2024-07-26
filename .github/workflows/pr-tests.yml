@@ -168,8 +168,14 @@ jobs:
     strategy:
       matrix:
         test:
-        - "subset1"
-        - "subset2"
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+        - "5"
+        - "6"
+        - "7"
+        - "8"
     needs: build
     runs-on: ubuntu-latest
 
@@ -203,12 +209,7 @@ jobs:
     - name: Run slow tests
       # Number threads is set to 1 because the runner does not have enough memory for more.
       run: |
-        if [[ "${{ matrix.test }}" == "subset1" ]]; then
-          TESTS="test(=arith_test)"
-        elif [[ "${{ matrix.test }}" == "subset2" ]]; then
-          TESTS="test(=keccak) | test(=vec_median) | test(=instruction_tests::addi) | test(=many_chunks) | test(=sum_serde)"
-        fi
-        cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E "$TESTS"
+        cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture --partition count:"${{ matrix.test }}"/8
       shell: bash
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
