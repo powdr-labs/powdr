@@ -8,16 +8,23 @@
 
 use std::{any::TypeId, collections::BTreeMap};
 
-use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
-use p3_field::AbstractField;
+use p3_air::{
+    Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, ExtensionBuilder, PairBuilder,
+    PermutationAirBuilder,
+};
+use p3_field::{AbstractField, ExtensionField};
 use p3_goldilocks::Goldilocks;
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use p3_matrix::{dense::RowMajorMatrix, MatrixRowSlices};
+use p3_symmetric::Permutation;
+use p3_uni_stark::StarkGenericConfig;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolynomialType,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Challenge, IdentityKind,
+    PolynomialType,
 };
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
+use tracing::field::Field;
 
 pub type Val = p3_goldilocks::Goldilocks;
 
@@ -27,16 +34,46 @@ pub(crate) struct PowdrCircuit<'a, T> {
     /// The value of the witness columns, if set
     witness: Option<&'a [(String, Vec<T>)]>,
     /// Callback to augment the witness in the later stages
-    _witgen_callback: Option<WitgenCallback<T>>,
-    /// The matrix of preprocessed values, used in debug mode to check the constraints before proving
+    witgen_callback: Option<WitgenCallback<T>>,
+    /// Value of challenges at every stage
+    challenge_values: Option<Vec<BTreeMap<u64, FieldElement>>>,
+    /// Vector containing traces of higher-stage witnesses.
+    multi_stage_traces: Option<Vec<RowMajorMatrix<Goldilocks>>>,
+    /// The matrix of preprocessed values, used in debug mode to check the constraints before provingg
     #[cfg(debug_assertions)]
     preprocessed: Option<RowMajorMatrix<Goldilocks>>,
 }
 
+// implementations for challenges
+impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
+    /// Generate next stage trace, assuming that
+    fn next_stage_trace(&self, stage: u32, challenge_values: BTreeMap<u64, FieldElement>) {
+        self.challenge_values.append(challenge_values);
+        let new_trace = self.generate_multi_stage_trace_rows(stage);
+        // we need to somehow feed these matrices back into the folder
+    }
+}
+
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub fn generate_trace_rows(&self) -> RowMajorMatrix<Goldilocks> {
-        // an iterator over all columns, committed then fixed
-        let witness = self.witness().iter();
+        self.generate_multi_stage_trace_rows(0)
+    }
+
+    /// Generate the witness trace for a given stage.
+    pub(crate) fn generate_multi_stage_trace_rows(&self, stage: u32) -> RowMajorMatrix<Goldilocks> {
+        let current_witness = self.witness().iter();
+        let witness = match stage {
+            0 => current_witness,
+            _ => self
+                .witgen_callback
+                .unwrap_or_else(panic!("Need witness callback for multi-stage challenges!"))
+                .next_stage_witness(
+                    current_witness,
+                    self.challenge_values[stage].unwrap_or_default(),
+                    stage,
+                ),
+        };
+
         let degrees = self.analyzed.degrees();
 
         let values = match degrees.len() {
@@ -58,7 +95,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             }
             _ => unreachable!(),
         };
-        RowMajorMatrix::new(values, self.width())
+        RowMajorMatrix::new(values, self.multi_stage_width(stage))
     }
 }
 
@@ -69,20 +106,14 @@ pub fn cast_to_goldilocks<T: FieldElement>(v: T) -> Val {
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub(crate) fn new(analyzed: &'a Analyzed<T>) -> Self {
-        if analyzed
-            .definitions
-            .iter()
-            .any(|(_, (s, _))| matches!(s.stage, Some(stage) if stage > 0))
-        {
-            unimplemented!("Multi-stage proving is not supported in Plonky3")
-        }
-
         Self {
             analyzed,
             witness: None,
-            _witgen_callback: None,
+            witgen_callback: None,
             #[cfg(debug_assertions)]
             preprocessed: None,
+            challenge_values: None,
+            multi_stage_traces: None,
         }
     }
 
@@ -120,11 +151,32 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
     pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
         Self {
-            _witgen_callback: Some(witgen_callback),
+            witgen_callback: Some(witgen_callback),
             ..self
         }
     }
 
+    /// Returns a vector of referenced challenges in each stage.
+    pub(crate) fn get_challenges(self) -> Vec<Vec<u64>> {
+        let mut challenges = BTreeMap::new(); // extracting the challenges from identities
+        for identity in self
+            .analyzed
+            .identities_with_inlined_intermediate_polynomials()
+        {
+            identity.pre_visit_expressions(&mut |expr| {
+                if let AlgebraicExpression::Challenge(challenge) = expr {
+                    challenges
+                        .entry(challenge.stage)
+                        .and_modify(|e| *e.append(challenge.id))
+                        .or_insert(vec![challenge.id])
+                }
+            });
+        }
+
+        challenges.values().collect::<Vec<Vec<u64>>>()
+    }
+
+impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     #[cfg(debug_assertions)]
     pub(crate) fn with_preprocessed(
         mut self,
@@ -141,6 +193,9 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         main: &AB::M,
         fixed: &AB::M,
         publics: &Vec<<AB as AirBuilderWithPublicValues>::PublicVar>,
+        stage: u32,
+        multi_stage: fn(u32) -> Vec<&AB::M>, // returns a reference to the stage _ matrix
+        challenges: fn(u32) -> Vec<&Vec<<AB as AirBuilderWithPublicValues>::PublicVar>>,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -148,6 +203,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
                 match poly_id.ptype {
                     PolynomialType::Committed => {
+                        //TODO: our changes should come from here
                         assert!(
                             r.poly_id.id < self.analyzed.commitment_count() as u64,
                             "Plonky3 expects `poly_id` to be contiguous"
@@ -164,6 +220,8 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                         row[r.poly_id.id as usize].into()
                     }
                     PolynomialType::Intermediate => {
+                        let row = stage_1.row_slice(r.next as usize);
+                        row[r.poly_id.id as usize].into();
                         unreachable!("intermediate polynomials should have been inlined")
                     }
                 }
@@ -179,10 +237,27 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     _ => panic!("Referenced public value does not exist"),
                 }
             }
+
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let left = self.to_plonky3_expr::<AB>(left, main, fixed, publics);
-                let right = self.to_plonky3_expr::<AB>(right, main, fixed, publics);
+                let left = self.to_plonky3_expr::<AB>(
+                    left,
+                    main,
+                    fixed,
+                    publics,
+                    stage,
+                    multi_stage_trace,
+                    multi_stage_challenge,
+                );
+                let right = self.to_plonky3_expr::<AB>(
+                    right,
+                    main,
+                    fixed,
+                    publics,
+                    stage,
+                    multi_stage_trace,
+                    multi_stage_challenge,
+                );
 
                 match op {
                     AlgebraicBinaryOperator::Add => left + right,
@@ -194,18 +269,49 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                let expr: <AB as AirBuilder>::Expr =
-                    self.to_plonky3_expr::<AB>(expr, main, fixed, publics);
+                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(
+                    expr,
+                    main,
+                    fixed,
+                    publics,
+                    stage,
+                    multi_stage_trace,
+                    multi_stage_challenge,
+                );
 
                 match op {
                     AlgebraicUnaryOperator::Minus => -expr,
                 }
             }
             AlgebraicExpression::Challenge(challenge) => {
-                unimplemented!("Challenge API for {challenge:?} not accessible in plonky3")
+                let challenge_ids = self.get_challenges()[challenge.stage as usize]; 
+                match challenges[challenge.stage].iter().enumerate().find(
+                    |&(idx, _)| challenge.id == challenge_ids[idx]
+                ) {
+                    Some((_, &elt)) => elt.into(),
+                    None => panic!("Referenced challenge does not exist in this stage.")
+                }
             }
         };
         res
+    }
+}
+
+// challenge eval implementations TODO: move this up later
+impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
+    /// Conversion of constraint involving challenges to plonky3 expression in the extension field.
+    fn to_plonky3_expr_extension<AB>(
+        &self,
+        multi_stage_trace: fn(u32) -> &AB::M,
+        multi_stage_challenge: fn(u32) -> &[<AB as AirBuilderWithPublicValues>::PublicVar],
+    ) -> AB::ExprEF
+    where
+        F: Field,
+        AB: PowdrAirBuilder,
+        AB::EF: ExtensionField<F>,
+    {
+        // we have an expression that is clearly of a certain stage
+        unimplemented!()
     }
 }
 
@@ -230,17 +336,37 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder> Air<AB>
-    for PowdrCircuit<'a, T>
+pub trait PowdrAirBuilder:
+    AirBuilder + AirBuilderWithPublicValues<F = Val> + PairBuilder + ExtensionBuilder
 {
+    fn multi_stage(&self, stage: u32) -> Self::M;
+
+    /// Challenges from each stage, as public elements. 
+    fn challenges(&self, stage: u32) -> &BTreeMap<u64, Self::PublicVar>;
+
+    fn preprocessed(&self) -> Self::M;
+}
+
+impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
+        // get fixed only if we have constant columns, otherwise it panics. We could solve this by implementing our own `PairBuilder` returning an `Option`
         let fixed = builder.preprocessed();
+
         let pi = builder.public_values();
         let publics = self.analyzed.get_publics();
         assert_eq!(publics.len(), pi.len());
 
         let local = main.row_slice(0);
+
+        // challenges
+        let multi_stage = (1..3)
+            .map(|stage| builder.multi_stage(stage))
+            .collect::<Vec<&<AB as PermutationAirBuilder>::M>>();
+
+        let challenges = (1..3) //let's just say we have a bunch of challenge variables but we won't say what they are
+            .map(|stage| builder.challenges(stage))
+            .collect::<Vec<&Vec<<AB as AirBuilderWithPublicValues>::PublicVar>>>();
 
         // public constraints
         let pi_moved = pi.to_vec();
@@ -263,6 +389,17 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
             .analyzed
             .identities_with_inlined_intermediate_polynomials()
         {
+            let mut identity_stage: u32 = 0;
+            identity.pre_visit_expressions(&mut |expr| {
+                if let AlgebraicExpression::Challenge(challenge) = expr {
+                    identity_stage = if challenge.stage > identity_stage {
+                        challenge.stage
+                    } else {
+                        identity_stage
+                    };
+                }
+            });
+
             match identity.kind {
                 IdentityKind::Polynomial => {
                     assert_eq!(identity.left.expressions.len(), 0);
@@ -274,10 +411,14 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
                         &main,
                         &fixed,
                         &pi_deref,
+                        identity_stage,
+                        multi_stage,
+                        challenges,
                     );
 
                     builder.assert_zero(left);
                 }
+                // TODO: support for challenges
                 IdentityKind::Plookup => unimplemented!("Plonky3 does not support plookup"),
                 IdentityKind::Permutation => {
                     unimplemented!("Plonky3 does not support permutations")
