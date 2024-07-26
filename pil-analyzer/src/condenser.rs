@@ -177,7 +177,7 @@ pub struct Condenser<'a, T> {
 impl<'a, T: FieldElement> Condenser<'a, T> {
     pub fn new(
         symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        implementations: &'a HashMap<String, Vec<TraitImplementation<T>>>,
+        implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     ) -> Self {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {

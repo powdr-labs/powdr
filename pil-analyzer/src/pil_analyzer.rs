@@ -148,12 +148,16 @@ impl PILAnalyzer {
         for PILFile(file) in files {
             self.current_namespace = Default::default();
             for statement in file {
-                if let PilStatement::TraitImplementation(sr, ref trait_impl) = statement {
-                    let name = trait_impl.name.to_string();
+                if let PilStatement::TraitImplementation(sr, trait_impl) = statement {
+                    let mut counters = self.symbol_counters.unwrap();
+                    let ti = StatementProcessor::new(
+                        self.driver(),
+                        &mut counters,
+                        self.polynomial_degree,
+                    )
+                    .process_trait_implementation(trait_impl);
                     self.implementations
-                        .entry(name)
-                        .or_default()
-                        .push((sr, trait_impl.clone()));
+                        .insert(ti.name.name().clone(), vec![(sr, ti)]);
                 }
                 self.handle_statement(statement);
             }
@@ -335,7 +339,13 @@ impl PILAnalyzer {
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
         condenser::condense(
             self.definitions,
-            self.implementations.iter().map(|(_, t)| t),
+            self.implementations
+                .into_iter()
+                .map(|(key, vec)| {
+                    let processed_vec = vec.into_iter().map(|(_, trait_impl)| trait_impl).collect();
+                    (key, processed_vec)
+                })
+                .collect(),
             self.public_declarations,
             &self.identities,
             self.source_order,
@@ -434,7 +444,15 @@ impl PILAnalyzer {
                     evaluator::evaluate_expression::<GoldilocksField>(
                         &degree,
                         &self.definitions,
-                        &self.implementations,
+                        &self
+                            .implementations
+                            .into_iter()
+                            .map(|(key, vec)| {
+                                let processed_vec =
+                                    vec.into_iter().map(|(_, trait_impl)| trait_impl).collect();
+                                (key, processed_vec)
+                            })
+                            .collect(),
                     )
                     .unwrap()
                     .try_to_integer()
@@ -451,12 +469,7 @@ impl PILAnalyzer {
 
     fn check_traits_overlap(&self) {
         for implementations in self.implementations.values() {
-            for (i, stmt1) in implementations.iter().enumerate() {
-                let (sr1, impl1) = match stmt1 {
-                    PilStatement::TraitImplementation(sr1, impl_) => (sr1, impl_),
-                    _ => unreachable!("Mismatched statement types in trait implementations"),
-                };
-
+            for (i, (sr1, impl1)) in implementations.iter().enumerate() {
                 let types1 = impl1.type_scheme.types.clone();
                 let absolute_name = self.driver().resolve_decl(impl1.name.name());
 
@@ -485,22 +498,20 @@ impl PILAnalyzer {
                     );
                 }
 
-                for impl2 in implementations
-                    .iter()
-                    .skip(i + 1)
-                    .filter_map(|stmt2| match stmt2 {
-                        PilStatement::TraitImplementation(_, impl_) if impl_.name == impl1.name => {
-                            Some(impl_)
-                        }
-                        _ => None,
-                    })
+                for (sr2, impl2) in
+                    implementations
+                        .iter()
+                        .skip(i + 1)
+                        .filter_map(|stmt2| match stmt2 {
+                            (sr2, impl2) if impl2.name == impl1.name => Some((sr2, impl2)),
+                            _ => None,
+                        })
                 {
                     let types2 = impl2.type_scheme.types.clone();
                     if types2.len() != trait_decl.type_vars.len() {
                         panic!(
                             "{}",
-                            sr1.with_error(format!(
-                                // TODO sr2.with_error(...))
+                            sr2.with_error(format!(
                                 "Trait {} has {} type vars, but implementation has {}",
                                 self.driver().resolve_decl(impl2.name.name()),
                                 trait_decl.type_vars.len(),
