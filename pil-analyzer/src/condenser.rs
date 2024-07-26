@@ -19,7 +19,7 @@ use powdr_ast::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        TraitImplementation,
+        TraitImplementation, TypedExpression,
     },
 };
 use powdr_number::{DegreeType, FieldElement};
@@ -45,7 +45,7 @@ pub fn condense<T: FieldElement>(
 
     let mut condensed_identities = vec![];
     let mut intermediate_columns = HashMap::new();
-    let mut new_witness_columns = vec![];
+    let mut new_columns = vec![];
     // Condense identities and intermediate columns and update the source order.
     let source_order = source_order
         .into_iter()
@@ -101,12 +101,12 @@ pub fn condense<T: FieldElement>(
             };
             // Extract and prepend the new witness columns, then identities
             // and finally the original statement (if it exists).
-            let new_wits = condenser
-                .extract_new_witness_columns()
+            let new_cols = condenser
+                .extract_new_columns()
                 .into_iter()
-                .map(|new_wit| {
-                    let name = new_wit.absolute_name.clone();
-                    new_witness_columns.push(new_wit);
+                .map(|(new_col, value)| {
+                    let name = new_col.absolute_name.clone();
+                    new_columns.push((new_col, value));
                     StatementIdentifier::Definition(name)
                 })
                 .collect::<Vec<_>>();
@@ -121,7 +121,7 @@ pub fn condense<T: FieldElement>(
                 })
                 .collect::<Vec<_>>();
 
-            new_wits
+            new_cols
                 .into_iter()
                 .chain(identity_statements)
                 .chain(statement)
@@ -129,8 +129,8 @@ pub fn condense<T: FieldElement>(
         .collect();
 
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
-    for wit in new_witness_columns {
-        definitions.insert(wit.absolute_name.clone(), (wit, None));
+    for (symbol, value) in new_columns {
+        definitions.insert(symbol.absolute_name.clone(), (symbol, value));
     }
 
     for decl in public_declarations.values_mut() {
@@ -162,14 +162,14 @@ pub struct Condenser<'a, T> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Evaluation cache.
     symbol_values: BTreeMap<SymbolCacheKey, Arc<Value<'a, T>>>,
-    /// Current namespace (for names of generated witnesses).
+    /// Current namespace (for names of generated columns).
     namespace: AbsoluteSymbolPath,
     /// ID dispensers.
     counters: Counters,
-    /// The generated witness columns since the last extraction.
-    new_witnesses: Vec<Symbol>,
-    /// The names of all new witness columns ever generated, to avoid duplicates.
-    all_new_witness_names: HashSet<String>,
+    /// The generated columns since the last extraction.
+    new_columns: Vec<(Symbol, Option<FunctionValueDefinition>)>,
+    /// The names of all new olumns ever generated, to avoid duplicates.
+    all_new_names: HashSet<String>,
     new_constraints: Vec<AnalyzedIdentity<T>>,
     implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
@@ -186,8 +186,8 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             symbol_values: Default::default(),
             namespace: Default::default(),
             counters,
-            new_witnesses: vec![],
-            all_new_witness_names: HashSet::new(),
+            new_columns: vec![],
+            all_new_names: HashSet::new(),
             new_constraints: vec![],
             implementations,
         }
@@ -234,8 +234,8 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Returns the witness columns generated since the last call to this function.
-    pub fn extract_new_witness_columns(&mut self) -> Vec<Symbol> {
-        std::mem::take(&mut self.new_witnesses)
+    pub fn extract_new_columns(&mut self) -> Vec<(Symbol, Option<FunctionValueDefinition>)> {
+        std::mem::take(&mut self.new_columns)
     }
 
     /// Returns the new constraints generated since the last call to this function.
@@ -323,13 +323,37 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Ok(Value::Integer(degree.into()).into())
     }
 
-    fn new_witness_column(
+    fn new_column(
         &mut self,
         name: &str,
+        value: Option<Arc<Value<'a, T>>>,
         source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = self.find_unused_name(name);
-        let kind = SymbolKind::Poly(PolynomialType::Committed);
+        let kind = SymbolKind::Poly(if value.is_some() {
+            PolynomialType::Constant
+        } else {
+            PolynomialType::Committed
+        });
+        let value = value.map(|v|{
+            if let Value::Closure(evaluator::Closure {
+                lambda,
+                environment: _,
+                type_args: _,
+            }) = v.as_ref()
+            {
+                if !lambda.outer_var_references.is_empty() {
+                    return Err(EvalError::TypeError(format!("Lambda expression for fixed column {name} must not reference outer variables.")))
+                }
+                Ok(FunctionValueDefinition::Expression(TypedExpression {
+                    e: Expression::LambdaExpression(source.clone(), (*lambda).clone()),
+                    type_scheme: None,
+                }))
+            } else {
+                Err(EvalError::TypeError(format!("Only lambda expressions are allowed for dynamically-created fixed columns. Got {v}.")))
+            }
+        }).transpose()?;
+
         let symbol = Symbol {
             id: self.counters.dispense_symbol_id(kind, None),
             source,
@@ -339,8 +363,9 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             length: None,
             degree: Some(self.degree.unwrap()),
         };
-        self.all_new_witness_names.insert(name.clone());
-        self.new_witnesses.push(symbol.clone());
+
+        self.all_new_names.insert(name.clone());
+        self.new_columns.push((symbol.clone(), value));
         Ok(
             Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
                 name,
@@ -380,9 +405,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             .chain((1..).map(Some))
             .map(|cnt| format!("{name}{}", cnt.map(|c| format!("_{c}")).unwrap_or_default()))
             .map(|name| self.namespace.with_part(&name).to_dotted_string())
-            .find(|name| {
-                !self.symbols.contains_key(name) && !self.all_new_witness_names.contains(name)
-            })
+            .find(|name| !self.symbols.contains_key(name) && !self.all_new_names.contains(name))
             .unwrap()
     }
 }

@@ -10,7 +10,7 @@ mod types {
 }
 
 
-machine Empty {
+machine Empty with degree: 4 {
     col witness w;
     w = w * w;
 }

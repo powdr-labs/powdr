@@ -32,15 +32,12 @@ machine ByteBinary with
     };
 }
 
-machine Binary with
+machine Binary(byte_binary: ByteBinary) with
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-
-    ByteBinary byte_binary;
-
     operation and<0> A, B -> C;
 
     operation or<1> A, B -> C;

@@ -9,7 +9,7 @@ mod cols {
 }
 
 
-machine Empty {
+machine Empty with degree: 4 {
     let x;
     let fi: col = |i| match cols::f::<int>() {
         cols::Generic::A(_) => 7,
