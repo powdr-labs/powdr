@@ -21,11 +21,11 @@ fn new_witness_column() {
     let expected = r#"namespace N(16);
     col fixed even(i) { i * 2 };
     let new_wit: -> expr = (constr || {
-        let x;
+        let x: col;
         x
     });
     let new_wit_arr: -> expr[] = (constr || {
-        let x;
+        let x: col;
         [x, x]
     });
     col witness x;
@@ -50,7 +50,7 @@ fn new_witness_column_name_clash() {
     "#;
     let expected = r#"namespace N(16);
     let new_wit: -> expr = (constr || {
-        let x;
+        let x: col;
         x
     });
     col witness x;
@@ -83,14 +83,14 @@ fn create_constraints() {
     let expected = r#"namespace N(16);
     let force_bool: expr -> std::prelude::Constr = (|c| c * (1 - c) = 0);
     let new_bool: -> expr = (constr || {
-        let x;
+        let x: col;
         N.force_bool(x);
         x
     });
     let is_zero: expr -> expr = (constr |x| {
-        let x_is_zero;
+        let x_is_zero: col;
         N.force_bool(x_is_zero);
-        let x_inv;
+        let x_inv: col;
         x_is_zero = 1 - x * x_inv;
         x_is_zero * x = 0;
         x_is_zero
