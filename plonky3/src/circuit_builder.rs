@@ -6,7 +6,7 @@
 //! everywhere save for at row j is constructed to constrain s * (pub - x) on
 //! every row.
 
-use std::{any::TypeId, collections::BTreeMap};
+use std::{any::TypeId, collections::BTreeMap, cmp::max};
 
 use p3_air::{
     Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, ExtensionBuilder, PairBuilder,
@@ -300,22 +300,111 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 // challenge eval implementations TODO: move this up later
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     /// Conversion of constraint involving challenges to plonky3 expression in the extension field.
-    fn to_plonky3_expr_extension<AB>(
+    fn to_plonky3_expr_vanilla<AB: AirBuilder<F = Val> + AirBuilderWithPublicValues>(
         &self,
-        multi_stage_trace: fn(u32) -> &AB::M,
-        multi_stage_challenge: fn(u32) -> &[<AB as AirBuilderWithPublicValues>::PublicVar],
-    ) -> AB::ExprEF
-    where
-        F: Field,
-        AB: PowdrAirBuilder,
-        AB::EF: ExtensionField<F>,
-    {
-        // we have an expression that is clearly of a certain stage
+        e: &AlgebraicExpression<T>,
+        main: &AB::M,
+        fixed: &AB::M,
+        publics: &Vec<<AB as AirBuilderWithPublicValues>::PublicVar>,
+    ) -> AB::Expr {
+        let res = match e {
+            AlgebraicExpression::Reference(r) => {
+                let poly_id = r.poly_id;
+
+                match poly_id.ptype {
+                    PolynomialType::Committed => {
+                        assert!(
+                            r.poly_id.id < self.analyzed.commitment_count() as u64,
+                            "Plonky3 expects `poly_id` to be contiguous"
+                        );
+                        let row = main.row_slice(r.next as usize);
+                        row[r.poly_id.id as usize].into()
+                    }
+                    PolynomialType::Constant => {
+                        assert!(
+                            r.poly_id.id < self.analyzed.constant_count() as u64,
+                            "Plonky3 expects `poly_id` to be contiguous"
+                        );
+                        let row = fixed.row_slice(r.next as usize);
+                        row[r.poly_id.id as usize].into()
+                    }
+                    PolynomialType::Intermediate => {
+                        let row = stage_1.row_slice(r.next as usize);
+                        row[r.poly_id.id as usize].into();
+                        unreachable!("intermediate polynomials should have been inlined")
+                    }
+                }
+            }
+            AlgebraicExpression::PublicReference(id) => {
+                let pub_ids = self.analyzed.get_publics();
+                match publics
+                    .iter()
+                    .enumerate()
+                    .find(|&(idx, _)| id == &pub_ids[idx].0)
+                {
+                    Some((_, &elt)) => return elt.into(),
+                    _ => panic!("Referenced public value does not exist"),
+                }
+            }
+
+            AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                let left = self.to_plonky3_expr_vanilla::<AB>(
+                    left,
+                    main,
+                    fixed,
+                    publics,
+                );
+                let right = self.to_plonky3_expr_vanilla::<AB>(
+                    right,
+                    main,
+                    fixed,
+                    publics,
+                );
+
+                match op {
+                    AlgebraicBinaryOperator::Add => left + right,
+                    AlgebraicBinaryOperator::Sub => left - right,
+                    AlgebraicBinaryOperator::Mul => left * right,
+                    AlgebraicBinaryOperator::Pow => {
+                        unreachable!("exponentiations should have been evaluated")
+                    }
+                }
+            }
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(
+                    expr,
+                    main,
+                    fixed,
+                    publics,
+                    stage,
+                    multi_stage_trace,
+                    multi_stage_challenge,
+                );
+
+                match op {
+                    AlgebraicUnaryOperator::Minus => -expr,
+                }
+            }
+            AlgebraicExpression::Challenge(challenge) => {
+                unreachable!("Level 0 expressions should not invoke challenges!")
+            }
+        };
+        res
+    }
+    
+    fn to_plonky3_expr_multi_stage<AB: AirBuilder<F = Val> + AirBuilderWithPublicValues>(
+        &self,
+        e: &AlgebraicExpression<T>,
+        main: &AB::M,
+        fixed: &AB::M,
+        publics: &Vec<<AB as AirBuilderWithPublicValues>::PublicVar>,
+        stage: u32,
+        multi_stage: fn(u32) -> Vec<&AB::M>, // returns a reference to the stage _ matrix
+        challenges: fn(u32) -> Vec<&Vec<<AB as AirBuilderWithPublicValues>::PublicVar>>,
+    ) -> AB::Expr {
         unimplemented!()
     }
-}
-
-/// An extension of [Air] allowing access to the number of fixed columns
 
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
@@ -336,13 +425,15 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     }
 }
 
+/// An extension of [Air] allowing access to the number of fixed columns
+/// TODO: fix pls
 pub trait PowdrAirBuilder:
     AirBuilder + AirBuilderWithPublicValues<F = Val> + PairBuilder + ExtensionBuilder
 {
     fn multi_stage(&self, stage: u32) -> Self::M;
 
     /// Challenges from each stage, as public elements. 
-    fn challenges(&self, stage: u32) -> &BTreeMap<u64, Self::PublicVar>;
+    fn challenges(&self, stage: u32) -> &Vec<Self::PublicVar>;
 
     fn preprocessed(&self) -> Self::M;
 }
@@ -364,7 +455,7 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
             .map(|stage| builder.multi_stage(stage))
             .collect::<Vec<&<AB as PermutationAirBuilder>::M>>();
 
-        let challenges = (1..3) //let's just say we have a bunch of challenge variables but we won't say what they are
+        let challenges = (1..3) //
             .map(|stage| builder.challenges(stage))
             .collect::<Vec<&Vec<<AB as AirBuilderWithPublicValues>::PublicVar>>>();
 
@@ -389,14 +480,10 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
             .analyzed
             .identities_with_inlined_intermediate_polynomials()
         {
-            let mut identity_stage: u32 = 0;
+            let mut stage: u32 = 0;
             identity.pre_visit_expressions(&mut |expr| {
                 if let AlgebraicExpression::Challenge(challenge) = expr {
-                    identity_stage = if challenge.stage > identity_stage {
-                        challenge.stage
-                    } else {
-                        identity_stage
-                    };
+                    stage = stage.max(challenge.stage)
                 }
             });
 
@@ -411,7 +498,7 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
                         &main,
                         &fixed,
                         &pi_deref,
-                        identity_stage,
+                        stage,
                         multi_stage,
                         challenges,
                     );
