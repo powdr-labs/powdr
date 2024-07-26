@@ -635,7 +635,7 @@ impl<E: Display> Display for EnumVariant<E> {
     }
 }
 
-pub fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
+fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
     format!("{}", list.into_iter().format(", "))
 }
 

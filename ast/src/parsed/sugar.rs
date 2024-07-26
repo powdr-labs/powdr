@@ -1,7 +1,3 @@
-use std::fmt::{Display, Formatter, Result};
-
-use crate::parsed::display::format_list;
-
 use super::Expression;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -49,20 +45,6 @@ impl ArrayExpression {
         match self {
             Self::Concat(left, right) => Box::new(left.into_terms().chain(right.into_terms())),
             _ => Box::new(std::iter::once(self)),
-        }
-    }
-}
-
-impl Display for ArrayExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            ArrayExpression::Value(expressions) => {
-                write!(f, "[{}]", format_list(expressions))
-            }
-            ArrayExpression::RepeatedValue(expressions) => {
-                write!(f, "[{}]*", format_list(expressions))
-            }
-            ArrayExpression::Concat(left, right) => write!(f, "{left} + {right}"),
         }
     }
 }
