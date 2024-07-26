@@ -6,8 +6,8 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_proof, make_simple_prepared_pipeline, regular_test, run_pilcom_test_file,
-        std_analyzed, test_halo2, BackendVariant,
+        gen_halo2_proof, make_simple_prepared_pipeline, regular_test, std_analyzed, test_halo2,
+        test_pilcom, BackendVariant,
     },
     Pipeline,
 };
@@ -29,15 +29,16 @@ fn poseidon_bn254_test() {
 #[test]
 fn poseidon_gl_test() {
     let f = "std/poseidon_gl_test.asm";
-    run_pilcom_test_file(make_simple_prepared_pipeline(f)).unwrap();
+    test_pilcom(make_simple_prepared_pipeline(f));
     gen_estark_proof(make_simple_prepared_pipeline(f));
 }
 
 #[test]
 fn poseidon_gl_memory_test() {
     let f = "std/poseidon_gl_memory_test.asm";
-    run_pilcom_test_file(make_simple_prepared_pipeline(f)).unwrap();
-    gen_estark_proof(make_simple_prepared_pipeline(f));
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_pilcom(pipeline.clone());
+    gen_estark_proof(pipeline);
 }
 
 #[test]
@@ -49,7 +50,7 @@ fn split_bn254_test() {
 #[test]
 fn split_gl_test() {
     let f = "std/split_gl_test.asm";
-    run_pilcom_test_file(make_simple_prepared_pipeline(f)).unwrap();
+    test_pilcom(make_simple_prepared_pipeline(f));
     gen_estark_proof(make_simple_prepared_pipeline(f));
 }
 
@@ -58,7 +59,7 @@ fn split_gl_test() {
 fn arith_test() {
     let f = "std/arith_test.asm";
     let pipeline = make_simple_prepared_pipeline(f);
-    run_pilcom_test_file(pipeline.clone()).unwrap();
+    test_pilcom(pipeline.clone());
 
     // Running gen_estark_proof(f, Default::default())
     // is too slow for the PR tests. This will only create a single
@@ -157,14 +158,14 @@ fn write_once_memory_test() {
 #[test]
 fn binary_test() {
     let f = "std/binary_test.asm";
-    run_pilcom_test_file(make_simple_prepared_pipeline(f)).unwrap();
+    test_pilcom(make_simple_prepared_pipeline(f));
     test_halo2(make_simple_prepared_pipeline(f));
 }
 
 #[test]
 fn shift_test() {
     let f = "std/shift_test.asm";
-    run_pilcom_test_file(make_simple_prepared_pipeline(f)).unwrap();
+    test_pilcom(make_simple_prepared_pipeline(f));
     test_halo2(make_simple_prepared_pipeline(f));
 }
 

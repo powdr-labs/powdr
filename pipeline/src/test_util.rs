@@ -63,7 +63,7 @@ pub fn make_prepared_pipeline<T: FieldElement>(
 pub fn regular_test(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
-    run_pilcom_test_file(pipeline_gl.clone()).unwrap();
+    test_pilcom(pipeline_gl.clone());
     gen_estark_proof(pipeline_gl);
 
     let inputs_bn = inputs.iter().map(|x| Bn254Field::from(*x)).collect();
@@ -71,10 +71,9 @@ pub fn regular_test(file_name: &str, inputs: &[i32]) {
     test_halo2(pipeline_bn);
 }
 
-pub fn run_pilcom_test_file(pipeline: Pipeline<GoldilocksField>) -> Result<(), String> {
-    run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic)?;
-    run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite)?;
-    Ok(())
+pub fn test_pilcom(pipeline: Pipeline<GoldilocksField>) {
+    run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic).unwrap();
+    run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
 }
 
 pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Arc<Analyzed<T>> {
@@ -117,8 +116,15 @@ pub fn run_pilcom_with_backend_variant(
     }
 }
 
+fn should_generate_proofs() -> bool {
+    env::var("POWDR_GENERATE_PROOFS")
+        .ok()
+        .map(|v| !v.is_empty())
+        == Some(true)
+}
+
 pub fn gen_estark_proof(pipeline: Pipeline<GoldilocksField>) {
-    if env::var("POWDR_GENERATE_PROOFS").is_ok() {
+    if should_generate_proofs() {
         gen_estark_proof_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
         gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
     }
@@ -163,7 +169,7 @@ pub fn gen_estark_proof_with_backend_variant(
 }
 
 pub fn test_halo2(pipeline: Pipeline<Bn254Field>) {
-    if env::var("POWDR_GENERATE_PROOFS").is_ok() {
+    if should_generate_proofs() {
         test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
         test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
     }

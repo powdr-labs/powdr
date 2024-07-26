@@ -1,24 +1,16 @@
 #[cfg(feature = "halo2")]
 use powdr_number::Bn254Field;
 use powdr_number::GoldilocksField;
-use powdr_pipeline::{
-    test_util::{
-        assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
-        assert_proofs_fail_for_invalid_witnesses_halo2,
-        assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
-        gen_estark_proof_with_backend_variant, make_prepared_pipeline,
-        make_simple_prepared_pipeline, regular_test, run_pilcom_test_file,
-        run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant,
-        test_plonky3_with_backend_variant, BackendVariant,
-    },
-    Pipeline,
+use powdr_pipeline::test_util::{
+    assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
+    assert_proofs_fail_for_invalid_witnesses_halo2,
+    assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
+    gen_estark_proof_with_backend_variant, make_prepared_pipeline, make_simple_prepared_pipeline,
+    regular_test, run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant,
+    test_pilcom, test_plonky3_with_backend_variant, BackendVariant,
 };
 
 use test_log::test;
-
-pub fn test_pilcom(pipeline: Pipeline<GoldilocksField>) {
-    run_pilcom_test_file(pipeline).unwrap();
-}
 
 #[test]
 fn invalid_witness() {
@@ -146,7 +138,7 @@ fn external_witgen_a_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.a".to_string(), vec![GoldilocksField::from(3); 16])];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness);
-    run_pilcom_test_file(pipeline).unwrap();
+    test_pilcom(pipeline);
 }
 
 #[test]
@@ -154,7 +146,7 @@ fn external_witgen_b_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.b".to_string(), vec![GoldilocksField::from(4); 16])];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness);
-    run_pilcom_test_file(pipeline).unwrap();
+    test_pilcom(pipeline);
 }
 
 #[test]
@@ -165,7 +157,7 @@ fn external_witgen_both_provided() {
         ("main.b".to_string(), vec![GoldilocksField::from(4); 16]),
     ];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness);
-    run_pilcom_test_file(pipeline).unwrap();
+    test_pilcom(pipeline);
 }
 
 #[test]
@@ -178,7 +170,7 @@ fn external_witgen_fails_on_conflicting_external_witness() {
         ("main.b".to_string(), vec![GoldilocksField::from(3); 16]),
     ];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness);
-    run_pilcom_test_file(pipeline).unwrap();
+    test_pilcom(pipeline);
 }
 
 #[test]
