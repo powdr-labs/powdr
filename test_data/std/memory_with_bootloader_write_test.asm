@@ -1,3 +1,4 @@
+use std::machines::range::Byte2;
 use std::machines::memory_with_bootloader_write::MemoryWithBootloaderWrite;
 
 machine Main with degree: 65536 {
@@ -7,7 +8,8 @@ machine Main with degree: 65536 {
     reg A;
 
     col fixed STEP(i) { i };
-    MemoryWithBootloaderWrite memory;
+    Byte2 byte2;
+    MemoryWithBootloaderWrite memory(byte2);
 
     instr mload X -> Y link ~> Y = memory.mload(X, STEP);
     instr mstore X, Y -> link ~> memory.mstore(X, STEP, Y);
