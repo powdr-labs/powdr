@@ -332,6 +332,12 @@ pub struct TraitImplementation<Expr> {
     pub functions: Vec<NamedExpression<Expr>>,
 }
 
+impl<R> TraitImplementation<Expression<R>> {
+    pub fn function_by_name(&self, name: &str) -> Option<&NamedExpression<Expression<R>>> {
+        self.functions.iter().find(|f| f.name == name)
+    }
+}
+
 impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(self.functions.iter().flat_map(|m| m.body.children()))

@@ -15,10 +15,10 @@ use powdr_ast::{
     },
     parsed::{
         display::quote,
-        types::{Type, TypeScheme},
+        types::{FunctionType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, StatementInsideBlock, TraitFunction, TraitImplementation, UnaryOperation,
+        Pattern, StatementInsideBlock, TraitDeclaration, TraitImplementation, UnaryOperation,
         UnaryOperator,
     },
 };
@@ -142,7 +142,7 @@ pub enum Value<'a, T> {
     Expression(AlgebraicExpression<T>),
     TraitFunction(
         &'a str,
-        TraitFunction,
+        &'a Arc<TraitDeclaration>,
         &'a Vec<TraitImplementation<Expression>>,
     ),
 }
@@ -466,11 +466,11 @@ impl<'a> Definitions<'a> {
                     }
                 }
                 Some(FunctionValueDefinition::TraitFunction(trait_decl, function)) => {
-                    let fname = format!("{}::{}", trait_decl.name, function.name);
-                    let impls = implementations.get(&fname).ok_or_else(|| {
+                    let impls = implementations.get(&trait_decl.name).ok_or_else(|| {
                         EvalError::SymbolNotFound(format!("Symbol {} not found.", &name))
                     })?;
-                    Value::TraitFunction(trait_decl.name.as_str(), function.clone(), impls).into()
+
+                    Value::TraitFunction(&function.name, trait_decl, impls).into()
                 }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
@@ -983,11 +983,76 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.type_args = type_args.clone();
                 self.expand(&lambda.body)?;
             }
-            Value::TraitFunction(decl_name, function, impls) => {}
+            Value::TraitFunction(function_name, trait_decl, impls) => {
+                for trait_impl in impls.iter() {
+                    let func_decl = trait_decl.function_by_name(&function_name).unwrap();
+                    let func_impl = trait_impl.function_by_name(&function_name).unwrap();
+
+                    let type_args = trait_type_args(trait_decl, trait_impl);
+
+                    if match_trait_function(&func_decl.ty, &type_args, &arguments) {
+                        if let Expression::LambdaExpression(_, LambdaExpression { body, .. }) =
+                            func_impl.body.as_ref()
+                        {
+                            self.op_stack.push(Operation::SetEnvironment(
+                                std::mem::take(&mut self.local_vars),
+                                std::mem::take(&mut self.type_args),
+                            ));
+                            self.local_vars = arguments.clone();
+                            self.expand(body)?;
+                        } else {
+                            panic!("Expected lambda expression")
+                        }
+                    }
+                }
+            }
             e => panic!("Expected function but got {e}"),
         };
         Ok(())
     }
+}
+
+fn trait_type_args(
+    trait_decl: &Arc<TraitDeclaration>,
+    trait_impl: &TraitImplementation<Expression>,
+) -> HashMap<String, Type> {
+    let mut type_args = HashMap::new();
+    for (name, ty) in trait_decl
+        .type_vars
+        .iter()
+        .zip(trait_impl.type_scheme.types.iter())
+    {
+        type_args.insert(name.clone(), ty.clone());
+    }
+    type_args
+}
+
+fn match_trait_function<T: FieldElement>(
+    func_type: &Type,
+    type_args: &HashMap<String, Type>,
+    arguments: &[Arc<Value<T>>],
+) -> bool {
+    if let Type::Function(FunctionType { params, value: _ }) = func_type {
+        for (p, a) in params.iter().zip(arguments.iter()) {
+            match p {
+                Type::TypeVar(name) => {
+                    let type_var = type_args.get(name).unwrap();
+                    match (type_var, a.as_ref()) {
+                        (Type::Fe, Value::FieldElement(_)) => continue,
+                        (Type::Int, Value::Integer(_)) => continue,
+                        (Type::Expr, Value::Expression(_)) => continue,
+                        (Type::Array(_), Value::Array(_)) => continue,
+                        _ => return false,
+                    }
+                }
+                _ => continue,
+            }
+        }
+    } else {
+        panic!("Expected function type but got {func_type}");
+    }
+
+    true
 }
 
 fn evaluate_literal<'a, T: FieldElement>(

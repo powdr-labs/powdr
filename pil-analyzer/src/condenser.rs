@@ -35,7 +35,7 @@ type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    mut implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
+    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[ParsedIdentity],
     source_order: Vec<StatementIdentifier>,
