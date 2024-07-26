@@ -1,0 +1,15 @@
+[package]
+name = "std_hello_world"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+riscv-rt = "0.12"
+
+[profile.release]
+panic = 'abort'
+
+[profile.dev]
+panic = 'abort'
+
+[workspace]
