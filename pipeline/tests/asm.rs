@@ -444,7 +444,8 @@ mod book {
 
     fn run_book_test(file: &str) {
         // passing 0 to all tests currently works as they either take no prover input or 0 works
-        regular_test(file, &[0]);
+        let pipeline = make_prepared_pipeline(file, vec![0.into()], vec![]);
+        test_pilcom(pipeline);
     }
 
     include!(concat!(env!("OUT_DIR"), "/asm_book_tests.rs"));

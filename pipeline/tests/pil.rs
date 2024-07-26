@@ -371,7 +371,7 @@ mod book {
     use test_log::test;
 
     fn run_book_test(file: &str) {
-        regular_test(file, Default::default());
+        test_pilcom(make_simple_prepared_pipeline(file));
     }
 
     include!(concat!(env!("OUT_DIR"), "/pil_book_tests.rs"));
