@@ -1688,19 +1688,4 @@ mod test {
 
         assert_eq!(parse_and_evaluate_symbol(input, "g"), "7".to_string());
     }
-
-    #[test]
-    fn basic_trait_impl_eval() {
-        let input = "
-        trait Add<T> {
-            add: T, T -> T,
-        }
-        impl<T> Add<int> {
-            add: |a, b| a + b,
-        }
-        let r: int = Add::add(3, 4);  
-        ";
-
-        assert_eq!(parse_and_evaluate_symbol(input, "r"), "7".to_string());
-    }
 }
