@@ -65,12 +65,6 @@ jobs:
         test:
         - "1"
         - "2"
-        - "3"
-        - "4"
-        - "5"
-        - "6"
-        - "7"
-        - "8"
 
     steps:
     - uses: actions/checkout@v3
@@ -98,7 +92,7 @@ jobs:
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
     - name: Run default tests
-      run: cargo nextest run --archive-file tests.tar.zst --verbose --partition count:"${{ matrix.test }}"/8
+      run: cargo nextest run --archive-file tests.tar.zst --verbose --partition count:"${{ matrix.test }}"/2
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
 
