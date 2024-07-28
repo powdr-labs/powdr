@@ -576,7 +576,7 @@ fn defined_trait() {
 }
 
 #[test]
-#[should_panic = "Trait Add not found."]
+#[should_panic = "Trait Add not found"]
 fn undefined_trait() {
     let input = "
     impl<T> Add<int, int> {
