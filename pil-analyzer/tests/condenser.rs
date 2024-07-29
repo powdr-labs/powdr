@@ -250,18 +250,23 @@ fn set_hint() {
     namespace std::prover;
         let add_hint = 8;
         let eval = 8;
+        enum Query { Hint(fe), None, }
     namespace N(16);
         let x;
         let y;
-        std::prover::add_hint(x, |_| 1);
-        std::prover::add_hint(y, |i| std::prover::eval(x));
+        std::prover::add_hint(x, query |_| std::prover::Query::Hint(1));
+        std::prover::add_hint(y, |i| std::prover::Query::Hint(std::prover::eval(x)));
     "#;
     let expected = r#"namespace std::prover;
     let add_hint = 8;
     let eval = 8;
+    enum Query {
+        Hint(fe),
+        None,
+    }
 namespace N(16);
-    col witness x(_) query 1;
-    col witness y(i) query std::prover::eval(N.x);
+    col witness x(_) query std::prover::Query::Hint(1);
+    col witness y(i) query std::prover::Query::Hint(std::prover::eval(N.x));
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
