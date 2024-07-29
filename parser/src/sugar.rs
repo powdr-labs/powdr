@@ -126,7 +126,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             desugar_array_literal_expression(array_expression).to_string(),
-            "(|i| { std::expand_fixed::expand([std::expand_fixed::repeat([1, 2]), std::expand_fixed::once([1]), std::expand_fixed::once([1, 2, 3])], std::prover::degree())(i) })"
+            "(|i| { std::expand_fixed::expand_unwrapped([std::expand_fixed::repeat([1, 2]), std::expand_fixed::once([1]), std::expand_fixed::once([1, 2, 3])], std::prover::degree())(i) })"
         );
     }
 }

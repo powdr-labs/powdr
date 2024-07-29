@@ -154,7 +154,7 @@ PolynomialConstantDeclaration: PilStatement = {
     <start:@L> PolCol ConstantFixed <list:PolynomialNameList> <end:@R> ";" => PilStatement::PolynomialConstantDeclaration(ctx.source_ref(start, end), list)
 }
 
-PolynomialConstantDefinition: PilStatement = {
+pub PolynomialConstantDefinition: PilStatement = {
     <start:@L> PolCol ConstantFixed <id:Identifier> <def:FunctionDefinition> <end:@R> ";"
         => PilStatement::PolynomialConstantDefinition(ctx.source_ref(start, end), id, def)
 }

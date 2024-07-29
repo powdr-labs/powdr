@@ -230,13 +230,13 @@ fn process_link(link: Link) -> PilStatement {
 
 #[cfg(test)]
 mod test {
-    use std::{fs, path::PathBuf};
+    use std::{fs, iter::once, path::PathBuf};
 
     use powdr_ast::object::PILGraph;
     use powdr_number::{FieldElement, GoldilocksField};
 
     use powdr_analysis::convert_asm_to_pil;
-    use powdr_parser::parse_asm;
+    use powdr_parser::{parse_asm, ParserContext};
 
     use pretty_assertions::assert_eq;
 
@@ -266,6 +266,27 @@ mod test {
     fn extract_main(code: &str) -> &str {
         let start = code.find("namespace main").unwrap();
         &code[start..]
+    }
+
+    /// a test utility to desugar array definitions, so that we can use the array syntax in the tests
+    fn desugar(input: &str) -> String {
+        let parser = powdr_parser::powdr::PolynomialConstantDefinitionParser::new();
+        let ctx = ParserContext::new(None, "");
+
+        input
+            .lines()
+            .map(|line| {
+                // try parsing each line as a constant polynomial definition
+                parser
+                    .parse(&ctx, line)
+                    // return the result as a string if successful
+                    .map(|l| l.to_string())
+                    // return the input otherwise
+                    .unwrap_or_else(|_| line.to_string())
+            })
+            .chain(once("".to_string()))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     #[test]
@@ -301,7 +322,7 @@ namespace main__rom(4 + 4);
         );
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
         let pil = link(graph).unwrap();
-        assert_eq!(extract_main(&format!("{pil}")), expectation);
+        assert_eq!(extract_main(&format!("{pil}")), desugar(expectation));
     }
 
     #[test]
@@ -311,7 +332,7 @@ namespace main__rom(4 + 4);
 
         let graph = parse_analyze_and_compile::<GoldilocksField>("");
         let pil = link(graph).unwrap();
-        assert_eq!(extract_main(&format!("{pil}")), expectation);
+        assert_eq!(extract_main(&format!("{pil}")), desugar(expectation));
     }
 
     #[test]
@@ -429,7 +450,7 @@ namespace main_sub__rom(16);
         );
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
         let pil = link(graph).unwrap();
-        assert_eq!(extract_main(&format!("{pil}")), expectation);
+        assert_eq!(extract_main(&format!("{pil}")), desugar(expectation));
     }
 
     #[test]
@@ -512,7 +533,7 @@ namespace main__rom(16);
         );
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
         let pil = link(graph).unwrap();
-        assert_eq!(extract_main(&format!("{pil}")), expectation);
+        assert_eq!(extract_main(&format!("{pil}")), desugar(expectation));
     }
 
     #[test]
@@ -572,7 +593,7 @@ namespace main__rom(1024);
 "#;
         let graph = parse_analyze_and_compile::<GoldilocksField>(source);
         let pil = link(graph).unwrap();
-        assert_eq!(extract_main(&format!("{pil}")), expectation);
+        assert_eq!(extract_main(&format!("{pil}")), desugar(expectation));
     }
 
     #[test]
@@ -675,7 +696,7 @@ namespace main_vm(1024);
 "#;
         let graph = parse_analyze_and_compile::<GoldilocksField>(asm);
         let pil = link(graph).unwrap();
-        assert_eq!(extract_main(&(pil.to_string())), expected);
+        assert_eq!(extract_main(&(pil.to_string())), desugar(expected));
     }
 
     #[test]
@@ -798,7 +819,7 @@ namespace main_bin(128);
         );
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
         let pil = link(graph).unwrap();
-        assert_eq!(extract_main(&format!("{pil}")), expected);
+        assert_eq!(extract_main(&format!("{pil}")), desugar(expected));
     }
 
     #[test]
@@ -957,6 +978,6 @@ namespace main_submachine(32);
         );
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
         let pil = link(graph).unwrap();
-        assert_eq!(extract_main(&format!("{pil}")), expected);
+        assert_eq!(extract_main(&format!("{pil}")), desugar(expected));
     }
 }
