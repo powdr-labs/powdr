@@ -1,4 +1,5 @@
 use std::machines::memory::Memory;
+use std::machines::range::Byte2;
 
 machine Main with degree: 256 {
     reg pc[@pc];
@@ -8,7 +9,8 @@ machine Main with degree: 256 {
 
     col fixed STEP(i) { i };
 
-    Memory memory;
+    Byte2 byte2;
+    Memory memory(byte2);
     Child sub(memory);
 
     instr mload X -> Y link ~> Y = memory.mload(X, STEP);

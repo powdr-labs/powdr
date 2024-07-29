@@ -33,14 +33,12 @@ machine ByteShift with
     };
 }
 
-machine Shift with
+machine Shift(byte_shift: ByteShift) with
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    ByteShift byte_shift;
-
     operation shl<0> A, B -> C;
 
     operation shr<1> A, B -> C;
