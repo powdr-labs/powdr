@@ -140,7 +140,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         e: &AlgebraicExpression<T>,
         main: &AB::M,
         fixed: &AB::M,
-        publics: &Vec<<AB as AirBuilderWithPublicValues>::PublicVar>,
+        publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -169,15 +169,11 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::PublicReference(id) => {
-                let pub_ids = self.analyzed.get_publics();
-                match publics
-                    .iter()
-                    .enumerate()
-                    .find(|&(idx, _)| id == &pub_ids[idx].0)
-                {
-                    Some((_, &elt)) => return elt.into(),
-                    _ => panic!("Referenced public value does not exist"),
-                }
+                assert!(
+                    publics.contains_key(id),
+                    "Referenced public value does not exist"
+                );
+                publics[id].into()
             }
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
@@ -243,20 +239,26 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
         let local = main.row_slice(0);
 
         // public constraints
-        let pi_moved = pi.to_vec();
-        let pi_deref = pi_moved.clone();
+        let public_vals_by_id = publics
+            .iter()
+            .zip(pi.to_vec())
+            .map(|((id, _, _), val)| (id, val))
+            .collect::<BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>();
+
         let fixed_local = fixed.row_slice(0);
         let public_offset = self.analyzed.constant_count();
 
-        publics.iter().zip(pi_moved).enumerate().for_each(
-            |(index, ((_, col_id, _), public_value))| {
+        publics
+            .iter()
+            .enumerate()
+            .for_each(|(index, (pub_id, col_id, _))| {
                 let selector = fixed_local[public_offset + index];
                 let witness_col = local[*col_id];
+                let public_value = public_vals_by_id[pub_id];
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
                 builder.assert_zero(selector * (public_value.into() - witness_col));
-            },
-        );
+            });
 
         // circuit constraints
         for identity in &self
@@ -273,7 +275,7 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
                         identity.left.selector.as_ref().unwrap(),
                         &main,
                         &fixed,
-                        &pi_deref,
+                        &public_vals_by_id,
                     );
 
                     builder.assert_zero(left);
