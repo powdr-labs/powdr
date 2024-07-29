@@ -19,8 +19,8 @@ use crate::parsed::{
         MachineParams, OperationId, OperationParams,
     },
     visitor::{ExpressionVisitable, VisitOrder},
-    EnumDeclaration, NamespacedPolynomialReference, PilStatement, TraitDeclaration,
-    TypedExpression,
+    EnumDeclaration, NamespacedPolynomialReference, PilStatement, StructDeclaration,
+    TraitDeclaration, TypedExpression,
 };
 
 pub use crate::parsed::Expression;
@@ -680,7 +680,7 @@ pub struct SubmachineDeclaration {
 pub enum Item {
     Machine(Machine),
     Expression(TypedExpression),
-    TypeDeclaration(EnumDeclaration<Expression>),
+    TypeDeclaration(TypeDeclaration),
     TraitDeclaration(TraitDeclaration<Expression>),
 }
 
@@ -690,6 +690,24 @@ impl Item {
             Item::Machine(m) => Some(m),
             Item::Expression(_) | Item::TypeDeclaration(_) | Item::TraitDeclaration(_) => None,
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum TypeDeclaration {
+    Enum(EnumDeclaration<Expression>),
+    Struct(StructDeclaration<Expression>),
+}
+
+impl From<EnumDeclaration<Expression>> for TypeDeclaration {
+    fn from(value: EnumDeclaration<Expression>) -> Self {
+        TypeDeclaration::Enum(value)
+    }
+}
+
+impl From<StructDeclaration<Expression>> for TypeDeclaration {
+    fn from(value: StructDeclaration<Expression>) -> Self {
+        TypeDeclaration::Struct(value)
     }
 }
 
