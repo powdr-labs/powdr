@@ -455,7 +455,7 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                         let (witness, size) =
                             process_witness_for_machine(machine_name, machine_data, &witness);
 
-                        let status = time_stage(machine_name, size, stage + 1, move || {
+                        let status = time_stage(machine_name, size, stage, move || {
                             prover.resume(witness)
                         });
 
