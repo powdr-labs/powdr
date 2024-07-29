@@ -2,7 +2,7 @@
 //! i.e. it turns more complex expressions in identities to simpler expressions.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
     fmt::Display,
     iter::once,
     str::FromStr,
@@ -12,7 +12,7 @@ use std::{
 use powdr_ast::{
     analyzed::{
         self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
-        FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
+        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialType, PublicDeclaration,
         SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
@@ -46,7 +46,7 @@ pub fn condense<T: FieldElement>(
     let mut condensed_identities = vec![];
     let mut intermediate_columns = HashMap::new();
     let mut new_columns = vec![];
-    let mut new_hints = HashMap::new();
+    let mut new_values = HashMap::new();
     // Condense identities and intermediate columns and update the source order.
     let source_order = source_order
         .into_iter()
@@ -100,15 +100,14 @@ pub fn condense<T: FieldElement>(
                 }
                 s => Some(s),
             };
-            // Extract and prepend the new witness columns, then identities
+            // Extract and prepend the new columns, then identities
             // and finally the original statement (if it exists).
             let new_cols = condenser
                 .extract_new_columns()
                 .into_iter()
-                .map(|(new_col, value)| {
-                    let name = new_col.absolute_name.clone();
-                    new_columns.push((new_col, value));
-                    StatementIdentifier::Definition(name)
+                .map(|new_col| {
+                    new_columns.push(new_col.clone());
+                    StatementIdentifier::Definition(new_col.absolute_name)
                 })
                 .collect::<Vec<_>>();
 
@@ -122,11 +121,9 @@ pub fn condense<T: FieldElement>(
                 })
                 .collect::<Vec<_>>();
 
-            for (col_name, hint) in condenser.extract_new_hints() {
-                if new_hints.insert(col_name.clone(), hint).is_some() {
-                    panic!(
-                        "Column {col_name} already has a hint set, but tried to add another one."
-                    )
+            for (name, hint) in condenser.extract_new_column_values() {
+                if new_values.insert(name.clone(), hint).is_some() {
+                    panic!("Column {name} already has a hint set, but tried to add another one.",)
                 }
             }
 
@@ -138,18 +135,19 @@ pub fn condense<T: FieldElement>(
         .collect();
 
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
-    for (symbol, value) in new_columns {
-        definitions.insert(symbol.absolute_name.clone(), (symbol, value));
+    for symbol in new_columns {
+        definitions.insert(symbol.absolute_name.clone(), (symbol, None));
     }
-    for (col_name, hint) in new_hints {
-        if let Some((symbol, value)) = definitions.get_mut(&col_name) {
-            assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed));
+    for (name, new_value) in new_values {
+        if let Some((_, value)) = definitions.get_mut(&name) {
             if !value.is_none() {
-                panic!("Column {col_name} already has a hint set, but tried to add another one.")
+                panic!(
+                    "Column {name} already has a value / hint set, but tried to add another one."
+                )
             }
-            *value = Some(hint);
+            *value = Some(new_value);
         } else {
-            panic!("Column {col_name} not found.");
+            panic!("Column {name} not found.");
         }
     }
 
@@ -185,13 +183,12 @@ pub struct Condenser<'a, T> {
     namespace: AbsoluteSymbolPath,
     /// ID dispensers.
     counters: Counters,
-    /// The generated columns since the last extraction.
-    new_columns: Vec<(Symbol, Option<FunctionValueDefinition>)>,
-    /// The hints added since the last extraction.
-    /// TODO maybe handly values for fixed and for witness columns in the same way? (and remove the second tuple element above)
-    new_hints: Vec<(String, FunctionValueDefinition)>,
-    /// The names of all new olumns ever generated, to avoid duplicates.
-    all_new_names: HashSet<String>,
+    /// The generated columns since the last extraction in creation order.
+    new_columns: Vec<Symbol>,
+    /// The hints and fixed column definitions added since the last extraction.
+    new_column_values: HashMap<String, FunctionValueDefinition>,
+    /// The names of all new columns ever generated, to avoid duplicates.
+    new_symbols: HashSet<String>,
     new_constraints: Vec<AnalyzedIdentity<T>>,
 }
 
@@ -205,8 +202,8 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             namespace: Default::default(),
             counters,
             new_columns: vec![],
-            new_hints: Default::default(),
-            all_new_names: HashSet::new(),
+            new_column_values: Default::default(),
+            new_symbols: HashSet::new(),
             new_constraints: vec![],
         }
     }
@@ -251,14 +248,15 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         self.degree = degree;
     }
 
-    /// Returns the witness columns generated since the last call to this function.
-    pub fn extract_new_columns(&mut self) -> Vec<(Symbol, Option<FunctionValueDefinition>)> {
+    /// Returns columns generated since the last call to this function.
+    pub fn extract_new_columns(&mut self) -> Vec<Symbol> {
         std::mem::take(&mut self.new_columns)
     }
 
-    /// Return the new hints added since the last call to this function.
-    pub fn extract_new_hints(&mut self) -> Vec<(String, FunctionValueDefinition)> {
-        std::mem::take(&mut self.new_hints)
+    /// Return the new column values (fixed column definitions or witness column hints)
+    /// added since the last call to this function.
+    pub fn extract_new_column_values(&mut self) -> HashMap<String, FunctionValueDefinition> {
+        std::mem::take(&mut self.new_column_values)
     }
 
     /// Returns the new constraints generated since the last call to this function.
@@ -372,13 +370,17 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             length: None,
             degree: Some(self.degree.unwrap()),
         };
+        let poly_id = PolyID::from(&symbol);
 
-        self.all_new_names.insert(name.clone());
-        self.new_columns.push((symbol.clone(), value));
+        self.new_symbols.insert(name.clone());
+        self.new_columns.push(symbol.clone());
+        if let Some(value) = value {
+            self.new_column_values.insert(name.clone(), value);
+        }
         Ok(
             Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
                 name,
-                poly_id: (&symbol).into(),
+                poly_id,
                 next: false,
             }))
             .into(),
@@ -390,7 +392,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         col: Arc<Value<'a, T>>,
         expr: Arc<Value<'a, T>>,
     ) -> Result<(), EvalError> {
-        let col_name = match col.as_ref() {
+        let name = match col.as_ref() {
             Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
                 name,
                 poly_id,
@@ -407,7 +409,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                         "Array elements are not supported for std::prover::set_hint (called on {name})."
                     )));
                 }
-                name
+                name.clone()
             }
             col => {
                 return Err(EvalError::TypeError(format!(
@@ -417,16 +419,21 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
         };
 
-        self.new_hints.push((
-            col_name.clone(),
-            closure_to_function(&SourceRef::unknown(), expr.as_ref(), FunctionKind::Query)
-                .map_err(|e| match e {
-                    EvalError::TypeError(e) => {
-                        EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
-                    }
-                    _ => e,
-                })?,
-        ));
+        let value = closure_to_function(&SourceRef::unknown(), expr.as_ref(), FunctionKind::Query)
+            .map_err(|e| match e {
+                EvalError::TypeError(e) => {
+                    EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
+                }
+                _ => e,
+            })?;
+        match self.new_column_values.entry(name) {
+            Entry::Vacant(entry) => entry.insert(value),
+            Entry::Occupied(_) => {
+                return Err(EvalError::TypeError(format!(
+                    "Column {col} already has a hint set, but tried to add another one."
+                )));
+            }
+        };
         Ok(())
     }
 
@@ -459,7 +466,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             .chain((1..).map(Some))
             .map(|cnt| format!("{name}{}", cnt.map(|c| format!("_{c}")).unwrap_or_default()))
             .map(|name| self.namespace.with_part(&name).to_dotted_string())
-            .find(|name| !self.symbols.contains_key(name) && !self.all_new_names.contains(name))
+            .find(|name| !self.symbols.contains_key(name) && !self.new_symbols.contains(name))
             .unwrap()
     }
 }
