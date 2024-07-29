@@ -149,7 +149,7 @@ pub trait BackendFactory<F: FieldElement> {
 }
 
 /// Dynamic interface for a backend.
-pub trait Backend<'a, F: FieldElement> {
+pub trait Backend<'a, F: FieldElement>: Send {
     /// Perform the proving.
     ///
     /// The backend uses the BackendOptions provided at creation time
