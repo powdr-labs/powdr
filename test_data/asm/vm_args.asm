@@ -1,4 +1,5 @@
 use std::machines::shift::Shift;
+use std::machines::shift::ByteShift;
 
 machine Main with degree: 65536 {
     reg pc[@pc];
@@ -7,7 +8,8 @@ machine Main with degree: 65536 {
     reg Z[<=];
     reg A;
 
-    Shift shift;
+    ByteShift byte_shift;
+    Shift shift(byte_shift);
     WithArg sub(shift);
 
     instr shl X, Y -> Z link ~> Z = shift.shl(X, Y);
