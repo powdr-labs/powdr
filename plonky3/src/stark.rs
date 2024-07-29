@@ -140,12 +140,8 @@ impl<T: FieldElement> Plonky3Prover<T> {
                 .flat_map(|i| {
                     fixed
                         .iter()
+                        .chain(publics.iter())
                         .map(move |(_, values)| cast_to_goldilocks(values[i as usize]))
-                        .chain(
-                            publics
-                                .iter()
-                                .map(move |(_, values)| cast_to_goldilocks(values[i as usize])),
-                        )
                 })
                 .collect(),
             self.fixed.len() + publics.len(),
