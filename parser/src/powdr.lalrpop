@@ -592,18 +592,18 @@ Term<StructOption>: Box<Expression> = {
 }
 
 TermWithStruct: Box<Expression> = {
-    TermCommon,
-    //StructExpression<TermWithStruct>,
+    TermCommon<TermWithStruct>,
+    StructExpression,
 }
 
 TermWithoutStruct: Box<Expression> = {
-    TermCommon,
+    TermCommon<TermWithoutStruct>,
 }
 
 
-TermCommon: Box<Expression> = {
-    <start:@L> <i:IndexAccess> <end:@R> => ctx.to_expr_with_source_ref(i, start, end),
-    <start:@L> <f:FunctionCall> <end:@R> => ctx.to_expr_with_source_ref(f, start, end),
+TermCommon<StructOption>: Box<Expression> = {
+    <start:@L> <i:IndexAccess<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(i, start, end),
+    <start:@L> <f:FunctionCall<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(f, start, end),
     <start:@L> <i:ConstantIdentifier> <end:@R> => ctx.to_expr_with_source_ref(NamespacedPolynomialReference::from_identifier(i), start, end),
     <start:@L> <g:GenericReference> <end:@R> => ctx.to_expr_with_source_ref(g, start, end),
     <start:@L> <p:PublicIdentifier> <end:@R> => Box::new(Expression::PublicReference(ctx.source_ref(start, end), p)),
@@ -613,18 +613,18 @@ TermCommon: Box<Expression> = {
     IfExpression,
     BlockExpression,
     <start:@L> "[" <items:ExpressionList> "]" <end:@R> => ctx.to_expr_with_source_ref(ArrayLiteral{items}, start, end),
-    <start:@L> "(" <head:Expression<TermWithStruct>> "," <tail:ExpressionList> ")" <end:@R> => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start, end), list)) },
+    <start:@L> "(" <head:Expression<StructOption>> "," <tail:ExpressionList> ")" <end:@R> => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start, end), list)) },
     <start:@L> "(" ")" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
-    "(" <BoxedExpression<TermWithStruct>> ")",
-    <start:@L> "${" <b:BoxedExpression<TermWithStruct>> "}" <end:@R> => Box::new(Expression::FreeInput(ctx.source_ref(start, end), b))
+    "(" <BoxedExpression<StructOption>> ")",
+    <start:@L> "${" <b:BoxedExpression<StructOption>> "}" <end:@R> => Box::new(Expression::FreeInput(ctx.source_ref(start, end), b))
 }
 
-IndexAccess: IndexAccess = {
-    <array:Term<TermWithStruct>> "[" <index:BoxedExpression<TermWithStruct>> "]" => IndexAccess{<>},
+IndexAccess<StructOption>: IndexAccess = {
+    <array:Term<StructOption>> "[" <index:BoxedExpression<TermWithStruct>> "]" => IndexAccess{<>},
 }
 
-FunctionCall: FunctionCall = {
-    <function:Term<TermWithStruct>> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
+FunctionCall<StructOption>: FunctionCall = {
+    <function:Term<StructOption>> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
 }
 
 NamespacedPolynomialReference: NamespacedPolynomialReference = {
@@ -647,7 +647,7 @@ MatchArms: Vec<MatchArm> = {
 }
 
 MatchArm: MatchArm = {
-    <pattern:Pattern> "=>" <value: Expression<TermWithStruct>> => MatchArm{pattern, value},
+    <pattern:Pattern> "=>" <value: Expression<TermWithoutStruct>> => MatchArm{pattern, value},
 }
 
 IfExpression: Box<Expression> = {
@@ -658,7 +658,6 @@ IfExpression: Box<Expression> = {
         <end:@R> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start, end),
 }
 
-
 BlockExpression: Box<Expression> = {
     <start:@L> "{" <statements:StatementInsideBlock *> <expr:BoxedExpression<TermWithStruct>?> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
 }
@@ -666,6 +665,24 @@ BlockExpression: Box<Expression> = {
 StatementInsideBlock: StatementInsideBlock = {
     "let" <pattern:Pattern> <ty:(":" <Type<ArrayLengthNumber>>)?> <value:("=" <Expression<TermWithStruct>>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
     <Expression<TermWithStruct>> ";" => StatementInsideBlock::Expression(<>),
+}
+
+
+// This rules are placeholder to test the parser. Structs are not implemented yet.
+StructExpression: Box<Expression> = {
+    <start:@L> <name:Identifier> "{" <fields:StructExpressionList> "}" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
+}
+
+StructExpressionList: Vec<Box<Expression>> = { //Vec<NamedExpression<Expression>> = {
+    => Vec::new(),
+    <mut fields:(<NamedExpression> ",")*> <end:NamedExpression> ","? => {
+        fields.push(end);
+        fields
+    }
+}
+
+NamedExpression: Box<Expression> = { //NamedExpression<Expression> = {
+    <name:Identifier> ":" <expr:BoxedExpression<TermWithStruct>> => expr //NamedExpression { name, expr }
 }
 
 // ---------------------------- Pattern -----------------------------
