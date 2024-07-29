@@ -1,14 +1,14 @@
 use std::result::Result;
 use std::check::panic;
 
-// A term in an array expression
+/// A term in an array expression
 enum ArrayTerm {
     Repeat(int[]),
     Once(int[])
 }
 
 // returns the total size of the repeated array in this array expression
-let solve: ArrayTerm[], int -> Result<int, string> = |terms, degree| {
+let compute_length_of_repeated_part: ArrayTerm[], int -> Result<int, string> = |terms, degree| {
     let (_, res) = std::array::fold(terms, (false, Result::Ok(0)), |(found_repeated, l), term| {
         match l {
             Result::Err(e) => (found_repeated, Result::Err(e)),
@@ -39,7 +39,7 @@ let solve: ArrayTerm[], int -> Result<int, string> = |terms, degree| {
 // returns a function representing the array expression
 let expand: ArrayTerm[], int -> Result<(int -> int), string> = |terms, degree| {
     // get the total size of the repeated term
-    match solve(terms, degree) {
+    match compute_length_of_repeated_part(terms, degree) {
         Result::Ok(size_of_repeated) => Result::Ok(|i| {
             let (_, res) = std::array::fold(terms, (0, 0), |(offset, res), term| {
                 let (a, len) = match term {
