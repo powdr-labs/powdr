@@ -7,7 +7,7 @@ machine Binary with
 
     operation or<1> x, y -> z;
 
-    col witness operation_id;
+    let operation_id;
     col fixed latch = [1]*;
     col witness x;
     col witness y;
@@ -28,7 +28,7 @@ machine Arith with
 
     operation sub<1> x, y -> z;
 
-    col witness operation_id;
+    let operation_id;
     col fixed latch = [1]*;
     col witness x;
     col witness y;

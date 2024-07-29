@@ -13,7 +13,7 @@ machine MemoryProxy with
 {
     operation mstore<0> addr, step, value ->;
 
-    col witness operation_id;
+    let operation_id;
     col fixed latch = [1]*;
 
     Byte2 byte2;

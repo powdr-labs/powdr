@@ -600,7 +600,7 @@ machine NegativeForUnsigned {
 machine SubVM with latch: latch, operation_id: operation_id {
     operation add5<0> x -> y;
 
-    col witness operation_id;
+    let operation_id;
     col fixed latch = [1]*;
 
     col witness x;
