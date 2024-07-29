@@ -4,7 +4,7 @@ use powdr_ast::{
     parsed::{
         self, asm::SymbolPath, types::Type, ArrayExpression, ArrayLiteral, BinaryOperation,
         BlockExpression, IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm,
-        MatchExpression, NAmedExpression, NamespacedPolynomialReference, Number, Pattern,
+        MatchExpression, NamedExpression, NamespacedPolynomialReference, Number, Pattern,
         SelectedExpressions, StatementInsideBlock, StructExpression, SymbolCategory,
         UnaryOperation,
     },
