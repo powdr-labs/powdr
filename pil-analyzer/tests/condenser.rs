@@ -253,11 +253,18 @@ fn set_hint() {
     namespace N(16);
         let x;
         let y;
-        std::prover::add_hint(x, || 1);
+        std::prover::add_hint(x, |_| 1);
         std::prover::add_hint(y, |i| std::prover::eval(x));
     "#;
-    let expected = r#"namespace N(16);
+    let expected = r#"namespace std::prover;
+    let add_hint = 8;
+    let eval = 8;
+namespace N(16);
+    col witness x(_) query 1;
+    col witness y(i) query std::prover::eval(N.x);
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
 }
+
+// TODO test with two variables

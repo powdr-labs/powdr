@@ -20,7 +20,7 @@ use powdr_ast::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        TypedExpression,
+        FunctionKind, TypedExpression,
     },
 };
 use powdr_number::{DegreeType, FieldElement};
@@ -46,6 +46,7 @@ pub fn condense<T: FieldElement>(
     let mut condensed_identities = vec![];
     let mut intermediate_columns = HashMap::new();
     let mut new_columns = vec![];
+    let mut new_hints = HashMap::new();
     // Condense identities and intermediate columns and update the source order.
     let source_order = source_order
         .into_iter()
@@ -121,6 +122,14 @@ pub fn condense<T: FieldElement>(
                 })
                 .collect::<Vec<_>>();
 
+            for (col_name, hint) in condenser.extract_new_hints() {
+                if !new_hints.insert(col_name.clone(), hint).is_none() {
+                    panic!(
+                        "Column {col_name} already has a hint set, but tried to add another one."
+                    )
+                }
+            }
+
             new_cols
                 .into_iter()
                 .chain(identity_statements)
@@ -131,6 +140,17 @@ pub fn condense<T: FieldElement>(
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
     for (symbol, value) in new_columns {
         definitions.insert(symbol.absolute_name.clone(), (symbol, value));
+    }
+    for (col_name, hint) in new_hints {
+        if let Some((symbol, value)) = definitions.get_mut(&col_name) {
+            assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed));
+            if !value.is_none() {
+                panic!("Column {col_name} already has a hint set, but tried to add another one.")
+            }
+            *value = Some(hint);
+        } else {
+            panic!("Column {col_name} not found.");
+        }
     }
 
     for decl in public_declarations.values_mut() {
@@ -167,6 +187,9 @@ pub struct Condenser<'a, T> {
     counters: Counters,
     /// The generated columns since the last extraction.
     new_columns: Vec<(Symbol, Option<FunctionValueDefinition>)>,
+    /// The hints added since the last extraction.
+    /// TODO maybe handly values for fixed and for witness columns in the same way? (and remove the second tuple element above)
+    new_hints: Vec<(String, FunctionValueDefinition)>,
     /// The names of all new olumns ever generated, to avoid duplicates.
     all_new_names: HashSet<String>,
     new_constraints: Vec<AnalyzedIdentity<T>>,
@@ -182,6 +205,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             namespace: Default::default(),
             counters,
             new_columns: vec![],
+            new_hints: Default::default(),
             all_new_names: HashSet::new(),
             new_constraints: vec![],
         }
@@ -230,6 +254,11 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     /// Returns the witness columns generated since the last call to this function.
     pub fn extract_new_columns(&mut self) -> Vec<(Symbol, Option<FunctionValueDefinition>)> {
         std::mem::take(&mut self.new_columns)
+    }
+
+    /// Return the new hints added since the last call to this function.
+    pub fn extract_new_hints(&mut self) -> Vec<(String, FunctionValueDefinition)> {
+        std::mem::take(&mut self.new_hints)
     }
 
     /// Returns the new constraints generated since the last call to this function.
@@ -325,7 +354,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         });
         let value = value
             .map(|v| {
-                closure_to_function(&source, v.as_ref()).map_err(|e| match e {
+                closure_to_function(&source, v.as_ref(), FunctionKind::Pure).map_err(|e| match e {
                     EvalError::TypeError(e) => {
                         EvalError::TypeError(format!("Error creating fixed column {name}: {e}."))
                     }
@@ -361,7 +390,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         col: Arc<Value<'a, T>>,
         expr: Arc<Value<'a, T>>,
     ) -> Result<(), EvalError> {
-        let poly_id = match col.as_ref() {
+        let col_name = match col.as_ref() {
             Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
                 name,
                 poly_id,
@@ -373,7 +402,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                         poly_id.ptype
                     )));
                 }
-                poly_id.clone()
+                name
             }
             col => {
                 return Err(EvalError::TypeError(format!(
@@ -383,28 +412,19 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
         };
 
-        // TODO handle (and test) add_hint executed on an existing column (i.e. not in "new_columns")
-        // TODO improved search?
-        let value = self
-            .new_columns
-            .iter_mut()
-            .find(|(sym, _)| PolyID::from(sym) == poly_id)
-            .map(|(_, value)| value)
-            .unwrap();
-        if !value.is_none() {
-            return Err(EvalError::TypeError(format!(
-                "Column {col} already has a hint set."
-            )));
-        }
-        *value = Some(
-            closure_to_function(&SourceRef::unknown(), expr.as_ref()).map_err(|e| match e {
-                EvalError::TypeError(e) => {
-                    EvalError::TypeError(format!("Error setting hint for column {col}: {e}."))
-                }
-                _ => e,
-            })?,
-        );
+        // TODO is it OK to go via name instead of poly id? Is the name already unique at this point?
+        // TODO handle arrays
 
+        self.new_hints.push((
+            col_name.clone(),
+            closure_to_function(&SourceRef::unknown(), expr.as_ref(), FunctionKind::Query)
+                .map_err(|e| match e {
+                    EvalError::TypeError(e) => {
+                        EvalError::TypeError(format!("Error setting hint for column {col}: {e}."))
+                    }
+                    _ => e,
+                })?,
+        ));
         Ok(())
     }
 
@@ -564,6 +584,7 @@ fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
 fn closure_to_function<T: Clone + Display>(
     source: &SourceRef,
     value: &Value<'_, T>,
+    expected_kind: FunctionKind,
 ) -> Result<FunctionValueDefinition, EvalError> {
     if let Value::Closure(evaluator::Closure {
         lambda,
@@ -581,8 +602,19 @@ fn closure_to_function<T: Clone + Display>(
                 "Lambda expression must not reference outer variables."
             )));
         }
+
+        if lambda.kind != FunctionKind::Pure && lambda.kind != expected_kind {
+            return Err(EvalError::TypeError(format!(
+                "Expected {expected_kind} lambda expression but got {}.",
+                lambda.kind
+            )));
+        }
+
+        let mut lambda = (*lambda).clone();
+        lambda.kind = expected_kind;
+
         Ok(FunctionValueDefinition::Expression(TypedExpression {
-            e: Expression::LambdaExpression(source.clone(), (*lambda).clone()),
+            e: Expression::LambdaExpression(source.clone(), lambda),
             type_scheme: None, // TOOD do we need the type?
         }))
     } else {

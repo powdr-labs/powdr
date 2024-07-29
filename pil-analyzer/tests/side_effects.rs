@@ -114,24 +114,11 @@ fn set_hint() {
 }
 
 #[test]
-#[should_panic = "Used a constr lambda function inside a pure context"]
-fn set_hint_needs_query() {
-    let input = r#"
-    namespace std::prover;
-        let add_hint = 8;
-    namespace N(16);
-        let x;
-        std::prover::add_hint(x, |_| 1);
-    "#;
-    analyze_string::<GoldilocksField>(input);
-}
-
-#[test]
-#[should_panic = "Used a constr lambda function inside a pure context"]
 fn set_hint_can_use_query() {
     let input = r#"
     namespace std::prover;
         let add_hint = 8;
+        let eval = 7;
     namespace N(16);
         let x;
         let y;
