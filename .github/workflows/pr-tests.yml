@@ -10,7 +10,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  POWDR_GENERATE_PROOFS: "1"
+  POWDR_GENERATE_PROOFS: "true"
 
 jobs:
   build:

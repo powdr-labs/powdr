@@ -1,9 +1,6 @@
 use powdr_backend::BackendType;
 use powdr_executor::constant_evaluator::get_uniquely_sized;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
-
-// TODO where was gen_estark_proof used in this file?
-
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,

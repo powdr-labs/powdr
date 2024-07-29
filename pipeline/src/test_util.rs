@@ -117,10 +117,14 @@ pub fn run_pilcom_with_backend_variant(
 }
 
 fn should_generate_proofs() -> bool {
-    env::var("POWDR_GENERATE_PROOFS")
-        .ok()
-        .map(|v| !v.is_empty())
-        == Some(true)
+    match env::var("POWDR_GENERATE_PROOFS") {
+        Ok(value) => match value.as_str() {
+            "true" => true,
+            "false" => false,
+            _ => panic!("Invalid value for environment variable POWDR_GENERATE_PROOFS value: {value}. Set it either to \"true\" or to \"false\"."),
+        },
+        Err(_) => false,
+    }
 }
 
 pub fn gen_estark_proof(pipeline: Pipeline<GoldilocksField>) {
