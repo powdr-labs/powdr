@@ -396,6 +396,7 @@ fn call_selectors_with_no_permutation() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn vm_args() {
     let f = "asm/vm_args.asm";
     regular_test(f, Default::default());

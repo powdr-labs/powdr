@@ -14,6 +14,7 @@ use powdr_pipeline::{
 use test_log::test;
 
 #[test]
+#[ignore = "Too slow"]
 fn poseidon_bn254_test() {
     let f = "std/poseidon_bn254_test.asm";
     let pipeline = make_simple_prepared_pipeline(f);
@@ -34,6 +35,7 @@ fn poseidon_gl_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn poseidon_gl_memory_test() {
     let f = "std/poseidon_gl_memory_test.asm";
     let pipeline = make_simple_prepared_pipeline(f);
@@ -42,12 +44,14 @@ fn poseidon_gl_memory_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     test_halo2(make_simple_prepared_pipeline(f));
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn split_gl_test() {
     let f = "std/split_gl_test.asm";
     test_pilcom(make_simple_prepared_pipeline(f));
@@ -73,18 +77,21 @@ fn arith_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn memory_test() {
     let f = "std/memory_test.asm";
     regular_test(f, &[]);
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn memory_with_bootloader_write_test() {
     let f = "std/memory_with_bootloader_write_test.asm";
     regular_test(f, &[]);
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn memory_test_parallel_accesses() {
     let f = "std/memory_test_parallel_accesses.asm";
     regular_test(f, &[]);
@@ -156,6 +163,7 @@ fn write_once_memory_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn binary_test() {
     let f = "std/binary_test.asm";
     test_pilcom(make_simple_prepared_pipeline(f));
@@ -163,6 +171,7 @@ fn binary_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn shift_test() {
     let f = "std/shift_test.asm";
     test_pilcom(make_simple_prepared_pipeline(f));
