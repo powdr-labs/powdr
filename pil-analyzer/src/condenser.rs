@@ -370,7 +370,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             length: None,
             degree: Some(self.degree.unwrap()),
         };
-        let poly_id = PolyID::from(&symbol);
 
         self.new_symbols.insert(name.clone());
         self.new_columns.push(symbol.clone());
@@ -380,7 +379,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Ok(
             Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
                 name,
-                poly_id,
+                poly_id: PolyID::from(&symbol),
                 next: false,
             }))
             .into(),
@@ -607,9 +606,9 @@ fn closure_to_function<T: Clone + Display>(
             ));
         }
         if !lambda.outer_var_references.is_empty() {
-            return Err(EvalError::TypeError(
-                "Lambda expression must not reference outer variables.".to_string(),
-            ));
+            return Err(EvalError::TypeError(format!(
+                "Lambda expression must not reference outer variables: {lambda}"
+            )));
         }
 
         if lambda.kind != FunctionKind::Pure && lambda.kind != expected_kind {

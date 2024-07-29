@@ -254,8 +254,11 @@ fn set_hint() {
     namespace N(16);
         let x;
         let y;
-        std::prover::set_hint(x, query |_| std::prover::Query::Hint(1));
         std::prover::set_hint(y, |i| std::prover::Query::Hint(std::prover::eval(x)));
+        {
+            let z;
+            std::prover::set_hint(z, query |_| std::prover::Query::Hint(1));
+        };
     "#;
     let expected = r#"namespace std::prover;
     let set_hint = 8;
@@ -265,8 +268,9 @@ fn set_hint() {
         None,
     }
 namespace N(16);
-    col witness x(_) query std::prover::Query::Hint(1);
+    col witness x;
     col witness y(i) query std::prover::Query::Hint(std::prover::eval(N.x));
+    col witness z(_) query std::prover::Query::Hint(1);
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -324,6 +328,38 @@ fn set_hint_no_col() {
         let x;
         let y: expr = x;
         std::prover::set_hint(y, query |_| std::prover::Query::Hint(1));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Column N.x already has a hint set, but tried to add another one."]
+fn set_hint_twice() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        std::prover::set_hint(x, query |_| std::prover::Query::Hint(1));
+        std::prover::set_hint(x, query |_| std::prover::Query::Hint(2));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Column N.x already has a hint set, but tried to add another one."]
+fn set_hint_twice_in_constr() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        {
+            let x;
+            std::prover::set_hint(x, query |_| std::prover::Query::Hint(1));
+            std::prover::set_hint(x, query |_| std::prover::Query::Hint(2));
+        }
     "#;
     analyze_string::<GoldilocksField>(input);
 }
