@@ -4,7 +4,7 @@ use std::utils::force_bool;
 // gaps between accessed memory cells must not be larger than the degree.
 // This test uses two 8-bit digits to represent the diff, so the diff has to be
 // representable in 16 bits.
-machine MemReadWrite {
+machine MemReadWrite with degree: 256 {
     reg pc[@pc];
     reg X[<=];
     reg A;

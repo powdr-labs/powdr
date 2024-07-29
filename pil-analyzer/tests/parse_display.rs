@@ -488,17 +488,48 @@ fn let_inside_block() {
     col witness w;
     let t: int -> expr = (constr |i| match i {
         0 => {
-            let x;
+            let x: col;
             x
         },
         1 => Main.w,
         _ => if i < 3 {
-            let y;
+            let y: col;
             y
         } else { Main.w },
     });
     col witness z;
     Main.z = 9;
+";
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+fn let_inside_block_complex_type() {
+    let input = "
+    enum O<X> {
+        A(X),
+        B,
+    }
+    let<T> f: T -> O<T>[] = |i| [O::A(i)];
+    let<Q> x: Q -> O<Q>[][] = constr |i| {
+        let w;
+        let y = f(i);
+        [y]
+    };
+    ";
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    // Type inference should add the correct concrete
+    // type for y and w.
+    let expected = "    enum O<X> {
+        A(X),
+        B,
+    }
+    let<T> f: T -> O<T>[] = (|i| [O::A::<T>(i)]);
+    let<Q> x: Q -> O<Q>[][] = (constr |i| {
+        let w: col;
+        let y: O<Q>[] = f::<Q>(i);
+        [y]
+    });
 ";
     assert_eq!(formatted, expected);
 }
@@ -631,12 +662,12 @@ fn sub_block_shadowing() {
 #[test]
 fn disjoint_block_shadowing() {
     let input = "    let t: int = {
-        let b = {
-            let x = 2;
+        let b: int = {
+            let x: int = 2;
             x
         };
         {
-            let x = 3;
+            let x: int = 3;
             x + b
         }
     };

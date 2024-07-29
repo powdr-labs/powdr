@@ -428,6 +428,9 @@ impl<E: Display> Display for StatementInsideBlock<E> {
 impl<E: Display> Display for LetStatementInsideBlock<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "let {}", self.pattern)?;
+        if let Some(ty) = &self.ty {
+            write!(f, ": {ty}")?;
+        }
         if let Some(v) = &self.value {
             write!(f, " = {v};")
         } else {

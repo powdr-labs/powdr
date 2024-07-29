@@ -1,10 +1,12 @@
+use std::machines::range::Byte2;
 use std::machines::memory::Memory;
 
 machine Main with
     degree: 65536,
     operation_id: operation_id
 {
-    Memory memory;
+    Byte2 byte2;
+    Memory memory(byte2);
 
     // Read values from ADDR1 & ADDR2, write value3 to ADDR3
     link if ACTIVE ~> value1 = memory.mload(ADDR1, STEP);

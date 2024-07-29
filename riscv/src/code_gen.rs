@@ -353,7 +353,18 @@ fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bo
         "".to_string()
     };
 
-    for machine in ["binary", "shift", "bit2", "bit6", "bit7", "byte"] {
+    for machine in [
+        "binary",
+        "shift",
+        "bit2",
+        "bit6",
+        "bit7",
+        "byte",
+        "byte2",
+        "byte_binary",
+        "byte_shift",
+        "byte_compare",
+    ] {
         assert!(
             runtime.has_submachine(machine),
             "RISC-V machine requires the `{machine}` submachine"
@@ -380,7 +391,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bo
         + &memory(with_bootloader)
         + r#"
     // =============== Register memory =======================
-"# + format!("std::machines::memory::Memory_{} regs;", degree + 2)
+"# + format!("std::machines::memory::Memory_{} regs(byte2);", degree + 2)
         .as_str()
         + r#"
     // Get the value in register Y.
@@ -699,7 +710,7 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
 fn memory(with_bootloader: bool) -> String {
     let memory_machine = if with_bootloader {
         r#"
-    std::machines::memory_with_bootloader_write::MemoryWithBootloaderWrite memory;
+    std::machines::memory_with_bootloader_write::MemoryWithBootloaderWrite memory(byte2);
 
     // Stores val(W) at address (V = val(X) - val(Z) + Y) % 2**32.
     // V can be between 0 and 2**33.
@@ -714,7 +725,7 @@ fn memory(with_bootloader: bool) -> String {
 "#
     } else {
         r#"
-    std::machines::memory::Memory memory;
+    std::machines::memory::Memory memory(byte2);
 "#
     };
 

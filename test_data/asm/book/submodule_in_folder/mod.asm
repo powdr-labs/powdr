@@ -1,6 +1,7 @@
 machine Other with
     latch: latch,
-    operation_id: operation_id
+    operation_id: operation_id,
+    degree: 8
 {
     operation nothing<0>;
 
