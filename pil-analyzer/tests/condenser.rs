@@ -230,7 +230,7 @@ fn new_fixed_column() {
 }
 
 #[test]
-#[should_panic = "Lambda expression for fixed column N.fi must not reference outer variables."]
+#[should_panic = "Error creating fixed column N.fi: Lambda expression must not reference outer variables."]
 fn new_fixed_column_as_closure() {
     let input = r#"namespace N(16);
         let f = constr |j| {
@@ -248,17 +248,17 @@ fn new_fixed_column_as_closure() {
 fn set_hint() {
     let input = r#"
     namespace std::prover;
-        let add_hint = 8;
+        let set_hint = 8;
         let eval = 8;
         enum Query { Hint(fe), None, }
     namespace N(16);
         let x;
         let y;
-        std::prover::add_hint(x, query |_| std::prover::Query::Hint(1));
-        std::prover::add_hint(y, |i| std::prover::Query::Hint(std::prover::eval(x)));
+        std::prover::set_hint(x, query |_| std::prover::Query::Hint(1));
+        std::prover::set_hint(y, |i| std::prover::Query::Hint(std::prover::eval(x)));
     "#;
     let expected = r#"namespace std::prover;
-    let add_hint = 8;
+    let set_hint = 8;
     let eval = 8;
     enum Query {
         Hint(fe),

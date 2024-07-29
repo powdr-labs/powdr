@@ -105,11 +105,11 @@ fn fixed_with_constr_type() {
 fn set_hint() {
     let input = r#"
     namespace std::prover;
-        let add_hint = 8;
+        let set_hint = 8;
         enum Query { Hint(fe), None, }
     namespace N(16);
         let x;
-        std::prover::add_hint(x, query |i| std::prover::Query::Hint(1));
+        std::prover::set_hint(x, query |i| std::prover::Query::Hint(1));
     "#;
     analyze_string::<GoldilocksField>(input);
 }
@@ -118,13 +118,13 @@ fn set_hint() {
 fn set_hint_can_use_query() {
     let input = r#"
     namespace std::prover;
-        let add_hint = 8;
+        let set_hint = 8;
         let eval = 7;
         enum Query { Hint(fe), None, }
     namespace N(16);
         let x;
         let y;
-        std::prover::add_hint(x, query |_| std::prover::Query::Hint(std::prover::eval(y)));
+        std::prover::set_hint(x, query |_| std::prover::Query::Hint(std::prover::eval(y)));
     "#;
     analyze_string::<GoldilocksField>(input);
 }

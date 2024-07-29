@@ -317,7 +317,7 @@ const BUILTINS: [(&str, BuiltinFunction); 11] = [
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prelude::challenge", BuiltinFunction::Challenge),
-    ("std::prover::add_hint", BuiltinFunction::AddHint),
+    ("std::prover::set_hint", BuiltinFunction::SetHint),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
@@ -342,8 +342,8 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
-    /// std::prover::add_hint: expr, (int -> fe) -> (), adds a hint to a witness column.
-    AddHint,
+    /// std::prover::set_hint: expr, (int -> std::prover::Query) -> (), adds a hint to a witness column.
+    SetHint,
     /// std::prover::degree: -> int, returns the current column length / degree.
     Degree,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
@@ -554,7 +554,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         )))
     }
 
-    fn add_hint(
+    fn set_hint(
         &mut self,
         _col: Arc<Value<'a, T>>,
         _expr: Arc<Value<'a, T>>,
@@ -1118,7 +1118,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::ToFe => 1,
         BuiltinFunction::ToInt => 1,
         BuiltinFunction::Challenge => 2,
-        BuiltinFunction::AddHint => 2,
+        BuiltinFunction::SetHint => 2,
         BuiltinFunction::Degree => 0,
         BuiltinFunction::Eval => 1,
     };
@@ -1187,10 +1187,10 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             }))
             .into()
         }
-        BuiltinFunction::AddHint => {
+        BuiltinFunction::SetHint => {
             let expr = arguments.pop().unwrap();
             let col = arguments.pop().unwrap();
-            symbols.add_hint(col, expr)?;
+            symbols.set_hint(col, expr)?;
             Value::Tuple(vec![]).into()
         }
         BuiltinFunction::Degree => symbols.degree()?,

@@ -356,7 +356,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             .map(|v| {
                 closure_to_function(&source, v.as_ref(), FunctionKind::Pure).map_err(|e| match e {
                     EvalError::TypeError(e) => {
-                        EvalError::TypeError(format!("Error creating fixed column {name}: {e}."))
+                        EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
                     }
                     _ => e,
                 })
@@ -385,7 +385,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         )
     }
 
-    fn add_hint(
+    fn set_hint(
         &mut self,
         col: Arc<Value<'a, T>>,
         expr: Arc<Value<'a, T>>,
@@ -398,7 +398,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             })) => {
                 if poly_id.ptype != PolynomialType::Committed {
                     return Err(EvalError::TypeError(format!(
-                        "Expected reference to witness column as first argument for std::prover::add_hint, but got {} column {name}.",
+                        "Expected reference to witness column as first argument for std::prover::set_hint, but got {} column {name}.",
                         poly_id.ptype
                     )));
                 }
@@ -406,7 +406,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
             col => {
                 return Err(EvalError::TypeError(format!(
-                    "Expected reference to witness column as first argument for std::prover::add_hint, but got {col}: {}",
+                    "Expected reference to witness column as first argument for std::prover::set_hint, but got {col}: {}",
                     col.type_formatted()
                 )));
             }
@@ -420,7 +420,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             closure_to_function(&SourceRef::unknown(), expr.as_ref(), FunctionKind::Query)
                 .map_err(|e| match e {
                     EvalError::TypeError(e) => {
-                        EvalError::TypeError(format!("Error setting hint for column {col}: {e}."))
+                        EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
                     }
                     _ => e,
                 })?,
@@ -593,10 +593,14 @@ fn closure_to_function<T: Clone + Display>(
     }) = value
     {
         if !type_args.is_empty() {
-            return Err(EvalError::TypeError("Lambda expression must not have type arguments.".to_string()));
+            return Err(EvalError::TypeError(
+                "Lambda expression must not have type arguments.".to_string(),
+            ));
         }
         if !lambda.outer_var_references.is_empty() {
-            return Err(EvalError::TypeError("Lambda expression must not reference outer variables.".to_string()));
+            return Err(EvalError::TypeError(
+                "Lambda expression must not reference outer variables.".to_string(),
+            ));
         }
 
         if lambda.kind != FunctionKind::Pure && lambda.kind != expected_kind {
