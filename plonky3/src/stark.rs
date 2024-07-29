@@ -183,6 +183,8 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         let trace = circuit.generate_trace_rows();
 
+        let challenges = circuit.get_challenges();
+
         let config = get_config();
 
         let mut challenger = get_challenger();

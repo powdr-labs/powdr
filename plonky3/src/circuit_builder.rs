@@ -36,9 +36,9 @@ pub(crate) struct PowdrCircuit<'a, T> {
     /// Callback to augment the witness in the later stages
     witgen_callback: Option<WitgenCallback<T>>,
     /// Value of challenges at every stage
-    challenge_values: Option<Vec<BTreeMap<u64, FieldElement>>>,
+    challenge_values: Vec<Option<BTreeMap<u64, FieldElement>>>,
     /// Vector containing traces of higher-stage witnesses.
-    multi_stage_traces: Option<Vec<RowMajorMatrix<Goldilocks>>>,
+    multi_stage_traces: Vec<Option<RowMajorMatrix<Goldilocks>>>,
     /// The matrix of preprocessed values, used in debug mode to check the constraints before provingg
     #[cfg(debug_assertions)]
     preprocessed: Option<RowMajorMatrix<Goldilocks>>,
@@ -196,7 +196,10 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
         stage: u32,
         multi_stage: fn(u32) -> Vec<&AB::M>, // returns a reference to the stage _ matrix
-        challenges: fn(u32) -> Vec<&Vec<<AB as AirBuilderWithPublicValues>::PublicVar>>,
+        challenges: fn(
+            u32,
+        )
+            -> Vec<&BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -244,7 +247,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     publics,
                     stage,
                     multi_stage_trace,
-                    multi_stage_challenge,
+                    challenges,
                 );
                 let right = self.to_plonky3_expr::<AB>(
                     right,
@@ -253,7 +256,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     publics,
                     stage,
                     multi_stage_trace,
-                    multi_stage_challenge,
+                    challenges,
                 );
 
                 match op {
@@ -273,7 +276,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     publics,
                     stage,
                     multi_stage_trace,
-                    multi_stage_challenge,
+                    challenges,
                 );
 
                 match op {
@@ -281,15 +284,11 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::Challenge(challenge) => {
-                let challenge_ids = self.get_challenges()[challenge.stage as usize];
-                match challenges[challenge.stage]
-                    .iter()
-                    .enumerate()
-                    .find(|&(idx, _)| challenge.id == challenge_ids[idx])
-                {
-                    Some((_, &elt)) => elt.into(),
-                    None => panic!("Referenced challenge does not exist in this stage."),
-                }
+                assert!(
+                    challenges[challenge.stage].contains_key(challenge.id),
+                    "Referenced challenge does not exist in this stage."
+                );
+                challenges[challenge.stage][challenge.id].into()
             }
         };
         res
@@ -386,7 +385,10 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
         stage: u32,
         multi_stage: fn(u32) -> Vec<&AB::M>, // returns a reference to the stage _ matrix
-        challenges: fn(u32) -> Vec<&Vec<<AB as AirBuilderWithPublicValues>::PublicVar>>,
+        challenges: fn(
+            u32,
+        )
+            -> Vec<&BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>,
     ) -> AB::Expr {
         unimplemented!()
     }
@@ -434,38 +436,29 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
         let publics = self.analyzed.get_publics();
         assert_eq!(publics.len(), pi.len());
 
-        let local = main.row_slice(0);
-
-        // challenges
-        let multi_stage = (1..3)
-            .map(|stage| builder.multi_stage(stage))
-            .collect::<Vec<&<AB as PermutationAirBuilder>::M>>();
-
-        let challenges = (1..3) //
-            .map(|stage| builder.challenges(stage))
-            .collect::<Vec<&Vec<<AB as AirBuilderWithPublicValues>::PublicVar>>>();
-
-        // public constraints
         let public_vals_by_id = publics
             .iter()
             .zip(pi.to_vec())
             .map(|((id, _, _), val)| (id, val))
             .collect::<BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>();
 
+        // challenges
+        let multi_stage = (1..3)
+            .map(|stage| builder.multi_stage(stage))
+            .collect::<Vec<&<AB as PermutationAirBuilder>::M>>();
+
+        let challenge_ids = self.get_challenges();
+
+        let challenge_vals_by_id = (0..3)
+            .map(|stage| {
+                challenge_ids[stage]
+                    .zip(builder.challenges(stage))
+                    .collect::<BTreeMap<u64, <AB as AirBuilderWithPublicValues>::PublicVar>>()
+            })
+            .collect::<Vec<BTreeMap<u64, <AB as AirBuilderWithPublicValues>::PublicVar>>>();
+
+        let local = main.row_slice(0);
         let fixed_local = fixed.row_slice(0);
-        let public_offset = self.analyzed.constant_count();
-
-        publics
-            .iter()
-            .enumerate()
-            .for_each(|(index, (pub_id, col_id, _))| {
-                let selector = fixed_local[public_offset + index];
-                let witness_col = local[*col_id];
-                let public_value = public_vals_by_id[pub_id];
-
-                // constraining s(i) * (pub[i] - x(i)) = 0
-                builder.assert_zero(selector * (public_value.into() - witness_col));
-            });
 
         // circuit constraints
         for identity in &self
@@ -502,5 +495,19 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
                 IdentityKind::Connect => unimplemented!("Plonky3 does not support connections"),
             }
         }
+
+        // public variable onstraints
+        let public_offset = self.analyzed.constant_count();
+        publics
+            .iter()
+            .enumerate()
+            .for_each(|(index, (pub_id, col_id, _))| {
+                let selector = fixed_local[public_offset + index];
+                let witness_col = local[*col_id];
+                let public_value = public_vals_by_id[pub_id];
+
+                // constraining s(i) * (pub[i] - x(i)) = 0
+                builder.assert_zero(selector * (public_value.into() - witness_col));
+            });
     }
 }
