@@ -765,7 +765,7 @@ StructFields: Vec<(String, Type<Expression>)> = {
 }
 
 StructField: (String, Type<Expression>) = {
-    <name:Identifier> ":" <type_:TypeTerm> => (name, type_)
+    <name:Identifier> ":" <type_:TypeTerm<Expression>> => (name, type_)
 }
 
 // ---------------------------- Type Names -----------------------------

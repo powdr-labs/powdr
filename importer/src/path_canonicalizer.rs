@@ -853,7 +853,7 @@ fn check_expression(
             fields
                 .iter()
                 .try_for_each(|NamedExpression { name: _, expr }| {
-                    check_expression(location, expr, state, local_variables)
+                    check_expression(location, expr, state, type_vars, local_variables)
                 })
         }
     }
