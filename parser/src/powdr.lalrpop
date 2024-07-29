@@ -160,7 +160,7 @@ PolynomialConstantDefinition: PilStatement = {
 }
 
 FunctionDefinition: FunctionDefinition = {
-    <start:@L> "(" <params:ParameterList> ")" <body:BlockExpression<TermWithStruct>> <end:@R>
+    <start:@L> "(" <params:ParameterList> ")" <body:BlockExpression> <end:@R>
         => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{
             kind: FunctionKind::Pure,
             params,
@@ -180,8 +180,8 @@ ArrayLiteralExpression: ArrayExpression = {
 }
 
 ArrayLiteralTerm: ArrayExpression = {
-    "[" <ExpressionList<TermWithStruct>> "]" => ArrayExpression::value(<>),
-    "[" <ExpressionList<TermWithStruct>> "]" "*" => ArrayExpression::repeated_value(<>),
+    "[" <ExpressionList> "]" => ArrayExpression::value(<>),
+    "[" <ExpressionList> "]" "*" => ArrayExpression::repeated_value(<>),
 }
 
 PolynomialCommitDeclaration: PilStatement = {
@@ -237,7 +237,7 @@ ConnectIdentityStatement: PilStatement = {
 }
 
 ConnectIdentity: PilStatement = {
-    <start:@L> "[" <list1:ExpressionList<TermWithStruct>> "]" "connect" "[" <list2:ExpressionList<TermWithStruct>> "]" <end:@R> => PilStatement::ConnectIdentity(ctx.source_ref(start, end), list1, list2)
+    <start:@L> "[" <list1:ExpressionList> "]" "connect" "[" <list2:ExpressionList> "]" <end:@R> => PilStatement::ConnectIdentity(ctx.source_ref(start, end), list1, list2)
 }
 
 ExpressionStatement: PilStatement = {
@@ -308,7 +308,7 @@ PilStatementInMachine: MachineStatement = {
 }
 
 Submachine: MachineStatement = {
-    <start:@L> <path:SymbolPath> <id:Identifier> <args:("(" <ExpressionList<TermWithStruct>> ")")?> <end:@R> ";" => MachineStatement::Submachine(ctx.source_ref(start, end), path, id, args.unwrap_or_default()),
+    <start:@L> <path:SymbolPath> <id:Identifier> <args:("(" <ExpressionList> ")")?> <end:@R> ";" => MachineStatement::Submachine(ctx.source_ref(start, end), path, id, args.unwrap_or_default()),
 }
 
 pub RegisterDeclaration: MachineStatement = {
@@ -423,11 +423,11 @@ AssignmentRegister: AssignmentRegister = {
 }
 
 ReturnStatement: FunctionStatement = {
-    <start:@L> "return" <list:ExpressionList<TermWithStruct>> <end:@R> ";" => FunctionStatement::Return(ctx.source_ref(start, end), list)
+    <start:@L> "return" <list:ExpressionList> <end:@R> ";" => FunctionStatement::Return(ctx.source_ref(start, end), list)
 }
 
 InstructionStatement: FunctionStatement = {
-    <start:@L> <id:Identifier> <list:ExpressionList<TermWithStruct>> <end:@R> ";" => FunctionStatement::Instruction(ctx.source_ref(start, end), id, list)
+    <start:@L> <id:Identifier> <list:ExpressionList> <end:@R> ";" => FunctionStatement::Instruction(ctx.source_ref(start, end), id, list)
 }
 
 DebugDirectiveStatement: FunctionStatement = {
@@ -444,10 +444,14 @@ LabelStatement: FunctionStatement = {
 }
 
 // ---------------------------- Expressions -----------------------------
+// Expressions are parameterized with StructOption to be able to define when we want to allow them to become structs.
+// This allow us to use expression in two diferrent ways:
+//  Expression<TermWithStruct> allows structs
+//  Expression<TermWithoutStruct> does not allow structs
 
-ExpressionList<StructOption>: Vec<Expression> = {
+ExpressionList: Vec<Expression> = {
     => vec![],
-    <mut list:( <Expression<StructOption>> "," )*> <end:Expression<StructOption>>  => { list.push(end); list }
+    <mut list:( <Expression<TermWithStruct>> "," )*> <end:Expression<TermWithStruct>>  => { list.push(end); list }
 }
 
 Expression<StructOption>: Expression = {
@@ -588,39 +592,39 @@ Term<StructOption>: Box<Expression> = {
 }
 
 TermWithStruct: Box<Expression> = {
-    TermCommon<TermWithStruct>,
+    TermCommon,
     //StructExpression<TermWithStruct>,
 }
 
 TermWithoutStruct: Box<Expression> = {
-    TermCommon<TermWithoutStruct>,
+    TermCommon,
 }
 
 
-TermCommon<StructOption>: Box<Expression> = {
-    <start:@L> <i:IndexAccess<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(i, start, end),
-    <start:@L> <f:FunctionCall<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(f, start, end),
+TermCommon: Box<Expression> = {
+    <start:@L> <i:IndexAccess> <end:@R> => ctx.to_expr_with_source_ref(i, start, end),
+    <start:@L> <f:FunctionCall> <end:@R> => ctx.to_expr_with_source_ref(f, start, end),
     <start:@L> <i:ConstantIdentifier> <end:@R> => ctx.to_expr_with_source_ref(NamespacedPolynomialReference::from_identifier(i), start, end),
     <start:@L> <g:GenericReference> <end:@R> => ctx.to_expr_with_source_ref(g, start, end),
     <start:@L> <p:PublicIdentifier> <end:@R> => Box::new(Expression::PublicReference(ctx.source_ref(start, end), p)),
     <start:@L> <value:Number> <end:@R> => ctx.to_expr_with_source_ref(Number {value: value.into(), type_: None}, start, end),
     <start:@L> <s:StringLiteral> <end:@R> => Box::new(Expression::String(ctx.source_ref(start, end), s)),
-    MatchExpression<StructOption>,
-    IfExpression<StructOption>,
-    BlockExpression<StructOption>,
-    <start:@L> "[" <items:ExpressionList<StructOption>> "]" <end:@R> => ctx.to_expr_with_source_ref(ArrayLiteral{items}, start, end),
-    <start:@L> "(" <head:Expression<StructOption>> "," <tail:ExpressionList<StructOption>> ")" <end:@R> => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start, end), list)) },
+    MatchExpression,
+    IfExpression,
+    BlockExpression,
+    <start:@L> "[" <items:ExpressionList> "]" <end:@R> => ctx.to_expr_with_source_ref(ArrayLiteral{items}, start, end),
+    <start:@L> "(" <head:Expression<TermWithStruct>> "," <tail:ExpressionList> ")" <end:@R> => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start, end), list)) },
     <start:@L> "(" ")" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
-    "(" <BoxedExpression<StructOption>> ")",
-    <start:@L> "${" <b:BoxedExpression<StructOption>> "}" <end:@R> => Box::new(Expression::FreeInput(ctx.source_ref(start, end), b))
+    "(" <BoxedExpression<TermWithStruct>> ")",
+    <start:@L> "${" <b:BoxedExpression<TermWithStruct>> "}" <end:@R> => Box::new(Expression::FreeInput(ctx.source_ref(start, end), b))
 }
 
-IndexAccess<StructOption>: IndexAccess = {
-    <array:Term<StructOption>> "[" <index:BoxedExpression<StructOption>> "]" => IndexAccess{<>},
+IndexAccess: IndexAccess = {
+    <array:Term<TermWithStruct>> "[" <index:BoxedExpression<TermWithStruct>> "]" => IndexAccess{<>},
 }
 
-FunctionCall<StructOption>: FunctionCall = {
-    <function:Term<StructOption>> "(" <arguments:ExpressionList<StructOption>> ")" => FunctionCall {<>},
+FunctionCall: FunctionCall = {
+    <function:Term<TermWithStruct>> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
 }
 
 NamespacedPolynomialReference: NamespacedPolynomialReference = {
@@ -633,35 +637,35 @@ GenericReference: NamespacedPolynomialReference = {
     <path:GenericSymbolPath> => NamespacedPolynomialReference{path: path.0, type_args: path.1},
 }
 
-MatchExpression<StructOption>: Box<Expression> = {
-    <start:@L> "match" <scrutinee:BoxedExpression<TermWithoutStruct>> "{" <arms:MatchArms<StructOption>> "}" <end:@R> => ctx.to_expr_with_source_ref(MatchExpression{scrutinee, arms}, start, end),
+MatchExpression: Box<Expression> = {
+    <start:@L> "match" <scrutinee:BoxedExpression<TermWithoutStruct>> "{" <arms:MatchArms> "}" <end:@R> => ctx.to_expr_with_source_ref(MatchExpression{scrutinee, arms}, start, end),
 }
 
-MatchArms<StructOption>: Vec<MatchArm> = {
+MatchArms: Vec<MatchArm> = {
     => vec![],
-    <mut list:( <MatchArm<StructOption>> "," )*> <end:MatchArm<StructOption>> ","?  => { list.push(end); list }
+    <mut list:( <MatchArm> "," )*> <end:MatchArm> ","?  => { list.push(end); list }
 }
 
-MatchArm<StructOption>: MatchArm = {
-    <pattern:Pattern> "=>" <value: Expression<StructOption>> => MatchArm{pattern, value},
+MatchArm: MatchArm = {
+    <pattern:Pattern> "=>" <value: Expression<TermWithStruct>> => MatchArm{pattern, value},
 }
 
-IfExpression<StructOption>: Box<Expression> = {
+IfExpression: Box<Expression> = {
     <start:@L> "if" <condition:BoxedExpression<TermWithoutStruct>>
-        <body:BlockExpression<StructOption>>
+        <body:BlockExpression>
         "else"
-        <else_body:BlockExpression<StructOption>>
+        <else_body:BlockExpression>
         <end:@R> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start, end),
 }
 
 
-BlockExpression<StructOption>: Box<Expression> = {
-    <start:@L> "{" <statements:StatementInsideBlock<StructOption>*> <expr:BoxedExpression<StructOption>?> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
+BlockExpression: Box<Expression> = {
+    <start:@L> "{" <statements:StatementInsideBlock *> <expr:BoxedExpression<TermWithStruct>?> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
 }
 
-StatementInsideBlock<StructOption>: StatementInsideBlock = {
-    "let" <pattern:Pattern> <ty:(":" <Type<ArrayLengthNumber>>)?> <value:("=" <Expression<StructOption>>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
-    <Expression<StructOption>> ";" => StatementInsideBlock::Expression(<>),
+StatementInsideBlock: StatementInsideBlock = {
+    "let" <pattern:Pattern> <ty:(":" <Type<ArrayLengthNumber>>)?> <value:("=" <Expression<TermWithStruct>>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
+    <Expression<TermWithStruct>> ";" => StatementInsideBlock::Expression(<>),
 }
 
 // ---------------------------- Pattern -----------------------------
