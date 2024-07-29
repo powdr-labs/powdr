@@ -1,30 +1,24 @@
 use std::machines::hash::poseidon_gl_memory::PoseidonGLMemory;
+use std::machines::range::Byte2;
 use std::machines::memory::Memory;
+use std::machines::split::ByteCompare;
 use std::machines::split::split_gl::SplitGL;
 
 machine Main with degree: 65536 {
     reg pc[@pc];
     reg X1[<=];
     reg X2[<=];
-    reg X3[<=];
-    reg X4[<=];
-    reg X5[<=];
-    reg X6[<=];
-    reg X7[<=];
-    reg X8[<=];
-    reg X9[<=];
-    reg X10[<=];
-    reg X11[<=];
-    reg X12[<=];
     reg ADDR1[<=];
     reg ADDR2[<=];
 
-    SplitGL split;
+    ByteCompare byte_compare;
+    SplitGL split(byte_compare);
 
     // Increase the time step by 2 in each row, so that the poseidon machine
     // can read in the given time step and write in the next time step.
     col fixed STEP(i) { 2 * i };
-    Memory memory;
+    Byte2 byte2;
+    Memory memory(byte2);
     instr mstore_le ADDR1, X1, X2 ->
         link ~> memory.mstore(ADDR1, STEP, X2)
         link ~> memory.mstore(ADDR1 + 4, STEP, X1);

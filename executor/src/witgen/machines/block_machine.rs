@@ -4,6 +4,7 @@ use std::iter::{self, once};
 
 use super::{EvalResult, FixedData, FixedLookup};
 
+use crate::constant_evaluator::MIN_DEGREE_LOG;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::processor::{OuterQuery, Processor};
@@ -249,7 +250,7 @@ fn try_to_period<T: FieldElement>(
 
             let degree = fixed_data.common_degree(once(&poly.poly_id));
 
-            let values = fixed_data.fixed_cols[&poly.poly_id].values;
+            let values = fixed_data.fixed_cols[&poly.poly_id].values(degree);
 
             let offset = values.iter().position(|v| v.is_one())?;
             let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;
@@ -317,6 +318,19 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
         }
 
+        if self.fixed_data.is_variable_size(&self.witness_cols) {
+            let new_degree = self.data.len().next_power_of_two() as DegreeType;
+            let new_degree = new_degree.max(1 << MIN_DEGREE_LOG);
+            log::info!(
+                "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
+                self.name,
+                self.degree,
+                new_degree,
+                self.data.len()
+            );
+            self.degree = new_degree;
+        }
+
         if matches!(self.connection_type, ConnectionType::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,
             // because otherwise this block won't have a matching block on the LHS.
@@ -343,6 +357,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 &mut mutable_state,
                 self.fixed_data,
                 &self.witness_cols,
+                self.degree,
             );
 
             // Set all selectors to 0
@@ -518,10 +533,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 );
                 self.append_block(new_block)?;
 
-                // TODO: This would be the right thing to do, but currently leads to failing tests
-                // due to #1385 ("Witgen: Block machines "forget" that they already completed a block"):
-                // https://github.com/powdr-labs/powdr/issues/1385
-                // let updates = updates.report_side_effect();
+                let updates = updates.report_side_effect();
 
                 // We solved the query, so report it to the cache.
                 self.processing_sequence_cache
@@ -561,6 +573,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             &self.identities,
             self.fixed_data,
             &self.witness_cols,
+            self.degree,
         )
         .with_outer_query(outer_query);
 

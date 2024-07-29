@@ -1,29 +1,42 @@
 //! Compilation from powdr assembly to PIL
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    iter::once,
+};
 
 use powdr_ast::{
     asm_analysis::{
-        combine_flags, AssignmentStatement, Batch, DebugDirective, FunctionStatement,
-        InstructionDefinitionStatement, InstructionStatement, LabelStatement, LinkDefinition,
-        Machine, RegisterDeclarationStatement, RegisterTy, Rom,
+        combine_flags, AssignmentStatement, Batch, CallableSymbol, CallableSymbolDefinitions,
+        DebugDirective, FunctionStatement, InstructionDefinitionStatement, InstructionStatement,
+        LabelStatement, LinkDefinition, Machine, OperationSymbol, RegisterDeclarationStatement,
+        RegisterTy, Rom,
     },
     parsed::{
         self,
-        asm::{CallableRef, InstructionBody, InstructionParams, LinkDeclaration},
+        asm::{
+            CallableParams, CallableRef, InstructionBody, InstructionParams, LinkDeclaration,
+            OperationId, Param, Params,
+        },
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
-        ArrayExpression, ArrayLiteral, BinaryOperation, BinaryOperator, Expression, FunctionCall,
+        ArrayExpression, BinaryOperation, BinaryOperator, Expression, FunctionCall,
         FunctionDefinition, FunctionKind, LambdaExpression, MatchArm, MatchExpression, Number,
-        Pattern, PilStatement, PolynomialName, SelectedExpressions, UnaryOperation, UnaryOperator,
+        Pattern, PilStatement, PolynomialName, UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_parser_util::SourceRef;
 
-use crate::common::{instruction_flag, return_instruction, RETURN_NAME};
+use crate::{
+    common::{instruction_flag, return_instruction, RETURN_NAME},
+    utils::parse_pil_statement,
+};
 
-pub fn convert_machine<T: FieldElement>(machine: Machine, rom: Option<Rom>) -> Machine {
+pub fn convert_machine<T: FieldElement>(
+    machine: Machine,
+    rom: Option<Rom>,
+) -> (Machine, Option<Machine>) {
     let output_count = machine
         .operations()
         .map(|f| f.params.outputs.len())
@@ -43,11 +56,64 @@ pub enum LiteralKind {
     UnsignedConstant,
 }
 
+const ROM_OPERATION_ID: &str = "operation_id";
+const ROM_LATCH: &str = "latch";
+pub const ROM_SUBMACHINE_NAME: &str = "_rom";
+const ROM_ENTRY_POINT: &str = "get_line";
+
+fn rom_machine<'a>(
+    mut pil: Vec<PilStatement>,
+    mut line_lookup: impl Iterator<Item = &'a str>,
+) -> Machine {
+    Machine {
+        operation_id: Some(ROM_OPERATION_ID.into()),
+        latch: Some(ROM_LATCH.into()),
+        pil: {
+            pil.extend([
+                parse_pil_statement(&format!("pol fixed {ROM_OPERATION_ID} = [0]*;")),
+                parse_pil_statement(&format!("pol fixed {ROM_LATCH} = [1]*;")),
+            ]);
+            pil
+        },
+        callable: CallableSymbolDefinitions(
+            once((
+                ROM_ENTRY_POINT.into(),
+                CallableSymbol::Operation(OperationSymbol {
+                    source: SourceRef::unknown(),
+                    id: OperationId {
+                        id: Some(0u32.into()),
+                    },
+                    params: Params {
+                        inputs: (&mut line_lookup)
+                            .take(1)
+                            .map(|x| Param {
+                                name: x.to_string(),
+                                index: None,
+                                ty: None,
+                            })
+                            .collect(),
+                        outputs: line_lookup
+                            .map(|x| Param {
+                                name: x.to_string(),
+                                index: None,
+                                ty: None,
+                            })
+                            .collect(),
+                    },
+                }),
+            ))
+            .collect(),
+        ),
+        ..Default::default()
+    }
+}
+
 /// Component that turns a virtual machine into a constrained machine.
 /// TODO check if the conversion really depends on the finite field.
 #[derive(Default)]
 struct VMConverter<T> {
     pil: Vec<PilStatement>,
+    rom_pil: Vec<PilStatement>,
     pc_name: Option<String>,
     assignment_register_names: Vec<String>,
     registers: BTreeMap<String, Register>,
@@ -70,10 +136,14 @@ impl<T: FieldElement> VMConverter<T> {
         }
     }
 
-    fn convert_machine(mut self, mut input: Machine, rom: Option<Rom>) -> Machine {
+    fn convert_machine(
+        mut self,
+        mut input: Machine,
+        rom: Option<Rom>,
+    ) -> (Machine, Option<Machine>) {
         if !input.has_pc() {
             assert!(rom.is_none());
-            return input;
+            return (input, None);
         }
 
         // store the names of all assignment registers: we need them to generate assignment columns for other registers.
@@ -131,12 +201,18 @@ impl<T: FieldElement> VMConverter<T> {
                                 // introduce an intermediate witness polynomial to keep the degree of polynomial identities at 2
                                 // this may not be optimal for backends which support higher degree constraints
                                 let pc_update_name = format!("{name}_update");
-
                                 vec![
-                                    PilStatement::PolynomialDefinition(
+                                    witness_column(
                                         SourceRef::unknown(),
-                                        pc_update_name.to_string(),
-                                        rhs,
+                                        pc_update_name.clone(),
+                                        None,
+                                    ),
+                                    PilStatement::Expression(
+                                        SourceRef::unknown(),
+                                        build::identity(
+                                            direct_reference(pc_update_name.clone()),
+                                            rhs,
+                                        ),
                                     ),
                                     PilStatement::Expression(
                                         SourceRef::unknown(),
@@ -177,41 +253,38 @@ impl<T: FieldElement> VMConverter<T> {
 
         self.translate_code_lines();
 
-        self.pil.push(PilStatement::PlookupIdentity(
-            SourceRef::unknown(),
-            SelectedExpressions {
-                selector: None,
-                expressions: Box::new(
-                    ArrayLiteral {
-                        items: self
-                            .line_lookup
-                            .iter()
-                            .map(|x| direct_reference(&x.0))
-                            .collect(),
-                    }
-                    .into(),
-                ),
+        input.links.push(LinkDefinition {
+            source: SourceRef::unknown(),
+            instr_flag: None,
+            link_flag: Expression::from(1u32),
+            to: CallableRef {
+                instance: ROM_SUBMACHINE_NAME.to_string(),
+                callable: ROM_ENTRY_POINT.to_string(),
+                params: CallableParams {
+                    inputs: self.line_lookup[..1]
+                        .iter()
+                        .map(|x| direct_reference(&x.0))
+                        .collect(),
+                    outputs: self.line_lookup[1..]
+                        .iter()
+                        .map(|x| direct_reference(&x.0))
+                        .collect(),
+                },
             },
-            SelectedExpressions {
-                selector: None,
-                expressions: Box::new(
-                    ArrayLiteral {
-                        items: self
-                            .line_lookup
-                            .iter()
-                            .map(|x| direct_reference(&x.1))
-                            .collect(),
-                    }
-                    .into(),
-                ),
-            },
-        ));
+            is_permutation: false,
+        });
 
         if !self.pil.is_empty() {
             input.pil.extend(self.pil);
         }
 
-        input
+        (
+            input,
+            Some(rom_machine(
+                self.rom_pil,
+                self.line_lookup.iter().map(|(_, x)| x.as_ref()),
+            )),
+        )
     }
 
     fn handle_batch(&mut self, batch: Batch) {
@@ -845,19 +918,20 @@ impl<T: FieldElement> VMConverter<T> {
     /// Translates the code lines to fixed column but also fills
     /// the query hints for the free inputs.
     fn translate_code_lines(&mut self) {
-        self.pil.push(PilStatement::PolynomialConstantDefinition(
-            SourceRef::unknown(),
-            "p_line".to_string(),
-            FunctionDefinition::Array(
-                ArrayExpression::Value(
-                    (0..self.code_lines.len())
-                        .map(|i| BigUint::from(i as u64).into())
-                        .collect(),
-                )
-                .pad_with_last()
-                .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()])),
-            ),
-        ));
+        self.rom_pil
+            .push(PilStatement::PolynomialConstantDefinition(
+                SourceRef::unknown(),
+                "p_line".to_string(),
+                FunctionDefinition::Array(
+                    ArrayExpression::Value(
+                        (0..self.code_lines.len())
+                            .map(|i| BigUint::from(i as u64).into())
+                            .collect(),
+                    )
+                    .pad_with_last()
+                    .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()])),
+                ),
+            ));
         // TODO check that all of them are matched against execution trace witnesses.
         let mut rom_constants = self
             .rom_constant_names
@@ -996,11 +1070,12 @@ impl<T: FieldElement> VMConverter<T> {
                 .pad_with_last()
                 .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()]))
             };
-            self.pil.push(PilStatement::PolynomialConstantDefinition(
-                SourceRef::unknown(),
-                name.clone(),
-                FunctionDefinition::Array(array_expression),
-            ));
+            self.rom_pil
+                .push(PilStatement::PolynomialConstantDefinition(
+                    SourceRef::unknown(),
+                    name.clone(),
+                    FunctionDefinition::Array(array_expression),
+                ));
         }
     }
 

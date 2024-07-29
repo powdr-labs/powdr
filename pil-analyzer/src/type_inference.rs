@@ -412,24 +412,55 @@ impl TypeChecker {
                 }),
             ) => {
                 for ty in type_args.as_mut().unwrap() {
-                    // Apply regular substitution obtained from unification.
-                    self.substitute(ty);
-                    // Now rename remaining type vars to match the declaration scheme.
-                    // The remaining type vars need to be in the declaration scheme.
-                    if !ty
-                        .contained_type_vars()
-                        .all(|tv| type_var_mapping.contains_key(tv))
-                    {
+                    if !self.update_local_type(ty, type_var_mapping) {
                         return Err(source_ref.with_error(format!(
                             "Unable to derive concrete type for reference to generic symbol {name}"
                         )));
                     }
-                    ty.substitute_type_vars(type_var_mapping);
+                }
+            }
+            Expression::BlockExpression(
+                source_ref,
+                BlockExpression {
+                    statements,
+                    expr: _,
+                },
+            ) => {
+                for statement in statements {
+                    match statement {
+                        StatementInsideBlock::LetStatement(LetStatementInsideBlock {
+                            ty,
+                            pattern,
+                            value: _,
+                        }) => {
+                            if !self.update_local_type(ty.as_mut().unwrap(), type_var_mapping) {
+                                // TODO better source ref
+                                return Err(source_ref.with_error(format!(
+                                    "Unable to derive concrete type for local declaration {pattern}"
+                                )));
+                            }
+                        }
+                        StatementInsideBlock::Expression(_) => {}
+                    }
                 }
             }
             _ => {}
         }
         Ok(())
+    }
+
+    /// Updates the given local type with the current type variable mapping.
+    /// Return false if the type still contains other type variable references after substitution.
+    fn update_local_type(&self, ty: &mut Type, type_var_mapping: &HashMap<String, Type>) -> bool {
+        // Apply regular substitution obtained from unification.
+        self.substitute(ty);
+        // Check if the remaining type vars are all in the declaration scheme.
+        let is_concrete = ty
+            .contained_type_vars()
+            .all(|tv| type_var_mapping.contains_key(tv));
+        // Now rename remaining type vars to match the declaration scheme.
+        ty.substitute_type_vars(type_var_mapping);
+        is_concrete
     }
 
     /// Type-checks the isolated expressions.
@@ -659,21 +690,33 @@ impl TypeChecker {
                 self.expect_type(&result, &mut if_expr.else_body)?;
                 result
             }
-            Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
+            Expression::BlockExpression(source_ref, BlockExpression { statements, expr }) => {
                 let original_var_count = self.local_var_types.len();
 
                 for statement in statements {
                     match statement {
                         StatementInsideBlock::LetStatement(LetStatementInsideBlock {
                             pattern,
+                            ty,
                             value,
                         }) => {
-                            let value_type = if let Some(value) = value {
-                                self.infer_type_of_expression(value)?
-                            } else {
-                                Type::Expr
+                            match (&ty, value) {
+                                (Some(ty), Some(value)) => {
+                                    self.process_concrete_symbol(ty.clone(), value)?
+                                }
+                                (Some(ty), None) => {
+                                    if *ty != Type::Col {
+                                        // TODO better source ref
+                                        return Err(source_ref.with_error("Let-declared variables without value must have type 'col'.".to_string()));
+                                    }
+                                }
+                                (None, Some(value)) => {
+                                    *ty = Some(self.infer_type_of_expression(value)?)
+                                }
+                                (None, None) => *ty = Some(Type::Col),
                             };
-                            self.expect_type_of_pattern(&value_type, pattern)?;
+                            let var_type = type_for_reference(ty.as_ref().unwrap());
+                            self.expect_type_of_pattern(&var_type, pattern)?;
                         }
                         StatementInsideBlock::Expression(expr) => {
                             self.expect_type_with_flexibility(&self.statement_type(), expr)?;

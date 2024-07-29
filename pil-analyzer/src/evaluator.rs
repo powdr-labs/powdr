@@ -558,13 +558,14 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         ))
     }
 
-    fn new_witness_column(
+    fn new_column(
         &mut self,
         name: &str,
+        _value: Option<Arc<Value<'a, T>>>,
         _source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::Unsupported(format!(
-            "Tried to create witness column outside of statement context: {name}"
+            "Tried to create column outside of statement context: {name}"
         )))
     }
 
@@ -653,14 +654,19 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.type_args = new_type_args;
                 }
                 Operation::LetStatement(s) => {
-                    let value = if s.value.is_some() {
-                        self.value_stack.pop().unwrap()
-                    } else {
-                        let Pattern::Variable(_, name) = &s.pattern else {
-                            unreachable!()
-                        };
-                        self.symbols
-                            .new_witness_column(name, SourceRef::unknown())?
+                    let value = match (&s.ty, &s.value.as_ref()) {
+                        (Some(Type::Col), value) | (None, value @ None) => {
+                            let Pattern::Variable(_, name) = &s.pattern else {
+                                unreachable!()
+                            };
+                            self.symbols.new_column(
+                                name,
+                                value.map(|_| self.value_stack.pop().unwrap()),
+                                SourceRef::unknown(),
+                            )?
+                        }
+                        (_, Some(_)) => self.value_stack.pop().unwrap(),
+                        _ => unreachable!(),
                     };
                     self.local_vars.extend(
                         Value::try_match_pattern(&value, &s.pattern).unwrap_or_else(|| {

@@ -1,8 +1,8 @@
-use std::utils::cross_product;
 use std::prover::Query;
+use super::ByteCompare;
 
 // Splits an arbitrary field element into 8 u32s (in little endian order), on the BN254 field.
-machine SplitBN254 with
+machine SplitBN254(byte_compare: ByteCompare) with
     latch: RESET,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
@@ -66,19 +66,10 @@ machine SplitBN254 with
     // so the maximum value is 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000.
     col fixed BYTES_MAX = [0x00, 0x00, 0xf0, 0x93, 0xf5, 0xe1, 0x43, 0x91, 0x70, 0xb9, 0x79, 0x48, 0xe8, 0x33, 0x28, 0x5d, 0x58, 0x81, 0x81, 0xb6, 0x45, 0x50, 0xb8, 0x29, 0xa0, 0x31, 0xe1, 0x72, 0x4e, 0x64, 0x30, 0x00]*;
 
-    // Byte comparison block machine
-    let compare_inputs = cross_product([256, 256]);
-    let a = compare_inputs[1];
-    let b = compare_inputs[0];
-    let P_A: col = a;
-    let P_B: col = b;
-    col fixed P_LT(i) { if a(i) < b(i) { 1 } else { 0 } };
-    col fixed P_GT(i) { if a(i) > b(i) { 1 } else { 0 } };
-
     // Compare the current byte with the corresponding byte of the maximum value.
     col witness lt;
     col witness gt;
-    [ bytes, BYTES_MAX, lt, gt ] in [ P_A, P_B, P_LT, P_GT ];
+    link => (lt, gt) = byte_compare.run(bytes, BYTES_MAX);
 
     // Compute whether the current or any previous byte has been less than
     // the corresponding byte of the maximum value.

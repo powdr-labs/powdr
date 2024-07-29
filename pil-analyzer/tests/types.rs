@@ -573,6 +573,20 @@ fn simple_struct() {
 }
 
 #[test]
+fn cols_in_func() {
+    let input = "
+    namespace Main(104);
+    let h: -> () = constr || {
+        let w: col;
+        let f: col = |j| j + 1;
+        w = f;
+    };
+    h();
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
 fn def_struct_and_field() {
     let input = "
     struct Dot { x: int, y: int }
@@ -580,6 +594,18 @@ fn def_struct_and_field() {
     let f: Dot -> int = |d| d->y;
 
     let res: int = f(dot);
+        ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn type_vars_in_block_let() {
+    let input = "
+    let<T> f: T -> T[] = |i| [i];
+    let<Q> x: Q -> Q[][] = |i| {
+        let y: Q[] = f(i);
+        [y]
+    };
     ";
     type_check(input, &[]);
 }
@@ -625,4 +651,32 @@ fn struct_field_in_expr() {
     ";
 
     type_check(input, &[])
+}
+
+#[test]
+#[should_panic = "Expected type: int -> T, T\\nInferred type: int\\n"]
+fn new_fixed_column_wrong_value_type() {
+    let input = r#"namespace N(16);
+        let f = constr |j| {
+            let k: int = 2;
+            let fi: col = k;
+            fi
+        };
+        let ev = f(2);
+        let x;
+        x = ev;
+    "#;
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Let-declared variables without value must have type 'col'"]
+fn new_fixed_column_wrong_type() {
+    let input = r#"namespace N(16);
+        let f = constr || {
+            let fi: int;
+        };
+        f();
+    "#;
+    type_check(input, &[]);
 }

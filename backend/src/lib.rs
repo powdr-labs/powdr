@@ -9,7 +9,7 @@ mod plonky3;
 mod composite;
 
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::witgen::WitgenCallback;
+use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 use std::{io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
@@ -92,34 +92,6 @@ impl BackendType {
             }
         }
     }
-
-    pub fn is_composite(&self) -> bool {
-        match self {
-            #[cfg(feature = "halo2")]
-            BackendType::Halo2 => false,
-            #[cfg(feature = "halo2")]
-            BackendType::Halo2Composite => true,
-            #[cfg(feature = "halo2")]
-            BackendType::Halo2Mock => false,
-            #[cfg(feature = "halo2")]
-            BackendType::Halo2MockComposite => true,
-            #[cfg(feature = "estark-polygon")]
-            BackendType::EStarkPolygon => false,
-            #[cfg(feature = "estark-polygon")]
-            BackendType::EStarkPolygonComposite => true,
-            BackendType::EStarkStarky => false,
-            BackendType::EStarkStarkyComposite => true,
-            BackendType::EStarkDump => false,
-            BackendType::EStarkDumpComposite => true,
-            #[cfg(feature = "plonky3")]
-            BackendType::Plonky3 => false,
-            #[cfg(feature = "plonky3")]
-            BackendType::Plonky3Composite => true,
-            // We explicitly do not use a wildcard here
-            // so that a new composite backend needs to be
-            // added here too.
-        }
-    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -162,7 +134,7 @@ pub trait BackendFactory<F: FieldElement> {
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, Vec<F>)>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,

@@ -8,7 +8,7 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::witgen::WitgenCallback;
+use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 use serde::{Deserialize, Serialize};
 use split::{machine_fixed_columns, machine_witness_columns};
@@ -17,18 +17,30 @@ use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 mod split;
 
+/// Maps each size to the corresponding verification key.
+type VerificationKeyBySize = BTreeMap<usize, Vec<u8>>;
+
 /// A composite verification key that contains a verification key for each machine separately.
 #[derive(Serialize, Deserialize)]
 struct CompositeVerificationKey {
-    /// Verification key for each machine (if available, otherwise None), sorted by machine name.
-    verification_keys: Vec<Option<Vec<u8>>>,
+    /// Verification keys for each machine (if available, otherwise None), sorted by machine name.
+    verification_keys: Vec<Option<VerificationKeyBySize>>,
+}
+
+/// A proof for a single machine.
+#[derive(Serialize, Deserialize)]
+struct MachineProof {
+    /// The (dynamic) size of the machine.
+    size: usize,
+    /// The proof for the machine.
+    proof: Vec<u8>,
 }
 
 /// A composite proof that contains a proof for each machine separately, sorted by machine name.
 #[derive(Serialize, Deserialize)]
 struct CompositeProof {
-    /// Map from machine name to proof
-    proofs: Vec<Vec<u8>>,
+    /// Machine proofs, sorted by machine name.
+    proofs: Vec<MachineProof>,
 }
 
 pub(crate) struct CompositeBackendFactory<F: FieldElement, B: BackendFactory<F>> {
@@ -49,7 +61,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
     fn create<'a>(
         &self,
         pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, Vec<F>)>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
@@ -77,45 +89,94 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             })
             .verification_keys;
 
+        log::info!(
+            "Instantiating a composite backend with {} machines:",
+            pils.len()
+        );
+        for (machine_name, pil) in pils.iter() {
+            log_machine_stats(machine_name, pil)
+        }
+
         let machine_data = pils
             .into_iter()
             .zip_eq(verification_keys.into_iter())
             .map(|((machine_name, pil), verification_key)| {
-                // Set up readers for the setup and verification key
-                let mut setup_cursor = setup_bytes.as_ref().map(Cursor::new);
-                let setup = setup_cursor.as_mut().map(|cursor| cursor as &mut dyn Read);
-
-                let mut verification_key_cursor = verification_key.as_ref().map(Cursor::new);
-                let verification_key = verification_key_cursor
-                    .as_mut()
-                    .map(|cursor| cursor as &mut dyn Read);
-
                 let pil = Arc::new(pil);
-                let output_dir = output_dir
-                    .clone()
-                    .map(|output_dir| output_dir.join(&machine_name));
-                if let Some(ref output_dir) = output_dir {
-                    std::fs::create_dir_all(output_dir)?;
-                }
-                let fixed = Arc::new(machine_fixed_columns(&fixed, &pil));
-                let backend = self.factory.create(
-                    pil.clone(),
-                    fixed,
-                    output_dir,
-                    setup,
-                    verification_key,
-                    // TODO: Handle verification_app_key
-                    None,
-                    backend_options.clone(),
-                );
-                backend.map(|backend| (machine_name.to_string(), MachineData { pil, backend }))
+                machine_fixed_columns(&fixed, &pil)
+                    .into_iter()
+                    .map(|(size, fixed)| {
+                        let pil = set_size(pil.clone(), size as DegreeType);
+                        // Set up readers for the setup and verification key
+                        let mut setup_cursor = setup_bytes.as_ref().map(Cursor::new);
+                        let setup = setup_cursor.as_mut().map(|cursor| cursor as &mut dyn Read);
+
+                        let mut verification_key_cursor = verification_key
+                            .as_ref()
+                            .map(|keys| Cursor::new(keys.get(&size).unwrap()));
+                        let verification_key = verification_key_cursor
+                            .as_mut()
+                            .map(|cursor| cursor as &mut dyn Read);
+
+                        let output_dir = output_dir
+                            .clone()
+                            .map(|output_dir| output_dir.join(&machine_name));
+                        if let Some(ref output_dir) = output_dir {
+                            std::fs::create_dir_all(output_dir)?;
+                        }
+                        let fixed = Arc::new(fixed);
+                        let backend = self.factory.create(
+                            pil.clone(),
+                            fixed,
+                            output_dir,
+                            setup,
+                            verification_key,
+                            // TODO: Handle verification_app_key
+                            None,
+                            backend_options.clone(),
+                        );
+                        backend.map(|backend| (size, MachineData { pil, backend }))
+                    })
+                    .collect::<Result<BTreeMap<_, _>, _>>()
+                    .map(|backends| (machine_name, backends))
             })
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+
         Ok(Box::new(CompositeBackend { machine_data }))
     }
 
     fn generate_setup(&self, size: DegreeType, output: &mut dyn io::Write) -> Result<(), Error> {
         self.factory.generate_setup(size, output)
+    }
+}
+
+fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
+    let num_witness_columns = pil.committed_polys_in_source_order().len();
+    let num_fixed_columns = pil.constant_polys_in_source_order().len();
+    let max_identity_degree = pil
+        .identities_with_inlined_intermediate_polynomials()
+        .iter()
+        .map(|i| i.degree())
+        .max()
+        .unwrap_or(0);
+    let uses_next_operator = pil.identities.iter().any(|i| i.contains_next_ref());
+    // This assumes that we'll always at least once reference the current row
+    let number_of_rotations = 1 + if uses_next_operator { 1 } else { 0 };
+    let num_identities_by_kind = pil
+        .identities
+        .iter()
+        .map(|i| i.kind)
+        .counts()
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
+
+    log::info!("* {}:", machine_name);
+    log::info!("  * Number of witness columns: {}", num_witness_columns);
+    log::info!("  * Number of fixed columns: {}", num_fixed_columns);
+    log::info!("  * Maximum identity degree: {}", max_identity_degree);
+    log::info!("  * Number of rotations: {}", number_of_rotations);
+    log::info!("  * Number of identities:");
+    for (kind, count) in num_identities_by_kind {
+        log::info!("    * {:?}: {}", kind, count);
     }
 }
 
@@ -128,7 +189,46 @@ pub(crate) struct CompositeBackend<'a, F> {
     /// Maps each machine name to the corresponding machine data
     /// Note that it is essential that we use BTreeMap here to ensure that the machines are
     /// deterministically ordered.
-    machine_data: BTreeMap<String, MachineData<'a, F>>,
+    machine_data: BTreeMap<String, BTreeMap<usize, MachineData<'a, F>>>,
+}
+
+/// Makes sure that all columns in the machine PIL have the provided degree, cloning
+/// the machine PIL if necessary. This is needed because backends other than `CompositeBackend`
+/// typically expect that the degree is static.
+///
+/// # Panics
+/// Panics if the machine PIL contains definitions with different degrees, or if the machine
+/// already has a degree set that is different from the provided degree.
+fn set_size<F: Clone>(pil: Arc<Analyzed<F>>, degree: DegreeType) -> Arc<Analyzed<F>> {
+    let current_degrees = pil.degrees();
+    assert!(
+        current_degrees.len() <= 1,
+        "Expected at most one degree within a machine"
+    );
+
+    match current_degrees.iter().next() {
+        None => {
+            // Clone the PIL and set the degree for all definitions
+            let pil = (*pil).clone();
+            let definitions = pil
+                .definitions
+                .into_iter()
+                .map(|(name, (mut symbol, def))| {
+                    symbol.degree = Some(degree);
+                    (name, (symbol, def))
+                })
+                .collect();
+            Arc::new(Analyzed { definitions, ..pil })
+        }
+        Some(existing_degree) => {
+            // Keep the the PIL as is
+            assert_eq!(
+                existing_degree, &degree,
+                "Expected all definitions within a machine to have the same degree"
+            );
+            pil
+        }
+    }
 }
 
 // TODO: This just forwards to the backend for now. In the future this should:
@@ -147,29 +247,64 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
             unimplemented!();
         }
 
-        let proof = CompositeProof {
-            proofs: self
-                .machine_data
-                .iter()
-                .map(|(machine, MachineData { pil, backend })| {
-                    let witgen_callback = witgen_callback.clone().with_pil(pil.clone());
+        let proofs = self
+            .machine_data
+            .iter()
+            .map(|(machine, machine_data)| {
+                let start = std::time::Instant::now();
+                // Pick any available PIL; they all contain the same witness columns
+                let any_pil = &machine_data.values().next().unwrap().pil;
+                let witness = machine_witness_columns(witness, any_pil, machine);
+                let size = witness
+                    .iter()
+                    .map(|(_, witness)| witness.len())
+                    .unique()
+                    .exactly_one()
+                    .expect("All witness columns of a machine must have the same size");
+                let machine_data = machine_data
+                    .get(&size)
+                    .expect("Machine does not support the given size");
+                let witgen_callback = witgen_callback.clone().with_pil(machine_data.pil.clone());
 
-                    log::info!("== Proving machine: {} (size {})", machine, pil.degree());
-                    log::debug!("PIL:\n{}", pil);
+                log::info!("== Proving machine: {} (size {})", machine, size);
+                log::debug!("PIL:\n{}", machine_data.pil);
 
-                    let witness = machine_witness_columns(witness, pil, machine);
+                let proof = machine_data.backend.prove(&witness, None, witgen_callback);
 
-                    backend.prove(&witness, None, witgen_callback)
-                })
-                .collect::<Result<_, _>>()?,
-        };
+                match proof {
+                    Ok(inner_proof) => {
+                        log::info!(
+                            "==> Machine proof of {size} rows ({} bytes) computed in {:?}",
+                            inner_proof.len(),
+                            start.elapsed()
+                        );
+                        Ok(MachineProof {
+                            size,
+                            proof: inner_proof,
+                        })
+                    }
+                    Err(e) => {
+                        log::error!("==> Machine proof failed: {:?}", e);
+                        Err(e)
+                    }
+                }
+            })
+            .collect::<Result<_, _>>()?;
+
+        let proof = CompositeProof { proofs };
         Ok(bincode::serialize(&proof).unwrap())
     }
 
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
         let proof: CompositeProof = bincode::deserialize(proof).unwrap();
-        for (machine_data, machine_proof) in self.machine_data.values().zip_eq(proof.proofs) {
-            machine_data.backend.verify(&machine_proof, instances)?;
+        for (machine_data, machine_proof) in
+            self.machine_data.values().zip_eq(proof.proofs.into_iter())
+        {
+            machine_data
+                .get(&machine_proof.size)
+                .unwrap()
+                .backend
+                .verify(&machine_proof.proof, instances)?;
         }
         Ok(())
     }
@@ -177,6 +312,9 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
     fn export_setup(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         // All backend are the same, just pick the first
         self.machine_data
+            .values()
+            .next()
+            .unwrap()
             .values()
             .next()
             .unwrap()
@@ -190,10 +328,18 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                 .machine_data
                 .values()
                 .map(|machine_data| {
-                    let backend = machine_data.backend.as_ref();
-                    let vk_bytes = backend.verification_key_bytes();
-                    match vk_bytes {
-                        Ok(vk_bytes) => Ok(Some(vk_bytes)),
+                    let verification_keys = machine_data
+                        .iter()
+                        .map(|(size, machine_data)| {
+                            machine_data
+                                .backend
+                                .verification_key_bytes()
+                                .map(|vk_bytes| (*size, vk_bytes))
+                        })
+                        .collect::<Result<_, _>>();
+
+                    match verification_keys {
+                        Ok(verification_keys) => Ok(Some(verification_keys)),
                         Err(Error::NoVerificationAvailable) => Ok(None),
                         Err(e) => Err(e),
                     }
