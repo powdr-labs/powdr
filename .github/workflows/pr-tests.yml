@@ -65,12 +65,6 @@ jobs:
         test:
         - "1"
         - "2"
-        - "3"
-        - "4"
-        - "5"
-        - "6"
-        - "7"
-        - "8"
 
     steps:
     - uses: actions/checkout@v3
@@ -98,7 +92,7 @@ jobs:
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
     - name: Run default tests
-      run: cargo nextest run --archive-file tests.tar.zst --verbose --partition count:"${{ matrix.test }}"/8
+      run: cargo nextest run --archive-file tests.tar.zst --verbose --partition count:"${{ matrix.test }}"/2
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
 
@@ -168,8 +162,14 @@ jobs:
     strategy:
       matrix:
         test:
-        - "subset1"
-        - "subset2"
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+        - "5"
+        - "6"
+        - "7"
+        - "8"
     needs: build
     runs-on: ubuntu-latest
 
@@ -201,14 +201,10 @@ jobs:
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
     - name: Run slow tests
-      # Number threads is set to 1 because the runner does not have enough memory for more.
+      # Number threads is set to 2 because the runner does not have enough memory for more.
       run: |
-        if [[ "${{ matrix.test }}" == "subset1" ]]; then
-          TESTS="test(=arith_test)"
-        elif [[ "${{ matrix.test }}" == "subset2" ]]; then
-          TESTS="test(=keccak) | test(=vec_median) | test(=instruction_tests::addi) | test(=many_chunks) | test(=sum_serde)"
-        fi
-        cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E "$TESTS"
+        NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
+        cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
       shell: bash
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
