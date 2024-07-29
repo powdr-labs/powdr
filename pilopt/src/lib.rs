@@ -2,18 +2,20 @@
 #![deny(clippy::print_stdout)]
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::iter::once;
+use std::sync::{Arc, RwLock};
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Expression, FunctionValueDefinition,
-    IdentityKind, PolyID, PolynomialReference, Reference, SymbolKind, TypedExpression,
+    IdentityKind, PolyID, PolynomialReference, Reference, Symbol, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
 use powdr_ast::parsed::{EnumDeclaration, Number};
 use powdr_number::{BigUint, FieldElement};
+use powdr_pil_analyzer::evaluator::{self, evaluate, Closure, Definitions, SymbolLookup, Value};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
@@ -194,13 +196,18 @@ fn collect_required_names<'a, T: FieldElement>(
 /// Identifies fixed columns that only have a single value, replaces every
 /// reference to this column by the value and deletes the column.
 fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    let mut symbols = CachedSymbols {
+        symbols: &pil_file.definitions,
+        cache: Arc::new(RwLock::new(SymbolCache::<T>::default())),
+    };
+
     let constant_polys = pil_file
         .constant_polys_in_source_order()
         .iter()
         .filter(|(p, _)| !p.is_array())
         .filter_map(|(poly, definition)| {
             let definition = definition.as_ref()?;
-            let value = constant_value(definition)?;
+            let value = constant_value(&mut symbols, definition)?;
             log::debug!(
                 "Determined fixed column {} to be constant {value}. Removing.",
                 poly.absolute_name
@@ -212,30 +219,72 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     substitute_polynomial_references(pil_file, &constant_polys);
 }
 
+type SymbolCache<'a, T> = BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>;
+
+#[derive(Clone)]
+pub struct CachedSymbols<'a, T> {
+    symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    cache: Arc<RwLock<SymbolCache<'a, T>>>,
+}
+
+impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
+    fn lookup(
+        &mut self,
+        name: &'a str,
+        type_args: Option<Vec<Type>>,
+    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+        let cache_key = (name.to_string(), type_args.clone());
+        if let Some(v) = self.cache.read().unwrap().get(&cache_key) {
+            return Ok(v.clone());
+        }
+        let result = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
+        self.cache
+            .write()
+            .unwrap()
+            .entry(cache_key)
+            .or_insert_with(|| result.clone());
+        Ok(result)
+    }
+}
+
 /// Checks if a fixed column defined through a function has a constant
 /// value and returns it in that case.
-fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
+fn constant_value<'a, 'b: 'a, T: FieldElement>(
+    symbols: &'a mut CachedSymbols<'b, T>,
+    function: &'b FunctionValueDefinition,
+) -> Option<BigUint> {
     match function {
-        FunctionValueDefinition::Array(expressions) => {
-            // TODO use a proper evaluator at some point,
-            // combine with constant_evaluator
-            let mut values = expressions
-                .iter()
-                .filter(|e| !e.is_empty())
-                .flat_map(|e| e.pattern().iter())
-                .map(|e| match e {
-                    Expression::Number(_, Number { value: n, .. }) => Some(n),
-                    _ => None,
-                });
-            let first = values.next()??;
-            if values.all(|x| x == Some(first)) {
-                Some(first.clone())
-            } else {
-                None
+        FunctionValueDefinition::Expression(e) => {
+            match evaluate(&e.e, symbols) {
+                // in particular, we can hit an error if we're accessing the degree
+                Err(_) => None,
+                Ok(v) => {
+                    match v.as_ref() {
+                        // pattern match to detect (|_| c)
+                        Value::Closure(Closure {
+                            lambda,
+                            environment,
+                            ..
+                        }) => {
+                            match lambda.body.as_ref() {
+                                Expression::Reference(_, Reference::LocalVar(id, _)) => {
+                                    // TODO: just call the evaluator again here
+                                    Some(
+                                        environment[*id as usize]
+                                            .try_to_field_element()
+                                            .unwrap()
+                                            .to_arbitrary_integer(),
+                                    )
+                                }
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    }
+                }
             }
         }
-        FunctionValueDefinition::Expression(_)
-        | FunctionValueDefinition::TypeDeclaration(_)
+        FunctionValueDefinition::TypeDeclaration(_)
         | FunctionValueDefinition::TypeConstructor(_, _)
         | FunctionValueDefinition::TraitDeclaration(_)
         | FunctionValueDefinition::TraitFunction(_, _) => None,

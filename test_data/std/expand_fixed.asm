@@ -17,7 +17,7 @@ let assert_eq: Result<(int -> int), string>, Result<int[], string> -> () = |v, e
 
 machine Main with degree: 8 {
 
-    let degree = std::prover::degree();
+    let degree = std::prover::degree;
 
     // let F0 = [1, 2, 3]* + [1] + [1, 2, 3, 1];
     let r0 = expand([repeat([1, 2, 3]), once([1]), once([1, 2, 3, 1])], degree);

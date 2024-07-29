@@ -1,8 +1,8 @@
 use std::str::FromStr;
 
 use powdr_ast::parsed::{
-    asm::SymbolPath, sugar::ArrayExpression, ArrayLiteral, BlockExpression, Expression,
-    FunctionCall, FunctionKind, LambdaExpression, NamespacedPolynomialReference, Pattern,
+    asm::SymbolPath, sugar::ArrayExpression, ArrayLiteral, Expression, FunctionCall,
+    NamespacedPolynomialReference,
 };
 use powdr_parser_util::SourceRef;
 
@@ -10,7 +10,6 @@ const ONCE: &str = "std::expand_fixed::once";
 const REPEAT: &str = "std::expand_fixed::repeat";
 const EXPAND: &str = "std::expand_fixed::expand_unwrapped";
 const DEGREE: &str = "std::prover::degree";
-const ARGUMENT_NAME: &str = "i";
 
 pub fn desugar_array_literal_expression(array_expression: ArrayExpression) -> Expression {
     desugar_array_literal_expression_with_sourceref(SourceRef::unknown(), array_expression)
@@ -53,61 +52,26 @@ pub fn desugar_array_literal_expression_with_sourceref(
         // the terms
         Expression::ArrayLiteral(source_ref.clone(), ArrayLiteral { items: terms }),
         // the degree
-        Expression::FunctionCall(
+        Expression::Reference(
             source_ref.clone(),
-            FunctionCall {
-                function: Box::new(Expression::Reference(
-                    source_ref.clone(),
-                    NamespacedPolynomialReference {
-                        path: SymbolPath::from_str(DEGREE).unwrap(),
-                        type_args: None,
-                    },
-                )),
-                arguments: vec![],
+            NamespacedPolynomialReference {
+                path: SymbolPath::from_str(DEGREE).unwrap(),
+                type_args: None,
             },
         ),
     ];
 
-    Expression::LambdaExpression(
+    Expression::FunctionCall(
         source_ref.clone(),
-        LambdaExpression {
-            kind: FunctionKind::Pure,
-            params: vec![Pattern::Enum(
+        FunctionCall {
+            function: Box::new(Expression::Reference(
                 source_ref.clone(),
-                SymbolPath::from_identifier(ARGUMENT_NAME.into()),
-                None,
-            )],
-            body: Box::new(Expression::BlockExpression(
-                source_ref.clone(),
-                BlockExpression {
-                    statements: vec![],
-                    expr: Some(Box::new(Expression::FunctionCall(
-                        source_ref.clone(),
-                        FunctionCall {
-                            function: Box::new(Expression::FunctionCall(
-                                source_ref.clone(),
-                                FunctionCall {
-                                    function: Box::new(Expression::Reference(
-                                        source_ref.clone(),
-                                        NamespacedPolynomialReference {
-                                            path: SymbolPath::from_str(EXPAND).unwrap(),
-                                            type_args: None,
-                                        },
-                                    )),
-                                    arguments,
-                                },
-                            )),
-                            arguments: vec![Expression::Reference(
-                                source_ref.clone(),
-                                NamespacedPolynomialReference::from_identifier(
-                                    ARGUMENT_NAME.into(),
-                                ),
-                            )],
-                        },
-                    ))),
+                NamespacedPolynomialReference {
+                    path: SymbolPath::from_str(EXPAND).unwrap(),
+                    type_args: None,
                 },
             )),
-            outer_var_references: Default::default(),
+            arguments,
         },
     )
 }
@@ -126,7 +90,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             desugar_array_literal_expression(array_expression).to_string(),
-            "(|i| { std::expand_fixed::expand_unwrapped([std::expand_fixed::repeat([1, 2]), std::expand_fixed::once([1]), std::expand_fixed::once([1, 2, 3])], std::prover::degree())(i) })"
+            "std::expand_fixed::expand_unwrapped([std::expand_fixed::repeat([1, 2]), std::expand_fixed::once([1]), std::expand_fixed::once([1, 2, 3])], std::prover::degree)"
         );
     }
 }

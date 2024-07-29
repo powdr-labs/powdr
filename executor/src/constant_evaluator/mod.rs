@@ -108,34 +108,6 @@ fn generate_values<T: FieldElement>(
                 })
                 .collect::<Result<Vec<_>, _>>()
         }
-        FunctionValueDefinition::Array(values) => {
-            assert!(index.is_none());
-            values
-                .iter()
-                .map(|elements| {
-                    let items = elements
-                        .pattern()
-                        .iter()
-                        .map(|v| {
-                            let mut symbols = symbols.clone();
-                            evaluator::evaluate(v, &mut symbols)
-                                .and_then(|v| v.try_to_field_element())
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    Ok(items
-                        .into_iter()
-                        .cycle()
-                        .take(elements.size() as usize)
-                        .collect::<Vec<_>>())
-                })
-                .collect::<Result<Vec<_>, _>>()
-                .map(|values| {
-                    let values: Vec<T> = values.into_iter().flatten().collect();
-                    assert_eq!(values.len(), degree as usize);
-                    values
-                })
-        }
         FunctionValueDefinition::TypeDeclaration(_)
         | FunctionValueDefinition::TypeConstructor(_, _)
         | FunctionValueDefinition::TraitDeclaration(_)
