@@ -6,7 +6,7 @@
 //! everywhere save for at row j is constructed to constrain s * (pub - x) on
 //! every row.
 
-use std::{any::TypeId, collections::BTreeMap, cmp::max};
+use std::{any::TypeId, cmp::max, collections::BTreeMap};
 
 use p3_air::{
     Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, ExtensionBuilder, PairBuilder,
@@ -175,6 +175,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
         challenges.values().collect::<Vec<Vec<u64>>>()
     }
+}
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     #[cfg(debug_assertions)]
@@ -192,7 +193,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         e: &AlgebraicExpression<T>,
         main: &AB::M,
         fixed: &AB::M,
-        publics: &Vec<<AB as AirBuilderWithPublicValues>::PublicVar>,
+        publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
         stage: u32,
         multi_stage: fn(u32) -> Vec<&AB::M>, // returns a reference to the stage _ matrix
         challenges: fn(u32) -> Vec<&Vec<<AB as AirBuilderWithPublicValues>::PublicVar>>,
@@ -227,15 +228,11 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::PublicReference(id) => {
-                let pub_ids = self.analyzed.get_publics();
-                match publics
-                    .iter()
-                    .enumerate()
-                    .find(|&(idx, _)| id == &pub_ids[idx].0)
-                {
-                    Some((_, &elt)) => return elt.into(),
-                    _ => panic!("Referenced public value does not exist"),
-                }
+                assert!(
+                    publics.contains_key(id),
+                    "Referenced public value does not exist"
+                );
+                publics[id].into()
             }
 
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
@@ -284,12 +281,14 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::Challenge(challenge) => {
-                let challenge_ids = self.get_challenges()[challenge.stage as usize]; 
-                match challenges[challenge.stage].iter().enumerate().find(
-                    |&(idx, _)| challenge.id == challenge_ids[idx]
-                ) {
+                let challenge_ids = self.get_challenges()[challenge.stage as usize];
+                match challenges[challenge.stage]
+                    .iter()
+                    .enumerate()
+                    .find(|&(idx, _)| challenge.id == challenge_ids[idx])
+                {
                     Some((_, &elt)) => elt.into(),
-                    None => panic!("Referenced challenge does not exist in this stage.")
+                    None => panic!("Referenced challenge does not exist in this stage."),
                 }
             }
         };
@@ -305,7 +304,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         e: &AlgebraicExpression<T>,
         main: &AB::M,
         fixed: &AB::M,
-        publics: &Vec<<AB as AirBuilderWithPublicValues>::PublicVar>,
+        publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -313,6 +312,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
                 match poly_id.ptype {
                     PolynomialType::Committed => {
+                        //TODO: our changes should come from here
                         assert!(
                             r.poly_id.id < self.analyzed.commitment_count() as u64,
                             "Plonky3 expects `poly_id` to be contiguous"
@@ -336,31 +336,16 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::PublicReference(id) => {
-                let pub_ids = self.analyzed.get_publics();
-                match publics
-                    .iter()
-                    .enumerate()
-                    .find(|&(idx, _)| id == &pub_ids[idx].0)
-                {
-                    Some((_, &elt)) => return elt.into(),
-                    _ => panic!("Referenced public value does not exist"),
-                }
+                assert!(
+                    publics.contains_key(id),
+                    "Referenced public value does not exist"
+                );
+                publics[id].into()
             }
-
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let left = self.to_plonky3_expr_vanilla::<AB>(
-                    left,
-                    main,
-                    fixed,
-                    publics,
-                );
-                let right = self.to_plonky3_expr_vanilla::<AB>(
-                    right,
-                    main,
-                    fixed,
-                    publics,
-                );
+                let left = self.to_plonky3_expr_vanilla::<AB>(left, main, fixed, publics);
+                let right = self.to_plonky3_expr_vanilla::<AB>(right, main, fixed, publics);
 
                 match op {
                     AlgebraicBinaryOperator::Add => left + right,
@@ -392,19 +377,20 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         };
         res
     }
-    
+
     fn to_plonky3_expr_multi_stage<AB: AirBuilder<F = Val> + AirBuilderWithPublicValues>(
         &self,
         e: &AlgebraicExpression<T>,
         main: &AB::M,
         fixed: &AB::M,
-        publics: &Vec<<AB as AirBuilderWithPublicValues>::PublicVar>,
+        publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
         stage: u32,
         multi_stage: fn(u32) -> Vec<&AB::M>, // returns a reference to the stage _ matrix
         challenges: fn(u32) -> Vec<&Vec<<AB as AirBuilderWithPublicValues>::PublicVar>>,
     ) -> AB::Expr {
         unimplemented!()
     }
+}
 
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
@@ -432,7 +418,7 @@ pub trait PowdrAirBuilder:
 {
     fn multi_stage(&self, stage: u32) -> Self::M;
 
-    /// Challenges from each stage, as public elements. 
+    /// Challenges from each stage, as public elements.
     fn challenges(&self, stage: u32) -> &Vec<Self::PublicVar>;
 
     fn preprocessed(&self) -> Self::M;
@@ -460,20 +446,26 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
             .collect::<Vec<&Vec<<AB as AirBuilderWithPublicValues>::PublicVar>>>();
 
         // public constraints
-        let pi_moved = pi.to_vec();
-        let pi_deref = pi_moved.clone();
+        let public_vals_by_id = publics
+            .iter()
+            .zip(pi.to_vec())
+            .map(|((id, _, _), val)| (id, val))
+            .collect::<BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>();
+
         let fixed_local = fixed.row_slice(0);
         let public_offset = self.analyzed.constant_count();
 
-        publics.iter().zip(pi_moved).enumerate().for_each(
-            |(index, ((_, col_id, _), public_value))| {
+        publics
+            .iter()
+            .enumerate()
+            .for_each(|(index, (pub_id, col_id, _))| {
                 let selector = fixed_local[public_offset + index];
                 let witness_col = local[*col_id];
+                let public_value = public_vals_by_id[pub_id];
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
                 builder.assert_zero(selector * (public_value.into() - witness_col));
-            },
-        );
+            });
 
         // circuit constraints
         for identity in &self
@@ -497,10 +489,7 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
                         identity.left.selector.as_ref().unwrap(),
                         &main,
                         &fixed,
-                        &pi_deref,
-                        stage,
-                        multi_stage,
-                        challenges,
+                        &public_vals_by_id,
                     );
 
                     builder.assert_zero(left);
