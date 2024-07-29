@@ -272,4 +272,58 @@ namespace N(16);
     assert_eq!(formatted, expected);
 }
 
-// TODO test with two variables
+#[test]
+#[should_panic = "Expected type: int -> std::prover::Query"]
+fn set_hint_invalid_function() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        let eval = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        std::prover::set_hint(x, query |_, _| std::prover::Query::Hint(1));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Array elements are not supported for std::prover::set_hint (called on N.x[0])."]
+fn set_hint_array_element() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x: col[2];
+        std::prover::set_hint(x[0], query |_| std::prover::Query::Hint(1));
+    "#;
+    let expected = r#"namespace std::prover;
+    let set_hint = 8;
+    let eval = 8;
+    enum Query {
+        Hint(fe),
+        None,
+    }
+namespace N(16);
+    col witness x(_) query std::prover::Query::Hint(1);
+    col witness y(i) query std::prover::Query::Hint(std::prover::eval(N.x));
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+#[should_panic = "Expected reference to witness column as first argument for std::prover::set_hint, but got intermediate column N.y."]
+fn set_hint_no_col() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        let y: expr = x;
+        std::prover::set_hint(y, query |_| std::prover::Query::Hint(1));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}

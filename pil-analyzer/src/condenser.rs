@@ -402,6 +402,11 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                         poly_id.ptype
                     )));
                 }
+                if name.contains('[') {
+                    return Err(EvalError::TypeError(format!(
+                        "Array elements are not supported for std::prover::set_hint (called on {name})."
+                    )));
+                }
                 name
             }
             col => {
@@ -411,9 +416,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                 )));
             }
         };
-
-        // TODO is it OK to go via name instead of poly id? Is the name already unique at this point?
-        // TODO handle arrays
 
         self.new_hints.push((
             col_name.clone(),
@@ -615,7 +617,7 @@ fn closure_to_function<T: Clone + Display>(
 
         Ok(FunctionValueDefinition::Expression(TypedExpression {
             e: Expression::LambdaExpression(source.clone(), lambda),
-            type_scheme: None, // TOOD do we need the type?
+            type_scheme: None,
         }))
     } else {
         Err(EvalError::TypeError(format!(
