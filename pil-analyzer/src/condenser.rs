@@ -3,6 +3,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
+    fmt::Display,
     iter::once,
     str::FromStr,
     sync::Arc,
@@ -11,7 +12,7 @@ use std::{
 use powdr_ast::{
     analyzed::{
         self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
-        FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
+        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialType, PublicDeclaration,
         SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
@@ -322,24 +323,16 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         } else {
             PolynomialType::Committed
         });
-        let value = value.map(|v|{
-            if let Value::Closure(evaluator::Closure {
-                lambda,
-                environment: _,
-                type_args: _,
-            }) = v.as_ref()
-            {
-                if !lambda.outer_var_references.is_empty() {
-                    return Err(EvalError::TypeError(format!("Lambda expression for fixed column {name} must not reference outer variables.")))
-                }
-                Ok(FunctionValueDefinition::Expression(TypedExpression {
-                    e: Expression::LambdaExpression(source.clone(), (*lambda).clone()),
-                    type_scheme: None,
-                }))
-            } else {
-                Err(EvalError::TypeError(format!("Only lambda expressions are allowed for dynamically-created fixed columns. Got {v}.")))
-            }
-        }).transpose()?;
+        let value = value
+            .map(|v| {
+                closure_to_function(&source, v.as_ref()).map_err(|e| match e {
+                    EvalError::TypeError(e) => {
+                        EvalError::TypeError(format!("Error creating fixed column {name}: {e}."))
+                    }
+                    _ => e,
+                })
+            })
+            .transpose()?;
 
         let symbol = Symbol {
             id: self.counters.dispense_symbol_id(kind, None),
@@ -368,7 +361,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         col: Arc<Value<'a, T>>,
         expr: Arc<Value<'a, T>>,
     ) -> Result<(), EvalError> {
-        let col = match col.as_ref() {
+        let poly_id = match col.as_ref() {
             Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
                 name,
                 poly_id,
@@ -390,10 +383,29 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
         };
 
-        // TODO handle (and test) add_hint executed on an existing column
+        // TODO handle (and test) add_hint executed on an existing column (i.e. not in "new_columns")
         // TODO improved search?
-        self.new_columns.iter().find(|(sym, _)| sym.
+        let value = self
+            .new_columns
+            .iter_mut()
+            .find(|(sym, _)| PolyID::from(sym) == poly_id)
+            .map(|(_, value)| value)
+            .unwrap();
+        if !value.is_none() {
+            return Err(EvalError::TypeError(format!(
+                "Column {col} already has a hint set."
+            )));
+        }
+        *value = Some(
+            closure_to_function(&SourceRef::unknown(), expr.as_ref()).map_err(|e| match e {
+                EvalError::TypeError(e) => {
+                    EvalError::TypeError(format!("Error setting hint for column {col}: {e}."))
+                }
+                _ => e,
+            })?,
+        );
 
+        Ok(())
     }
 
     fn add_constraints(
@@ -544,5 +556,38 @@ fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
         (*expr).clone()
     } else {
         panic!()
+    }
+}
+
+/// Turns a value of function type (i.e. a closure) into a FunctionValueDefinition.
+/// Does not allow captured variables.
+fn closure_to_function<T: Clone + Display>(
+    source: &SourceRef,
+    value: &Value<'_, T>,
+) -> Result<FunctionValueDefinition, EvalError> {
+    if let Value::Closure(evaluator::Closure {
+        lambda,
+        environment: _,
+        type_args,
+    }) = value
+    {
+        if !type_args.is_empty() {
+            return Err(EvalError::TypeError(format!(
+                "Lambda expression must not have type arguments."
+            )));
+        }
+        if !lambda.outer_var_references.is_empty() {
+            return Err(EvalError::TypeError(format!(
+                "Lambda expression must not reference outer variables."
+            )));
+        }
+        Ok(FunctionValueDefinition::Expression(TypedExpression {
+            e: Expression::LambdaExpression(source.clone(), (*lambda).clone()),
+            type_scheme: None, // TOOD do we need the type?
+        }))
+    } else {
+        Err(EvalError::TypeError(format!(
+            "Expected lambda expressions but got {value}."
+        )))
     }
 }

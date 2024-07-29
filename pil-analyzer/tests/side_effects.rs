@@ -100,3 +100,42 @@ fn fixed_with_constr_type() {
     let input = "let x: col = constr |i| 2;";
     analyze_string::<GoldilocksField>(input);
 }
+
+#[test]
+fn set_hint() {
+    let input = r#"
+    namespace std::prover;
+        let add_hint = 8;
+    namespace N(16);
+        let x;
+        std::prover::add_hint(x, query |i| 1);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Used a constr lambda function inside a pure context"]
+fn set_hint_needs_query() {
+    let input = r#"
+    namespace std::prover;
+        let add_hint = 8;
+    namespace N(16);
+        let x;
+        std::prover::add_hint(x, |_| 1);
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Used a constr lambda function inside a pure context"]
+fn set_hint_can_use_query() {
+    let input = r#"
+    namespace std::prover;
+        let add_hint = 8;
+    namespace N(16);
+        let x;
+        let y;
+        std::prover::add_hint(x, query |_| std::prover::eval(y));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}

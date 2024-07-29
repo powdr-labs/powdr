@@ -246,11 +246,15 @@ fn new_fixed_column_as_closure() {
 
 #[test]
 fn set_hint() {
-    let input = r#"namespace N(16);
-    let x;
-    let y;
-    std::prover::add_hint(x, || 1);
-    std::prover::add_hint(y, |i| std::prover::eval(x));
+    let input = r#"
+    namespace std::prover;
+        let add_hint = 8;
+        let eval = 8;
+    namespace N(16);
+        let x;
+        let y;
+        std::prover::add_hint(x, || 1);
+        std::prover::add_hint(y, |i| std::prover::eval(x));
     "#;
     let expected = r#"namespace N(16);
 "#;
