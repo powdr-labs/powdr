@@ -172,7 +172,7 @@ fn bus_permutation_via_challenges_ext_bn() {
 }
 
 #[test]
-#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation(main.is_first, [main.z], main.alpha, main.beta, main.permutation_constraint)\nError: FailedAssertion(\"The field is too small and needs to move to the extension field. Pass two elements instead!\")"]
+#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::lookup_via_bus::lookup(main.is_first, 1, [main.z], [main.u], main.alpha, main.beta, main.lookup_constraint, main.m)\nError: FailedAssertion(\"The field is too small and needs to move to the extension field. Pass two elements instead!\")"]
 fn bus_lookup_via_challenges_gl() {
     let f = "std/bus_lookup_via_challenges.asm";
     Pipeline::<GoldilocksField>::default()
