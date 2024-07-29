@@ -790,7 +790,7 @@ fn check_expression(
             check_expression(location, b.as_ref(), state, type_vars, local_variables)
         }
         Expression::FieldAccess(_, FieldAccess { object, .. }) => {
-            check_expression(location, object, state, local_variables)
+            check_expression(location, object, state, type_vars, local_variables)
         }
         Expression::UnaryOperation(_, UnaryOperation { expr, .. })
         | Expression::FreeInput(_, expr) => {
@@ -858,7 +858,7 @@ fn check_expression(
             fields
                 .iter()
                 .try_for_each(|NamedExpression { name: _, expr }| {
-                    check_expression(location, expr, state, local_variables)
+                    check_expression(location, expr, state, type_vars, local_variables)
                 })
         }
     }
