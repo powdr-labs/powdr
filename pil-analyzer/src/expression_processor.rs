@@ -2,10 +2,11 @@ use core::panic;
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
-        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BinaryOperation, BlockExpression,
-        IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
-        NamedExpression, NamespacedPolynomialReference, Number, Pattern, SelectedExpressions,
-        StatementInsideBlock, StructExpression, SymbolCategory, UnaryOperation,
+        self, asm::SymbolPath, types::Type, ArrayExpression, ArrayLiteral, BinaryOperation,
+        BlockExpression, IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm,
+        MatchExpression, NAmedExpression, NamespacedPolynomialReference, Number, Pattern,
+        SelectedExpressions, StatementInsideBlock, StructExpression, SymbolCategory,
+        UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
@@ -391,16 +392,17 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         let processed_statements = statements
             .into_iter()
             .map(|statement| match statement {
-                StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value }) => {
+                StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, ty, value }) => {
                     let value = value.map(|v| self.process_expression(v));
                     let pattern = self.process_pattern(pattern);
+                    let ty = ty.map(|ty| self.process_number_type(ty));
                     if value.is_none() && !matches!(pattern, Pattern::Variable(_, _)) {
                         panic!("Let statement without value requires a single variable, but got {pattern}.");
                     }
                     if !pattern.is_irrefutable() {
                         panic!("Let statement requires an irrefutable pattern, but {pattern} is refutable.");
                     }
-                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value })
+                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, ty, value })
                 }
                 StatementInsideBlock::Expression(expr) => {
                     StatementInsideBlock::Expression(self.process_expression(expr))
@@ -424,17 +426,22 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         &mut self,
         reference: NamespacedPolynomialReference,
     ) -> PolynomialReference {
-        let type_processor = TypeProcessor::new(self.driver, self.type_vars);
-        let type_args = reference.type_args.map(|args| {
-            args.into_iter()
-                .map(|t| type_processor.process_type(t))
-                .collect()
-        });
+        let type_args = reference
+            .type_args
+            .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
         PolynomialReference {
             name: self.driver.resolve_value_ref(&reference.path),
             poly_id: None,
             type_args,
         }
+    }
+
+    fn process_type(&self, ty: Type<parsed::Expression>) -> Type<u64> {
+        TypeProcessor::new(self.driver, self.type_vars).process_type(ty)
+    }
+
+    fn process_number_type(&self, ty: Type<u64>) -> Type<u64> {
+        TypeProcessor::new(self.driver, self.type_vars).process_number_type(ty)
     }
 
     fn save_local_variables(&self) -> LocalVariableState {

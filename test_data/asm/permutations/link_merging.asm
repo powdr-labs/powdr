@@ -6,7 +6,7 @@ machine SubMachine with
     col fixed latch = [1]*;
 
     operation add<0> x, y -> z;
-    operation sub<1> x, z -> y;
+    operation sub<1> z, x -> y;
 
     col witness x;
     col witness y;
@@ -14,7 +14,7 @@ machine SubMachine with
     z = y + x;
 }
 
-machine Main {
+machine Main with degree: 32 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -29,7 +29,7 @@ machine Main {
 
     // these are merged into 1 link
     instr add X, Y -> Z link => Z = submachine.add(X, Y);
-    instr sub_with_add X, Y -> Z link => Y = submachine.add(X, Z);
+    instr sub_with_add X, Y -> Z link => X = submachine.add(Y, Z);
     instr addAB -> X link => X = submachine.add(A, B);
 
     // one of these will be merged into the previous link, the other will be separate
@@ -43,7 +43,7 @@ machine Main {
 
     // these are merged into 1 link
     instr sub X, Y -> Z link => Z = submachine.sub(X, Y);
-    instr add_with_sub X, Y -> Z link => Z = submachine.sub(X, Y);
+    instr add_with_sub X, Y -> Z link => Y = submachine.sub(Z, X);
 
     instr assert_eq X, Y { X = Y }
 

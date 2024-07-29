@@ -8,10 +8,8 @@ mod bn254;
 mod goldilocks;
 mod serialize;
 mod traits;
-
 pub use serialize::{
-    buffered_write_file, read_polys_csv_file, read_polys_file, write_polys_csv_file,
-    write_polys_file, CsvRenderMode,
+    buffered_write_file, read_polys_csv_file, write_polys_csv_file, CsvRenderMode, ReadWrite,
 };
 
 pub use bn254::Bn254Field;

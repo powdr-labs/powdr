@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, vec};
 
 use itertools::Itertools;
 use powdr_asm_utils::data_storage::SingleDataValue;
@@ -21,13 +21,53 @@ impl Register {
     pub fn is_zero(&self) -> bool {
         self.value == 0
     }
+
+    pub fn addr(&self) -> u8 {
+        self.value
+    }
 }
 
 impl powdr_asm_utils::ast::Register for Register {}
 
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "x{}", self.value)
+        if self.value < 32 {
+            // 0 indexed
+            write!(f, "x{}", self.value)
+        } else if self.value < 36 {
+            // 1 indexed
+            write!(f, "tmp{}", self.value - 31 + 1)
+        } else if self.value == 36 {
+            write!(f, "lr_sc_reservation")
+        } else {
+            // 0 indexed
+            write!(f, "xtra{}", self.value - 37)
+        }
+    }
+}
+
+impl From<&str> for Register {
+    fn from(s: &str) -> Self {
+        if let Some(prefix) = s.strip_prefix("xtra") {
+            // 0 indexed
+            let value: u8 = prefix.parse().expect("Invalid register");
+            Self::new(value + 37)
+        } else if let Some(prefix) = s.strip_prefix('x') {
+            // 0 indexed
+            let value = prefix.parse().expect("Invalid register");
+            assert!(value < 32, "Invalid register");
+            Self::new(value)
+        } else if let Some(prefix) = s.strip_prefix("tmp") {
+            // 1 indexed
+            let value: u8 = prefix.parse().expect("Invalid register");
+            assert!(value >= 1);
+            assert!(value <= 4);
+            Self::new(value - 1 + 32)
+        } else if s == "lr_sc_reservation" {
+            Self::new(36)
+        } else {
+            panic!("Invalid register")
+        }
     }
 }
 
@@ -95,10 +135,11 @@ pub fn translate_program<F: FieldElement>(
     let (initial_mem, instructions, degree) =
         translate_program_impl(program, runtime, with_bootloader);
 
+    let degree_log = degree.ilog2();
     riscv_machine(
         runtime,
         degree,
-        &preamble::<F>(runtime, with_bootloader),
+        &preamble::<F>(runtime, degree_log.into(), with_bootloader),
         initial_mem,
         instructions,
     )
@@ -130,9 +171,19 @@ fn translate_program_impl(
                     // snapshot, committed by the bootloader.
                     initial_mem.push(format!("(0x{addr:x}, 0x{v:x})"));
                 } else {
-                    // There is no bootloader to commit to memory, so we have to
-                    // load it explicitly.
-                    data_code.push(format!("mstore 0x{addr:x}, 0x{v:x};"));
+                    data_code.push(format!(
+                        "set_reg {}, 0x{v:x};",
+                        Register::from("tmp2").addr()
+                    ));
+                    data_code.push(format!(
+                        "set_reg {}, 0x{addr:x};",
+                        Register::from("tmp1").addr()
+                    ));
+                    data_code.push(format!(
+                        "mstore {}, 0, 0, {};",
+                        Register::from("tmp1").addr(),
+                        Register::from("tmp2").addr()
+                    ));
                 }
             }
             SingleDataValue::LabelReference(sym) => {
@@ -141,8 +192,17 @@ fn translate_program_impl(
                 //
                 // TODO should be possible without temporary
                 data_code.extend([
-                    format!("tmp1 <== load_label({});", escape_label(&sym)),
-                    format!("mstore 0x{addr:x}, tmp1;"),
+                    format!(
+                        "load_label {}, {};",
+                        Register::from("tmp2").addr(),
+                        escape_label(&sym)
+                    ),
+                    format!("set_reg {}, 0x{addr:x};", Register::from("tmp1").addr()),
+                    format!(
+                        "mstore {}, 0, 0, {};",
+                        Register::from("tmp1").addr(),
+                        Register::from("tmp2").addr()
+                    ),
                 ]);
             }
             SingleDataValue::Offset(_, _) => {
@@ -189,10 +249,14 @@ fn translate_program_impl(
         .chain(bootloader_and_shutdown_routine_lines)
         .collect();
     if !data_code.is_empty() {
-        statements.push("x1 <== jump(__data_init);".to_string());
+        statements.push("jump __data_init, 1;".to_string());
     }
     statements.extend([
-        format!("x1 <== jump({});", program.start_function().as_ref()),
+        "set_reg 0, 0;".to_string(),
+        format!(
+            "jump {}, 1;",
+            escape_label(program.start_function().as_ref())
+        ),
         "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
     ]);
     for s in program.take_executable_statements() {
@@ -213,12 +277,17 @@ fn translate_program_impl(
 
     if !data_code.is_empty() {
         statements.extend(
-        ["// This is the data initialization routine.\n__data_init:".to_string()].into_iter()
-        .chain(data_code)
-        .chain([
-            "// This is the end of the data initialization routine.\ntmp1 <== jump_dyn(x1);"
-                .to_string(),
-        ]));
+            [
+                "// This is the data initialization routine.".to_string(),
+                "__data_init:".to_string(),
+            ]
+            .into_iter()
+            .chain(data_code)
+            .chain([
+                "// This is the end of the data initialization routine.".to_string(),
+                format!("jump_dyn 1, {};", Register::from("tmp1").addr()),
+            ]),
+        );
     }
     statements.extend(runtime.ecall_handler());
 
@@ -277,14 +346,25 @@ let initial_memory: (fe, fe)[] = [
     )
 }
 
-fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String {
+fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bool) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
         bootloader_preamble()
     } else {
         "".to_string()
     };
 
-    for machine in ["binary", "shift"] {
+    for machine in [
+        "binary",
+        "shift",
+        "bit2",
+        "bit6",
+        "bit7",
+        "byte",
+        "byte2",
+        "byte_binary",
+        "byte_shift",
+        "byte_compare",
+    ] {
         assert!(
             runtime.has_submachine(machine),
             "RISC-V machine requires the `{machine}` submachine"
@@ -299,17 +379,8 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     reg Y[<=];
     reg Z[<=];
     reg W[<=];
-    reg tmp1;
-    reg tmp2;
-    reg tmp3;
-    reg tmp4;
-    reg lr_sc_reservation;
 "#
         .to_string()
-        // risc-v x* registers
-        + &(0..32)
-            .map(|i| format!("\t\treg x{i};\n"))
-            .join("")
         // runtime extra registers
         + &runtime
             .submachines_extra_registers()
@@ -319,43 +390,162 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         + &bootloader_preamble_if_included
         + &memory(with_bootloader)
         + r#"
-    // ============== Constraint on x0 =======================
+    // =============== Register memory =======================
+"# + format!("std::machines::memory::Memory_{} regs(byte2);", degree + 2)
+        .as_str()
+        + r#"
+    // Get the value in register Y.
+    instr get_reg Y -> X link ~> X = regs.mload(Y, STEP);
 
-    x0 = 0;
+    // Set the value in register X to the value in register Y.
+    instr set_reg X, Y -> link ~> regs.mstore(X, STEP, Y);
 
-    // ============== iszero check for X =======================
-    let XIsZero = std::utils::is_zero(X);
+    // We still need these registers prover inputs.
+    reg query_arg_1;
+    reg query_arg_2;
+
+    // Witness columns used in instuctions for intermediate values inside instructions.
+    col witness tmp1_col;
+    col witness tmp2_col;
+    col witness tmp3_col;
+    col witness tmp4_col;
+
+    // We need to add these inline instead of using std::utils::is_zero
+    // because when XX is not constrained, witgen will try to set XX,
+    // XX_inv and XXIsZero to zero, which fails this constraint.
+    // Therefore, we have to activate constrained whenever XXIsZero is used.
+    // XXIsZero = 1 - XX * XX_inv
+    col witness XX, XX_inv, XXIsZero;
+    std::utils::force_bool(XXIsZero);
+    XXIsZero * XX = 0;
 
     // ============== control-flow instructions ==============
 
-    instr load_label l: label -> X { X = l }
+    // Load the value of label `l` into register X.
+    instr load_label X, l: label
+        link ~> regs.mstore(X, STEP, tmp1_col)
+    {
+        tmp1_col = l
+    }
 
-    instr jump l: label -> Y { pc' = l, Y = pc + 1}
-    instr jump_dyn X -> Y { pc' = X, Y = pc + 1}
+    // Jump to `l` and store the return program counter in register W.
+    instr jump l: label, W
+        link ~> regs.mstore(W, STEP, pc + 1)
+    {
+        pc' = l
+    }
+    
+    // Jump to the address in register X and store the return program counter in register W.
+    instr jump_dyn X, W
+        link ~> pc' = regs.mload(X, STEP)
+        link ~> regs.mstore(W, STEP, pc + 1);
 
-    instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
-    instr branch_if_zero X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
+    // Jump to `l` if val(X) - val(Y) is nonzero, where X and Y are register ids.
+    instr branch_if_diff_nonzero X, Y, l: label
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+    {
+        XXIsZero = 1 - XX * XX_inv,
+        XX = tmp1_col - tmp2_col,
+        pc' = (1 - XXIsZero) * l + XXIsZero * (pc + 1)
+    }
 
-    // Skips Y instructions if X is zero
-    instr skip_if_zero X, Y { pc' = pc + 1 + (XIsZero * Y) }
+    // Jump to `l` if (val(X) - val(Y)) == Z, where X and Y are register ids and Z is a number.
+    instr branch_if_diff_equal X, Y, Z, l: label
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+    {
+        XXIsZero = 1 - XX * XX_inv,
+        XX = tmp1_col - tmp2_col - Z,
+        pc' = XXIsZero * l + (1 - XXIsZero) * (pc + 1)
+    }
 
-    // input X is required to be the difference of two 32-bit unsigend values.
-    // i.e. -2**32 < X < 2**32
-    instr branch_if_positive X, l: label {
-        X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
+    // Skips W instructions if val(X) - val(Y) + Z is zero, where X and Y are register ids and Z is a
+    // constant offset.
+    instr skip_if_equal X, Y, Z, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+    {
+        XXIsZero = 1 - XX * XX_inv,
+        XX = tmp1_col - tmp2_col + Z,
+        pc' = pc + 1 + (XXIsZero * W)
+    }
+
+    // Branches to `l` if V = val(X) - val(Y) - Z is positive, i.e. val(X) - val(Y) > Z,
+    // where X and Y are register ids and Z is a constant.
+    // V is required to be the difference of two 32-bit unsigned values.
+    // i.e. -2**32 < V < 2**32.
+    instr branch_if_diff_greater_than X, Y, Z, l: label
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+    {
+        (tmp1_col - tmp2_col - Z) + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
         pc' = wrap_bit * l + (1 - wrap_bit) * (pc + 1)
     }
-    // input X is required to be the difference of two 32-bit unsigend values.
-    // i.e. -2**32 < X < 2**32
-    instr is_positive X -> Y {
-        X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
-        Y = wrap_bit
+
+    // Stores 1 in register W if V = val(X) - val(Y) - Z is positive,
+    // i.e. val(X) - val(Y) > Z, where X and Y are register ids and Z is a constant.
+    // V is required to be the difference of two 32-bit unsigend values.
+    // i.e. -2**32 < V < 2**32
+    instr is_diff_greater_than X, Y, Z, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+        link ~> regs.mstore(W, STEP + 2, wrap_bit)
+    {
+        (tmp1_col - tmp2_col - Z) + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32
+    }
+
+    // Stores val(X) * Z + W in register Y.
+    instr affine X, Y, Z, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> regs.mstore(Y, STEP + 1, tmp1_col * Z + W);
+
+    // ================= wrapping instructions =================
+
+    // Computes V = val(X) + val(Y) + Z, wraps it in 32 bits, and stores the result in register W.
+    // Requires 0 <= V < 2**33.
+    instr add_wrap X, Y, Z, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+        link ~> regs.mstore(W, STEP + 2, tmp3_col)
+    {
+        tmp1_col + tmp2_col + Z = tmp3_col + wrap_bit * 2**32,
+        tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+    }
+
+    // Computes V = val(X) - val(Y) + Z, wraps it in 32 bits, and stores the result in register W.
+    // Requires -2**32 <= V < 2**32.
+    instr sub_wrap_with_offset X, Y, Z, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+        link ~> regs.mstore(W, STEP + 2, tmp3_col)
+    {
+        (tmp1_col - tmp2_col + Z) + 2**32 = tmp3_col + wrap_bit * 2**32,
+        tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 
     // ================= logical instructions =================
 
-    instr is_equal_zero X -> Y { Y = XIsZero }
-    instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
+    // Stores 1 in register W if the value in register X is zero,
+    // otherwise stores 0.
+    instr is_equal_zero X, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> regs.mstore(W, STEP + 2, XXIsZero)
+    {
+        XXIsZero = 1 - XX * XX_inv,
+        XX = tmp1_col
+    }
+
+    // Stores 1 in register W if val(X) == val(Y), otherwise stores 0.
+    instr is_not_equal X, Y, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+        link ~> regs.mstore(W, STEP + 2, tmp3_col)
+    {
+        XXIsZero = 1 - XX * XX_inv,
+        XX = tmp1_col - tmp2_col,
+        tmp3_col = 1 - XXIsZero
+    }
 
     // ================= submachine instructions =================
 "# + &runtime
@@ -364,97 +554,114 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         .map(|s| format!("    {s}"))
         .join("\n")
         + r#"
-    // Wraps a value in Y to 32 bits.
-    // Requires 0 <= Y < 2**33
-    instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
-    // Requires -2**32 <= Y < 2**32
-    instr wrap_signed Y -> X { Y + 2**32 = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
-    col fixed bytes(i) { i & 0xff };
     col witness X_b1;
     col witness X_b2;
     col witness X_b3;
     col witness X_b4;
-    [ X_b1 ] in [ bytes ];
-    [ X_b2 ] in [ bytes ];
-    [ X_b3 ] in [ bytes ];
-    [ X_b4 ] in [ bytes ];
+    link => byte.check(X_b1);
+    link => byte.check(X_b2);
+    link => byte.check(X_b3);
+    link => byte.check(X_b4);
     col witness wrap_bit;
     wrap_bit * (1 - wrap_bit) = 0;
 
+    // Sign extends the value in register X and stores it in register Y.
     // Input is a 32 bit unsigned number. We check bit 7 and set all higher bits to that value.
-    instr sign_extend_byte Y -> X {
+    instr sign_extend_byte X, Y
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> regs.mstore(Y, STEP + 3, tmp3_col)
+    {
         // wrap_bit is used as sign_bit here.
-        Y = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-        X = Y_7bit + wrap_bit * 0xffffff80
+        tmp1_col = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+        tmp3_col = Y_7bit + wrap_bit * 0xffffff80
     }
-    col fixed seven_bit(i) { i & 0x7f };
     col witness Y_7bit;
-    [ Y_7bit ] in [ seven_bit ];
+    link => bit7.check(Y_7bit);
 
+    // Sign extends the value in register X and stores it in register Y.
     // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
-    instr sign_extend_16_bits Y -> X {
+    instr sign_extend_16_bits X, Y
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> regs.mstore(Y, STEP + 3, tmp3_col)
+    {
         Y_15bit = X_b1 + Y_7bit * 0x100,
 
         // wrap_bit is used as sign_bit here.
-        Y = Y_15bit + wrap_bit * 0x8000 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-        X = Y_15bit + wrap_bit * 0xffff8000
+        tmp1_col = Y_15bit + wrap_bit * 0x8000 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+        tmp3_col = Y_15bit + wrap_bit * 0xffff8000
     }
     col witness Y_15bit;
 
-    // Input is a 32 but unsigned number (0 <= Y < 2**32) interpreted as a two's complement numbers.
-    // Returns a signed number (-2**31 <= X < 2**31).
-    instr to_signed Y -> X {
+    // Converts the value in register X to a signed number and stores it in register Y.
+    // Input is a 32 bit unsigned number (0 <= val(X) < 2**32) interpreted as a two's complement numbers.
+    // Returns a signed number (-2**31 <= val(Y) < 2**31).
+    instr to_signed X, Y
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> regs.mstore(Y, STEP + 1, tmp3_col)
+    {
         // wrap_bit is used as sign_bit here.
-        Y = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + Y_7bit * 0x1000000 + wrap_bit * 0x80000000,
-        X = Y - wrap_bit * 2**32
+        tmp1_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + Y_7bit * 0x1000000 + wrap_bit * 0x80000000,
+        tmp3_col = tmp1_col - wrap_bit * 0x100000000
     }
 
     // ======================= assertions =========================
 
     instr fail { 1 = 0 }
 
+    // Wraps V = val(X) * Y and stores it in register Z,
+    // where X is a register and Y is a constant factor.
     // Removes up to 16 bits beyond 32
     // TODO is this really safe?
-    instr wrap16 Y -> X { Y = Y_b5 * 2**32 + Y_b6 * 2**40 + X, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
+    instr wrap16 X, Y, Z
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> regs.mstore(Z, STEP + 3, tmp3_col)
+    {
+        (tmp1_col * Y) = Y_b5 * 2**32 + Y_b6 * 2**40 + tmp3_col,
+        tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+    }
+
     col witness Y_b5;
     col witness Y_b6;
     col witness Y_b7;
     col witness Y_b8;
-    [ Y_b5 ] in [ bytes ];
-    [ Y_b6 ] in [ bytes ];
-    [ Y_b7 ] in [ bytes ];
-    [ Y_b8 ] in [ bytes ];
+    link => byte.check(Y_b5);
+    link => byte.check(Y_b6);
+    link => byte.check(Y_b7);
+    link => byte.check(Y_b8);
 
     col witness REM_b1;
     col witness REM_b2;
     col witness REM_b3;
     col witness REM_b4;
-    [ REM_b1 ] in [ bytes ];
-    [ REM_b2 ] in [ bytes ];
-    [ REM_b3 ] in [ bytes ];
-    [ REM_b4 ] in [ bytes ];
+    link => byte.check(REM_b1);
+    link => byte.check(REM_b2);
+    link => byte.check(REM_b3);
+    link => byte.check(REM_b4);
 
-    // implements Z = Y / X and W = Y % X.
-    instr divremu Y, X -> Z, W {
-        // main division algorithm:
-        // Y is the known dividend
-        // X is the known divisor
-        // Z is the unknown quotient
-        // W is the unknown remainder
+    // Computes Q = val(Y) / val(X) and R = val(Y) % val(X) and stores them in registers Z and W.
+    instr divremu Y, X, Z, W
+        link ~> tmp1_col = regs.mload(Y, STEP)
+        link ~> tmp2_col = regs.mload(X, STEP + 1)
+        link ~> regs.mstore(Z, STEP + 2, tmp3_col)
+        link ~> regs.mstore(W, STEP + 3, tmp4_col)
+    {
+        XXIsZero = 1 - XX * XX_inv,
+        XX = tmp2_col,
+
         // if X is zero, remainder is set to dividend, as per RISC-V specification:
-        X * Z + W = Y,
+        tmp2_col * tmp3_col + tmp4_col = tmp1_col,
 
         // remainder >= 0:
-        W = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
+        tmp4_col = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
 
-        // remainder < divisor, conditioned to X not being 0:
-        (1 - XIsZero) * (X - W - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
+        // remainder < divisor, conditioned to val(X) not being 0:
+        (1 - XXIsZero) * (tmp2_col - tmp4_col - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
 
         // in case X is zero, we set quotient according to RISC-V specification
-        XIsZero * (Z - 0xffffffff) = 0,
+        XXIsZero * (tmp3_col - 0xffffffff) = 0,
 
         // quotient is 32 bits:
-        Z = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+        tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 "# + mul_instruction
 }
@@ -465,14 +672,17 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
             // The BN254 field can fit any 64-bit number, so we can naively de-compose
             // Z * W into 8 bytes and put them together to get the upper and lower word.
             r#"
-    // Multiply two 32-bits unsigned, return the upper and lower unsigned 32-bit
-    // halves of the result.
-    // X is the lower half (least significant bits)
-    // Y is the higher half (most significant bits)
-    instr mul Z, W -> X, Y {
-        Z * W = X + Y * 2**32,
-        X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-        Y = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+    // Computes V = val(X) * val(Y) and
+    // stores the lower 32 bits in register Z and the upper 32 bits in register W.
+    instr mul X, Y, Z, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+        link ~> regs.mstore(Z, STEP + 2, tmp3_col)
+        link ~> regs.mstore(W, STEP + 3, tmp4_col);
+    {
+        tmp1_col * tmp2_col = tmp3_col + tmp4_col * 2**32,
+        tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+        tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
     }
 "#
         }
@@ -484,11 +694,14 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
             // The Goldilocks field cannot fit some 64-bit numbers, so we have to use
             // the split machine. Note that it can fit a product of two 32-bit numbers.
             r#"
-    // Multiply two 32-bits unsigned, return the upper and lower unsigned 32-bit
-    // halves of the result.
-    // X is the lower half (least significant bits)
-    // Y is the higher half (most significant bits)
-    instr mul Z, W -> X, Y link ~> (X, Y) = split_gl.split(Z * W);
+    // Computes V = val(X) * val(Y) and
+    // stores the lower 32 bits in register Z and the upper 32 bits in register W.
+    instr mul X, Y, Z, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+        link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col * tmp2_col)
+        link ~> regs.mstore(Z, STEP + 2, tmp3_col)
+        link ~> regs.mstore(W, STEP + 3, tmp4_col);
 "#
         }
     }
@@ -497,39 +710,58 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
 fn memory(with_bootloader: bool) -> String {
     let memory_machine = if with_bootloader {
         r#"
-    std::machines::memory_with_bootloader_write::MemoryWithBootloaderWrite memory;
-    instr mstore_bootloader Y, Z -> link ~> memory.mstore_bootloader(X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z) {
-        Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
+    std::machines::memory_with_bootloader_write::MemoryWithBootloaderWrite memory(byte2);
+
+    // Stores val(W) at address (V = val(X) - val(Z) + Y) % 2**32.
+    // V can be between 0 and 2**33.
+    instr mstore_bootloader X, Z, Y, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Z, STEP + 1)
+        link ~> tmp3_col = regs.mload(W, STEP + 2)
+        link ~> memory.mstore_bootloader(X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP + 3, tmp3_col)
+    {
+        tmp1_col - tmp2_col + Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
 "#
     } else {
         r#"
-    std::machines::memory::Memory memory;
+    std::machines::memory::Memory memory(byte2);
 "#
     };
 
     memory_machine.to_string()
         + r#"
 
-    col fixed STEP(i) { i };
+    // Increased by 4 in each step, because we do up to 4 register memory accesses per step
+    col fixed STEP(i) { 4 * i };
 
     // ============== memory instructions ==============
 
-    let up_to_three: col = |i| i % 4;
-    let six_bits: col = |i| i % 2**6;
-    /// Loads one word from an address Y, where Y can be between 0 and 2**33 (sic!),
+    /// Loads one word from an address V = val(X) + Y, where V can be between 0 and 2**33 (sic!),
     /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
-    /// Returns the loaded word and the remainder of the division by 4.
-    instr mload Y -> X, Z link ~> X = memory.mload(X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4, STEP) {
-        [ Z ] in [ up_to_three ],
-        Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z,
-        [ X_b1 ] in [ six_bits ]
+    /// Writes the loaded word and the remainder of the division by 4 to registers Z and W,
+    /// respectively.
+    instr mload X, Y, Z, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp3_col = memory.mload(X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4, STEP + 1)
+        link ~> regs.mstore(Z, STEP + 2, tmp3_col)
+        link ~> regs.mstore(W, STEP + 3, tmp4_col)
+        link => bit2.check(tmp4_col)
+        link => bit6.check(X_b1)
+    {
+        tmp1_col + Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + tmp4_col
     }
 
-    /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
-    /// Y should be a multiple of 4, but this instruction does not enforce it.
-    instr mstore Y, Z -> link ~> memory.mstore(X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z) {
-        Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
+    // Stores val(W) at address (V = val(X) - val(Y) + Z) % 2**32.
+    // V can be between 0 and 2**33.
+    // V should be a multiple of 4, but this instruction does not enforce it.
+    instr mstore X, Y, Z, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+        link ~> tmp3_col = regs.mload(W, STEP + 2)
+        link ~> memory.mstore(X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP + 3, tmp3_col)
+    {
+        tmp1_col - tmp2_col + Z = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
 "#
 }
@@ -552,11 +784,11 @@ pub trait InstructionArgs {
     fn empty(&self) -> Result<(), Self::Error>;
 }
 
-fn only_if_no_write_to_zero(statement: String, reg: Register) -> Vec<String> {
-    only_if_no_write_to_zero_vec(vec![statement], reg)
+fn only_if_no_write_to_zero(reg: Register, statement: String) -> Vec<String> {
+    only_if_no_write_to_zero_vec(reg, vec![statement])
 }
 
-fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<String> {
+fn only_if_no_write_to_zero_vec(reg: Register, statements: Vec<String>) -> Vec<String> {
     if reg.is_zero() {
         vec![]
     } else {
@@ -565,23 +797,38 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
 }
 
 /// Push register into the stack
-pub fn push_register(name: &str) -> [String; 2] {
-    [
-        "x2 <=X= wrap(x2 - 4);".to_string(),
-        format!("mstore x2, {name};"),
+
+pub fn push_register(name: &str) -> Vec<String> {
+    assert!(name.starts_with('x'), "Only x registers are supported");
+    let reg = Register::from(name);
+    vec![
+        // x2 + x0 - 4 => x2
+        format!("add_wrap 2, 0, -4, 2;",),
+        format!("mstore 2, 0, 0, {};", reg.addr()),
     ]
 }
 
 /// Pop register from the stack
-pub fn pop_register(name: &str) -> [String; 2] {
-    [
-        format!("{name}, tmp1 <== mload(x2);"),
-        "x2 <=X= wrap(x2 + 4);".to_string(),
+pub fn pop_register(name: &str) -> Vec<String> {
+    assert!(name.starts_with('x'), "Only x registers are supported");
+    let reg = Register::from(name);
+    vec![
+        format!(
+            "mload 2, 0, {}, {};",
+            reg.addr(),
+            Register::from("tmp1").addr()
+        ),
+        "add_wrap 2, 0, 4, 2;".to_string(),
     ]
 }
 
 fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<String>, A::Error> {
-    Ok(match instr {
+    let tmp1 = Register::from("tmp1");
+    let tmp2 = Register::from("tmp2");
+    let tmp3 = Register::from("tmp3");
+    let tmp4 = Register::from("tmp4");
+    let lr_sc_reservation = Register::from("lr_sc_reservation");
+    let statements = match instr {
         // load/store registers
         "li" | "la" => {
             // The difference between "li" and "la" in RISC-V is that the former
@@ -590,132 +837,242 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             // for us they are the same thing.
             if let Ok((rd, label)) = args.rl() {
                 let label = escape_label(label.as_ref());
-                only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
+                only_if_no_write_to_zero(rd, format!("load_label {}, {label};", rd.addr()))
             } else {
                 let (rd, imm) = args.ri()?;
-                only_if_no_write_to_zero(format!("{rd} <=X= {imm};"), rd)
+                only_if_no_write_to_zero(rd, format!("set_reg {}, {imm};", rd.addr()))
             }
         }
         // TODO check if it is OK to clear the lower order bits
         "lui" => {
             let (rd, imm) = args.ri()?;
-            only_if_no_write_to_zero(format!("{rd} <=X= {};", imm << 12), rd)
+            only_if_no_write_to_zero(rd, format!("set_reg {}, {};", rd.addr(), imm << 12))
         }
         "mv" => {
             let (rd, rs) = args.rr()?;
-            only_if_no_write_to_zero(format!("{rd} <=X= {rs};"), rd)
+            only_if_no_write_to_zero(rd, format!("affine {}, {}, 1, 0;", rs.addr(), rd.addr()))
         }
 
         // Arithmetic
         "add" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd} <== wrap({r1} + {r2});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!(
+                    "add_wrap {}, {}, {}, {};",
+                    r1.addr(),
+                    r2.addr(),
+                    0,
+                    rd.addr()
+                ),
+            )
         }
         "addi" => {
             let (rd, rs, imm) = args.rri()?;
-            only_if_no_write_to_zero(format!("{rd} <== wrap({rs} + {imm});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!("add_wrap {}, 0, {imm}, {};", rs.addr(), rd.addr()),
+            )
         }
         "sub" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd} <== wrap_signed({r1} - {r2});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!(
+                    "sub_wrap_with_offset {}, {}, 0, {};",
+                    r1.addr(),
+                    r2.addr(),
+                    rd.addr()
+                ),
+            )
         }
         "neg" => {
             let (rd, r1) = args.rr()?;
-            only_if_no_write_to_zero(format!("{rd} <== wrap_signed(0 - {r1});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!("sub_wrap_with_offset 0, {}, 0, {};", r1.addr(), rd.addr()),
+            )
         }
         "mul" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd}, tmp1 <== mul({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!(
+                    "mul {}, {}, {}, {};",
+                    r1.addr(),
+                    r2.addr(),
+                    rd.addr(),
+                    tmp1.addr()
+                ),
+            )
         }
         "mulhu" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("tmp1, {rd} <== mul({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!(
+                    "mul {}, {}, {}, {};",
+                    r1.addr(),
+                    r2.addr(),
+                    tmp1.addr(),
+                    rd.addr(),
+                ),
+            )
         }
         "mulh" => {
             let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== to_signed({r1});"),
-                    format!("tmp2 <== to_signed({r2});"),
-                    // tmp3 is 1 if tmp1 is non-negative
-                    "tmp3 <== is_positive(tmp1 + 1);".into(),
-                    // tmp4 is 1 if tmp2 is non-negative
-                    "tmp4 <== is_positive(tmp2 + 1);".into(),
-                    // If tmp1 is negative, convert to positive
-                    "skip_if_zero 0, tmp3;".into(),
-                    "tmp1 <=X= 0 - tmp1;".into(),
-                    // If tmp2 is negative, convert to positive
-                    "skip_if_zero 0, tmp4;".into(),
-                    "tmp2 <=X= 0 - tmp2;".into(),
-                    format!("tmp1, {rd} <== mul(tmp1, tmp2);"),
-                    // Determine the sign of the result based on the signs of tmp1 and tmp2
-                    "tmp3 <== is_not_equal_zero(tmp3 - tmp4);".into(),
-                    // If the result should be negative, convert back to negative
-                    "skip_if_zero tmp3, 2;".into(),
-                    "tmp1 <== is_equal_zero(tmp1);".into(),
-                    format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
-                ],
                 rd,
+                vec![
+                    format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
+                    format!("to_signed {}, {};", r2.addr(), tmp2.addr()),
+                    // tmp3 is 1 if tmp1 is non-negative
+                    format!(
+                        "is_diff_greater_than {}, 0, -1, {};",
+                        tmp1.addr(),
+                        tmp3.addr()
+                    ),
+                    // tmp4 is 1 if tmp2 is non-negative
+                    format!(
+                        "is_diff_greater_than {}, 0, -1, {};",
+                        tmp2.addr(),
+                        tmp4.addr()
+                    ),
+                    // If tmp1 is negative, convert to positive
+                    format!("skip_if_equal 0, {}, 1, 1;", tmp3.addr()),
+                    format!("affine {}, {}, -1, 0;", tmp1.addr(), tmp1.addr()),
+                    // If tmp2 is negative, convert to positive
+                    format!("skip_if_equal 0, {}, 1, 1;", tmp4.addr()),
+                    format!("affine {}, {}, -1, 0;", tmp2.addr(), tmp2.addr()),
+                    format!(
+                        "mul {}, {}, {}, {};",
+                        tmp1.addr(),
+                        tmp2.addr(),
+                        tmp1.addr(),
+                        rd.addr()
+                    ),
+                    // Determine the sign of the result based on the signs of tmp1 and tmp2
+                    format!(
+                        "is_not_equal {}, {}, {};",
+                        tmp3.addr(),
+                        tmp4.addr(),
+                        tmp3.addr()
+                    ),
+                    // If the result should be negative, convert back to negative
+                    format!("skip_if_equal {}, 0, 0, 2;", tmp3.addr()),
+                    format!("is_equal_zero {}, {};", tmp1.addr(), tmp1.addr()),
+                    format!(
+                        "sub_wrap_with_offset {}, {}, -1, {};",
+                        tmp1.addr(),
+                        rd.addr(),
+                        rd.addr()
+                    ),
+                ],
             )
         }
         "mulhsu" => {
             let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero_vec(
+                rd,
                 vec![
-                    format!("tmp1 <== to_signed({r1});"),
+                    format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
                     // tmp2 is 1 if tmp1 is non-negative
-                    "tmp2 <== is_positive(tmp1 + 1);".into(),
+                    format!(
+                        "is_diff_greater_than {}, 0, -1, {};",
+                        tmp1.addr(),
+                        tmp2.addr()
+                    ),
                     // If negative, convert to positive
-                    "skip_if_zero 0, tmp2;".into(),
-                    "tmp1 <=X= 0 - tmp1;".into(),
-                    format!("tmp1, {rd} <== mul(tmp1, {r2});"),
+                    format!("skip_if_equal 0, {}, 1, 1;", tmp2.addr()),
+                    format!("affine {}, {}, -1, 0;", tmp1.addr(), tmp1.addr()),
+                    format!(
+                        "mul {}, {}, {}, {};",
+                        tmp1.addr(),
+                        r2.addr(),
+                        tmp1.addr(),
+                        rd.addr()
+                    ),
                     // If was negative before, convert back to negative
-                    "skip_if_zero (1-tmp2), 2;".into(),
-                    "tmp1 <== is_equal_zero(tmp1);".into(),
+                    format!("skip_if_equal 0, {}, 1, 2;", tmp2.addr()),
+                    format!("is_equal_zero {}, {};", tmp1.addr(), tmp1.addr()),
                     // If the lower bits are zero, return the two's complement,
                     // otherwise return one's complement.
-                    format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
+                    format!(
+                        "sub_wrap_with_offset {}, {}, -1, {};",
+                        tmp1.addr(),
+                        rd.addr(),
+                        rd.addr()
+                    ),
                 ],
-                rd,
             )
         }
         "divu" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd}, tmp1 <== divremu({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!(
+                    "divremu {}, {}, {}, {};",
+                    r1.addr(),
+                    r2.addr(),
+                    rd.addr(),
+                    tmp1.addr()
+                ),
+            )
         }
         "remu" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("tmp1, {rd} <== divremu({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!(
+                    "divremu {}, {}, {}, {};",
+                    r1.addr(),
+                    r2.addr(),
+                    tmp1.addr(),
+                    rd.addr()
+                ),
+            )
         }
 
         // bitwise
         "xor" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd} <== xor({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!("xor {}, {}, 0, {};", r1.addr(), r2.addr(), rd.addr()),
+            )
         }
         "xori" => {
             let (rd, r1, imm) = args.rri()?;
-            only_if_no_write_to_zero(format!("{rd} <== xor({r1}, {imm});"), rd)
+            only_if_no_write_to_zero(rd, format!("xor {}, 0, {imm}, {};", r1.addr(), rd.addr()))
         }
         "and" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd} <== and({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!("and {}, {}, 0, {};", r1.addr(), r2.addr(), rd.addr()),
+            )
         }
         "andi" => {
             let (rd, r1, imm) = args.rri()?;
-            only_if_no_write_to_zero(format!("{rd} <== and({r1}, {imm});"), rd)
+            only_if_no_write_to_zero(rd, format!("and {}, 0, {imm}, {};", r1.addr(), rd.addr()))
         }
         "or" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd} <== or({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!("or {}, {}, 0, {};", r1.addr(), r2.addr(), rd.addr()),
+            )
         }
         "ori" => {
             let (rd, r1, imm) = args.rri()?;
-            only_if_no_write_to_zero(format!("{rd} <== or({r1}, {imm});"), rd)
+            only_if_no_write_to_zero(rd, format!("or {}, 0, {imm}, {};", r1.addr(), rd.addr()))
         }
         "not" => {
             let (rd, rs) = args.rr()?;
-            only_if_no_write_to_zero(format!("{rd} <== wrap_signed(-{rs} - 1);"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!("sub_wrap_with_offset 0, {}, -1, {};", rs.addr(), rd.addr()),
+            )
         }
 
         // shift
@@ -723,42 +1080,55 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let (rd, rs, amount) = args.rri()?;
             assert!(amount <= 31);
             only_if_no_write_to_zero_vec(
+                rd,
                 if amount <= 16 {
-                    vec![format!("{rd} <== wrap16({rs} * {});", 1 << amount)]
+                    vec![format!(
+                        "wrap16 {}, {}, {};",
+                        rs.addr(),
+                        1 << amount,
+                        rd.addr()
+                    )]
                 } else {
                     vec![
-                        format!("tmp1 <== wrap16({rs} * {});", 1 << 16),
-                        format!("{rd} <== wrap16(tmp1 * {});", 1 << (amount - 16)),
+                        format!("wrap16 {}, {}, {};", rs.addr(), 1 << 16, tmp1.addr()),
+                        format!(
+                            "wrap16 {}, {}, {};",
+                            tmp1.addr(),
+                            1 << (amount - 16),
+                            rd.addr()
+                        ),
                     ]
                 },
-                rd,
             )
         }
         "sll" => {
             let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== and({r2}, 0x1f);"),
-                    format!("{rd} <== shl({r1}, tmp1);"),
-                ],
                 rd,
+                vec![
+                    format!("and {}, 0, 0x1f, {};", r2.addr(), tmp1.addr()),
+                    format!("shl {}, {}, 0, {};", r1.addr(), tmp1.addr(), rd.addr()),
+                ],
             )
         }
         "srli" => {
             // logical shift right
             let (rd, rs, amount) = args.rri()?;
             assert!(amount <= 31);
-            only_if_no_write_to_zero(format!("{rd} <== shr({rs}, {amount});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!("shr {}, 0, {amount}, {};", rs.addr(), rd.addr()),
+            )
         }
         "srl" => {
             // logical shift right
             let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== and({r2}, 0x1f);"),
-                    format!("{rd} <== shr({r1}, tmp1);"),
-                ],
                 rd,
+                vec![
+                    format!("and {}, 0, 0x1f, {};", r2.addr(), tmp1.addr()),
+                    format!("shr {}, {}, 0, {};", r1.addr(), tmp1.addr(), rd.addr()),
+                ],
             )
         }
         "srai" => {
@@ -769,66 +1139,95 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let (rd, rs, amount) = args.rri()?;
             assert!(amount <= 31);
             only_if_no_write_to_zero_vec(
+                rd,
                 vec![
-                    format!("tmp1 <== to_signed({rs});"),
-                    format!("tmp1 <== is_positive(0 - tmp1);"),
-                    format!("tmp1 <=X= tmp1 * 0xffffffff;"),
+                    format!("to_signed {}, {};", rs.addr(), tmp1.addr()),
+                    format!(
+                        "is_diff_greater_than 0, {}, 0, {};",
+                        tmp1.addr(),
+                        tmp1.addr()
+                    ),
+                    format!("affine {}, {}, 0xffffffff, 0;", tmp1.addr(), tmp1.addr()),
                     // Here, tmp1 is the full bit mask if rs is negative
                     // and zero otherwise.
-                    format!("{rd} <== xor(tmp1, {rs});"),
-                    format!("{rd} <== shr({rd}, {amount});"),
-                    format!("{rd} <== xor(tmp1, {rd});"),
+                    format!("xor {}, {}, 0, {};", tmp1.addr(), rs.addr(), rd.addr()),
+                    format!("shr {}, 0, {amount}, {};", rd.addr(), rd.addr()),
+                    format!("xor {}, {}, 0, {};", tmp1.addr(), rd.addr(), rd.addr()),
                 ],
-                rd,
             )
         }
 
         // comparison
         "seqz" => {
             let (rd, rs) = args.rr()?;
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_equal_zero({rs});"), rd)
+            only_if_no_write_to_zero(rd, format!("is_equal_zero {}, {};", rs.addr(), rd.addr()))
         }
         "snez" => {
             let (rd, rs) = args.rr()?;
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_not_equal_zero({rs});"), rd)
+            only_if_no_write_to_zero(rd, format!("is_not_equal {}, 0, {};", rs.addr(), rd.addr()))
         }
         "slti" => {
             let (rd, rs, imm) = args.rri()?;
             only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== to_signed({rs});"),
-                    format!("{rd} <=Y= is_positive({} - tmp1);", imm as i32),
-                ],
                 rd,
+                vec![
+                    format!("to_signed {}, {};", rs.addr(), tmp1.addr()),
+                    format!(
+                        "is_diff_greater_than 0, {}, -({}), {};",
+                        tmp1.addr(),
+                        imm as i32,
+                        rd.addr()
+                    ),
+                ],
             )
         }
         "slt" => {
             let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== to_signed({r1});"),
-                    format!("tmp2 <== to_signed({r2});"),
-                    format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
-                ],
                 rd,
+                vec![
+                    format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
+                    format!("to_signed {}, {};", r2.addr(), tmp2.addr()),
+                    format!(
+                        "is_diff_greater_than {}, {}, 0, {};",
+                        tmp2.addr(),
+                        tmp1.addr(),
+                        rd.addr()
+                    ),
+                ],
             )
         }
         "sltiu" => {
             let (rd, rs, imm) = args.rri()?;
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({imm} - {rs});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!(
+                    "is_diff_greater_than 0, {}, -({imm}), {};",
+                    rs.addr(),
+                    rd.addr()
+                ),
+            )
         }
         "sltu" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({r2} - {r1});"), rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!(
+                    "is_diff_greater_than {}, {}, 0, {};",
+                    r2.addr(),
+                    r1.addr(),
+                    rd.addr()
+                ),
+            )
         }
         "sgtz" => {
             let (rd, rs) = args.rr()?;
             only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== to_signed({rs});"),
-                    format!("{rd} <=Y= is_positive(tmp1);"),
-                ],
                 rd,
+                vec![
+                    format!("to_signed {}, {};", rs.addr(), tmp1.addr()),
+                    format!("is_diff_greater_than {}, 0, 0, {};", tmp1.addr(), rd.addr()),
+                ],
             )
         }
 
@@ -836,67 +1235,99 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         "beq" => {
             let (r1, r2, label) = args.rrl()?;
             let label = escape_label(label.as_ref());
-            vec![format!("branch_if_zero {r1} - {r2}, {label};")]
+            vec![format!(
+                "branch_if_diff_equal {}, {}, 0, {label};",
+                r1.addr(),
+                r2.addr()
+            )]
         }
         "beqz" => {
             let (r1, label) = args.rl()?;
             let label = escape_label(label.as_ref());
-            vec![format!("branch_if_zero {r1}, {label};")]
+            vec![format!(
+                "branch_if_diff_equal {}, 0, 0, {label};",
+                r1.addr()
+            )]
         }
         "bgeu" => {
             let (r1, r2, label) = args.rrl()?;
             let label = escape_label(label.as_ref());
-            // TODO does this fulfill the input requirements for branch_if_positive?
-            vec![format!("branch_if_positive {r1} - {r2} + 1, {label};")]
+            // TODO does this fulfill the input requirements for branch_if_diff_greater_than?
+            vec![format!(
+                "branch_if_diff_greater_than {}, {}, -1, {label};",
+                r1.addr(),
+                r2.addr()
+            )]
         }
         "bgez" => {
             let (r1, label) = args.rl()?;
             let label = escape_label(label.as_ref());
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("branch_if_positive tmp1 + 1, {label};"),
+                format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
+                format!(
+                    "branch_if_diff_greater_than {}, 0, -1, {label};",
+                    tmp1.addr()
+                ),
             ]
         }
         "bltu" => {
             let (r1, r2, label) = args.rrl()?;
             let label = escape_label(label.as_ref());
-            vec![format!("branch_if_positive {r2} - {r1}, {label};")]
+            vec![format!(
+                "branch_if_diff_greater_than {}, {}, 0, {label};",
+                r2.addr(),
+                r1.addr()
+            )]
         }
         "blt" => {
             let (r1, r2, label) = args.rrl()?;
             let label = escape_label(label.as_ref());
             // Branch if r1 < r2 (signed).
-            // TODO does this fulfill the input requirements for branch_if_positive?
+            // TODO does this fulfill the input requirements for branch_if_diff_greater_than?
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("tmp2 <== to_signed({r2});"),
-                format!("branch_if_positive tmp2 - tmp1, {label};"),
+                format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
+                format!("to_signed {}, {};", r2.addr(), tmp2.addr()),
+                format!(
+                    "branch_if_diff_greater_than {}, {}, 0, {label};",
+                    tmp2.addr(),
+                    tmp1.addr()
+                ),
             ]
         }
         "bge" => {
             let (r1, r2, label) = args.rrl()?;
             let label = escape_label(label.as_ref());
             // Branch if r1 >= r2 (signed).
-            // TODO does this fulfill the input requirements for branch_if_positive?
+            // TODO does this fulfill the input requirements for branch_if_diff_greater_than?
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("tmp2 <== to_signed({r2});"),
-                format!("branch_if_positive tmp1 - tmp2 + 1, {label};"),
+                format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
+                format!("to_signed {}, {};", r2.addr(), tmp2.addr()),
+                format!(
+                    "branch_if_diff_greater_than {}, {}, -1, {label};",
+                    tmp1.addr(),
+                    tmp2.addr()
+                ),
             ]
         }
         "bltz" => {
             // branch if 2**31 <= r1 < 2**32
             let (r1, label) = args.rl()?;
             let label = escape_label(label.as_ref());
-            vec![format!("branch_if_positive {r1} - 2**31 + 1, {label};")]
+            vec![format!(
+                "branch_if_diff_greater_than {}, 0, 2**31 - 1, {label};",
+                r1.addr()
+            )]
         }
         "blez" => {
             // branch less or equal zero
             let (r1, label) = args.rl()?;
             let label = escape_label(label.as_ref());
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("branch_if_positive -tmp1 + 1, {label};"),
+                format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
+                format!(
+                    "branch_if_diff_greater_than 0, {}, -1, {label};",
+                    tmp1.addr()
+                ),
             ]
         }
         "bgtz" => {
@@ -904,61 +1335,69 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let (r1, label) = args.rl()?;
             let label = escape_label(label.as_ref());
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("branch_if_positive tmp1, {label};"),
+                format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
+                format!(
+                    "branch_if_diff_greater_than {}, 0, 0, {label};",
+                    tmp1.addr()
+                ),
             ]
         }
         "bne" => {
             let (r1, r2, label) = args.rrl()?;
             let label = escape_label(label.as_ref());
-            vec![format!("branch_if_nonzero {r1} - {r2}, {label};")]
+            vec![format!(
+                "branch_if_diff_nonzero {}, {}, {label};",
+                r1.addr(),
+                r2.addr()
+            )]
         }
         "bnez" => {
             let (r1, label) = args.rl()?;
             let label = escape_label(label.as_ref());
-            vec![format!("branch_if_nonzero {r1}, {label};")]
+            vec![format!("branch_if_diff_nonzero {}, 0, {label};", r1.addr())]
         }
 
         // jump and call
         "j" | "tail" => {
             let label = args.l()?;
             let label = escape_label(label.as_ref());
-            vec![format!("tmp1 <== jump({label});",)]
+            vec![format!("jump {label}, {};", tmp1.addr(),)]
         }
         "jr" => {
             let rs = args.r()?;
-            vec![format!("tmp1 <== jump_dyn({rs});")]
+            vec![format!("jump_dyn {}, {};", rs.addr(), tmp1.addr())]
         }
         "jal" => {
             if let Ok(label) = args.l() {
                 let label = escape_label(label.as_ref());
-                vec![format!("x1 <== jump({label});")]
+                vec![format!("jump {label}, 1;")]
             } else {
                 let (rd, label) = args.rl()?;
                 let label = escape_label(label.as_ref());
-                let statement = if rd.is_zero() {
-                    format!("tmp1 <== jump({label});")
+                if rd.is_zero() {
+                    vec![format!("jump {label}, {};", tmp1.addr())]
                 } else {
-                    format!("{rd} <== jump({label});")
-                };
-                vec![statement]
+                    vec![format!("jump {label}, {};", rd.addr())]
+                }
             }
         }
-        "jalr" => vec![if let Ok(rs) = args.r() {
-            format!("x1 <== jump_dyn({rs});")
-        } else {
-            let (rd, rs, off) = args.rro()?;
-            assert_eq!(off, 0, "jalr with non-zero offset is not supported");
-            if rd.is_zero() {
-                format!("tmp1 <== jump_dyn({rs});")
+        "jalr" => {
+            if let Ok(rs) = args.r() {
+                vec![format!("jump_dyn {}, 1;", rs.addr())]
             } else {
-                format!("{rd} <== jump_dyn({rs});")
+                let (rd, rs, off) = args.rro()?;
+                assert_eq!(off, 0, "jalr with non-zero offset is not supported");
+                if rd.is_zero() {
+                    vec![format!("jump_dyn {}, {};", rs.addr(), tmp1.addr())]
+                } else {
+                    vec![format!("jump_dyn {}, {};", rs.addr(), rd.addr())]
+                }
             }
-        }],
+        }
         "call" => {
             let label = args.l()?;
             let label = escape_label(label.as_ref());
-            vec![format!("x1 <== jump({label});")]
+            vec![format!("jump {label}, 1;")]
         }
         "ecall" => {
             args.empty()?;
@@ -966,7 +1405,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             push_register("x1")
                 .into_iter()
                 // jump to to handler
-                .chain(std::iter::once("x1 <== jump(__ecall_handler);".to_string()))
+                .chain(["jump __ecall_handler, 1;".to_string()])
                 // restore ra/x1
                 .chain(pop_register("x1"))
                 .collect()
@@ -978,37 +1417,57 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         }
         "ret" => {
             args.empty()?;
-            vec!["tmp1 <== jump_dyn(x1);".to_string()]
+            vec![format!("jump_dyn 1, {};", tmp1.addr())]
         }
 
         // memory access
         "lw" => {
             let (rd, rs, off) = args.rro()?;
             // TODO we need to consider misaligned loads / stores
-            only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs} + {off});")], rd)
+            only_if_no_write_to_zero(
+                rd,
+                format!(
+                    "mload {}, {off}, {}, {};",
+                    rs.addr(),
+                    rd.addr(),
+                    tmp1.addr()
+                ),
+            )
         }
         "lb" => {
             // load byte and sign-extend. the memory is little-endian.
             let (rd, rs, off) = args.rro()?;
             only_if_no_write_to_zero_vec(
-                vec![
-                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== sign_extend_byte({rd});"),
-                ],
                 rd,
+                vec![
+                    format!(
+                        "mload {}, {off}, {}, {};",
+                        rs.addr(),
+                        tmp1.addr(),
+                        tmp2.addr()
+                    ),
+                    format!("affine {}, {}, 8, 0;", tmp2.addr(), tmp2.addr()),
+                    format!("shr {}, {}, 0, {};", tmp1.addr(), tmp2.addr(), tmp1.addr()),
+                    format!("sign_extend_byte {}, {};", tmp1.addr(), rd.addr()),
+                ],
             )
         }
         "lbu" => {
             // load byte and zero-extend. the memory is little-endian.
             let (rd, rs, off) = args.rro()?;
             only_if_no_write_to_zero_vec(
-                vec![
-                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== and({rd}, 0xff);"),
-                ],
                 rd,
+                vec![
+                    format!(
+                        "mload {}, {off}, {}, {};",
+                        rs.addr(),
+                        tmp1.addr(),
+                        tmp2.addr()
+                    ),
+                    format!("affine {}, {}, 8, 0;", tmp2.addr(), tmp2.addr()),
+                    format!("shr {}, {}, 0, {};", tmp1.addr(), tmp2.addr(), tmp1.addr()),
+                    format!("and {}, 0, 0xff, {};", tmp1.addr(), rd.addr()),
+                ],
             )
         }
         "lh" => {
@@ -1016,12 +1475,18 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             // Assumes the address is a multiple of two.
             let (rd, rs, off) = args.rro()?;
             only_if_no_write_to_zero_vec(
-                vec![
-                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== sign_extend_16_bits({rd});"),
-                ],
                 rd,
+                vec![
+                    format!(
+                        "mload {}, {off}, {}, {};",
+                        rs.addr(),
+                        tmp1.addr(),
+                        tmp2.addr()
+                    ),
+                    format!("affine {}, {}, 8, 0;", tmp2.addr(), tmp2.addr()),
+                    format!("shr {}, {}, 0, {};", tmp1.addr(), tmp2.addr(), tmp1.addr()),
+                    format!("sign_extend_16_bits {}, {};", tmp1.addr(), rd.addr()),
+                ],
             )
         }
         "lhu" => {
@@ -1029,17 +1494,23 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             // Assumes the address is a multiple of two.
             let (rd, rs, off) = args.rro()?;
             only_if_no_write_to_zero_vec(
-                vec![
-                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== and({rd}, 0x0000ffff);"),
-                ],
                 rd,
+                vec![
+                    format!(
+                        "mload {}, {off}, {}, {};",
+                        rs.addr(),
+                        tmp1.addr(),
+                        tmp2.addr()
+                    ),
+                    format!("affine {}, {}, 8, 0;", tmp2.addr(), tmp2.addr()),
+                    format!("shr {}, {}, 0, {};", tmp1.addr(), tmp2.addr(), tmp1.addr()),
+                    format!("and {}, 0, 0x0000ffff, {};", tmp1.addr(), rd.addr()),
+                ],
             )
         }
         "sw" => {
             let (r2, r1, off) = args.rro()?;
-            vec![format!("mstore {r1} + {off}, {r2};")]
+            vec![format!("mstore {}, 0, {off}, {};", r1.addr(), r2.addr())]
         }
         "sh" => {
             // store half word (two bytes)
@@ -1048,28 +1519,52 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
 
             let (r2, r1, off) = args.rro()?;
             vec![
-                format!("tmp1, tmp2 <== mload({r1} + {off});"),
-                "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
-                "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
-                "tmp1 <== and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <== and({r2}, 0xffff);"),
-                "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
-                "tmp1 <== or(tmp1, tmp3);".to_string(),
-                format!("mstore {r1} + {off} - tmp2, tmp1;"),
+                format!(
+                    "mload {}, {off}, {}, {};",
+                    r1.addr(),
+                    tmp1.addr(),
+                    tmp2.addr()
+                ),
+                format!("set_reg {}, 0xffff;", tmp3.addr()),
+                format!("affine {}, {}, 8, 0;", tmp2.addr(), tmp4.addr()),
+                format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
+                format!("xor {}, 0, 0xffffffff, {};", tmp3.addr(), tmp3.addr()),
+                format!("and {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
+                format!("and {}, 0, 0xffff, {};", r2.addr(), tmp3.addr()),
+                format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
+                format!("or {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
+                format!(
+                    "mstore {}, {}, {off}, {};",
+                    r1.addr(),
+                    tmp2.addr(),
+                    tmp1.addr()
+                ),
             ]
         }
         "sb" => {
             // store byte
             let (r2, r1, off) = args.rro()?;
             vec![
-                format!("tmp1, tmp2 <== mload({r1} + {off});"),
-                "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
-                "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
-                "tmp1 <== and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <== and({r2}, 0xff);"),
-                "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
-                "tmp1 <== or(tmp1, tmp3);".to_string(),
-                format!("mstore {r1} + {off} - tmp2, tmp1;"),
+                format!(
+                    "mload {}, {off}, {}, {};",
+                    r1.addr(),
+                    tmp1.addr(),
+                    tmp2.addr()
+                ),
+                format!("set_reg {}, 0xff;", tmp3.addr()),
+                format!("affine {}, {}, 8, 0;", tmp2.addr(), tmp4.addr()),
+                format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
+                format!("xor {}, 0, 0xffffffff, {};", tmp3.addr(), tmp3.addr()),
+                format!("and {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
+                format!("and {}, 0, 0xff, {};", r2.addr(), tmp3.addr()),
+                format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
+                format!("or {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
+                format!(
+                    "mstore {}, {}, {off}, {};",
+                    r1.addr(),
+                    tmp2.addr(),
+                    tmp1.addr()
+                ),
             ]
         }
         "fence" | "nop" => vec![],
@@ -1081,11 +1576,19 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
 
             [
                 vec![
-                    format!("tmp1, tmp2 <== mload({rs1});"),
-                    format!("tmp2 <== wrap(tmp1 + {rs2});"),
-                    format!("mstore {rs1}, tmp2;"),
+                    format!("mload {}, 0, {}, {};", rs1.addr(), tmp1.addr(), tmp2.addr()),
+                    format!(
+                        "add_wrap {}, {}, 0, {};",
+                        tmp1.addr(),
+                        rs2.addr(),
+                        tmp2.addr()
+                    ),
+                    format!("mstore {}, 0, 0, {};", rs1.addr(), tmp2.addr()),
                 ],
-                only_if_no_write_to_zero(format!("{rd} <=X= tmp1;"), rd),
+                only_if_no_write_to_zero(
+                    rd,
+                    format!("affine {}, {}, 1, 0;", tmp1.addr(), rd.addr()),
+                ),
             ]
             .concat()
         }
@@ -1094,29 +1597,48 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             // Very similar to "lw":
             let (rd, rs) = args.rr()?;
             // TODO misaligned access should raise misaligned address exceptions
-            let mut statements =
-                only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs});")], rd);
-            statements.push("lr_sc_reservation <=X= 1;".into());
-            statements
+            [
+                only_if_no_write_to_zero_vec(
+                    rd,
+                    vec![format!(
+                        "mload {}, 0, {}, {};",
+                        rs.addr(),
+                        rd.addr(),
+                        tmp1.addr()
+                    )],
+                ),
+                vec![format!("set_reg {}, 1;", lr_sc_reservation.addr())],
+            ]
+            .concat()
         }
 
         insn if insn.starts_with("sc.w") => {
             // Some overlap with "sw", but also writes 0 to rd on success
             let (rd, rs2, rs1) = args.rrr2()?;
             // TODO: misaligned access should raise misaligned address exceptions
-            let mut statements = vec![
-                "skip_if_zero lr_sc_reservation, 1;".into(),
-                format!("mstore {rs1}, {rs2};"),
-            ];
-            if !rd.is_zero() {
-                statements.push(format!("{rd} <=X= (1 - lr_sc_reservation);"));
-            }
-            statements.push("lr_sc_reservation <=X= 0;".into());
-            statements
+            [
+                format!("skip_if_equal {}, 0, 0, 1;", lr_sc_reservation.addr()),
+                format!("mstore {}, 0, 0, {};", rs1.addr(), rs2.addr()),
+            ]
+            .into_iter()
+            .chain(only_if_no_write_to_zero_vec(
+                rd,
+                vec![format!(
+                    "affine {}, {}, -1, 1;",
+                    lr_sc_reservation.addr(),
+                    rd.addr()
+                )],
+            ))
+            .chain([format!("set_reg {}, 0;", lr_sc_reservation.addr())])
+            .collect()
         }
 
         _ => {
             panic!("Unknown instruction: {instr}");
         }
-    })
+    };
+    for s in &statements {
+        log::debug!("          {s}");
+    }
+    Ok(statements)
 }
