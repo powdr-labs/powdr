@@ -22,6 +22,7 @@ use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Challenge, IdentityKind,
     PolynomialType,
 };
+use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 use tracing::field::Field;
@@ -195,11 +196,8 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         fixed: &AB::M,
         publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
         stage: u32,
-        multi_stage: fn(u32) -> Vec<&AB::M>, // returns a reference to the stage _ matrix
-        challenges: fn(
-            u32,
-        )
-            -> Vec<&BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>,
+        multi_stage: Vec<&AB::M>, // returns a reference to the stage _ matrix
+        challenges: Vec<&BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -208,12 +206,21 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 match poly_id.ptype {
                     PolynomialType::Committed => {
                         //TODO: our changes should come from here
-                        assert!(
-                            r.poly_id.id < self.analyzed.commitment_count() as u64,
-                            "Plonky3 expects `poly_id` to be contiguous"
-                        );
-                        let row = main.row_slice(r.next as usize);
-                        row[r.poly_id.id as usize].into()
+                        match r.poly_id.id {
+                            row_id if row_id < self.analyzed.commitment_count() => {
+                                let row = main.row_slice(r.next as usize);
+                                row[row_id as usize].into()
+                            }
+                            row_id
+                                if row_id
+                                    < self.analyzed.commitment_count()
+                                        + self.analyzed.stage_count() =>
+                            {
+                                let row = multi_stage[1].row_slice(r.next as usize);
+                                row[row_id - self.analyzed.commitment_count() as usize].into()
+                            }
+                            _ => panic!("Plonky3 expects `poly_id` to be contiguous"),
+                        }
                     }
                     PolynomialType::Constant => {
                         assert!(
@@ -414,6 +421,16 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
 }
 
 /// An extension of [Air] allowing access to the number of fixed columns
+
+pub trait PowdrAir: BaseAir<Val> {
+    fn multi_stage_width(&self, stage: u32) -> usize;
+}
+
+impl<'a, T: FieldElement> PowdrAir for PowdrCircuit<'a, T> {
+    fn multi_stage_width(&self, stage: u32) -> usize {
+        unimplemented!();
+    }
+}
 /// TODO: fix pls
 pub trait PowdrAirBuilder:
     AirBuilder + AirBuilderWithPublicValues<F = Val> + PairBuilder + ExtensionBuilder
@@ -436,12 +453,6 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
         let publics = self.analyzed.get_publics();
         assert_eq!(publics.len(), pi.len());
 
-        let public_vals_by_id = publics
-            .iter()
-            .zip(pi.to_vec())
-            .map(|((id, _, _), val)| (id, val))
-            .collect::<BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>();
-
         // challenges
         let multi_stage = (1..3)
             .map(|stage| builder.multi_stage(stage))
@@ -449,7 +460,7 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
 
         let challenge_ids = self.get_challenges();
 
-        let challenge_vals_by_id = (0..3)
+        let challenge_vals_by_id = (0..2)
             .map(|stage| {
                 challenge_ids[stage]
                     .zip(builder.challenges(stage))
@@ -497,6 +508,12 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
         }
 
         // public variable onstraints
+        let public_vals_by_id = publics
+            .iter()
+            .zip(pi.to_vec())
+            .map(|((id, _, _), val)| (id, val))
+            .collect::<BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>();
+
         let public_offset = self.analyzed.constant_count();
         publics
             .iter()
