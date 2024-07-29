@@ -12,7 +12,7 @@ use std::{
 use powdr_ast::{
     analyzed::{
         self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
-        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialType, PublicDeclaration,
+        FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
         SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
@@ -123,7 +123,7 @@ pub fn condense<T: FieldElement>(
                 .collect::<Vec<_>>();
 
             for (col_name, hint) in condenser.extract_new_hints() {
-                if !new_hints.insert(col_name.clone(), hint).is_none() {
+                if new_hints.insert(col_name.clone(), hint).is_some() {
                     panic!(
                         "Column {col_name} already has a hint set, but tried to add another one."
                     )
@@ -593,14 +593,10 @@ fn closure_to_function<T: Clone + Display>(
     }) = value
     {
         if !type_args.is_empty() {
-            return Err(EvalError::TypeError(format!(
-                "Lambda expression must not have type arguments."
-            )));
+            return Err(EvalError::TypeError("Lambda expression must not have type arguments.".to_string()));
         }
         if !lambda.outer_var_references.is_empty() {
-            return Err(EvalError::TypeError(format!(
-                "Lambda expression must not reference outer variables."
-            )));
+            return Err(EvalError::TypeError("Lambda expression must not reference outer variables.".to_string()));
         }
 
         if lambda.kind != FunctionKind::Pure && lambda.kind != expected_kind {

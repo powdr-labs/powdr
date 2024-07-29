@@ -11,7 +11,7 @@ use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
         AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, Expression,
-        FunctionValueDefinition, PolynomialType, Reference, Symbol, SymbolKind, TypedExpression,
+        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
     },
     parsed::{
         display::quote,
