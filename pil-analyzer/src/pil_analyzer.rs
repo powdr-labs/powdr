@@ -159,7 +159,7 @@ impl PILAnalyzer {
                     .process_trait_implementation(trait_impl.clone());
                     self.implementations
                         .entry(ti.name.name().clone())
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push((sr.clone(), ti))
                 }
                 self.handle_statement(statement.clone());
