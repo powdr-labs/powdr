@@ -364,61 +364,6 @@ mod test {
     }
 
     #[test]
-    fn arrays() {
-        let src = r#"
-            let N: int = 10;
-            let n: fe = 10;
-            namespace F(N);
-            let f = |i| i  + 20;
-            col fixed alt = [0, 1, 0, 1, 0, 1] + [0]*;
-            col fixed empty = [] + [0]*;
-            col fixed ref_other = [n-1, f(1), 8] + [0]*;
-        "#;
-        let analyzed = analyze_string(src);
-        assert_eq!(analyzed.degree(), 10);
-        let constants = generate(&analyzed);
-        assert_eq!(constants.len(), 3);
-        assert_eq!(
-            constants[0],
-            (
-                "F.alt".to_string(),
-                convert([0i32, 1, 0, 1, 0, 1, 0, 0, 0, 0].to_vec())
-            )
-        );
-        assert_eq!(
-            constants[1],
-            ("F.empty".to_string(), convert([0i32; 10].to_vec()))
-        );
-        assert_eq!(
-            constants[2],
-            (
-                "F.ref_other".to_string(),
-                convert([9i32, 21, 8, 0, 0, 0, 0, 0, 0, 0].to_vec())
-            )
-        );
-    }
-
-    #[test]
-    fn repetition_front() {
-        let src = r#"
-            let N: int = 10;
-            namespace F(N);
-            col fixed arr = [0, 1, 2]* + [7];
-        "#;
-        let analyzed = analyze_string(src);
-        assert_eq!(analyzed.degree(), 10);
-        let constants = generate(&analyzed);
-        assert_eq!(constants.len(), 1);
-        assert_eq!(
-            constants[0],
-            (
-                "F.arr".to_string(),
-                convert([0i32, 1, 2, 0, 1, 2, 0, 1, 2, 7].to_vec())
-            )
-        );
-    }
-
-    #[test]
     fn comparisons() {
         let src = r#"
             let N: int = 6;
@@ -524,7 +469,7 @@ mod test {
             let N: int = 10;
             namespace F(N);
             let x: col = |i| y(i) + 1;
-            col fixed y = [1, 2, 3]*;
+            col fixed y(i) { i };
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 10);

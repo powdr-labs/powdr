@@ -50,4 +50,22 @@ machine Main with degree: 8 {
     // let F7 = [1, 2, 3, 4] + [1, 2, 3, 4] + [1]*; // should succeed as we can repeat `[1]` zero times
     let r7 = expand([once([1, 2, 3, 4]), once([1, 2, 3, 4]), repeat([1])], degree);
     assert_eq(r7, Result::Ok([1, 2, 3, 4, 1, 2, 3, 4]));
+
+    // let alt = [0, 1, 0, 1, 0, 1] + [0]*;
+    let r8 = expand([once([0, 1, 0, 1, 0, 1]), repeat([0])], degree);
+    assert_eq(r8, Result::Ok([0, 1, 0, 1, 0, 1, 0, 0]));
+
+    // let empty = [] + [0]*;
+    let r9 = expand([once([]), repeat([0])], degree);
+    assert_eq(r9, Result::Ok([0, 0, 0, 0, 0, 0, 0, 0]));
+
+    let n = 10;
+    let f = |i| i + 20;
+    // let ref_other = [n-1, f(1), 8] + [0]*;
+    let r10 = expand([once([n - 1, f(1), 8]), repeat([0])], degree);
+    assert_eq(r10, Result::Ok([9, 21, 8, 0, 0, 0, 0, 0]));
+
+    // let arr = [0, 1, 2]* + [7];
+    let r11 = expand([repeat([0, 1, 2]), once([7])], degree);
+    assert_eq(r11, Result::Ok([0, 1, 2, 0, 1, 2, 0, 7]));
 }
