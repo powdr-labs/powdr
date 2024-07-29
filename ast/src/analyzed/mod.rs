@@ -20,7 +20,8 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration, TraitFunction,
+    self, ArrayLiteral, EnumDeclaration, EnumVariant, StructDeclaration, TraitDeclaration,
+    TraitFunction,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -441,8 +442,22 @@ pub fn type_from_definition(
             FunctionValueDefinition::TypeDeclaration(_) => {
                 panic!("Requested type of type declaration.")
             }
-            FunctionValueDefinition::TypeConstructor(enum_decl, variant) => {
+            FunctionValueDefinition::TypeConstructor(TypeConstructor::Enum(enum_decl, variant)) => {
                 Some(variant.constructor_type(enum_decl))
+            }
+            FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
+                struct_decl,
+                field,
+            )) => {
+                //let name = SymbolPath::from_identifier(struct_decl.name.clone());
+                let vars = struct_decl.type_vars.clone();
+
+                //let named_type = Type::NamedType(name, None);
+
+                Some(TypeScheme {
+                    vars,
+                    ty: field.1.clone(),
+                })
             }
             FunctionValueDefinition::TraitDeclaration(_) => {
                 panic!("Requested type of trait declaration.")
@@ -556,10 +571,54 @@ pub enum SymbolKind {
 pub enum FunctionValueDefinition {
     Array(Vec<RepeatedArray>),
     Expression(TypedExpression),
-    TypeDeclaration(EnumDeclaration),
-    TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
+    TypeDeclaration(TypeDeclaration),
+    TypeConstructor(TypeConstructor),
     TraitDeclaration(TraitDeclaration),
     TraitFunction(Arc<TraitDeclaration>, TraitFunction),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub enum TypeDeclaration {
+    Enum(EnumDeclaration),
+    Struct(StructDeclaration),
+}
+
+impl Children<Expression> for TypeDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        match self {
+            TypeDeclaration::Enum(enum_decl) => enum_decl.children(),
+            TypeDeclaration::Struct(struct_decl) => struct_decl.children(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        match self {
+            TypeDeclaration::Enum(enum_decl) => enum_decl.children_mut(),
+            TypeDeclaration::Struct(struct_decl) => struct_decl.children_mut(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub enum TypeConstructor {
+    Enum(Arc<EnumDeclaration>, EnumVariant),
+    Struct(Arc<StructDeclaration>, (String, Type)),
+}
+
+impl Children<Expression> for TypeConstructor {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        match self {
+            TypeConstructor::Enum(_, variant) => variant.children(),
+            TypeConstructor::Struct(_, _) => Box::new(empty()),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        match self {
+            TypeConstructor::Enum(_, variant) => variant.children_mut(),
+            TypeConstructor::Struct(_, _) => Box::new(empty()),
+        }
+    }
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -571,10 +630,12 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Array(array) => {
                 Box::new(array.iter().flat_map(|i| i.children()))
             }
-            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
-                enum_declaration.children()
+            FunctionValueDefinition::TypeDeclaration(type_declaration) => {
+                type_declaration.children()
             }
-            FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
+            FunctionValueDefinition::TypeConstructor(type_constructor) => {
+                type_constructor.children()
+            }
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
         }
@@ -588,10 +649,12 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Array(array) => {
                 Box::new(array.iter_mut().flat_map(|i| i.children_mut()))
             }
-            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
-                enum_declaration.children_mut()
+            FunctionValueDefinition::TypeDeclaration(type_declaration) => {
+                type_declaration.children_mut()
             }
-            FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
+            FunctionValueDefinition::TypeConstructor(type_constructor) => {
+                type_constructor.children_mut()
+            }
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
         }
