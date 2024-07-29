@@ -121,7 +121,7 @@ fn should_generate_proofs() -> bool {
         Ok(value) => match value.as_str() {
             "true" => true,
             "false" => false,
-            _ => panic!("Invalid value for environment variable POWDR_GENERATE_PROOFS value: {value}. Set it either to \"true\" or to \"false\"."),
+            _ => panic!("Invalid value for environment variable POWDR_GENERATE_PROOFS: {value}. Set it either to \"true\" or to \"false\"."),
         },
         Err(_) => false,
     }
