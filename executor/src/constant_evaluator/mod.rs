@@ -3,9 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-pub use data_structures::{
-    get_max_sized, get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn,
-};
+pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
@@ -21,7 +19,7 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 mod data_structures;
 
 pub const MIN_DEGREE_LOG: usize = 5;
-pub const MAX_DEGREE_LOG: usize = 10;
+pub const MAX_DEGREE_LOG: usize = 22;
 
 /// Generates the fixed column values for all fixed columns that are defined
 /// (and not just declared).

@@ -24,11 +24,10 @@ impl<F> VariablySizedColumn<F> {
     }
 
     /// Clones and returns the column with the given size.
-    pub fn get_by_size_cloned(&self, size: usize) -> Option<Vec<F>>
-    where
-        F: Clone,
-    {
-        self.column_by_size.get(&size).cloned()
+    pub fn get_by_size(&self, size: usize) -> Option<&[F]> {
+        self.column_by_size
+            .get(&size)
+            .map(|column| column.as_slice())
     }
 }
 
@@ -39,17 +38,6 @@ pub fn get_uniquely_sized<F>(
     column
         .iter()
         .map(|(name, column)| Ok((name.clone(), column.get_uniquely_sized()?)))
-        .collect()
-}
-
-/// Returns all columns with their maximum sizes.
-pub fn get_max_sized<F>(column: &[(String, VariablySizedColumn<F>)]) -> Vec<(String, &Vec<F>)> {
-    column
-        .iter()
-        .map(|(name, column)| {
-            let max_size = column.column_by_size.keys().max().unwrap();
-            (name.clone(), &column.column_by_size[max_size])
-        })
         .collect()
 }
 

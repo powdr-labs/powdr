@@ -62,10 +62,10 @@ enum Commands {
         #[arg(long)]
         coprocessors: Option<String>,
 
-        /// Convert from the executable ELF file instead of the assembly.
+        /// Convert from the assembly files instead of the ELF executable.
         #[arg(short, long)]
         #[arg(default_value_t = false)]
-        elf: bool,
+        asm: bool,
 
         /// Run a long execution in chunks (Experimental and not sound!)
         #[arg(short, long)]
@@ -224,14 +224,14 @@ fn run_command(command: Commands) {
             field,
             output_directory,
             coprocessors,
-            elf,
+            asm,
             continuations,
         } => {
             call_with_field!(compile_rust::<field>(
                 &file,
                 Path::new(&output_directory),
                 coprocessors,
-                elf,
+                !asm,
                 continuations
             ))
         }

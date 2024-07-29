@@ -3,15 +3,13 @@ use std::machines::range::Byte2;
 
 // A read/write memory, similar to that of Polygon:
 // https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/mem.pil
-machine Memory with
+machine Memory(byte2: Byte2) with
     latch: LATCH,
     operation_id: m_is_write,
     call_selectors: selectors,
 {
     // lower bound degree is 65536
 
-    Byte2 byte2;
-
     operation mload<0> m_addr, m_step -> m_value;
     operation mstore<1> m_addr, m_step, m_value ->;
 
@@ -72,14 +70,12 @@ machine Memory with
 }
 
 // TODO Remove when https://github.com/powdr-labs/powdr/issues/1572 is done
-machine Memory_20 with
+machine Memory_20(byte2: Byte2) with
 	degree: 2**20,
     latch: LATCH,
     operation_id: m_is_write,
     call_selectors: selectors,
 {
-    Byte2 byte2;
-
     operation mload<0> m_addr, m_step -> m_value;
     operation mstore<1> m_addr, m_step, m_value ->;
 
@@ -142,14 +138,12 @@ machine Memory_20 with
 }
 
 // TODO Remove when https://github.com/powdr-labs/powdr/issues/1572 is done
-machine Memory_21 with
+machine Memory_21(byte2: Byte2) with
 	degree: 2**21,
     latch: LATCH,
     operation_id: m_is_write,
     call_selectors: selectors,
 {
-    Byte2 byte2;
-
     operation mload<0> m_addr, m_step -> m_value;
     operation mstore<1> m_addr, m_step, m_value ->;
 
@@ -212,14 +206,12 @@ machine Memory_21 with
 }
 
 // TODO Remove when https://github.com/powdr-labs/powdr/issues/1572 is done
-machine Memory_22 with
+machine Memory_22(byte2: Byte2) with
 	degree: 2**22,
     latch: LATCH,
     operation_id: m_is_write,
     call_selectors: selectors,
 {
-    Byte2 byte2;
-
     operation mload<0> m_addr, m_step -> m_value;
     operation mstore<1> m_addr, m_step, m_value ->;
 

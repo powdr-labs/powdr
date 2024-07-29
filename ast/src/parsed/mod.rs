@@ -1099,6 +1099,7 @@ impl<E> Children<E> for StatementInsideBlock<E> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LetStatementInsideBlock<E = Expression<NamespacedPolynomialReference>> {
     pub pattern: Pattern,
+    pub ty: Option<Type<u64>>,
     pub value: Option<E>,
 }
 

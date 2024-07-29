@@ -670,7 +670,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![val]
             }
-            "move_reg" => {
+            "affine" => {
                 let val = self.proc.get_reg_mem(args[0].u());
                 let write_reg = args[1].u();
                 let factor = args[2];
@@ -781,18 +781,18 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "branch_if_zero" => {
+            "branch_if_diff_equal" => {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
                 let offset = args[2];
-                let val: Elem<F> = val1.sub(&val2.add(&offset));
+                let val: Elem<F> = val1.sub(&val2).sub(&offset);
                 if val.is_zero() {
                     self.proc.set_pc(args[3]);
                 }
 
                 Vec::new()
             }
-            "skip_if_zero" => {
+            "skip_if_equal" => {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
                 let offset = args[2];
@@ -805,24 +805,24 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "branch_if_positive" => {
+            "branch_if_diff_greater_than" => {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
                 let offset = args[2];
-                let val: Elem<F> = val1.sub(&val2).add(&offset);
+                let val: Elem<F> = val1.sub(&val2).sub(&offset);
                 if val.bin() > 0 {
                     self.proc.set_pc(args[3]);
                 }
 
                 Vec::new()
             }
-            "is_positive" => {
+            "is_diff_greater_than" => {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
 
                 let offset = args[2];
                 let write_reg = args[3].u();
-                let val = val1.sub(&val2).add(&offset);
+                let val = val1.sub(&val2).sub(&offset);
 
                 let r = if val.bin() > 0 { 1 } else { 0 };
                 self.proc.set_reg_mem(write_reg, r.into());

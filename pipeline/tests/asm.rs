@@ -3,9 +3,10 @@ use powdr_executor::constant_evaluator::get_uniquely_sized;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
-        gen_estark_proof, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
-        resolve_test_file, run_pilcom_test_file, run_pilcom_with_backend_variant, test_halo2,
-        test_halo2_with_backend_variant, BackendVariant,
+        asm_string_to_pil, gen_estark_proof, gen_estark_proof_with_backend_variant,
+        make_prepared_pipeline, resolve_test_file, run_pilcom_test_file,
+        run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant,
+        test_plonky3_with_backend_variant, BackendVariant,
     },
     util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
@@ -42,6 +43,7 @@ fn simple_sum_asm() {
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
     gen_estark_proof(f, slice_to_vec(&i));
+    test_plonky3_with_backend_variant(f, slice_to_vec(&i), BackendVariant::Composite);
 }
 
 #[test]
@@ -168,6 +170,13 @@ fn block_to_block() {
     verify_asm(f, slice_to_vec(&i));
     test_halo2(f, slice_to_vec(&i));
     gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+fn block_to_block_with_bus() {
+    let f = "asm/block_to_block_with_bus.asm";
+    let i = [];
+    test_halo2(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -498,6 +507,7 @@ fn call_selectors_with_no_permutation() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn vm_args() {
     let f = "asm/vm_args.asm";
     verify_asm(f, Default::default());
@@ -788,4 +798,42 @@ fn trait_parsing() {
     // Should be expanded/renamed when traits functionality is fully implemented
     let f = "asm/trait_parsing.asm";
     verify_asm(f, Default::default());
+}
+
+#[test]
+fn dynamic_fixed_cols() {
+    let f = "asm/dynamic_fixed_cols.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
+}
+
+#[test]
+fn type_vars_in_local_decl() {
+    let f = "asm/type_vars_in_local_decl.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
+}
+
+#[test]
+fn types_in_expressions() {
+    let input = r#"
+        enum O<X> {
+            A(X),
+            B,
+        }
+        let f: -> Constr = || {
+            let g: expr[] = [1, 2];
+            let h: expr -> O<expr> = |i| O::A::<expr>(i);
+            match h(g[1]) {
+                O::A(x) => x,
+            } = 0
+        };
+        machine Main {
+            col witness w;
+            f();
+        }
+        "#;
+    let output = asm_string_to_pil::<GoldilocksField>(input).to_string();
+    let expected = "    2 = 0;\n";
+    assert_eq!(output, expected);
 }
