@@ -139,13 +139,13 @@ machine Main with degree: 65536 {
         mstore_le 180, 0, 0;
         mstore_le 188, 0, 0;
  
-        // This will read bytes [100, 191] and write the result to bytes [104, 131]
-        poseidon 100, 132, 164, 104;
+        // This will read bytes (100..132) + (148..180) + (200..232) and write the result to bytes (128..160)
+        poseidon 100, 148, 200, 128;
 
-        assert_eq 104, 4330397376401421145;
-        assert_eq 112, 14124799381142128323;
-        assert_eq 120, 8742572140681234676;
-        assert_eq 128, 14345658006221440202;
+        assert_eq 128, 4330397376401421145;
+        assert_eq 136, 14124799381142128323;
+        assert_eq 144, 8742572140681234676;
+        assert_eq 152, 14345658006221440202;
 
         return;
     }
