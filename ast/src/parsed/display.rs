@@ -634,10 +634,14 @@ impl<E: Display> Display for TraitImplementation<E> {
             format!("<{}>", self.type_scheme.vars)
         };
 
-        let trait_vars = if self.type_scheme.types.is_empty() {
+        let Type::Tuple(TupleType { items }) = &self.type_scheme.ty else {
+            panic!("Type from trait scheme is not a tuple.")
+        };
+
+        let trait_vars = if items.is_empty() {
             Default::default()
         } else {
-            format!("<{}>", self.type_scheme.types.iter().format(", "))
+            format!("<{}>", items.iter().format(", "))
         };
 
         write!(

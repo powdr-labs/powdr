@@ -44,6 +44,15 @@ pub enum ModuleStatement {
     TraitImplementation(TraitImplementation<Expression>),
 }
 
+impl ModuleStatement {
+    pub fn defined_names(&self) -> Option<&String> {
+        match self {
+            ModuleStatement::SymbolDefinition(d) => Some(&d.name),
+            ModuleStatement::TraitImplementation(_) => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SymbolDefinition {
     pub name: String,

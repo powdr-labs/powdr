@@ -448,7 +448,9 @@ impl PILAnalyzer {
     fn check_traits_overlap(&self) {
         for implementations in self.trait_implementations.values() {
             for (i, (sr1, impl1)) in implementations.iter().enumerate() {
-                let types1 = impl1.type_scheme.types.clone();
+                let Type::Tuple(TupleType { items: types1 }) = &impl1.type_scheme.ty else {
+                    panic!("Type from trait scheme is not a tuple.")
+                };
                 let absolute_name = self.driver().resolve_decl(impl1.name.name());
 
                 let trait_decl = self
@@ -485,12 +487,13 @@ impl PILAnalyzer {
                             _ => None,
                         })
                 {
-                    let types2 = impl2.type_scheme.types.clone();
+                    let Type::Tuple(TupleType { items: types2 }) = &impl2.type_scheme.ty else {
+                        panic!("Type from trait scheme is not a tuple.")
+                    };
                     if types2.len() != trait_decl.type_vars.len() {
                         panic!(
                             "{}",
                             sr2.with_error(format!(
-                                // TODO sr2.with_error(...))
                                 "Trait {} has {} type vars, but implementation has {}",
                                 self.driver().resolve_decl(impl2.name.name()),
                                 trait_decl.type_vars.len(),
@@ -498,7 +501,19 @@ impl PILAnalyzer {
                             ))
                         );
                     }
-                    self.check_traits_pairs(&types1, &types2)
+
+                    if types1.len() != types2.len() {
+                        panic!(
+                            "{}",
+                            sr1.with_error(format!(
+                                "Impl types have different lengths: {} vs {}",
+                                self.driver().resolve_decl(impl1.name.name()),
+                                self.driver().resolve_decl(impl2.name.name()),
+                            ))
+                        );
+                    }
+
+                    self.check_traits_pairs(&impl1.type_scheme.ty, &impl2.type_scheme.ty)
                         .map_err(|err| sr1.with_error(format!("Impls for {absolute_name}: {err}")))
                         .unwrap()
                 }
@@ -506,20 +521,7 @@ impl PILAnalyzer {
         }
     }
 
-    fn check_traits_pairs(&self, types1: &[Type], types2: &[Type]) -> Result<(), String> {
-        if types1.len() != types2.len() {
-            return Err("Impl types have different lengths".to_string());
-        }
-
-        let tuple1: Type = TupleType {
-            items: types1.to_owned(),
-        }
-        .into();
-        let tuple2: Type = TupleType {
-            items: types2.to_owned(),
-        }
-        .into();
-
+    fn check_traits_pairs(&self, tuple1: &Type, tuple2: &Type) -> Result<(), String> {
         match unify_traits_types(tuple1.clone(), tuple2.clone()) {
             Ok(_) => Err(format!("Types {tuple1} and {tuple2} overlap")),
             Err(_) => Ok(()),

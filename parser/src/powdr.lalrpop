@@ -696,9 +696,9 @@ PatternList: Vec<Pattern> = {
 
 // ---------------------------- Trait/Impl Declaration -----------------------------
 
-GenericTraitName: (SymbolPath, TraitScheme) = {
-    <vars:("<" <TypeVarBounds> ">")> <name:SymbolPath> <types:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
-        (name, TraitScheme{ vars, types })
+GenericTraitName: (SymbolPath, TypeScheme) = {
+    <vars:("<" <TypeVarBounds> ">")> <name:SymbolPath> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
+        (name, TypeScheme{ vars, ty: Type::Tuple(TupleType{items}) })
 }
 
 TraitImplementation: TraitImplementation<Expression> = {
