@@ -43,7 +43,7 @@ unsafe impl<const SIZE: usize> GlobalAlloc for FixedMemoryAllocator<SIZE> {
         // Where this allocated space ends:
         let end_of_allocation_ptr = aligned_ptr + layout.size();
 
-        // Calculates where the next allocation with start:
+        // Calculates where the next allocation will start:
         let new_next_available = end_of_allocation_ptr - array_start;
 
         if new_next_available <= SIZE {
