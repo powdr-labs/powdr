@@ -35,7 +35,8 @@ pub fn infer_types(
     TypeChecker::new().infer_types(definitions, expressions)
 }
 
-/// TODO GZ
+/// Unifies two types, ensuring that they are compatible.
+/// This function is used to check that types used in traits are compatible.
 pub fn unify_traits_types(ty1: Type, ty2: Type) -> Result<(), String> {
     TypeChecker::new().unify_traits_types(ty1, ty2)
 }
@@ -197,7 +198,6 @@ impl TypeChecker {
         self.verify_type_schemes(inferred_types)
     }
 
-    /// TODO GZ
     pub fn unify_traits_types(&mut self, ty1: Type, ty2: Type) -> Result<(), String> {
         self.unifier.unify_types(ty1, ty2)
     }

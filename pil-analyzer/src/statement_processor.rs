@@ -368,7 +368,7 @@ where
             ),
             // TODO at some point, these should all be caught by the type checker.
             _ => {
-                panic!("Only identities allowed at this point. {statement:?}")
+                panic!("Only identities allowed at this point.")
             }
         };
 
