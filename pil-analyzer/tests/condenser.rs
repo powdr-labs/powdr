@@ -230,7 +230,7 @@ fn new_fixed_column() {
 }
 
 #[test]
-#[should_panic = "Lambda expression for fixed column N.fi must not reference outer variables."]
+#[should_panic = "Error creating fixed column N.fi: Lambda expression must not reference outer variables: (|i| (i + j) * 2)"]
 fn new_fixed_column_as_closure() {
     let input = r#"namespace N(16);
         let f = constr |j| {
@@ -240,6 +240,127 @@ fn new_fixed_column_as_closure() {
         let ev = f(2);
         let x;
         x = ev;
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+fn set_hint() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        let eval = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        let y;
+        std::prover::set_hint(y, |i| std::prover::Query::Hint(std::prover::eval(x)));
+        {
+            let z;
+            std::prover::set_hint(z, query |_| std::prover::Query::Hint(1));
+        };
+    "#;
+    let expected = r#"namespace std::prover;
+    let set_hint = 8;
+    let eval = 8;
+    enum Query {
+        Hint(fe),
+        None,
+    }
+namespace N(16);
+    col witness x;
+    col witness y(i) query std::prover::Query::Hint(std::prover::eval(N.x));
+    col witness z(_) query std::prover::Query::Hint(1);
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+#[should_panic = "Expected type: int -> std::prover::Query"]
+fn set_hint_invalid_function() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        let eval = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        std::prover::set_hint(x, query |_, _| std::prover::Query::Hint(1));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Array elements are not supported for std::prover::set_hint (called on N.x[0])."]
+fn set_hint_array_element() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x: col[2];
+        std::prover::set_hint(x[0], query |_| std::prover::Query::Hint(1));
+    "#;
+    let expected = r#"namespace std::prover;
+    let set_hint = 8;
+    let eval = 8;
+    enum Query {
+        Hint(fe),
+        None,
+    }
+namespace N(16);
+    col witness x(_) query std::prover::Query::Hint(1);
+    col witness y(i) query std::prover::Query::Hint(std::prover::eval(N.x));
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+#[should_panic = "Expected reference to witness column as first argument for std::prover::set_hint, but got intermediate column N.y."]
+fn set_hint_no_col() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        let y: expr = x;
+        std::prover::set_hint(y, query |_| std::prover::Query::Hint(1));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Column N.x already has a hint set, but tried to add another one."]
+fn set_hint_twice() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        std::prover::set_hint(x, query |_| std::prover::Query::Hint(1));
+        std::prover::set_hint(x, query |_| std::prover::Query::Hint(2));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Column N.x already has a hint set, but tried to add another one."]
+fn set_hint_twice_in_constr() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let y;
+        {
+            let x;
+            std::prover::set_hint(x, query |_| std::prover::Query::Hint(1));
+            std::prover::set_hint(x, query |_| std::prover::Query::Hint(2));
+        };
     "#;
     analyze_string::<GoldilocksField>(input);
 }

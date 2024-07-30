@@ -43,6 +43,10 @@ lazy_static! {
         ("std::field::modulus", ("", "-> int")),
         ("std::prelude::challenge", ("", "int, int -> expr")),
         ("std::prover::degree", ("", "-> int")),
+        (
+            "std::prover::set_hint",
+            ("", "expr, (int -> std::prover::Query) -> ()")
+        ),
         ("std::prover::eval", ("", "expr -> fe")),
     ]
     .into_iter()

@@ -308,7 +308,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 10] = [
+const BUILTINS: [(&str, BuiltinFunction); 11] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -317,6 +317,7 @@ const BUILTINS: [(&str, BuiltinFunction); 10] = [
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prelude::challenge", BuiltinFunction::Challenge),
+    ("std::prover::set_hint", BuiltinFunction::SetHint),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
@@ -341,6 +342,8 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
+    /// std::prover::set_hint: expr, (int -> std::prover::Query) -> (), adds a hint to a witness column.
+    SetHint,
     /// std::prover::degree: -> int, returns the current column length / degree.
     Degree,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
@@ -549,6 +552,16 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         Err(EvalError::Unsupported(format!(
             "Tried to create column outside of statement context: {name}"
         )))
+    }
+
+    fn set_hint(
+        &mut self,
+        _col: Arc<Value<'a, T>>,
+        _expr: Arc<Value<'a, T>>,
+    ) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to add hint to column outside of statement context.".to_string(),
+        ))
     }
 
     fn add_constraints(
@@ -1105,6 +1118,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::ToFe => 1,
         BuiltinFunction::ToInt => 1,
         BuiltinFunction::Challenge => 2,
+        BuiltinFunction::SetHint => 2,
         BuiltinFunction::Degree => 0,
         BuiltinFunction::Eval => 1,
     };
@@ -1140,7 +1154,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             } else {
                 print!("{msg}");
             }
-            Value::Array(Default::default()).into()
+            Value::Tuple(vec![]).into()
         }
         BuiltinFunction::ToExpr => {
             let arg = arguments.pop().unwrap();
@@ -1172,6 +1186,12 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
                 stage: u32::try_from(stage).unwrap(),
             }))
             .into()
+        }
+        BuiltinFunction::SetHint => {
+            let expr = arguments.pop().unwrap();
+            let col = arguments.pop().unwrap();
+            symbols.set_hint(col, expr)?;
+            Value::Tuple(vec![]).into()
         }
         BuiltinFunction::Degree => symbols.degree()?,
         BuiltinFunction::Eval => {
