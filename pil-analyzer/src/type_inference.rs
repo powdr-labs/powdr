@@ -35,10 +35,15 @@ pub fn infer_types(
     TypeChecker::new().infer_types(definitions, expressions)
 }
 
-/// Unifies two types, ensuring that they are compatible.
-/// This function is used to check that types used in traits are compatible.
+/// Attempts to unify the types `ty1` and `ty2`, and returns an error if they overlap.
+/// If the unification is successful, an error is returned indicating that the
+/// types overlap. If the unification fails, `Ok(())` is returned, indicating
+/// that the types are compatible.
 pub fn unify_traits_types(ty1: Type, ty2: Type) -> Result<(), String> {
-    TypeChecker::new().unify_traits_types(ty1, ty2)
+    match TypeChecker::new().unify_types(ty1.clone(), ty2.clone()) {
+        Ok(_) => Err(format!("Types {ty1} and {ty2} overlap")),
+        Err(_) => Ok(()),
+    }
 }
 
 /// A type to expect and a flag that says if arrays of that type are also fine.
@@ -198,7 +203,7 @@ impl TypeChecker {
         self.verify_type_schemes(inferred_types)
     }
 
-    pub fn unify_traits_types(&mut self, ty1: Type, ty2: Type) -> Result<(), String> {
+    pub fn unify_types(&mut self, ty1: Type, ty2: Type) -> Result<(), String> {
         self.unifier.unify_types(ty1, ty2)
     }
 

@@ -444,6 +444,12 @@ impl PILAnalyzer {
         Driver(self)
     }
 
+    /// Checks for overlapping trait implementations in the current `PILAnalyzer` instance.
+    ///
+    /// This method iterates through all the trait implementations.
+    /// For each implementation, it checks that the number of type variables in the implementation matches
+    /// the number of type variables in the corresponding trait declaration. It also checks that there
+    /// are no traits with overlapping type vars.
     fn check_traits_overlap(&self) {
         for implementations in self.implementations.values() {
             for (i, (sr1, impl1)) in implementations.iter().enumerate() {
@@ -515,18 +521,11 @@ impl PILAnalyzer {
                         );
                     }
 
-                    self.check_traits_pairs(&impl1.type_scheme.ty, &impl2.type_scheme.ty)
+                    unify_traits_types(impl1.type_scheme.ty.clone(), impl2.type_scheme.ty.clone())
                         .map_err(|err| sr1.with_error(format!("Impls for {absolute_name}: {err}")))
                         .unwrap()
                 }
             }
-        }
-    }
-
-    fn check_traits_pairs(&self, tuple1: &Type, tuple2: &Type) -> Result<(), String> {
-        match unify_traits_types(tuple1.clone(), tuple2.clone()) {
-            Ok(_) => Err(format!("Types {tuple1} and {tuple2} overlap")),
-            Err(_) => Ok(()),
         }
     }
 }
