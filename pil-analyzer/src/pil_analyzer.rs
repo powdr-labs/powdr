@@ -8,7 +8,7 @@ use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::{ArrayType, TupleType, Type};
+use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
@@ -23,8 +23,9 @@ use powdr_ast::analyzed::{
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::SourceRef;
 
+use crate::traits_processor::check_traits_overlap;
 use crate::type_builtins::constr_function_statement_type;
-use crate::type_inference::{infer_types, unify_traits_types};
+use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
 
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
@@ -52,7 +53,8 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     analyzer.side_effect_check();
-    analyzer.check_traits_overlap();
+    let driver = analyzer.driver();
+    check_traits_overlap(&analyzer.implementations, &analyzer.definitions, driver);
     analyzer.type_check();
     analyzer.condense()
 }
@@ -73,7 +75,7 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
-    implementations: HashMap<String, Vec<(SourceRef, TraitImplementation<parsed::Expression>)>>,
+    implementations: HashMap<String, Vec<(SourceRef, TraitImplementation<Expression>)>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -147,7 +149,7 @@ impl PILAnalyzer {
 
         for PILFile(file) in files {
             self.current_namespace = Default::default();
-            for statement in file {
+            for ref statement in file {
                 if let PilStatement::TraitImplementation(sr, trait_impl) = statement {
                     let mut counters = Counters::default();
                     let ti = StatementProcessor::new(
@@ -161,7 +163,7 @@ impl PILAnalyzer {
                         .or_default()
                         .push((sr.clone(), ti))
                 }
-                self.handle_statement(statement);
+                self.handle_statement(statement.clone());
             }
         }
     }
@@ -449,95 +451,10 @@ impl PILAnalyzer {
     fn driver(&self) -> Driver {
         Driver(self)
     }
-
-    /// Checks for overlapping trait implementations in the current `PILAnalyzer` instance.
-    ///
-    /// This method iterates through all the trait implementations.
-    /// For each implementation, it checks that there are no traits with overlapping type vars and the same name between them.
-    /// It also checks that the number of type variables in the implementation matches
-    /// the number of type variables in the corresponding trait declaration.
-    fn check_traits_overlap(&self) {
-        for implementations in self.implementations.values() {
-            for (i, (sr1, impl1)) in implementations.iter().enumerate() {
-                let Type::Tuple(TupleType { items: types1 }) = &impl1.type_scheme.ty else {
-                    panic!("Type from trait scheme is not a tuple.")
-                };
-                let absolute_name = self.driver().resolve_decl(impl1.name.name());
-
-                let trait_decl = self
-                    .definitions
-                    .get(&absolute_name)
-                    .unwrap_or_else(|| panic!("Trait {absolute_name} not found"))
-                    .1
-                    .as_ref()
-                    .unwrap_or_else(|| panic!("Trait definition for {absolute_name} not found"));
-
-                let trait_decl = match trait_decl {
-                    FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl,
-                    _ => unreachable!("Invalid trait declaration"),
-                };
-
-                if types1.len() != trait_decl.type_vars.len() {
-                    panic!(
-                        "{}",
-                        sr1.with_error(format!(
-                            "Trait {} has {} type vars, but implementation has {}",
-                            absolute_name,
-                            trait_decl.type_vars.len(),
-                            types1.len(),
-                        ))
-                    );
-                }
-
-                for (sr2, impl2) in
-                    implementations
-                        .iter()
-                        .skip(i + 1)
-                        .filter_map(|stmt2| match stmt2 {
-                            (sr2, impl_) if impl_.name == impl1.name => Some((sr2, impl_)),
-                            _ => None,
-                        })
-                {
-                    let Type::Tuple(TupleType { items: types2 }) = &impl2.type_scheme.ty else {
-                        panic!("Type from trait scheme is not a tuple.")
-                    };
-
-                    if types2.len() != trait_decl.type_vars.len() {
-                        panic!(
-                            "{}",
-                            sr2.with_error(format!(
-                                "Trait {} has {} type vars, but implementation has {}",
-                                self.driver().resolve_decl(impl2.name.name()),
-                                trait_decl.type_vars.len(),
-                                types2.len(),
-                            ))
-                        );
-                    }
-
-                    if types1.len() != types2.len() {
-                        panic!(
-                            "{}",
-                            sr1.with_error(format!(
-                                "Impl types have different lengths: {} with {} vs {} with {}",
-                                self.driver().resolve_decl(impl1.name.name()),
-                                types1.len(),
-                                self.driver().resolve_decl(impl2.name.name()),
-                                types2.len()
-                            ))
-                        );
-                    }
-
-                    unify_traits_types(impl1.type_scheme.ty.clone(), impl2.type_scheme.ty.clone())
-                        .map_err(|err| sr1.with_error(format!("Impls for {absolute_name}: {err}")))
-                        .unwrap()
-                }
-            }
-        }
-    }
 }
 
 #[derive(Clone, Copy)]
-struct Driver<'a>(&'a PILAnalyzer);
+pub struct Driver<'a>(&'a PILAnalyzer);
 
 impl<'a> AnalysisDriver for Driver<'a> {
     fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath {
