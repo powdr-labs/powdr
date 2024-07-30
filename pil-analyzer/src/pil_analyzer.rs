@@ -490,6 +490,7 @@ impl PILAnalyzer {
                     let Type::Tuple(TupleType { items: types2 }) = &impl2.type_scheme.ty else {
                         panic!("Type from trait scheme is not a tuple.")
                     };
+
                     if types2.len() != trait_decl.type_vars.len() {
                         panic!(
                             "{}",
@@ -506,9 +507,11 @@ impl PILAnalyzer {
                         panic!(
                             "{}",
                             sr1.with_error(format!(
-                                "Impl types have different lengths: {} vs {}",
+                                "Impl types have different lengths: {} with {} vs {} with {}",
                                 self.driver().resolve_decl(impl1.name.name()),
+                                types1.len(),
                                 self.driver().resolve_decl(impl2.name.name()),
+                                types2.len()
                             ))
                         );
                     }
