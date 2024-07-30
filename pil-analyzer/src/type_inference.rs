@@ -271,14 +271,18 @@ impl TypeChecker {
                 });
                 self.expect_type_allow_fe_or_int(&arr, value, &return_type)
             }
+            Type::Inter => {
+                // Values of intermediate columns have type `expr`
+                self.expect_type(&Type::Expr, value)
+            }
             Type::Array(ArrayType {
                 base,
                 length: Some(_),
-            }) if base.as_ref() == &Type::Expr => {
+            }) if base.as_ref() == &Type::Inter => {
                 // An array of intermediate columns with fixed length. We ignore the length.
                 // The condenser will have to check the actual length.
                 let arr = Type::Array(ArrayType {
-                    base: base.clone(),
+                    base: Type::Expr.into(),
                     length: None,
                 });
                 self.expect_type(&arr, value)

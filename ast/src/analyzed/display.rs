@@ -108,7 +108,7 @@ impl<T: Display> Display for Analyzed<T> {
                             writeln_indented(
                                 f,
                                 format!(
-                                    "let {name}: expr[{length}] = [{}];",
+                                    "col {name}[{length}] = [{}];",
                                     definition.iter().format(", ")
                                 ),
                             )?;

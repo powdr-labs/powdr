@@ -271,12 +271,12 @@ machine Arith with
 
     let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] * 2**16 + x[2 * i]);
     // Intermediate polynomials, arrays of 8 columns, 32 bit per column.
-    let x1c: expr[8] = combine(x1);
-    let y1c: expr[8] = combine(y1);
-    let x2c: expr[8] = combine(x2);
-    let y2c: expr[8] = combine(y2);
-    let x3c: expr[8] = combine(x3);
-    let y3c: expr[8] = combine(y3);
+    col x1c[8] = combine(x1);
+    col y1c[8] = combine(y1);
+    col x2c[8] = combine(x2);
+    col y2c[8] = combine(y2);
+    col x3c[8] = combine(x3);
+    col y3c[8] = combine(y3);
 
     let CLK32: col[32] = array::new(32, |i| |row| if row % 32 == i { 1 } else { 0 });
     let CLK32_31: expr = CLK32[31];
@@ -449,6 +449,7 @@ machine Arith with
     link => byte2.check(carry_high[2]);
 
     // Carries can be any integer in the range [-2**31, 2**31 - 1)
+    // TODO should these be intermediate?
     let carry: expr[3] = array::new(3, |i| carry_high[i] * 2**16 + carry_low[i] - 2 ** 31);
     
     array::map(carry, |c| c * CLK32[0] = 0);

@@ -243,3 +243,41 @@ fn new_fixed_column_as_closure() {
     "#;
     analyze_string::<GoldilocksField>(input);
 }
+
+#[test]
+fn intermediate_syntax() {
+    let input = r#"namespace N(65536);
+    col witness x[5];
+    let inter: inter = x[2];
+    let inter_arr: inter[5] = x;
+"#;
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.intermediate_count(), 6);
+    let expected = r#"namespace N(65536);
+    col witness x[5];
+    col inter = N.x[2];
+    col inter_arr[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+fn intermediate_dynamic() {
+    let input = r#"namespace N(65536);
+    col witness x[5];
+    {
+        let inte: inter = x[2];
+        let inter_arr: inter[5] = x;
+        inte = 8;
+        inter_arr[3] = 9;
+    };
+"#;
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.intermediate_count(), 6);
+    let expected = r#"namespace N(65536);
+    col witness x[5];
+    col inter = N.x[2];
+    col inter_arr[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}

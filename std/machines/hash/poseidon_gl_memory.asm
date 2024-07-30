@@ -152,15 +152,17 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     pol commit output[OUTPUT_SIZE];
 
     // Add round constants
+    // TODO should these be intermediate?
     let a: expr[STATE_SIZE] = array::zip(state, C, |state, C| state + C);
 
     // Compute S-Boxes (x^7)
-    let x2: expr[STATE_SIZE] = array::map(a, |a| a * a);
-    let x4: expr[STATE_SIZE] = array::map(x2, |x2| x2 * x2);
-    let x6: expr[STATE_SIZE] = array::zip(x4, x2, |x4, x2| x4 * x2);
-    let x7: expr[STATE_SIZE] = array::zip(x6, a, |x6, a| x6 * a);
+    let x2: col[STATE_SIZE] = array::map(a, |a| a * a);
+    let x4: col[STATE_SIZE] = array::map(x2, |x2| x2 * x2);
+    let x6: col[STATE_SIZE] = array::zip(x4, x2, |x4, x2| x4 * x2);
+    let x7: col[STATE_SIZE] = array::zip(x6, a, |x6, a| x6 * a);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.
+    // TODO should these be intermediate?
     let b: expr[STATE_SIZE] = array::new(STATE_SIZE, |i| if i == 0 {
         x7[i]
     } else {
@@ -185,6 +187,7 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
 
     // Multiply with MDS Matrix
     let dot_product = |v1, v2| array::sum(array::zip(v1, v2, |v1_i, v2_i| v1_i * v2_i));
+    // TODO should these be intermediate?
     let c: expr[STATE_SIZE] = array::map(M, |M_row_i| dot_product(M_row_i, b));
 
     // Copy c to state in the next row

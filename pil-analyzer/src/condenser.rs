@@ -77,8 +77,8 @@ pub fn condense<T: FieldElement>(
                                 && matches!(
                                 &scheme.unwrap().ty,
                                 Type::Array(ArrayType { base, length: _ })
-                                if base.as_ref() == &Type::Expr),
-                            "Intermediate column type has to be expr[], but got: {}",
+                                if base.as_ref() == &Type::Inter),
+                            "Intermediate column type has to be inter[], but got: {}",
                             format_type_scheme_around_name(&name, &e.type_scheme)
                         );
                         let result = condenser.condense_to_array_of_algebraic_expressions(&e.e);
@@ -87,8 +87,8 @@ pub fn condense<T: FieldElement>(
                     } else {
                         assert_eq!(
                             e.type_scheme,
-                            Some(Type::Expr.into()),
-                            "Intermediate column type has to be expr, but got: {}",
+                            Some(Type::Inter.into()),
+                            "Intermediate column type has to be inter, but got: {}",
                             format_type_scheme_around_name(&name, &e.type_scheme)
                         );
                         vec![condenser.condense_to_algebraic_expression(&e.e)]
