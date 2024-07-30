@@ -730,3 +730,23 @@ fn new_fixed_column_wrong_type() {
     "#;
     type_check(input, &[]);
 }
+
+#[test]
+fn trait_with_user_defined_enum() {
+    let input = "
+    enum Bool { True, False }
+    
+    trait Not<T> {
+        not: T -> T,
+    }
+    
+    impl<T> Not<Bool> {
+        not: |b| match b {
+            Bool::True => Bool::False,
+            Bool::False => Bool::True,
+        },
+    }
+    let b: Bool = Not::not(Bool::True);
+    ";
+    type_check(input, &[("b", "", "Bool")]);
+}
