@@ -444,7 +444,7 @@ LabelStatement: FunctionStatement = {
 }
 
 // ---------------------------- Expressions -----------------------------
-// Expressions are parameterized with StructOption to be able to define when we want to allow them to become structs.
+// Expressions are parameterized with StructOption because in some cases, we want to disallow the parsing of struct expressions.
 // This allow us to use expression in two diferrent ways:
 //  Expression<TermWithStruct> allows structs
 //  Expression<TermWithoutStruct> does not allow structs
