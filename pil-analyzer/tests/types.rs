@@ -620,22 +620,23 @@ fn impl_with_diff_length() {
 #[test]
 fn impl_combined_test() {
     let input = "
-    trait Add<T, Q> {
-        add: T, T -> Q,
-    }
-
-    impl<T, Q> Add<int, Q> {
-        add: |a, b| std::convert::fe(a + b),
-    }
-    
-    let x: int -> fe = |q| match Add::add(q, 4) {
-        v => v,
-    };
-
-    let res: fe = x(5);
+    namespace std::convert(4);
+        let fe = || fe();
+    namespace F(4);
+        trait Add<T, Q> {
+            add: T, T -> Q,
+        }
+        impl<T, Q> Add<int, Q> {
+            add: |a, b| std::convert::fe(a + b),
+        }
+        
+        let x: int -> fe = |q| match Add::add(q, 4) {
+            v => v,
+        };
+        let res: fe = x(5);
     ";
 
-    type_check(input, &[("res", "", "fe")]);
+    type_check(input, &[("F.res", "", "fe")]);
 }
 
 #[test]
