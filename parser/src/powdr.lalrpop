@@ -701,19 +701,6 @@ GenericTraitName: (SymbolPath, TypeScheme) = {
         (name, TypeScheme{ vars, ty: Type::Tuple(TupleType{items}) })
 }
 
-TraitImplementation: TraitImplementation<Expression> = {
-    "impl" <type_scheme: GenericTraitName> "{" <functions:NamedExpressions> "}" => TraitImplementation { name: type_scheme.0, type_scheme: type_scheme.1, functions }
-}
-
-NamedExpressions: Vec<NamedExpression<Expression>> = {
-    => vec![],
-    <mut list:( <NamedExpression> "," )*> <end:NamedExpression> ","?  => { list.push(end); list }
-}
-
-NamedExpression: NamedExpression<Expression> = {
-    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
-}
-
 TraitDeclaration: TraitDeclaration<Expression> = {
     "trait" <name:Identifier> <type_vars:("<" <TraitVars> ">")> "{" <functions:TraitFunctions> "}" => TraitDeclaration { name, type_vars, functions }
 }
@@ -729,6 +716,19 @@ TraitFunctions: Vec<TraitFunction<Expression>> = {
 
 TraitFunction: TraitFunction<Expression> = {
     <name:Identifier> ":" <params:TypeTermList<Expression>> "->" <value:TypeTermBox<Expression>> => TraitFunction { name, ty: Type::Function(FunctionType{params, value}) }
+}
+
+TraitImplementation: TraitImplementation<Expression> = {
+    "impl" <type_scheme: GenericTraitName> "{" <functions:NamedExpressions> "}" => TraitImplementation { name: type_scheme.0, type_scheme: type_scheme.1, functions }
+}
+
+NamedExpressions: Vec<NamedExpression<Expression>> = {
+    => vec![],
+    <mut list:( <NamedExpression> "," )*> <end:NamedExpression> ","?  => { list.push(end); list }
+}
+
+NamedExpression: NamedExpression<Expression> = {
+    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
 }
 
 // ---------------------------- Type Declarations -----------------------------

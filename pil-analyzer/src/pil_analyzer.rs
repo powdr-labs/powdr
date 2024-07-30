@@ -148,12 +148,18 @@ impl PILAnalyzer {
         for PILFile(file) in files {
             self.current_namespace = Default::default();
             for statement in file {
-                if let PilStatement::TraitImplementation(ref sr, ref trait_impl) = statement {
-                    let name = trait_impl.name.to_string();
+                if let PilStatement::TraitImplementation(sr, trait_impl) = statement {
+                    let mut counters = Counters::default();
+                    let ti = StatementProcessor::new(
+                        self.driver(),
+                        &mut counters,
+                        self.polynomial_degree,
+                    )
+                    .process_trait_implementation(trait_impl.clone());
                     self.implementations
-                        .entry(name)
+                        .entry(ti.name.name().clone())
                         .or_default()
-                        .push((sr.clone(), trait_impl.clone()));
+                        .push((sr.clone(), ti))
                 }
                 self.handle_statement(statement);
             }

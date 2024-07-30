@@ -11,6 +11,7 @@ use powdr_ast::parsed::{
     ArrayLiteral, EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression,
     PilStatement, PolynomialName, SelectedExpressions, TraitDeclaration, TraitFunction,
 };
+use powdr_ast::parsed::{NamedExpression, TraitImplementation};
 
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
@@ -641,6 +642,30 @@ where
         TraitDeclaration {
             name: self.driver.resolve_decl(&trait_decl.name),
             type_vars: trait_decl.type_vars,
+            functions,
+        }
+    }
+
+    pub fn process_trait_implementation(
+        &self,
+        trait_impl: parsed::TraitImplementation<parsed::Expression>,
+    ) -> TraitImplementation<Expression> {
+        let type_vars = trait_impl.type_scheme.vars.vars().collect();
+        let functions = trait_impl
+            .functions
+            .iter()
+            .map(|named| NamedExpression {
+                name: named.name.clone(),
+                body: Box::new(
+                    self.expression_processor(&type_vars)
+                        .process_expression(named.body.as_ref().clone()),
+                ),
+            })
+            .collect();
+
+        TraitImplementation {
+            name: trait_impl.name,
+            type_scheme: trait_impl.type_scheme,
             functions,
         }
     }
