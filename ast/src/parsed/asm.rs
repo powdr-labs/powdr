@@ -45,7 +45,7 @@ pub enum ModuleStatement {
 }
 
 impl ModuleStatement {
-    pub fn defined_name(&self) -> impl Iterator<Item = &String> {
+    pub fn defined_names(&self) -> impl Iterator<Item = &String> {
         match self {
             ModuleStatement::SymbolDefinition(d) => once(&d.name),
             ModuleStatement::TraitImplementation(t) => once(t.name.name()),

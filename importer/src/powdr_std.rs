@@ -105,7 +105,10 @@ impl Folder for StdAdder {
 
         // Check whether the module already has a definition for `std`
         // (E.g. the main module)
-        let has_std = statements.iter().any(|m| m.defined_name() == "std");
+        let has_std = statements
+            .iter()
+            .flat_map(|m| m.defined_names())
+            .any(|n| n == "std");
 
         if !has_std {
             // If not, add `use super::std;`
