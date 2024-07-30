@@ -230,7 +230,7 @@ fn new_fixed_column() {
 }
 
 #[test]
-#[should_panic = "Error creating fixed column N.fi: Lambda expression must not reference outer variables."]
+#[should_panic = "Error creating fixed column N.fi: Lambda expression must not reference outer variables: (|i| (i + j) * 2)"]
 fn new_fixed_column_as_closure() {
     let input = r#"namespace N(16);
         let f = constr |j| {
@@ -355,11 +355,12 @@ fn set_hint_twice_in_constr() {
         let set_hint = 8;
         enum Query { Hint(fe), None, }
     namespace N(16);
+        let y;
         {
             let x;
             std::prover::set_hint(x, query |_| std::prover::Query::Hint(1));
             std::prover::set_hint(x, query |_| std::prover::Query::Hint(2));
-        }
+        };
     "#;
     analyze_string::<GoldilocksField>(input);
 }
