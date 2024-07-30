@@ -218,18 +218,21 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         } = if self.stage == 0 {
             machines::machine_extractor::split_out_machines(&fixed, retained_identities)
         } else {
-            let fixed_lookup = FixedLookup::new(fixed.global_range_constraints().clone());
-            let machines = Vec::new();
-            let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
-            let base_identities = identities
+            // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
+            // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
+            // on witness columns of more than one machine.
+            // Therefore, we treat everything as one big machines. Also, we remove lookups and permutations,
+            // as they are assumed to be handled in stage 0.
+            let polynomial_identities = identities
                 .iter()
                 .filter(|identity| identity.kind == IdentityKind::Polynomial)
                 .collect::<Vec<_>>();
             ExtractionOutput {
-                fixed_lookup,
-                machines,
-                base_identities,
-                base_witnesses: all_witnesses,
+                // This FixedLookup instance will never be called, because we removed lookups and permutations.
+                fixed_lookup: FixedLookup::new(fixed.global_range_constraints().clone()),
+                machines: Vec::new(),
+                base_identities: polynomial_identities,
+                base_witnesses: fixed.witness_cols.keys().collect::<HashSet<_>>(),
             }
         };
         let mut query_callback = self.query_callback;

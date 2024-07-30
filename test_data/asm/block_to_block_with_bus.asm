@@ -26,12 +26,10 @@ machine Arith with
 
     let used = std::array::sum(sel);
 
-
-    // ==== Begin bus: Send tuple (0, x, y, z) with ARITH_INTERACTION_ID ====
-
-    /*
+    // ==== Begin bus: Receive tuple (0, x, y, z) with ARITH_INTERACTION_ID ====
 
     // Non-extension case, can be useful for debugging
+    /*
     let alpha = from_base(challenge(0, 1));
     let beta = from_base(challenge(0, 2));
 
@@ -39,7 +37,6 @@ machine Arith with
     col witness stage(1) acc;
 
     bus_receive(is_first, ARITH_INTERACTION_ID, [0, x, y, z], latch * used, [acc], alpha, beta);
-
     */
 
     let alpha1: expr = challenge(0, 1);
@@ -94,9 +91,8 @@ machine Main with
 
     // ==== Begin bus: Send tuple (0, x, y, z) with ARITH_INTERACTION_ID ====
 
-    /*
-
     // Non-extension case, can be useful for debugging
+    /*
     let alpha = from_base(challenge(0, 1));
     let beta = from_base(challenge(0, 2));
 
