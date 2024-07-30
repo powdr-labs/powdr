@@ -11,9 +11,9 @@ use std::machines::split::split_gl::SplitGL;
 // This version of the Poseidon machine receives memory pointers and interacts
 // with memory directly to fetch its inputs and write its outputs.
 // In comparison to std::machines::hash::poseidon_gl::PoseidonGL, this machine has:
-// - 18 extra witness columns:
+// - 20 extra witness columns:
 //   - 12 to make the input state available in all rows
-//   - 3 to make the time step, input address, and output address available in all rows
+//   - 5 to make the time step, input addresses, and output address available in all rows
 //   - 2 to store the low and high words of the memory read
 //   - 1 to store whether a memory read should be done (could be removed if we use an intermediate polynomial, see below)
 // - 16 extra fixed columns to store a one-hot encoding of the row number (for the first 12 + 4 rows)
@@ -33,14 +33,16 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // When the hash function is used only once, the capacity elements should be
     // set to constants, where different constants can be used to define different
     // hash functions.
-    // The input data is passed via a memory pointer: The machine will read 24
+    // The input data is passed via 3 memory pointers: The machine will read 24
     // 32-Bit machine words, interpreted as 12 field elements stored in little-endian
-    // format.
+    // format. Of those, the first 8 are expected at input_addr1, the second 8 at
+    // input_addr2, and the last 8 at input_addr3. These memory regions must not
+    // overlap.
     // Similarly, the output data is written to memory at the provided pointer as
     // 8 32-Bit machine words representing 4 field elements in little-endian format
     // (in canonical form).
     // Reads happen at the provided time step; writes happen at the next time step.
-    operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
+    operation poseidon_permutation<0> input_addr1, input_addr2, input_addr3, output_addr, time_step ->;
 
     col witness operation_id;
 
@@ -75,10 +77,12 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
 
     // Repeat the time step and input / output address in the whole block
     col witness time_step;
-    col witness input_addr;
+    col witness input_addr1, input_addr2, input_addr3;
     col witness output_addr;
     unchanged_until(time_step, LAST);
-    unchanged_until(input_addr, LAST);
+    unchanged_until(input_addr1, LAST);
+    unchanged_until(input_addr2, LAST);
+    unchanged_until(input_addr3, LAST);
     unchanged_until(output_addr, LAST);
     
     // One-hot encoding of the row number (for the first <STATE_SIZE + OUTPUT_SIZE> rows)
@@ -89,13 +93,15 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     col witness word_low, word_high;
 
     // Do *two* memory reads in each of the first STATE_SIZE rows
-    // For input i, we expect the low word at address input_addr + 8 * i and
-    // the high word at address input_addr + 8 * i + 4
+    // For input i, we expect the low word at address input_addr + 8 * (i % 4) and
+    // the high word at address input_addr + 8 * (i % 4) + 4
+    // (where input_addr is one of input_addr1, input_addr2, input_addr3)
     // TODO: This could be an intermediate polynomial, but for some reason estark-starky
     // fails then, so we keep it as a witness for now
     let do_mload;
     do_mload = used * sum(STATE_SIZE, |i| CLK[i]);
-    let input_index = sum(STATE_SIZE, |i| expr(i) * CLK[i]);
+    let input_index = sum(STATE_SIZE, |i| expr(i % 4) * CLK[i]);
+    let input_addr = sum(4, |i| CLK[i]) * input_addr1 + sum(4, |i| CLK[i + 4]) * input_addr2 + sum(4, |i| CLK[i + 8]) * input_addr3;
     link if do_mload ~> word_low = mem.mload(input_addr + 8 * input_index, time_step);
     link if do_mload ~> word_high = mem.mload(input_addr + 8 * input_index + 4, time_step);
 

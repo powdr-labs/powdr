@@ -10,6 +10,8 @@ machine Main with degree: 65536 {
     reg X2[<=];
     reg ADDR1[<=];
     reg ADDR2[<=];
+    reg ADDR3[<=];
+    reg ADDR4[<=];
 
     ByteCompare byte_compare;
     SplitGL split(byte_compare);
@@ -24,7 +26,7 @@ machine Main with degree: 65536 {
         link ~> memory.mstore(ADDR1 + 4, STEP, X1);
 
     PoseidonGLMemory poseidon(memory, split);
-    instr poseidon ADDR1, ADDR2 -> link ~> poseidon.poseidon_permutation(ADDR1, ADDR2, STEP);
+    instr poseidon ADDR1, ADDR2, ADDR3, ADDR4 -> link ~> poseidon.poseidon_permutation(ADDR1, ADDR2, ADDR3, ADDR4, STEP);
 
     col witness val_low, val_high;
     instr assert_eq ADDR1, X1 ->
@@ -52,7 +54,7 @@ machine Main with degree: 65536 {
         mstore_le 80, 0, 0;
         mstore_le 88, 0, 0;
  
-        poseidon 0, 0;
+        poseidon 0, 32, 64, 0;
 
         assert_eq 0, 4330397376401421145;
         assert_eq 8, 14124799381142128323;
@@ -72,7 +74,7 @@ machine Main with degree: 65536 {
         mstore_le 80, 0, 1;
         mstore_le 88, 0, 1;
 
-        poseidon 0, 0;
+        poseidon 0, 32, 64, 0;
 
         assert_eq 0, 16428316519797902711;
         assert_eq 8, 13351830238340666928;
@@ -93,7 +95,7 @@ machine Main with degree: 65536 {
         mstore_le 80, 0xffffffff, 0;
         mstore_le 88, 0xffffffff, 0;
 
-        poseidon 0, 0;
+        poseidon 0, 32, 64, 0;
 
         assert_eq 0, 13691089994624172887;
         assert_eq 8, 15662102337790434313;
@@ -115,7 +117,7 @@ machine Main with degree: 65536 {
         mstore_le 80, 0, 0;
         mstore_le 88, 0, 0;
 
-        poseidon 0, 0;
+        poseidon 0, 32, 64, 0;
 
         assert_eq 0, 1892171027578617759;
         assert_eq 8, 984732815927439256;
@@ -138,7 +140,7 @@ machine Main with degree: 65536 {
         mstore_le 188, 0, 0;
  
         // This will read bytes [100, 191] and write the result to bytes [104, 131]
-        poseidon 100, 104;
+        poseidon 100, 132, 164, 104;
 
         assert_eq 104, 4330397376401421145;
         assert_eq 112, 14124799381142128323;
