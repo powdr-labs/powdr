@@ -44,6 +44,15 @@ pub enum ModuleStatement {
     TraitImplementation(TraitImplementation<Expression>),
 }
 
+impl ModuleStatement {
+    pub fn defined_name(&self) -> impl Iterator<Item = &String> {
+        match self {
+            ModuleStatement::SymbolDefinition(d) => once(&d.name),
+            ModuleStatement::TraitImplementation(t) => once(&t.name),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SymbolDefinition {
     pub name: String,

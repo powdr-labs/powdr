@@ -49,14 +49,37 @@ static OUTER_CODE_NAME: &str = "witgen (outer code)";
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
+type WitgenCallbackFn<T> =
+    Arc<dyn Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)> + Send + Sync>;
+
 #[derive(Clone)]
-pub struct WitgenCallback<T> {
+pub struct WitgenCallback<T>(WitgenCallbackFn<T>);
+
+impl<T: FieldElement> WitgenCallback<T> {
+    pub fn new(f: WitgenCallbackFn<T>) -> Self {
+        WitgenCallback(f)
+    }
+
+    /// Computes the next-stage witness, given the current witness and challenges.
+    pub fn next_stage_witness(
+        &self,
+        current_witness: &[(String, Vec<T>)],
+        challenges: BTreeMap<u64, T>,
+        stage: u8,
+    ) -> Vec<(String, Vec<T>)> {
+        (self.0)(current_witness, challenges, stage)
+    }
+}
+
+pub struct WitgenCallbackContext<T> {
+    /// TODO: all these fields probably don't need to be Arc anymore, since the
+    /// Arc was moved one level up... but I have to investigate this further.
     analyzed: Arc<Analyzed<T>>,
     fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     query_callback: Arc<dyn QueryCallback<T>>,
 }
 
-impl<T: FieldElement> WitgenCallback<T> {
+impl<T: FieldElement> WitgenCallbackContext<T> {
     pub fn new(
         analyzed: Arc<Analyzed<T>>,
         fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
@@ -68,10 +91,6 @@ impl<T: FieldElement> WitgenCallback<T> {
             fixed_col_values,
             query_callback,
         }
-    }
-
-    pub fn with_pil(self, analyzed: Arc<Analyzed<T>>) -> Self {
-        Self { analyzed, ..self }
     }
 
     /// Computes the next-stage witness, given the current witness and challenges.

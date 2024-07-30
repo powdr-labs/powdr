@@ -420,6 +420,9 @@ impl<E: Display> Display for StatementInsideBlock<E> {
 impl<E: Display> Display for LetStatementInsideBlock<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "let {}", self.pattern)?;
+        if let Some(ty) = &self.ty {
+            write!(f, ": {ty}")?;
+        }
         if let Some(v) = &self.value {
             write!(f, " = {v};")
         } else {
@@ -631,25 +634,25 @@ impl<E: Display> Display for TraitImplementation<E> {
             format!("<{}>", self.type_scheme.vars)
         };
 
-        let Type::Tuple(TupleType { items }) = &self.type_scheme.ty else { panic!("Type from trait scheme is not a tuple.") };
-            let trait_vars = if items.is_empty() {
-                Default::default()
-            } else {
-                format!("<{}>", items.iter().format(", "))
-            };
-
-            write!(
-                f,
-                "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
-                trait_name = self.name,
-                methods = indent(
-                    self.functions.iter().map(|m| format!("{m},\n")).format(""),
-                    1
-                )
-            )
-        } else {
+        let Type::Tuple(TupleType { items }) = &self.type_scheme.ty else {
             panic!("Type from trait scheme is not a tuple.")
-        }
+        };
+
+        let trait_vars = if items.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", items.iter().format(", "))
+        };
+
+        write!(
+            f,
+            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+            trait_name = self.name,
+            methods = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        )
     }
 }
 
