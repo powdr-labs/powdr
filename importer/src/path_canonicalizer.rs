@@ -115,6 +115,12 @@ impl<'a> Folder for Canonicalizer<'a> {
                         }
                         .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
                     }
+                    ModuleStatement::TraitImplementation(mut trait_impl) => {
+                        for f in &mut trait_impl.functions {
+                            canonicalize_inside_expression(&mut f.body, &self.path, self.paths)
+                        }
+                        Some(Ok(ModuleStatement::TraitImplementation(trait_impl)))
+                    }
                 })
                 .collect::<Result<_, _>>()?,
         })

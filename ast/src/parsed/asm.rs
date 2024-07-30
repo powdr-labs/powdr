@@ -16,7 +16,7 @@ use crate::parsed::{BinaryOperation, BinaryOperator};
 
 use super::{
     visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, SourceReference,
-    TraitDeclaration, TypedExpression,
+    TraitDeclaration, TraitImplementation, TypedExpression,
 };
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -31,8 +31,9 @@ pub struct ASMModule {
 
 impl ASMModule {
     pub fn symbol_definitions(&self) -> impl Iterator<Item = &SymbolDefinition> {
-        self.statements.iter().map(|s| match s {
-            ModuleStatement::SymbolDefinition(d) => d,
+        self.statements.iter().filter_map(|s| match s {
+            ModuleStatement::SymbolDefinition(d) => Some(d),
+            ModuleStatement::TraitImplementation(_) => None,
         })
     }
 }
@@ -40,6 +41,16 @@ impl ASMModule {
 #[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum ModuleStatement {
     SymbolDefinition(SymbolDefinition),
+    TraitImplementation(TraitImplementation<Expression>),
+}
+
+impl ModuleStatement {
+    pub fn defined_names(&self) -> Option<&String> {
+        match self {
+            ModuleStatement::SymbolDefinition(d) => Some(&d.name),
+            ModuleStatement::TraitImplementation(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -519,7 +519,8 @@ mod test {
 
     #[test]
     fn exp_assoc() {
-        // we test this separately from other expressions, since although `x ** y ** z` is allowed in `AlgebraicExpression`, it is not produced by the analyzer due to type system restrictions
+        // We test this separately from other expressions, since although `x ** y ** z` is allowed in
+        // `AlgebraicExpression`, it is not produced by the analyzer due to type system restrictions
 
         let x = AlgebraicExpression::Reference(super::AlgebraicReference {
             name: "x".into(),
