@@ -107,7 +107,7 @@ impl Folder for StdAdder {
         // (E.g. the main module)
         let has_std = statements
             .iter()
-            .flat_map(|m| m.defined_names())
+            .filter_map(|m| m.defined_names())
             .any(|n| n == "std");
 
         if !has_std {
