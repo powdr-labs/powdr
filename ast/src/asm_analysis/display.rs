@@ -60,6 +60,9 @@ impl Display for AnalysisASMFile {
                 Item::TypeDeclaration(enum_decl) => {
                     write_indented_by(f, enum_decl, current_path.len())?
                 }
+                Item::TraitImplementation(trait_impl) => {
+                    write_indented_by(f, trait_impl, current_path.len())?
+                }
                 Item::TraitDeclaration(trait_decl) => {
                     write_indented_by(f, trait_decl, current_path.len())?
                 }

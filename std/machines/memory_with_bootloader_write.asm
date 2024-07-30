@@ -5,14 +5,12 @@ use std::machines::range::Byte2;
 /// where in addition to mstore, there is an mstore_bootloader operation. It behaves
 /// just like mstore, except that the first access to each memory cell must come
 /// from the mstore_bootloader operation.
-machine MemoryWithBootloaderWrite with
+machine MemoryWithBootloaderWrite(byte2: Byte2) with
     latch: LATCH,
     operation_id: operation_id,
     call_selectors: selectors,
 {
     // lower bound degree is 65536
-
-    Byte2 byte2;
 
     operation mload<0> m_addr, m_step -> m_value;
     operation mstore<1> m_addr, m_step, m_value ->;

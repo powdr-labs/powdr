@@ -4,6 +4,7 @@
 // entry to the memory machine). Because of this, processing the link should not be skipped.
 
 use std::machines::memory::Memory;
+use std::machines::range::Byte2;
 
 machine MemoryProxy with
     latch: latch,
@@ -15,7 +16,8 @@ machine MemoryProxy with
     col witness operation_id;
     col fixed latch = [1]*;
 
-    Memory mem;
+    Byte2 byte2;
+    Memory mem(byte2);
 
     col witness addr, step, value;
     
@@ -26,7 +28,7 @@ machine MemoryProxy with
     link if used ~> mem.mstore(addr, step, value);
 }
 
-machine Main with degree: 1024 {
+machine Main with degree: 8 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

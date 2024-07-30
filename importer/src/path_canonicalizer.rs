@@ -115,6 +115,12 @@ impl<'a> Folder for Canonicalizer<'a> {
                         }
                         .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
                     }
+                    ModuleStatement::TraitImplementation(mut trait_impl) => {
+                        for f in &mut trait_impl.functions {
+                            canonicalize_inside_expression(&mut f.body, &self.path, self.paths)
+                        }
+                        Some(Ok(ModuleStatement::TraitImplementation(trait_impl)))
+                    }
                 })
                 .collect::<Result<_, _>>()?,
         })
@@ -587,7 +593,11 @@ fn check_module(
                 if let Some(type_scheme) = type_scheme {
                     check_type_scheme(&location, type_scheme, state, &Default::default())?;
                 }
-                check_expression(&location, e, state, &HashSet::default())?
+                let type_vars = type_scheme
+                    .as_ref()
+                    .map(|ts| ts.vars.vars().collect())
+                    .unwrap_or_default();
+                check_expression(&location, e, state, &type_vars, &HashSet::default())?
             }
             SymbolValue::TypeDeclaration(enum_decl) => {
                 check_type_declaration(&location, enum_decl, state)?
@@ -633,25 +643,49 @@ fn check_machine(
                 check_path(module_location.clone().join(path.clone()), state)
                     .map_err(|e| source_ref.with_error(e))?;
                 args.iter().try_for_each(|expr| {
-                    check_expression(&module_location, expr, state, &local_variables)
+                    check_expression(
+                        &module_location,
+                        expr,
+                        state,
+                        &Default::default(),
+                        &local_variables,
+                    )
                 })?
             }
             MachineStatement::FunctionDeclaration(_, _, _, statements) => statements
                 .iter()
                 .flat_map(|s| s.children())
                 .flat_map(free_inputs_in_expression)
-                .try_for_each(|e| check_expression(&module_location, e, state, &local_variables))?,
+                .try_for_each(|e| {
+                    check_expression(
+                        &module_location,
+                        e,
+                        state,
+                        &Default::default(),
+                        &local_variables,
+                    )
+                })?,
             MachineStatement::Pil(_, statement) => {
+                let type_vars;
                 if let PilStatement::LetStatement(_, _, Some(type_scheme), _) = statement {
                     check_type_scheme(&module_location, type_scheme, state, &local_variables)?;
-                }
+                    type_vars = type_scheme.vars.vars().collect();
+                } else {
+                    type_vars = Default::default();
+                };
                 statement.children().try_for_each(|e| {
-                    check_expression(&module_location, e, state, &local_variables)
+                    check_expression(&module_location, e, state, &type_vars, &local_variables)
                 })?
             }
             MachineStatement::LinkDeclaration(_, d) => {
                 for e in d.children() {
-                    check_expression(&module_location, e, state, &local_variables)?;
+                    check_expression(
+                        &module_location,
+                        e,
+                        state,
+                        &Default::default(),
+                        &local_variables,
+                    )?;
                 }
             }
             MachineStatement::InstructionDeclaration(_, _, instr) => {
@@ -664,7 +698,13 @@ fn check_machine(
                         .filter_map(|p| p.ty.as_ref().map(|_| p.name.clone())),
                 );
                 for e in instr.children() {
-                    check_expression(&module_location, e, state, &local_variables)?;
+                    check_expression(
+                        &module_location,
+                        e,
+                        state,
+                        &Default::default(),
+                        &local_variables,
+                    )?;
                 }
             }
             _ => {}
@@ -684,6 +724,7 @@ fn check_expression(
     location: &AbsoluteSymbolPath,
     e: &Expression,
     state: &mut State<'_>,
+    type_vars: &HashSet<&String>,
     local_variables: &HashSet<String>,
 ) -> Result<(), Error> {
     // We cannot use the visitor here because we need to change the local variables
@@ -702,7 +743,7 @@ fn check_expression(
             Ok(())
         }
         Expression::Tuple(_, items) | Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
-            check_expressions(location, items, state, local_variables)
+            check_expressions(location, items, state, type_vars, local_variables)
         }
         Expression::LambdaExpression(
             _,
@@ -716,7 +757,7 @@ fn check_expression(
             // Add the local variables, ignore collisions.
             let mut local_variables = local_variables.clone();
             local_variables.extend(check_patterns(location, params, state)?);
-            check_expression(location, body, state, &local_variables)
+            check_expression(location, body, state, type_vars, &local_variables)
         }
         Expression::BinaryOperation(
             _,
@@ -725,12 +766,12 @@ fn check_expression(
             },
         )
         | Expression::IndexAccess(_, IndexAccess { array: a, index: b }) => {
-            check_expression(location, a.as_ref(), state, local_variables)?;
-            check_expression(location, b.as_ref(), state, local_variables)
+            check_expression(location, a.as_ref(), state, type_vars, local_variables)?;
+            check_expression(location, b.as_ref(), state, type_vars, local_variables)
         }
         Expression::UnaryOperation(_, UnaryOperation { expr, .. })
         | Expression::FreeInput(_, expr) => {
-            check_expression(location, expr, state, local_variables)
+            check_expression(location, expr, state, type_vars, local_variables)
         }
         Expression::FunctionCall(
             _,
@@ -739,15 +780,15 @@ fn check_expression(
                 arguments,
             },
         ) => {
-            check_expression(location, function, state, local_variables)?;
-            check_expressions(location, arguments, state, local_variables)
+            check_expression(location, function, state, type_vars, local_variables)?;
+            check_expressions(location, arguments, state, type_vars, local_variables)
         }
         Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
-            check_expression(location, scrutinee, state, local_variables)?;
+            check_expression(location, scrutinee, state, type_vars, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
                 let mut local_variables = local_variables.clone();
                 local_variables.extend(check_pattern(location, pattern, state)?);
-                check_expression(location, value, state, &local_variables)
+                check_expression(location, value, state, type_vars, &local_variables)
             })
         }
         Expression::IfExpression(
@@ -758,9 +799,9 @@ fn check_expression(
                 else_body,
             },
         ) => {
-            check_expression(location, condition, state, local_variables)?;
-            check_expression(location, body, state, local_variables)?;
-            check_expression(location, else_body, state, local_variables)
+            check_expression(location, condition, state, type_vars, local_variables)?;
+            check_expression(location, body, state, type_vars, local_variables)?;
+            check_expression(location, else_body, state, type_vars, local_variables)
         }
         Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
             let mut local_variables = local_variables.clone();
@@ -768,20 +809,24 @@ fn check_expression(
                 match statement {
                     StatementInsideBlock::LetStatement(LetStatementInsideBlock {
                         pattern,
+                        ty,
                         value,
                     }) => {
                         if let Some(value) = value {
-                            check_expression(location, value, state, &local_variables)?;
+                            check_expression(location, value, state, type_vars, &local_variables)?;
+                        }
+                        if let Some(ty) = ty {
+                            check_type::<u64>(location, ty, state, type_vars, &local_variables)?;
                         }
                         local_variables.extend(check_pattern(location, pattern, state)?);
                     }
                     StatementInsideBlock::Expression(expr) => {
-                        check_expression(location, expr, state, &local_variables)?;
+                        check_expression(location, expr, state, type_vars, &local_variables)?;
                     }
                 }
             }
             match expr {
-                Some(expr) => check_expression(location, expr, state, &local_variables),
+                Some(expr) => check_expression(location, expr, state, type_vars, &local_variables),
                 None => Ok(()),
             }
         }
@@ -792,11 +837,12 @@ fn check_expressions(
     location: &AbsoluteSymbolPath,
     expressions: &[Expression],
     state: &mut State<'_>,
+    type_vars: &HashSet<&String>,
     local_variables: &HashSet<String>,
 ) -> Result<(), Error> {
     expressions
         .iter()
-        .try_for_each(|e| check_expression(location, e, state, local_variables))
+        .try_for_each(|e| check_expression(location, e, state, type_vars, local_variables))
 }
 
 /// Checks paths in a pattern and returns the newly declared variables.
@@ -883,13 +929,16 @@ fn check_type_scheme(
     )
 }
 
-fn check_type(
+fn check_type<ArrayLengthType>(
     location: &AbsoluteSymbolPath,
-    ty: &Type<Expression>,
+    ty: &Type<ArrayLengthType>,
     state: &mut State<'_>,
     type_vars: &HashSet<&String>,
     local_variables: &HashSet<String>,
-) -> Result<(), Error> {
+) -> Result<(), Error>
+where
+    Type<ArrayLengthType>: Children<Expression>,
+{
     for p in ty.contained_named_types() {
         if let Some(id) = p.try_to_identifier() {
             if type_vars.contains(id) {
@@ -900,7 +949,7 @@ fn check_type(
             .map_err(|e| SourceRef::unknown().with_error(e))?;
     }
     ty.children()
-        .try_for_each(|e| check_expression(location, e, state, local_variables))
+        .try_for_each(|e| check_expression(location, e, state, type_vars, local_variables))
 }
 
 fn check_trait_declaration(
