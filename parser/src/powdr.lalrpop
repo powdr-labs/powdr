@@ -696,11 +696,6 @@ PatternList: Vec<Pattern> = {
 
 // ---------------------------- Trait/Impl Declaration -----------------------------
 
-GenericTraitName: (SymbolPath, TypeScheme) = {
-    <vars:("<" <TypeVarBounds> ">")> <name:SymbolPath> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
-        (name, TypeScheme{ vars, ty: Type::Tuple(TupleType{items}) })
-}
-
 TraitDeclaration: TraitDeclaration<Expression> = {
     "trait" <name:Identifier> <type_vars:("<" <TraitVars> ">")> "{" <functions:TraitFunctions> "}" => TraitDeclaration { name, type_vars, functions }
 }
@@ -731,6 +726,10 @@ NamedExpression: NamedExpression<Expression> = {
     <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
 }
 
+GenericTraitName: (SymbolPath, TypeScheme) = {
+    <vars:("<" <TypeVarBounds> ">")> <name:SymbolPath> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
+        (name, TypeScheme{ vars, ty: Type::Tuple(TupleType{items}) })
+}
 // ---------------------------- Type Declarations -----------------------------
 
 EnumDeclaration: EnumDeclaration<Expression> = {
