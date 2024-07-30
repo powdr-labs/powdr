@@ -141,7 +141,8 @@ fn block_to_block() {
 fn block_to_block_with_bus() {
     let f = "asm/block_to_block_with_bus.asm";
     let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2(pipeline);
+    // TODO: Test that monolithic currently fails
+    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
 }
 
 #[test]

@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
-    PolynomialType, SymbolKind, TypedExpression,
+    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
+    IdentityKind, PolyID, PolynomialType, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
@@ -215,7 +215,23 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             mut machines,
             base_identities,
             base_witnesses,
-        } = machines::machine_extractor::split_out_machines(&fixed, retained_identities);
+        } = if self.stage == 0 {
+            machines::machine_extractor::split_out_machines(&fixed, retained_identities)
+        } else {
+            let fixed_lookup = FixedLookup::new(fixed.global_range_constraints().clone());
+            let machines = Vec::new();
+            let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
+            let base_identities = identities
+                .iter()
+                .filter(|identity| identity.kind == IdentityKind::Polynomial)
+                .collect::<Vec<_>>();
+            ExtractionOutput {
+                fixed_lookup,
+                machines,
+                base_identities,
+                base_witnesses: all_witnesses,
+            }
+        };
         let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
             fixed_lookup: &mut fixed_lookup,
