@@ -318,12 +318,6 @@ impl<R: Display> From<TupleType<Expression<R>>> for TupleType<u64> {
     }
 }
 
-impl From<TupleType> for Type {
-    fn from(value: TupleType) -> Self {
-        Type::Tuple(value.clone())
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FunctionType<E = u64> {
     pub params: Vec<Type<E>>,

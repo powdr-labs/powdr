@@ -399,11 +399,6 @@ impl<'a, T> Closure<'a, T> {
 
 pub struct Definitions<'a>(pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>);
 
-// pub struct Definitions<'a>(
-//     pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-//     pub &'a HashMap<String, Vec<(SourceRef, TraitImplementation<Expression>)>>,
-// );
-
 impl<'a> Definitions<'a> {
     /// Implementation of `lookup` that allows to provide a different implementation
     /// of SymbolLookup for the recursive call.
