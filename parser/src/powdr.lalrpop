@@ -730,6 +730,8 @@ GenericTraitName: (SymbolPath, TypeScheme) = {
     <vars:("<" <TypeVarBounds> ">")> <name:SymbolPath> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
         (name, TypeScheme{ vars, ty: Type::Tuple(TupleType{items}) })
 }
+
+
 // ---------------------------- Type Declarations -----------------------------
 
 EnumDeclaration: EnumDeclaration<Expression> = {
