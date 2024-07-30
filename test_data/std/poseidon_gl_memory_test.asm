@@ -124,20 +124,8 @@ machine Main with degree: 65536 {
         assert_eq 16, 7866041765487844082;
         assert_eq 24, 8161503938059336191;
 
-        // Repeat the first test, but be fancy with the memory pointers being passed:
-
-        mstore_le 100, 0, 0;
-        mstore_le 108, 0, 0;
-        mstore_le 116, 0, 0;
-        mstore_le 124, 0, 0;
-        mstore_le 132, 0, 0;
-        mstore_le 140, 0, 0;
-        mstore_le 148, 0, 0;
-        mstore_le 156, 0, 0;
-        mstore_le 164, 0, 0;
-        mstore_le 172, 0, 0;
-        mstore_le 180, 0, 0;
-        mstore_le 188, 0, 0;
+        // Repeat the first test (hash an all-zero input), but be fancy with the memory pointers being passed.
+        // We don't need to initialize the memory cells, because uninitialized memory are read as zeros.
  
         // This will read bytes (100..132) + (148..180) + (200..232) and write the result to bytes (128..160)
         poseidon 100, 148, 200, 128;
