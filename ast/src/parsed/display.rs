@@ -631,7 +631,7 @@ impl<E: Display> Display for TraitImplementation<E> {
             format!("<{}>", self.type_scheme.vars)
         };
 
-        if let Type::Tuple(TupleType { items }) = &self.type_scheme.ty {
+        let Type::Tuple(TupleType { items }) = &self.type_scheme.ty else { panic!("Type from trait scheme is not a tuple.") };
             let trait_vars = if items.is_empty() {
                 Default::default()
             } else {
