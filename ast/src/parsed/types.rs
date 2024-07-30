@@ -421,12 +421,6 @@ impl From<Type> for TypeScheme {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TraitScheme {
-    pub vars: TypeBounds,
-    pub types: Vec<Type>,
-}
-
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default, Serialize, Deserialize, JsonSchema,
 )]

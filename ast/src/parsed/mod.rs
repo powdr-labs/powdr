@@ -19,7 +19,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use powdr_parser_util::SourceRef;
-use types::TraitScheme;
 
 use self::{
     asm::{Part, SymbolPath},
