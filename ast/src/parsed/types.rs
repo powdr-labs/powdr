@@ -453,4 +453,20 @@ impl TypeBounds {
     pub fn bounds(&self) -> impl Iterator<Item = (&String, &BTreeSet<String>)> {
         self.0.iter().map(|(n, x)| (n, x))
     }
+
+    pub fn format_vars_with_nonempty_bounds(&self) -> String {
+        self.0
+            .iter()
+            .filter(|(_, b)| !b.is_empty())
+            .map(|(var, b)| Self::format_var_bound(var, b))
+            .join(", ")
+    }
+
+    pub fn format_var_bound(var: &String, bounds: &BTreeSet<String>) -> String {
+        if bounds.is_empty() {
+            var.clone()
+        } else {
+            format!("{var}: {}", bounds.iter().join(" + "))
+        }
+    }
 }
