@@ -696,24 +696,6 @@ PatternList: Vec<Pattern> = {
 
 // ---------------------------- Trait/Impl Declaration -----------------------------
 
-GenericTraitName: (SymbolPath, TraitScheme) = {
-    <vars:("<" <TypeVarBounds> ">")> <name:SymbolPath> <types:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
-        (name, TraitScheme{ vars, types })
-}
-
-TraitImplementation: TraitImplementation<Expression> = {
-    "impl" <type_scheme: GenericTraitName> "{" <functions:ImplFunctions> "}" => TraitImplementation { name: type_scheme.0, type_scheme: type_scheme.1, functions }
-}
-
-ImplFunctions: Vec<NamedExpression<Expression>> = {
-    => vec![],
-    <mut list:( <ImplFunction> "," )*> <end:ImplFunction> ","  => { list.push(end); list }
-}
-
-ImplFunction: NamedExpression<Expression> = {
-    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
-}
-
 TraitDeclaration: TraitDeclaration<Expression> = {
     "trait" <name:Identifier> <type_vars:("<" <TraitVars> ">")> "{" <functions:TraitFunctions> "}" => TraitDeclaration { name, type_vars, functions }
 }
