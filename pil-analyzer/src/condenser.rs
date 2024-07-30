@@ -187,6 +187,8 @@ pub struct Condenser<'a, T> {
     new_columns: Vec<Symbol>,
     /// The hints and fixed column definitions added since the last extraction.
     new_column_values: HashMap<String, FunctionValueDefinition>,
+    /// The values of intermediate columns generated since the last extraction.
+    new_intermediate_column_values: HashMap<String, Vec<AlgebraicExpression<T>>>,
     /// The names of all new columns ever generated, to avoid duplicates.
     new_symbols: HashSet<String>,
     new_constraints: Vec<AnalyzedIdentity<T>>,
@@ -203,6 +205,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             counters,
             new_columns: vec![],
             new_column_values: Default::default(),
+            new_intermediate_column_values: Default::default(),
             new_symbols: HashSet::new(),
             new_constraints: vec![],
         }
@@ -341,25 +344,45 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn new_column(
         &mut self,
         name: &str,
+        ty: Option<&Type>,
         value: Option<Arc<Value<'a, T>>>,
         source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = self.find_unused_name(name);
-        let kind = SymbolKind::Poly(if value.is_some() {
-            PolynomialType::Constant
-        } else {
-            PolynomialType::Committed
-        });
-        let value = value
-            .map(|v| {
-                closure_to_function(&source, v.as_ref(), FunctionKind::Pure).map_err(|e| match e {
-                    EvalError::TypeError(e) => {
-                        EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
+        let kind = match (ty, &value) {
+            (Some(Type::Inter), Some(_)) => SymbolKind::Poly(PolynomialType::Intermediate),
+            (Some(Type::Col) | None, Some(_)) => SymbolKind::Poly(PolynomialType::Constant),
+            (Some(Type::Col) | None, None) => SymbolKind::Poly(PolynomialType::Committed),
+            _ => {
+                return Err(EvalError::TypeError(
+                    format!(
+                        "Invalid type for new column {name}: {}.",
+                        ty.map(|ty| ty.to_string()).unwrap_or_default(),
+                    )
+                    .into(),
+                ))
+            }
+        };
+
+        if kind == SymbolKind::Poly(PolynomialType::Intermediate) {
+            let Value::Expression(expr) = value.unwrap().as_ref().clone() else {
+                panic!("Expected algebraci expression");
+            };
+            self.new_intermediate_column_values
+                .insert(name.clone(), vec![expr]);
+        } else if let Some(value) = value {
+            let value =
+                closure_to_function(&source, value.as_ref(), FunctionKind::Pure).map_err(|e| {
+                    match e {
+                        EvalError::TypeError(e) => {
+                            EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
+                        }
+                        _ => e,
                     }
-                    _ => e,
-                })
-            })
-            .transpose()?;
+                })?;
+
+            self.new_column_values.insert(name.clone(), value);
+        }
 
         let symbol = Symbol {
             id: self.counters.dispense_symbol_id(kind, None),
@@ -373,9 +396,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
 
         self.new_symbols.insert(name.clone());
         self.new_columns.push(symbol.clone());
-        if let Some(value) = value {
-            self.new_column_values.insert(name.clone(), value);
-        }
+
         Ok(
             Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
                 name,

@@ -546,6 +546,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
     fn new_column(
         &mut self,
         name: &str,
+        _type: Option<&Type>,
         _value: Option<Arc<Value<'a, T>>>,
         _source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -650,16 +651,18 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 }
                 Operation::LetStatement(s) => {
                     let value = match (&s.ty, &s.value.as_ref()) {
-                        (Some(Type::Col), value) | (None, value @ None) => {
+                        (Some(Type::Col | Type::Inter), value) | (None, value @ None) => {
                             let Pattern::Variable(_, name) = &s.pattern else {
                                 unreachable!()
                             };
                             self.symbols.new_column(
                                 name,
+                                s.ty.as_ref(),
                                 value.map(|_| self.value_stack.pop().unwrap()),
                                 SourceRef::unknown(),
                             )?
                         }
+                        // TODO arrays of dynamic columns?
                         (_, Some(_)) => self.value_stack.pop().unwrap(),
                         _ => unreachable!(),
                     };
