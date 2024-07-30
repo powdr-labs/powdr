@@ -225,7 +225,7 @@ where
                     })
                     .ok();
                 Type::Array(ArrayType {
-                    base: Box::new(base_type.into()),
+                    base: Box::new(base_type),
                     length,
                 })
                 .into()
