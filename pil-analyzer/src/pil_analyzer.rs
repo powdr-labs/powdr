@@ -447,9 +447,9 @@ impl PILAnalyzer {
     /// Checks for overlapping trait implementations in the current `PILAnalyzer` instance.
     ///
     /// This method iterates through all the trait implementations.
-    /// For each implementation, it checks that the number of type variables in the implementation matches
-    /// the number of type variables in the corresponding trait declaration. It also checks that there
-    /// are no traits with overlapping type vars.
+    /// For each implementation, it checks that there are no traits with overlapping type vars and the same name between them.
+    /// It also checks that the number of type variables in the implementation matches
+    /// the number of type variables in the corresponding trait declaration.
     fn check_traits_overlap(&self) {
         for implementations in self.implementations.values() {
             for (i, (sr1, impl1)) in implementations.iter().enumerate() {
