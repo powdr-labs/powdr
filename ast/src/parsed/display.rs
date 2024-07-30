@@ -1019,17 +1019,13 @@ pub fn format_type_scheme_around_name<E: Display, N: Display>(
 
 impl Display for TypeBounds {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        fn format_var((var, bounds): (&String, &BTreeSet<String>)) -> String {
-            format!(
-                "{var}{}",
-                if bounds.is_empty() {
-                    String::new()
-                } else {
-                    format!(": {}", bounds.iter().join(" + "))
-                }
-            )
-        }
-        write!(f, "{}", self.bounds().map(format_var).format(", "))
+        write!(
+            f,
+            "{}",
+            self.bounds()
+                .map(|(var, bounds)| TypeBounds::format_var_bound(var, bounds))
+                .format(", ")
+        )
     }
 }
 

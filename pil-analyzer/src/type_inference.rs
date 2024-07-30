@@ -950,12 +950,13 @@ impl TypeChecker {
 
     fn format_type_with_bounds(&self, ty: Type) -> String {
         let scheme = self.to_type_scheme(ty);
-        if scheme.vars.is_empty() {
-            format!("{}", scheme.ty)
+        let bounds = scheme.vars.format_vars_with_nonempty_bounds();
+        if bounds.is_empty() {
+            scheme.ty.to_string()
         } else if let Type::TypeVar(_) = &scheme.ty {
-            format!("{}", scheme.vars)
+            bounds
         } else {
-            format!("{}, {}", scheme.ty, scheme.vars)
+            format!("{} with {bounds}", scheme.ty,)
         }
     }
 
