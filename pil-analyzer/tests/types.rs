@@ -750,3 +750,30 @@ fn trait_with_user_defined_enum() {
     ";
     type_check(input, &[("b", "", "Bool")]);
 }
+
+#[test]
+fn trait_with_user_defined_enum2() {
+    let input = "
+    enum V1 { A }
+    enum V2 { B }
+
+    trait Convert<T, U> {
+        convert: T -> U,
+    }
+    impl<T, U> Convert<V1, V2> {
+        convert: |x| match x {
+            V1::A => V2::B,
+        },
+    }
+
+    impl<T, U> Convert<V2, V1> {
+        convert: |x| match x {
+            V2::B => V1::A,
+        },
+    }
+
+    let r1: V2 = Convert::convert(V1::A);
+    let r2: V1 = Convert::convert(V2::B);
+    ";
+    type_check(input, &[("r1", "", "V2"), ("r2", "", "V1")]);
+}
