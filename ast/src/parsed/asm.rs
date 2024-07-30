@@ -45,10 +45,10 @@ pub enum ModuleStatement {
 }
 
 impl ModuleStatement {
-    pub fn defined_names(&self) -> impl Iterator<Item = &String> {
+    pub fn defined_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
         match self {
-            ModuleStatement::SymbolDefinition(d) => once(&d.name),
-            ModuleStatement::TraitImplementation(t) => once(t.name.name()),
+            ModuleStatement::SymbolDefinition(d) => Box::new(once(&d.name)),
+            ModuleStatement::TraitImplementation(_) => Box::new(empty()),
         }
     }
 }
