@@ -772,8 +772,8 @@ fn trait_with_user_defined_enum2() {
         },
     }
 
-    let r1 = Convert::convert(V1::A);
-    let r2 = Convert::convert(V2::B);
+    let r1: V2 = Convert::convert(V1::A);
+    let r2: V1 = Convert::convert(V2::B);
     ";
     type_check(input, &[("r1", "", "V2"), ("r2", "", "V1")]);
 }
