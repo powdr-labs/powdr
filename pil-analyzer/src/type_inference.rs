@@ -35,17 +35,6 @@ pub fn infer_types(
     TypeChecker::new().infer_types(definitions, expressions)
 }
 
-/// Attempts to unify the types `ty1` and `ty2`, and returns an error if they overlap.
-/// If the unification is successful, an error is returned indicating that the
-/// types overlap. If the unification fails, `Ok(())` is returned, indicating
-/// that the types are compatible.
-pub fn unify_traits_types(ty1: Type, ty2: Type) -> Result<(), String> {
-    match TypeChecker::new().unify_types(ty1.clone(), ty2.clone()) {
-        Ok(_) => Err(format!("Types {ty1} and {ty2} overlap")),
-        Err(_) => Ok(()),
-    }
-}
-
 /// A type to expect and a flag that says if arrays of that type are also fine.
 #[derive(Clone)]
 pub struct ExpectedType {
@@ -201,10 +190,6 @@ impl TypeChecker {
         // This also computes and returns a mapping from the internal names of the type vars
         // in the type scheme to the type vars of the declarations.
         self.verify_type_schemes(inferred_types)
-    }
-
-    pub fn unify_types(&mut self, ty1: Type, ty2: Type) -> Result<(), String> {
-        self.unifier.unify_types(ty1, ty2)
     }
 
     /// Fills self.declared_types and checks that declared builtins have the correct type.

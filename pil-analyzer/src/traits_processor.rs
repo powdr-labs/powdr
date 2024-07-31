@@ -8,7 +8,7 @@ use powdr_ast::{
     },
 };
 
-use crate::{pil_analyzer::Driver, type_inference::unify_traits_types, AnalysisDriver};
+use crate::{pil_analyzer::Driver, type_unifier::Unifier, AnalysisDriver};
 
 /// Checks for overlapping trait implementations in the current `PILAnalyzer` instance.
 ///
@@ -67,6 +67,13 @@ fn ensure_unique_impls(
                     .unwrap()
             }
         }
+    }
+}
+
+fn unify_traits_types(ty1: Type, ty2: Type) -> Result<(), String> {
+    match Unifier::default().unify_types(ty1.clone(), ty2.clone()) {
+        Ok(_) => Err(format!("Types {ty1} and {ty2} overlap")),
+        Err(_) => Ok(()),
     }
 }
 
