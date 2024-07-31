@@ -10,6 +10,7 @@ use core::arch::{asm, global_asm};
 use core::panic::PanicInfo;
 
 use crate::fmt::print_str;
+use powdr_riscv_syscalls::Syscall;
 
 mod allocator;
 pub mod arith;
@@ -17,6 +18,13 @@ pub mod ec;
 pub mod fmt;
 pub mod hash;
 pub mod io;
+
+pub fn halt() -> ! {
+    unsafe {
+        asm!("ecall", in("t0") u32::from(Syscall::Halt));
+    }
+    unreachable!()
+}
 
 #[panic_handler]
 unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
