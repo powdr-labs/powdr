@@ -21,29 +21,17 @@ static mut ARENA: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 static mut ALLOCATOR: Talc<ClaimOnOom> =
     Talc::new(unsafe { ClaimOnOom::new(Span::from_const_array(core::ptr::addr_of!(ARENA))) });
 
-// The following functions are expected by `std` zkvm target. We must provide these functions.
+// The following functions are expected by `std` and `panic_abort` to exist for
+// the zkvm target, and we must provide them. The list was taken from file
+// "src/sys/pal/zkvm/abi.rs" of the `std` crate, filtered for functions that are
+// actually used.
 
 /*
-pub fn sys_halt();
-pub fn sys_output(output_id: u32, output_value: u32);
-pub fn sys_sha_compress(
-    out_state: *mut [u32; DIGEST_WORDS],
-    in_state: *const [u32; DIGEST_WORDS],
-    block1_ptr: *const [u32; DIGEST_WORDS],
-    block2_ptr: *const [u32; DIGEST_WORDS],
-);
-pub fn sys_sha_buffer(
-    out_state: *mut [u32; DIGEST_WORDS],
-    in_state: *const [u32; DIGEST_WORDS],
-    buf: *const u8,
-    count: u32,
-);
 pub fn sys_rand(recv_buf: *mut u32, words: usize);
 pub fn sys_panic(msg_ptr: *const u8, len: usize) -> !;
-pub fn sys_log(msg_ptr: *const u8, len: usize);
-pub fn sys_cycle_count() -> usize;
 pub fn sys_read(fd: u32, recv_buf: *mut u8, nrequested: usize) -> usize;
 pub fn sys_write(fd: u32, write_buf: *const u8, nbytes: usize);
+
 pub fn sys_getenv(
     recv_buf: *mut u32,
     words: usize,
@@ -57,8 +45,6 @@ pub fn sys_argv(out_words: *mut u32, out_nwords: usize, arg_index: usize) -> usi
 pub fn sys_alloc_words(nwords: usize) -> *mut u32;
 pub fn sys_alloc_aligned(nwords: usize, align: usize) -> *mut u8;
 */
-
-const DIGEST_WORDS: usize = 8;
 
 #[no_mangle]
 extern "C" fn sys_write(fd: u32, write_buf: *const u8, nbytes: usize) {
