@@ -567,7 +567,7 @@ fn defined_trait() {
     trait Add<T> {
         add: T, T -> T,
     }
-    impl<T> Add<int> {
+    impl Add<int> {
         add: |a, b| a + b,
     }
     let r: int = Add::add(3, 4);
@@ -579,7 +579,7 @@ fn defined_trait() {
 #[should_panic = "Trait Add not found"]
 fn undefined_trait() {
     let input = "
-    impl<T> Add<int, int> {
+    impl Add<int> {
         add: |a, b| a + b,
     }
     ";
@@ -593,10 +593,10 @@ fn duplicated_trait() {
     trait Add<T, Q> {
         add: T, T -> Q,
     }
-    impl<T, Q> Add<int, fe> {
+    impl Add<int, fe> {
         add: |a, b| a + b,
     }
-    impl<T, Q> Add<int, fe> {
+    impl Add<int, fe> {
         add: |a, b| b + a,
     }
     ";
@@ -610,7 +610,7 @@ fn impl_with_diff_length() {
     trait Add<T, Q> {
         add: T, T -> Q,
     }
-    impl<T> Add<int> {
+    impl Add<int> {
         add: |a, b| a + b,
     }
     ";
@@ -626,19 +626,31 @@ fn impl_combined_test() {
         trait Add<T, Q> {
             add: T, T -> Q,
         }
-
-        impl<T, Q> Add<int, Q> {
+        impl<Q> Add<int, Q> {
             add: |a, b| std::convert::fe(a + b),
         }
         
         let x: int -> fe = |q| match Add::add(q, 4) {
             v => v,
         };
-
         let res: fe = x(5);
     ";
 
     type_check(input, &[("F.res", "", "fe")]);
+}
+
+#[test]
+#[should_panic = "Impl Add has a type var Q that is not defined in the type tuple"]
+fn unused_type_var_error() {
+    let input = "
+    trait Add<T> {
+        add: T, T -> T,
+    }
+    impl<Q> Add<int> {
+        add: |a, b| a + b,
+    }
+    ";
+    type_check(input, &[]);
 }
 
 #[test]
@@ -652,11 +664,11 @@ fn impl_type_resolution() {
             add: T, T -> T,
         }
 
-        impl<T> Add<fe> {
+        impl Add<fe> {
             add: |a, b| a + b,
         }
 
-        impl<T> Add<int> {
+        impl Add<int> {
             add: |a, b| a + b,
         }
 
@@ -671,7 +683,7 @@ fn trait_multi_generics() {
     trait ToTuple<S, I> {
         get: S -> (S, I),
     }
-    impl<S,I> ToTuple<int, (int, int)> {
+    impl ToTuple<int, (int, int)> {
         get: |n| (n, (1, n+2)),
     }
     let r: (int, (int, int)) = ToTuple::get(3);
@@ -731,4 +743,51 @@ fn new_fixed_column_wrong_type() {
         f();
     "#;
     type_check(input, &[]);
+}
+
+#[test]
+fn trait_with_user_defined_enum() {
+    let input = "
+    enum Bool { True, False }
+    
+    trait Not<T> {
+        not: T -> T,
+    }
+    
+    impl Not<Bool> {
+        not: |b| match b {
+            Bool::True => Bool::False,
+            Bool::False => Bool::True,
+        },
+    }
+    let b = Not::not(Bool::True);
+    ";
+    type_check(input, &[("b", "", "Bool")]);
+}
+
+#[test]
+fn trait_with_user_defined_enum2() {
+    let input = "
+    enum V1 { A }
+    enum V2 { B }
+
+    trait Convert<T, U> {
+        convert: T -> U,
+    }
+
+    impl Convert<V1, V2> {
+        convert: |x| match x {
+            V1::A => V2::B,
+        },
+    }
+    impl Convert<V2, V1> {
+        convert: |x| match x {
+            V2::B => V1::A,
+        },
+    }
+
+    let r1: V2 = Convert::convert(V1::A);
+    let r2: V1 = Convert::convert(V2::B);
+    ";
+    type_check(input, &[("r1", "", "V2"), ("r2", "", "V1")]);
 }

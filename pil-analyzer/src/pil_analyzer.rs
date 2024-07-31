@@ -21,8 +21,8 @@ use powdr_ast::analyzed::{
     PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
-use powdr_parser_util::SourceRef;
 
+use crate::traits_processor::check_traits_overlap;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -52,6 +52,11 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     analyzer.side_effect_check();
+    check_traits_overlap(
+        &analyzer.implementations,
+        &analyzer.definitions,
+        analyzer.driver(),
+    );
     analyzer.type_check();
     analyzer.condense()
 }
@@ -72,7 +77,8 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
-    implementations: HashMap<String, Vec<(SourceRef, TraitImplementation<Expression>)>>,
+    /// Implementations found, organized according to their associated trait name.
+    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -147,8 +153,7 @@ impl PILAnalyzer {
         for PILFile(file) in files {
             self.current_namespace = Default::default();
             for ref statement in file {
-                if let PilStatement::TraitImplementation(sr, trait_impl) = statement {
-                    //let mut counters = self.symbol_counters.as_mut().unwrap();
+                if let PilStatement::TraitImplementation(_, trait_impl) = statement {
                     let mut counters = Counters::default();
                     let ti = StatementProcessor::new(
                         self.driver(),
@@ -159,7 +164,7 @@ impl PILAnalyzer {
                     self.implementations
                         .entry(ti.name.name().clone())
                         .or_default()
-                        .push((sr.clone(), ti))
+                        .push(ti)
                 }
                 self.handle_statement(statement.clone());
             }
@@ -452,7 +457,7 @@ impl PILAnalyzer {
 }
 
 #[derive(Clone, Copy)]
-struct Driver<'a>(&'a PILAnalyzer);
+pub struct Driver<'a>(&'a PILAnalyzer);
 
 impl<'a> AnalysisDriver for Driver<'a> {
     fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath {

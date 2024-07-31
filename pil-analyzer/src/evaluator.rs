@@ -18,8 +18,7 @@ use powdr_ast::{
         types::{Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, StatementInsideBlock, TraitDeclaration, TraitImplementation, UnaryOperation,
-        UnaryOperator,
+        Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -139,11 +138,6 @@ pub enum Value<'a, T> {
     Enum(&'a str, Option<Vec<Arc<Self>>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
-    TraitFunction(
-        &'a str,
-        &'a Arc<TraitDeclaration>,
-        &'a Vec<TraitImplementation<Expression>>,
-    ),
 }
 
 impl<'a, T: FieldElement> From<T> for Value<'a, T> {
@@ -221,7 +215,6 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::Enum(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
-            Value::TraitFunction(name, _, _) => format!("{name}_trait_function"),
         }
     }
 
@@ -374,7 +367,6 @@ impl<'a, T: Display> Display for Value<'a, T> {
             }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
-            Value::TraitFunction(_, t, _) => write!(f, "{t}"),
         }
     }
 }
@@ -1684,20 +1676,5 @@ mod test {
     ";
 
         assert_eq!(parse_and_evaluate_symbol(input, "g"), "7".to_string());
-    }
-
-    #[test]
-    fn basic_trait_impl_eval() {
-        let input = "
-        trait Add<T> {
-            add: T, T -> T,
-        }
-        impl<T> Add<int> {
-            add: |a, b| a + b,
-        }
-        let r: int = Add::add(3, 4);  
-        ";
-
-        assert_eq!(parse_and_evaluate_symbol(input, "r"), "7".to_string());
     }
 }

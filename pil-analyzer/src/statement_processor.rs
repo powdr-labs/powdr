@@ -369,7 +369,7 @@ where
             ),
             // TODO at some point, these should all be caught by the type checker.
             _ => {
-                panic!("Only identities allowed at this point. {statement:?}")
+                panic!("Only identities allowed at this point.")
             }
         };
 
@@ -664,7 +664,8 @@ where
             .collect();
 
         TraitImplementation {
-            name: trait_impl.name, // TODO GZ process name
+            name: trait_impl.name,
+            source_ref: trait_impl.source_ref,
             type_scheme: trait_impl.type_scheme,
             functions,
         }
