@@ -11,7 +11,7 @@ use powdr_ast::{
 
 use powdr_parser_util::SourceRef;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     str::FromStr,
 };
 
@@ -282,7 +282,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         }: LambdaExpression,
     ) -> LambdaExpression<Expression> {
         let previous_local_vars = self.save_local_variables();
-        let previous_local_var_refs = self.local_var_references.clone();
+        let previous_local_var_refs = std::mem::take(&mut self.local_var_references);
         let local_variable_height = self.local_variable_counter;
 
         let params = params
@@ -297,11 +297,13 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         }
         let body = Box::new(self.process_expression(*body));
 
-        let outer_var_references =
+        let outer_var_references: BTreeSet<u64> =
             std::mem::replace(&mut self.local_var_references, previous_local_var_refs)
                 .into_iter()
                 .filter(|id| *id < local_variable_height)
                 .collect();
+        self.local_var_references
+            .extend(outer_var_references.clone());
         self.reset_local_variables(previous_local_vars);
         LambdaExpression {
             kind,

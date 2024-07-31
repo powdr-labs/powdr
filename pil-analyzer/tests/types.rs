@@ -588,7 +588,7 @@ fn type_vars_in_block_let() {
 }
 
 #[test]
-#[should_panic = "Expected type: int -> T, T\\nInferred type: int\\n"]
+#[should_panic = "Expected type: int -> T\\nInferred type: int\\n"]
 fn new_fixed_column_wrong_value_type() {
     let input = r#"namespace N(16);
         let f = constr |j| {

@@ -33,6 +33,7 @@ ModuleStatement: ModuleStatement = {
             name: <>.name.clone(),
             value: SymbolValue::TypeDeclaration(<>),
         }),
+    <TraitImplementation> => ModuleStatement::TraitImplementation(<>),
     <TraitDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
             name: <>.name.clone(),
             value: SymbolValue::TraitDeclaration(<>),
@@ -118,6 +119,7 @@ pub PilStatement = {
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <impl_:TraitImplementation> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
     <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
     PlookupIdentityStatement,
     PermutationIdentityStatement,
@@ -711,6 +713,24 @@ TraitFunction: TraitFunction<Expression> = {
     <name:Identifier> ":" <params:TypeTermList<Expression>> "->" <value:TypeTermBox<Expression>> => TraitFunction { name, ty: Type::Function(FunctionType{params, value}) }
 }
 
+TraitImplementation: TraitImplementation<Expression> = {
+    "impl" <type_scheme: GenericTraitName> "{" <functions:NamedExpressions> "}" => TraitImplementation { name: type_scheme.0, type_scheme: type_scheme.1, functions }
+}
+
+NamedExpressions: Vec<NamedExpression<Expression>> = {
+    => vec![],
+    <mut list:( <NamedExpression> "," )*> <end:NamedExpression> ","?  => { list.push(end); list }
+}
+
+NamedExpression: NamedExpression<Expression> = {
+    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
+}
+
+GenericTraitName: (SymbolPath, TypeScheme) = {
+    <vars:("<" <TypeVarBounds> ">")> <name:SymbolPath> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
+        (name, TypeScheme{ vars, ty: Type::Tuple(TupleType{items}) })
+}
+
 
 // ---------------------------- Type Declarations -----------------------------
 
@@ -791,6 +811,7 @@ TypeBoundsList: BTreeSet<String> = {
     => Default::default(),
     ":" <list:( <Identifier> "+" )*> <end:Identifier>  => list.into_iter().chain(std::iter::once(end)).collect(),
 }
+
 
 
 // ---------------------------- Terminals -----------------------------

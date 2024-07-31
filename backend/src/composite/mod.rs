@@ -1,9 +1,11 @@
 use std::{
-    collections::BTreeMap,
+    borrow::Cow,
+    collections::{btree_map::Entry, BTreeMap},
     io::{self, Cursor, Read},
     marker::PhantomData,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, Mutex},
+    thread,
 };
 
 use itertools::Itertools;
@@ -14,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use split::{machine_fixed_columns, machine_witness_columns};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
+
+use self::sub_prover::RunStatus;
 
 mod split;
 
@@ -72,7 +76,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             unimplemented!();
         }
 
-        let pils = split::split_pil((*pil).clone());
+        let pils = split::split_pil(&pil);
 
         // Read the setup once (if any) to pass to all backends.
         let setup_bytes = setup.map(|setup| {
@@ -134,7 +138,15 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                             None,
                             backend_options.clone(),
                         );
-                        backend.map(|backend| (size, MachineData { pil, backend }))
+                        backend.map(|backend| {
+                            (
+                                size,
+                                MachineData {
+                                    pil,
+                                    backend: Mutex::new(backend),
+                                },
+                            )
+                        })
                     })
                     .collect::<Result<BTreeMap<_, _>, _>>()
                     .map(|backends| (machine_name, backends))
@@ -182,7 +194,10 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
 
 struct MachineData<'a, F> {
     pil: Arc<Analyzed<F>>,
-    backend: Box<dyn Backend<'a, F> + 'a>,
+    // Mutex is needed because Backend is not Sync, so during proof we need to
+    // ensure the type system that each backend is only used by one thread at a
+    // time.
+    backend: Mutex<Box<dyn Backend<'a, F> + 'a>>,
 }
 
 pub(crate) struct CompositeBackend<'a, F> {
@@ -231,6 +246,52 @@ fn set_size<F: Clone>(pil: Arc<Analyzed<F>>, degree: DegreeType) -> Arc<Analyzed
     }
 }
 
+mod sub_prover;
+
+fn accumulate_challenges<F: FieldElement>(into: &mut BTreeMap<u64, F>, from: BTreeMap<u64, F>) {
+    for (k, v) in from {
+        match into.entry(k) {
+            Entry::Vacant(e) => {
+                e.insert(v);
+            }
+            Entry::Occupied(e) => *e.into_mut() += v,
+        }
+    }
+}
+
+fn process_witness_for_machine<F: FieldElement>(
+    machine: &str,
+    machine_data: &BTreeMap<usize, MachineData<F>>,
+    witness: &[(String, Vec<F>)],
+) -> (Vec<(String, Vec<F>)>, usize) {
+    // Pick any available PIL; they all contain the same witness columns
+    let any_pil = &machine_data.values().next().unwrap().pil;
+    let witness = machine_witness_columns(witness, any_pil, machine);
+    let size = witness
+        .iter()
+        .map(|(_, witness)| witness.len())
+        .unique()
+        .exactly_one()
+        .expect("All witness columns of a machine must have the same size");
+
+    (witness, size)
+}
+
+fn time_stage<'a, F: FieldElement>(
+    machine_name: &str,
+    size: usize,
+    stage: u8,
+    stage_run: impl FnOnce() -> RunStatus<'a, F>,
+) -> RunStatus<'a, F> {
+    log::info!("== Proving machine: {machine_name} (size {size}), stage {stage}");
+    let start_time = std::time::Instant::now();
+    let status = stage_run();
+    let elapsed = start_time.elapsed();
+    log::info!("==> Proof stage computed in {elapsed:?}");
+
+    status
+}
+
 // TODO: This just forwards to the backend for now. In the future this should:
 // - Compute a verification key for each machine separately
 // - Compute a proof for each machine separately
@@ -247,52 +308,87 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
             unimplemented!();
         }
 
-        let proofs = self
-            .machine_data
-            .iter()
-            .map(|(machine, machine_data)| {
-                let start = std::time::Instant::now();
-                // Pick any available PIL; they all contain the same witness columns
-                let any_pil = &machine_data.values().next().unwrap().pil;
-                let witness = machine_witness_columns(witness, any_pil, machine);
-                let size = witness
-                    .iter()
-                    .map(|(_, witness)| witness.len())
-                    .unique()
-                    .exactly_one()
-                    .expect("All witness columns of a machine must have the same size");
-                let machine_data = machine_data
-                    .get(&size)
-                    .expect("Machine does not support the given size");
-                let witgen_callback = witgen_callback.clone().with_pil(machine_data.pil.clone());
+        // We use scoped threads to be able to share non-'static references.
+        thread::scope(|scope| {
+            let mut proofs_status = self
+                .machine_data
+                .iter()
+                .map(|machine_entry| {
+                    let (machine, machine_data) = machine_entry;
+                    let (witness, size) =
+                        process_witness_for_machine(machine, machine_data, witness);
 
-                log::info!("== Proving machine: {} (size {})", machine, size);
-                log::debug!("PIL:\n{}", machine_data.pil);
+                    let inner_machine_data = machine_data
+                        .get(&size)
+                        .expect("Machine does not support the given size");
 
-                let proof = machine_data.backend.prove(&witness, None, witgen_callback);
+                    let status = time_stage(machine, size, 0, || {
+                        sub_prover::run(scope, &inner_machine_data.backend, witness)
+                    });
 
-                match proof {
-                    Ok(inner_proof) => {
-                        log::info!(
-                            "==> Machine proof of {size} rows ({} bytes) computed in {:?}",
-                            inner_proof.len(),
-                            start.elapsed()
-                        );
-                        Ok(MachineProof {
-                            size,
-                            proof: inner_proof,
-                        })
-                    }
+                    (status, machine_entry, size)
+                })
+                .collect::<Vec<_>>();
+
+            let mut proof_results = Vec::new();
+            let mut witness = Cow::Borrowed(witness);
+            for stage in 1.. {
+                // Filter out proofs that have completed and accumulate the
+                // challenges.
+                let mut challenges = BTreeMap::new();
+                let waiting_provers = std::mem::take(&mut proofs_status)
+                    .into_iter()
+                    .filter_map(|(status, machine_data, size)| match status {
+                        sub_prover::RunStatus::Completed(result) => {
+                            proof_results.push((result, size));
+                            None
+                        }
+                        sub_prover::RunStatus::Challenged(sub_prover, c) => {
+                            // Accumulate the challenges
+                            accumulate_challenges(&mut challenges, c);
+                            Some((sub_prover, machine_data))
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                if waiting_provers.is_empty() {
+                    break;
+                }
+
+                witness = witgen_callback
+                    .next_stage_witness(&witness, challenges, stage)
+                    .into();
+
+                // Resume the waiting provers with the new witness
+                proofs_status = waiting_provers
+                    .into_iter()
+                    .map(|(prover, machine_entry)| {
+                        let (machine_name, machine_data) = machine_entry;
+                        let (witness, size) =
+                            process_witness_for_machine(machine_name, machine_data, &witness);
+
+                        let status =
+                            time_stage(machine_name, size, stage, move || prover.resume(witness));
+
+                        (status, machine_entry, size)
+                    })
+                    .collect();
+            }
+
+            let proofs = proof_results
+                .into_iter()
+                .map(|(proof, size)| match proof {
+                    Ok(proof) => Ok(MachineProof { size, proof }),
                     Err(e) => {
                         log::error!("==> Machine proof failed: {:?}", e);
                         Err(e)
                     }
-                }
-            })
-            .collect::<Result<_, _>>()?;
+                })
+                .collect::<Result<Vec<_>, _>>()?;
 
-        let proof = CompositeProof { proofs };
-        Ok(bincode::serialize(&proof).unwrap())
+            let proof = CompositeProof { proofs };
+            Ok(bincode::serialize(&proof).unwrap())
+        })
     }
 
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
@@ -304,6 +400,8 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                 .get(&machine_proof.size)
                 .unwrap()
                 .backend
+                .lock()
+                .unwrap()
                 .verify(&machine_proof.proof, instances)?;
         }
         Ok(())
@@ -319,6 +417,8 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
             .next()
             .unwrap()
             .backend
+            .lock()
+            .unwrap()
             .export_setup(output)
     }
 
@@ -333,6 +433,8 @@ impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
                         .map(|(size, machine_data)| {
                             machine_data
                                 .backend
+                                .lock()
+                                .unwrap()
                                 .verification_key_bytes()
                                 .map(|vk_bytes| (*size, vk_bytes))
                         })

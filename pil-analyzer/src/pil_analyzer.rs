@@ -172,6 +172,7 @@ impl PILAnalyzer {
                     ModuleStatement::SymbolDefinition(s) => missing_symbols
                         .contains(&s.name.as_str())
                         .then_some(format!("{s}")),
+                    ModuleStatement::TraitImplementation(_) => None,
                 })
                 .join("\n");
             parse(None, &format!("namespace std::prelude;\n{missing_symbols}")).unwrap()
