@@ -9,7 +9,6 @@ use std::{
     sync::Arc,
 };
 
-use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
