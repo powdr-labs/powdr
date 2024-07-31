@@ -25,6 +25,62 @@ pub fn check_traits_overlap(
     ensure_unique_impls(implementations, driver);
 }
 
+/// Validates the trait implementation definitions in the given `implementations` map against the trait
+/// declarations in the `definitions` map.
+fn validate_impl_definitions(
+    implementations: &HashMap<String, Vec<TraitImplementation<Expression>>>,
+    definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    driver: Driver,
+) {
+    for impls in implementations.values() {
+        for trait_impl in impls.iter() {
+            let Type::Tuple(TupleType { items: types }) = &trait_impl.type_scheme.ty else {
+                panic!("Type from trait scheme is not a tuple.")
+            };
+            let absolute_name = driver.resolve_decl(trait_impl.name.name());
+
+            let trait_decl = definitions
+                .get(&absolute_name)
+                .unwrap_or_else(|| panic!("Trait {absolute_name} not found"))
+                .1
+                .as_ref()
+                .unwrap_or_else(|| panic!("Trait definition for {absolute_name} not found"));
+
+            let trait_decl = match trait_decl {
+                FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl,
+                _ => unreachable!("Invalid trait declaration"),
+            };
+
+            if types.len() != trait_decl.type_vars.len() {
+                panic!(
+                    "{}",
+                    trait_impl.source_ref.with_error(format!(
+                        "Trait {} has {} type vars, but implementation has {}",
+                        absolute_name,
+                        trait_decl.type_vars.len(),
+                        types.len(),
+                    ))
+                );
+            }
+
+            for var in trait_impl.type_scheme.vars.vars() {
+                if !types
+                    .iter()
+                    .any(|t| matches!(t, Type::NamedType(v, _) if v.name() == var))
+                {
+                    panic!(
+                        "{}",
+                        trait_impl.source_ref.with_error(format!(
+                            "Impl {} has a type var {} that is not defined in the type tuple",
+                            absolute_name, var,
+                        ))
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// Ensures that there are no overlapping trait implementations in the given `implementations` map.
 ///
 /// This function iterates through all the trait implementations comparing them with each other and checks that:
@@ -74,46 +130,5 @@ fn unify_traits_types(ty1: Type, ty2: Type) -> Result<(), String> {
     match Unifier::default().unify_types(ty1.clone(), ty2.clone()) {
         Ok(_) => Err(format!("Types {ty1} and {ty2} overlap")),
         Err(_) => Ok(()),
-    }
-}
-
-/// Validates the trait implementation definitions in the given `implementations` map against the trait
-/// declarations in the `definitions` map.
-fn validate_impl_definitions(
-    implementations: &HashMap<String, Vec<TraitImplementation<Expression>>>,
-    definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    driver: Driver,
-) {
-    for impls in implementations.values() {
-        for trait_impl in impls.iter() {
-            let Type::Tuple(TupleType { items: types }) = &trait_impl.type_scheme.ty else {
-                panic!("Type from trait scheme is not a tuple.")
-            };
-            let absolute_name = driver.resolve_decl(trait_impl.name.name());
-
-            let trait_decl = definitions
-                .get(&absolute_name)
-                .unwrap_or_else(|| panic!("Trait {absolute_name} not found"))
-                .1
-                .as_ref()
-                .unwrap_or_else(|| panic!("Trait definition for {absolute_name} not found"));
-
-            let trait_decl = match trait_decl {
-                FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl,
-                _ => unreachable!("Invalid trait declaration"),
-            };
-
-            if types.len() != trait_decl.type_vars.len() {
-                panic!(
-                    "{}",
-                    trait_impl.source_ref.with_error(format!(
-                        "Trait {} has {} type vars, but implementation has {}",
-                        absolute_name,
-                        trait_decl.type_vars.len(),
-                        types.len(),
-                    ))
-                );
-            }
-        }
     }
 }

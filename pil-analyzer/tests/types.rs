@@ -640,6 +640,20 @@ fn impl_combined_test() {
 }
 
 #[test]
+#[should_panic = "Impl Add has a type var Q that is not defined in the type tuple"]
+fn unused_type_var_error() {
+    let input = "
+    trait Add<T> {
+        add: T, T -> T,
+    }
+    impl<Q> Add<int> {
+        add: |a, b| a + b,
+    }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
 fn impl_type_resolution() {
     let input = "
     namespace std::convert(4);
