@@ -24,7 +24,7 @@ use powdr_executor::{
     constant_evaluator::{self, get_uniquely_sized_cloned, VariablySizedColumn},
     witgen::{
         chain_callbacks, extract_publics, unused_query_callback, QueryCallback, WitgenCallback,
-        WitnessGenerator,
+        WitgenCallbackContext, WitnessGenerator,
     },
 };
 use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite};
@@ -702,11 +702,10 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn compute_parsed_pil_file(&mut self) -> Result<&PILFile, Vec<String>> {
         if self.artifact.parsed_pil_file.is_none() {
             self.artifact.parsed_pil_file = Some({
-                self.log("Run linker");
-
                 self.compute_linked_machine_graph()?;
                 let graph = self.artifact.linked_machine_graph.take().unwrap();
 
+                self.log("Run linker");
                 let linked = powdr_linker::link(graph)?;
                 log::trace!("{linked}");
                 self.maybe_write_pil(&linked, "")?;
@@ -811,10 +810,9 @@ impl<T: FieldElement> Pipeline<T> {
             return Ok(fixed_cols.clone());
         }
 
-        self.log("Evaluating fixed columns...");
-
         let pil = self.compute_optimized_pil()?;
 
+        self.log("Evaluating fixed columns...");
         let start = Instant::now();
         let fixed_cols = constant_evaluator::generate(&pil);
         self.log(&format!(
@@ -837,13 +835,12 @@ impl<T: FieldElement> Pipeline<T> {
             return Ok(witness.clone());
         }
 
-        self.log("Deducing witness columns...");
-
         let pil = self.compute_optimized_pil()?;
         let fixed_cols = self.compute_fixed_cols()?;
 
         assert_eq!(pil.constant_count(), fixed_cols.len());
 
+        self.log("Deducing witness columns...");
         let start = Instant::now();
         let external_witness_values = std::mem::take(&mut self.arguments.external_witness_values);
         let query_callback = self
@@ -878,11 +875,16 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn witgen_callback(&mut self) -> Result<WitgenCallback<T>, Vec<String>> {
-        Ok(WitgenCallback::new(
+        let ctx = WitgenCallbackContext::new(
             self.compute_optimized_pil()?,
             self.compute_fixed_cols()?,
             self.arguments.query_callback.as_ref().cloned(),
-        ))
+        );
+        Ok(WitgenCallback::new(Arc::new(
+            move |current_witness, challenges, stage| {
+                ctx.next_stage_witness(current_witness, challenges, stage)
+            },
+        )))
     }
 
     pub fn compute_proof(&mut self) -> Result<&Proof, Vec<String>> {

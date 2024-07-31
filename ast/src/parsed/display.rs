@@ -34,6 +34,7 @@ impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(symbol_def) => write!(f, "{symbol_def}"),
+            ModuleStatement::TraitImplementation(trait_impl) => write!(f, "{trait_impl}"),
         }
     }
 }
@@ -532,6 +533,7 @@ impl Display for PilStatement {
             ),
             PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
+            PilStatement::TraitImplementation(_, trait_impl) => write_indented_by(f, trait_impl, 1),
             PilStatement::TraitDeclaration(_, trait_decl) => write_indented_by(f, trait_decl, 1),
         }
     }
@@ -624,6 +626,36 @@ impl<E: Display> EnumDeclaration<E> {
     }
 }
 
+impl<E: Display> Display for TraitImplementation<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = if self.type_scheme.vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_scheme.vars)
+        };
+
+        let Type::Tuple(TupleType { items }) = &self.type_scheme.ty else {
+            panic!("Type from trait scheme is not a tuple.")
+        };
+
+        let trait_vars = if items.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", items.iter().format(", "))
+        };
+
+        write!(
+            f,
+            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+            trait_name = self.name,
+            methods = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        )
+    }
+}
+
 impl<Expr: Display> Display for SelectedExpressions<Expr> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
@@ -635,6 +667,12 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
                 .unwrap_or_default(),
             self.expressions
         )
+    }
+}
+
+impl<E: Display> Display for NamedExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self.body)
     }
 }
 
@@ -981,17 +1019,13 @@ pub fn format_type_scheme_around_name<E: Display, N: Display>(
 
 impl Display for TypeBounds {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        fn format_var((var, bounds): (&String, &BTreeSet<String>)) -> String {
-            format!(
-                "{var}{}",
-                if bounds.is_empty() {
-                    String::new()
-                } else {
-                    format!(": {}", bounds.iter().join(" + "))
-                }
-            )
-        }
-        write!(f, "{}", self.bounds().map(format_var).format(", "))
+        write!(
+            f,
+            "{}",
+            self.bounds()
+                .map(|(var, bounds)| TypeBounds::format_var_bound(var, bounds))
+                .format(", ")
+        )
     }
 }
 
