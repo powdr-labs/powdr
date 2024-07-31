@@ -109,10 +109,6 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     // add pil code for the selector array and related constraints
     for (location, count) in incoming_permutations {
         let obj = objects.get_mut(&location).unwrap();
-        if obj.has_pc {
-            // VMs don't have call_selectors
-            continue;
-        }
         assert!(
             count == 0 || obj.call_selectors.is_some(),
             "block machine {location} has incoming permutations but doesn't declare call_selectors"
@@ -295,7 +291,6 @@ impl<'a> ASMPILConverter<'a> {
             links,
             latch: input.latch,
             call_selectors: input.call_selectors,
-            has_pc: input.pc.is_some(),
         }
     }
 

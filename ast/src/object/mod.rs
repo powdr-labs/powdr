@@ -61,8 +61,6 @@ pub struct Object {
     pub latch: Option<String>,
     /// call selector array
     pub call_selectors: Option<String>,
-    /// true if this machine has a PC
-    pub has_pc: bool,
 }
 
 impl Object {
