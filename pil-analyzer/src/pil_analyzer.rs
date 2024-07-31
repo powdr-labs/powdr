@@ -8,7 +8,7 @@ use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::{ArrayType, TupleType, Type};
+use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
@@ -24,7 +24,7 @@ use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::SourceRef;
 
 use crate::type_builtins::constr_function_statement_type;
-use crate::type_inference::{infer_types, unify_traits_types};
+use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
 
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
@@ -52,7 +52,6 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     analyzer.side_effect_check();
-    analyzer.check_traits_overlap();
     analyzer.type_check();
     analyzer.condense()
 }
@@ -342,13 +341,6 @@ impl PILAnalyzer {
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
         condenser::condense(
             self.definitions,
-            self.implementations
-                .into_iter()
-                .map(|(key, vec)| {
-                    let processed_vec = vec.into_iter().map(|(_, trait_impl)| trait_impl).collect();
-                    (key, processed_vec)
-                })
-                .collect(),
             self.public_declarations,
             &self.identities,
             self.source_order,
@@ -435,18 +427,6 @@ impl PILAnalyzer {
     }
 
     fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::Expression>) {
-        let implementations: HashMap<_, Vec<TraitImplementation<Expression>>> = self
-            .implementations
-            .iter()
-            .map(|(key, vec)| {
-                let processed_vec = vec
-                    .iter()
-                    .map(|(_, trait_impl)| trait_impl.clone())
-                    .collect();
-                (key.clone(), processed_vec)
-            })
-            .collect();
-
         self.polynomial_degree = degree
             .map(|degree| {
                 ExpressionProcessor::new(self.driver(), &Default::default())
@@ -456,14 +436,10 @@ impl PILAnalyzer {
             // and is field-independent (only uses integers)?
             .map(|degree| {
                 u64::try_from(
-                    evaluator::evaluate_expression::<GoldilocksField>(
-                        &degree,
-                        &self.definitions,
-                        &implementations,
-                    )
-                    .unwrap()
-                    .try_to_integer()
-                    .unwrap(),
+                    evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
+                        .unwrap()
+                        .try_to_integer()
+                        .unwrap(),
                 )
                 .unwrap()
             });
@@ -472,86 +448,6 @@ impl PILAnalyzer {
 
     fn driver(&self) -> Driver {
         Driver(self)
-    }
-
-    fn check_traits_overlap(&self) {
-        for implementations in self.implementations.values() {
-            for (i, (sr1, impl1)) in implementations.iter().enumerate() {
-                let types1 = impl1.type_scheme.types.clone();
-                let absolute_name = self.driver().resolve_decl(impl1.name.name());
-
-                let trait_decl = self
-                    .definitions
-                    .get(&absolute_name)
-                    .unwrap_or_else(|| panic!("Trait {absolute_name} not found"))
-                    .1
-                    .as_ref()
-                    .unwrap_or_else(|| panic!("Trait definition for {absolute_name} not found"));
-
-                let trait_decl = match trait_decl {
-                    FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl,
-                    _ => unreachable!("Invalid trait declaration"),
-                };
-
-                if types1.len() != trait_decl.type_vars.len() {
-                    panic!(
-                        "{}",
-                        sr1.with_error(format!(
-                            "Trait {} has {} type vars, but implementation has {}",
-                            absolute_name,
-                            trait_decl.type_vars.len(),
-                            types1.len(),
-                        ))
-                    );
-                }
-
-                for (sr2, impl2) in
-                    implementations
-                        .iter()
-                        .skip(i + 1)
-                        .filter_map(|stmt2| match stmt2 {
-                            (sr2, impl2) if impl2.name == impl1.name => Some((sr2, impl2)),
-                            _ => None,
-                        })
-                {
-                    let types2 = impl2.type_scheme.types.clone();
-                    if types2.len() != trait_decl.type_vars.len() {
-                        panic!(
-                            "{}",
-                            sr2.with_error(format!(
-                                "Trait {} has {} type vars, but implementation has {}",
-                                self.driver().resolve_decl(impl2.name.name()),
-                                trait_decl.type_vars.len(),
-                                types2.len(),
-                            ))
-                        );
-                    }
-                    self.check_traits_pairs(&types1, &types2)
-                        .map_err(|err| sr1.with_error(format!("Impls for {absolute_name}: {err}")))
-                        .unwrap()
-                }
-            }
-        }
-    }
-
-    fn check_traits_pairs(&self, types1: &[Type], types2: &[Type]) -> Result<(), String> {
-        if types1.len() != types2.len() {
-            return Err("Impl types have different lengths".to_string());
-        }
-
-        let tuple1: Type = TupleType {
-            items: types1.to_owned(),
-        }
-        .into();
-        let tuple2: Type = TupleType {
-            items: types2.to_owned(),
-        }
-        .into();
-
-        match unify_traits_types(tuple1.clone(), tuple2.clone()) {
-            Ok(_) => Err(format!("Types {tuple1} and {tuple2} overlap")),
-            Err(_) => Ok(()),
-        }
     }
 }
 
