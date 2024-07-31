@@ -100,3 +100,58 @@ fn fixed_with_constr_type() {
     let input = "let x: col = constr |i| 2;";
     analyze_string::<GoldilocksField>(input);
 }
+
+#[test]
+fn set_hint() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        std::prover::set_hint(x, query |i| std::prover::Query::Hint(1));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+fn set_hint_can_use_query() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        let eval = 7;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        let y;
+        std::prover::set_hint(x, query |_| std::prover::Query::Hint(std::prover::eval(y)));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+fn set_hint_pure() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        std::prover::set_hint(x, |i| std::prover::Query::Hint(1));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Used a constr lambda function inside a query context"]
+fn set_hint_constr() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        std::prover::set_hint(x, constr |i| std::prover::Query::Hint(1));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
