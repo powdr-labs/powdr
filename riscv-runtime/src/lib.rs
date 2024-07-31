@@ -7,9 +7,6 @@
 )]
 
 use core::arch::{asm, global_asm};
-use core::panic::PanicInfo;
-
-use crate::fmt::print_str;
 use powdr_riscv_syscalls::Syscall;
 
 mod allocator;
@@ -19,26 +16,15 @@ pub mod fmt;
 pub mod hash;
 pub mod io;
 
+#[cfg(not(feature = "std"))]
+mod no_std_support;
+#[cfg(feature = "std")]
+mod std_support;
+
 pub fn halt() -> ! {
     unsafe {
         asm!("ecall", in("t0") u32::from(Syscall::Halt));
     }
-    unreachable!()
-}
-
-#[panic_handler]
-unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
-    static mut IS_PANICKING: bool = false;
-
-    if !IS_PANICKING {
-        IS_PANICKING = true;
-
-        print!("{panic}\n");
-    } else {
-        print_str("Panic handler has panicked! Things are very dire indeed...\n");
-    }
-
-    asm!("unimp");
     loop {}
 }
 

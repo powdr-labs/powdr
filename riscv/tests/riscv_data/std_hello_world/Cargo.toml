@@ -4,11 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-powdr-riscv-syscalls = { path = "../../../../riscv-syscalls", version = "0.1.0-alpha.2" }
-riscv-rt = "0.12"
-# This is a small no_std allocator. When we organize the libraries for users, we
-# might use our own simpler pointer push allocator.
-talc = "4.4"
+powdr-riscv-syscalls = { path = "../../../../riscv-syscalls" }
+powdr-riscv-runtime = { path = "../../../../riscv-runtime", features = ["std"]}
 
 [profile.release]
 panic = 'abort'
