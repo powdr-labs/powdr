@@ -326,7 +326,7 @@ fn set_hint_no_col() {
         enum Query { Hint(fe), None, }
     namespace N(16);
         let x;
-        let y: expr = x;
+        let y: inter = x;
         std::prover::set_hint(y, query |_| std::prover::Query::Hint(1));
     "#;
     analyze_string::<GoldilocksField>(input);
