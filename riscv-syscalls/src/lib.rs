@@ -54,4 +54,5 @@ syscalls!(
     (5, EcAdd, "ec_add"),
     (6, EcDouble, "ec_double"),
     (8, Mod256, "mod_256"),
+    (9, Halt, "halt"),
 );
