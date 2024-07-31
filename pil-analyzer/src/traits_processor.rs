@@ -71,8 +71,7 @@ fn validate_impl_definitions(
                     panic!(
                         "{}",
                         trait_impl.source_ref.with_error(format!(
-                            "Impl {} has a type var {} that is not defined in the type tuple",
-                            absolute_name, var,
+                            "Impl {absolute_name} has a type var {var} that is not defined in the type tuple",
                         ))
                     );
                 }
