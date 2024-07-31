@@ -2,16 +2,16 @@ use core::panic;
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
-        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BinaryOperation, BlockExpression,
-        IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
-        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
-        SymbolCategory, UnaryOperation,
+        self, asm::SymbolPath, types::Type, ArrayExpression, ArrayLiteral, BinaryOperation,
+        BlockExpression, IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm,
+        MatchExpression, NamespacedPolynomialReference, Number, Pattern, SelectedExpressions,
+        StatementInsideBlock, SymbolCategory, UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     str::FromStr,
 };
 
@@ -311,7 +311,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         }: LambdaExpression,
     ) -> LambdaExpression<Expression> {
         let previous_local_vars = self.save_local_variables();
-        let previous_local_var_refs = self.local_var_references.clone();
+        let previous_local_var_refs = std::mem::take(&mut self.local_var_references);
         let local_variable_height = self.local_variable_counter;
 
         let params = params
@@ -326,11 +326,13 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         }
         let body = Box::new(self.process_expression(*body));
 
-        let outer_var_references =
+        let outer_var_references: BTreeSet<u64> =
             std::mem::replace(&mut self.local_var_references, previous_local_var_refs)
                 .into_iter()
                 .filter(|id| *id < local_variable_height)
                 .collect();
+        self.local_var_references
+            .extend(outer_var_references.clone());
         self.reset_local_variables(previous_local_vars);
         LambdaExpression {
             kind,
@@ -351,16 +353,17 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         let processed_statements = statements
             .into_iter()
             .map(|statement| match statement {
-                StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value }) => {
+                StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, ty, value }) => {
                     let value = value.map(|v| self.process_expression(v));
                     let pattern = self.process_pattern(pattern);
+                    let ty = ty.map(|ty| self.process_number_type(ty));
                     if value.is_none() && !matches!(pattern, Pattern::Variable(_, _)) {
                         panic!("Let statement without value requires a single variable, but got {pattern}.");
                     }
                     if !pattern.is_irrefutable() {
                         panic!("Let statement requires an irrefutable pattern, but {pattern} is refutable.");
                     }
-                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value })
+                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, ty, value })
                 }
                 StatementInsideBlock::Expression(expr) => {
                     StatementInsideBlock::Expression(self.process_expression(expr))
@@ -384,17 +387,22 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         &mut self,
         reference: NamespacedPolynomialReference,
     ) -> PolynomialReference {
-        let type_processor = TypeProcessor::new(self.driver, self.type_vars);
-        let type_args = reference.type_args.map(|args| {
-            args.into_iter()
-                .map(|t| type_processor.process_type(t))
-                .collect()
-        });
+        let type_args = reference
+            .type_args
+            .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
         PolynomialReference {
             name: self.driver.resolve_value_ref(&reference.path),
             poly_id: None,
             type_args,
         }
+    }
+
+    fn process_type(&self, ty: Type<parsed::Expression>) -> Type<u64> {
+        TypeProcessor::new(self.driver, self.type_vars).process_type(ty)
+    }
+
+    fn process_number_type(&self, ty: Type<u64>) -> Type<u64> {
+        TypeProcessor::new(self.driver, self.type_vars).process_number_type(ty)
     }
 
     fn save_local_variables(&self) -> LocalVariableState {

@@ -20,7 +20,7 @@ mod utils {
     let one = zero + 1;
 }
 
-machine Main {
+machine Main with degree: 8 {
     // use a machine from another module by relative path
     my_module::Other a;
 

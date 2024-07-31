@@ -21,11 +21,11 @@ fn new_witness_column() {
     let expected = r#"namespace N(16);
     col fixed even(i) { i * 2 };
     let new_wit: -> expr = (constr || {
-        let x;
+        let x: col;
         x
     });
     let new_wit_arr: -> expr[] = (constr || {
-        let x;
+        let x: col;
         [x, x]
     });
     col witness x;
@@ -50,7 +50,7 @@ fn new_witness_column_name_clash() {
     "#;
     let expected = r#"namespace N(16);
     let new_wit: -> expr = (constr || {
-        let x;
+        let x: col;
         x
     });
     col witness x;
@@ -83,14 +83,14 @@ fn create_constraints() {
     let expected = r#"namespace N(16);
     let force_bool: expr -> std::prelude::Constr = (|c| c * (1 - c) = 0);
     let new_bool: -> expr = (constr || {
-        let x;
+        let x: col;
         N.force_bool(x);
         x
     });
     let is_zero: expr -> expr = (constr |x| {
-        let x_is_zero;
+        let x_is_zero: col;
         N.force_bool(x_is_zero);
-        let x_inv;
+        let x_inv: col;
         x_is_zero = 1 - x * x_inv;
         x_is_zero * x = 0;
         x_is_zero
@@ -202,4 +202,207 @@ fn double_next() {
         x * y = (1 + x')';
     "#;
     analyze_string::<GoldilocksField>(input).to_string();
+}
+
+#[test]
+fn new_fixed_column() {
+    let input = r#"namespace N(16);
+        let f = constr || {
+            let even: col = |i| i * 2;
+            even
+        };
+        let ev = f();
+        let x;
+        x = ev;
+    "#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace N(16);
+    let f: -> expr = (constr || {
+        let even: col = (|i| i * 2);
+        even
+    });
+    let ev: expr = N.f();
+    col witness x;
+    col fixed even(i) { i * 2 };
+    N.x = N.even;
+"#;
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+#[should_panic = "Error creating fixed column N.fi: Lambda expression must not reference outer variables: (|i| (i + j) * 2)"]
+fn new_fixed_column_as_closure() {
+    let input = r#"namespace N(16);
+        let f = constr |j| {
+            let fi: col = |i| (i + j) * 2;
+            fi
+        };
+        let ev = f(2);
+        let x;
+        x = ev;
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+fn set_hint() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        let eval = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        let y;
+        std::prover::set_hint(y, |i| std::prover::Query::Hint(std::prover::eval(x)));
+        {
+            let z;
+            std::prover::set_hint(z, query |_| std::prover::Query::Hint(1));
+        };
+    "#;
+    let expected = r#"namespace std::prover;
+    let set_hint = 8;
+    let eval = 8;
+    enum Query {
+        Hint(fe),
+        None,
+    }
+namespace N(16);
+    col witness x;
+    col witness y(i) query std::prover::Query::Hint(std::prover::eval(N.x));
+    col witness z(_) query std::prover::Query::Hint(1);
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+#[should_panic = "Expected type: int -> std::prover::Query"]
+fn set_hint_invalid_function() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        let eval = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        std::prover::set_hint(x, query |_, _| std::prover::Query::Hint(1));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Array elements are not supported for std::prover::set_hint (called on N.x[0])."]
+fn set_hint_array_element() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x: col[2];
+        std::prover::set_hint(x[0], query |_| std::prover::Query::Hint(1));
+    "#;
+    let expected = r#"namespace std::prover;
+    let set_hint = 8;
+    let eval = 8;
+    enum Query {
+        Hint(fe),
+        None,
+    }
+namespace N(16);
+    col witness x(_) query std::prover::Query::Hint(1);
+    col witness y(i) query std::prover::Query::Hint(std::prover::eval(N.x));
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+#[should_panic = "Expected reference to witness column as first argument for std::prover::set_hint, but got intermediate column N.y."]
+fn set_hint_no_col() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        let y: expr = x;
+        std::prover::set_hint(y, query |_| std::prover::Query::Hint(1));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Column N.x already has a hint set, but tried to add another one."]
+fn set_hint_twice() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        std::prover::set_hint(x, query |_| std::prover::Query::Hint(1));
+        std::prover::set_hint(x, query |_| std::prover::Query::Hint(2));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Column N.x already has a hint set, but tried to add another one."]
+fn set_hint_twice_in_constr() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let y;
+        {
+            let x;
+            std::prover::set_hint(x, query |_| std::prover::Query::Hint(1));
+            std::prover::set_hint(x, query |_| std::prover::Query::Hint(2));
+        };
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+fn set_hint_outside() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        let eval = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        let y;
+        let create_wit = constr || { let w; w };
+        let z = create_wit();
+        let set_hint = constr |c| { std::prover::set_hint(c, query |_| std::prover::Query::Hint(8)); };
+        set_hint(x);
+        set_hint(y);
+        (|| { set_hint(z); })();
+    "#;
+    let expected = r#"namespace std::prover;
+    let set_hint = 8;
+    let eval = 8;
+    enum Query {
+        Hint(fe),
+        None,
+    }
+namespace N(16);
+    col witness x(_) query std::prover::Query::Hint(8);
+    col witness y(_) query std::prover::Query::Hint(8);
+    let create_wit: -> expr = (constr || {
+        let w: col;
+        w
+    });
+    let z: expr = N.create_wit();
+    let set_hint: expr -> () = (constr |c| {
+        std::prover::set_hint(c, (query |_| std::prover::Query::Hint(8)));
+
+    });
+    col witness w(_) query std::prover::Query::Hint(8);
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
 }

@@ -97,14 +97,18 @@ impl Folder for StdAdder {
                     }
                 }
                 .map(|value| ModuleStatement::SymbolDefinition(SymbolDefinition { value, ..d })),
+                ModuleStatement::TraitImplementation(trait_impl) => {
+                    self.fold_trait_implementation(trait_impl).map(From::from)
+                }
             })
             .collect::<Result<Vec<_>, _>>()?;
 
         // Check whether the module already has a definition for `std`
         // (E.g. the main module)
-        let has_std = statements.iter().any(|s| match s {
-            ModuleStatement::SymbolDefinition(d) => d.name == "std",
-        });
+        let has_std = statements
+            .iter()
+            .filter_map(|m| m.defined_names())
+            .any(|n| n == "std");
 
         if !has_std {
             // If not, add `use super::std;`

@@ -66,6 +66,13 @@ fn trivial() {
 
 #[test]
 #[ignore = "Too slow"]
+fn halt() {
+    let case = "halt";
+    verify_riscv_crate(case, Default::default(), &Runtime::base())
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn zero_with_values() {
     let case = "zero_with_values";
     verify_riscv_crate(case, Default::default(), &Runtime::base())

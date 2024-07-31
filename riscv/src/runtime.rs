@@ -39,6 +39,8 @@ struct SubMachine {
     alias: Option<String>,
     /// Instance declaration name,
     instance_name: String,
+    /// Arguments
+    arguments: Vec<String>,
     /// Instruction declarations
     instructions: Vec<MachineStatement>,
     /// Number of registers needed by this machine's instruction declarations if > 4.
@@ -59,7 +61,12 @@ impl SubMachine {
 
     fn declaration(&self) -> String {
         let ty = self.alias.as_deref().unwrap_or(self.path.name());
-        format!("{} {};", ty, self.instance_name)
+        let args = if self.arguments.is_empty() {
+            "".to_string()
+        } else {
+            format!("({})", self.arguments.join(", "))
+        };
+        format!("{} {}{};", ty, self.instance_name, args)
     }
 }
 
@@ -88,6 +95,7 @@ impl Runtime {
             "std::machines::binary::Binary",
             None,
             "binary",
+            vec!["byte_binary"],
             [
                 r#"instr and X, Y, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
@@ -113,6 +121,7 @@ impl Runtime {
             "std::machines::shift::Shift",
             None,
             "shift",
+            vec!["byte_shift"],
             [
                 r#"instr shl X, Y, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
@@ -133,6 +142,7 @@ impl Runtime {
             "std::machines::split::split_gl::SplitGL",
             None,
             "split_gl",
+            vec!["byte_compare"],
             [r#"instr split_gl X, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col)
@@ -142,13 +152,85 @@ impl Runtime {
             ["split_gl 0, 0, 0;"],
         );
 
-        r.add_submachine::<&str, _, _>("std::machines::range::Bit2", None, "bit2", [], 0, []);
+        r.add_submachine::<&str, _, _>(
+            "std::machines::range::Bit2",
+            None,
+            "bit2",
+            vec![],
+            [],
+            0,
+            [],
+        );
 
-        r.add_submachine::<&str, _, _>("std::machines::range::Bit6", None, "bit6", [], 0, []);
+        r.add_submachine::<&str, _, _>(
+            "std::machines::range::Bit6",
+            None,
+            "bit6",
+            vec![],
+            [],
+            0,
+            [],
+        );
 
-        r.add_submachine::<&str, _, _>("std::machines::range::Bit7", None, "bit7", [], 0, []);
+        r.add_submachine::<&str, _, _>(
+            "std::machines::range::Bit7",
+            None,
+            "bit7",
+            vec![],
+            [],
+            0,
+            [],
+        );
 
-        r.add_submachine::<&str, _, _>("std::machines::range::Byte", None, "byte", [], 0, []);
+        r.add_submachine::<&str, _, _>(
+            "std::machines::range::Byte",
+            None,
+            "byte",
+            vec![],
+            [],
+            0,
+            [],
+        );
+
+        r.add_submachine::<&str, _, _>(
+            "std::machines::range::Byte2",
+            None,
+            "byte2",
+            vec![],
+            [],
+            0,
+            [],
+        );
+
+        r.add_submachine::<&str, _, _>(
+            "std::machines::binary::ByteBinary",
+            None,
+            "byte_binary",
+            vec![],
+            [],
+            0,
+            [],
+        );
+
+        r.add_submachine::<&str, _, _>(
+            "std::machines::shift::ByteShift",
+            None,
+            "byte_shift",
+            vec![],
+            [],
+            0,
+            [],
+        );
+
+        r.add_submachine::<&str, _, _>(
+            "std::machines::split::ByteCompare",
+            None,
+            "byte_compare",
+            vec![],
+            [],
+            0,
+            [],
+        );
 
         // Base syscalls
         r.add_syscall(
@@ -181,6 +263,8 @@ impl Runtime {
             ]
         );
 
+        r.add_syscall(Syscall::Halt, ["return;"]);
+
         r
     }
 
@@ -197,6 +281,7 @@ impl Runtime {
             "std::machines::hash::poseidon_gl::PoseidonGL",
             None,
             "poseidon_gl",
+            vec![],
             [format!(
                 "instr poseidon_gl link ~> {};",
                 instr_link("poseidon_gl.poseidon_permutation", 12, 4)
@@ -229,6 +314,7 @@ impl Runtime {
             "std::machines::arith::Arith",
             None,
             "arith",
+            vec![],
             [
                 format!(
                     "instr affine_256 link ~> {};",
@@ -356,11 +442,13 @@ impl Runtime {
         self
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn add_submachine<S: AsRef<str>, I1: IntoIterator<Item = S>, I2: IntoIterator<Item = S>>(
         &mut self,
         path: &str,
         alias: Option<&str>,
         instance_name: &str,
+        arguments: Vec<&str>,
         instructions: I1,
         extra_registers: u8,
         init_call: I2,
@@ -369,6 +457,7 @@ impl Runtime {
             path: str::parse(path).expect("invalid submachine path"),
             alias: alias.map(|s| s.to_string()),
             instance_name: instance_name.to_string(),
+            arguments: arguments.into_iter().map(|s| s.to_string()).collect(),
             instructions: instructions
                 .into_iter()
                 .map(|s| parse_instruction_declaration(s.as_ref()))
