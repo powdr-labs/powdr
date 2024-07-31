@@ -76,7 +76,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             unimplemented!();
         }
 
-        let pils = split::split_pil((*pil).clone());
+        let pils = split::split_pil(&pil);
 
         // Read the setup once (if any) to pass to all backends.
         let setup_bytes = setup.map(|setup| {
