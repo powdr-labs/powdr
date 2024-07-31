@@ -7,6 +7,9 @@ enum ArrayTerm {
     Once(int[])
 }
 
+let MORE_THAN_ONE_REPEATED_ERROR = "unsolvable because more than one term is repeated";
+let NON_REPEATED_SIZE_EXCEEDS_DEGREE_ERROR = "non repeated array terms do not fit in degree";
+
 // returns the total size of the repeated array in this array expression
 let compute_length_of_repeated_part: ArrayTerm[], (-> int) -> Result<int, string> = |terms, degree| {
     let (_, res) = std::array::fold(terms, (false, Result::Ok(0)), |(found_repeated, l), term| {
@@ -17,7 +20,7 @@ let compute_length_of_repeated_part: ArrayTerm[], (-> int) -> Result<int, string
                 ArrayTerm::Repeat([]) => (found_repeated, Result::Ok(len)),
                 ArrayTerm::Repeat(a) => {
                     if found_repeated {
-                        (true, Result::Err("unsolvable because two terms are repeated"))
+                        (true, Result::Err(MORE_THAN_ONE_REPEATED_ERROR))
                     } else {
                         (true, Result::Ok(len))
                     }
@@ -30,7 +33,7 @@ let compute_length_of_repeated_part: ArrayTerm[], (-> int) -> Result<int, string
         Result::Ok(total_size_of_non_repeated) => if total_size_of_non_repeated <= degree() {
             Result::Ok(degree() - total_size_of_non_repeated)
         } else {
-            Result::Err("non repeated array terms do not fit in degree")
+            Result::Err(NON_REPEATED_SIZE_EXCEEDS_DEGREE_ERROR)
         },
         Result::Err(e) => Result::Err(e)
     }
@@ -39,13 +42,13 @@ let compute_length_of_repeated_part: ArrayTerm[], (-> int) -> Result<int, string
 // returns a function representing the array expression
 let expand: ArrayTerm[], (-> int) -> Result<(int -> int), string> = |terms, degree| {
     // return early if all terms are constant with the same value
-    let constant_value = std::array::fold(terms, Result::Ok(Option::None), |r, term| {
-        let a = match term {
-            ArrayTerm::Once(a) => a,
-            ArrayTerm::Repeat(a) => a,
+    let (constant_value, found_repeated_item) = std::array::fold(terms, (Result::Ok(Option::None), Result::Ok(false)), |(r, found), term| {
+        let (a, is_repeated) = match term {
+            ArrayTerm::Once(a) => (a, false),
+            ArrayTerm::Repeat(a) => (a, std::array::len(a) > 0),
         };
 
-        match r {
+        (match r {
             Result::Ok(c) => {
                 std::array::fold(a, Result::Ok(c), |e, value| {
                     match e {
@@ -56,14 +59,19 @@ let expand: ArrayTerm[], (-> int) -> Result<(int -> int), string> = |terms, degr
                 })
             },
             Result::Err(()) => Result::Err(())
-        }
+        }, match found {
+            Result::Ok(v) => if v && is_repeated { Result::Err(MORE_THAN_ONE_REPEATED_ERROR) } else { Result::Ok(v || is_repeated) },
+            Result::Err(e) => Result::Err(e),
+        })
     });
 
-    match constant_value {
-        // all values are the same. This is not strict enough and would allow expressions whose size does not match the degree
-        // we should fix this by detecting multiple repeated parts earlier, and check the minimum size of the expanded expression
-        // is smaller than the minimum degree of the machine
-        Result::Ok(Option::Some(v)) => Result::Ok(|_| v),
+    match (constant_value, found_repeated_item) {
+        // we found more than one repeated term, error out
+        (_, Result::Err(s)) => Result::Err(s),
+        // This is not strict enough and would allow expressions whose size does not match the degree
+        // We should fix this by ensuring that:
+        // - the minimum size of the expanded expression is smaller than the minimum degree of the machine
+        (Result::Ok(Option::Some(v)), _) => Result::Ok(|_| v),
         _ => {
             // get the total size of the repeated term
             match compute_length_of_repeated_part(terms, degree) {

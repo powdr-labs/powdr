@@ -285,7 +285,7 @@ mod tests {
         let content = r#"
         namespace Add(8);
             col witness x;
-            col fixed y = [1, 0]*;
+            col fixed y(i) { if i == 0 { 1 } else { 0 } };
             x * y = y;
         "#;
         run_test_goldilocks(content);
@@ -308,14 +308,15 @@ mod tests {
 
     #[test]
     fn polynomial_identity() {
-        let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
+        let content =
+            "namespace Global(8); pol fixed z(i) { (i & 1) + 1 }; pol witness a; a = z + 1;";
         run_test_goldilocks(content);
     }
 
     #[test]
     #[should_panic = "not implemented"]
     fn lookup() {
-        let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; [a] in [z];";
+        let content = "namespace Global(8); pol fixed z(i) { i & 1 }; pol witness a; [a] in [z];";
         run_test_goldilocks(content);
     }
 }

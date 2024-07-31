@@ -1,6 +1,8 @@
 use std::expand_fixed::expand;
 use std::expand_fixed::once;
 use std::expand_fixed::repeat;
+use std::expand_fixed::MORE_THAN_ONE_REPEATED_ERROR;
+use std::expand_fixed::NON_REPEATED_SIZE_EXCEEDS_DEGREE_ERROR;
 use std::result::Result;
 use std::check::assert;
 
@@ -41,11 +43,11 @@ machine Main with degree: 8 {
 
     // let F5 = [1]* + [1]*; // should panic
     let r5 = expand([repeat([1]), repeat([1])], degree);
-    assert_eq(r5, Result::Err("unsolvable because two terms are repeated"));
+    assert_eq(r5, Result::Err(MORE_THAN_ONE_REPEATED_ERROR));
 
     // let F6 = [1, 2, 3, 4] + [1, 2, 3, 4] + [1]; // should panic
     let r6 = expand([once([1, 2, 3, 4]), once([1, 2, 3, 4]), once([1])], degree);
-    assert_eq(r6, Result::Err("non repeated array terms do not fit in degree"));
+    assert_eq(r6, Result::Err(NON_REPEATED_SIZE_EXCEEDS_DEGREE_ERROR));
 
     // let F7 = [1, 2, 3, 4] + [1, 2, 3, 4] + [1]*; // should succeed as we can repeat `[1]` zero times
     let r7 = expand([once([1, 2, 3, 4]), once([1, 2, 3, 4]), repeat([1])], degree);

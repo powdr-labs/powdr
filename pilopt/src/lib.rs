@@ -13,7 +13,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
-use powdr_ast::parsed::{EnumDeclaration, Number};
+use powdr_ast::parsed::{EnumDeclaration, Number, Pattern};
 use powdr_number::{BigUint, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, evaluate, Closure, Definitions, SymbolLookup, Value};
 
@@ -265,16 +265,18 @@ fn constant_value<'a, 'b: 'a, T: FieldElement>(
                             lambda,
                             environment,
                             ..
-                        }) => {
+                        }) if lambda
+                            .params
+                            .iter()
+                            .all(|p| matches!(p, Pattern::CatchAll(..))) =>
+                        {
                             match lambda.body.as_ref() {
                                 Expression::Reference(_, Reference::LocalVar(id, _)) => {
                                     // TODO: just call the evaluator again here
-                                    Some(
-                                        environment[*id as usize]
-                                            .try_to_field_element()
-                                            .unwrap()
-                                            .to_arbitrary_integer(),
-                                    )
+                                    environment
+                                        .get(*id as usize)
+                                        .and_then(|v| v.try_to_field_element().ok())
+                                        .map(|v| v.to_arbitrary_integer())
                                 }
                                 _ => None,
                             }
@@ -621,8 +623,8 @@ mod test {
     #[test]
     fn replace_fixed() {
         let input = r#"namespace N(65536);
-    col fixed one = [1]*;
-    col fixed zero = [0]*;
+    col fixed one(_) = { 1 };
+    col fixed zero = { 0 };
     col witness X;
     col witness Y;
     X * one = X * zero - zero + Y;
@@ -641,9 +643,9 @@ mod test {
     #[test]
     fn replace_lookup() {
         let input = r#"namespace N(65536);
-    col fixed one = [1]*;
-    col fixed zero = [0]*;
-    col fixed two = [2]*;
+    col fixed one(_) { 1 };
+    col fixed zero(_) = { 0 };
+    col fixed two(_) = { 2 };
     col fixed cnt(i) { i };
     col witness X;
     col witness Y;

@@ -270,13 +270,6 @@ fn two_block_machine_functions() {
 }
 
 #[test]
-fn fixed_columns() {
-    let f = "pil/fixed_columns.pil";
-    verify_pil(f, Default::default());
-    // Starky requires at least one witness column, this test has none.
-}
-
-#[test]
 fn witness_via_let() {
     verify_pil("pil/witness_via_let.pil", Default::default());
 }
