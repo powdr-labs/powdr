@@ -397,8 +397,10 @@ fn intermediate_dynamic() {
     assert_eq!(analyzed.intermediate_count(), 6);
     let expected = r#"namespace N(65536);
     col witness x[5];
-    col inter = N.x[2];
+    col inte = N.x[2];
     col inter_arr[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
+    N.inte = 8;
+    N.inter_arr[3] = 9;
 "#;
     assert_eq!(analyzed.to_string(), expected);
 }

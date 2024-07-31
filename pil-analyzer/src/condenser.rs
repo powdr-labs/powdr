@@ -9,6 +9,7 @@ use std::{
     sync::Arc,
 };
 
+use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
@@ -100,16 +101,27 @@ pub fn condense<T: FieldElement>(
                 }
                 s => Some(s),
             };
+
+            let mut intermediate_values = condenser.extract_new_intermediate_column_values();
+
             // Extract and prepend the new columns, then identities
             // and finally the original statement (if it exists).
             let new_cols = condenser
                 .extract_new_columns()
                 .into_iter()
                 .map(|new_col| {
-                    new_columns.push(new_col.clone());
+                    if new_col.kind == SymbolKind::Poly(PolynomialType::Intermediate) {
+                        let name = new_col.absolute_name.clone();
+                        let values = intermediate_values.remove(&name).unwrap();
+                        intermediate_columns.insert(name, (new_col.clone(), values));
+                    } else {
+                        new_columns.push(new_col.clone());
+                    }
                     StatementIdentifier::Definition(new_col.absolute_name)
                 })
                 .collect::<Vec<_>>();
+
+            assert!(intermediate_values.is_empty(), "");
 
             let identity_statements = condenser
                 .extract_new_constraints()
@@ -121,12 +133,11 @@ pub fn condense<T: FieldElement>(
                 })
                 .collect::<Vec<_>>();
 
-            for (name, hint) in condenser.extract_new_column_values() {
-                if new_values.insert(name.clone(), hint).is_some() {
+            for (name, value) in condenser.extract_new_column_values() {
+                if new_values.insert(name.clone(), value).is_some() {
                     panic!("Column {name} already has a hint set, but tried to add another one.",)
                 }
             }
-
             new_cols
                 .into_iter()
                 .chain(identity_statements)
@@ -135,6 +146,7 @@ pub fn condense<T: FieldElement>(
         .collect();
 
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
+
     for symbol in new_columns {
         definitions.insert(symbol.absolute_name.clone(), (symbol, None));
     }
@@ -262,6 +274,13 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         std::mem::take(&mut self.new_column_values)
     }
 
+    /// Return the values of intermediate columns generated since the last call to this function.
+    pub fn extract_new_intermediate_column_values(
+        &mut self,
+    ) -> HashMap<String, Vec<AlgebraicExpression<T>>> {
+        std::mem::take(&mut self.new_intermediate_column_values)
+    }
+
     /// Returns the new constraints generated since the last call to this function.
     pub fn extract_new_constraints(&mut self) -> Vec<AnalyzedIdentity<T>> {
         std::mem::take(&mut self.new_constraints)
@@ -349,27 +368,52 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = self.find_unused_name(name);
+        let mut length = None;
+        let mut is_array = false;
         let kind = match (ty, &value) {
             (Some(Type::Inter), Some(_)) => SymbolKind::Poly(PolynomialType::Intermediate),
+            (Some(Type::Array(ArrayType { base, length: len })), Some(_))
+                if base.as_ref() == &Type::Inter =>
+            {
+                is_array = true;
+                length = *len;
+                SymbolKind::Poly(PolynomialType::Intermediate)
+            }
             (Some(Type::Col) | None, Some(_)) => SymbolKind::Poly(PolynomialType::Constant),
             (Some(Type::Col) | None, None) => SymbolKind::Poly(PolynomialType::Committed),
             _ => {
-                return Err(EvalError::TypeError(
-                    format!(
-                        "Invalid type for new column {name}: {}.",
-                        ty.map(|ty| ty.to_string()).unwrap_or_default(),
-                    )
-                    .into(),
-                ))
+                return Err(EvalError::TypeError(format!(
+                    "Invalid type for new column {name}: {}.",
+                    ty.map(|ty| ty.to_string()).unwrap_or_default(),
+                )))
             }
         };
 
         if kind == SymbolKind::Poly(PolynomialType::Intermediate) {
-            let Value::Expression(expr) = value.unwrap().as_ref().clone() else {
-                panic!("Expected algebraci expression");
+            let expr = if is_array {
+                let Value::Array(exprs) = value.unwrap().as_ref().clone() else {
+                    panic!("Expected array");
+                };
+                exprs
+                    .into_iter()
+                    .map(|expr| {
+                        let Value::Expression(expr) = expr.as_ref() else {
+                            panic!("Expected algebraic expression");
+                        };
+                        expr.clone()
+                    })
+                    .collect()
+            } else {
+                let Value::Expression(expr) = value.unwrap().as_ref().clone() else {
+                    panic!("Expected algebraic expression");
+                };
+                vec![expr]
             };
+            if let Some(length) = length {
+                assert_eq!(expr.len() as u64, length);
+            }
             self.new_intermediate_column_values
-                .insert(name.clone(), vec![expr]);
+                .insert(name.clone(), expr);
         } else if let Some(value) = value {
             let value =
                 closure_to_function(&source, value.as_ref(), FunctionKind::Pure).map_err(|e| {
@@ -385,26 +429,40 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         }
 
         let symbol = Symbol {
-            id: self.counters.dispense_symbol_id(kind, None),
+            id: self.counters.dispense_symbol_id(kind, length),
             source,
             absolute_name: name.clone(),
             stage: None,
             kind,
-            length: None,
+            length,
             degree: Some(self.degree.unwrap()),
         };
 
         self.new_symbols.insert(name.clone());
         self.new_columns.push(symbol.clone());
 
-        Ok(
+        Ok((if is_array {
+            Value::Array(
+                symbol
+                    .array_elements()
+                    .map(|(name, poly_id)| {
+                        Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
+                            name,
+                            poly_id,
+                            next: false,
+                        }))
+                        .into()
+                    })
+                    .collect(),
+            )
+        } else {
             Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
                 name,
                 poly_id: PolyID::from(&symbol),
                 next: false,
             }))
-            .into(),
-        )
+        })
+        .into())
     }
 
     fn set_hint(
