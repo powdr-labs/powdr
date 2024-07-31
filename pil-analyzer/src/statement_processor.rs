@@ -665,6 +665,7 @@ where
 
         TraitImplementation {
             name: trait_impl.name,
+            source_ref: trait_impl.source_ref,
             type_scheme: trait_impl.type_scheme,
             functions,
         }

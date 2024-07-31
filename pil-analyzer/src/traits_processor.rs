@@ -7,7 +7,6 @@ use powdr_ast::{
         TraitImplementation,
     },
 };
-use powdr_parser_util::SourceRef;
 
 use crate::{pil_analyzer::Driver, type_inference::unify_traits_types, AnalysisDriver};
 
@@ -18,16 +17,72 @@ use crate::{pil_analyzer::Driver, type_inference::unify_traits_types, AnalysisDr
 /// It also checks that the number of type variables in the implementation matches
 /// the number of type variables in the corresponding trait declaration.
 pub fn check_traits_overlap(
-    implementations: &HashMap<String, Vec<(SourceRef, TraitImplementation<Expression>)>>,
+    implementations: &HashMap<String, Vec<TraitImplementation<Expression>>>,
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     driver: Driver,
 ) {
+    validate_impl_definitions(implementations, definitions, driver);
+    ensure_unique_impls(implementations, driver);
+}
+
+/// Ensures that there are no overlapping trait implementations in the given `implementations` map.
+///
+/// This function iterates through all the trait implementations comparing them with each other and checks that:
+/// - The number of type variables between implementations is the same.
+/// - There are no traits with overlapping type variables and the same name between the implementations.
+fn ensure_unique_impls(
+    implementations: &HashMap<String, Vec<TraitImplementation<Expression>>>,
+    driver: Driver,
+) {
     for implementations in implementations.values() {
-        for (i, (sr1, impl1)) in implementations.iter().enumerate() {
-            let Type::Tuple(TupleType { items: types1 }) = &impl1.type_scheme.ty else {
+        for (i, impl1) in implementations.iter().enumerate() {
+            for impl2 in implementations.iter().skip(i + 1) {
+                let Type::Tuple(TupleType { items: types1 }) = &impl1.type_scheme.ty else {
+                    panic!("Type from trait scheme is not a tuple.")
+                };
+                let Type::Tuple(TupleType { items: types2 }) = &impl2.type_scheme.ty else {
+                    panic!("Type from trait scheme is not a tuple.")
+                };
+
+                if types1.len() != types2.len() {
+                    panic!(
+                        "{}",
+                        impl1.source_ref.with_error(format!(
+                            "Impl types have different lengths: {} with {} vs {} with {}",
+                            driver.resolve_decl(impl1.name.name()),
+                            types1.len(),
+                            driver.resolve_decl(impl2.name.name()),
+                            types2.len()
+                        ))
+                    );
+                }
+
+                unify_traits_types(impl1.type_scheme.ty.clone(), impl2.type_scheme.ty.clone())
+                    .map_err(|err| {
+                        impl1.source_ref.with_error(format!(
+                            "Impls for {}: {err}",
+                            driver.resolve_decl(impl1.name.name())
+                        ))
+                    })
+                    .unwrap()
+            }
+        }
+    }
+}
+
+/// Validates the trait implementation definitions in the given `implementations` map against the trait
+/// declarations in the `definitions` map.
+fn validate_impl_definitions(
+    implementations: &HashMap<String, Vec<TraitImplementation<Expression>>>,
+    definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    driver: Driver,
+) {
+    for impls in implementations.values() {
+        for trait_impl in impls.iter() {
+            let Type::Tuple(TupleType { items: types }) = &trait_impl.type_scheme.ty else {
                 panic!("Type from trait scheme is not a tuple.")
             };
-            let absolute_name = driver.resolve_decl(impl1.name.name());
+            let absolute_name = driver.resolve_decl(trait_impl.name.name());
 
             let trait_decl = definitions
                 .get(&absolute_name)
@@ -41,58 +96,16 @@ pub fn check_traits_overlap(
                 _ => unreachable!("Invalid trait declaration"),
             };
 
-            if types1.len() != trait_decl.type_vars.len() {
+            if types.len() != trait_decl.type_vars.len() {
                 panic!(
                     "{}",
-                    sr1.with_error(format!(
+                    trait_impl.source_ref.with_error(format!(
                         "Trait {} has {} type vars, but implementation has {}",
                         absolute_name,
                         trait_decl.type_vars.len(),
-                        types1.len(),
+                        types.len(),
                     ))
                 );
-            }
-
-            for (sr2, impl2) in implementations
-                .iter()
-                .skip(i + 1)
-                .filter_map(|stmt2| match stmt2 {
-                    (sr2, impl_) if impl_.name == impl1.name => Some((sr2, impl_)),
-                    _ => None,
-                })
-            {
-                let Type::Tuple(TupleType { items: types2 }) = &impl2.type_scheme.ty else {
-                    panic!("Type from trait scheme is not a tuple.")
-                };
-
-                if types2.len() != trait_decl.type_vars.len() {
-                    panic!(
-                        "{}",
-                        sr2.with_error(format!(
-                            "Trait {} has {} type vars, but implementation has {}",
-                            driver.resolve_decl(impl2.name.name()),
-                            trait_decl.type_vars.len(),
-                            types2.len(),
-                        ))
-                    );
-                }
-
-                if types1.len() != types2.len() {
-                    panic!(
-                        "{}",
-                        sr1.with_error(format!(
-                            "Impl types have different lengths: {} with {} vs {} with {}",
-                            driver.resolve_decl(impl1.name.name()),
-                            types1.len(),
-                            driver.resolve_decl(impl2.name.name()),
-                            types2.len()
-                        ))
-                    );
-                }
-
-                unify_traits_types(impl1.type_scheme.ty.clone(), impl2.type_scheme.ty.clone())
-                    .map_err(|err| sr1.with_error(format!("Impls for {absolute_name}: {err}")))
-                    .unwrap()
             }
         }
     }
