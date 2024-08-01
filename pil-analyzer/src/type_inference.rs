@@ -275,10 +275,7 @@ impl TypeChecker {
                 // Values of intermediate columns have type `expr`
                 self.expect_type(&Type::Expr, value)
             }
-            Type::Array(ArrayType {
-                base,
-                length: Some(_),
-            }) if base.as_ref() == &Type::Inter => {
+            Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Inter => {
                 // An array of intermediate columns with fixed length. We ignore the length.
                 // The condenser will have to check the actual length.
                 let arr = Type::Array(ArrayType {

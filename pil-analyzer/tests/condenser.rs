@@ -446,3 +446,32 @@ fn intermediate_dynamic() {
 "#;
     assert_eq!(analyzed.to_string(), expected);
 }
+
+#[test]
+fn intermediate_arr_no_length() {
+    let input = r#"namespace N(65536);
+    col witness x[5];
+    {
+        let inte: inter[] = x;
+    };
+"#;
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.intermediate_count(), 5);
+    let expected = r#"namespace N(65536);
+    col witness x[5];
+    col inte[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+#[should_panic = "Error creating intermediate column array N.inte: Expected array of length 6 as value but it has 2 elements."]
+fn intermediate_arr_wrong_length() {
+    let input = r#"namespace N(65536);
+    col witness x[2];
+    {
+        let inte: inter[6] = x;
+    };
+"#;
+    analyze_string::<GoldilocksField>(input);
+}

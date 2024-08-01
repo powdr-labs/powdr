@@ -393,6 +393,16 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                 let Value::Array(exprs) = value.unwrap().as_ref().clone() else {
                     panic!("Expected array");
                 };
+                if let Some(length) = length {
+                    if exprs.len() as u64 != length {
+                        return Err(EvalError::TypeError(format!(
+                            "Error creating intermediate column array {name}: Expected array of length {length} as value but it has {} elements." ,
+                            exprs.len(),
+                        )));
+                    }
+                } else {
+                    length = Some(exprs.len() as u64);
+                }
                 exprs
                     .into_iter()
                     .map(|expr| {
@@ -408,9 +418,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                 };
                 vec![expr]
             };
-            if let Some(length) = length {
-                assert_eq!(expr.len() as u64, length);
-            }
             self.new_intermediate_column_values
                 .insert(name.clone(), expr);
         } else if let Some(value) = value {
