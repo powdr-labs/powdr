@@ -449,8 +449,7 @@ machine Arith with
     link => byte2.check(carry_high[2]);
 
     // Carries can be any integer in the range [-2**31, 2**31 - 1)
-    // TODO should these be intermediate?
-    let carry: expr[3] = array::new(3, |i| carry_high[i] * 2**16 + carry_low[i] - 2 ** 31);
+    let carry = array::new(3, |i| carry_high[i] * 2**16 + carry_low[i] - 2 ** 31);
     
     array::map(carry, |c| c * CLK32[0] = 0);
 

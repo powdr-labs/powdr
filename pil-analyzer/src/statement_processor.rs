@@ -311,6 +311,7 @@ where
             }
         }
     }
+
     fn symbol_kind_from_type(ts: &TypeScheme) -> SymbolKind {
         if !ts.vars.is_empty() {
             return SymbolKind::Other();
