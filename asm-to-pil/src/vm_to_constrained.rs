@@ -27,7 +27,7 @@ use powdr_ast::{
     },
 };
 use powdr_number::{BigUint, FieldElement, LargeInt};
-use powdr_parser::sugar::{desugar_array_literal_expression, wrap_in_lambda};
+use powdr_parser::sugar::desugar_array_literal_expression;
 use powdr_parser_util::SourceRef;
 
 use crate::{
@@ -919,7 +919,7 @@ impl<T: FieldElement> VMConverter<T> {
             .push(PilStatement::PolynomialConstantDefinition(
                 SourceRef::unknown(),
                 "p_line".to_string(),
-                wrap_in_lambda(desugar_array_literal_expression(
+                desugar_array_literal_expression(
                     ArrayExpression::Value(
                         (0..self.code_lines.len())
                             .map(|i| BigUint::from(i as u64).into())
@@ -927,7 +927,7 @@ impl<T: FieldElement> VMConverter<T> {
                     )
                     .pad_with_last()
                     .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()])),
-                ))
+                )
                 .into(),
             ));
         // TODO check that all of them are matched against execution trace witnesses.
@@ -1072,7 +1072,7 @@ impl<T: FieldElement> VMConverter<T> {
                 .push(PilStatement::PolynomialConstantDefinition(
                     SourceRef::unknown(),
                     name.clone(),
-                    wrap_in_lambda(desugar_array_literal_expression(array_expression)).into(),
+                    desugar_array_literal_expression(array_expression).into(),
                 ));
         }
     }

@@ -64,7 +64,7 @@ pub fn desugar_array_literal_expression_with_sourceref(
         ),
     ];
 
-    Expression::FunctionCall(
+    wrap_in_lambda(Expression::FunctionCall(
         source_ref.clone(),
         FunctionCall {
             function: Box::new(Expression::Reference(
@@ -76,12 +76,12 @@ pub fn desugar_array_literal_expression_with_sourceref(
             )),
             arguments,
         },
-    )
+    ))
 }
 
 /// Given `f`, returns (|i| { f(i) })
 /// This is required since `pol constant foo` only accepts lambdas which return a [BlockExpression] in the parser
-pub fn wrap_in_lambda(e: Expression) -> Expression {
+fn wrap_in_lambda(e: Expression) -> Expression {
     let source_ref = e.source_reference().clone();
 
     Expression::LambdaExpression(

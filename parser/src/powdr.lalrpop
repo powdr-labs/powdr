@@ -2,7 +2,7 @@ use std::str::FromStr;
 use std::collections::BTreeSet;
 use powdr_ast::parsed::{*, asm::*, types::*, sugar::*};
 use powdr_number::{BigInt, BigUint};
-use crate::{ParserContext, unescape_string, sugar::{desugar_array_literal_expression_with_sourceref, wrap_in_lambda}};
+use crate::{ParserContext, unescape_string, sugar::{desugar_array_literal_expression_with_sourceref}};
 use powdr_parser_util::Error;
 
 grammar(ctx: &ParserContext);
@@ -169,7 +169,7 @@ FunctionDefinition: FunctionDefinition = {
             body,
             outer_var_references: Default::default()
         })),
-    <start:@L> "=" <array:ArrayLiteralExpression> <end:@R> => wrap_in_lambda(desugar_array_literal_expression_with_sourceref(ctx.source_ref(start, end), array)).into(),
+    <start:@L> "=" <array:ArrayLiteralExpression> <end:@R> => desugar_array_literal_expression_with_sourceref(ctx.source_ref(start, end), array).into(),
 }
 
 ParameterList: Vec<Pattern> = {
