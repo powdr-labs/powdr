@@ -195,7 +195,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         main: &AB::M,
         fixed: &AB::M,
         publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
-        stage: u32,
         multi_stage: Vec<&AB::M>, // returns a reference to the stage _ matrix
         challenges: Vec<&BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>,
     ) -> AB::Expr {
@@ -216,8 +215,20 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                                     < self.analyzed.commitment_count()
                                         + self.analyzed.stage_count() =>
                             {
-                                let row = multi_stage[1].row_slice(r.next as usize);
+                                let row = multi_stage[0].row_slice(r.next as usize);
                                 row[row_id - self.analyzed.commitment_count() as usize].into()
+                            }
+                            row_id
+                                if row_id
+                                    < self.analyzed.commitment_count()
+                                        + self.analyzed.stage_count(0)
+                                        + self.analyzed.stage_count(1) =>
+                            {
+                                let row = multi_stage[1].row_slice(r.next as usize);
+                                row[row_id
+                                    - self.analyzed.commitment_count()
+                                    - self.analyzed.stage_count(1) as usize]
+                                    .into()
                             }
                             _ => panic!("Plonky3 expects `poly_id` to be contiguous"),
                         }
@@ -231,8 +242,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                         row[r.poly_id.id as usize].into()
                     }
                     PolynomialType::Intermediate => {
-                        let row = stage_1.row_slice(r.next as usize);
-                        row[r.poly_id.id as usize].into();
                         unreachable!("intermediate polynomials should have been inlined")
                     }
                 }
@@ -252,7 +261,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     main,
                     fixed,
                     publics,
-                    stage,
                     multi_stage_trace,
                     challenges,
                 );
@@ -261,7 +269,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     main,
                     fixed,
                     publics,
-                    stage,
                     multi_stage_trace,
                     challenges,
                 );
@@ -281,7 +288,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     main,
                     fixed,
                     publics,
-                    stage,
                     multi_stage_trace,
                     challenges,
                 );
@@ -368,7 +374,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     main,
                     fixed,
                     publics,
-                    stage,
                     multi_stage_trace,
                     multi_stage_challenge,
                 );
