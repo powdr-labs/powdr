@@ -22,6 +22,9 @@ pub mod continuations;
 pub mod elf;
 pub mod runtime;
 
+static TARGET_STD: &str = "riscv32im-risc0-zkvm-elf";
+static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
+
 /// Compiles a rust file to Powdr asm.
 #[allow(clippy::print_stderr)]
 pub fn compile_rust<T: FieldElement>(
@@ -231,6 +234,7 @@ pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> Compil
     let mut executable = None;
 
     log::debug!("RISC-V assembly files of this build:");
+    let target = Path::new(if use_std { TARGET_STD } else { TARGET_NO_STD });
     for i in invocations {
         let JsonValue::Array(outputs) = &i["outputs"] else {
             panic!("no outputs in cargo build plan");
@@ -240,7 +244,7 @@ pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> Compil
             // Replace the plan_dir with the target_dir, because the later is
             // where the files actually are.
             let parent = target_dir.join(output.parent().unwrap().strip_prefix(&plan_dir).unwrap());
-            if parent.ends_with("riscv32im-risc0-zkvm-elf/release/deps") {
+            if parent.ends_with(target.join("release/deps")) {
                 let extension = output.extension();
                 let name_stem = if Some(OsStr::new("rmeta")) == extension {
                     // Have to convert to string to remove the "lib" prefix:
@@ -345,20 +349,22 @@ fn build_cargo_command(
         target_dir,
         "--manifest-path",
         input_dir,
+        "--target"
+        // target is defined in the following if-else block
     ]
     .into();
 
     if use_std {
         args.extend(as_ref![
             OsStr;
-            "--target=riscv32im-risc0-zkvm-elf",
+            TARGET_STD,
             "-Zbuild-std=std,panic_abort",
             "-Zbuild-std-features=default,compiler-builtins-mem",
         ]);
     } else {
         args.extend(as_ref![
             OsStr;
-            "--target=riscv32imac-unknown-none-elf",
+            TARGET_NO_STD,
             // TODO: the following switch can be removed once we drop support to
             // asm path, but the following command will have to be added to CI:
             //
