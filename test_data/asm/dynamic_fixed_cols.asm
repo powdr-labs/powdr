@@ -18,7 +18,7 @@ mod cols {
 }
 
 
-machine Empty {
+machine Empty with degree: 16 {
     col witness w;
     w - cols::first() = 0;
     let x;
