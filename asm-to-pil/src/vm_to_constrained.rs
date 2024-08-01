@@ -27,7 +27,7 @@ use powdr_ast::{
     },
 };
 use powdr_number::{BigUint, FieldElement, LargeInt};
-use powdr_parser::sugar::desugar_array_literal_expression;
+use powdr_parser::sugar::{desugar_array_literal_expression, wrap_in_lambda};
 use powdr_parser_util::SourceRef;
 
 use crate::{
@@ -184,14 +184,8 @@ impl<T: FieldElement> VMConverter<T> {
         }
 
         // introduce `first_step` which is used for register updates
-        self.pil.push(PilStatement::PolynomialConstantDefinition(
-            SourceRef::unknown(),
-            "first_step".to_string(),
-            desugar_array_literal_expression(
-                ArrayExpression::value(vec![1u32.into()]).pad_with_zeroes(),
-            )
-            .into(),
-        ));
+        self.pil
+            .push(parse_pil_statement("col fixed first_step = [1] + [0]*;"));
 
         self.pil.extend(
             self.registers
@@ -925,7 +919,7 @@ impl<T: FieldElement> VMConverter<T> {
             .push(PilStatement::PolynomialConstantDefinition(
                 SourceRef::unknown(),
                 "p_line".to_string(),
-                desugar_array_literal_expression(
+                wrap_in_lambda(desugar_array_literal_expression(
                     ArrayExpression::Value(
                         (0..self.code_lines.len())
                             .map(|i| BigUint::from(i as u64).into())
@@ -933,7 +927,7 @@ impl<T: FieldElement> VMConverter<T> {
                     )
                     .pad_with_last()
                     .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()])),
-                )
+                ))
                 .into(),
             ));
         // TODO check that all of them are matched against execution trace witnesses.
@@ -1078,7 +1072,7 @@ impl<T: FieldElement> VMConverter<T> {
                 .push(PilStatement::PolynomialConstantDefinition(
                     SourceRef::unknown(),
                     name.clone(),
-                    desugar_array_literal_expression(array_expression).into(),
+                    wrap_in_lambda(desugar_array_literal_expression(array_expression)).into(),
                 ));
         }
     }

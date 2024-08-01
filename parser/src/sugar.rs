@@ -1,8 +1,9 @@
 use std::str::FromStr;
 
 use powdr_ast::parsed::{
-    asm::SymbolPath, sugar::ArrayExpression, ArrayLiteral, Expression, FunctionCall,
-    NamespacedPolynomialReference,
+    asm::SymbolPath, sugar::ArrayExpression, ArrayLiteral, BlockExpression, Expression,
+    FunctionCall, FunctionKind, LambdaExpression, NamespacedPolynomialReference, Pattern,
+    SourceReference,
 };
 use powdr_parser_util::SourceRef;
 
@@ -10,11 +11,13 @@ const ONCE: &str = "std::expand_fixed::once";
 const REPEAT: &str = "std::expand_fixed::repeat";
 const EXPAND: &str = "std::expand_fixed::expand_unwrapped";
 const DEGREE: &str = "std::prover::degree";
+const ARGUMENT_NAME: &str = "i";
 
 pub fn desugar_array_literal_expression(array_expression: ArrayExpression) -> Expression {
     desugar_array_literal_expression_with_sourceref(SourceRef::unknown(), array_expression)
 }
 
+/// Turn an [ArrayExpression] into calls to stdlib
 pub fn desugar_array_literal_expression_with_sourceref(
     source_ref: SourceRef,
     array_expression: ArrayExpression,
@@ -76,6 +79,43 @@ pub fn desugar_array_literal_expression_with_sourceref(
     )
 }
 
+/// Given `f`, returns (|i| { f(i) })
+/// This is required since `pol constant foo` only accepts lambdas which return a [BlockExpression] in the parser
+pub fn wrap_in_lambda(e: Expression) -> Expression {
+    let source_ref = e.source_reference().clone();
+
+    Expression::LambdaExpression(
+        source_ref.clone(),
+        LambdaExpression {
+            kind: FunctionKind::Pure,
+            params: vec![Pattern::Enum(
+                source_ref.clone(),
+                SymbolPath::from_identifier(ARGUMENT_NAME.into()),
+                None,
+            )],
+            body: Box::new(Expression::BlockExpression(
+                source_ref.clone(),
+                BlockExpression {
+                    statements: vec![],
+                    expr: Some(Box::new(Expression::FunctionCall(
+                        source_ref.clone(),
+                        FunctionCall {
+                            function: Box::new(e),
+                            arguments: vec![Expression::Reference(
+                                source_ref.clone(),
+                                NamespacedPolynomialReference::from_identifier(
+                                    ARGUMENT_NAME.into(),
+                                ),
+                            )],
+                        },
+                    ))),
+                },
+            )),
+            outer_var_references: Default::default(),
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{powdr::ArrayLiteralExpressionParser, ParserContext};
@@ -91,6 +131,18 @@ mod tests {
         assert_eq!(
             desugar_array_literal_expression(array_expression).to_string(),
             "std::expand_fixed::expand_unwrapped([std::expand_fixed::repeat([1, 2]), std::expand_fixed::once([1]), std::expand_fixed::once([1, 2, 3])], std::prover::degree)"
+        );
+    }
+
+    #[test]
+    fn wrap() {
+        let context = ParserContext::new(None, "");
+        let array_expression: ArrayExpression = ArrayLiteralExpressionParser::new()
+            .parse(&context, "[1, 2]* + [1] + [1, 2, 3]")
+            .unwrap();
+        assert_eq!(
+            wrap_in_lambda(desugar_array_literal_expression(array_expression)).to_string(),
+            "(|i| { std::expand_fixed::expand_unwrapped([std::expand_fixed::repeat([1, 2]), std::expand_fixed::once([1]), std::expand_fixed::once([1, 2, 3])], std::prover::degree)(i) })"
         );
     }
 }
