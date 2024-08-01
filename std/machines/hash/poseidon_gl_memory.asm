@@ -162,7 +162,7 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     let x7: inter[STATE_SIZE] = array::zip(x6, a, |x6, a| x6 * a);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.
-    let b: expr[STATE_SIZE] = array::new(STATE_SIZE, |i| if i == 0 {
+    let b: expr[] = array::new(STATE_SIZE, |i| if i == 0 {
         x7[i]
     } else {
         PARTIAL * (a[i] - x7[i]) + x7[i]
