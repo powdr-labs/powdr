@@ -168,10 +168,10 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     }
                 }
             }
-            AlgebraicExpression::PublicReference(id) => publics
+            AlgebraicExpression::PublicReference(id) => (*publics
                 .get(id)
-                .expect("Referenced public value does not exist")
-                .into(),
+                .expect("Referenced public value does not exist"))
+            .into(),
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let left = self.to_plonky3_expr::<AB>(left, main, fixed, publics);
