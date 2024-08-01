@@ -278,8 +278,22 @@ mod tests {
     }
 
     #[test]
-    fn publics() {
+    fn public_values() {
         let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
+        run_test_goldilocks(content);
+    }
+
+    #[test]
+    #[should_panic = "not implemented: Unexpected expression: :oldstate"]
+    fn public_reference() {
+        let content = r#"
+        namespace Global(8);
+            col witness x;
+            col witness y;
+            public oldstate = x(0);
+            x = 0;
+            y = 1 + :oldstate;
+        "#;
         run_test_goldilocks(content);
     }
 
