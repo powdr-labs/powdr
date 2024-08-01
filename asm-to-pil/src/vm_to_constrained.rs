@@ -1042,7 +1042,6 @@ impl<T: FieldElement> VMConverter<T> {
                             }
                             .into(),
                         ),
-                        outer_var_references: Default::default(),
                     }
                     .into();
 
