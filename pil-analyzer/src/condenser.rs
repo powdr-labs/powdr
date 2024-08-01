@@ -3,27 +3,31 @@
 
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
-    fmt::Display,
     iter::once,
     str::FromStr,
     sync::Arc,
 };
 
+use num_traits::sign::Signed;
+
 use powdr_ast::{
     analyzed::{
         self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
-        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialType, PublicDeclaration,
-        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
+        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
+        PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
+        Symbol, SymbolKind,
     },
     parsed::{
         self,
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        FunctionKind, TypedExpression,
+        visitor::{AllChildren, Children},
+        ArrayLiteral, BlockExpression, FunctionKind, LambdaExpression, LetStatementInsideBlock,
+        Number, Pattern, TypedExpression, UnaryOperation,
     },
 };
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{BigUint, DegreeType, FieldElement};
 use powdr_parser_util::SourceRef;
 
 use crate::{
@@ -679,15 +683,15 @@ fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
 
 /// Turns a value of function type (i.e. a closure) into a FunctionValueDefinition
 /// and sets the expected function kind.
-/// Does not allow captured variables.
-fn closure_to_function<T: Clone + Display>(
+/// Does allow some forms of captured variables.
+fn closure_to_function<T: FieldElement>(
     source: &SourceRef,
     value: &Value<'_, T>,
     expected_kind: FunctionKind,
 ) -> Result<FunctionValueDefinition, EvalError> {
     let Value::Closure(evaluator::Closure {
         lambda,
-        environment: _,
+        environment,
         type_args,
     }) = value
     else {
@@ -701,11 +705,6 @@ fn closure_to_function<T: Clone + Display>(
             "Lambda expression must not have type arguments.".to_string(),
         ));
     }
-    if !lambda.outer_var_references.is_empty() {
-        return Err(EvalError::TypeError(format!(
-            "Lambda expression must not reference outer variables: {lambda}"
-        )));
-    }
     if lambda.kind != FunctionKind::Pure && lambda.kind != expected_kind {
         return Err(EvalError::TypeError(format!(
             "Expected {expected_kind} lambda expression but got {}.",
@@ -713,11 +712,152 @@ fn closure_to_function<T: Clone + Display>(
         )));
     }
 
+    let outer_var_refs =
+        outer_var_refs(environment.len() as u64, &lambda.body).collect::<HashMap<_, _>>();
+
     let mut lambda = (*lambda).clone();
     lambda.kind = expected_kind;
 
-    Ok(FunctionValueDefinition::Expression(TypedExpression {
-        e: Expression::LambdaExpression(source.clone(), lambda),
+    compact_var_refs(
+        &mut lambda.body,
+        &outer_var_refs.iter().map(|(id, _)| *id).collect(),
+        environment.len() as u64,
+    );
+
+    let statements = outer_var_refs
+        .into_iter()
+        .map(|(v_id, name)| {
+            let value = Some(try_value_to_expression(
+                environment[v_id as usize].as_ref(),
+            )?);
+            // TODO Type?
+
+            Ok(LetStatementInsideBlock {
+                pattern: Pattern::Variable(SourceRef::unknown(), name.clone()),
+                ty: None,
+                value,
+            }
+            .into())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let e = Expression::LambdaExpression(source.clone(), lambda);
+
+    let e = if statements.is_empty() {
+        e
+    } else {
+        BlockExpression {
+            statements,
+            expr: Some(Box::new(e)),
+        }
+        .into()
+    };
+
+    return Ok(FunctionValueDefinition::Expression(TypedExpression {
+        e,
         type_scheme: None,
-    }))
+    }));
+}
+
+fn outer_var_refs(environment_size: u64, e: &Expression) -> impl Iterator<Item = (u64, &String)> {
+    e.all_children().filter_map(move |e| {
+        if let Expression::Reference(_, Reference::LocalVar(id, name)) = e {
+            (*id < environment_size).then_some((*id, name))
+        } else {
+            None
+        }
+    })
+}
+
+/// Updates local variable IDs to be compact.
+fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &Vec<u64>, environment_size: u64) {
+    e.children_mut().for_each(|e| {
+        if let Expression::Reference(_, Reference::LocalVar(id, name)) = e {
+            if *id >= environment_size {
+                // Local variable.
+                *id -= environment_size - referenced_outer_vars.len() as u64;
+            } else {
+                let pos = referenced_outer_vars.binary_search(id).unwrap();
+                *id -= pos as u64;
+            }
+        }
+    });
+}
+
+fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expression, EvalError> {
+    Ok(match value {
+        Value::Integer(v) => {
+            let n = Number {
+                value: BigUint::try_from(v.abs()).unwrap(),
+                type_: Some(Type::Int),
+            };
+            if v.is_negative() {
+                Expression::from(UnaryOperation {
+                    op: parsed::UnaryOperator::Minus,
+                    expr: Box::new(n.into()),
+                })
+            } else {
+                n.into()
+            }
+        }
+        Value::FieldElement(v) => Number {
+            value: v.to_arbitrary_integer(),
+            type_: Some(Type::Fe),
+        }
+        .into(),
+        Value::String(s) => Expression::String(SourceRef::unknown(), s.clone()),
+        Value::Bool(b) => Expression::Reference(
+            SourceRef::unknown(),
+            Reference::Poly(PolynomialReference {
+                name: if *b {
+                    "std::prelude::true"
+                } else {
+                    "std::prelude::false"
+                }
+                .to_string(),
+                poly_id: None,
+                type_args: None,
+            }),
+        ),
+        Value::Tuple(items) => Expression::Tuple(
+            SourceRef::unknown(),
+            items
+                .iter()
+                .map(|i| try_value_to_expression(i))
+                .collect::<Result<_, _>>()?,
+        ),
+        Value::Array(items) => ArrayLiteral {
+            items: items
+                .iter()
+                .map(|i| try_value_to_expression(i))
+                .collect::<Result<_, _>>()?,
+        }
+        .into(),
+        Value::Closure(c) => {
+            // TODO we could just do the same as in closure_to_function
+            return Err(EvalError::TypeError(format!(
+                "Closure as captured value not supported: {c}."
+            )));
+        }
+        Value::TypeConstructor(c) => {
+            return Err(EvalError::TypeError(format!(
+                "Type constructor as captured value not supported: {c}."
+            )))
+        }
+        Value::Enum(variant, items) => {
+            // TODO the main problem is that we do not know the type of the enum.
+            return Err(EvalError::TypeError(format!(
+                "Enum as captured value not supported: {variant}."
+            )));
+        }
+        Value::BuiltinFunction(_) => {
+            return Err(EvalError::TypeError(
+                "Builtin function as captured value not supported.".to_string(),
+            ))
+        }
+        Value::Expression(e) => {
+            return Err(EvalError::TypeError(
+                "Expression as captured value not supported: {e}.".to_string(),
+            ))
+        }
+    })
 }

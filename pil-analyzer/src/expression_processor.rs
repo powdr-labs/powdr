@@ -11,7 +11,7 @@ use powdr_ast::{
 
 use powdr_parser_util::SourceRef;
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     str::FromStr,
 };
 
@@ -25,8 +25,6 @@ pub struct ExpressionProcessor<'a, D: AnalysisDriver> {
     type_vars: &'a HashSet<&'a String>,
     local_variables: HashMap<String, u64>,
     local_variable_counter: u64,
-    /// Tracks references to local variables to record them for closures.
-    local_var_references: HashSet<u64>,
 }
 
 impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
@@ -36,7 +34,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             type_vars,
             local_variables: Default::default(),
             local_variable_counter: 0,
-            local_var_references: Default::default(),
         }
     }
 
@@ -284,7 +281,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         match reference.try_to_identifier() {
             Some(name) if self.local_variables.contains_key(name) => {
                 let id = self.local_variables[name];
-                self.local_var_references.insert(id);
                 Reference::LocalVar(id, name.to_string())
             }
             _ => Reference::Poly(self.process_namespaced_polynomial_reference(reference)),
@@ -293,15 +289,9 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
     pub fn process_lambda_expression(
         &mut self,
-        LambdaExpression {
-            kind,
-            params,
-            body,
-            outer_var_references: _,
-        }: LambdaExpression,
+        LambdaExpression { kind, params, body }: LambdaExpression,
     ) -> LambdaExpression<Expression> {
         let previous_local_vars = self.save_local_variables();
-        let previous_local_var_refs = std::mem::take(&mut self.local_var_references);
         let local_variable_height = self.local_variable_counter;
 
         let params = params
@@ -316,20 +306,8 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         }
         let body = Box::new(self.process_expression(*body));
 
-        let outer_var_references: BTreeSet<u64> =
-            std::mem::replace(&mut self.local_var_references, previous_local_var_refs)
-                .into_iter()
-                .filter(|id| *id < local_variable_height)
-                .collect();
-        self.local_var_references
-            .extend(outer_var_references.clone());
         self.reset_local_variables(previous_local_vars);
-        LambdaExpression {
-            kind,
-            params,
-            body,
-            outer_var_references,
-        }
+        LambdaExpression { kind, params, body }
     }
 
     fn process_block_expression(

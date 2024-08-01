@@ -230,7 +230,6 @@ fn new_fixed_column() {
 }
 
 #[test]
-#[should_panic = "Error creating fixed column N.fi: Lambda expression must not reference outer variables: (|i| (i + j) * 2)"]
 fn new_fixed_column_as_closure() {
     let input = r#"namespace N(16);
         let f = constr |j| {
@@ -241,7 +240,21 @@ fn new_fixed_column_as_closure() {
         let x;
         x = ev;
     "#;
-    analyze_string::<GoldilocksField>(input);
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace N(16);
+    let f: int -> expr = (constr |j| {
+        let fi: col = (|i| (i + j) * 2);
+        fi
+    });
+    let ev: expr = N.f(2);
+    col witness x;
+    let fi = {
+        let j = 2;
+        (|i| (i + j) * 2)
+    };
+    N.x = N.fi;
+"#;
+    assert_eq!(formatted, expected);
 }
 
 #[test]
@@ -470,4 +483,37 @@ fn intermediate_arr_wrong_length() {
     };
 "#;
     analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+fn closure() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        let eval = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        col witness x;
+        let y = |a, b, c| std::prover::Query::Hint(a + c());
+        {
+            let r = 9;
+            std::prover::set_hint(x, |i| y(1, i, || 9 + r));
+        };
+"#;
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    let expected = r#"namespace std::prover;
+    let set_hint = 8;
+    let eval = 8;
+    enum Query {
+        Hint(fe),
+        None,
+    }
+namespace N(16);
+    col witness x = {
+        let r = 9;
+        (query |i| N.y(1, i, (|| 9 + r)))
+    };
+    let y: fe, int, (-> fe) -> std::prover::Query = (|a, b, c| std::prover::Query::Hint(a + c()));
+"#;
+    assert_eq!(analyzed.to_string(), expected);
 }
