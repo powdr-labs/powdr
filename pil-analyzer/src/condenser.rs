@@ -665,47 +665,47 @@ fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
     }
 }
 
-/// Turns a value of function type (i.e. a closure) into a FunctionValueDefinition.
+/// Turns a value of function type (i.e. a closure) into a FunctionValueDefinition
+/// and sets the expected function kind.
 /// Does not allow captured variables.
 fn closure_to_function<T: Clone + Display>(
     source: &SourceRef,
     value: &Value<'_, T>,
     expected_kind: FunctionKind,
 ) -> Result<FunctionValueDefinition, EvalError> {
-    if let Value::Closure(evaluator::Closure {
+    let Value::Closure(evaluator::Closure {
         lambda,
         environment: _,
         type_args,
     }) = value
-    {
-        if !type_args.is_empty() {
-            return Err(EvalError::TypeError(
-                "Lambda expression must not have type arguments.".to_string(),
-            ));
-        }
-        if !lambda.outer_var_references.is_empty() {
-            return Err(EvalError::TypeError(format!(
-                "Lambda expression must not reference outer variables: {lambda}"
-            )));
-        }
-
-        if lambda.kind != FunctionKind::Pure && lambda.kind != expected_kind {
-            return Err(EvalError::TypeError(format!(
-                "Expected {expected_kind} lambda expression but got {}.",
-                lambda.kind
-            )));
-        }
-
-        let mut lambda = (*lambda).clone();
-        lambda.kind = expected_kind;
-
-        Ok(FunctionValueDefinition::Expression(TypedExpression {
-            e: Expression::LambdaExpression(source.clone(), lambda),
-            type_scheme: None,
-        }))
-    } else {
-        Err(EvalError::TypeError(format!(
+    else {
+        return Err(EvalError::TypeError(format!(
             "Expected lambda expressions but got {value}."
-        )))
+        )));
+    };
+
+    if !type_args.is_empty() {
+        return Err(EvalError::TypeError(
+            "Lambda expression must not have type arguments.".to_string(),
+        ));
     }
+    if !lambda.outer_var_references.is_empty() {
+        return Err(EvalError::TypeError(format!(
+            "Lambda expression must not reference outer variables: {lambda}"
+        )));
+    }
+    if lambda.kind != FunctionKind::Pure && lambda.kind != expected_kind {
+        return Err(EvalError::TypeError(format!(
+            "Expected {expected_kind} lambda expression but got {}.",
+            lambda.kind
+        )));
+    }
+
+    let mut lambda = (*lambda).clone();
+    lambda.kind = expected_kind;
+
+    Ok(FunctionValueDefinition::Expression(TypedExpression {
+        e: Expression::LambdaExpression(source.clone(), lambda),
+        type_scheme: None,
+    }))
 }

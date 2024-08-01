@@ -366,6 +366,48 @@ fn set_hint_twice_in_constr() {
 }
 
 #[test]
+fn set_hint_outside() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        let eval = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        let y;
+        let create_wit = constr || { let w; w };
+        let z = create_wit();
+        let set_hint = constr |c| { std::prover::set_hint(c, query |_| std::prover::Query::Hint(8)); };
+        set_hint(x);
+        set_hint(y);
+        (|| { set_hint(z); })();
+    "#;
+    let expected = r#"namespace std::prover;
+    let set_hint = 8;
+    let eval = 8;
+    enum Query {
+        Hint(fe),
+        None,
+    }
+namespace N(16);
+    col witness x(_) query std::prover::Query::Hint(8);
+    col witness y(_) query std::prover::Query::Hint(8);
+    let create_wit: -> expr = (constr || {
+        let w: col;
+        w
+    });
+    let z: expr = N.create_wit();
+    let set_hint: expr -> () = (constr |c| {
+        std::prover::set_hint(c, (query |_| std::prover::Query::Hint(8)));
+
+    });
+    col witness w(_) query std::prover::Query::Hint(8);
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
+}
+
+#[test]
 fn intermediate_syntax() {
     let input = r#"namespace N(65536);
     col witness x[5];

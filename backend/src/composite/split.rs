@@ -25,9 +25,9 @@ const DUMMY_COLUMN_NAME: &str = "__dummy";
 /// 1. The PIL is split into namespaces
 /// 2. Namespaces without any columns are duplicated and merged with the other namespaces
 /// 3. Any lookups or permutations that reference multiple namespaces are removed.
-pub(crate) fn split_pil<F: FieldElement>(pil: Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
-    let statements_by_namespace = split_by_namespace(&pil);
-    let statements_by_machine = merge_empty_namespaces(statements_by_namespace, &pil);
+pub(crate) fn split_pil<F: FieldElement>(pil: &Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
+    let statements_by_namespace = split_by_namespace(pil);
+    let statements_by_machine = merge_empty_namespaces(statements_by_namespace, pil);
 
     statements_by_machine
         .into_iter()

@@ -128,3 +128,30 @@ fn set_hint_can_use_query() {
     "#;
     analyze_string::<GoldilocksField>(input);
 }
+
+#[test]
+fn set_hint_pure() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        std::prover::set_hint(x, |i| std::prover::Query::Hint(1));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+#[should_panic = "Used a constr lambda function inside a query context"]
+fn set_hint_constr() {
+    let input = r#"
+    namespace std::prover;
+        let set_hint = 8;
+        enum Query { Hint(fe), None, }
+    namespace N(16);
+        let x;
+        std::prover::set_hint(x, constr |i| std::prover::Query::Hint(1));
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
