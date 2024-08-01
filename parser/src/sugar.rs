@@ -130,18 +130,6 @@ mod tests {
             .unwrap();
         assert_eq!(
             desugar_array_literal_expression(array_expression).to_string(),
-            "std::expand_fixed::expand_unwrapped([std::expand_fixed::repeat([1, 2]), std::expand_fixed::once([1]), std::expand_fixed::once([1, 2, 3])], std::prover::degree)"
-        );
-    }
-
-    #[test]
-    fn wrap() {
-        let context = ParserContext::new(None, "");
-        let array_expression: ArrayExpression = ArrayLiteralExpressionParser::new()
-            .parse(&context, "[1, 2]* + [1] + [1, 2, 3]")
-            .unwrap();
-        assert_eq!(
-            wrap_in_lambda(desugar_array_literal_expression(array_expression)).to_string(),
             "(|i| { std::expand_fixed::expand_unwrapped([std::expand_fixed::repeat([1, 2]), std::expand_fixed::once([1]), std::expand_fixed::once([1, 2, 3])], std::prover::degree)(i) })"
         );
     }
