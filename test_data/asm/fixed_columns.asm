@@ -1,4 +1,4 @@
-machine Main {
+machine Main with degree: 16 {
     // ANCHOR: declare_and_define
     col fixed ONES = [1]*; // this is valid
     // col fixed ONES; // this is invalid

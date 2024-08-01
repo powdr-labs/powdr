@@ -77,25 +77,35 @@ let expand: ArrayTerm[], (-> int) -> Result<(int -> int), string> = |terms, degr
             match compute_length_of_repeated_part(terms, degree) {
                 Result::Ok(size_of_repeated) => {
                     Result::Ok(|i| {
-                        let (_, res) = std::array::fold(terms, (0, 0), |(offset, res), term| {
-                            let (a, len) = match term {
-                                ArrayTerm::Repeat([]) => ([], 0),
-                                ArrayTerm::Repeat(a) => (a, size_of_repeated),
-                                ArrayTerm::Once(a) => (a, std::array::len(a))
-                            };
-                
-                            let index = i - offset;
-                
-                            (
-                                offset + len,
-                                if 0 <= index && index < len {
-                                    res + a[index % std::array::len(a)]
-                                } else {
-                                    res
+                        let (_, res) = std::array::fold(terms, (0, Option::None), |(offset, res), term| {
+                            match res {
+                                // found the result, just keep returning it
+                                Option::Some(r) => (offset, Option::Some(r)),
+                                Option::None => {
+                                    let (a, len) = match term {
+                                        ArrayTerm::Repeat([]) => ([], 0),
+                                        ArrayTerm::Repeat(a) => (a, size_of_repeated),
+                                        ArrayTerm::Once(a) => (a, std::array::len(a))
+                                    };
+
+                                    let index = i - offset;
+
+                                    (
+                                        offset + len,
+                                        if 0 <= index && index < len {
+                                            Option::Some(a[index % std::array::len(a)])
+                                        } else {
+                                            Option::None
+                                        }
+                                    )
                                 }
-                            )
+                            }
                         });
-                        res
+                        // unwrap
+                        match res {
+                            Option::Some(r) => r,
+                            None => panic("unreachable")
+                        }
                     })
                 },
                 Result::Err(e) => Result::Err(e)
