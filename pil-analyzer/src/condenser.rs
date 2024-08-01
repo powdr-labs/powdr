@@ -137,6 +137,7 @@ pub fn condense<T: FieldElement>(
                     panic!("Column {name} already has a hint set, but tried to add another one.",)
                 }
             }
+
             new_cols
                 .into_iter()
                 .chain(identity_statements)
@@ -145,7 +146,6 @@ pub fn condense<T: FieldElement>(
         .collect();
 
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
-
     for symbol in new_columns {
         definitions.insert(symbol.absolute_name.clone(), (symbol, None));
     }

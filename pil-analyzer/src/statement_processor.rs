@@ -295,9 +295,6 @@ where
                 )
             }
             Some(value) => {
-                // We classify symbols with type `col` or `col[]` as fixed columns here.
-                // They could also be intermediate columns (if the type of their value is expr or expr[]).
-                // The condenser will re-classify them since then the type is known.
                 let symbol_kind = type_scheme
                     .as_ref()
                     .map(Self::symbol_kind_from_type)
