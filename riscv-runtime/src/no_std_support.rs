@@ -1,6 +1,6 @@
 use core::{alloc::Layout, arch::asm, panic::PanicInfo};
 
-use crate::fmt::print_str;
+use crate::{fmt::print_str, print};
 
 #[panic_handler]
 unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
