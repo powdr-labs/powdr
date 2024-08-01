@@ -246,14 +246,10 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     }
                 }
             }
-            AlgebraicExpression::PublicReference(id) => {
-                assert!(
-                    publics.contains_key(id),
-                    "Referenced public value does not exist"
-                );
-                publics[id].into()
-            }
-
+            AlgebraicExpression::PublicReference(id) => (*publics
+                .get(id)
+                .expect("Referenced public value does not exist"))
+            .into(),
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let left = self.to_plonky3_expr::<AB>(
@@ -296,113 +292,12 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     AlgebraicUnaryOperator::Minus => -expr,
                 }
             }
-            AlgebraicExpression::Challenge(challenge) => {
-                assert!(
-                    challenges[challenge.stage].contains_key(challenge.id),
-                    "Referenced challenge does not exist in this stage."
-                );
-                challenges[challenge.stage][challenge.id].into()
-            }
+            AlgebraicExpression::Challenge(challenge) => (*challenges[challenge.stage]
+                .get(challenge.id)
+                .expect("Referenced public value does not exist"))
+            .into(),
         };
         res
-    }
-}
-
-// challenge eval implementations TODO: move this up later
-impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
-    /// Conversion of constraint involving challenges to plonky3 expression in the extension field.
-    fn to_plonky3_expr_vanilla<AB: AirBuilder<F = Val> + AirBuilderWithPublicValues>(
-        &self,
-        e: &AlgebraicExpression<T>,
-        main: &AB::M,
-        fixed: &AB::M,
-        publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
-    ) -> AB::Expr {
-        let res = match e {
-            AlgebraicExpression::Reference(r) => {
-                let poly_id = r.poly_id;
-
-                match poly_id.ptype {
-                    PolynomialType::Committed => {
-                        //TODO: our changes should come from here
-                        assert!(
-                            r.poly_id.id < self.analyzed.commitment_count() as u64,
-                            "Plonky3 expects `poly_id` to be contiguous"
-                        );
-                        let row = main.row_slice(r.next as usize);
-                        row[r.poly_id.id as usize].into()
-                    }
-                    PolynomialType::Constant => {
-                        assert!(
-                            r.poly_id.id < self.analyzed.constant_count() as u64,
-                            "Plonky3 expects `poly_id` to be contiguous"
-                        );
-                        let row = fixed.row_slice(r.next as usize);
-                        row[r.poly_id.id as usize].into()
-                    }
-                    PolynomialType::Intermediate => {
-                        let row = stage_1.row_slice(r.next as usize);
-                        row[r.poly_id.id as usize].into();
-                        unreachable!("intermediate polynomials should have been inlined")
-                    }
-                }
-            }
-            AlgebraicExpression::PublicReference(id) => {
-                assert!(
-                    publics.contains_key(id),
-                    "Referenced public value does not exist"
-                );
-                publics[id].into()
-            }
-            AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let left = self.to_plonky3_expr_vanilla::<AB>(left, main, fixed, publics);
-                let right = self.to_plonky3_expr_vanilla::<AB>(right, main, fixed, publics);
-
-                match op {
-                    AlgebraicBinaryOperator::Add => left + right,
-                    AlgebraicBinaryOperator::Sub => left - right,
-                    AlgebraicBinaryOperator::Mul => left * right,
-                    AlgebraicBinaryOperator::Pow => {
-                        unreachable!("exponentiations should have been evaluated")
-                    }
-                }
-            }
-            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(
-                    expr,
-                    main,
-                    fixed,
-                    publics,
-                    multi_stage_trace,
-                    multi_stage_challenge,
-                );
-
-                match op {
-                    AlgebraicUnaryOperator::Minus => -expr,
-                }
-            }
-            AlgebraicExpression::Challenge(challenge) => {
-                unreachable!("Level 0 expressions should not invoke challenges!")
-            }
-        };
-        res
-    }
-
-    fn to_plonky3_expr_multi_stage<AB: AirBuilder<F = Val> + AirBuilderWithPublicValues>(
-        &self,
-        e: &AlgebraicExpression<T>,
-        main: &AB::M,
-        fixed: &AB::M,
-        publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
-        stage: u32,
-        multi_stage: fn(u32) -> Vec<&AB::M>, // returns a reference to the stage _ matrix
-        challenges: fn(
-            u32,
-        )
-            -> Vec<&BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>,
-    ) -> AB::Expr {
-        unimplemented!()
     }
 }
 
@@ -481,6 +376,7 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
             .analyzed
             .identities_with_inlined_intermediate_polynomials()
         {
+            // get maximum stage of
             let mut stage: u32 = 0;
             identity.pre_visit_expressions(&mut |expr| {
                 if let AlgebraicExpression::Challenge(challenge) = expr {
@@ -499,9 +395,16 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
                         &main,
                         &fixed,
                         &public_vals_by_id,
+                        &multi_stage,
+                        &challenge_vals_by_id,
                     );
 
-                    builder.assert_zero(left);
+                    match stage {
+                        0 => builder.assert_zero(left),
+                        _ => { // let D be the degree of challenges
+                        }
+                    }
+                    builder.assert_zero(left); //
                 }
                 // TODO: support for challenges
                 IdentityKind::Plookup => unimplemented!("Plonky3 does not support plookup"),
