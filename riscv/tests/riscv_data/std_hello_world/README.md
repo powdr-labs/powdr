@@ -1,7 +1,7 @@
 My best shot at compiling this so far is:
 
 ```
-RUSTFLAGS="-C link-arg=--emit-relocs -C link-arg=-Tpowdr.x -C passes=loweratomic -g" cargo build -Zbuild-std=std,panic_abort -Zbuild-std-features=default,compiler-builtins-mem -r --target=riscv32im-risc0-zkvm-elf
+RUSTFLAGS="-C link-arg=--emit-relocs -C link-arg=-Tpowdr.x -C passes=lower-atomic -g" cargo build -Zbuild-std=std,panic_abort -Zbuild-std-features=default,compiler-builtins-mem -r --target=riscv32im-risc0-zkvm-elf
 ```
 
 The explanation for the more exotic options we are using:

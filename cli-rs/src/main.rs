@@ -42,7 +42,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Compiles (no-std) rust code to riscv assembly.
-    /// Needs `rustup target add riscv32imac-unknown-none-elf`.
+    /// Needs `rustup target add riscv32im-risc0-zkvm-elf`.
     Compile {
         /// input rust code, points to a crate dir or its Cargo.toml file
         file: String,

@@ -167,6 +167,8 @@ pub fn compile_riscv_elf<T: FieldElement>(
     )
 }
 
+/// Creates an array of references to a given type by calling as_ref on each
+/// element.
 macro_rules! as_ref [
     ($t:ty; $($x:expr),* $(,)?) => {
         [$(AsRef::<$t>::as_ref(&$x)),+]
@@ -194,11 +196,13 @@ pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> Compil
     const CARGO_TARGET_DIR: &str = "cargo_target";
     let target_dir = output_dir.join(CARGO_TARGET_DIR);
 
+    let use_std = is_std_enabled_in_runtime(input_dir);
+
     // We call cargo twice, once to perform the actual building, and once to get
     // the build plan json, so we know exactly which object files to use.
 
     // Real build run.
-    let build_status = build_cargo_command(input_dir, &target_dir, false)
+    let build_status = build_cargo_command(input_dir, &target_dir, use_std, false)
         .status()
         .unwrap();
     assert!(build_status.success());
@@ -207,7 +211,7 @@ pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> Compil
     // otherwise cargo will screw up the build done previously.
     let (build_plan, plan_dir): (JsonValue, PathBuf) = {
         let plan_dir = Temp::new_dir().unwrap();
-        let build_plan_run = build_cargo_command(input_dir, &plan_dir, true)
+        let build_plan_run = build_cargo_command(input_dir, &plan_dir, use_std, true)
             .output()
             .unwrap();
         assert!(build_plan_run.status.success());
@@ -236,7 +240,7 @@ pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> Compil
             // Replace the plan_dir with the target_dir, because the later is
             // where the files actually are.
             let parent = target_dir.join(output.parent().unwrap().strip_prefix(&plan_dir).unwrap());
-            if parent.ends_with("riscv32imac-unknown-none-elf/release/deps") {
+            if parent.ends_with("riscv32im-risc0-zkvm-elf/release/deps") {
                 let extension = output.extension();
                 let name_stem = if Some(OsStr::new("rmeta")) == extension {
                     // Have to convert to string to remove the "lib" prefix:
@@ -287,38 +291,82 @@ pub fn compile_rust_crate_to_riscv_bin(input_dir: &str, output_dir: &Path) -> Pa
         .unwrap()
 }
 
-fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: bool) -> Command {
+fn is_std_enabled_in_runtime(input_dir: &str) -> bool {
+    // Calls `cargo metadata --format-version 1 --no-deps --manifest-path <input_dir>` to determine
+    // if the `std` feature is enabled in the dependency crate `powdr-riscv-runtime`.
+    let metadata = Command::new("cargo")
+        .args(as_ref![
+            OsStr;
+            "metadata",
+            "--format-version",
+            "1",
+            "--no-deps",
+            "--manifest-path",
+            input_dir,
+        ])
+        .output()
+        .unwrap();
+
+    let metadata: serde_json::Value = serde_json::from_slice(&metadata.stdout).unwrap();
+    let packages = metadata["packages"].as_array().unwrap();
+    packages.iter().any(|package| {
+        package["dependencies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|dependency| {
+                dependency["name"] == "powdr-riscv-runtime"
+                    && dependency["features"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&"std".into())
+            })
+    })
+}
+
+fn build_cargo_command(
+    input_dir: &str,
+    target_dir: &Path,
+    use_std: bool,
+    produce_build_plan: bool,
+) -> Command {
     let mut cmd = Command::new("cargo");
     cmd.env(
         "RUSTFLAGS",
-        "--emit=asm -g -C link-arg=-Tpowdr.x -C link-arg=--emit-relocs -C passes=loweratomic",
+        "--emit=asm -g -C link-arg=-Tpowdr.x -C link-arg=--emit-relocs -C passes=lower-atomic",
     );
 
-    let args = as_ref![
+    let mut args: Vec<&OsStr> = as_ref![
         OsStr;
         "+nightly-2024-08-01",
         "build",
         "--release",
-        "-Zbuild-std=std,panic_abort",
-        "-Zbuild-std-features=default,compiler-builtins-mem",
         "--target=riscv32im-risc0-zkvm-elf",
         "--target-dir",
         target_dir,
         "--manifest-path",
         input_dir,
-    ];
+        "-Zbuild-std-features=default,compiler-builtins-mem",
+    ]
+    .into();
 
-    if produce_build_plan {
-        let extra_args = as_ref![
+    if use_std {
+        args.extend(as_ref![
             OsStr;
-            "-Z",
-            "unstable-options",
-            "--build-plan"
-        ];
-        cmd.args(itertools::chain(args.iter(), extra_args.iter()));
+            "-Zbuild-std=std,panic_abort",
+        ]);
     } else {
-        cmd.args(args.iter());
+        args.push("-Zbuild-std=core,alloc".as_ref());
     }
 
+    if produce_build_plan {
+        args.extend(as_ref![
+            OsStr;
+            "-Zunstable-options",
+            "--build-plan"
+        ]);
+    }
+
+    cmd.args(args);
     cmd
 }
