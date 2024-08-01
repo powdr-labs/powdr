@@ -724,3 +724,9 @@ fn types_in_expressions() {
     let expected = "    2 = 0;\n";
     assert_eq!(output, expected);
 }
+
+#[test]
+fn set_hint() {
+    let f = "asm/set_hint.asm";
+    regular_test(f, Default::default());
+}

@@ -161,6 +161,19 @@ let std::prover::degree: -> int
 Returns the current number of rows / the length of the witness columns, also
 known as the degree.
 
+### Hints
+
+```rust
+let std::prover::set_hint: expr, (int -> std::prover::Query) -> ()
+```
+
+This function can be used to set a "query function" for a witness column.
+Query functions are used during witness generation and allow witness column cells
+to receive a value even though they are not uniquely constrained by the constraints.
+
+The first argument must be a witness column and the function can only be called
+once per witness column.
+
 ## Types
 
 There are some types that are not proper built-in types (in the sense that they are not treated

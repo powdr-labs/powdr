@@ -30,3 +30,6 @@ let require_min_degree: int -> () = |m| std::check::assert(degree() >= m, || "De
 
 /// Asserts that the current degree or row count is at most m;
 let require_max_degree: int -> () = |m| std::check::assert(degree() <= m, || "Degree too large.");
+
+/// Adds a hint / query function to an existing witness column.
+let set_hint: expr, (int -> std::prover::Query) -> () = [];

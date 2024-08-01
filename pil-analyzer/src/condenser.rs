@@ -368,7 +368,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             stage: None,
             kind,
             length: None,
-            degree: Some(self.degree.unwrap()),
+            degree: self.degree,
         };
 
         self.new_symbols.insert(name.clone());
