@@ -291,7 +291,7 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
     let mut cmd = Command::new("cargo");
     cmd.env(
         "RUSTFLAGS",
-        "--emit=asm -g -C link-args=-Tpowdr.x -C link-args=--emit-relocs",
+        "--emit=asm -g -C link-arg=-Tpowdr.x -C link-arg=--emit-relocs -C passes=loweratomic",
     );
 
     let args = as_ref![
@@ -299,10 +299,9 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
         "+nightly-2024-02-01",
         "build",
         "--release",
-        "-Z",
-        "build-std=core,alloc",
-        "--target",
-        "riscv32imac-unknown-none-elf",
+        "-Zbuild-std=std,panic_abort",
+        "-Zbuild-std-features=default,compiler-builtins-mem",
+        "--target=riscv32im-risc0-zkvm-elf",
         "--target-dir",
         target_dir,
         "--manifest-path",
