@@ -171,12 +171,12 @@ impl<T: FieldElement> Plonky3Prover<T> {
             &publics,
         )
         .unwrap();
-        Ok(serde_json::to_vec(&proof).unwrap())
+        Ok(bincode::serialize(&proof).unwrap())
     }
 
     pub fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), String> {
-        let proof: Proof<_> = serde_json::from_slice(proof)
-            .map_err(|e| format!("Failed to deserialize proof: {e}"))?;
+        let proof: Proof<_> =
+            bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
         let publics = instances
             .iter()
             .flatten()

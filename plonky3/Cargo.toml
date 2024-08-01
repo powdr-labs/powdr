@@ -12,7 +12,6 @@ powdr-number.workspace = true
 rand = "0.8.5"
 powdr-analysis = { path = "../analysis" }
 powdr-executor = { path = "../executor" }
-serde_json = "1.0.116"
 
 p3-air = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
 p3-matrix = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
