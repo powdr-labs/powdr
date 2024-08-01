@@ -341,23 +341,31 @@ fn build_cargo_command(
         "+nightly-2024-08-01",
         "build",
         "--release",
-        "--target=riscv32im-risc0-zkvm-elf",
         "--target-dir",
         target_dir,
         "--manifest-path",
         input_dir,
-        "-Zbuild-std-features=default,compiler-builtins-mem",
     ]
     .into();
 
-    args.push(
-        if use_std {
-            "-Zbuild-std=std,panic_abort"
-        } else {
+    if use_std {
+        args.extend(as_ref![
+            OsStr;
+            "--target=riscv32im-risc0-zkvm-elf",
+            "-Zbuild-std=std,panic_abort",
+            "-Zbuild-std-features=default,compiler-builtins-mem",
+        ]);
+    } else {
+        args.extend(as_ref![
+            OsStr;
+            "--target=riscv32imac-unknown-none-elf",
+            // TODO: the following switch can be removed once we drop support to
+            // asm path, but the following command will have to be added to CI:
+            //
+            // rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
             "-Zbuild-std=core,alloc"
-        }
-        .as_ref(),
-    );
+        ]);
+    };
 
     if produce_build_plan {
         args.extend(as_ref![
