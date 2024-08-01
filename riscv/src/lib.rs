@@ -350,14 +350,14 @@ fn build_cargo_command(
     ]
     .into();
 
-    if use_std {
-        args.extend(as_ref![
-            OsStr;
-            "-Zbuild-std=std,panic_abort",
-        ]);
-    } else {
-        args.push("-Zbuild-std=core,alloc".as_ref());
-    }
+    args.push(
+        if use_std {
+            "-Zbuild-std=std,panic_abort"
+        } else {
+            "-Zbuild-std=core,alloc"
+        }
+        .as_ref(),
+    );
 
     if produce_build_plan {
         args.extend(as_ref![
