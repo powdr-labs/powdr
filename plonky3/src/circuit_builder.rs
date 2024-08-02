@@ -204,34 +204,25 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
                 match poly_id.ptype {
                     PolynomialType::Committed => {
-                        //TODO: our changes should come from here
-                        match r.poly_id.id {
-                            row_id if row_id < self.analyzed.commitment_count() => {
-                                let row = main.row_slice(r.next as usize);
-                                row[row_id as usize].into()
+                        assert!(
+                            r.poly_id.id < self.analyzed.commitment_count() as u64,
+                            "Plonky3 expects `poly_id` to be contiguous"
+                        );
+                        let col_id = r.poly_id.id;
+                        let row = match col_id {
+                            col_id if col_id < self.width() => {
+                                main.row_slice(r.next as usize)
                             }
-                            row_id
-                                if row_id
-                                    < self.analyzed.commitment_count()
-                                        + self.analyzed.stage_count() =>
-                            {
-                                let row = multi_stage[0].row_slice(r.next as usize);
-                                row[row_id - self.analyzed.commitment_count() as usize].into()
+                            col_id if col_id < self.width() + self.multi_stage_width(1) => {
+                                multi_stage[0].row_slice(r.next as usize)
                             }
-                            row_id
-                                if row_id
-                                    < self.analyzed.commitment_count()
-                                        + self.analyzed.stage_count(0)
-                                        + self.analyzed.stage_count(1) =>
-                            {
-                                let row = multi_stage[1].row_slice(r.next as usize);
-                                row[row_id
-                                    - self.analyzed.commitment_count()
-                                    - self.analyzed.stage_count(1) as usize]
-                                    .into()
+                            col_id if col_id < self.width() + self.multi_stage_width(1) + self.multi_stage_width(2) => {
+                                multi_stage[1].row_slice(r.next as usize)
                             }
-                            _ => panic!("Plonky3 expects `poly_id` to be contiguous"),
+                            _ => panic!("Stage too high for Plonky3 backend.")
                         }
+                        let row = main.row_slice(r.next as usize);
+                        row[r.poly_id.id as usize].into()
                     }
                     PolynomialType::Constant => {
                         assert!(
@@ -301,9 +292,32 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 }
 
+/// An extension of [Air] allowing access to the number of fixed columns
+
+pub trait PowdrAir: BaseAir<Val> {
+    fn multi_stage_width(&self, stage: u32) -> usize;
+}
+
+impl<'a, T: FieldElement> PowdrAir for PowdrCircuit<'a, T> {
+    // TODO: return count for which this is true, make this better
+    fn multi_stage_width(&self, stage: u32) -> usize {
+        let mut width = 0;
+        for identity in &self
+            .analyzed
+            .definitions_in_source_order(PolynomialType::Committed)
+        {
+            let symbol = identity.0;
+            if Some(stage) == symbol[stage] {
+                width += 1;
+            }; // -> see if id is 
+        };
+        width as usize
+    }
+}
+
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
-        self.analyzed.commitment_count()
+        self.multi_stage_width(0)
     }
 
     fn preprocessed_width(&self) -> usize {
@@ -320,17 +334,6 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     }
 }
 
-/// An extension of [Air] allowing access to the number of fixed columns
-
-pub trait PowdrAir: BaseAir<Val> {
-    fn multi_stage_width(&self, stage: u32) -> usize;
-}
-
-impl<'a, T: FieldElement> PowdrAir for PowdrCircuit<'a, T> {
-    fn multi_stage_width(&self, stage: u32) -> usize {
-        unimplemented!();
-    }
-}
 /// TODO: fix pls
 pub trait PowdrAirBuilder:
     AirBuilder + AirBuilderWithPublicValues<F = Val> + PairBuilder + ExtensionBuilder
@@ -380,7 +383,7 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
             let mut stage: u32 = 0;
             identity.pre_visit_expressions(&mut |expr| {
                 if let AlgebraicExpression::Challenge(challenge) = expr {
-                    stage = stage.max(challenge.stage)
+                    stage = stage.max(challenge.stage + 1)
                 }
             });
 
