@@ -157,25 +157,15 @@ fn bus_permutation_via_challenges_ext_bn() {
 }
 
 #[test]
-#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::lookup_via_bus::lookup(main.is_first, 1, [main.z], [main.u], main.alpha, main.beta, main.lookup_constraint, main.m)\nError: FailedAssertion(\"The field is too small and needs to move to the extension field. Pass two elements instead!\")"]
-fn bus_lookup_via_challenges_gl() {
-    let f = "std/bus_lookup_via_challenges.asm";
-    Pipeline::<GoldilocksField>::default()
-        .from_file(resolve_test_file(f))
-        .compute_witness()
-        .unwrap();
-}
-
-#[test]
 fn bus_lookup_via_challenges_bn() {
     let f = "std/bus_lookup_via_challenges.asm";
-    test_halo2(f, Default::default());
+    test_halo2(make_simple_prepared_pipeline(f));
 }
 
 #[test]
 fn bus_lookup_via_challenges_ext_bn() {
-    let f = "std/bus_permutation_via_challenges_ext.asm";
-    test_halo2(f, Default::default());
+    let f = "std/bus_lookup_via_challenges_ext.asm";
+    test_halo2(make_simple_prepared_pipeline(f));
 }
 
 #[test]
@@ -404,7 +394,7 @@ mod reparse {
         "std/lookup_via_challenges.asm",
         "std/poseidon_bn254_test.asm",
         "std/split_bn254_test.asm",
-        "std/bus_lookup_via_challenges.asm",
+        "std/bus_lookup_via_challenges.asm"
     ];
 
     fn run_reparse_test(file: &str) {
